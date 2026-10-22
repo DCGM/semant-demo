@@ -354,7 +354,9 @@ async def _update_and_read(store: AnnotationStore, collection_id: UUID, span_id:
     """Applies the patch (with the span's new derived fields when its offsets are sent, and
     its provenance) and reads the span back; the refresh tells which vector to store next.
     ``expected``: the version the caller knows; a span written since raises
-    ``EditConflictError`` unless it already is as the patch asks (then nothing is written)."""
+    ``EditConflictError`` unless it already is as the patch asks (then nothing is written).
+    Under the span's lock the span is read back before the lock is released, so the version
+    returned is the one this write saved, never a later writer's."""
     refresh = None
     offsets = store.enrichment.derived and (patch.start is not None or patch.end is not None)
     if store.spans.provenance:
@@ -371,15 +373,20 @@ async def _update_and_read(store: AnnotationStore, collection_id: UUID, span_id:
                 refresh = await _patch_with_derived(store, collection_id, span_id, patch, provenance)
             else:
                 await store.spans.update(collection_id, span_id, patch, provenance=provenance)
-    elif offsets:
+            return await _read_back(store, collection_id, span_id), refresh
+    if offsets:
         async with store.spans.lock(span_id):
             refresh = await _patch_with_derived(store, collection_id, span_id, patch)
-    else:
-        await store.spans.update(collection_id, span_id, patch)
+            return await _read_back(store, collection_id, span_id), refresh
+    await store.spans.update(collection_id, span_id, patch)
+    return await _read_back(store, collection_id, span_id), None
+
+
+async def _read_back(store: AnnotationStore, collection_id: UUID, span_id: UUID) -> TagSpan:
     span = await store.spans.read(collection_id, span_id)
     if span is None:
         raise NotFoundError("Span not found")
-    return span, refresh
+    return span
 
 
 async def _patch_with_derived(store: AnnotationStore, collection_id: UUID, span_id: UUID,
@@ -903,13 +910,15 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
                             text: str | None = None, document_ids: list[Id] | None = None,
                             year_from: int | None = None, year_to: int | None = None,
                             sort: AnnotationSort = AnnotationSort.document, limit: int = 50,
-                            offset: int = 0) -> AnnotationPage:
+                            offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
     """
     One page of the collection's annotations as concordance (KWIC) rows, and the number of
     all that match: of some tags, types (default ``pos`` and ``auto``; rejected ``neg``
     only when asked), documents and document years, and whose annotated text contains each
     word of ``text`` (inside a word, ignoring case). The order is total (``AnnotationSort``),
     so pages do not overlap or skip rows while the annotations do not change.
+    ``annotation_ids``: only these annotations (the workspace reads one it shows as it is
+    now, whether or not it still matches the page's filters; #460).
 
     Reads the annotations and, for document order or a year filter, the metadata of the
     annotated documents once (at most ``_MAX_DOCUMENTS``); never the source chunks.
@@ -917,7 +926,7 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     grant = await access.require_collection_read(store.collections, user, collection_id)
     if not 1 <= limit <= _MAX_PAGE or offset < 0:
         raise InvalidRequestError(f"limit must be between 1 and {_MAX_PAGE} and offset not negative")
-    query = _concordance_query(tag_ids, types, text)
+    query = _concordance_query(tag_ids, types, text, _parse_ids(annotation_ids, "annotation"))
     documents = _parse_ids(document_ids, "document")
     cid = await use_tenant(store, grant)
     by_year = year_from is not None or year_to is not None

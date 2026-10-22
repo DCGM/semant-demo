@@ -228,6 +228,8 @@ async def list_collection_annotations(
     sort: AnnotationSort = AnnotationSort.document,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    annotation_id: list[str] | None = Query(default=None, max_length=200,
+                                            description="Only these annotations"),
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> AnnotationPage:
@@ -239,7 +241,7 @@ async def list_collection_annotations(
     """
     return await service.query_annotations(
         store, current_user, collection_id, tag_ids=tag_id, types=types, text=q, document_ids=document_id,
-        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset)
+        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id)
 
 
 @span_router.get("/api/user_collections/{collection_id}/annotations/documents",

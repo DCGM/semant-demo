@@ -420,21 +420,21 @@ function confirmed (action: ReviewAction, ids: string[], tagId?: string): Promis
 }
 
 /** Shows the review's effect: rows read again (also the changed ones, at their current state),
- * deleted and missing ones leave the selection. */
+ * deleted and missing ones leave the selection. Resolves when the page has been read again. */
 function afterReview (report: ReviewReport) {
   const gone = report.action === ReviewAction.delete ? [...report.saved, ...report.missing] : report.missing
   if (gone.length) selection.remove(gone)
-  void store.load()
+  const loading = store.load()
   void store.loadShown()
   if (report.action !== ReviewAction.approve) void store.loadDocuments()
+  return loading
 }
 
 async function runReview (action: ReviewAction, items: SelectionEntry[], tagId?: string) {
   const id = collectionId.value
   if (!id || !items.length || !await confirmed(action, items.map(([i]) => i), tagId)) return null
   const report = await review.review(id, action, items, tagId ?? null)
-  if (report) afterReview(report)
-  return report
+  return report ? { report, loaded: afterReview(report) } : null
 }
 
 async function reviewSelection (action: ReviewAction, tagId?: string) {
@@ -455,7 +455,7 @@ async function retryReview () {
   const id = collectionId.value
   if (!id) return
   const report = await review.retry(id)
-  if (report) afterReview(report)
+  if (report) void afterReview(report)
 }
 
 /** A review of the open annotation refused because someone else changed it meanwhile (#460). */
@@ -470,7 +470,8 @@ const conflictText = computed(() => {
   const when = formatWhen(p?.lastEditedAt)
   const by = who === 'you' ? 'Changed in another window' : `Changed by ${who}`
   const now = `now ${statusText.value.toLowerCase()}, tag "${focusedTag.value?.name ?? 'unknown'}"`
-  return `${by}${when ? ` at ${when}` : ''}: ${now}. Your ${VERB[conflict.action].toLowerCase()} was not saved.`
+  const away = store.rows.some(r => r.id === row.id) ? '' : ' It is no longer on this page.'
+  return `${by}${when ? ` at ${when}` : ''}: ${now}. Your ${VERB[conflict.action].toLowerCase()} was not saved.${away}`
 })
 
 /** Reviews the open annotation; approving or rejecting it moves on to the next row. */
@@ -479,13 +480,20 @@ async function reviewFocused (action: ReviewAction, tagId?: string) {
   if (!row) return
   focusedConflict.value = null
   const next = nextRow.value
-  const report = await runReview(action, [[row.id, row.editVersion ?? 0]], tagId)
-  if (!report) return
+  const reviewed = await runReview(action, [[row.id, row.editVersion ?? 0]], tagId)
+  if (!reviewed) return
+  const { report } = reviewed
   if (report.conflicts.length) {
     // The page is read again (afterReview): the sidebar shows the current annotation and
     // says what happened; the selection's result line has nothing to add.
     focusedConflict.value = { id: row.id, action, tagId }
     review.dismiss()
+    await reviewed.loaded
+    // A change that took it out of the filters must not hide the conflict: read it as it is now.
+    if (selection.focusedGone && focusedConflict.value?.id === row.id && await store.readFocused()) {
+      const current = selection.focused
+      if (current && current.chunkId !== chunkContext.target?.chunkId) void showContext(current)
+    }
     return
   }
   const ok = report.saved.length === 1

@@ -2641,7 +2641,7 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset, annotationId)
 
 List Collection Annotations
 
@@ -2685,6 +2685,8 @@ async function example() {
     limit: 56,
     // number (optional)
     offset: 56,
+    // Array<string> | Only these annotations (optional)
+    annotationId: ...,
   } satisfies ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest;
 
   try {
@@ -2714,6 +2716,7 @@ example().catch(console.error);
 | **sort** | `AnnotationSort` |  | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
+| **annotationId** | `Array<string>` | Only these annotations | [Optional] |
 
 ### Return type
 
