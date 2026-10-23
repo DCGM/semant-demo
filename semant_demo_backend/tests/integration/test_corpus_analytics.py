@@ -211,3 +211,25 @@ async def test_library_years_put_every_matching_document_in_one_row(api_client, 
     filtered = (await api_client.post("/api/analytics/corpus/library-years",
                                       json={"filters": {"title_contains": ["škol"]}})).json()
     assert [(r["library"], r["total_documents"]) for r in filtered["rows"]] == [("mzk", 1), ("nkp", 1)]
+
+
+async def test_library_years_count_fresh_totals_while_the_overview_is_cached(api_client, seeded_store,
+                                                                            collection_names):
+    # Review of #481: the unfiltered totals came from the overview cache while the libraries
+    # were counted live, so documents added within CORPUS_OVERVIEW_MAX_AGE gave a 500.
+    await _add_filtered_documents(seeded_store, collection_names)
+    assert (await api_client.get(PATH)).json()["total_documents"] == 8  # now cached
+    documents = seeded_store.collections.get(collection_names.document_collection_name)
+    inserted = await documents.data.insert_many([
+        DataObject(uuid=uuid, properties={"title": "Nové listy", "yearIssued": 1910, "library": "nkp", "language": "ces"})
+        for uuid in EXTRA[len(FILTERED):]])
+    assert not inserted.errors
+
+    response = await api_client.post("/api/analytics/corpus/library-years", json={})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_documents"] == 11
+    assert [(r["library"], r["total_documents"]) for r in body["rows"]] == \
+        [("nkp", 4), ("mzk", 2), ("MZK", 1), (None, 4)]
+    assert (await api_client.get(PATH)).json()["data_source"] == "cached_aggregation"

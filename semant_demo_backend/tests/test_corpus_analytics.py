@@ -16,7 +16,8 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 from semant_demo.adapters.weaviate.analytics import (
-    AnyOf, ContainsWords, DocumentCounts, NumberRange, Unavailable, UnavailableFilter, ValueCounts, where)
+    PER_VALUE_CONCURRENCY, AnyOf, ContainsWords, CorpusAnalyticsRepository, DocumentCounts, NumberRange, Unavailable,
+    UnavailableFilter, ValueCounts, where)
 from semant_demo.features.analytics import service
 from semant_demo.features.analytics.schemas import DocumentFilters
 from semant_demo.main import create_app
@@ -480,7 +481,7 @@ def rows_of(distribution):
 async def test_library_years_count_each_document_once_and_the_rest_as_unknown():
     analytics = heatmap_analytics()
 
-    result = await service.library_years(analytics, service.OverviewCache(600), DocumentFilters(languages=["ces"]))
+    result = await service.library_years(analytics, DocumentFilters(languages=["ces"]))
 
     assert (result.available, result.total_documents) == (True, 10)
     # " mzk" matches the same documents as "mzk" (field tokenization): one row.
@@ -499,7 +500,7 @@ async def test_library_years_list_at_most_20_libraries_and_name_the_rest_other_o
     analytics = FakeAnalytics(25, yearIssued=counts([(1900.0, 25)]), library=counts(libraries))
     analytics.per_value = {name: FakeAnalytics(1, yearIssued=counts([(1900.0, 1)])) for name, _ in libraries}
 
-    result = await service.library_years(analytics, service.OverviewCache(600), DocumentFilters())
+    result = await service.library_years(analytics, DocumentFilters())
 
     assert len(result.rows) == service.MAX_HEATMAP_LIBRARIES + 1
     assert rows_of(result)[-1] == (None, "other_or_unknown", 5, [(1900, 5)], 0)
@@ -510,7 +511,7 @@ async def test_library_years_without_libraries_or_years_are_unavailable(missing,
     analytics = heatmap_analytics()
     analytics.properties[missing] = Unavailable("missing")
 
-    result = await service.library_years(analytics, service.OverviewCache(600), DocumentFilters())
+    result = await service.library_years(analytics, DocumentFilters())
 
     assert (result.available, result.unavailable_reason, result.unavailable_property, result.rows) == \
         (False, "missing_property", unavailable_property, None)
@@ -522,7 +523,80 @@ async def test_library_years_that_do_not_add_up_fail_instead_of_misreporting():
     analytics.per_value["nkp"] = FakeAnalytics(5, yearIssued=counts([(1910.0, 5)]))  # more than in the corpus
 
     with pytest.raises(service.IncompleteCounts):
-        await service.library_years(analytics, service.OverviewCache(600), DocumentFilters())
+        await service.library_years(analytics, DocumentFilters())
+    assert len(analytics.calls) == 4  # counted twice: distributions and libraries, then again
+
+
+async def test_library_years_are_counted_again_when_the_corpus_changed_between_the_readings():
+    analytics = heatmap_analytics()
+    consistent = analytics.per_value["nkp"]
+    analytics.per_value["nkp"] = FakeAnalytics(5, yearIssued=counts([(1910.0, 5)]))  # read after documents were added
+    count_per_value = analytics.count_documents_per_value
+
+    async def changed_once(*args, **kwargs):
+        result = await count_per_value(*args, **kwargs)
+        analytics.per_value["nkp"] = consistent
+        return result
+
+    analytics.count_documents_per_value = changed_once
+
+    result = await service.library_years(analytics, DocumentFilters())
+
+    assert len(analytics.calls) == 4
+    assert [(r.library, r.total_documents) for r in result.rows] == [("mzk", 6), ("nkp", 2), (None, 2)]
+
+
+async def test_library_years_count_fresh_totals_while_the_overview_is_cached(tmp_path):
+    # Review of #481: the unfiltered totals came from the overview cache while the libraries
+    # were counted live, so documents added within CORPUS_OVERVIEW_MAX_AGE made them not add up.
+    analytics = heatmap_analytics()
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_corpus_analytics] = lambda: analytics
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        cached = await client.post(DISTRIBUTIONS, json={})
+        # Two documents of nkp from 1910 added.
+        analytics.total = 12
+        analytics.properties.update(yearIssued=counts([(1909.0, 3), (1910.0, 6), (1700.0, 1)]),
+                                    library=counts([("mzk", 5), ("nkp", 4), (" mzk", 1)]))
+        analytics.per_value["nkp"] = FakeAnalytics(4, yearIssued=counts([(1910.0, 4)]))
+        heatmap = await client.post(LIBRARY_YEARS, json={})
+        again = await client.post(DISTRIBUTIONS, json={})
+
+    assert cached.json()["total_documents"] == 10
+    assert heatmap.status_code == 200
+    assert heatmap.json()["total_documents"] == 12
+    assert [(r["library"], r["total_documents"]) for r in heatmap.json()["rows"]] == \
+        [("mzk", 6), ("nkp", 4), (None, 2)]
+    # The page's distributions are still served from the cache until it expires.
+    assert (again.json()["data_source"], again.json()["total_documents"]) == ("cached_aggregation", 10)
+
+
+async def test_per_value_counts_run_at_most_a_few_at_once_across_requests():
+    repository = CorpusAnalyticsRepository(client=None, collection_names=None)
+    running, most = 0, 0
+
+    async def property_types():
+        return {"library": "text", "yearIssued": "number"}
+
+    async def count(filters, properties, types, group_limit):
+        nonlocal running, most
+        running += 1
+        most = max(most, running)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        running -= 1
+        return DocumentCounts(total=1, properties={})
+
+    repository._property_types = property_types
+    repository._count = count
+    values = [f"lib{i:02}" for i in range(20)]
+
+    first, second = await asyncio.gather(*(
+        repository.count_documents_per_value("library", values, {"yearIssued": "number"}, group_limit=10)
+        for _ in range(2)))
+
+    assert most == PER_VALUE_CONCURRENCY == 4
+    assert list(first) == list(second) == values
 
 
 async def test_library_years_are_answered_anonymously_and_refuse_unavailable_filters(tmp_path):

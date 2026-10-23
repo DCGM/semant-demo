@@ -296,11 +296,19 @@ clients.
 filters and returns the matching documents per source library and publication year: one row
 per library (at most 20, most documents first) and one for the remaining documents ("unknown",
 or "other or unknown" when not every library has a row). Weaviate groups by one property only,
-so the years are counted once per library with a filter on it, concurrently, and the remaining
-row is the difference to the distributions (documents without a library cannot be filtered).
-Library values that differ only in surrounding whitespace match the same documents (`field`
-tokenization) and form one row. It costs about as much as the distributions again, so the page
-asks for it only when the heatmap is opened, and it is not cached.
+so the years are counted once per library with a filter on it, and the remaining row is the
+difference to the distributions (documents without a library cannot be filtered). Those
+distributions are computed with it, never taken from the overview cache, as older totals and
+live per-library counts would not add up; when the corpus changes between the readings, it is
+counted once more before failing. At most 4 libraries are counted at once in the backend, over
+all requests (`PER_VALUE_CONCURRENCY`), as the endpoint is public. Library values that differ
+only in surrounding whitespace match the same documents (`field` tokenization) and form one
+row. It costs about twice as much as the distributions (it computes them too), so the page
+asks for it only when the heatmap is opened, and it is not cached. Measured on 2026-10-23 on a
+throwaway Weaviate 1.40.1 with 300,002 synthetic documents from `make dev-add-documents` (4
+libraries; median of 5 warm runs): unfiltered 1.25 s (the distributions alone 1.0 s), filtered
+0.15–0.85 s, 5 concurrent unfiltered requests 3.7 s. With more libraries the per-library counts
+take longer, in rounds of 4; the reproducible benchmark is #494.
 
 - **Filters.** All given filters must match (AND); several libraries or languages match any
   of them (OR). One Weaviate filter is built once and applied to the total and to every

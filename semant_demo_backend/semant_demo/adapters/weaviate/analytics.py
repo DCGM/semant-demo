@@ -94,10 +94,17 @@ class DocumentCounts:
     properties: dict[str, ValueCounts | Unavailable]
 
 
+PER_VALUE_CONCURRENCY = 4
+"""Most per-value counts (``count_documents_per_value``) running at once over all requests of
+one repository, i.e. of the application: the endpoint using it is public, and each count
+sends one aggregate per property plus one."""
+
+
 class CorpusAnalyticsRepository:
     def __init__(self, client: WeaviateAsyncClient, collection_names: CollectionNames):
         self.client = client
         self.collection_names = collection_names
+        self.per_value_slots = asyncio.Semaphore(PER_VALUE_CONCURRENCY)
 
     def _documents(self):
         return self.client.collections.get(self.collection_names.document_collection_name)
@@ -120,12 +127,17 @@ class CorpusAnalyticsRepository:
                                         group_limit: int, conditions: Sequence[Condition] = ()) -> dict[str, DocumentCounts]:
         """``count_documents`` for each value of ``prop`` separately: the documents meeting every
         condition that also equal the value (``AnyOf``, so the property's tokenization applies;
-        values that match the same documents must be passed once). All values run concurrently.
+        values that match the same documents must be passed once). At most
+        ``PER_VALUE_CONCURRENCY`` values are counted at once, also across concurrent calls.
         Weaviate groups by one property only, so this is how two properties are crossed."""
         types = await self._property_types()
-        counts = await asyncio.gather(*(
-            self._count(where([*conditions, AnyOf(prop, (value,))], types), properties, types, group_limit)
-            for value in values))
+        filters = [where([*conditions, AnyOf(prop, (value,))], types) for value in values]
+
+        async def count(value_filter) -> DocumentCounts:
+            async with self.per_value_slots:
+                return await self._count(value_filter, properties, types, group_limit)
+
+        counts = await asyncio.gather(*(count(value_filter) for value_filter in filters))
         return dict(zip(values, counts))
 
     async def _count(self, filters, properties: dict[str, ValueKind], types: dict[str, str],

@@ -105,8 +105,7 @@ async def corpus_distributions(analytics: CorpusAnalyticsRepository, filters: Do
         languages=_categories(counts.properties[LANGUAGE_PROPERTY], total, LANGUAGE_PROPERTY))
 
 
-async def library_years(analytics: CorpusAnalyticsRepository, cache: OverviewCache,
-                        filters: DocumentFilters) -> LibraryYearDistribution:
+async def library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters) -> LibraryYearDistribution:
     """Documents per source library and publication year (#361, optional heatmap).
 
     Weaviate groups by one property only, so the years are counted once per library (a filter
@@ -114,8 +113,19 @@ async def library_years(analytics: CorpusAnalyticsRepository, cache: OverviewCac
     also gives the documents without a library (they cannot be filtered directly). Libraries
     whose stored values differ only in surrounding whitespace match the same documents
     (``field`` tokenization), so they are one row. Counting takes about as long again as the
-    distributions, so it is only done on request and not cached."""
-    distributions = await cached_corpus_distributions(analytics, cache, filters)
+    distributions, so it is only done on request and not cached.
+
+    The distributions are computed now, never taken from the ``OverviewCache``: older totals
+    and live per-library counts would not add up. When the corpus changes between the
+    readings, everything is counted once more before ``IncompleteCounts`` is raised."""
+    try:
+        return await _library_years(analytics, filters)
+    except IncompleteCounts:
+        return await _library_years(analytics, filters)
+
+
+async def _library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters) -> LibraryYearDistribution:
+    distributions = await corpus_distributions(analytics, filters)
     base = dict(scope="searchable_corpus", unit="documents", filters=filters,
                 total_documents=distributions.total_documents, computed_at=datetime.now(UTC))
     for prop, counted in (("library", distributions.libraries), ("publication_year", distributions.publication_year)):
