@@ -24,6 +24,23 @@
       <q-space />
       <ColumnPicker v-model="visibleColumns" :columns="columns" />
     </template>
+    <!-- Every column but Actions can be resized by dragging the right edge of its header. -->
+    <template #header-cell="tableProps">
+      <q-th :props="tableProps" class="resizable-th">
+        {{ tableProps.col.label }}
+        <span
+          v-if="tableProps.col.name !== 'actions'"
+          class="col-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          :aria-label="`Resize the ${tableProps.col.label} column`"
+          title="Drag to resize, double-click to reset"
+          @pointerdown.stop.prevent="startResize($event, tableProps.col.name)"
+          @click.stop
+          @dblclick.stop="resetWidth(tableProps.col.name)"
+        />
+      </q-th>
+    </template>
     <template #body-cell-actions="tableProps">
       <q-td :props="tableProps">
         <div v-if="isOwned(tableProps.row)" class="row no-wrap items-center q-gutter-xs" @click.stop>
@@ -130,6 +147,7 @@ import { collectionRights } from './permissions'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { plural } from 'src/shared/plural'
 import { annotationsOfCollections } from 'src/features/annotations/annotationCounts'
+import { useResizableColumns } from 'src/shared/useResizableColumns'
 
 interface Props {
   collections: Collection[]
@@ -162,7 +180,7 @@ const initialPagination = {
   rowsPerPage: 12
 }
 
-const columns: QTableColumn<Collection>[] = [
+const baseColumns: QTableColumn<Collection>[] = [
   {
     name: 'actions',
     label: 'Actions',
@@ -215,6 +233,8 @@ const columns: QTableColumn<Collection>[] = [
   }
 ]
 
+const { columns, startResize, resetWidth } = useResizableColumns('collections', baseColumns)
+
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
 
 // Sharing and deleting are the owner's (ADR 0007).
@@ -256,6 +276,40 @@ const loading = computed(() => props.loading)
 </script>
 
 <style scoped>
+.resizable-th {
+  position: relative;
+}
+
+/* The drag handle on the header's right edge; a line shows while hovered. */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  right: 3px;
+  width: 2px;
+  height: 50%;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.resizable-th:hover .col-resizer::after {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.col-resizer:hover::after {
+  background: #1976d2;
+}
+
 .color-swatch {
   width: 20px;
   height: 20px;
