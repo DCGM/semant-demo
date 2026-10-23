@@ -133,12 +133,12 @@ describe('DocumentViewLayout sidebar panels', () => {
     return event
   }
 
-  it('registers the tools and shows auto spans only while the AI assist panel is active', async () => {
+  it('registers the tools and shows auto spans only while the AI Tagging panel is active', async () => {
     const wrapper = mountLayout()
     await flush()
     const sidebar = useRightSidebarStore()
     const ai = useAiAssistance()
-    expect(sidebar.sortedPanels.map((p) => p.label)).toEqual(['Tags', 'AI assist', 'Summary', 'Document'])
+    expect(sidebar.sortedPanels.map((p) => p.label)).toEqual(['Tags', 'AI Tagging', 'Summary', 'Document'])
     expect([sidebar.activePanel?.label, ai.aiPanelActive.value]).toEqual(['Tags', false])
 
     sidebar.activate('document-ai')

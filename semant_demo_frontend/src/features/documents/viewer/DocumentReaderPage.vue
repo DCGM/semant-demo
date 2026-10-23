@@ -6,8 +6,10 @@
       :collection-only="chunkWindow.displayedPreviewCount.value === 0"
       :all-chunks="chunkWindow.allChunksShown.value"
       :loading-all="chunkWindow.loadingAllChunks.value"
+      :focused-tag="focusedTag"
       @show-collection-only="chunkWindow.hideAllPreviews"
       @show-all-chunks="chunkWindow.loadAllChunks"
+      @clear-focused-tag="tagNav.setFocusedTagId(null)"
     />
     <div class="page-shell">
       <ChunkMembershipGutter
@@ -32,6 +34,7 @@
         :tags="tags"
         :hovered-span-id="hoveredSpanId || navHighlightedSpanId"
         :highlighted-span-id="highlightedAutoSpanId"
+        :focused-tag-id="tagNav.focusedTagId.value"
         @hover="hoveredSpanId = $event"
         @select="onMarkerClick"
       />
@@ -70,6 +73,7 @@
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
                   :highlight-span-id="hoveredSpanId || navHighlightedSpanId || highlightedAutoSpanId"
+                  :focus-tag-id="tagNav.focusedTagId.value"
                   :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
@@ -137,7 +141,7 @@
 
       <AnnotationPopover
         ref="popoverRef"
-        :visible="annotations.hasSelection.value"
+        :visible="annotations.hasSelection.value && !focusTagging"
         :tags="tags"
         :selection="annotations.selection.value"
         :selected-text="selectedSpanText"
@@ -264,7 +268,7 @@ const paragraphs = computed(() => groupParagraphs(displayChunks.value))
 // The annotation a workspace link points to (#329); shown whatever its tag or type.
 const linkedSpanId = ref<string | null>(null)
 
-// Approved spans of visible tags; AI suggestions only while the AI assist panel is active.
+// Approved spans of visible tags; AI suggestions only while the AI Tagging panel is active.
 const gutters = useReaderGutters(
   documentTextRef, displayChunks, hiddenPreviewChunks,
   () => annotations.spansByChunkId.value,
@@ -374,7 +378,7 @@ watch(gutters.spanMarkers, (markers) => {
 tagNav.onScroll((item) => scrollToSpan(item.chunkId, item.start, item.end))
 tagNav.onHighlight((spanId) => { navHighlightedSpanId.value = spanId })
 
-// Re-render gutter (and re-filter auto spans in text) when the AI assist panel
+// Re-render gutter (and re-filter auto spans in text) when the AI Tagging panel
 // becomes active or inactive in the sidebar.
 watch(aiPanelActive, () => {
   void nextTick(() => relayout())
@@ -412,7 +416,7 @@ watch(() => documentSummary.requestedCitation.value, async (citation) => {
 
 // A link from the annotation workspace (#329): `?annotation=&chunk=&order=` brings that
 // annotation into view and marks it, also when its tag is hidden or it is a proposal
-// outside AI assist, loading the chunks up to it first (`order` is resolved from the
+// outside AI Tagging, loading the chunks up to it first (`order` is resolved from the
 // chunk when the link has none). Once per link.
 const route = useRoute()
 const chunksRepository = useChunksRepository()
@@ -545,9 +549,11 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
 let pointerDown: { x: number, y: number, onHandle: boolean } | null = null
 const CLICK_TOLERANCE = 4
 
-// Opening a span re-renders its text, which would break a double-click's word selection,
-// so a click opens it only once no second click has followed.
-const DOUBLE_CLICK_WAIT = 250
+// A click opens the span only once no second click has followed, so a double-click
+// selects the word without the span's popover opening first. Kept short: the popover
+// should feel immediate (#479). A slower double-click still selects the word; the
+// popover then switches from the span to the new selection.
+const DOUBLE_CLICK_WAIT = 150
 let pendingSpanOpen: ReturnType<typeof setTimeout> | null = null
 
 function cancelPendingSpanOpen() {
@@ -614,7 +620,35 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   // Fresh selections open straight into the tag picker, as if "Add tag" had
   // already been clicked.
   popoverRef.value?.showMode('picker')
+
+  // With a tag focused in the tags panel, the selection is tagged with it right away.
+  const focusedTagId = tagNav.focusedTagId.value
+  if (focusedTagId) void tagWithFocusedTag(focusedTagId)
 }
+
+// ── Tag focus (#479) ──
+// A tag focused in the tags panel tags each new selection directly, without the popover.
+// The popover appears only when that fails, in the picker, so the user can try again.
+const focusedTag = computed(() => tags.value.find((t) => t.id === tagNav.focusedTagId.value) ?? null)
+const focusTagging = ref(false)
+let focusTaggingRun = 0
+
+async function tagWithFocusedTag(tagId: string) {
+  const run = ++focusTaggingRun
+  focusTagging.value = true
+  const applied = await runSpanRequest(() => annotations.createSpan(tagId), 'The tag could not be saved.')
+  // A later selection is being tagged meanwhile; it shows its own outcome.
+  if (run !== focusTaggingRun) return
+  focusTagging.value = false
+  if (applied) recordTagUsage(tagId)
+}
+
+// The focus ends when its tag is deleted, and in another collection, which has other tags.
+watch(tags, (list) => {
+  const focused = tagNav.focusedTagId.value
+  if (focused && !list.some((t) => t.id === focused)) tagNav.setFocusedTagId(null)
+})
+watch(() => props.collectionId, () => tagNav.setFocusedTagId(null))
 
 const onTagClick = async (tagId: string) => {
   const applied = annotations.isEditing.value
@@ -668,7 +702,7 @@ const onRunAiOnSelection = async (tagIds: string[]) => {
   const target = selectionInDisplayedChunks(sel, displayChunks.value, hiddenPreviewChunks.value)
   if (!target) return
 
-  // Show the AI assist panel right away so the user sees the spinner and any
+  // Show the AI Tagging panel right away so the user sees the spinner and any
   // incoming suggestions in context, then close the popover.
   rightSidebar.activate(DOCUMENT_SIDEBAR_PANELS.ai)
   annotations.clearSelection()
@@ -682,7 +716,7 @@ const onRunAiOnSelection = async (tagIds: string[]) => {
     selectionStart: target.start,
     selectionEnd: target.end,
     tagIds,
-    // The model chosen in the AI Assist panel (the default until its list has been read).
+    // The model chosen in the AI Tagging panel (the default until its list has been read).
     configName: topicerModel.chosenConfigName()
   })
   // Cancelled, or the user moved to another document/collection meanwhile.
@@ -778,10 +812,14 @@ const onClickOutside = (e: MouseEvent) => {
 }
 
 // Escape in an open dialog belongs to the dialog: the create-tag dialog opened from the
-// popover still needs the selection when its tag is created (#379).
+// popover still needs the selection when its tag is created (#379). Escape closes the
+// selection first, then ends a tag focus, unless it was typed in a field (the tag search).
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && annotations.hasSelection.value && !overlayOpen()) {
+  if (e.key !== 'Escape' || overlayOpen()) return
+  if (annotations.hasSelection.value && !focusTagging.value) {
     annotations.clearSelection()
+  } else if (tagNav.focusedTagId.value && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')) {
+    tagNav.setFocusedTagId(null)
   }
 }
 
@@ -811,9 +849,10 @@ onBeforeUnmount(() => {
   cancelPendingSpanOpen()
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
-  // activeTagId is module-level state in useTagNavigation; don't carry this reader's
-  // highlighted tag into the next one.
+  // activeTagId and focusedTagId are module-level state in useTagNavigation; don't carry
+  // this reader's highlighted or focused tag into the next one.
   tagNav.setActiveTagId(null)
+  tagNav.setFocusedTagId(null)
 })
 </script>
 

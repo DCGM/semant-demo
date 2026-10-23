@@ -154,7 +154,7 @@ test('a review made in the document view shows in the workspace on return', asyn
   await row(page, 'Lhoty').click()
   await panel(page).getByRole('link', { name: 'Open in document' }).click()
   await expect(page.locator('.doc-header .text-h5')).toBeVisible()
-  // The linked proposal is marked although AI assist (which shows proposals) is not open.
+  // The linked proposal is marked although AI Tagging (which shows proposals) is not open.
   await expect(page.locator('.text-segment.is-highlighted', { hasText: 'Lhoty' }).first()).toBeVisible()
   try {
     await restore('pos') // approved meanwhile (as from the document view's popover)

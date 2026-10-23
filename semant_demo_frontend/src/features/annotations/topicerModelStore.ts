@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useApi } from 'src/shared/api'
 
 /**
- * The Topicer configuration (AI model) for AI suggestions (#189), shared by the AI Assist
+ * The Topicer configuration (AI model) for AI suggestions (#189), shared by the AI Tagging
  * panel and suggestions on a selection.
  *
  * The configurations are the ones Topicer has loaded (`GET /api/ai/topicer_configs`).

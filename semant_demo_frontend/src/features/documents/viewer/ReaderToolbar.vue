@@ -59,11 +59,29 @@
       </q-tooltip>
     </q-btn>
     </div>
+    <!-- The tag focused in the tags panel (#479): new selections are tagged with it. -->
+    <div v-if="focusedTag" class="paper-view-toolbar focus-tag-box" role="status">
+      <q-icon :name="focusedTag.pictogram || 'label'" :style="{ color: focusedTag.color || '#64748b' }" size="18px" />
+      <span class="focus-tag-text">Tagging with: <strong>{{ focusedTag.name }}</strong></span>
+      <q-btn
+        flat dense round
+        icon="close"
+        size="xs"
+        class="view-btn"
+        aria-label="Stop tagging with this tag"
+        @click="emit('clearFocusedTag')"
+      >
+        <q-tooltip>Stop tagging with this tag (Esc)</q-tooltip>
+      </q-btn>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-// View options of the document reader: chunk gutter, whitespace and which chunks to show.
+import type { Tag } from 'src/generated/api'
+
+// View options of the document reader: chunk gutter, whitespace and which chunks to show,
+// and the tag new selections are tagged with, if one is focused.
 defineProps<{
   chunkGutterVisible: boolean
   preserveWhitespace: boolean
@@ -72,6 +90,7 @@ defineProps<{
   /** The whole document is shown. */
   allChunks: boolean
   loadingAll: boolean
+  focusedTag: Tag | null
 }>()
 
 const emit = defineEmits<{
@@ -79,6 +98,7 @@ const emit = defineEmits<{
   'update:preserveWhitespace': [value: boolean]
   showCollectionOnly: []
   showAllChunks: []
+  clearFocusedTag: []
 }>()
 </script>
 
@@ -109,6 +129,21 @@ const emit = defineEmits<{
   color: #64748b;
   font-size: 0.78rem;
   border-radius: 6px;
+}
+
+.focus-tag-box {
+  gap: 6px;
+  padding-left: 10px;
+  max-width: 360px;
+}
+
+.focus-tag-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color: #334155;
 }
 
 .view-btn--active {

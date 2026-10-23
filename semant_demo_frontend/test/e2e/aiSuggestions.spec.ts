@@ -7,7 +7,7 @@ import { chunkText, deleteSuggestions, ensureLoggedIn, fixture, openDocument, si
 // the unresolved "person" suggestions it created (fixture spans have other tags or types).
 
 async function startPersonRun (page: Page) {
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
   await page.getByRole('button', { name: 'Run AI' }).click()
 }
@@ -29,16 +29,16 @@ test('suggestions appear while the run is under way and cancelling keeps them', 
   await expect(page.getByText('Processed 1 chunks', { exact: false })).toBeVisible()
   await expect(suggestionCards(page)).toHaveCount(1)
   await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
-  await expect(sidebarPanelButton(page, 'AI assist')).toHaveAttribute('aria-busy', 'true') // the rail shows the run
+  await expect(sidebarPanelButton(page, 'AI Tagging')).toHaveAttribute('aria-busy', 'true') // the rail shows the run
 
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.getByText('Cancelled; saved suggestions are kept.')).toBeVisible()
-  await expect(sidebarPanelButton(page, 'AI assist')).not.toHaveAttribute('aria-busy', 'true')
+  await expect(sidebarPanelButton(page, 'AI Tagging')).not.toHaveAttribute('aria-busy', 'true')
   await expect(page.getByRole('button', { name: 'Run AI' })).toBeVisible()
 
   // Saved suggestions survive a reload; the cancelled rest of the run was never saved.
   await page.reload()
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await expect(chunkText(page, 'chronicle_1')).toBeVisible()
   await expect(suggestionCards(page)).toHaveCount(1)
 })
@@ -51,7 +51,7 @@ test('leaving the document during a run shows nothing of it in the next view', a
 
   // Same document in another collection, while the run still waits for its second chunk.
   await openDocument(page, 'newspapers', 'chronicle')
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
 
   await expect(page.getByRole('button', { name: 'Run AI' })).toBeVisible()
   await expect(page.getByText('Processed', { exact: false })).toHaveCount(0)
@@ -61,14 +61,14 @@ test('leaving the document during a run shows nothing of it in the next view', a
   // Back in the original collection: the suggestion saved before leaving is there; the
   // run ended with the request, so the second chunk got none.
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await expect(suggestionCards(page)).toHaveCount(1)
 })
 
 test('a run that may evaluate more than 50 chunks asks first, and Cancel starts nothing', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await page.locator('.ai-assist-panel').getByRole('button', { name: 'All' }).click()
 
   // Optimized: 2 tags × the backend's default limit of 40 chunks per tag.
@@ -87,7 +87,7 @@ test('a run that may evaluate more than 50 chunks asks first, and Cancel starts 
 test('the model picked in the panel is used and remembered (#189)', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
 
   // The fake Topicer lists llm-openrouter (the backend default) and fake-local.
   const picker = page.getByTestId('ai-model-select')
@@ -104,6 +104,6 @@ test('the model picked in the panel is used and remembered (#189)', async ({ pag
   await page.getByRole('button', { name: 'Cancel' }).click()
 
   await page.reload()
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await expect(page.getByTestId('ai-model-select')).toContainText('fake-local')
 })
