@@ -139,7 +139,7 @@
 
 <script setup lang="ts">
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { QTableColumn } from 'quasar'
 import { Collection, UserSearchResult } from 'src/generated/api'
 import useShareCollectionsDialog from './useShareCollectionsDialog'
@@ -236,6 +236,13 @@ const baseColumns: QTableColumn<Collection>[] = [
 const { columns, startResize, resetWidth } = useResizableColumns('collections', baseColumns)
 
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
+
+// A selected collection the rows no longer show (filtered out, deleted) leaves the
+// selection, so the bulk actions act only on what is shown.
+watch(() => props.collections, (rows) => {
+  const shown = new Set(rows.map((c) => c.id))
+  if (selected.value.some((c) => !shown.has(c.id))) selected.value = selected.value.filter((c) => shown.has(c.id))
+})
 
 // Sharing and deleting are the owner's (ADR 0007).
 const isOwned = (collection: Collection) => collectionRights(collection).share

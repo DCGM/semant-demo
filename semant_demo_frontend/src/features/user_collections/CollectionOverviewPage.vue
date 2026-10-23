@@ -258,6 +258,7 @@ import { countAnnotations } from 'src/features/annotations/annotationCounts'
 import { useCollectionStatsStore } from './collectionStatsStore'
 import { collectionRights } from './permissions'
 import { useUserCollectionsRepository } from './useUserCollectionsRepository'
+import { memberName } from './members'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
@@ -268,8 +269,11 @@ const collectionStatsStore = useCollectionStatsStore()
 const { collectionStats, loading: collectionStatsLoading, error: collectionStatsError } = storeToRefs(collectionStatsStore)
 const { fetchCollectionStats } = collectionStatsStore
 
-// Name, description and color are owner-only metadata (ADR 0007).
-const rights = computed(() => collectionRights(activeCollection.value))
+// Name, description and color are owner-only metadata (ADR 0007). Nothing is granted until
+// this collection has loaded, so the previous collection's rights don't show meanwhile.
+const rights = computed(() =>
+  collectionRights(activeCollection.value?.id === collectionId.value ? activeCollection.value : null)
+)
 const isEditingDescription = ref(false)
 const isSavingDescription = ref(false)
 const editableDescription = ref('')
@@ -317,9 +321,8 @@ const members = ref<UserSearchResult[]>([])
 const membersLoading = ref(false)
 const membersError = ref<string | null>(null)
 const suggestionsCount = ref<number | null>(null)
+const suggestionsError = ref(false)
 const overviewGuard = createContextGuard()
-
-const memberName = (user: UserSearchResult) => user.name || user.username || 'Unknown user'
 
 async function loadMembers (isCurrent: () => boolean) {
   membersLoading.value = true
@@ -341,7 +344,7 @@ async function loadSuggestionsCount (isCurrent: () => boolean) {
     if (isCurrent()) suggestionsCount.value = counts.suggestions
   } catch (err) {
     console.error('Error counting AI suggestions:', err)
-    if (isCurrent()) suggestionsCount.value = null
+    if (isCurrent()) suggestionsError.value = true
   }
 }
 
@@ -350,6 +353,7 @@ const refreshOverviewData = async () => {
   const isCurrent = overviewGuard.capture()
   members.value = []
   suggestionsCount.value = null
+  suggestionsError.value = false
   void loadMembers(isCurrent)
   void loadSuggestionsCount(isCurrent)
   await fetchCollection(collectionId.value)
@@ -408,7 +412,7 @@ const statCards = computed(() => {
       key: 'suggestions',
       label: 'Unresolved AI Suggestions',
       value: suggestionsCount.value ?? '–',
-      helper: 'AI suggestions not yet approved or rejected',
+      helper: suggestionsError.value ? 'Could not be counted' : 'AI suggestions not yet approved or rejected',
       icon: 'auto_awesome',
       color: 'deep-purple'
     }

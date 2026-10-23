@@ -35,7 +35,7 @@ test('the collections page shows my, shared or all collections and remembers the
   await page.getByRole('button', { name: /^My \(\d+\)$/ }).click()
   await expect(shared).toHaveCount(0)
   await page.getByRole('button', { name: 'Table' }).click()
-  await expect(page.getByText(/^Collections \(\d+ items?\)$/)).toBeVisible()
+  await expect(page.locator('.q-table__top')).toContainText(/Collections \(\d+ items?\)/)
   await expect(shared).toHaveCount(0) // the table shows the same choice
   await page.getByRole('button', { name: /^All \(\d+\)$/ }).click()
   await expect(shared).toBeVisible()
@@ -74,6 +74,13 @@ test('the collections table columns are resized by dragging and reset by a doubl
 
   await handle.dblclick()
   await expect.poll(async () => (await owner.boundingBox())!.width).toBeLessThan(natural + 20)
+
+  // Narrower than its text: the column keeps the width and cuts the text.
+  const name = page.getByRole('columnheader', { name: 'Name' })
+  await dragBy(page, page.getByRole('separator', { name: 'Resize the Name column' }), -((await name.boundingBox())!.width - 70))
+  await expect.poll(async () => (await name.boundingBox())!.width).toBeLessThan(80)
+  const cell = page.getByRole('cell', { name: fixture.collection('chronicles').name, exact: true })
+  await expect.poll(async () => (await cell.boundingBox())!.width).toBeLessThan(80)
 })
 
 test('the collection overview lists the members and counts the unresolved AI suggestions', async ({ page, request }) => {
