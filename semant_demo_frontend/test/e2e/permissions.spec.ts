@@ -12,7 +12,7 @@ async function clickCollectionTab (page: Page, tab: string) {
   await expect(routeTab, `the ${tab} tab did not open`).toHaveAttribute('aria-selected', 'true')
 }
 
-// Waits for the collection's name in the header: it loads after the route and moves the tabs.
+// Waits for the collection's name in the header, which loads after the route.
 async function openCollection (page: Page, collectionKey: string) {
   const name = fixture.collection(collectionKey).name
   await page.getByText(name, { exact: true }).click()

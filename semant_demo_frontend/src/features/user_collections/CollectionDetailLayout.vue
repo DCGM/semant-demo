@@ -1,7 +1,7 @@
 <template>
   <q-page class="q-pt-sm">
     <div class="collection-topbar q-px-md q-pb-xs">
-      <div class="collection-header" :class="{ 'collection-header--editing': isEditingName }">
+      <div class="collection-header">
         <BackLink :to="{ name: 'collections' }" label="Collections" aria-label="Back to collections" />
         <div class="collection-title-row">
           <button
@@ -99,7 +99,7 @@
         narrow-indicator
         inline-label
         outside-arrows
-        class="collection-tabs q-pl-md"
+        class="collection-tabs"
         align="justify"
         >
         <q-route-tab
@@ -287,14 +287,8 @@ onMounted(async () => {
 
 .collection-header {
   padding: 2px 0;
-  // The name gives way first, down to its minimum; only then do the tabs scroll (#489).
-  flex: 0 1000 auto;
+  flex: 0 1 auto;
   min-width: 12rem;
-}
-
-// The name editor keeps its width; the tabs scroll instead of being covered by it.
-.collection-header--editing {
-  flex-shrink: 0;
 }
 
 .collection-title-row {
@@ -351,11 +345,8 @@ onMounted(async () => {
   // the arrows sit outside the tabs (outside-arrows), so they never cover the last one (#489).
   flex: 1 1 auto;
   min-width: 0;
-}
-
-// Narrower than Quasar's 16px, so that all tabs fit beside the name with both sidebars open.
-.collection-tabs :deep(.q-tab) {
-  padding: 0 12px;
+  // A margin, not q-pl-md: outside-arrows sets the tabs' own padding.
+  margin-left: 16px;
 }
 
 @media (max-width: 900px) {
@@ -365,7 +356,7 @@ onMounted(async () => {
 
   .collection-tabs {
     min-width: 0;
-    width: 100%;
+    width: calc(100% - 16px);
   }
 }
 </style>
