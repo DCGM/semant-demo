@@ -23,6 +23,8 @@
       :progress="review.progress"
       :running-target="review.target"
       :report="review.report"
+      :undoable="review.undoable"
+      :undo-note="review.undoNote"
       @select-all="selectAllMatches"
       @clear="clearSelection"
       @deselect-hidden="store.deselectHidden"
@@ -31,6 +33,7 @@
       @retry="retryReview"
       @show-changed="showChanged"
       @dismiss="review.dismiss"
+      @undo="undoLast"
     />
 
     <div class="collection-annotations__summary" aria-live="polite">
@@ -75,6 +78,7 @@
     <!-- Registered once a row is opened. -->
     <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
       <ChunkContextPanel
+        ref="panel"
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
         :document="chunkContext.document"
         :chunks="chunkContext.chunks"
@@ -132,15 +136,28 @@
                   no-caps
                   color="primary"
                   label="Apply to current version"
-                  :disable="review.running || store.loading"
+                  :disable="review.running || store.loading || savingBoundary"
                   data-testid="conflict-apply"
                   @click="applyToCurrent"
                 />
-                <q-btn dense flat no-caps color="primary" label="Keep" data-testid="conflict-keep" @click="focusedConflict = null" />
+                <q-btn dense flat no-caps color="primary" label="Keep" data-testid="conflict-keep" @click="keepCurrent" />
               </div>
             </div>
+            <BoundaryEditor
+              v-if="editingBoundary && boundary"
+              ref="boundaryEditor"
+              v-model:unit="boundaryUnit"
+              :text="boundaryText"
+              :changed="boundaryChanged"
+              :saving="savingBoundary"
+              :note="boundaryNote"
+              @step="stepEdited"
+              @use-selection="useSelectedText"
+              @save="saveBoundary"
+              @cancel="cancelBoundary"
+            />
             <div
-              v-if="!selection.focusedGone"
+              v-else-if="!selection.focusedGone"
               class="annotation-context__review"
               role="group"
               aria-label="Review this annotation"
@@ -191,6 +208,20 @@
                 @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
               />
               <q-btn
+                ref="editBoundaryButton"
+                dense
+                flat
+                no-caps
+                color="primary"
+                icon="straighten"
+                label="Edit boundaries"
+                :disable="review.running || !canEditBoundary"
+                data-testid="row-edit-boundaries"
+                @click="editBoundary"
+              >
+                <q-tooltip>{{ canEditBoundary ? 'Change where this annotation starts or ends' : 'Wait until its passage is loaded' }}</q-tooltip>
+              </q-btn>
+              <q-btn
                 dense
                 flat
                 no-caps
@@ -226,6 +257,10 @@ import { QBtn, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { ReviewAction, SpanType, type AnnotationListRow } from 'src/generated/api'
+import { apiErrorMessage, captureSession, errorStatus } from 'src/shared/api'
+import { spanWriteWarning } from 'src/shared/writeOutcome'
+import { warningNotification } from 'src/shared/notification'
+import { useTagSpansRepository } from 'src/features/annotations/useTagSpansRepository'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
@@ -237,6 +272,10 @@ import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
 import ReviewTagMenu from './ReviewTagMenu.vue'
 import ProvenanceSummary from './ProvenanceSummary.vue'
+import BoundaryEditor from './BoundaryEditor.vue'
+import {
+  rangeBetween, rangeText, sameRange, stepBoundary, type BoundaryHandle, type BoundaryRange, type BoundaryUnit
+} from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
 import { formatWhen, personName } from './provenance'
@@ -256,6 +295,8 @@ const { tags } = storeToRefs(tagsStore)
 const rightSidebar = useRightSidebarStore()
 const chunkContext = reactive(useChunkContext())
 const table = ref<InstanceType<typeof ConcordanceTable> | null>(null)
+const panel = ref<InstanceType<typeof ChunkContextPanel> | null>(null)
+const spansRepo = useTagSpansRepository()
 
 const collectionId = computed(() => typeof route.params.collectionId === 'string' ? route.params.collectionId : '')
 
@@ -298,6 +339,7 @@ const PagerButtons = defineComponent(() => () => h('div', { class: 'row no-wrap 
 
 // ── Source context (shared right sidebar) ──
 const highlight = computed(() => {
+  if (editingBoundary.value && boundary.value) return { ...boundary.value.range, pending: true }
   const row = selection.focusedGone ? null : selection.focused
   return row?.chunkId && row.start != null && row.end != null
     ? { chunkId: row.chunkId, start: row.start, end: row.end }
@@ -333,7 +375,10 @@ function showContext (row: AnnotationListRow) {
 
 /** Opens the row in the sidebar; viewing context never changes the selection. */
 async function openContext (row: AnnotationListRow) {
-  if (row.id !== selection.focused?.id) focusedConflict.value = null
+  if (row.id !== selection.focused?.id) {
+    focusedConflict.value = null
+    boundary.value = null
+  }
   selection.focus(row)
   const opening = showContext(row)
   await nextTick() // the panel registers when the first row is opened
@@ -458,8 +503,9 @@ async function retryReview () {
   if (report) void afterReview(report)
 }
 
-/** A review of the open annotation refused because someone else changed it meanwhile (#460). */
-const focusedConflict = ref<{ id: string, action: ReviewAction, tagId?: string } | null>(null)
+/** A review or boundary edit of the open annotation refused because someone else changed it
+ * meanwhile (#460). */
+const focusedConflict = ref<{ id: string, action: ReviewAction | 'boundary', tagId?: string } | null>(null)
 
 const conflictText = computed(() => {
   const row = selection.focused
@@ -471,7 +517,8 @@ const conflictText = computed(() => {
   const by = who === 'you' ? 'Changed in another window' : `Changed by ${who}`
   const now = `now ${statusText.value.toLowerCase()}, tag "${focusedTag.value?.name ?? 'unknown'}"`
   const away = store.rows.some(r => r.id === row.id) ? '' : ' It is no longer on this page.'
-  return `${by}${when ? ` at ${when}` : ''}: ${now}. Your ${VERB[conflict.action].toLowerCase()} was not saved.${away}`
+  const yours = conflict.action === 'boundary' ? 'boundary change' : VERB[conflict.action].toLowerCase()
+  return `${by}${when ? ` at ${when}` : ''}: ${now}. Your ${yours} was not saved.${away}`
 })
 
 /** Reviews the open annotation; approving or rejecting it moves on to the next row. */
@@ -504,11 +551,170 @@ async function reviewFocused (action: ReviewAction, tagId?: string) {
   if (next && (action === ReviewAction.approve || action === ReviewAction.reject)) void openContext(next)
 }
 
-/** Repeats the refused review against the version the sidebar shows now. */
+/** Repeats the refused review or boundary edit against the version the sidebar shows now. */
 async function applyToCurrent () {
   const conflict = focusedConflict.value
   if (!conflict || selection.focused?.id !== conflict.id) return
-  await reviewFocused(conflict.action, conflict.tagId)
+  if (conflict.action === 'boundary') await saveBoundary()
+  else await reviewFocused(conflict.action, conflict.tagId)
+}
+
+/** Keeps the annotation as someone else changed it, dropping the refused change. */
+function keepCurrent () {
+  if (focusedConflict.value?.action === 'boundary') cancelBoundary()
+  focusedConflict.value = null
+}
+
+// ── Boundary editing (#461) ──
+/** The range being edited for the annotation `id`; `range` is not saved yet. */
+const boundary = ref<{ id: string, range: BoundaryRange } | null>(null)
+const boundaryUnit = ref<BoundaryUnit>('word')
+const boundaryNote = ref<string | null>(null)
+const savingBoundary = ref(false)
+const boundaryEditor = ref<InstanceType<typeof BoundaryEditor> | null>(null)
+const editBoundaryButton = ref<InstanceType<typeof QBtn> | null>(null)
+
+/** The range of the open annotation as saved. */
+const focusedRange = computed<BoundaryRange | null>(() => {
+  const row = selection.focusedGone ? null : selection.focused
+  return row?.chunkId && row.start != null && row.end != null
+    ? { chunkId: row.chunkId, start: row.start, end: row.end }
+    : null
+})
+const editingBoundary = computed(() => !!boundary.value && boundary.value.id === selection.focused?.id &&
+  !selection.focusedGone)
+// Its anchor chunk must be loaded, to edit it in the passage shown.
+const canEditBoundary = computed(() => {
+  const range = focusedRange.value
+  return !!range && chunkContext.chunks.some(c => c.id === range.chunkId)
+})
+const boundaryText = computed(() => boundary.value ? rangeText(chunkContext.chunks, boundary.value.range) : '')
+const boundaryChanged = computed(() => !!boundary.value && !!focusedRange.value &&
+  !sameRange(boundary.value.range, focusedRange.value))
+
+async function editBoundary () {
+  const row = selection.focused
+  const range = focusedRange.value
+  if (!row || !range || !canEditBoundary.value) return
+  boundary.value = { id: row.id, range }
+  boundaryNote.value = null
+  await nextTick()
+  boundaryEditor.value?.$el?.querySelector?.('button')?.focus()
+}
+
+async function cancelBoundary () {
+  boundary.value = null
+  boundaryNote.value = null
+  await nextTick()
+  editBoundaryButton.value?.$el?.focus?.()
+}
+
+function stepEdited (handle: BoundaryHandle, direction: -1 | 1) {
+  const b = boundary.value
+  if (!b) return
+  const next = stepBoundary(chunkContext.chunks, b.range, handle, direction, boundaryUnit.value)
+  if (!next) {
+    boundaryNote.value = `The ${handle} cannot move further: the start stays before the end, within the text ` +
+      'shown (show earlier or later text to go further).'
+    return
+  }
+  b.range = next
+  boundaryNote.value = null
+}
+
+function useSelectedText () {
+  const b = boundary.value
+  if (!b) return
+  const selected = panel.value?.textSelection() ?? null
+  const range = selected ? rangeBetween(chunkContext.chunks, selected[0], selected[1]) : null
+  if (!range) {
+    boundaryNote.value = selected
+      ? 'The selection must be within one continuous part of the document.'
+      : 'Select the new text in the passage first.'
+    return
+  }
+  b.range = range
+  boundaryNote.value = null
+}
+
+/** The page read again after a change of the open annotation; it stays open, also when the
+ * change took it out of the filters, and its passage follows it to another chunk. */
+async function followFocused () {
+  const loading = store.load()
+  void store.loadShown()
+  await loading
+  if (selection.focusedGone) await store.readFocused()
+  const current = selection.focusedGone ? null : selection.focused
+  if (current?.chunkId && !chunkContext.chunks.some(c => c.id === current.chunkId)) void showContext(current)
+}
+
+/**
+ * Saves the edited range of the open annotation at the version shown (#460): a start in
+ * another chunk moves the annotation there (#436). The edit becomes the change to undo,
+ * from the range the annotation had at that version. A conflict keeps the editor open
+ * with the current annotation shown, to save against it or keep it.
+ */
+async function saveBoundary () {
+  const row = selection.focused
+  const b = boundary.value
+  const saved = focusedRange.value
+  const id = collectionId.value
+  if (!row || !b || !saved || b.id !== row.id || !id || savingBoundary.value || sameRange(b.range, saved)) return
+  const inScope = selection.captureScope()
+  const inSession = captureSession()
+  const applies = () => inScope() && inSession() && selection.focused?.id === row.id
+  savingBoundary.value = true
+  focusedConflict.value = null
+  try {
+    const result = await spansRepo.update(row.id, id, {
+      start: b.range.start,
+      end: b.range.end,
+      ...(b.range.chunkId !== saved.chunkId ? { chunkId: b.range.chunkId } : {})
+    }, row.editVersion ?? 0)
+    const warning = spanWriteWarning(result, 'saved')
+    if (warning) warningNotification(warning)
+    if (!inScope() || !inSession()) return
+    const version = result.editVersion ?? 0
+    selection.noteVersions({ [row.id]: version })
+    review.noteChange({
+      kind: 'boundary',
+      items: [{
+        id: row.id,
+        version,
+        values: { start: saved.start, end: saved.end, ...(result.chunkId !== saved.chunkId ? { chunkId: saved.chunkId } : {}) }
+      }]
+    })
+    if (boundary.value === b) boundary.value = null
+    await followFocused()
+    if (applies() && !boundary.value) await cancelBoundary()
+  } catch (e) {
+    if (!applies()) return
+    const status = errorStatus(e)
+    if (status === 409) {
+      focusedConflict.value = { id: row.id, action: 'boundary' }
+      await followFocused()
+    } else if (status === 404) {
+      boundary.value = null
+      $q.notify({ type: 'warning', message: 'This annotation no longer exists.' })
+      await followFocused()
+    } else {
+      $q.notify({ type: 'negative', message: await apiErrorMessage(e, 'The boundaries could not be saved.') })
+    }
+  } finally {
+    savingBoundary.value = false
+  }
+}
+
+// ── Undo (#461) ──
+async function undoLast () {
+  const id = collectionId.value
+  if (!id) return
+  focusedConflict.value = null
+  const report = await review.undo(id)
+  if (!report) return
+  await afterReview(report)
+  const current = selection.focusedGone ? null : selection.focused
+  if (current?.chunkId && !chunkContext.chunks.some(c => c.id === current.chunkId)) void showContext(current)
 }
 
 function skip () {

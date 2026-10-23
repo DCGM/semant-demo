@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { useTagSpansStore } from './tagSpansStore'
 import { SpanType, TagSpan, CollectionChunk } from 'src/generated/api'
-import { localRange, offsetBetween } from './spanOffsets'
+import { anchorAtStart, localRange, offsetBetween } from './spanOffsets'
 import { createContextGuard, errorStatus } from 'src/shared/api'
 
 // ── Types ──────────────────────────────────────────────
@@ -305,43 +305,15 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
    * Keep GlobalSelection anchored to the chunk that really contains `start`.
    */
   const normalizeSelectionToStartChunk = (sel: GlobalSelection): GlobalSelection | null => {
-    let chunkIndex = chunkIndexById.value[sel.chunkId]
+    const chunkIndex = chunkIndexById.value[sel.chunkId]
     if (chunkIndex === undefined) return null
-
-    let chunkId = sel.chunkId
-    let start = sel.start
-    let end = sel.end
-
-    // Move anchor forward while start is outside current chunk to the right.
-    // Stop at document gaps to avoid crossing into non-consecutive chunks.
-    while (chunkIndex < chunks.value.length - 1 && start >= chunks.value[chunkIndex].text.length) {
-      if (chunks.value[chunkIndex + 1].order !== chunks.value[chunkIndex].order + 1) break
-      const len = chunks.value[chunkIndex].text.length
-      start -= len
-      end -= len
-      chunkIndex += 1
-      chunkId = chunks.value[chunkIndex].id
-    }
-
-    // Move anchor backward while start is outside current chunk to the left.
-    // Stop at document gaps to avoid crossing into non-consecutive chunks.
-    while (chunkIndex > 0 && start < 0) {
-      if (chunks.value[chunkIndex].order !== chunks.value[chunkIndex - 1].order + 1) break
-      chunkIndex -= 1
-      const len = chunks.value[chunkIndex].text.length
-      start += len
-      end += len
-      chunkId = chunks.value[chunkIndex].id
-    }
-
-    const chunkLength = chunks.value[chunkIndex].text.length
-    if (start < 0 || start >= chunkLength || end <= start) return null
-
+    const anchored = anchorAtStart(chunks.value, chunkIndex, sel.start, sel.end)
+    if (!anchored) return null
     return {
       ...sel,
-      chunkId,
-      start,
-      end
+      chunkId: chunks.value[anchored.index].id,
+      start: anchored.start,
+      end: anchored.end
     }
   }
 

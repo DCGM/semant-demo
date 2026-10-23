@@ -123,6 +123,24 @@
       </q-btn>
       <q-btn dense flat round size="sm" icon="close" aria-label="Dismiss the review result" @click="emit('dismiss')" />
     </div>
+
+    <div v-if="undoable || undoNote" class="selection-bar__undo" role="status" data-testid="undo-bar">
+      <span>{{ undoText }}</span>
+      <q-btn
+        v-if="undoable"
+        dense
+        flat
+        no-caps
+        color="primary"
+        icon="undo"
+        label="Undo"
+        :disable="running"
+        data-testid="undo"
+        @click="emit('undo')"
+      >
+        <q-tooltip>Restore what these annotations were before, unless someone changed them since</q-tooltip>
+      </q-btn>
+    </div>
   </div>
 </template>
 
@@ -131,7 +149,7 @@ import { computed } from 'vue'
 import { QBtn, QIcon, QSpinner, QTooltip } from 'quasar'
 import { ReviewAction, type Tag } from 'src/generated/api'
 import ReviewTagMenu from './ReviewTagMenu.vue'
-import type { ReviewReport } from './annotationReviewStore'
+import type { ChangeKind, ReportAction, ReviewReport, UndoableChange } from './annotationReviewStore'
 
 const props = defineProps<{
   selectedCount: number
@@ -148,6 +166,10 @@ const props = defineProps<{
   progress: number
   runningTarget: number
   report: ReviewReport | null
+  /** The last change, while it can be undone (#461). */
+  undoable?: UndoableChange | null
+  /** Why the last change cannot be undone. */
+  undoNote?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -159,16 +181,32 @@ const emit = defineEmits<{
   retry: []
   'show-changed': []
   dismiss: []
+  undo: []
 }>()
 
 const canSelectAll = computed(() => props.total > 0 && !props.allSelected)
 
-const PAST: Record<ReviewAction, string> = {
+const PAST: Record<ReportAction, string> = {
   [ReviewAction.approve]: 'Approved',
   [ReviewAction.reject]: 'Rejected',
   [ReviewAction.retag]: 'Retagged',
-  [ReviewAction.delete]: 'Deleted'
+  [ReviewAction.delete]: 'Deleted',
+  restore: 'Undo: restored'
 }
+
+const CHANGE: Record<ChangeKind, string> = {
+  [ReviewAction.approve]: 'approved',
+  [ReviewAction.reject]: 'rejected',
+  [ReviewAction.retag]: 'changed the tag of',
+  boundary: 'changed the boundaries of'
+}
+
+const undoText = computed(() => {
+  const change = props.undoable
+  if (!change) return props.undoNote ?? ''
+  const n = change.items.length
+  return `Last change: you ${CHANGE[change.kind]} ${n} annotation${n === 1 ? '' : 's'}.`
+})
 
 const hasProblems = computed(() => {
   const r = props.report
@@ -185,9 +223,15 @@ const reportText = computed(() => {
   if (uncertain) parts.push(`${uncertain} uncertain (the server did not confirm; they may have been saved).`)
   if (r.conflicts.length) {
     const n = r.conflicts.length
-    parts.push(`${n} ${n === 1 ? 'was' : 'were'} changed by someone else since you selected ${n === 1 ? 'it' : 'them'}; not saved.`)
+    parts.push(r.action === 'restore'
+      ? `${n} ${n === 1 ? 'was' : 'were'} changed again since then; not restored.`
+      : `${n} ${n === 1 ? 'was' : 'were'} changed by someone else since you selected ${n === 1 ? 'it' : 'them'}; not saved.`)
   }
-  if (r.missing.length) parts.push(`${r.missing.length} no longer exist and were removed from the selection.`)
+  if (r.missing.length) {
+    parts.push(r.action === 'restore'
+      ? `${r.missing.length} no longer exist.`
+      : `${r.missing.length} no longer exist and were removed from the selection.`)
+  }
   if (r.unsynced.length) parts.push(`Search by tag does not reflect some changes yet (${r.unsynced.length} ${r.unsynced.length === 1 ? 'passage' : 'passages'}).`)
   if (r.error) parts.push(r.error)
   if (r.saved.length && r.action !== ReviewAction.delete && (r.failed.length || r.conflicts.length)) {
@@ -232,6 +276,14 @@ const reportText = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.selection-bar__undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: rgba(0, 0, 0, 0.75);
 }
 
 .selection-bar__report {
