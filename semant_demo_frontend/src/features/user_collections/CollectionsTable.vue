@@ -1,5 +1,6 @@
 <template>
   <q-table
+    ref="tableRef"
     class="q-mt-sm"
     flat
     square
@@ -140,7 +141,7 @@
 <script setup lang="ts">
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import { computed, ref, watch } from 'vue'
-import type { QTableColumn } from 'quasar'
+import type { QTable, QTableColumn } from 'quasar'
 import { Collection, UserSearchResult } from 'src/generated/api'
 import useShareCollectionsDialog from './useShareCollectionsDialog'
 import { collectionRights } from './permissions'
@@ -237,9 +238,12 @@ const { columns, startResize, resetWidth } = useResizableColumns('collections', 
 
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
 
-// A selected collection the rows no longer show (filtered out, deleted) leaves the
-// selection, so the bulk actions act only on what is shown.
-watch(() => props.collections, (rows) => {
+// A selected collection the table no longer shows (filtered out by My/Shared/All or the
+// search, or deleted) leaves the selection, so the bulk actions act only on what is shown.
+// The table's filtered rows span all its pages.
+const tableRef = ref<QTable | null>(null)
+watch(() => tableRef.value?.filteredSortedRows as Collection[] | undefined, (rows) => {
+  if (!rows) return
   const shown = new Set(rows.map((c) => c.id))
   if (selected.value.some((c) => !shown.has(c.id))) selected.value = selected.value.filter((c) => shown.has(c.id))
 })

@@ -39,9 +39,11 @@
         <q-slider
           v-model="tileSize"
           class="q-mx-sm"
-          :min="TILE_SIZE_MIN"
-          :max="TILE_SIZE_MAX"
-          :step="20"
+          :min="TILE_SIZES[0]"
+          :max="TILE_SIZES[TILE_SIZES.length - 1]"
+          :step="TILE_SIZE_STEP"
+          markers
+          snap
           aria-label="Tile size"
         />
         <q-icon name="photo_size_select_large" size="20px" color="grey-7" />
@@ -73,7 +75,7 @@
         gutter="10px"
       />
     </div>
-    <div v-if="viewMode === 'tiles'" ref="tilesRef" class="collection-tiles q-px-md q-py-md" :style="{ '--tile-size': `${tileSize}px` }">
+    <div v-if="viewMode === 'tiles'" ref="tilesRef" class="collection-tiles q-px-md q-py-md" :style="{ '--tile-size': `${tileSize}px`, gap: `${TILE_GAP}px` }">
       <!-- A new collection is the user's own, so not offered among those shared with them. -->
       <CreateCollectionCard v-if="showCreateTile" @click="handleCreate"/>
 
@@ -176,32 +178,38 @@ const filteredCollections = computed(() => {
   )
 })
 
-// The smallest tile width in the TILES view (#479); remembered in this browser.
+// The tile width in the TILES view (#479), in a few distinct sizes the slider snaps to,
+// like a file manager's zoom; remembered in this browser.
 const TILE_SIZE_STORAGE_KEY = 'collections.tileSize'
-const TILE_SIZE_MIN = 320
-const TILE_SIZE_MAX = 560
-const TILE_SIZE_DEFAULT = 340
+const TILE_SIZE_STEP = 60
+const TILE_SIZES = [320, 380, 440, 500, 560]
+const nearestTileSize = (size: number) =>
+  TILE_SIZES.reduce((best, s) => Math.abs(s - size) < Math.abs(best - size) ? s : best)
 const storedTileSize = Number(readStored(TILE_SIZE_STORAGE_KEY))
-const tileSize = ref(storedTileSize >= TILE_SIZE_MIN && storedTileSize <= TILE_SIZE_MAX ? storedTileSize : TILE_SIZE_DEFAULT)
+const tileSize = ref(storedTileSize > 0 ? nearestTileSize(storedTileSize) : TILE_SIZES[0])
 watch(tileSize, (value) => writeStored(TILE_SIZE_STORAGE_KEY, String(value)))
 
 // A page of tiles fills whole rows: as many tiles per row as fit at the chosen size
-// (measured from the grid's width), 3 rows on wide screens and 2 otherwise, less the
-// create tile where it is shown.
+// (measured from the grid's width; the window's without ResizeObserver), 3 rows on wide
+// screens and 2 otherwise, and rows enough for at least MIN_TILES_PER_PAGE tiles (a phone
+// has one tile a row), less the create tile where it is shown.
 const TILE_GAP = 16
+const MIN_TILES_PER_PAGE = 6
 const tilesRef = ref<HTMLElement | null>(null)
-const tilesWidth = ref(0)
-const tilesObserver = new ResizeObserver(([entry]) => { tilesWidth.value = entry.contentRect.width })
+const tilesWidth = ref(window.innerWidth)
+const tilesObserver = typeof ResizeObserver === 'undefined'
+  ? null
+  : new ResizeObserver(([entry]) => { tilesWidth.value = entry.contentRect.width })
 watch(tilesRef, (el, previous) => {
-  if (previous) tilesObserver.unobserve(previous)
-  if (el) tilesObserver.observe(el)
+  if (previous) tilesObserver?.unobserve(previous)
+  if (el) tilesObserver?.observe(el)
 })
-onBeforeUnmount(() => tilesObserver.disconnect())
+onBeforeUnmount(() => tilesObserver?.disconnect())
 const showCreateTile = computed(() => ownership.value !== 'shared')
 const itemsPerPage = computed(() => {
   const perRow = Math.max(1, Math.floor((tilesWidth.value + TILE_GAP) / (tileSize.value + TILE_GAP)))
-  const rows = $q.screen.gt.md ? 3 : 2
-  return Math.max(1, perRow * rows - (showCreateTile.value ? 1 : 0))
+  const rows = Math.max($q.screen.gt.md ? 3 : 2, Math.ceil(MIN_TILES_PER_PAGE / perRow))
+  return perRow * rows - (showCreateTile.value ? 1 : 0)
 })
 const { currentPage, pageCount, paginatedItems } = usePagination(filteredCollections, itemsPerPage)
 watch(ownership, () => { currentPage.value = 1 })
@@ -266,11 +274,13 @@ const handleShareMany = ({ collectionIds, userId }: { collectionIds: string[]; u
 </script>
 
 <style scoped>
-/* Tiles at least --tile-size wide, as many as fit in a row. */
+/* Tiles exactly --tile-size wide (narrower only on a narrower screen), as many as fit in
+   a row; like a file manager's icons, each size step shows, and the rest of a row stays
+   empty. */
 .collection-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(var(--tile-size), 100%), 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, min(var(--tile-size), 100%));
+  /* gap: set from TILE_GAP, which the page size is computed with */
 }
 
 .tile-size {
