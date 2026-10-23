@@ -12,11 +12,15 @@ from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 
 class AnnotationChunk(BaseModel):
     """Internal, not an HTTP model: a chunk's position in its document and its canonical
-    text, for offset checks."""
+    text, for offset checks and derived data; its stored absolute position (#463,
+    ``features/documents/positions.py``) when read, otherwise ``None``."""
     id: UUID
     document_id: UUID | None
     order: int
     text: str
+    start_char: int | None = None
+    start_word: int | None = None
+    word_open_at_start: bool | None = None
 
 
 class Tag(BaseModel):
@@ -164,7 +168,6 @@ class AnnotationRow(BaseModel):
     text: str | None = None
     leftContext: str | None = None
     rightContext: str | None = None
-    positionSegment: int | None = None
     documentStartChar: int | None = None
     documentEndChar: int | None = None
     documentStartWord: int | None = None

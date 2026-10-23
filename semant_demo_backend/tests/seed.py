@@ -12,13 +12,30 @@ from weaviate.classes.data import DataObject
 from weaviate.classes.tenants import Tenant
 
 from semant_demo.adapters.sql.tables import create_tables
+from semant_demo.adapters.weaviate.documents import POSITION_PROPERTIES
 from semant_demo.adapters.weaviate.names import CollectionNames
+from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
 from semant_demo.users.models import User
 from tests.corpus import Corpus
 from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
 from tests.weaviate_store import claim_store
 
 FIXTURE_TIMESTAMP = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def position_properties(position: ChunkPosition) -> dict:
+    """The ``Chunks`` properties of a chunk's position (#463)."""
+    return {name: getattr(position, field) for name, field in POSITION_PROPERTIES.items()}
+
+
+def corpus_positions(chunks: dict[str, dict]) -> dict[str, ChunkPosition]:
+    """The position of every corpus chunk, computed per document in ``order`` by the shared
+    calculator, as an import inserts them."""
+    by_document: dict[str, list[str]] = {}
+    for key, chunk in sorted(chunks.items(), key=lambda item: item[1]["order"]):
+        by_document.setdefault(chunk["document"], []).append(key)
+    return {key: position for keys in by_document.values()
+            for key, position in zip(keys, chunk_positions(chunks[k]["text"] for k in keys))}
 
 
 async def _insert(client: WeaviateAsyncClient, collection: str, objects: list[DataObject]) -> None:
@@ -79,6 +96,7 @@ async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, cor
     ])
 
     chunk_tags = {entry["chunk"]: entry for entry in corpus.chunk_tags}
+    positions = corpus_positions(chunks)
     chunk_objects = []
     for key, chunk in chunks.items():
         year = corpus.documents[chunk["document"]]["properties"].get("yearIssued")
@@ -101,6 +119,7 @@ async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, cor
                 "from_page": chunk["from_page"],
                 "to_page": chunk["to_page"],
                 "end_paragraph": True,
+                **position_properties(positions[key]),
                 **({"yearIssued": year} if year is not None else {}),
                 **corpus.chunk_classifications.get(key, {}),
             },
@@ -180,7 +199,9 @@ async def derive_annotations(client: WeaviateAsyncClient, config, corpus: Corpus
     the backend would, with the fake embedder of ``config`` called in-process."""
     import httpx
 
-    from semant_demo.bootstrap import WeaviateRepositories, detect_enrichment, load_annotation_vector
+    from semant_demo.bootstrap import (
+        WeaviateRepositories, detect_chunk_positions, detect_enrichment, load_annotation_vector,
+    )
     from semant_demo.features.annotations import backfill
     from semant_demo.features.annotations.service import AnnotationStore
     from tests.fake_providers import create_fake_provider_app
@@ -189,6 +210,7 @@ async def derive_annotations(client: WeaviateAsyncClient, config, corpus: Corpus
     vector = load_annotation_vector(config, transport)
     repos = WeaviateRepositories.create(client, config)
     enrichment = await detect_enrichment(client, config, vector)
+    repos.documents.positions = await detect_chunk_positions(client, config)
     store = AnnotationStore(collections=repos.user_collections, tags=repos.tags, spans=repos.spans,
                             chunk_tags=repos.chunk_tags, documents=repos.documents, enrichment=enrichment)
     collections = sorted(UUID(name) for name in await repos.spans.list_tenants())

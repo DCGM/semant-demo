@@ -52,8 +52,7 @@ class FakeDocuments:
 
 def _position_key(row: AnnotationRow):
     # Weaviate's ascending sort puts missing values first.
-    return tuple((v is not None, v or 0) for v in (row.positionSegment, row.documentStartChar,
-                                                     row.documentEndChar)) + (str(row.id),)
+    return tuple((v is not None, v or 0) for v in (row.documentStartChar, row.documentEndChar)) + (str(row.id),)
 
 
 class FakeSpans:
@@ -97,7 +96,7 @@ class FakeSpans:
 
 
 def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=True, rid=None):
-    derived = {"text": text, "leftContext": "vlevo ", "rightContext": " vpravo", "positionSegment": 0,
+    derived = {"text": text, "leftContext": "vlevo ", "rightContext": " vpravo",
                "documentStartChar": start, "documentEndChar": start + len(text), "enrichmentStatus": "ready",
                "enrichedRevision": 1, "derivationVersion": DERIVATION_VERSION} if current else {}
     return AnnotationRow(id=rid or uuid4(), tagId=tag, type=type, chunkId=uuid4(), documentId=document, start=0,

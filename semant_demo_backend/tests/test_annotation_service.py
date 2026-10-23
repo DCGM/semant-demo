@@ -11,6 +11,8 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+
+from tests.chunk_fakes import in_range, positioned
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
@@ -183,17 +185,16 @@ class FakeDocuments:
     def __init__(self):
         self.reads = []
 
+    chunks = positioned([AnnotationChunk(id=ELSEWHERE_CHUNK, document_id=ELSEWHERE_DOCUMENT, order=0, text="Praha"),
+                         *(AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t) for c, (o, t) in TEXTS.items())])
+
     async def read_chunk_text(self, chunk_id):
         self.reads.append(("anchor", chunk_id))
-        if chunk_id == ELSEWHERE_CHUNK:
-            return AnnotationChunk(id=chunk_id, document_id=ELSEWHERE_DOCUMENT, order=0, text="Praha")
-        order, text = TEXTS[chunk_id]
-        return AnnotationChunk(id=chunk_id, document_id=DOCUMENT, order=order, text=text)
+        return next(c for c in self.chunks if c.id == chunk_id)
 
-    async def read_following_chunk_texts(self, document_id, after_order, limit):
-        self.reads.append(("following", after_order))
-        return [AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t)
-                for c, (o, t) in TEXTS.items() if o > after_order][:limit]
+    async def read_chunk_texts_in_range(self, document_id, first, last):
+        self.reads.append(("range", first, last))
+        return in_range(self.chunks, document_id, first, last)
 
 
 @pytest.fixture
@@ -399,7 +400,8 @@ async def test_chunk_tags_are_synced_also_when_the_span_write_raises(store, writ
 async def test_cross_chunk_span_reads_the_following_chunks(store, writes):
     await service.create_span(store, OWNER, post_span(start=4, end=15))  # "Novák" + " a Brno"
 
-    assert store.documents.reads == [("anchor", CHUNK_1), ("following", 0)]
+    # One narrow range of orders after the anchor (#463), not the rest of the document.
+    assert store.documents.reads == [("anchor", CHUNK_1), ("range", 1, 4)]
     assert writes[0] == ("insert_span", str(CHUNK_1))
 
 

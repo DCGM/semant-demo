@@ -64,9 +64,10 @@ from semant_demo.adapters.weaviate.spans import SpanRepository, pair_of
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError
-from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, DocumentText
+from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, MissingChunkPositions, derive
 from semant_demo.features.annotations.enrichment import Enrichment, text_current, vector_current
 from semant_demo.features.annotations.offsets import InvalidSpanRange, check_span_range
+from semant_demo.features.annotations.source import ChunkSource, InvalidDocumentChunks
 from semant_demo.features.annotations.schemas import (
     AnnotationChunk, BulkUpdateSpansResponse, PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanWriteResult,
 )
@@ -77,9 +78,6 @@ from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 logger = logging.getLogger(__name__)
 
 Id = str | UUID
-
-# Following chunks read per round when a span continues past its anchor chunk.
-_FOLLOWING_CHUNKS_PAGE = 20
 
 
 @dataclass
@@ -256,24 +254,14 @@ async def list_spans_by_chunks(store: AnnotationStore, user: Principal | None, c
     return {str(c): by_id.get(str(access.parse_id(c, "Chunk")), []) for c in chunk_ids}
 
 
-async def _check_range(store: AnnotationStore, chunk_id: UUID, start: int, end: int) -> AnnotationChunk:
-    """The offsets must describe text of the chunk's document (``offsets.py``); returns the chunk."""
-    anchor = await store.documents.read_chunk_text(chunk_id)
+async def _check_range(source: ChunkSource, chunk_id: UUID, start: int, end: int) -> AnnotationChunk:
+    """The offsets must describe text of the chunk's document (``offsets.py``); returns the
+    chunk. Reads the anchor and the chunks the span covers (``source.py``)."""
+    anchor = await source.chunk(chunk_id)
     if anchor is None:
         raise NotFoundError("Chunk not found")
-    chunks = [anchor]
-    while True:
-        try:
-            check_span_range(chunks, start, end)
-            return anchor
-        except InvalidSpanRange as e:
-            if e.code != "past_end" or anchor.document_id is None:
-                raise
-            more = await store.documents.read_following_chunk_texts(
-                anchor.document_id, chunks[-1].order, _FOLLOWING_CHUNKS_PAGE)
-            if not more:
-                raise
-            chunks += more
+    check_span_range(await source.covering(anchor, end), start, end)
+    return anchor
 
 
 def _write_result(span: TagSpan, failed: list[StepFailure]) -> TagSpanWriteResult:
@@ -282,20 +270,20 @@ def _write_result(span: TagSpan, failed: list[StepFailure]) -> TagSpanWriteResul
 
 
 async def save_span(store: AnnotationStore, collection_id: UUID, document_id: UUID | None,
-                    span: PostSpan, texts: dict[UUID, DocumentText] | None = None, *,
+                    span: PostSpan, source: ChunkSource | None = None, *,
                     actor: Actor | None = None) -> TagSpanWriteResult:
     """
     Stores a span in the collection's tenant (``document_id``: its chunk's document) with
     its derived fields and the provenance of ``actor``, re-derives its chunk tag, then
     stores its contextual vector. No access or offset check: the caller has checked
     annotation-edit access to the collection, the tag and the chunk scope (``create_span``,
-    or the AI suggestion run for validated provider proposals). ``texts`` caches document
-    texts across the saves of one run (source text is immutable).
+    or the AI suggestion run for validated provider proposals). ``source`` keeps the chunks
+    read across the saves of one run (source text is immutable).
     """
     pairs = {ChunkTag.of(span.chunkId, span.tagId)}
     refresh = None
     if store.enrichment.derived:
-        refresh = await derive_refresh(store, document_id, span.chunkId, span.start, span.end, 1, texts=texts)
+        refresh = await derive_refresh(store, span.chunkId, span.start, span.end, 1, source)
     try:
         span_id = await store.spans.insert(collection_id, span, document_id,
                                            refresh.properties(reset_vector=True) if refresh else None,
@@ -319,8 +307,10 @@ async def create_span(store: AnnotationStore, user: Principal | None, span: Post
     collection_id = await access.collection_of_tags(store.tags, [span.tagId])
     grant = await access.require_annotation_edit(store.collections, user, collection_id)
     [chunk_id] = await access.require_chunks_in_collection(store.collections, [span.chunkId], collection_id)
-    anchor = await _check_range(store, chunk_id, span.start, span.end)
-    return await save_span(store, await use_tenant(store, grant), anchor.document_id, span, actor=Actor.of(user))
+    source = ChunkSource(store.documents)
+    anchor = await _check_range(source, chunk_id, span.start, span.end)
+    return await save_span(store, await use_tenant(store, grant), anchor.document_id, span, source,
+                           actor=Actor.of(user))
 
 
 async def _authorize_span_patch(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -344,13 +334,14 @@ async def _check_patched_ranges(store: AnnotationStore, spans: dict[UUID, TagSpa
     moves to, which must be of the same document); checked before any write."""
     if patch.start is None and patch.end is None:
         return
+    source = ChunkSource(store.documents)
     for span in spans.values():
         chunk_id = access.parse_id(patch.chunkId or span.chunkId, "Chunk")
-        anchor = await _check_range(store, chunk_id,
+        anchor = await _check_range(source, chunk_id,
                                     span.start if patch.start is None else patch.start,
                                     span.end if patch.end is None else patch.end)
         if str(chunk_id) != span.chunkId:
-            current = await store.documents.read_chunk_text(access.parse_id(span.chunkId, "Chunk"))
+            current = await source.chunk(access.parse_id(span.chunkId, "Chunk"))
             if current is None or current.document_id != anchor.document_id:
                 raise InvalidRequestError("A span can only move to another chunk of its document")
 
@@ -434,7 +425,7 @@ async def _patch_with_derived(store: AnnotationStore, collection_id: UUID, span_
         await store.spans.update(collection_id, span_id, patch, provenance=provenance)
         return None
     # Re-derived text (also under a changed policy) invalidates the vector embedded from the old one.
-    refresh = await derive_refresh(store, row.documentId, chunk_id, start, end, (row.revision or 0) + moved)
+    refresh = await derive_refresh(store, chunk_id, start, end, (row.revision or 0) + moved)
     await store.spans.update(collection_id, span_id, patch, refresh.properties(reset_vector=True), provenance)
     return refresh
 
@@ -580,36 +571,39 @@ class Refresh:
             props |= {"text": "", "leftContext": "", "rightContext": ""}
         else:
             props |= {"text": d.text, "leftContext": d.left_context, "rightContext": d.right_context,
-                      "positionSegment": d.segment, "documentStartChar": d.start_char,
+                      "documentStartChar": d.start_char,
                       "documentEndChar": d.end_char, "documentStartWord": d.start_word,
                       "documentEndWord": d.end_word}
         return props
 
 
-async def derive_refresh(store: AnnotationStore, document_id: UUID | None, chunk_id: Id, start: int, end: int,
-                         revision: int, text: DocumentText | None = None,
-                         texts: dict[UUID, DocumentText] | None = None) -> Refresh:
-    """The derived fields of a span from its document's text (``text``: already read;
-    ``texts``: a cache by document to read from and fill); a failed read is a
-    ``derive_annotation`` failure, offsets that describe no text (or a missing anchor chunk
-    or document) are ``invalid``."""
+def _derivation_failure(chunk_id: Id, exc: Exception) -> StepFailure:
+    if not isinstance(exc, (MissingChunkPositions, InvalidDocumentChunks)):
+        return step_failure("derive_annotation", chunk_id, exc)
+    logger.warning("Deriving the annotation on chunk %s failed: %s", chunk_id, exc)
+    what = ("chunk positions are missing or inconsistent (#463)" if isinstance(exc, MissingChunkPositions)
+            else "the document's chunk orders are not consecutive")
+    return StepFailure(item_id=str(chunk_id), step="derive_annotation", message=f"{type(exc).__name__}: {what}")
+
+
+async def derive_refresh(store: AnnotationStore, chunk_id: Id, start: int, end: int, revision: int,
+                         source: ChunkSource | None = None) -> Refresh:
+    """The derived fields of a span from its anchor chunk and the chunks around it
+    (``source.py``; ``source``: the chunks already read, filled further). A failed read, a
+    chunk without a stored position or a document whose chunk orders are not consecutive is
+    a ``derive_annotation`` failure (never a reason to read the whole document); offsets
+    that describe no text (or a missing anchor chunk or document) are ``invalid``."""
+    source = source or ChunkSource(store.documents)
     try:
-        if text is None:
-            if document_id is None:
-                anchor = await store.documents.read_chunk_text(access.parse_id(chunk_id, "Chunk"))
-                document_id = anchor.document_id if anchor is not None else None
-            if document_id is None:
-                return Refresh(revision, None, EnrichmentStatus.invalid)
-            text = (texts or {}).get(document_id)
-            if text is None:
-                text = DocumentText(await store.documents.read_chunk_texts(document_id))
-                if texts is not None:
-                    texts[document_id] = text
-        return Refresh(revision, text.derive(chunk_id, start, end), EnrichmentStatus.ready)
+        anchor = await source.chunk(access.parse_id(chunk_id, "Chunk"))
+        if anchor is None or anchor.document_id is None:
+            return Refresh(revision, None, EnrichmentStatus.invalid)
+        derived = derive(await source.span_source(anchor, start, end), start, end)
+        return Refresh(revision, derived, EnrichmentStatus.ready)
     except InvalidSpanRange:
         return Refresh(revision, None, EnrichmentStatus.invalid)
     except Exception as e:
-        return Refresh(revision, None, EnrichmentStatus.failed, [step_failure("derive_annotation", chunk_id, e)])
+        return Refresh(revision, None, EnrichmentStatus.failed, [_derivation_failure(chunk_id, e)])
 
 
 async def write_if_revision(store: AnnotationStore, collection_id: UUID, span_id: UUID, revision: int,
@@ -772,7 +766,7 @@ async def delete_suggestions_in_document(store: AnnotationStore, user: Principal
 #############################
 
 _MAX_ROWS = 1000
-_HIDDEN_WHEN_STALE = ("text", "leftContext", "rightContext", "positionSegment", "documentStartChar",
+_HIDDEN_WHEN_STALE = ("text", "leftContext", "rightContext", "documentStartChar",
                       "documentEndChar", "documentStartWord", "documentEndWord")
 
 

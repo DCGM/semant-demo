@@ -19,11 +19,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from semant_demo.core.errors import InvalidRequestError
-
-
-def text_length(text: str) -> int:
-    """Length of ``text`` in UTF-16 code units, as the browser measures it."""
-    return len(text.encode("utf-16-le")) // 2
+from semant_demo.features.documents.positions import text_length
 
 
 @dataclass(frozen=True)

@@ -24,7 +24,7 @@ from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
-from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.adapters.weaviate.documents import DocumentRepository, missing_position_properties
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository, enrichment_schema, provenance_schema
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -125,6 +125,25 @@ async def detect_enrichment(client: WeaviateAsyncClient, config: Config,
     return Enrichment(derived=True, vector=vector if has_vector else None)
 
 
+async def detect_chunk_positions(client: WeaviateAsyncClient, config: Config) -> bool:
+    """Whether the ``Chunks`` collection declares the chunk position properties of #463.
+
+    Until it does, annotation text, context and positions are not derived (each span write
+    reports ``derive_annotation``); the operator adds and fills them with
+    ``python -m semant_demo.maintenance.chunk_positions``.
+    """
+    try:
+        missing = await missing_position_properties(client, config.collectionNames)
+    except Exception as e:
+        logger.warning("Could not read the chunk schema; annotation positions are not derived: %s", type(e).__name__)
+        return False
+    if missing:
+        logger.error("The chunk collection lacks the position properties of #463 (%s): annotation text, context "
+                     "and positions are not derived until python -m semant_demo.maintenance.chunk_positions adds "
+                     "and fills them (docs/DATA_MAINTENANCE.md).", ", ".join(missing))
+    return not missing
+
+
 async def detect_provenance(client: WeaviateAsyncClient, config: Config) -> bool:
     """Whether the annotation collection holds the provenance properties of #460.
 
@@ -200,7 +219,8 @@ class AppResources:
         span reads and writes then fail until the operator has run the migration. The
         application never creates or migrates it itself. Annotation enrichment (#328) and
         provenance (#460) are enabled as far as the collection's schema supports them
-        (``detect_enrichment``, ``detect_provenance``).
+        (``detect_enrichment``, ``detect_provenance``); chunk text reads return the chunk
+        positions of #463 when the chunk collection declares them (``detect_chunk_positions``).
         """
         client = await connector(self.config)
         try:
@@ -221,6 +241,8 @@ class AppResources:
             return
         self.annotation_enrichment = await detect_enrichment(client, self.config, self.annotation_vector)
         self.weaviate.spans.provenance = await detect_provenance(client, self.config)
+        if self.annotation_enrichment.derived:
+            self.weaviate.documents.positions = await detect_chunk_positions(client, self.config)
 
     def get_summarizer(self) -> TemplatedSearchResultsSummarizer:
         if self._summarizer is None:
