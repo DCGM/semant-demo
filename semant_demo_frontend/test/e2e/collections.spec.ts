@@ -41,6 +41,19 @@ test('the collections page shows my, shared or all collections and remembers the
   await expect(shared).toBeVisible()
 })
 
+test('collections the table no longer shows leave its selection', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openCollections(page)
+  await page.getByRole('button', { name: 'Table' }).click()
+  await page.getByRole('checkbox').first().click() // the header box selects every row
+  await expect(page.locator('.bulk-count')).toHaveText(/^[2-9]\d* selected$/)
+
+  await page.getByPlaceholder('Search collections...').fill(fixture.collection('newspapers').name)
+  await expect(page.locator('.bulk-count')).toHaveText('1 selected')
+  await page.getByPlaceholder('Search collections...').fill('')
+  await expect(page.locator('.bulk-count')).toHaveText('1 selected') // shown again, not selected again
+})
+
 test('the tile size slider changes and remembers the tile width', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openCollections(page)

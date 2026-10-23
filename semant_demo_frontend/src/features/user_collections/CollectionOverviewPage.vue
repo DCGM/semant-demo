@@ -168,7 +168,8 @@
               <th class="details-key">Shared with</th>
               <td class="details-value">
                 <div class="readonly-cell members-row">
-                  <span v-if="membersError" class="text-negative">{{ membersError }}</span>
+                  <span v-if="!collectionLoaded">-</span>
+                  <span v-else-if="membersError" class="text-negative">{{ membersError }}</span>
                   <span v-else-if="membersLoading && !members.length" class="text-grey-6">Loading…</span>
                   <div v-else-if="members.length" class="member-chips" aria-label="Shared with">
                     <q-chip
@@ -185,6 +186,7 @@
                   </div>
                   <span v-else>Not shared</span>
                   <q-btn
+                    v-if="rights.viewMembers"
                     flat
                     dense
                     icon="group"
@@ -247,7 +249,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { UserSearchResult } from 'src/generated/api'
 import { createContextGuard } from 'src/shared/api'
@@ -271,9 +273,8 @@ const { fetchCollectionStats } = collectionStatsStore
 
 // Name, description and color are owner-only metadata (ADR 0007). Nothing is granted until
 // this collection has loaded, so the previous collection's rights don't show meanwhile.
-const rights = computed(() =>
-  collectionRights(activeCollection.value?.id === collectionId.value ? activeCollection.value : null)
-)
+const collectionLoaded = computed(() => !!activeCollection.value && activeCollection.value.id === collectionId.value)
+const rights = computed(() => collectionRights(collectionLoaded.value ? activeCollection.value : null))
 const isEditingDescription = ref(false)
 const isSavingDescription = ref(false)
 const editableDescription = ref('')
@@ -349,16 +350,25 @@ async function loadSuggestionsCount (isCurrent: () => boolean) {
 }
 
 const refreshOverviewData = async () => {
-  overviewGuard.enter()
-  const isCurrent = overviewGuard.capture()
-  members.value = []
-  suggestionsCount.value = null
-  suggestionsError.value = false
-  void loadMembers(isCurrent)
-  void loadSuggestionsCount(isCurrent)
   await fetchCollection(collectionId.value)
   await fetchCollectionStats(collectionId.value)
 }
+
+// Members and the suggestion count are asked for once this collection has loaded (here or
+// by the enclosing layout), so a collection that is gone or no longer shared shows only its
+// own error. Another collection starts over.
+watch(collectionLoaded, (loaded) => {
+  overviewGuard.enter()
+  members.value = []
+  membersLoading.value = false
+  membersError.value = null
+  suggestionsCount.value = null
+  suggestionsError.value = false
+  if (!loaded) return
+  const isCurrent = overviewGuard.capture()
+  void loadMembers(isCurrent)
+  void loadSuggestionsCount(isCurrent)
+}, { immediate: true })
 
 const createdAtText = computed(() =>
   activeCollection.value?.createdAt
@@ -492,6 +502,11 @@ const submitColorEdit = async () => {
 
 onMounted(() => {
   refreshOverviewData()
+})
+
+// The same page shown for another collection loads that one; earlier answers are dropped.
+watch(collectionId, (id, previous) => {
+  if (id && id !== previous) void refreshOverviewData()
 })
 </script>
 

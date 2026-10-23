@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import type { QTableColumn } from 'quasar'
+import { readStored, writeStored } from './browserStorage'
 
 const MIN_WIDTH = 60
 // A press on the edge becomes a resize only once it has moved this far, so a click (or a
@@ -9,23 +10,17 @@ const STORAGE_PREFIX = 'semant.columnWidths.'
 
 function readWidths (key: string): Record<string, number> {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_PREFIX + key) ?? '{}')
+    const parsed: unknown = JSON.parse(readStored(STORAGE_PREFIX + key) ?? '{}')
     if (!parsed || typeof parsed !== 'object') return {}
     return Object.fromEntries(Object.entries(parsed).filter(
       (entry): entry is [string, number] => typeof entry[1] === 'number' && entry[1] >= MIN_WIDTH
     ))
   } catch {
-    return {}
+    return {} // not JSON
   }
 }
 
-function writeWidths (key: string, widths: Record<string, number>): void {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(widths))
-  } catch {
-    // Storage unavailable (private mode, quota) — the widths just won't persist.
-  }
-}
+const writeWidths = (key: string, widths: Record<string, number>) => writeStored(STORAGE_PREFIX + key, JSON.stringify(widths))
 
 /**
  * Column widths a user sets by dragging the right edge of a QTable header cell (#479),
@@ -75,6 +70,7 @@ export function useResizableColumns<Row extends Record<string, any>> (storageKey
     handle.removeEventListener('pointermove', onPointerMove)
     handle.removeEventListener('pointerup', stopResize)
     handle.removeEventListener('pointercancel', stopResize)
+    handle.removeEventListener('lostpointercapture', stopResize)
     if (frame !== null) {
       cancelAnimationFrame(frame)
       applyWidth()
@@ -96,6 +92,8 @@ export function useResizableColumns<Row extends Record<string, any>> (storageKey
     handle.addEventListener('pointermove', onPointerMove)
     handle.addEventListener('pointerup', stopResize)
     handle.addEventListener('pointercancel', stopResize)
+    // Also when the browser ends the drag some other way (the handle re-rendered, say).
+    handle.addEventListener('lostpointercapture', stopResize)
   }
 
   /** Gives column `name` its natural width back. */
