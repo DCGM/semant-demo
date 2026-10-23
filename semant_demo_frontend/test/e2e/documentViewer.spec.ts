@@ -184,9 +184,11 @@ test('Escape in the create-tag dialog keeps the selection the new tag goes onto'
   const dialog = page.locator('.q-dialog')
   await expect(dialog.getByLabel('Tag Name')).toBeVisible()
 
+  // Escape closes the empty dialog (#479) but leaves the selection and its popover.
   await page.keyboard.press('Escape')
-  await expect(dialog.getByLabel('Tag Name')).toBeVisible()
+  await expect(dialog.getByLabel('Tag Name')).toHaveCount(0)
   await expect(popover(page)).toBeVisible()
+  await popover(page).getByText('Create new tag').click()
   await dialog.getByLabel('Tag Name').fill('Inn')
   await dialog.getByLabel('Tag Shorthand').fill('INN')
   await dialog.getByRole('button', { name: 'Create' }).click()
