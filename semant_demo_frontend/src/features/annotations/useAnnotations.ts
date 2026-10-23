@@ -225,16 +225,17 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
   /**
    * Handle a cross-chunk selection where start and end are in different chunks.
-   * Normalizes into a single GlobalSelection anchored to the earlier chunk.
+   * Normalizes into a single GlobalSelection anchored to the earlier chunk. Returns whether
+   * it was cut to the end of the first chunk because of a document gap before the last one.
    */
   const setCrossChunkSelection = (
     startChunkId: string, startOffset: number,
     endChunkId: string, endOffset: number,
     editingSpanId?: string, tagId?: string
-  ) => {
+  ): boolean => {
     const startIndex = chunkIndexById.value[startChunkId]
     const endIndex = chunkIndexById.value[endChunkId]
-    if (startIndex === undefined || endIndex === undefined) return
+    if (startIndex === undefined || endIndex === undefined) return false
 
     // Ensure start comes before end
     let firstChunkId = startChunkId
@@ -254,9 +255,9 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     if (offsetToLast === null) {
       // There's a document gap between the two chunks — clamp to just the first chunk
       const firstIndex = chunkIndexById.value[firstChunkId]
-      if (firstIndex === undefined) return
+      if (firstIndex === undefined) return false
       const firstChunkLength = chunks.value[firstIndex].text.length
-      if (firstOffset >= firstChunkLength) return
+      if (firstOffset >= firstChunkLength) return false
       enterSelection()
       selection.value = {
         chunkId: firstChunkId,
@@ -265,7 +266,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
         editingSpanId,
         tagId
       }
-      return
+      return true
     }
 
     enterSelection()
@@ -276,6 +277,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
       editingSpanId,
       tagId
     }
+    return false
   }
 
   const editSpan = (span: TagSpan) => {

@@ -190,7 +190,12 @@ test('a tag focused in the tags panel tags new selections directly until Escape'
   await expect(page.locator('.gutter-item')).toHaveCount(3)
   await expect(popover(page)).toHaveCount(0)
 
-  // Escape ends the focus; the next selection opens the tag picker again.
+  // A click on an annotation still opens it; Escape closes it first, then ends the focus.
+  await annotation(page, 'brno_manual').click()
+  await expect(popover(page).getByRole('button', { name: 'Change tag' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(popover(page)).toHaveCount(0)
+  await expect(page.locator('.tag-card.is-focused')).toContainText(place)
   await page.keyboard.press('Escape')
   await expect(page.getByText('Tagging with:')).toHaveCount(0)
   await expect(page.locator('.tag-card.is-focused')).toHaveCount(0)
@@ -198,6 +203,34 @@ test('a tag focused in the tags panel tags new selections directly until Escape'
   const hostinci = text.indexOf('hostinci')
   await selectText(page, 'chronicle_1', hostinci, 'chronicle_1', hostinci + 'hostinci'.length)
   await expect(popover(page).getByText('Select tag')).toBeVisible()
+})
+
+test('a double-clicked word is tagged once with the focused tag', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+  await page.getByRole('button', { name: `Tag with ${fixture.tag('place').name}` }).click()
+
+  const text = fixture.chunk('chronicle_1').text
+  const start = text.indexOf('hostinci')
+  const word = await chunkText(page, 'chronicle_1').evaluate((chunk, start) => {
+    for (const segment of Array.from(chunk.querySelectorAll<HTMLElement>('.text-segment'))) {
+      const segmentStart = Number(segment.dataset.start)
+      if (start < segmentStart || start >= Number(segment.dataset.end)) continue
+      const node = Array.from(segment.childNodes).find((n) => n.nodeType === Node.TEXT_NODE)!
+      const range = document.createRange()
+      range.setStart(node, start - segmentStart + 1)
+      range.setEnd(node, start - segmentStart + 2)
+      const box = range.getBoundingClientRect()
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+    throw new Error('word not rendered')
+  }, start)
+  await page.mouse.dblclick(word.x, word.y)
+
+  await expect(taggedSegment(page, 'chronicle_1', start, start + 'hostinci'.length)).toBeVisible()
+  await expect(page.locator('.gutter-item')).toHaveCount(3)
+  await expect(popover(page)).toHaveCount(0)
 })
 
 test('the focus ends with its ✕, a second click on its card, or hiding its tag', async ({ page }) => {
