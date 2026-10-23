@@ -1,5 +1,5 @@
 <template>
-  <div class="col-xs-12 col-sm-6 col-lg-4 col-xl-3">
+  <div>
     <q-card :style="`--project-stripe-color: ${props.collection.color}`" class="fit project-card cursor-pointer" flat title="Enter project" @click="handleEnterProject(props.collection.id)">
       <q-card-section horizontal class="fit">
         <q-card-section class="col column no-wrap">
