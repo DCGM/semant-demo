@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
-    AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationPage, AnnotationRestoreRequest,
+    AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationPage, AnnotationRestoreRequest,
     AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
@@ -242,6 +242,18 @@ async def list_collection_annotations(
     return await service.query_annotations(
         store, current_user, collection_id, tag_ids=tag_id, types=types, text=q, document_ids=document_id,
         year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id)
+
+
+@span_router.get("/api/user_collections/{collection_id}/annotations/counts", response_model=AnnotationCounts)
+async def count_collection_annotations(
+    collection_id: str,
+    tag_id: list[str] | None = _TAG_FILTER,
+    store: AnnotationStore = Depends(get_annotation_store),
+    current_user: User = Depends(current_active_user),
+) -> AnnotationCounts:
+    """How many approved annotations, unresolved suggestions and rejected suggestions the
+    collection holds (of the given tags), e.g. to warn what a delete would remove along."""
+    return await service.count_annotations(store, current_user, collection_id, tag_ids=tag_id)
 
 
 @span_router.get("/api/user_collections/{collection_id}/annotations/documents",

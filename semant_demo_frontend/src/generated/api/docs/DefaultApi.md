@@ -9,6 +9,7 @@ All URIs are relative to *http://localhost*
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
+| [**countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet**](DefaultApi.md#countcollectionannotationsapiusercollectionscollectionidannotationscountsget) | **GET** /api/user_collections/{collection_id}/annotations/counts | Count Collection Annotations |
 | [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
 | [**createTagSpanApiTagSpansPost**](DefaultApi.md#createtagspanapitagspanspost) | **POST** /api/tag_spans | Create Tag Span |
@@ -445,6 +446,81 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet
+
+> AnnotationCounts countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet(collectionId, tagId)
+
+Count Collection Annotations
+
+How many approved annotations, unresolved suggestions and rejected suggestions the collection holds (of the given tags), e.g. to warn what a delete would remove along.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // Array<string> | Only annotations of these tags (repeat the parameter) (optional)
+    tagId: ...,
+  } satisfies CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest;
+
+  try {
+    const data = await api.countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
+
+### Return type
+
+[**AnnotationCounts**](AnnotationCounts.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

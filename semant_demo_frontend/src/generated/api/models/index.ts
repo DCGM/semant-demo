@@ -2,6 +2,7 @@
 /* eslint-disable */
 export * from './AdjacentChunks';
 export * from './AnnotatedDocument';
+export * from './AnnotationCounts';
 export * from './AnnotationIds';
 export * from './AnnotationIdsRequest';
 export * from './AnnotationListRow';

@@ -17,6 +17,7 @@ import * as runtime from '../runtime';
 import type {
   AdjacentChunks,
   AnnotatedDocument,
+  AnnotationCounts,
   AnnotationIds,
   AnnotationIdsRequest,
   AnnotationPage,
@@ -84,6 +85,8 @@ import {
     AdjacentChunksToJSON,
     AnnotatedDocumentFromJSON,
     AnnotatedDocumentToJSON,
+    AnnotationCountsFromJSON,
+    AnnotationCountsToJSON,
     AnnotationIdsFromJSON,
     AnnotationIdsToJSON,
     AnnotationIdsRequestFromJSON,
@@ -232,6 +235,11 @@ export interface BrowseDocumentsApiDocumentsBrowseGetRequest {
 
 export interface BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest {
     bulkUpdateSpansRequest: BulkUpdateSpansRequest;
+}
+
+export interface CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest {
+    collectionId: string;
+    tagId?: Array<string> | null;
 }
 
 export interface CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest {
@@ -639,6 +647,32 @@ export interface DefaultApiInterface {
      * Corpus Overview
      */
     corpusOverviewApiAnalyticsCorpusOverviewGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusOverview>;
+
+    /**
+     * Creates request options for countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet without sending the request
+     * @param {string} collectionId 
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequestOpts(requestParameters: CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * How many approved annotations, unresolved suggestions and rejected suggestions the collection holds (of the given tags), e.g. to warn what a delete would remove along.
+     * @summary Count Collection Annotations
+     * @param {string} collectionId 
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRaw(requestParameters: CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationCounts>>;
+
+    /**
+     * How many approved annotations, unresolved suggestions and rejected suggestions the collection holds (of the given tags), e.g. to warn what a delete would remove along.
+     * Count Collection Annotations
+     */
+    countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet(requestParameters: CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationCounts>;
 
     /**
      * Creates request options for countDocumentChunksApiDocumentsDocumentIdChunksCountGet without sending the request
@@ -2451,6 +2485,62 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async corpusOverviewApiAnalyticsCorpusOverviewGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusOverview> {
         const response = await this.corpusOverviewApiAnalyticsCorpusOverviewGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet without sending the request
+     */
+    async countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequestOpts(requestParameters: CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['tagId'] != null) {
+            queryParameters['tag_id'] = requestParameters['tagId'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/counts`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * How many approved annotations, unresolved suggestions and rejected suggestions the collection holds (of the given tags), e.g. to warn what a delete would remove along.
+     * Count Collection Annotations
+     */
+    async countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRaw(requestParameters: CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationCounts>> {
+        const requestOptions = await this.countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationCountsFromJSON(jsonValue));
+    }
+
+    /**
+     * How many approved annotations, unresolved suggestions and rejected suggestions the collection holds (of the given tags), e.g. to warn what a delete would remove along.
+     * Count Collection Annotations
+     */
+    async countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet(requestParameters: CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationCounts> {
+        const response = await this.countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

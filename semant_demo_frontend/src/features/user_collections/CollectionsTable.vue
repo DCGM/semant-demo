@@ -129,7 +129,7 @@ import useShareCollectionsDialog from './useShareCollectionsDialog'
 import { collectionRights } from './permissions'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { plural } from 'src/shared/plural'
-import { countAnnotationsInCollections } from 'src/features/annotations/annotationCounts'
+import { annotationsOfCollections } from 'src/features/annotations/annotationCounts'
 
 interface Props {
   collections: Collection[]
@@ -239,7 +239,7 @@ const handleBulkDelete = () => {
     title: 'Delete Selected Collections',
     message: `Delete ${plural(count, 'selected collection')}?`,
     okLabel: 'Delete selected',
-    count: () => countAnnotationsInCollections(ids)
+    alsoDeletes: annotationsOfCollections(ids)
   }).onOk(() => {
     emit('deleteMany', ids)
     selected.value = []

@@ -51,7 +51,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
-    MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
+    MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
     AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
 )
@@ -957,6 +957,19 @@ async def _rows_in_document_order(store: AnnotationStore, cid: UUID, query: Anno
     for (document, _, _), rows in zip([s for s in slices if s[0] not in whole], parts[1:]):
         by_document[document] = rows
     return [row for document, _, _ in slices for row in by_document[document]]
+
+
+async def count_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
+                            tag_ids: list[Id] | None = None) -> AnnotationCounts:
+    """
+    How many annotations the collection holds per type, of some tags only when ``tag_ids``
+    is given. Counts only: reads no annotation rows and no documents.
+    """
+    grant = await access.require_collection_read(store.collections, user, collection_id)
+    queries = [_concordance_query(tag_ids, [t], None) for t in (SpanType.pos, SpanType.auto, SpanType.neg)]
+    cid = await use_tenant(store, grant)
+    approved, suggestions, rejected = await asyncio.gather(*(store.spans.count_rows(cid, q) for q in queries))
+    return AnnotationCounts(approved=approved, suggestions=suggestions, rejected=rejected)
 
 
 async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, *,

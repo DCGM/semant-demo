@@ -1,38 +1,33 @@
-import { AnnotationSort, SpanType } from 'src/generated/api'
+import type { AnnotationCounts } from 'src/generated/api'
 import { useApi } from 'src/shared/api'
+import { plural } from 'src/shared/plural'
 
-export interface AnnotationCounts {
-  /** Approved annotations. */
-  approved: number
-  /** AI suggestions not yet approved or rejected. */
-  suggestions: number
-  /** Rejected suggestions (the review's negative feedback). */
-  rejected: number
-}
-
-/** Reads the counts of what an action would affect. */
-export type AnnotationCounter = () => Promise<AnnotationCounts>
-
-/**
- * How many annotations a collection holds, of the given tags only when `tagIds` is set
- * (the concordance query's totals; one row is read per type, sorted by text, which counts
- * without reading the documents).
- */
+/** How many annotations a collection holds per type, of the given tags only when `tagIds` is set. */
 export async function countAnnotations (collectionId: string, tagIds?: string[]): Promise<AnnotationCounts> {
-  const api = useApi().default
-  const total = async (type: SpanType) => (await api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet({
-    collectionId, tagId: tagIds, type: [type], sort: AnnotationSort.text, limit: 1
-  })).total
-  const [approved, suggestions, rejected] = await Promise.all([total(SpanType.pos), total(SpanType.auto), total(SpanType.neg)])
-  return { approved, suggestions, rejected }
+  return await useApi().default.countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet({
+    collectionId, tagId: tagIds
+  })
 }
 
-/** The counts of several collections added up. */
-export async function countAnnotationsInCollections (collectionIds: string[]): Promise<AnnotationCounts> {
+/** The annotations as text ("1 approved annotation and 2 rejected suggestions"); empty when there are none. */
+export function describeAnnotations ({ approved, suggestions, rejected }: AnnotationCounts): string {
+  const parts = []
+  if (approved) parts.push(plural(approved, 'approved annotation'))
+  if (suggestions) parts.push(plural(suggestions, 'unresolved AI suggestion'))
+  if (rejected) parts.push(plural(rejected, 'rejected suggestion'))
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts.join('')
+}
+
+/** What deleting these tags would delete along, for the delete confirmation. */
+export const annotationsOfTags = (collectionId: string, tagIds: string[]) => async () =>
+  describeAnnotations(await countAnnotations(collectionId, tagIds))
+
+/** What deleting these collections would delete along (their counts added up). */
+export const annotationsOfCollections = (collectionIds: string[]) => async () => {
   const all = await Promise.all(collectionIds.map((id) => countAnnotations(id)))
-  return all.reduce((sum, c) => ({
+  return describeAnnotations(all.reduce((sum, c) => ({
     approved: sum.approved + c.approved,
     suggestions: sum.suggestions + c.suggestions,
     rejected: sum.rejected + c.rejected
-  }), { approved: 0, suggestions: 0, rejected: 0 })
+  }), { approved: 0, suggestions: 0, rejected: 0 }))
 }

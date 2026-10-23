@@ -4,6 +4,7 @@ apis/UsersApi.ts
 apis/index.ts
 docs/AdjacentChunks.md
 docs/AnnotatedDocument.md
+docs/AnnotationCounts.md
 docs/AnnotationIds.md
 docs/AnnotationIdsRequest.md
 docs/AnnotationListRow.md
@@ -115,6 +116,7 @@ docs/YearBin.md
 index.ts
 models/AdjacentChunks.ts
 models/AnnotatedDocument.ts
+models/AnnotationCounts.ts
 models/AnnotationIds.ts
 models/AnnotationIdsRequest.ts
 models/AnnotationListRow.ts
