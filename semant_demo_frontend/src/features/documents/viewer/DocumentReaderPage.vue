@@ -141,7 +141,7 @@
 
       <AnnotationPopover
         ref="popoverRef"
-        :visible="annotations.hasSelection.value && !focusTagging"
+        :visible="annotations.hasSelection.value && annotations.selection.value !== focusTaggedSelection"
         :tags="tags"
         :selection="annotations.selection.value"
         :selected-text="selectedSpanText"
@@ -181,7 +181,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, shallowRef, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
@@ -563,6 +563,7 @@ function cancelPendingSpanOpen() {
 
 function onDocumentPointerDown(e: PointerEvent) {
   cancelPendingSpanOpen()
+  cancelPendingFocusTag()
   pointerDown = e.button === 0
     ? { x: e.clientX, y: e.clientY, onHandle: !!(e.target as HTMLElement).closest('.selection-handle') }
     : null
@@ -584,6 +585,7 @@ function openSpanAtClick(e: MouseEvent) {
 const handleDocumentMouseUp = (e: MouseEvent) => {
   const domSelection = window.getSelection()
   if (!domSelection || domSelection.isCollapsed) {
+    revealCancelledFocusTag()
     openSpanAtClick(e)
     pointerDown = null
     return
@@ -596,6 +598,8 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
   if (!startPoint || !endPoint) return
 
+  const previousSelection = annotations.selection.value
+  let shortened = false
   if (startPoint.chunkId === endPoint.chunkId) {
     const start = Math.min(startPoint.charOffset, endPoint.charOffset)
     const end = Math.max(startPoint.charOffset, endPoint.charOffset)
@@ -603,11 +607,12 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
       annotations.setSelection(startPoint.chunkId, start, end)
     }
   } else {
-    annotations.setCrossChunkSelection(
+    shortened = annotations.setCrossChunkSelection(
       startPoint.chunkId, startPoint.charOffset,
       endPoint.chunkId, endPoint.charOffset
     )
   }
+  const newSelection = annotations.selection.value !== previousSelection ? annotations.selection.value : null
 
   popoverRef.value?.moveTo(e)
   domSelection.removeAllRanges()
@@ -621,26 +626,61 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   // already been clicked.
   popoverRef.value?.showMode('picker')
 
-  // With a tag focused in the tags panel, the selection is tagged with it right away.
+  // With a tag focused in the tags panel, a new selection is tagged with it right away; one
+  // cut short at a document gap opens the picker instead, so the user sees what is left.
   const focusedTagId = tagNav.focusedTagId.value
-  if (focusedTagId) void tagWithFocusedTag(focusedTagId)
+  if (focusedTagId && newSelection && !shortened) tagWithFocusedTag(focusedTagId, newSelection, e.detail >= 2)
 }
 
 // ── Tag focus (#479) ──
 // A tag focused in the tags panel tags each new selection directly, without the popover.
 // The popover appears only when that fails, in the picker, so the user can try again.
 const focusedTag = computed(() => tags.value.find((t) => t.id === tagNav.focusedTagId.value) ?? null)
-const focusTagging = ref(false)
-let focusTaggingRun = 0
+type Selection = NonNullable<typeof annotations.selection.value>
+/** The selection the focused tag is going onto: the popover stays closed for it. */
+const focusTaggedSelection = shallowRef<Selection | null>(null)
+// A double-click's word is tagged only once no third click (selecting the paragraph) has
+// followed, so a triple-click tags just the paragraph.
+let pendingFocusTag: ReturnType<typeof setTimeout> | null = null
+/** The selection whose tagging the next click cancelled: shown in the picker if no new one replaces it. */
+let cancelledFocusSelection: Selection | null = null
 
-async function tagWithFocusedTag(tagId: string) {
-  const run = ++focusTaggingRun
-  focusTagging.value = true
-  const applied = await runSpanRequest(() => annotations.createSpan(tagId), 'The tag could not be saved.')
-  // A later selection is being tagged meanwhile; it shows its own outcome.
-  if (run !== focusTaggingRun) return
-  focusTagging.value = false
+function tagWithFocusedTag(tagId: string, sel: Selection, afterDoubleClick: boolean) {
+  focusTaggedSelection.value = sel
+  if (!afterDoubleClick) {
+    void saveWithFocusedTag(tagId, sel)
+    return
+  }
+  pendingFocusTag = setTimeout(() => {
+    pendingFocusTag = null
+    void saveWithFocusedTag(tagId, sel)
+  }, DOUBLE_CLICK_WAIT)
+}
+
+async function saveWithFocusedTag(tagId: string, sel: Selection) {
+  const text = selectionText(sel, [...displayChunks.value, ...hiddenPreviewChunks.value])
+  const quoted = text.length > 40 ? `${text.slice(0, 40).trimEnd()}…` : text
+  const tagName = tags.value.find((t) => t.id === tagId)?.name ?? 'the tag'
+  const applied = annotations.selection.value === sel
+    ? await runSpanRequest(() => annotations.createSpan(tagId), `"${quoted}" could not be tagged with ${tagName}.`)
+    : null
+  // Failed and still open: the popover shows it in the picker.
+  if (focusTaggedSelection.value === sel) focusTaggedSelection.value = null
   if (applied) recordTagUsage(tagId)
+}
+
+function cancelPendingFocusTag() {
+  if (!pendingFocusTag) return
+  clearTimeout(pendingFocusTag)
+  pendingFocusTag = null
+  cancelledFocusSelection = focusTaggedSelection.value
+}
+
+function revealCancelledFocusTag() {
+  if (cancelledFocusSelection && focusTaggedSelection.value === cancelledFocusSelection) {
+    focusTaggedSelection.value = null
+  }
+  cancelledFocusSelection = null
 }
 
 // The focus ends when its tag is deleted, and in another collection, which has other tags.
@@ -816,7 +856,13 @@ const onClickOutside = (e: MouseEvent) => {
 // selection first, then ends a tag focus, unless it was typed in a field (the tag search).
 const onEscape = (e: KeyboardEvent) => {
   if (e.key !== 'Escape' || overlayOpen()) return
-  if (annotations.hasSelection.value && !focusTagging.value) {
+  if (pendingFocusTag) {
+    // A double-clicked word not tagged yet: it is dropped, the focus stays.
+    cancelPendingFocusTag()
+    cancelledFocusSelection = null
+    focusTaggedSelection.value = null
+    annotations.clearSelection()
+  } else if (annotations.hasSelection.value && annotations.selection.value !== focusTaggedSelection.value) {
     annotations.clearSelection()
   } else if (tagNav.focusedTagId.value && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')) {
     tagNav.setFocusedTagId(null)
@@ -847,6 +893,7 @@ onBeforeUnmount(() => {
   spanRequests.enter()
   resizeObserver?.disconnect()
   cancelPendingSpanOpen()
+  if (pendingFocusTag) clearTimeout(pendingFocusTag)
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
   // activeTagId and focusedTagId are module-level state in useTagNavigation; don't carry

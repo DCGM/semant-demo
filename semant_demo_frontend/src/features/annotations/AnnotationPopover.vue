@@ -213,6 +213,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Tag } from 'src/generated/api'
 import { buildTagSuggestions } from './tagSuggestion'
+import { byName } from './tagSortMode'
 
 // The popover for a text selection or an edited span: tag picker, AI tag picker
 // ("Suggest tags") and the span actions. The page decides what each action does.
@@ -254,7 +255,7 @@ const tagSearch = ref('')
 const selectedTag = computed(() => props.tags.find((t) => t.id === props.selectedTagId) ?? null)
 
 const sortedTags = computed(() =>
-  [...props.tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  [...props.tags].sort(byName)
 )
 
 // Computed lazily (only once the tag list is actually rendered), so this never delays the

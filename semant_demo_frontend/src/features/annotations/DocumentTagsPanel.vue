@@ -162,7 +162,7 @@ import TagExamples from './TagExamples.vue'
 import TagSearch from './TagSearch.vue'
 import { useTagEditing } from './useTagEditing'
 import { useTagNavigation } from './useTagNavigation'
-import { getTagSortMode, setTagSortMode, type TagSortMode } from './tagSortMode'
+import { byName, getTagSortMode, setTagSortMode, type TagSortMode } from './tagSortMode'
 import { useTagSearch } from './useTagSearch'
 import useTagSpans from './useTagSpans'
 
@@ -203,8 +203,6 @@ const dropTargetId = ref<string | null>(null)
 const dropHalf = ref<'before' | 'after'>('before')
 const sortMode = ref<TagSortMode>(getTagSortMode())
 
-const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-
 const sortedTags = computed(() => {
   // By name stays sorted as tags are added or renamed.
   if (sortMode.value === 'name') return [...tags.value].sort(byName)
@@ -235,8 +233,8 @@ watch(() => tagNav.activeTagId.value, (tagId) => {
 })
 
 // By number of annotations, the order is taken when chosen and once the document's spans
-// arrive, not on every change, so a tag doesn't move away while it is being used. Tags
-// load before spans, so the order is taken again until spans arrive or the user sorts.
+// have loaded (also when there are none), not on every change, so a tag doesn't move away
+// while it is being used. Until then, a change of the tags sorts them again.
 const orderSeeded = ref(false)
 
 function sortByCount() {
@@ -257,22 +255,19 @@ function sortBy(mode: Exclude<TagSortMode, 'custom'>) {
 watch(tags, (newTags) => {
   const existing = new Set(tagOrder.value)
   const fresh = newTags.map(t => t.id).filter(id => !existing.has(id))
-  if (!orderSeeded.value) {
+  if (!orderSeeded.value || !tagOrder.value.length) {
     sortByCount()
   } else if (fresh.length) {
     tagOrder.value = [...tagOrder.value.filter(id => newTags.some(t => t.id === id)), ...fresh]
   }
 })
 
-// Sort again once spans arrive, so the first order reflects real counts.
-watch(
-  () => Object.keys(posSpanCountByTag.value).length,
-  (tagsWithSpans) => {
-    if (orderSeeded.value || tagsWithSpans === 0) return
-    sortByCount()
-    orderSeeded.value = true
-  }
-)
+// Sort again once the spans have loaded, so the first order reflects real counts.
+watch(tagSpans.loading, (loading) => {
+  if (loading || orderSeeded.value) return
+  sortByCount()
+  orderSeeded.value = true
+})
 
 // The panel stays alive while another sidebar panel is shown and keeps its order and search;
 // another collection has other tags, so both start over (the sort mode is kept).
@@ -377,11 +372,13 @@ function onDeleteAllTagSpans(tag: Tag) {
   })
 }
 
-// A click on the card (not on one of its buttons, examples or fields) focuses its tag in
-// the reader (#479); a click on the focused tag's card ends it.
+// A click on the card (not on one of its buttons, its annotation navigation, examples or
+// fields, nor the end of selecting its text) focuses its tag in the reader (#479); a click
+// on the focused tag's card ends it.
 function onCardClick(e: MouseEvent, tagId: string) {
   const target = e.target as HTMLElement
-  if (target.closest('button, a, input, textarea, .q-btn, .q-field, .tag-examples')) return
+  if (target.closest('button, a, input, textarea, .q-btn, .q-field, .tag-nav-row, .tag-examples')) return
+  if (!(window.getSelection()?.isCollapsed ?? true)) return
   tagNav.toggleFocusedTag(tagId)
 }
 
