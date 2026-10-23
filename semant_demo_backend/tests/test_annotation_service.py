@@ -874,6 +874,26 @@ async def test_a_review_returns_the_previous_values_of_the_annotations_it_change
     assert retagged.previous == {SPAN_A: AnnotationValues(tag_id=TAG)}
 
 
+async def test_a_review_another_writer_made_first_returns_nothing_to_undo(recording):
+    # The shared user approves SPAN_A after the review read it and before its locked check:
+    # the review finds it already approved and writes nothing, so it has nothing to undo
+    # (undoing it would revert the other user's approval).
+    original_read_many = recording.spans.read_many
+
+    async def read_many(cid, ids):
+        snapshot = await original_read_many(cid, ids)
+        recording.spans.read_many = original_read_many  # once: the other write reads too
+        await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos),
+                                  expected_version=0)
+        return snapshot
+
+    recording.spans.read_many = read_many
+    result = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.approve, SPAN_A))
+
+    assert (result.succeeded, result.versions, result.previous) == ([str(SPAN_A)], {SPAN_A: 1}, {})
+    assert recording.spans.recorded[SPAN_A]["reviewedBy"] == SHARED.id
+
+
 async def test_a_deletion_returns_nothing_to_undo(recording):
     result = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.delete, SPAN_A))
 
