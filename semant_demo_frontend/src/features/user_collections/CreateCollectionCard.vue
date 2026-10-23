@@ -1,5 +1,5 @@
 <template>
-  <div class="col-xs-12 col-sm-6 col-lg-4 col-xl-3">
+  <div>
     <q-card
       class="project-card cursor-pointer flex flex-center"
       title="Create new collection"

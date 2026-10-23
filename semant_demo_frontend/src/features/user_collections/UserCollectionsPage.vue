@@ -19,7 +19,33 @@
         </template>
       </q-input>
 
+      <q-btn-toggle
+        v-model="ownership"
+        class="q-mr-md"
+        unelevated
+        no-caps
+        toggle-color="primary"
+        color="grey-3"
+        text-color="grey-8"
+        aria-label="Show collections"
+        :options="ownershipOptions"
+      />
+
       <q-space />
+
+      <!-- Tile size; the tiles fill the row at this width or wider. -->
+      <div v-if="viewMode === 'tiles'" class="tile-size row no-wrap items-center q-mr-md gt-xs">
+        <q-icon name="photo_size_select_small" size="20px" color="grey-7" />
+        <q-slider
+          v-model="tileSize"
+          class="q-mx-sm"
+          :min="TILE_SIZE_MIN"
+          :max="TILE_SIZE_MAX"
+          :step="20"
+          aria-label="Tile size"
+        />
+        <q-icon name="photo_size_select_large" size="20px" color="grey-7" />
+      </div>
 
       <q-btn-toggle
         v-model="viewMode"
@@ -47,8 +73,9 @@
         gutter="10px"
       />
     </div>
-    <div v-if="viewMode === 'tiles'" class="row q-col-gutter-md q-px-md q-py-md">
-      <CreateCollectionCard @click="handleCreate"/>
+    <div v-if="viewMode === 'tiles'" class="collection-tiles q-px-md q-py-md" :style="{ '--tile-size': `${tileSize}px` }">
+      <!-- A new collection is the user's own, so not offered among those shared with them. -->
+      <CreateCollectionCard v-if="ownership !== 'shared'" @click="handleCreate"/>
 
       <CollectionCard
         v-for="(collection, index) in paginatedItems"
@@ -62,7 +89,7 @@
     </div>
     <CollectionsTable
       v-else
-      :collections="collections"
+      :collections="ownedFiltered"
       :filter="searchQuery"
       :loading="loading"
       @enter="handleEnter"
@@ -120,16 +147,59 @@ const searchQuery = ref('')
 const collectionsStore = useUserCollectionsStore()
 const { collections, error, loading } = storeToRefs(collectionsStore)
 const { fetchCollections, createCollection, updateCollection, deleteCollection, deleteManyCollections, shareManyCollections } = collectionsStore
+// My / Shared with me / All (#479): every collection the user can read is either their own
+// or shared with them (`isSharedWithMe`). Remembered in this browser, like the view mode.
+type Ownership = 'all' | 'mine' | 'shared'
+const OWNERSHIP_STORAGE_KEY = 'collections.ownership'
+const readStored = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+const writeStored = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Storage unavailable (private mode, quota) — the choice just won't persist.
+  }
+}
+const storedOwnership = readStored(OWNERSHIP_STORAGE_KEY)
+const ownership = ref<Ownership>(storedOwnership === 'mine' || storedOwnership === 'shared' ? storedOwnership : 'all')
+watch(ownership, (value) => writeStored(OWNERSHIP_STORAGE_KEY, value))
+const myCount = computed(() => collections.value.filter((c) => !c.isSharedWithMe).length)
+const ownershipOptions = computed(() => [
+  { value: 'mine', label: `My (${myCount.value})` },
+  { value: 'shared', label: `Shared with me (${collections.value.length - myCount.value})` },
+  { value: 'all', label: `All (${collections.value.length})` }
+])
+const ownedFiltered = computed(() => {
+  if (ownership.value === 'all') return collections.value
+  const shared = ownership.value === 'shared'
+  return collections.value.filter((c) => !!c.isSharedWithMe === shared)
+})
+
 const filteredCollections = computed(() => {
   if (!searchQuery.value?.trim()) {
-    return collections.value
+    return ownedFiltered.value
   }
   const query = searchQuery.value.toLowerCase()
-  return collections.value.filter((collection) =>
+  return ownedFiltered.value.filter((collection) =>
     collection.name.toLowerCase().includes(query)
   )
 })
+
+// The smallest tile width in the TILES view (#479); remembered in this browser.
+const TILE_SIZE_STORAGE_KEY = 'collections.tileSize'
+const TILE_SIZE_MIN = 320
+const TILE_SIZE_MAX = 560
+const TILE_SIZE_DEFAULT = 340
+const storedTileSize = Number(readStored(TILE_SIZE_STORAGE_KEY))
+const tileSize = ref(storedTileSize >= TILE_SIZE_MIN && storedTileSize <= TILE_SIZE_MAX ? storedTileSize : TILE_SIZE_DEFAULT)
+watch(tileSize, (value) => writeStored(TILE_SIZE_STORAGE_KEY, String(value)))
 const { currentPage, pageCount, paginatedItems } = usePagination(filteredCollections, itemsPerPage)
+watch(ownership, () => { currentPage.value = 1 })
 const { openCollectionDialog } = useCollectionDialog()
 const confirmDelete = useConfirmDelete()
 
@@ -185,3 +255,16 @@ const handleShareMany = ({ collectionIds, userId }: { collectionIds: string[]; u
   shareManyCollections(collectionIds, userId)
 }
 </script>
+
+<style scoped>
+/* Tiles at least --tile-size wide, as many as fit in a row. */
+.collection-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--tile-size), 100%), 1fr));
+  gap: 16px;
+}
+
+.tile-size {
+  width: 200px;
+}
+</style>

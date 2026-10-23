@@ -165,6 +165,37 @@
             </tr>
 
             <tr>
+              <th class="details-key">Shared with</th>
+              <td class="details-value">
+                <div class="readonly-cell members-row">
+                  <span v-if="membersError" class="text-negative">{{ membersError }}</span>
+                  <span v-else-if="membersLoading && !members.length" class="text-grey-6">Loading…</span>
+                  <div v-else-if="members.length" class="member-chips" aria-label="Shared with">
+                    <q-chip
+                      v-for="member in members"
+                      :key="member.id"
+                      dense
+                      square
+                      icon="person"
+                      class="q-ml-none"
+                    >
+                      {{ memberName(member) }}
+                      <q-tooltip v-if="member.username && member.name">@{{ member.username }}</q-tooltip>
+                    </q-chip>
+                  </div>
+                  <span v-else>Not shared</span>
+                  <q-btn
+                    flat
+                    dense
+                    icon="group"
+                    :label="rights.share ? 'Manage' : 'View members'"
+                    :to="{ name: 'collectionMembers', params: { collectionId } }"
+                  />
+                </div>
+              </td>
+            </tr>
+
+            <tr>
               <th class="details-key">Created</th>
               <td class="details-value">{{ createdAtText }}</td>
             </tr>
@@ -218,11 +249,15 @@
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import type { UserSearchResult } from 'src/generated/api'
+import { createContextGuard } from 'src/shared/api'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
+import { countAnnotations } from 'src/features/annotations/annotationCounts'
 import { useCollectionStatsStore } from './collectionStatsStore'
 import { collectionRights } from './permissions'
+import { useUserCollectionsRepository } from './useUserCollectionsRepository'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
@@ -274,7 +309,49 @@ const isDescriptionSaveDisabled = computed(() =>
   normalizedEditedDescription.value === normalizedDescription.value
 )
 
+// The users the collection is shared with (#479), as in the Members tab, and its unresolved
+// AI suggestions, which the collection stats don't count. Answers for an earlier
+// collection are dropped.
+const collectionRepository = useUserCollectionsRepository()
+const members = ref<UserSearchResult[]>([])
+const membersLoading = ref(false)
+const membersError = ref<string | null>(null)
+const suggestionsCount = ref<number | null>(null)
+const overviewGuard = createContextGuard()
+
+const memberName = (user: UserSearchResult) => user.name || user.username || 'Unknown user'
+
+async function loadMembers (isCurrent: () => boolean) {
+  membersLoading.value = true
+  membersError.value = null
+  try {
+    const result = await collectionRepository.getMembers(collectionId.value)
+    if (isCurrent()) members.value = result
+  } catch (err) {
+    console.error('Error fetching collection members:', err)
+    if (isCurrent()) membersError.value = 'Failed to load shared users'
+  } finally {
+    if (isCurrent()) membersLoading.value = false
+  }
+}
+
+async function loadSuggestionsCount (isCurrent: () => boolean) {
+  try {
+    const counts = await countAnnotations(collectionId.value)
+    if (isCurrent()) suggestionsCount.value = counts.suggestions
+  } catch (err) {
+    console.error('Error counting AI suggestions:', err)
+    if (isCurrent()) suggestionsCount.value = null
+  }
+}
+
 const refreshOverviewData = async () => {
+  overviewGuard.enter()
+  const isCurrent = overviewGuard.capture()
+  members.value = []
+  suggestionsCount.value = null
+  void loadMembers(isCurrent)
+  void loadSuggestionsCount(isCurrent)
   await fetchCollection(collectionId.value)
   await fetchCollectionStats(collectionId.value)
 }
@@ -323,9 +400,17 @@ const statCards = computed(() => {
       key: 'annotations',
       label: 'Annotations in Collection',
       value: stats?.annotationsCount ?? 0,
-      helper: 'Number of spans in this collection',
+      helper: 'Approved annotations in this collection',
       icon: 'sell',
       color: 'accent'
+    },
+    {
+      key: 'suggestions',
+      label: 'Unresolved AI Suggestions',
+      value: suggestionsCount.value ?? '–',
+      helper: 'AI suggestions not yet approved or rejected',
+      icon: 'auto_awesome',
+      color: 'deep-purple'
     }
   ]
 })
@@ -476,6 +561,16 @@ onMounted(() => {
 .collection-color-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   color: #445066;
+}
+
+.members-row {
+  align-items: flex-start;
+}
+
+.member-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .description-row {
