@@ -12,6 +12,8 @@ from uuid import UUID, uuid4
 
 import anyio
 import pytest
+
+from tests.chunk_fakes import in_range, positioned
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.topicer.client import TopicerError, TopicerProposals
@@ -103,20 +105,19 @@ class World:
         return list(self.sync_failures)
 
     # documents
-    async def read_chunk_text(self, chunk_id):
-        c = self.by_id(chunk_id)
-        return AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text) if c else None
+    def _texts(self) -> list[AnnotationChunk]:
+        return positioned([AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text)
+                           for c in self.chunks])
 
-    async def read_chunk_texts(self, document_id):
+    async def read_chunk_text(self, chunk_id):
+        return next((c for c in self._texts() if str(c.id) == str(chunk_id)), None)
+
+    async def read_chunk_texts_in_range(self, document_id, first, last):
+        self.log.append(("read_range", first, last))
         self.chunk_text_reads += 1
         if self.chunk_texts_fail:
             raise ConnectionError("chunk texts unavailable")
-        return [AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text) for c in self.chunks]
-
-    async def read_following_chunk_texts(self, document_id, after_order, limit):
-        self.log.append(("read_following", after_order, limit))
-        return [AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text)
-                for c in self.chunks if c.order > after_order][:limit]
+        return in_range(self._texts(), document_id, first, last)
 
     def store(self) -> AnnotationStore:
         spans = SimpleNamespace(insert=self.insert, provenance=self.provenance)
@@ -332,7 +333,7 @@ def with_derived_data(world: World) -> World:
     return world
 
 
-async def test_a_run_reads_its_documents_text_once_for_the_derived_data_of_its_spans():
+async def test_a_run_reads_the_chunks_around_its_spans_once_for_their_derived_data():
     world = with_derived_data(World("Jan Novák", "Karel Čapek"))
     provider = FakeProvider(world, {"Jan Novák": [proposal(PERSON, 0, 3), proposal(PERSON, 4, 9)],
                                     "Karel Čapek": [proposal(PERSON, 0, 5)]})
@@ -340,7 +341,10 @@ async def test_a_run_reads_its_documents_text_once_for_the_derived_data_of_its_s
     events, end = await run_all(await thorough(world, provider))
 
     assert (end.outcome.value, end.saved, end.enrichment_failures) == ("complete", 3, 0)
-    assert world.chunk_text_reads == 1
+    # After the first chunk, after the second and before it (#463, the chunks' saves run
+    # concurrently); the second span of the first chunk reads nothing again.
+    assert sorted(e for e in world.log if e[0] == "read_range") == [
+        ("read_range", -3, 0), ("read_range", 1, 4), ("read_range", 2, 5)]
 
 
 async def test_saved_span_without_derived_text_counts_as_an_enrichment_failure():

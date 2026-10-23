@@ -13,6 +13,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from tests.chunk_fakes import in_range, positioned
+
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.core.outcomes import WriteOutcome
 from semant_demo.features.annotations import backfill, service
@@ -53,22 +55,21 @@ class FakeChunkTags:
 
 
 class FakeDocuments:
+    """``reads`` counts the reads of chunks around a span (ranges of orders)."""
+
     def __init__(self):
         self.reads = 0
         self.fail = False
-        self.chunks = [AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t) for c, o, t in TEXTS]
+        self.chunks = positioned([AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t) for c, o, t in TEXTS])
 
     async def read_chunk_text(self, chunk_id):
         return next((c for c in self.chunks if c.id == chunk_id), None)
 
-    async def read_following_chunk_texts(self, document_id, after_order, limit):
-        return [c for c in self.chunks if c.order > after_order][:limit]
-
-    async def read_chunk_texts(self, document_id):
+    async def read_chunk_texts_in_range(self, document_id, first, last):
         self.reads += 1
         if self.fail:
             raise ConnectionError("chunk read failed")
-        return list(self.chunks)
+        return in_range(self.chunks, document_id, first, last)
 
     async def read_many(self, ids):
         return {DOCUMENT: Document(id=DOCUMENT, title="Kronika", yearIssued=1850)} if DOCUMENT in ids else {}

@@ -15,10 +15,10 @@ from uuid import UUID
 import pytest
 
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
-from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
+from semant_demo.features.annotations.source import ChunkSource
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.enrichment import Enrichment
 from semant_demo.core.errors import InvalidRequestError
@@ -31,12 +31,12 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def store(seeded_store, collection_names) -> AnnotationStore:
+def store(seeded_store, collection_names, documents) -> AnnotationStore:
     spans = SpanRepository(seeded_store, collection_names)
     return AnnotationStore(collections=UserCollectionRepository(seeded_store, collection_names, spans),
                            tags=TagRepository(seeded_store, collection_names, spans), spans=spans,
                            chunk_tags=ChunkTagRepository(seeded_store, collection_names, spans),
-                           documents=DocumentRepository(seeded_store, collection_names),
+                           documents=documents,
                            enrichment=Enrichment(derived=True))
 
 
@@ -142,9 +142,9 @@ async def test_the_document_limit_counts_only_the_chosen_documents(store, owner,
 async def test_a_failed_re_derivation_leaves_no_searchable_text(store, owner, ids, monkeypatch):
     moved = await create(store, owner, ids, "chronicle_1", 34, 43)
 
-    async def unreadable(document_id):
+    async def unreadable(*args):
         raise RuntimeError("source unavailable")
-    monkeypatch.setattr(store.documents, "read_chunk_texts", unreadable)
+    monkeypatch.setattr(ChunkSource, "span_source", unreadable)
     result = await service.update_span(store, owner, ids.col["chronicles"], str(moved), PatchSpan(start=35))
     assert [f.step for f in result.failed] == ["derive_annotation"]
 

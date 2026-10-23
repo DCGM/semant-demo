@@ -94,7 +94,6 @@ def _position(name: str) -> Property:
 ENRICHMENT_PROPERTIES: list[Property] = [
     Property(name="revision", data_type=DataType.INT),
     _searchable("text"), _searchable("leftContext"), _searchable("rightContext"),
-    Property(name="positionSegment", data_type=DataType.INT),
     _position("documentStartChar"), _position("documentEndChar"),
     _position("documentStartWord"), _position("documentEndWord"),
     _status("enrichmentStatus"),
@@ -104,7 +103,8 @@ ENRICHMENT_PROPERTIES: list[Property] = [
     Property(name="vectorRevision", data_type=DataType.INT),
     _status("vectorConfig"),
 ]
-"""Derived properties of #328, in the order ``add_enrichment_schema`` adds them."""
+"""Derived properties of #328, in the order ``add_enrichment_schema`` adds them. (Collections
+enriched before #463 also declare ``positionSegment``, which is no longer read or written.)"""
 
 PROVENANCE_PROPERTIES: list[Property] = [
     _status("origin"),
@@ -121,7 +121,7 @@ PROVENANCE_PROPERTIES: list[Property] = [
 
 _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "enrichmentStatus",
         "enrichedRevision", "derivationVersion", "vectorStatus", "vectorRevision", "vectorConfig", "text",
-        "leftContext", "rightContext", "positionSegment", "documentStartChar", "documentEndChar",
+        "leftContext", "rightContext", "documentStartChar", "documentEndChar",
         "documentStartWord", "documentEndWord"]
 
 
@@ -513,7 +513,7 @@ class SpanRepository:
         if document_ids is not None and not document_ids:
             return []
         sort = (Sort.by_property("text") if by_text else
-                Sort.by_property("positionSegment").by_property("documentStartChar").by_property("documentEndChar"))
+                Sort.by_property("documentStartChar").by_property("documentEndChar"))
 
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(

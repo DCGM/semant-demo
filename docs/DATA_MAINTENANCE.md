@@ -212,6 +212,58 @@ application writes, an offline copy of a migrated store with active and inactive
 rehearsed at production size; the production span count and duration are unknown until the
 dry run.
 
+## Chunk positions (`chunk_positions`, #463)
+
+Annotation text, context and positions are derived from the anchor chunk's stored position
+in its document (`Chunks.startChar`, `startWord`, `wordOpenAtStart`,
+[DATABASE.md](DATABASE.md#collection-chunks)) and the chunks next to it, never from the whole
+document. Chunks without positions leave every new or moved annotation on them with failed
+derived data (`derive_annotation`), so run this command on a store before deploying #463 there.
+New chunks get their positions when they are inserted (the append-only import of
+[#313](https://github.com/DCGM/semant-demo/issues/313), which needs this backfill done first:
+it continues from the stored tail).
+
+```bash
+python -m semant_demo.maintenance.chunk_positions --check check.json             # read-only
+python -m semant_demo.maintenance.chunk_positions --write write.json --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.chunk_positions --check check_after.json       # expect exit 0
+```
+
+It goes through the documents in id order; for each one it counts the chunks and their least
+and greatest `order`, reads the chunks in windows of 200 orders (order, text and positions,
+never vectors), and computes the positions in order with the shared calculator
+(`features/documents/positions.py`, the one the import uses). Only a fully valid document is
+written, and only its chunks without positions:
+
+- `consistent` / `missing`: every chunk stores the computed position / some store none (written);
+- `conflict`: a chunk stores a different or partial position — reported, nothing of the
+  document written, never overwritten;
+- `nonconsecutive`: a gap or a duplicate `order` — reported, nothing written; such a document
+  violates the text model and is not renumbered or split (non-append resegmentation is
+  [#354](https://github.com/DCGM/semant-demo/issues/354));
+- `no_chunks`: a document without chunks ([#281](https://github.com/DCGM/semant-demo/issues/281)).
+
+`--write` first declares the missing properties (`startChar`, `startWord` `int`;
+`wordOpenAtStart` `boolean`), an additive schema change through the alias's collection; a
+declared property of another type is refused before any write. A write is a merge of these
+three properties: text, references, vectors, memberships and annotations are not touched,
+and annotations are neither rewritten nor re-embedded (on documents with consecutive orders
+their #328 positions are already the absolute ones). Written positions are read back. Both
+modes are checkpointed per page of documents and resumable (documents whose read or write
+failed are planned again first); a finished checkpoint is refused. Reported documents go to
+`CHECKPOINT.manifest.jsonl`. A complete pass compares the chunks reached through documents
+with all chunks of the collection (`chunks_not_reached`: chunks without a valid `document`
+reference are not positioned). Exit 0 only when every chunk was reached and stores its
+computed position, nothing is left to retry and no document was reported.
+
+Procedure on a shared store (authorized per task): back up, stop every writer of chunks (no
+import, no backend writing annotations during `--write`), rehearse on a copy of the
+development snapshot and compare its counts with a `--check` of the target, run `--check`,
+`--write`, then `--check` again with a new checkpoint, and restart the backend: it reads the
+positions only when `Chunks` declares them at startup (`bootstrap.detect_chunk_positions`).
+Record counts, reported documents and the backup id on the issue. A development store seeded
+before #463 is completed by the same command, or by `make dev-reset`.
+
 ## Annotation derived data (`annotation_enrichment`, #328)
 
 Span creates and offset changes store the span's text, context, positions and contextual

@@ -16,12 +16,13 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from semant_demo.core.outcomes import StepFailure
-from semant_demo.features.annotations.derivation import DerivedText, DocumentText
+from semant_demo.features.annotations.derivation import DerivedText
 from semant_demo.features.annotations.enrichment import text_current, vector_current
 from semant_demo.features.annotations.schemas import AnnotationRow, EnrichmentStatus, VectorStatus
 from semant_demo.features.annotations.service import (
     AnnotationStore, Refresh, derive_refresh, refresh_vector, write_if_revision,
 )
+from semant_demo.features.annotations.source import ChunkSource
 from semant_demo.adapters.weaviate.writes import step_failure
 
 
@@ -122,18 +123,20 @@ class BackfillResult:
 
 def _stored(row: AnnotationRow) -> DerivedText:
     return DerivedText(text=row.text or "", left_context=row.leftContext or "", right_context=row.rightContext or "",
-                       segment=row.positionSegment, start_char=row.documentStartChar, end_char=row.documentEndChar,
+                       start_char=row.documentStartChar, end_char=row.documentEndChar,
                        start_word=row.documentStartWord, end_word=row.documentEndWord)
 
 
 async def backfill(store: AnnotationStore, collection_ids: list[UUID], *, limit: int,
                    vectors: bool = True) -> BackfillResult:
     """Derive the missing, failed, stale or outdated text and (with ``vectors``) vectors
-    of at most ``limit`` spans; each document is read once per tenant. Afterwards every
-    tenant is read again for ``remaining_incomplete``."""
+    of at most ``limit`` spans; each span reads its anchor and nearby chunks (``source.py``),
+    chunks shared by spans of the run once. Afterwards every tenant is read again for
+    ``remaining_incomplete``."""
     configured = store.enrichment.vector.id if store.enrichment.vector else None
     config_id = configured if vectors else None
     result = BackfillResult()
+    source = ChunkSource(store.documents)
     for cid in collection_ids:
         todo = [r for r in await _rows(store, cid) if _incomplete(r, config_id)]
         take, rest = todo[:max(0, limit - result.processed)], todo[max(0, limit - result.processed):]
@@ -141,28 +144,20 @@ async def backfill(store: AnnotationStore, collection_ids: list[UUID], *, limit:
         by_document: dict[UUID | None, list[AnnotationRow]] = defaultdict(list)
         for row in take:
             by_document[row.documentId].append(row)
-        for document_id, rows in by_document.items():
-            await _backfill_document(store, cid, document_id, rows, config_id, result)
+        for rows in by_document.values():
+            await _backfill_document(store, cid, rows, config_id, result, source)
     for cid in collection_ids:
         result.remaining_incomplete += sum(_incomplete(r, configured) for r in await _rows(store, cid))
     return result
 
 
-async def _backfill_document(store: AnnotationStore, cid: UUID, document_id: UUID | None, rows: list[AnnotationRow],
-                             config_id: str | None, result: BackfillResult) -> None:
-    text: DocumentText | None = None
-    if document_id is not None and any(_needs_text(r) for r in rows):
-        try:
-            text = DocumentText(await store.documents.read_chunk_texts(document_id))
-        except Exception as e:
-            result.failed.append(step_failure("derive_annotation", document_id, e))
-            result.processed += len(rows)
-            return
+async def _backfill_document(store: AnnotationStore, cid: UUID, rows: list[AnnotationRow], config_id: str | None,
+                             result: BackfillResult, source: ChunkSource) -> None:
     for row in rows:
         result.processed += 1
         revision = row.revision or 0
         if _needs_text(row):
-            refresh = await derive_refresh(store, document_id, row.chunkId, row.start, row.end, revision, text)
+            refresh = await derive_refresh(store, row.chunkId, row.start, row.end, revision, source)
             refresh.needs_vector = config_id is not None
             result.failed += refresh.failures
             try:
