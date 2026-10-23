@@ -56,4 +56,16 @@ describe('boundary editing', () => {
     expect(rangeBetween(chunks, { chunkId: 'c1', offset: 10 }, { chunkId: 'c2', offset: 3 }))
       .toEqual({ chunkId: 'c2', start: 0, end: 3 })
   })
+
+  it('keeps an end past the loaded text when the start moves, and moves that end only once shown', () => {
+    // "Brně … dlouho." and on into chunks that are not loaded (the passage ends at c2).
+    const shown = chunks.slice(0, 2)
+    const long = { chunkId: 'c2', start: 6, end: 40 }
+    expect(stepBoundary(shown, long, 'start', -1, 'word')).toEqual({ chunkId: 'c2', start: 4, end: 40 })
+    // Into the previous chunk: the end is re-counted from there, still past the loaded text.
+    expect(stepBoundary(shown, { chunkId: 'c2', start: 0, end: 40 }, 'start', -1, 'word'))
+      .toEqual({ chunkId: 'c1', start: 4, end: 50 })
+    expect(stepBoundary(shown, long, 'end', -1, 'word')).toBeNull()
+    expect(stepBoundary(shown, long, 'end', 1, 'character')).toBeNull()
+  })
 })

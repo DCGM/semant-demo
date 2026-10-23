@@ -82,7 +82,8 @@ function anchored (chunks: readonly DocumentChunk[], first: number, start: numbe
 
 /**
  * Moves one boundary of `range` by a word or a character; null when it cannot move that way
- * (the start must stay before the end, both within the loaded text).
+ * (the start must stay before the end, both within the loaded text). The other boundary is
+ * never changed, also when it lies past the loaded text.
  */
 export function stepBoundary (chunks: readonly DocumentChunk[], range: BoundaryRange, handle: BoundaryHandle,
   direction: -1 | 1, unit: BoundaryUnit): BoundaryRange | null {
@@ -91,8 +92,10 @@ export function stepBoundary (chunks: readonly DocumentChunk[], range: BoundaryR
   const run = runAround(chunks, index)
   const offset = run.base(index)
   let start = offset + range.start
-  // The end may lie past the loaded text (the annotation continues into chunks not shown).
-  let end = Math.min(offset + range.end, run.text.length)
+  // The end may lie past the loaded text (the annotation continues into chunks not shown):
+  // a start step keeps it as it is; the end itself moves only once its text is shown.
+  let end = offset + range.end
+  if (handle === 'end' && end > run.text.length) return null
   const from = handle === 'start' ? start : end
   const to = unit === 'word' ? wordStep(run.text, from, handle, direction) : charStep(run.text, from, direction)
   if (to === from || to < 0 || to > run.text.length) return null
