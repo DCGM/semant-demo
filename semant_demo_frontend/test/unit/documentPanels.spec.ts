@@ -34,7 +34,7 @@ describe('document view panels on a context change', () => {
       global: { plugins: [[Quasar, {}]] }
     })
 
-  it('AI assist keeps the chosen tags for another document and drops them for another collection', async () => {
+  it('AI Tagging keeps the chosen tags for another document and drops them for another collection', async () => {
     const wrapper = mountPanel(AiAssistPanel)
     const checkbox = () => wrapper.find('.ai-tag-checkbox')
     await checkbox().trigger('click')

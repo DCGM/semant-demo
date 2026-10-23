@@ -147,6 +147,7 @@ import useBrowseLibraryDialog from './useBrowseLibraryDialog'
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
+import { plural } from 'src/shared/plural'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocumentsRepository } from './useDocumentsRepository'
@@ -227,8 +228,8 @@ const handleTagDocument = (documentId: string) => {
 const handleRemoveFromCollection = async (document: Document) => {
   $q.dialog({
     title: 'Remove Document',
-    html: true,
-    message: `Are you sure you want to remove document <strong>${document.title}</strong> from the collection?`,
+    // The title as text, not HTML (#479).
+    message: `Are you sure you want to remove the document "${document.title}" from the collection?`,
     cancel: true,
     ok: {
       label: 'Delete',
@@ -250,8 +251,7 @@ const handleBulkRemoveFromCollection = () => {
 
   $q.dialog({
     title: 'Remove Selected Documents',
-    html: true,
-    message: `Are you sure you want to remove <strong>${count}</strong> selected document${count === 1 ? '' : 's'} from the collection?`,
+    message: `Are you sure you want to remove ${plural(count, 'selected document')} from the collection?`,
     cancel: true,
     ok: {
       label: 'Delete selected',

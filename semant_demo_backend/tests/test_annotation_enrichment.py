@@ -13,6 +13,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from tests.chunk_fakes import in_range, positioned
+
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.core.outcomes import WriteOutcome
 from semant_demo.features.annotations import backfill, service
@@ -53,22 +55,21 @@ class FakeChunkTags:
 
 
 class FakeDocuments:
+    """``reads`` counts the reads of chunks around a span (ranges of orders)."""
+
     def __init__(self):
         self.reads = 0
         self.fail = False
-        self.chunks = [AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t) for c, o, t in TEXTS]
+        self.chunks = positioned([AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t) for c, o, t in TEXTS])
 
     async def read_chunk_text(self, chunk_id):
         return next((c for c in self.chunks if c.id == chunk_id), None)
 
-    async def read_following_chunk_texts(self, document_id, after_order, limit):
-        return [c for c in self.chunks if c.order > after_order][:limit]
-
-    async def read_chunk_texts(self, document_id):
+    async def read_chunk_texts_in_range(self, document_id, first, last):
         self.reads += 1
         if self.fail:
             raise ConnectionError("chunk read failed")
-        return list(self.chunks)
+        return in_range(self.chunks, document_id, first, last)
 
     async def read_many(self, ids):
         return {DOCUMENT: Document(id=DOCUMENT, title="Kronika", yearIssued=1850)} if DOCUMENT in ids else {}
@@ -111,7 +112,12 @@ class FakeSpans:
             props["type"] = patch.type.value
         if patch.tagId is not None:
             props["tagId"] = UUID(patch.tagId)
+        if patch.chunkId is not None:
+            props["chunkId"] = UUID(patch.chunkId)
         self.objects[sid] |= props
+
+    async def replace_anchor_reference(self, cid, sid, chunk_id):
+        pass
 
     async def read(self, cid, sid):
         return self._span(sid) if sid in self.objects else None
@@ -228,6 +234,19 @@ async def test_boundary_edit_is_a_new_revision_with_new_text_and_vector(store, e
     assert result.outcome == WriteOutcome.complete
     row = await store.spans.read_row(COLLECTION, sid)
     assert (row.revision, row.text, row.vectorRevision) == (2, "Novák", 2)
+    assert vector_current(row, CONFIG_ID)
+    assert len(embedder.documents) == 2
+
+
+async def test_moving_a_span_to_the_next_chunk_is_a_new_revision_derived_there(store, embedder):
+    sid, _ = await create(store)  # "Jan Novák", chunk 1
+
+    # " a ubytoval": its start moved into chunk 2 (#436).
+    result = await service.update_span(store, OWNER, COLLECTION, sid, PatchSpan(chunkId=str(CHUNK_2), start=0, end=11))
+
+    assert (result.outcome, result.id, result.chunkId) == (WriteOutcome.complete, str(sid), str(CHUNK_2))
+    row = await store.spans.read_row(COLLECTION, sid)
+    assert (row.chunkId, row.revision, row.text, row.documentStartChar) == (CHUNK_2, 2, " a ubytoval", 34)
     assert vector_current(row, CONFIG_ID)
     assert len(embedder.documents) == 2
 

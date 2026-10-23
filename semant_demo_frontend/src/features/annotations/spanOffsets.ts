@@ -51,3 +51,28 @@ export function projectSpan (chunks: OrderedText[], anchor: number, start: numbe
   }
   return parts
 }
+
+/**
+ * The same range anchored on the chunk where it starts, as spans are stored: `start`/`end`
+ * count from `chunks[index]` and may lie before or after it (an edited boundary). The anchor
+ * moves only across consecutive `order` values; null when the start is outside the reachable
+ * chunks or the range is empty.
+ */
+export function anchorAtStart (chunks: OrderedText[], index: number, start: number, end: number):
+  { index: number, start: number, end: number } | null {
+  // Forward while the start is past this chunk, backward while it is before it.
+  while (index < chunks.length - 1 && start >= chunks[index].text.length) {
+    if (chunks[index + 1].order !== chunks[index].order + 1) break
+    start -= chunks[index].text.length
+    end -= chunks[index].text.length
+    index += 1
+  }
+  while (index > 0 && start < 0) {
+    if (chunks[index].order !== chunks[index - 1].order + 1) break
+    index -= 1
+    start += chunks[index].text.length
+    end += chunks[index].text.length
+  }
+  if (start < 0 || start >= chunks[index].text.length || end <= start) return null
+  return { index, start, end }
+}

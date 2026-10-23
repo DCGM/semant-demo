@@ -54,12 +54,14 @@ def embedder():
 
 def make_store(client, names, embedder, vector_name="contextual") -> AnnotationStore:
     spans = SpanRepository(client, names)
+    documents = DocumentRepository(client, names)
+    documents.positions = True
     vector = AnnotationVector(AnnotationVectorSettings.model_validate(
         {"id": CONFIG_ID, "target_vector": vector_name, "embedding": {"provider": "embedding_service"}}), embedder)
     return AnnotationStore(collections=UserCollectionRepository(client, names, spans),
                            tags=TagRepository(client, names, spans), spans=spans,
                            chunk_tags=ChunkTagRepository(client, names, spans),
-                           documents=DocumentRepository(client, names), enrichment=Enrichment(True, vector))
+                           documents=documents, enrichment=Enrichment(True, vector))
 
 
 @pytest.fixture
@@ -91,7 +93,7 @@ async def test_api_writes_store_canonical_text_and_positions_per_revision(api_cl
 
     row = await spans.read_row(collection, sid)
     assert (row.revision, row.text) == (1, first[80:] + second[:8])
-    assert (row.positionSegment, row.documentStartChar, row.documentEndChar) == (0, 80, len(first) + 8)
+    assert (row.documentStartChar, row.documentEndChar) == (80, len(first) + 8)
     assert row.rightContext.startswith(second[8:20]) and first[60:80] in row.leftContext
     assert row.vectorStatus == "pending" and text_current(row)
 
@@ -113,7 +115,7 @@ async def test_positions_continue_through_a_chunk_outside_the_collection(store, 
     created = await service.create_span(store, owner, post(ids, "chronicle_3", 0, 5, tag="event"))
 
     row = await store.spans.read_row(UUID(ids.col["newspapers"]), UUID(created.id))
-    assert (row.text, row.positionSegment, row.documentStartChar) == ("Požár", 0, lengths)
+    assert (row.text, row.documentStartChar) == ("Požár", lengths)
 
 
 # ── Contextual vector ─────────────────────────────────────────────────────

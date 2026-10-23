@@ -53,6 +53,9 @@ erDiagram
         bool end_paragraph
         text language
         int yearIssued "copy of the document's"
+        int startChar "UTF-16 units before it in the document (#463)"
+        int startWord "words started before it (#463)"
+        bool wordOpenAtStart "preceding text ends inside a word (#463)"
         text_array ner_P "Person"
         text_array ner_T "Temporal"
         text_array ner_A "Address"
@@ -99,8 +102,8 @@ erDiagram
         text text "derived (#328)"
         text leftContext "derived"
         text rightContext "derived"
-        int documentStartChar "derived, segment-relative"
-        int documentStartWord "derived, segment-relative"
+        int documentStartChar "derived, absolute in the document"
+        int documentStartWord "derived, absolute in the document"
         text origin "manual | ai | unknown (#460)"
         uuid createdBy "user (#460)"
         date reviewedAt "last approve/reject (#460)"
@@ -207,6 +210,24 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   current at ingestion is [#313](https://github.com/DCGM/semant-demo/issues/313). The test
   store's `documentYearIssued` (an earlier copy that a declared property cannot be removed from)
   is not used.
+- `order` (`int`) — the chunk's place in its document; a document's orders are consecutive
+  (each the previous + 1, the first any integer) and its text is the chunks' `text` concatenated
+  in `order` without separators (whatever their collections). A document with a gap or a
+  duplicate order violates this model: its annotations are not derived and the position
+  backfill reports it.
+- `startChar` (`int`), `startWord` (`int`), `wordOpenAtStart` (`boolean`) — where the chunk starts
+  in its document's text (#463): the UTF-16 code units of all preceding chunks, the words that
+  start in them (one continuing into this chunk included), and whether the last preceding
+  character is a word character (letters, marks, digits, format characters). The first chunk
+  has 0, 0, false; an empty chunk passes on the state it receives. Example: chunks `"hel"`,
+  `"lo world"` have (0, 0, false) and (3, 1, true). Computed only by
+  `features/documents/positions.py` and never changed: existing chunks get them from
+  `python -m semant_demo.maintenance.chunk_positions`
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-positions-chunk_positions-463)), new chunks in
+  the insert that creates them (the append-only import,
+  [#313](https://github.com/DCGM/semant-demo/issues/313), which continues from the stored
+  tail). Annotation positions are derived from them; they are part of the canonical schema
+  of [#128](https://github.com/DCGM/semant-demo/issues/128).
 
 #### References from Chunks
 
@@ -269,20 +290,24 @@ Properties:
 - `reason` (`TEXT`, optional) — natural-language justification produced by the AI tagger
 - `confidence` (`NUMBER`, optional) — model self-reported confidence in `[0, 1]`
 
-Derived properties (#328; `features/annotations/derivation.py` defines them, the span's own
+Derived properties (#328, #463; `features/annotations/derivation.py` defines them, the span's own
 fields above stay authoritative). Absent on spans saved before #328 until the backfill
 ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-derived-data-annotation_enrichment-328)):
 - `revision` (`INT`) — 1 at creation, +1 on every offset change; absent (= 0) before #328.
   Type, tag and AI metadata changes keep it
 - `text` (`TEXT`, searchable) — exactly the canonical text `start`/`end` select, also across chunks
 - `leftContext` / `rightContext` (`TEXT`, searchable) — up to 200 code points around the span
-  within its segment, not ending inside a word
-- `positionSegment` (`INT`) — `order` of the first chunk of the span's gap-free run of chunks;
-  positions are comparable only within the same document and segment
+  within its document, not ending inside a word
 - `documentStartChar` / `documentEndChar` (`INT`, range filters) — half-open UTF-16 offsets from
-  the segment start (chunks outside the collection count)
+  the document start (chunks outside the collection count): the anchor's `startChar` plus
+  `start` / `end`
 - `documentStartWord` / `documentEndWord` (`INT`, range filters) — half-open word range from the
-  segment start; partially covered words are included
+  document start: the words ending at or before the span start, the words starting before its
+  end; partially covered words are included
+- `positionSegment` (`INT`, legacy) — the `order` where the span's gap-free run of chunks
+  started (#328). Neither written nor read since #463; it stays declared on collections that
+  have it until a separately approved cleanup. On documents with consecutive orders the
+  positions of #328 are the absolute ones, so they were not rewritten
 - `enrichmentStatus` (`TEXT`, field: `ready` / `failed` / `invalid`), `enrichedRevision` (`INT`),
   `derivationVersion` (`INT`) — the state of the derived text; it is current only when
   `ready`, `enrichedRevision` equals `revision` and `derivationVersion` is the application's
@@ -317,7 +342,7 @@ References:
 
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
-| `text_chunk` | Chunks (the collection behind the alias, e.g. `Chunks_test` in production) | 1 | The anchor chunk; only for filters (statistics count spans whose chunk is still in the collection). Weaviate 1.40 does not return references of a multi-tenant object to a collection without tenants. |
+| `text_chunk` | Chunks (the collection behind the alias, e.g. `Chunks_test` in production) | 1 | The anchor chunk; only for filters (statistics count spans whose chunk is still in the collection). Weaviate 1.40 does not return references of a multi-tenant object to a collection without tenants. Moving a span to another chunk (#436) replaces it with `reference_replace`; an object update would add the new chunk to the old one. |
 
 Vectors: an unused self-provided `default` named vector (flat index) and the contextual
 annotation vector `contextual` (#328, self-provided, flat index per tenant; its name is the

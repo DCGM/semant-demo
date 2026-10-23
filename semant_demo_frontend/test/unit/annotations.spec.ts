@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
-import { SpanMoveIncompleteError, useAnnotations } from 'src/features/annotations/useAnnotations'
+import { useAnnotations } from 'src/features/annotations/useAnnotations'
 import type { CollectionChunk, TagSpan } from 'src/generated/api'
 
 // Two consecutive chunks; the span starts in the first one.
@@ -34,39 +34,34 @@ describe('moving a span to another chunk', () => {
     setActivePinia(createPinia())
   })
 
-  it('saves it in the new chunk with its type, reason and confidence, then removes the old one', async () => {
-    const { annotations, createSpan, deleteSpan } = setup()
+  it('moves it in one update that keeps its id, then closes the selection', async () => {
+    const { annotations, createSpan, deleteSpan, updateSpan } = setup()
     dragIntoSecondChunk(annotations)
 
     await annotations.updateSpanPosition()
 
-    expect(createSpan).toHaveBeenCalledWith({
-      chunkId: 'c2', tagId: 't', start: 1, end: 7, type: 'auto', reason: 'A place.', confidence: 0.8
-    })
-    expect(deleteSpan).toHaveBeenCalledWith('s1', 'c1')
-    expect(createSpan.mock.invocationCallOrder[0]).toBeLessThan(deleteSpan.mock.invocationCallOrder[0])
+    expect(updateSpan).toHaveBeenCalledWith('s1', 'c1', { start: 1, end: 7, chunkId: 'c2' })
+    expect(createSpan).not.toHaveBeenCalled()
+    expect(deleteSpan).not.toHaveBeenCalled()
     expect(annotations.selection.value).toBeNull()
   })
 
-  it('keeps the old span and the selection when saving in the new chunk fails', async () => {
-    const { annotations, createSpan, deleteSpan } = setup()
-    createSpan.mockRejectedValue(new Error('500'))
+  it('sends no chunk when the start stays in the span\'s chunk', async () => {
+    const { annotations, updateSpan } = setup()
+    annotations.adjustSelectionBoundary('end', 'c2', 3)
+
+    await annotations.updateSpanPosition()
+
+    expect(updateSpan).toHaveBeenCalledWith('s1', 'c1', { start: 0, end: length + 3 })
+  })
+
+  it('keeps the span and the selection when the move fails', async () => {
+    const { annotations, updateSpan } = setup()
+    updateSpan.mockRejectedValue(new Error('500'))
     dragIntoSecondChunk(annotations)
 
     await expect(annotations.updateSpanPosition()).rejects.toThrow('500')
-    expect(deleteSpan).not.toHaveBeenCalled()
-    expect(annotations.selection.value?.editingSpanId).toBe('s1')
-    expect(annotations.saving.value).toBe(false)
-  })
-
-  it('reports a span left at both positions when removing the old one fails', async () => {
-    const { annotations, deleteSpan } = setup()
-    deleteSpan.mockRejectedValue(new Error('500'))
-    dragIntoSecondChunk(annotations)
-
-    await expect(annotations.updateSpanPosition()).rejects.toBeInstanceOf(SpanMoveIncompleteError)
-    // The selection edited the old span, which no longer matches the saved position.
-    expect(annotations.selection.value).toBeNull()
+    expect(annotations.selection.value).toMatchObject({ editingSpanId: 's1', spanChunkId: 'c1', chunkId: 'c2' })
     expect(annotations.saving.value).toBe(false)
   })
 })

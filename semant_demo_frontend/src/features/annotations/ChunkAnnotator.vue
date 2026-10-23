@@ -58,6 +58,7 @@ const LANE_STEP = 3
 const DEEP_STACK = 4
 const NEW_SELECTION_COLOR = '#d5dfec'
 const NEW_SELECTION_HANDLE_COLOR = '#334155'
+const FADED_LINE_ALPHA = 0.25
 
 const props = defineProps<{
   chunkId: string
@@ -66,6 +67,8 @@ const props = defineProps<{
   selection: LocalSelection | null
   availableTags: Tag[]
   highlightSpanId?: string | null
+  /** The tag focused in the tags panel: its spans are tinted, the other tags' lines fade. */
+  focusTagId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -308,6 +311,8 @@ const computeSegmentStyle = (isSelected: boolean, tags: ProjectedSpan[]) => {
   } else if (highlighted) {
     const color = tagColorMap.value[highlighted.tagId] || '#3b82f6'
     style.backgroundColor = hexToRgba(color, highlighted.type === 'auto' ? 0.12 : 0.2)
+  } else if (props.focusTagId && tags.some(t => t.tagId === props.focusTagId)) {
+    style.backgroundColor = hexToRgba(tagColorMap.value[props.focusTagId] || '#3b82f6', 0.12)
   }
 
   if (tags.length > 0) {
@@ -319,7 +324,10 @@ const computeSegmentStyle = (isSelected: boolean, tags: ProjectedSpan[]) => {
     const sizes: string[] = []
     const positions: string[] = []
     tags.forEach((tag, i) => {
-      const c = tagColorMap.value[tag.tagId] || '#3b82f6'
+      const tagColor = tagColorMap.value[tag.tagId] || '#3b82f6'
+      const c = props.focusTagId && tag.tagId !== props.focusTagId && tag !== highlighted
+        ? hexToRgba(tagColor, FADED_LINE_ALPHA)
+        : tagColor
       const lineH = tag === highlighted ? LINE_H + 1 : LINE_H
       images.push(tag.type === 'auto'
         ? `repeating-linear-gradient(90deg, ${c} 0 5px, transparent 5px 8px)`

@@ -169,7 +169,7 @@ let activeRunToken = 0
 let activeSelectionToken = 0
 
 // Shared UI state across the document layout (AI panel) and the document page.
-// Auto (AI-suggested) spans should only be rendered while the "AI assist" sidebar
+// Auto (AI-suggested) spans should only be rendered while the "AI Tagging" sidebar
 // panel is the active one; the highlighted id supports two-way selection between a
 // suggestion card in the panel and the corresponding span in the text.
 const aiPanelActive = ref(false)

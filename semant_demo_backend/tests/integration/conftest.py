@@ -89,7 +89,9 @@ def collections(seeded_store, collection_names, spans) -> UserCollectionReposito
 
 @pytest.fixture
 def documents(seeded_store, collection_names) -> DocumentRepository:
-    return DocumentRepository(seeded_store, collection_names)
+    documents = DocumentRepository(seeded_store, collection_names)
+    documents.positions = True  # the seeded chunks store their positions (#463)
+    return documents
 
 
 @pytest.fixture

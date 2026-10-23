@@ -20,6 +20,13 @@ import {
     WriteOutcomeToJSON,
     WriteOutcomeToJSONTyped,
 } from './WriteOutcome';
+import type { AnnotationValues } from './AnnotationValues';
+import {
+    AnnotationValuesFromJSON,
+    AnnotationValuesFromJSONTyped,
+    AnnotationValuesToJSON,
+    AnnotationValuesToJSONTyped,
+} from './AnnotationValues';
 import type { StepFailure } from './StepFailure';
 import {
     StepFailureFromJSON,
@@ -39,6 +46,8 @@ import {
  * ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion).
  * ``versions``: the ``editVersion`` of each changed annotation after the action, and the
  * current one of each conflicting annotation.
+ * ``previous``: for each annotation the action changed, the values it changed as they were
+ * before, which ``annotations/restore`` puts back (undo, #461); none for a deletion.
  * @export
  * @interface AnnotationReviewResult
  */
@@ -73,6 +82,12 @@ export interface AnnotationReviewResult {
      * @memberof AnnotationReviewResult
      */
     versions?: { [key: string]: number; };
+    /**
+     * 
+     * @type {{ [key: string]: AnnotationValues; }}
+     * @memberof AnnotationReviewResult
+     */
+    previous?: { [key: string]: AnnotationValues; };
 }
 
 
@@ -100,6 +115,7 @@ export function AnnotationReviewResultFromJSONTyped(json: any, ignoreDiscriminat
         'failed': json['failed'] == null ? undefined : ((json['failed'] as Array<any>).map(StepFailureFromJSON)),
         'unattempted': json['unattempted'] == null ? undefined : json['unattempted'],
         'versions': json['versions'] == null ? undefined : json['versions'],
+        'previous': json['previous'] == null ? undefined : (mapValues(json['previous'], AnnotationValuesFromJSON)),
     };
 }
 
@@ -119,6 +135,7 @@ export function AnnotationReviewResultToJSONTyped(value?: AnnotationReviewResult
         'failed': value['failed'] == null ? undefined : ((value['failed'] as Array<any>).map(StepFailureToJSON)),
         'unattempted': value['unattempted'],
         'versions': value['versions'],
+        'previous': value['previous'] == null ? undefined : (mapValues(value['previous'], AnnotationValuesToJSON)),
     };
 }
 

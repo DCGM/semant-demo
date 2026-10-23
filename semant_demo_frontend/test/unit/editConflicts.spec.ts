@@ -81,3 +81,32 @@ describe('span writes in the document view', () => {
     expect(store.spansByChunkId.c1.map(s => [s.id, s.type, s.editVersion])).toEqual([['s1', 'neg', 3], ['s2', 'pos', 1]])
   })
 })
+
+describe('moving a span to another chunk (#436)', () => {
+  async function loadedTwoChunks () {
+    const store = useTagSpansStore()
+    repo.getByChunkIdsInCollection.mockResolvedValue({ c1: [span('s1', 2), span('s2', 0)], c2: [] })
+    await store.fetchSpansForChunksInCollection(['c1', 'c2'], 'col')
+    return store
+  }
+
+  it('shows the saved span under its new chunk, with the same id', async () => {
+    const store = await loadedTwoChunks()
+    repo.update.mockResolvedValue({ ...span('s1', 3), chunkId: 'c2', start: 1, end: 4, ...complete })
+
+    await store.updateSpan('s1', 'c1', { chunkId: 'c2', start: 1, end: 4 })
+
+    expect(repo.update).toHaveBeenCalledWith('s1', 'col', { chunkId: 'c2', start: 1, end: 4 }, 2)
+    expect(store.spansByChunkId.c1.map(s => s.id)).toEqual(['s2'])
+    expect(store.spansByChunkId.c2).toMatchObject([{ id: 's1', start: 1, editVersion: 3 }])
+  })
+
+  it('shows a span someone else moved meanwhile where it is now', async () => {
+    const store = await loadedTwoChunks()
+    repo.update.mockRejectedValue(refused(409, { detail: 'conflict', current: { ...span('s1', 3), chunkId: 'c2' } }))
+
+    await expect(store.updateSpan('s1', 'c1', { type: 'pos' })).rejects.toMatchObject({ status: 409 })
+    expect(store.spansByChunkId.c1.map(s => s.id)).toEqual(['s2'])
+    expect(store.spansByChunkId.c2.map(s => s.id)).toEqual(['s1'])
+  })
+})

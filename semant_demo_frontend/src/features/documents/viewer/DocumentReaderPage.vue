@@ -6,8 +6,10 @@
       :collection-only="chunkWindow.displayedPreviewCount.value === 0"
       :all-chunks="chunkWindow.allChunksShown.value"
       :loading-all="chunkWindow.loadingAllChunks.value"
+      :focused-tag="focusedTag"
       @show-collection-only="chunkWindow.hideAllPreviews"
       @show-all-chunks="chunkWindow.loadAllChunks"
+      @clear-focused-tag="tagNav.setFocusedTagId(null)"
     />
     <div class="page-shell">
       <ChunkMembershipGutter
@@ -32,6 +34,7 @@
         :tags="tags"
         :hovered-span-id="hoveredSpanId || navHighlightedSpanId"
         :highlighted-span-id="highlightedAutoSpanId"
+        :focused-tag-id="tagNav.focusedTagId.value"
         @hover="hoveredSpanId = $event"
         @select="onMarkerClick"
       />
@@ -70,6 +73,7 @@
                   :selection="annotations.getLocalSelection(chunk.id)"
                   :available-tags="tags"
                   :highlight-span-id="hoveredSpanId || navHighlightedSpanId || highlightedAutoSpanId"
+                  :focus-tag-id="tagNav.focusedTagId.value"
                   :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
                   @boundary-drag="onBoundaryDrag"
                 />
@@ -137,7 +141,7 @@
 
       <AnnotationPopover
         ref="popoverRef"
-        :visible="annotations.hasSelection.value"
+        :visible="annotations.hasSelection.value && annotations.selection.value !== focusTaggedSelection"
         :tags="tags"
         :selection="annotations.selection.value"
         :selected-text="selectedSpanText"
@@ -177,7 +181,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, shallowRef, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
@@ -193,7 +197,7 @@ import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance, { resolveAutoSpanFailure } from 'src/features/annotations/useAiAssistance'
 import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
-import { SpanMoveIncompleteError, useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
+import { useAnnotations, type ProjectedSpan } from 'src/features/annotations/useAnnotations'
 import useSpanDiscussionDialog from 'src/features/annotations/useSpanDiscussionDialog'
 import { useTagEditing } from 'src/features/annotations/useTagEditing'
 import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
@@ -264,7 +268,7 @@ const paragraphs = computed(() => groupParagraphs(displayChunks.value))
 // The annotation a workspace link points to (#329); shown whatever its tag or type.
 const linkedSpanId = ref<string | null>(null)
 
-// Approved spans of visible tags; AI suggestions only while the AI assist panel is active.
+// Approved spans of visible tags; AI suggestions only while the AI Tagging panel is active.
 const gutters = useReaderGutters(
   documentTextRef, displayChunks, hiddenPreviewChunks,
   () => annotations.spansByChunkId.value,
@@ -374,7 +378,7 @@ watch(gutters.spanMarkers, (markers) => {
 tagNav.onScroll((item) => scrollToSpan(item.chunkId, item.start, item.end))
 tagNav.onHighlight((spanId) => { navHighlightedSpanId.value = spanId })
 
-// Re-render gutter (and re-filter auto spans in text) when the AI assist panel
+// Re-render gutter (and re-filter auto spans in text) when the AI Tagging panel
 // becomes active or inactive in the sidebar.
 watch(aiPanelActive, () => {
   void nextTick(() => relayout())
@@ -412,7 +416,7 @@ watch(() => documentSummary.requestedCitation.value, async (citation) => {
 
 // A link from the annotation workspace (#329): `?annotation=&chunk=&order=` brings that
 // annotation into view and marks it, also when its tag is hidden or it is a proposal
-// outside AI assist, loading the chunks up to it first (`order` is resolved from the
+// outside AI Tagging, loading the chunks up to it first (`order` is resolved from the
 // chunk when the link has none). Once per link.
 const route = useRoute()
 const chunksRepository = useChunksRepository()
@@ -464,11 +468,12 @@ const recordTagUsage = (tagId: string) => {
   setLastUsedTagId(props.collectionId, tagId)
 }
 
-// The span being edited when it is an AI suggestion: the popover offers approve/reject.
+// The span being edited when it is an AI suggestion: the popover offers approve/reject, also
+// after its start was dragged into another chunk (it is stored on its own chunk until saved).
 const editingAutoSpan = computed(() => {
   const sel = annotations.selection.value
   if (!sel?.editingSpanId) return null
-  const spans = tagSpans.spansByChunkId.value[sel.chunkId] || []
+  const spans = tagSpans.spansByChunkId.value[sel.spanChunkId ?? sel.chunkId] || []
   const span = spans.find((s) => s.id === sel.editingSpanId)
   return span && span.type === SpanType.auto ? span : null
 })
@@ -479,22 +484,16 @@ const spanRequests = createContextGuard()
 watch(() => [props.collectionId, props.documentId], () => spanRequests.enter())
 
 /**
- * Run a span request from the popover. A failed one tells the user it was not saved and, unless
- * a move left the span at two positions, leaves its selection open. Returns the request's
- * result, or null when it failed.
+ * Run a span request from the popover. A failed one tells the user it was not saved and leaves
+ * its selection open. Returns the request's result, or null when it failed.
  */
-async function runSpanRequest<T>(request: () => Promise<T>, failure: string): Promise<T | null> {
+async function runSpanRequest<T>(request: () => Promise<T>, failure: string | (() => string)): Promise<T | null> {
   const isCurrent = spanRequests.capture()
   try {
     return await request()
   } catch (err) {
-    // A span left at two positions is reported even after the reader has moved on.
-    if (err instanceof SpanMoveIncompleteError) {
-      errorNotification(err.message)
-      return null
-    }
     if (!isCurrent() || isAbortError(err)) return null
-    errorNotification(await apiErrorMessage(err, failure))
+    errorNotification(await apiErrorMessage(err, typeof failure === 'function' ? failure() : failure))
     return null
   }
 }
@@ -550,18 +549,37 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
 let pointerDown: { x: number, y: number, onHandle: boolean } | null = null
 const CLICK_TOLERANCE = 4
 
-// Opening a span re-renders its text, which would break a double-click's word selection,
-// so a click opens it only once no second click has followed.
-const DOUBLE_CLICK_WAIT = 250
-let pendingSpanOpen: ReturnType<typeof setTimeout> | null = null
+// A click opens the span only once no second click has followed, so a double-click
+// selects the word without the span's popover opening first; likewise a double-clicked
+// word is tagged with a focused tag only then. Kept short: the popover should feel
+// immediate (#479). A slower double-click still selects the word; the popover then
+// switches from the span to the new selection.
+const DOUBLE_CLICK_WAIT = 150
+// What a click does once no further click has followed. `onCancel` runs when the next
+// click (or a change of the focused tag) cancels it.
+let pendingClick: { timer: ReturnType<typeof setTimeout>, onCancel?: () => void } | null = null
 
-function cancelPendingSpanOpen() {
-  if (pendingSpanOpen) clearTimeout(pendingSpanOpen)
-  pendingSpanOpen = null
+function schedulePendingClick(action: () => void, onCancel?: () => void) {
+  cancelPendingClick()
+  const timer = setTimeout(() => {
+    pendingClick = null
+    action()
+  }, DOUBLE_CLICK_WAIT)
+  pendingClick = { timer, onCancel }
+}
+
+/** Cancels the pending click action; returns whether there was one. */
+function cancelPendingClick(): boolean {
+  if (!pendingClick) return false
+  const { timer, onCancel } = pendingClick
+  pendingClick = null
+  clearTimeout(timer)
+  onCancel?.()
+  return true
 }
 
 function onDocumentPointerDown(e: PointerEvent) {
-  cancelPendingSpanOpen()
+  cancelPendingClick()
   pointerDown = e.button === 0
     ? { x: e.clientX, y: e.clientY, onHandle: !!(e.target as HTMLElement).closest('.selection-handle') }
     : null
@@ -574,10 +592,7 @@ function openSpanAtClick(e: MouseEvent) {
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE) return
   const marker = shortestMarker(markersAtSegment(e.target))
   if (!marker) return
-  pendingSpanOpen = setTimeout(() => {
-    pendingSpanOpen = null
-    onMarkerClick(marker, e)
-  }, DOUBLE_CLICK_WAIT)
+  schedulePendingClick(() => onMarkerClick(marker, e))
 }
 
 const handleDocumentMouseUp = (e: MouseEvent) => {
@@ -595,6 +610,8 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
 
   if (!startPoint || !endPoint) return
 
+  const previousSelection = annotations.selection.value
+  let shortened = false
   if (startPoint.chunkId === endPoint.chunkId) {
     const start = Math.min(startPoint.charOffset, endPoint.charOffset)
     const end = Math.max(startPoint.charOffset, endPoint.charOffset)
@@ -602,11 +619,12 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
       annotations.setSelection(startPoint.chunkId, start, end)
     }
   } else {
-    annotations.setCrossChunkSelection(
+    shortened = annotations.setCrossChunkSelection(
       startPoint.chunkId, startPoint.charOffset,
       endPoint.chunkId, endPoint.charOffset
     )
   }
+  const newSelection = annotations.selection.value !== previousSelection ? annotations.selection.value : null
 
   popoverRef.value?.moveTo(e)
   domSelection.removeAllRanges()
@@ -619,7 +637,61 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   // Fresh selections open straight into the tag picker, as if "Add tag" had
   // already been clicked.
   popoverRef.value?.showMode('picker')
+
+  // With a tag focused in the tags panel, a new selection is tagged with it right away; one
+  // cut short at a document gap opens the picker instead, so the user sees what is left.
+  const focusedTagId = tagNav.focusedTagId.value
+  if (focusedTagId && newSelection && !shortened) tagWithFocusedTag(focusedTagId, newSelection, e.detail >= 2)
 }
+
+// ── Tag focus (#479) ──
+// A tag focused in the tags panel tags each new selection directly, without the popover.
+// The popover appears only when that fails, in the picker, so the user can try again.
+const focusedTag = computed(() => tags.value.find((t) => t.id === tagNav.focusedTagId.value) ?? null)
+type Selection = NonNullable<typeof annotations.selection.value>
+/** The selection the focused tag is going onto: the popover stays closed for it. */
+const focusTaggedSelection = shallowRef<Selection | null>(null)
+
+/**
+ * Tags `sel` with the focused tag. A double-clicked word waits for the double-click time:
+ * a further click, or a change of the focused tag, cancels that and shows the word in the
+ * picker instead.
+ */
+function tagWithFocusedTag(tagId: string, sel: Selection, afterDoubleClick: boolean) {
+  focusTaggedSelection.value = sel
+  if (!afterDoubleClick) {
+    void saveWithFocusedTag(tagId, sel)
+    return
+  }
+  schedulePendingClick(
+    () => void saveWithFocusedTag(tagId, sel),
+    () => { if (focusTaggedSelection.value === sel) focusTaggedSelection.value = null }
+  )
+}
+
+async function saveWithFocusedTag(tagId: string, sel: Selection) {
+  const failure = () => {
+    const text = selectionText(sel, [...displayChunks.value, ...hiddenPreviewChunks.value])
+    const quoted = text.length > 40 ? `${text.slice(0, 40).trimEnd()}…` : text
+    return `"${quoted}" could not be tagged with ${tags.value.find((t) => t.id === tagId)?.name ?? 'the tag'}.`
+  }
+  const applied = annotations.selection.value === sel
+    ? await runSpanRequest(() => annotations.createSpan(tagId), failure)
+    : null
+  // Failed and still open: the popover shows it in the picker.
+  if (focusTaggedSelection.value === sel) focusTaggedSelection.value = null
+  if (applied) recordTagUsage(tagId)
+}
+
+// A double-clicked word waiting for its tag is not saved with a tag the user has left.
+watch(tagNav.focusedTagId, () => cancelPendingClick())
+
+// The focus ends when its tag is deleted, and in another collection, which has other tags.
+watch(tags, (list) => {
+  const focused = tagNav.focusedTagId.value
+  if (focused && !list.some((t) => t.id === focused)) tagNav.setFocusedTagId(null)
+})
+watch(() => props.collectionId, () => tagNav.setFocusedTagId(null))
 
 const onTagClick = async (tagId: string) => {
   const applied = annotations.isEditing.value
@@ -673,7 +745,7 @@ const onRunAiOnSelection = async (tagIds: string[]) => {
   const target = selectionInDisplayedChunks(sel, displayChunks.value, hiddenPreviewChunks.value)
   if (!target) return
 
-  // Show the AI assist panel right away so the user sees the spinner and any
+  // Show the AI Tagging panel right away so the user sees the spinner and any
   // incoming suggestions in context, then close the popover.
   rightSidebar.activate(DOCUMENT_SIDEBAR_PANELS.ai)
   annotations.clearSelection()
@@ -687,7 +759,7 @@ const onRunAiOnSelection = async (tagIds: string[]) => {
     selectionStart: target.start,
     selectionEnd: target.end,
     tagIds,
-    // The model chosen in the AI Assist panel (the default until its list has been read).
+    // The model chosen in the AI Tagging panel (the default until its list has been read).
     configName: topicerModel.chosenConfigName()
   })
   // Cancelled, or the user moved to another document/collection meanwhile.
@@ -783,10 +855,17 @@ const onClickOutside = (e: MouseEvent) => {
 }
 
 // Escape in an open dialog belongs to the dialog: the create-tag dialog opened from the
-// popover still needs the selection when its tag is created (#379).
+// popover still needs the selection when its tag is created (#379). Escape closes the
+// selection first, then ends a tag focus, unless it was typed in a field (the tag search).
 const onEscape = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && annotations.hasSelection.value && !overlayOpen()) {
+  if (e.key !== 'Escape' || overlayOpen()) return
+  if (focusTaggedSelection.value && annotations.selection.value === focusTaggedSelection.value && cancelPendingClick()) {
+    // A double-clicked word not tagged yet: it is dropped, the focus stays.
     annotations.clearSelection()
+  } else if (annotations.hasSelection.value && annotations.selection.value !== focusTaggedSelection.value) {
+    annotations.clearSelection()
+  } else if (tagNav.focusedTagId.value && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')) {
+    tagNav.setFocusedTagId(null)
   }
 }
 
@@ -813,12 +892,13 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   spanRequests.enter()
   resizeObserver?.disconnect()
-  cancelPendingSpanOpen()
+  if (pendingClick) clearTimeout(pendingClick.timer)
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
-  // activeTagId is module-level state in useTagNavigation; don't carry this reader's
-  // highlighted tag into the next one.
+  // activeTagId and focusedTagId are module-level state in useTagNavigation; don't carry
+  // this reader's highlighted or focused tag into the next one.
   tagNav.setActiveTagId(null)
+  tagNav.setFocusedTagId(null)
 })
 </script>
 

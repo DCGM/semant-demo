@@ -36,7 +36,7 @@
     <!-- fill: only the suggestion list scrolls, the run controls stay in view -->
     <RightSidebarPanel
       :id="DOCUMENT_SIDEBAR_PANELS.ai"
-      label="AI assist"
+      label="AI Tagging"
       icon="auto_awesome"
       :order="1"
       :busy="aiAssist.isRunning.value || aiAssist.isSelectionRunning.value"
@@ -48,7 +48,7 @@
     <RightSidebarPanel
       :id="DOCUMENT_SIDEBAR_PANELS.summary"
       label="Summary"
-      icon="auto_awesome"
+      icon="summarize"
       :order="1.5"
       :busy="documentSummary.summarizing.value"
       fill
@@ -99,7 +99,7 @@ import useDocumentSummary from 'src/features/documents/useDocumentSummary'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import BackLink from 'src/shared/ui/BackLink.vue'
 
-// The document view: header, the tags, AI assist and document tools as panels of the
+// The document view: header, the tags, AI tagging and document tools as panels of the
 // app's right sidebar, and the reader (child route). It loads the document, collection and tags and
 // clears the annotation and AI state when the document or collection changes.
 interface Props {
@@ -139,7 +139,7 @@ function onCtrlF(e: KeyboardEvent) {
   void nextTick(() => tagsPanelRef.value?.focusSearch())
 }
 
-// The document page shows auto spans only while the AI assist panel is the active one.
+// The document page shows auto spans only while the AI Tagging panel is the active one.
 watch(() => sidebar.activePanelId === DOCUMENT_SIDEBAR_PANELS.ai, (active) => {
   aiAssist.aiPanelActive.value = active
   if (!active) aiAssist.highlightedAutoSpanId.value = null

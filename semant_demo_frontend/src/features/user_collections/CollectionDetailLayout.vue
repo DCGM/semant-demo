@@ -98,7 +98,8 @@
         active-class="active-tab text-primary"
         narrow-indicator
         inline-label
-        class="collection-tabs q-pl-md"
+        outside-arrows
+        class="collection-tabs"
         align="justify"
         >
         <q-route-tab
@@ -340,9 +341,12 @@ onMounted(async () => {
 }
 
 .collection-tabs {
-  // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page.
+  // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page;
+  // the arrows sit outside the tabs (outside-arrows), so they never cover the last one (#489).
   flex: 1 1 auto;
   min-width: 0;
+  // A margin, not q-pl-md: outside-arrows sets the tabs' own padding.
+  margin-left: 16px;
 }
 
 @media (max-width: 900px) {
@@ -352,7 +356,7 @@ onMounted(async () => {
 
   .collection-tabs {
     min-width: 0;
-    width: 100%;
+    width: calc(100% - 16px);
   }
 }
 </style>

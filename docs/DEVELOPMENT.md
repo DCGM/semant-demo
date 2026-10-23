@@ -382,6 +382,15 @@ provenance and checks no edit versions. Add them (existing spans keep an unknown
 ../.venv/bin/python -m semant_demo.maintenance.annotation_provenance add-schema --execute --confirm-endpoint localhost:8080
 ```
 
+Chunks without the positions of #463 (`startChar`, `startWord`, `wordOpenAtStart`) leave new or
+moved annotations without derived text (`derive_annotation` failures; the backend logs an error at
+startup). Add and fill them on the local copy, then restart the backend; a seeded development
+store from before #463 is fixed the same way (with its endpoint) or by `make dev-reset`:
+
+```bash
+../.venv/bin/python -m semant_demo.maintenance.chunk_positions --write positions.json --confirm-endpoint localhost:8080
+```
+
 Automated tests never depend on this snapshot (section 4).
 
 ### 5.3 Start the snapshot Weaviate

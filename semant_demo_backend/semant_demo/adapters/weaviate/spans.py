@@ -94,7 +94,6 @@ def _position(name: str) -> Property:
 ENRICHMENT_PROPERTIES: list[Property] = [
     Property(name="revision", data_type=DataType.INT),
     _searchable("text"), _searchable("leftContext"), _searchable("rightContext"),
-    Property(name="positionSegment", data_type=DataType.INT),
     _position("documentStartChar"), _position("documentEndChar"),
     _position("documentStartWord"), _position("documentEndWord"),
     _status("enrichmentStatus"),
@@ -104,7 +103,8 @@ ENRICHMENT_PROPERTIES: list[Property] = [
     Property(name="vectorRevision", data_type=DataType.INT),
     _status("vectorConfig"),
 ]
-"""Derived properties of #328, in the order ``add_enrichment_schema`` adds them."""
+"""Derived properties of #328, in the order ``add_enrichment_schema`` adds them. (Collections
+enriched before #463 also declare ``positionSegment``, which is no longer read or written.)"""
 
 PROVENANCE_PROPERTIES: list[Property] = [
     _status("origin"),
@@ -121,7 +121,7 @@ PROVENANCE_PROPERTIES: list[Property] = [
 
 _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "enrichmentStatus",
         "enrichedRevision", "derivationVersion", "vectorStatus", "vectorRevision", "vectorConfig", "text",
-        "leftContext", "rightContext", "positionSegment", "documentStartChar", "documentEndChar",
+        "leftContext", "rightContext", "documentStartChar", "documentEndChar",
         "documentStartWord", "documentEndWord"]
 
 
@@ -419,8 +419,9 @@ class SpanRepository:
 
     async def update(self, collection_id: UUID, span_id: UUID, patch: PatchSpan, derived: dict | None = None,
                      provenance: dict | None = None) -> None:
-        """Sets the patched offsets, type and tag, and the ``derived`` and ``provenance``
-        properties, in one write."""
+        """Sets the patched offsets, type, tag and anchor chunk, and the ``derived`` and
+        ``provenance`` properties, in one write. A moved span's ``text_chunk`` reference is
+        not changed here (``replace_anchor_reference``)."""
         fields = patch.model_dump(exclude_none=True)
         properties: dict = {k: fields[k] for k in ("start", "end") if k in fields} | (derived or {}) \
             | (provenance or {})
@@ -428,8 +429,16 @@ class SpanRepository:
             properties["type"] = patch.type.value
         if patch.tagId is not None:
             properties["tagId"] = UUID(patch.tagId)
+        if patch.chunkId is not None:
+            properties["chunkId"] = UUID(patch.chunkId)
         if properties:
             await self._tenant(collection_id).data.update(uuid=span_id, properties=properties)
+
+    async def replace_anchor_reference(self, collection_id: UUID, span_id: UUID, chunk_id: UUID) -> None:
+        """Points the span's ``text_chunk`` reference at ``chunk_id`` only (an update would
+        add it to the old one)."""
+        await self._tenant(collection_id).data.reference_replace(
+            from_uuid=span_id, from_property="text_chunk", to=chunk_id)
 
     async def delete(self, collection_id: UUID, span_id: UUID) -> None:
         await self._tenant(collection_id).data.delete_by_id(span_id)
@@ -504,7 +513,7 @@ class SpanRepository:
         if document_ids is not None and not document_ids:
             return []
         sort = (Sort.by_property("text") if by_text else
-                Sort.by_property("positionSegment").by_property("documentStartChar").by_property("documentEndChar"))
+                Sort.by_property("documentStartChar").by_property("documentEndChar"))
 
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(

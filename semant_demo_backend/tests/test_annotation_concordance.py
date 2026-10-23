@@ -52,8 +52,7 @@ class FakeDocuments:
 
 def _position_key(row: AnnotationRow):
     # Weaviate's ascending sort puts missing values first.
-    return tuple((v is not None, v or 0) for v in (row.positionSegment, row.documentStartChar,
-                                                     row.documentEndChar)) + (str(row.id),)
+    return tuple((v is not None, v or 0) for v in (row.documentStartChar, row.documentEndChar)) + (str(row.id),)
 
 
 class FakeSpans:
@@ -97,7 +96,7 @@ class FakeSpans:
 
 
 def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=True, rid=None):
-    derived = {"text": text, "leftContext": "vlevo ", "rightContext": " vpravo", "positionSegment": 0,
+    derived = {"text": text, "leftContext": "vlevo ", "rightContext": " vpravo",
                "documentStartChar": start, "documentEndChar": start + len(text), "enrichmentStatus": "ready",
                "enrichedRevision": 1, "derivationVersion": DERIVATION_VERSION} if current else {}
     return AnnotationRow(id=rid or uuid4(), tagId=tag, type=type, chunkId=uuid4(), documentId=document, start=0,
@@ -372,3 +371,22 @@ async def test_resolving_needs_read_access(user, error, store):
     store.spans.rows = [row(DOC_A, 0)]
     with pytest.raises(error):
         await service.resolve_annotation_ids(store, user, COLLECTION, AnnotationIdsRequest())
+
+
+async def test_counts_per_type_and_tag_read_no_rows(store):
+    store.spans.rows = [row(DOC_A, 0), row(DOC_A, 5), row(DOC_B, 0, type=SpanType.auto),
+                        row(DOC_B, 5, type=SpanType.neg), row(DOC_A, 9, tag=OTHER_TAG),
+                        row(DOC_B, 9, tag=OTHER_TAG, type=SpanType.auto, current=False)]
+
+    counts = await service.count_annotations(store, SHARED, COLLECTION)
+    assert (counts.approved, counts.suggestions, counts.rejected) == (3, 2, 1)
+    counts = await service.count_annotations(store, OWNER, COLLECTION, tag_ids=[str(TAG)])
+    assert (counts.approved, counts.suggestions, counts.rejected) == (2, 1, 1)
+    assert store.spans.queries == 0 and store.documents.reads == []
+
+
+async def test_counts_need_read_access_and_valid_tag_ids(store):
+    with pytest.raises(ResourceNotFound):
+        await service.count_annotations(store, OTHER, COLLECTION)
+    with pytest.raises(InvalidRequestError):
+        await service.count_annotations(store, OWNER, COLLECTION, tag_ids=["not-a-uuid"])

@@ -298,6 +298,10 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             Property(name="end_paragraph", data_type=DataType.BOOL),
             # the document's year, for year filters (#153)
             Property(name="yearIssued", data_type=integer, index_range_filters=True),
+            # Absolute positions in the document (#463, features/documents/positions.py).
+            Property(name="startChar", data_type=integer),
+            Property(name="startWord", data_type=integer),
+            Property(name="wordOpenAtStart", data_type=DataType.BOOL),
             *(Property(name=name, data_type=text_array) for name in TASK_CLASSES),
         ],
         references=[

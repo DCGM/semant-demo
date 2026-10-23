@@ -249,7 +249,7 @@
 
     </div>
 
-    <RightSidebarPanel v-if="results.length || loading" id="search-summary" label="Summary" icon="auto_awesome">
+    <RightSidebarPanel v-if="results.length || loading" id="search-summary" label="Summary" icon="summarize">
       <SearchSummaryPanel
         :tokens="searchSummary.tokens"
         :time-spent="searchSummary.timeSpent"
