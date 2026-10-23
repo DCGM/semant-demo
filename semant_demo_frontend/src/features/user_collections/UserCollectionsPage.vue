@@ -73,9 +73,9 @@
         gutter="10px"
       />
     </div>
-    <div v-if="viewMode === 'tiles'" class="collection-tiles q-px-md q-py-md" :style="{ '--tile-size': `${tileSize}px` }">
+    <div v-if="viewMode === 'tiles'" ref="tilesRef" class="collection-tiles q-px-md q-py-md" :style="{ '--tile-size': `${tileSize}px` }">
       <!-- A new collection is the user's own, so not offered among those shared with them. -->
-      <CreateCollectionCard v-if="ownership !== 'shared'" @click="handleCreate"/>
+      <CreateCollectionCard v-if="showCreateTile" @click="handleCreate"/>
 
       <CollectionCard
         v-for="(collection, index) in paginatedItems"
@@ -125,7 +125,8 @@ import { useUserCollectionsStore } from './userCollectionsStore'
 import useCollectionDialog from './useCollectionDialog'
 import CreateButton from 'src/shared/ui/CreateButton.vue'
 
-import { onMounted, computed, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, computed, ref, watch } from 'vue'
+import { readStored, writeStored } from 'src/shared/browserStorage'
 import { useQuasar } from 'quasar'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import CollectionCard from './CollectionCard.vue'
@@ -136,10 +137,9 @@ import { useRouter } from 'vue-router'
 
 const $router = useRouter()
 const $q = useQuasar()
-const itemsPerPage = computed(() => $q.screen.gt.lg ? 11 : 5)
 const VIEW_MODE_STORAGE_KEY = 'collections.viewMode'
 const getInitialViewMode = (): 'tiles' | 'table' => {
-  const storedMode = localStorage.getItem(VIEW_MODE_STORAGE_KEY)
+  const storedMode = readStored(VIEW_MODE_STORAGE_KEY)
   return storedMode === 'table' ? 'table' : 'tiles'
 }
 const viewMode = ref<'tiles' | 'table'>(getInitialViewMode())
@@ -151,20 +151,6 @@ const { fetchCollections, createCollection, updateCollection, deleteCollection, 
 // or shared with them (`isSharedWithMe`). Remembered in this browser, like the view mode.
 type Ownership = 'all' | 'mine' | 'shared'
 const OWNERSHIP_STORAGE_KEY = 'collections.ownership'
-const readStored = (key: string): string | null => {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-const writeStored = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // Storage unavailable (private mode, quota) — the choice just won't persist.
-  }
-}
 const storedOwnership = readStored(OWNERSHIP_STORAGE_KEY)
 const ownership = ref<Ownership>(storedOwnership === 'mine' || storedOwnership === 'shared' ? storedOwnership : 'all')
 watch(ownership, (value) => writeStored(OWNERSHIP_STORAGE_KEY, value))
@@ -198,13 +184,34 @@ const TILE_SIZE_DEFAULT = 340
 const storedTileSize = Number(readStored(TILE_SIZE_STORAGE_KEY))
 const tileSize = ref(storedTileSize >= TILE_SIZE_MIN && storedTileSize <= TILE_SIZE_MAX ? storedTileSize : TILE_SIZE_DEFAULT)
 watch(tileSize, (value) => writeStored(TILE_SIZE_STORAGE_KEY, String(value)))
+
+// A page of tiles fills whole rows: as many tiles per row as fit at the chosen size
+// (measured from the grid's width), 3 rows on wide screens and 2 otherwise, less the
+// create tile where it is shown.
+const TILE_GAP = 16
+const tilesRef = ref<HTMLElement | null>(null)
+const tilesWidth = ref(0)
+const tilesObserver = new ResizeObserver(([entry]) => { tilesWidth.value = entry.contentRect.width })
+watch(tilesRef, (el, previous) => {
+  if (previous) tilesObserver.unobserve(previous)
+  if (el) tilesObserver.observe(el)
+})
+onBeforeUnmount(() => tilesObserver.disconnect())
+const showCreateTile = computed(() => ownership.value !== 'shared')
+const itemsPerPage = computed(() => {
+  const perRow = Math.max(1, Math.floor((tilesWidth.value + TILE_GAP) / (tileSize.value + TILE_GAP)))
+  const rows = $q.screen.gt.md ? 3 : 2
+  return Math.max(1, perRow * rows - (showCreateTile.value ? 1 : 0))
+})
 const { currentPage, pageCount, paginatedItems } = usePagination(filteredCollections, itemsPerPage)
 watch(ownership, () => { currentPage.value = 1 })
+// Fewer pages (larger pages, or a filter): stay on the last one there is.
+watch(pageCount, (count) => { if (currentPage.value > Math.max(1, count)) currentPage.value = Math.max(1, count) })
 const { openCollectionDialog } = useCollectionDialog()
 const confirmDelete = useConfirmDelete()
 
 watch(viewMode, (mode) => {
-  localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
+  writeStored(VIEW_MODE_STORAGE_KEY, mode)
 })
 
 onMounted(async () => {
@@ -217,6 +224,8 @@ const handleCreate = () => {
     dialogType: 'CREATE'
   }).onOk(async (collectionData: PostCollection) => {
     await createCollection(collectionData)
+    // A new collection is the user's own: show it, not the collections shared with them.
+    if (ownership.value === 'shared') ownership.value = 'mine'
   })
 }
 

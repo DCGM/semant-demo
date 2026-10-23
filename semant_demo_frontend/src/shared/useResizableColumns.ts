@@ -2,6 +2,9 @@ import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import type { QTableColumn } from 'quasar'
 
 const MIN_WIDTH = 60
+// A press on the edge becomes a resize only once it has moved this far, so a click (or a
+// double-click to reset) doesn't fix the column's width.
+const DRAG_THRESHOLD = 3
 const STORAGE_PREFIX = 'semant.columnWidths.'
 
 function readWidths (key: string): Record<string, number> {
@@ -33,7 +36,10 @@ function writeWidths (key: string, widths: Record<string, number>): void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- QTableColumn's own row constraint
 export function useResizableColumns<Row extends Record<string, any>> (storageKey: string, baseColumns: QTableColumn<Row>[]) {
   const widths: Ref<Record<string, number>> = ref(readWidths(storageKey))
-  let drag: { name: string, startX: number, startWidth: number, handle: HTMLElement, pointerId: number } | null = null
+  let drag: {
+    name: string, startX: number, startWidth: number, handle: HTMLElement, pointerId: number,
+    moved: boolean, frame: number | null, width: number
+  } | null = null
 
   const columns = computed<QTableColumn<Row>[]>(() => baseColumns.map((col) => {
     const width = widths.value[col.name]
@@ -47,19 +53,34 @@ export function useResizableColumns<Row extends Record<string, any>> (storageKey
     }
   }))
 
+  function applyWidth () {
+    if (!drag) return
+    drag.frame = null
+    widths.value = { ...widths.value, [drag.name]: drag.width }
+  }
+
+  // The table re-renders with each new width, so a width is applied at most once a frame.
   function onPointerMove (e: PointerEvent) {
     if (!drag || e.pointerId !== drag.pointerId) return
-    const width = Math.max(MIN_WIDTH, Math.round(drag.startWidth + e.clientX - drag.startX))
-    widths.value = { ...widths.value, [drag.name]: width }
+    const dx = e.clientX - drag.startX
+    if (!drag.moved && Math.abs(dx) < DRAG_THRESHOLD) return
+    drag.moved = true
+    drag.width = Math.max(MIN_WIDTH, Math.round(drag.startWidth + dx))
+    if (drag.frame === null) drag.frame = requestAnimationFrame(applyWidth)
   }
 
   function stopResize () {
     if (!drag) return
-    drag.handle.removeEventListener('pointermove', onPointerMove)
-    drag.handle.removeEventListener('pointerup', stopResize)
-    drag.handle.removeEventListener('pointercancel', stopResize)
+    const { handle, frame, moved } = drag
+    handle.removeEventListener('pointermove', onPointerMove)
+    handle.removeEventListener('pointerup', stopResize)
+    handle.removeEventListener('pointercancel', stopResize)
+    if (frame !== null) {
+      cancelAnimationFrame(frame)
+      applyWidth()
+    }
     drag = null
-    writeWidths(storageKey, widths.value)
+    if (moved) writeWidths(storageKey, widths.value)
   }
 
   /** Starts dragging the edge of column `name`; the handle sits inside its header cell. */
@@ -69,7 +90,8 @@ export function useResizableColumns<Row extends Record<string, any>> (storageKey
     const th = handle.closest('th')
     if (!th) return
     stopResize()
-    drag = { name, startX: e.clientX, startWidth: th.getBoundingClientRect().width, handle, pointerId: e.pointerId }
+    const startWidth = th.getBoundingClientRect().width
+    drag = { name, startX: e.clientX, startWidth, handle, pointerId: e.pointerId, moved: false, frame: null, width: startWidth }
     handle.setPointerCapture(e.pointerId)
     handle.addEventListener('pointermove', onPointerMove)
     handle.addEventListener('pointerup', stopResize)
