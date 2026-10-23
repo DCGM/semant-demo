@@ -393,9 +393,10 @@ watch(
 
 // Re-clamp the popover whenever its content (and therefore size) changes —
 // switching into the tag picker / AI tag picker, or the editing-state of the
-// current selection toggling Approve/Reject/Save buttons on or off.
+// current selection toggling Approve/Reject/Save buttons on or off — and when it
+// appears, as it can after being placed while hidden (a failed focused-tag save).
 watch(
-  [showTagPicker, showAiTagPicker, () => props.selection],
+  [showTagPicker, showAiTagPicker, () => props.selection, () => props.visible],
   () => {
     void nextTick(() => clampPopover())
   }

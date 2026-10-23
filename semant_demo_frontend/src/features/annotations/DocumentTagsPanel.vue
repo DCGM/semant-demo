@@ -269,6 +269,15 @@ watch(tagSpans.loading, (loading) => {
   orderSeeded.value = true
 })
 
+// Another document has other counts: by count, the order is taken again once its spans
+// have loaded. A dragged order is kept.
+watch(
+  () => props.documentId,
+  () => {
+    if (sortMode.value !== 'custom') orderSeeded.value = false
+  }
+)
+
 // The panel stays alive while another sidebar panel is shown and keeps its order and search;
 // another collection has other tags, so both start over (the sort mode is kept).
 watch(

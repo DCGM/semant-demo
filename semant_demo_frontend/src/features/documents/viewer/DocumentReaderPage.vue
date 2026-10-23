@@ -487,13 +487,13 @@ watch(() => [props.collectionId, props.documentId], () => spanRequests.enter())
  * Run a span request from the popover. A failed one tells the user it was not saved and leaves
  * its selection open. Returns the request's result, or null when it failed.
  */
-async function runSpanRequest<T>(request: () => Promise<T>, failure: string): Promise<T | null> {
+async function runSpanRequest<T>(request: () => Promise<T>, failure: string | (() => string)): Promise<T | null> {
   const isCurrent = spanRequests.capture()
   try {
     return await request()
   } catch (err) {
     if (!isCurrent() || isAbortError(err)) return null
-    errorNotification(await apiErrorMessage(err, failure))
+    errorNotification(await apiErrorMessage(err, typeof failure === 'function' ? failure() : failure))
     return null
   }
 }
@@ -550,20 +550,36 @@ let pointerDown: { x: number, y: number, onHandle: boolean } | null = null
 const CLICK_TOLERANCE = 4
 
 // A click opens the span only once no second click has followed, so a double-click
-// selects the word without the span's popover opening first. Kept short: the popover
-// should feel immediate (#479). A slower double-click still selects the word; the
-// popover then switches from the span to the new selection.
+// selects the word without the span's popover opening first; likewise a double-clicked
+// word is tagged with a focused tag only then. Kept short: the popover should feel
+// immediate (#479). A slower double-click still selects the word; the popover then
+// switches from the span to the new selection.
 const DOUBLE_CLICK_WAIT = 150
-let pendingSpanOpen: ReturnType<typeof setTimeout> | null = null
+// What a click does once no further click has followed. `onCancel` runs when the next
+// click (or a change of the focused tag) cancels it.
+let pendingClick: { timer: ReturnType<typeof setTimeout>, onCancel?: () => void } | null = null
 
-function cancelPendingSpanOpen() {
-  if (pendingSpanOpen) clearTimeout(pendingSpanOpen)
-  pendingSpanOpen = null
+function schedulePendingClick(action: () => void, onCancel?: () => void) {
+  cancelPendingClick()
+  const timer = setTimeout(() => {
+    pendingClick = null
+    action()
+  }, DOUBLE_CLICK_WAIT)
+  pendingClick = { timer, onCancel }
+}
+
+/** Cancels the pending click action; returns whether there was one. */
+function cancelPendingClick(): boolean {
+  if (!pendingClick) return false
+  const { timer, onCancel } = pendingClick
+  pendingClick = null
+  clearTimeout(timer)
+  onCancel?.()
+  return true
 }
 
 function onDocumentPointerDown(e: PointerEvent) {
-  cancelPendingSpanOpen()
-  cancelPendingFocusTag()
+  cancelPendingClick()
   pointerDown = e.button === 0
     ? { x: e.clientX, y: e.clientY, onHandle: !!(e.target as HTMLElement).closest('.selection-handle') }
     : null
@@ -576,16 +592,12 @@ function openSpanAtClick(e: MouseEvent) {
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_TOLERANCE) return
   const marker = shortestMarker(markersAtSegment(e.target))
   if (!marker) return
-  pendingSpanOpen = setTimeout(() => {
-    pendingSpanOpen = null
-    onMarkerClick(marker, e)
-  }, DOUBLE_CLICK_WAIT)
+  schedulePendingClick(() => onMarkerClick(marker, e))
 }
 
 const handleDocumentMouseUp = (e: MouseEvent) => {
   const domSelection = window.getSelection()
   if (!domSelection || domSelection.isCollapsed) {
-    revealCancelledFocusTag()
     openSpanAtClick(e)
     pointerDown = null
     return
@@ -639,49 +651,40 @@ const focusedTag = computed(() => tags.value.find((t) => t.id === tagNav.focused
 type Selection = NonNullable<typeof annotations.selection.value>
 /** The selection the focused tag is going onto: the popover stays closed for it. */
 const focusTaggedSelection = shallowRef<Selection | null>(null)
-// A double-click's word is tagged only once no third click (selecting the paragraph) has
-// followed, so a triple-click tags just the paragraph.
-let pendingFocusTag: ReturnType<typeof setTimeout> | null = null
-/** The selection whose tagging the next click cancelled: shown in the picker if no new one replaces it. */
-let cancelledFocusSelection: Selection | null = null
 
+/**
+ * Tags `sel` with the focused tag. A double-clicked word waits for the double-click time:
+ * a further click, or a change of the focused tag, cancels that and shows the word in the
+ * picker instead.
+ */
 function tagWithFocusedTag(tagId: string, sel: Selection, afterDoubleClick: boolean) {
   focusTaggedSelection.value = sel
   if (!afterDoubleClick) {
     void saveWithFocusedTag(tagId, sel)
     return
   }
-  pendingFocusTag = setTimeout(() => {
-    pendingFocusTag = null
-    void saveWithFocusedTag(tagId, sel)
-  }, DOUBLE_CLICK_WAIT)
+  schedulePendingClick(
+    () => void saveWithFocusedTag(tagId, sel),
+    () => { if (focusTaggedSelection.value === sel) focusTaggedSelection.value = null }
+  )
 }
 
 async function saveWithFocusedTag(tagId: string, sel: Selection) {
-  const text = selectionText(sel, [...displayChunks.value, ...hiddenPreviewChunks.value])
-  const quoted = text.length > 40 ? `${text.slice(0, 40).trimEnd()}…` : text
-  const tagName = tags.value.find((t) => t.id === tagId)?.name ?? 'the tag'
+  const failure = () => {
+    const text = selectionText(sel, [...displayChunks.value, ...hiddenPreviewChunks.value])
+    const quoted = text.length > 40 ? `${text.slice(0, 40).trimEnd()}…` : text
+    return `"${quoted}" could not be tagged with ${tags.value.find((t) => t.id === tagId)?.name ?? 'the tag'}.`
+  }
   const applied = annotations.selection.value === sel
-    ? await runSpanRequest(() => annotations.createSpan(tagId), `"${quoted}" could not be tagged with ${tagName}.`)
+    ? await runSpanRequest(() => annotations.createSpan(tagId), failure)
     : null
   // Failed and still open: the popover shows it in the picker.
   if (focusTaggedSelection.value === sel) focusTaggedSelection.value = null
   if (applied) recordTagUsage(tagId)
 }
 
-function cancelPendingFocusTag() {
-  if (!pendingFocusTag) return
-  clearTimeout(pendingFocusTag)
-  pendingFocusTag = null
-  cancelledFocusSelection = focusTaggedSelection.value
-}
-
-function revealCancelledFocusTag() {
-  if (cancelledFocusSelection && focusTaggedSelection.value === cancelledFocusSelection) {
-    focusTaggedSelection.value = null
-  }
-  cancelledFocusSelection = null
-}
+// A double-clicked word waiting for its tag is not saved with a tag the user has left.
+watch(tagNav.focusedTagId, () => cancelPendingClick())
 
 // The focus ends when its tag is deleted, and in another collection, which has other tags.
 watch(tags, (list) => {
@@ -856,11 +859,8 @@ const onClickOutside = (e: MouseEvent) => {
 // selection first, then ends a tag focus, unless it was typed in a field (the tag search).
 const onEscape = (e: KeyboardEvent) => {
   if (e.key !== 'Escape' || overlayOpen()) return
-  if (pendingFocusTag) {
+  if (focusTaggedSelection.value && annotations.selection.value === focusTaggedSelection.value && cancelPendingClick()) {
     // A double-clicked word not tagged yet: it is dropped, the focus stays.
-    cancelPendingFocusTag()
-    cancelledFocusSelection = null
-    focusTaggedSelection.value = null
     annotations.clearSelection()
   } else if (annotations.hasSelection.value && annotations.selection.value !== focusTaggedSelection.value) {
     annotations.clearSelection()
@@ -892,8 +892,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   spanRequests.enter()
   resizeObserver?.disconnect()
-  cancelPendingSpanOpen()
-  if (pendingFocusTag) clearTimeout(pendingFocusTag)
+  if (pendingClick) clearTimeout(pendingClick.timer)
   document.removeEventListener('mousedown', onClickOutside)
   document.removeEventListener('keydown', onEscape)
   // activeTagId and focusedTagId are module-level state in useTagNavigation; don't carry
