@@ -265,6 +265,17 @@ class AnnotationPage(BaseModel):
     limit: int
 
 
+class AnnotationCounts(BaseModel):
+    """How many annotations a collection holds per type (of some tags only, when asked), e.g.
+    what deleting a tag or the collection would delete along (#479)."""
+    approved: int
+    """``pos``: manual or approved."""
+    suggestions: int
+    """``auto``: AI suggestions not yet approved or rejected."""
+    rejected: int
+    """``neg``: rejected suggestions."""
+
+
 class AnnotatedDocument(BaseModel):
     """A document with annotations matching a concordance query, for the source and year
     filters (#329). ``available`` is false when the document cannot be read."""

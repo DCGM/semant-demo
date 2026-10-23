@@ -1,5 +1,5 @@
 <template>
-  <!-- Asks before deleting; when annotations would go too, the user types DELETE (#479). -->
+  <!-- Asks before deleting; when more would go too (e.g. annotations), the user types DELETE (#479). -->
   <q-dialog ref="dialogRef" @hide="onDialogHide">
     <q-card style="width: 480px; max-width: 90vw">
       <q-card-section class="text-h6">{{ props.title }}</q-card-section>
@@ -7,20 +7,20 @@
       <q-card-section class="q-pt-none">
         <p>{{ props.message }} This cannot be undone.</p>
 
-        <div v-if="state === 'counting'" class="row items-center q-gutter-sm text-grey-7">
+        <div v-if="state === 'checking'" class="row items-center q-gutter-sm text-grey-7">
           <q-spinner size="18px" />
-          <span>Counting annotations…</span>
+          <span>Checking what else would be deleted…</span>
         </div>
 
         <q-banner v-else-if="mustType" rounded class="bg-red-1 text-negative q-mb-md">
           <template #avatar>
             <q-icon name="warning" color="negative" />
           </template>
-          <template v-if="counts">
-            This also deletes <strong>{{ annotationsText }}</strong>.
+          <template v-if="state === 'checked'">
+            This also deletes <strong>{{ alsoDeleted }}</strong>.
           </template>
           <template v-else>
-            The annotations could not be counted; any annotations will be deleted too.
+            It could not be checked what else would be deleted; anything that belongs to it goes too.
           </template>
         </q-banner>
 
@@ -53,47 +53,35 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { QBtn, useDialogPluginComponent } from 'quasar'
-import { plural } from 'src/shared/plural'
-import type { AnnotationCounter, AnnotationCounts } from 'src/features/annotations/annotationCounts'
 
 const CONFIRM_WORD = 'DELETE'
+
+/** Reads what else would be deleted along, as text; empty when nothing. */
+type AlsoDeletes = () => Promise<string>
 
 const props = defineProps<{
   title: string
   /** What is deleted, as plain text (names are not HTML). */
   message: string
   okLabel?: string
-  /** The annotations that would be deleted along. */
-  count: AnnotationCounter
+  /** e.g. "3 approved annotations" */
+  alsoDeletes: AlsoDeletes
 }>()
 
 defineEmits([...useDialogPluginComponent.emits])
 const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginComponent()
 
-const state = ref<'counting' | 'counted' | 'failed'>('counting')
-const counts = ref<AnnotationCounts | null>(null)
+const state = ref<'checking' | 'checked' | 'failed'>('checking')
+const alsoDeleted = ref('')
 const typed = ref('')
 
-const hasAnnotations = computed(() =>
-  !!counts.value && counts.value.approved + counts.value.suggestions + counts.value.rejected > 0
-)
-// Unknown counts are treated as "there may be annotations".
-const mustType = computed(() => state.value === 'failed' || hasAnnotations.value)
+// When the check fails, something may still be deleted along.
+const mustType = computed(() => state.value === 'failed' || (state.value === 'checked' && !!alsoDeleted.value))
 const canDelete = computed(() =>
-  state.value !== 'counting' && (!mustType.value || typed.value.trim() === CONFIRM_WORD)
+  state.value !== 'checking' && (!mustType.value || typed.value.trim() === CONFIRM_WORD)
 )
 
-const annotationsText = computed(() => {
-  if (!counts.value) return ''
-  const { approved, suggestions, rejected } = counts.value
-  const parts = []
-  if (approved) parts.push(plural(approved, 'approved annotation'))
-  if (suggestions) parts.push(plural(suggestions, 'unresolved AI suggestion'))
-  if (rejected) parts.push(plural(rejected, 'rejected suggestion'))
-  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts.join('')
-})
-
-// Without annotations it is a plain confirmation, so Enter deletes as before.
+// Without anything else deleted it is a plain confirmation, so Enter deletes as before.
 const deleteButton = ref<QBtn | null>(null)
 
 const confirm = () => {
@@ -102,14 +90,14 @@ const confirm = () => {
 
 onMounted(async () => {
   try {
-    counts.value = await props.count()
-    state.value = 'counted'
+    alsoDeleted.value = await props.alsoDeletes()
+    state.value = 'checked'
     if (!mustType.value) {
       await nextTick()
       ;(deleteButton.value?.$el as HTMLElement | undefined)?.focus()
     }
   } catch (err) {
-    console.error('Counting annotations failed', err)
+    console.error('Checking what else would be deleted failed', err)
     state.value = 'failed'
   }
 })

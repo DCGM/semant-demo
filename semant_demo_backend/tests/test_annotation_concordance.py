@@ -372,3 +372,22 @@ async def test_resolving_needs_read_access(user, error, store):
     store.spans.rows = [row(DOC_A, 0)]
     with pytest.raises(error):
         await service.resolve_annotation_ids(store, user, COLLECTION, AnnotationIdsRequest())
+
+
+async def test_counts_per_type_and_tag_read_no_rows(store):
+    store.spans.rows = [row(DOC_A, 0), row(DOC_A, 5), row(DOC_B, 0, type=SpanType.auto),
+                        row(DOC_B, 5, type=SpanType.neg), row(DOC_A, 9, tag=OTHER_TAG),
+                        row(DOC_B, 9, tag=OTHER_TAG, type=SpanType.auto, current=False)]
+
+    counts = await service.count_annotations(store, SHARED, COLLECTION)
+    assert (counts.approved, counts.suggestions, counts.rejected) == (3, 2, 1)
+    counts = await service.count_annotations(store, OWNER, COLLECTION, tag_ids=[str(TAG)])
+    assert (counts.approved, counts.suggestions, counts.rejected) == (2, 1, 1)
+    assert store.spans.queries == 0 and store.documents.reads == []
+
+
+async def test_counts_need_read_access_and_valid_tag_ids(store):
+    with pytest.raises(ResourceNotFound):
+        await service.count_annotations(store, OTHER, COLLECTION)
+    with pytest.raises(InvalidRequestError):
+        await service.count_annotations(store, OWNER, COLLECTION, tag_ids=["not-a-uuid"])

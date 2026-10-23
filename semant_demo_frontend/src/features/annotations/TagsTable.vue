@@ -165,7 +165,7 @@ import CreateButton from 'src/shared/ui/CreateButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { plural } from 'src/shared/plural'
-import { countAnnotations } from './annotationCounts'
+import { annotationsOfTags } from './annotationCounts'
 
 const route = useRoute()
 const confirmDelete = useConfirmDelete()
@@ -211,7 +211,7 @@ const handleDelete = async (tag: Tag) => {
   confirmDelete({
     title: 'Delete Tag',
     message: `Delete the tag "${tag.name}"?`,
-    count: () => countAnnotations(collectionId.value, [tag.id])
+    alsoDeletes: annotationsOfTags(collectionId.value, [tag.id])
   }).onOk(async () => {
     await deleteTag(tag.id)
   })
@@ -234,7 +234,7 @@ const handleBulkDelete = () => {
     title: 'Delete Selected Tags',
     message: `Delete ${plural(count, 'selected tag')}?`,
     okLabel: 'Delete selected',
-    count: () => countAnnotations(collectionId.value, ids)
+    alsoDeletes: annotationsOfTags(collectionId.value, ids)
   }).onOk(async () => {
     selected.value = []
     // Resolves after every deletion has finished; only acknowledged ones are removed and

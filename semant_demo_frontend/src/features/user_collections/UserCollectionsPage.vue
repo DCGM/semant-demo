@@ -103,7 +103,7 @@ import { useQuasar } from 'quasar'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import CollectionCard from './CollectionCard.vue'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
-import { countAnnotations } from 'src/features/annotations/annotationCounts'
+import { annotationsOfCollections } from 'src/features/annotations/annotationCounts'
 import { Collection, PatchCollection, PostCollection } from 'src/generated/api'
 import { useRouter } from 'vue-router'
 
@@ -171,7 +171,7 @@ const handleDelete = (collection: Collection) => {
   confirmDelete({
     title: 'Delete Collection',
     message: `Delete the collection "${collection.name}"?`,
-    count: () => countAnnotations(collection.id)
+    alsoDeletes: annotationsOfCollections([collection.id])
   }).onOk(async () => {
     await deleteCollection(collection.id)
   })
