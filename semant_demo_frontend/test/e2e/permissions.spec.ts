@@ -4,10 +4,21 @@ import { ensureLoggedIn, fixture, openDocument } from './support'
 // Shared users read and annotate a collection and may edit its tag definitions and see its
 // members; membership, metadata and sharing are the owner's (ADR 0007). Read-only checks.
 
-async function openCollectionTab (page: Page, collectionKey: string, tab: string) {
+const TAB_PATHS = { 'Documents & tagging': 'documents', Tags: 'tags', Members: 'members' } as const
+type CollectionTab = keyof typeof TAB_PATHS
+
+// A click that lands on something covering the tab (e.g. the tabs' scroll arrow, #489) fails
+// here, at the click, rather than as missing page content.
+async function clickCollectionTab (page: Page, tab: CollectionTab) {
+  await page.getByText(tab, { exact: true }).click()
+  await expect(page, `the ${tab} tab did not open`).toHaveURL(new RegExp(`/${TAB_PATHS[tab]}$`))
+}
+
+async function openCollectionTab (page: Page, collectionKey: string, tab: CollectionTab) {
   await page.locator('.q-drawer').getByText('Collections', { exact: true }).click()
   await page.getByText(fixture.collection(collectionKey).name, { exact: true }).click()
-  await page.getByText(tab, { exact: true }).click()
+  await expect(page).toHaveURL(/\/overview$/)
+  await clickCollectionTab(page, tab)
 }
 
 test('a shared user gets no owner-only collection controls', async ({ page }) => {
@@ -20,12 +31,12 @@ test('a shared user gets no owner-only collection controls', async ({ page }) =>
   await page.getByText(fixture.collection('chronicles').name, { exact: true }).click()
   await expect(page.getByRole('button', { name: 'Edit collection color' })).toBeDisabled()
 
-  await page.getByText('Members', { exact: true }).click()
+  await clickCollectionTab(page, 'Members')
   await expect(page.getByText('@annotator')).toBeVisible() // the member list stays visible
   await expect(page.getByText('Share with a user')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Cancel share' })).toHaveCount(0)
 
-  await page.getByText('Documents & tagging', { exact: true }).click()
+  await clickCollectionTab(page, 'Documents & tagging')
   await expect(page.getByText(fixture.document('chronicle').properties.title, { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Add from Library' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Remove document from collection' })).toHaveCount(0)
@@ -54,7 +65,7 @@ test('the owner keeps the collection controls', async ({ page }) => {
   await expect(page.getByText('Share with a user')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Cancel share' })).toBeVisible()
 
-  await page.getByText('Documents & tagging', { exact: true }).click()
+  await clickCollectionTab(page, 'Documents & tagging')
   await expect(page.getByRole('button', { name: 'Add from Library' })).toBeVisible()
   await expect(page.getByText(/Create New Document|Upload Document/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Remove document from collection' }).first()).toBeVisible()

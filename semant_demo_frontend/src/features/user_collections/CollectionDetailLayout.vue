@@ -286,7 +286,9 @@ onMounted(async () => {
 
 .collection-header {
   padding: 2px 0;
-  flex: 0 1 auto;
+  // The name gives way first, down to its minimum; only then do the tabs scroll, since
+  // their scroll arrow covers the last tab (#489).
+  flex: 0 1000 auto;
   min-width: 12rem;
 }
 
@@ -343,6 +345,11 @@ onMounted(async () => {
   // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page.
   flex: 1 1 auto;
   min-width: 0;
+}
+
+// Narrower than Quasar's 16px, so that all tabs fit beside the name with both sidebars open.
+.collection-tabs :deep(.q-tab) {
+  padding: 0 12px;
 }
 
 @media (max-width: 900px) {
