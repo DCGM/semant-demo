@@ -8,7 +8,7 @@ PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
 .PHONY: setup check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e \
-	dev-up dev-down dev-backend dev-frontend dev-reset dev-status dev-verify \
+	dev-up dev-down dev-backend dev-frontend dev-reset dev-status dev-verify dev-add-documents \
 	e2e-dev-start e2e-dev-test e2e-dev-capture e2e-dev-rebuild e2e-dev-restart e2e-dev-stop e2e-dev-status
 
 ## Install pinned development dependencies (backend venv and frontend node_modules).
@@ -42,6 +42,11 @@ dev-status:
 
 dev-verify:
 	PYTHON="$(PY)" scripts/local-dev.sh verify
+
+## Adds synthetic metadata-only documents to the development store (#361): COUNT (default
+## 2000) and OUTLIERS=no to omit the years 311 and 2879. Repeatable; dev-reset removes them.
+dev-add-documents:
+	PYTHON="$(PY)" COUNT="$(COUNT)" OUTLIERS="$(OUTLIERS)" scripts/local-dev.sh add-documents
 
 ## Fast offline checks: lint, types, unit tests and generated-client drift.
 check: check-backend check-frontend api-check

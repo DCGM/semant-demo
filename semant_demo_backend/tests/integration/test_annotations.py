@@ -8,7 +8,7 @@ serialization of chunk tag re-derivation. Faults are injected into real Weaviate
 import asyncio
 
 import pytest
-from weaviate.classes.query import QueryReference
+from weaviate.classes.query import Filter, QueryReference
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.weaviate import chunk_tags as chunk_tags_module
@@ -131,6 +131,38 @@ async def test_approval_and_rejection_reload_from_storage(api_client, login, ids
     reloaded = (await spans_of(api_client, annotator, ids, "letters_1"))[praha]
     # The AI reason is kept with a rejected suggestion.
     assert (reloaded["type"], reloaded["reason"]) == ("neg", "Název města.")
+
+
+async def test_a_span_moved_to_another_chunk_keeps_its_id_and_both_chunks_follow(
+        api_client, login, ids, seeded_store, collection_names):
+    # "Jan Novák" on chronicle_1 moved to the same name on chronicle_2 (#436): one PATCH.
+    novak, first, second = ids.span["novak_manual"], ids.chunk["chronicle_1"], ids.chunk["chronicle_2"]
+    owner = await login("owner")
+    c = {"collection_id": ids.col["chronicles"]}
+
+    response = await api_client.patch(f"/api/tag_spans/{novak}", headers=owner, params=c,
+                                      json={"chunkId": second, "start": 51, "end": 60})
+
+    assert response.status_code == 200, response.text
+    assert (response.json()["id"], response.json()["outcome"]) == (novak, "complete")
+    assert novak not in await spans_of(api_client, owner, ids, "chronicle_1")
+    moved = (await spans_of(api_client, owner, ids, "chronicle_2"))[novak]
+    assert (moved["start"], moved["end"], moved["type"]) == (51, 60, "pos")
+    # The statistics' collection filter follows the new anchor chunk.
+    tenant = seeded_store.collections.get(collection_names.annotation_collection_name).with_tenant(ids.col["chronicles"])
+    for chunk, expected in ((second, True), (first, False)):
+        anchored = await tenant.query.fetch_objects(filters=Filter.by_ref("text_chunk").by_id().equal(chunk))
+        assert (novak in {str(o.uuid) for o in anchored.objects}) is expected
+    # Tag-filtered search: the only approved person on chronicle_1 is gone, chronicle_2 has one now.
+    assert await positive_tags(seeded_store, collection_names, first) == set()
+    assert await positive_tags(seeded_store, collection_names, second) == {ids.tag["place"], ids.tag["person"]}
+
+
+async def positive_tags(seeded_store, collection_names, chunk_id):
+    obj = await seeded_store.collections.get(collection_names.chunks_collection_name).query.fetch_object_by_id(
+        chunk_id, return_references=[QueryReference(link_on="positiveTag")])
+    ref = (obj.references or {}).get("positiveTag")
+    return {str(r.uuid) for r in ref.objects} if ref else set()
 
 
 # ── Tag creation: insert, then link to the collection ─────────────────────

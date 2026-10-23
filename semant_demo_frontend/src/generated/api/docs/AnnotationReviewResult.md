@@ -1,7 +1,7 @@
 
 # AnnotationReviewResult
 
-The outcome of a review action per annotation (best effort, ADR 0002; nothing is rolled back). ``succeeded``: annotations changed or deleted, and those already as the action asks. ``failed``: ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted meanwhile), ``edit_conflict`` (written by someone else since the expected version; not changed) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion). ``versions``: the ``editVersion`` of each changed annotation after the action, and the current one of each conflicting annotation.
+The outcome of a review action per annotation (best effort, ADR 0002; nothing is rolled back). ``succeeded``: annotations changed or deleted, and those already as the action asks. ``failed``: ``update_span`` / ``delete_span`` (``uncertain`` when the write timed out and may have been applied), ``find_annotation`` (no such annotation in the collection, e.g. deleted meanwhile), ``edit_conflict`` (written by someone else since the expected version; not changed) and ``update_chunk_tags`` (item ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it; ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion). ``versions``: the ``editVersion`` of each changed annotation after the action, and the current one of each conflicting annotation. ``previous``: for each annotation the action changed, the values it changed as they were before, which ``annotations/restore`` puts back (undo, #461); none for a deletion.
 
 ## Properties
 
@@ -12,6 +12,7 @@ Name | Type
 `failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
 `unattempted` | Array&lt;string&gt;
 `versions` | { [key: string]: number; }
+`previous` | [{ [key: string]: AnnotationValues; }](AnnotationValues.md)
 
 ## Example
 
@@ -25,6 +26,7 @@ const example = {
   "failed": null,
   "unattempted": null,
   "versions": null,
+  "previous": null,
 } satisfies AnnotationReviewResult
 
 console.log(example)

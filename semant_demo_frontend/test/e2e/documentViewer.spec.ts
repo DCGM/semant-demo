@@ -5,7 +5,7 @@ import {
 } from './support'
 
 // Document viewer interactions: text selection and annotation editing, the span gutter,
-// the tags and AI assist panels, and chunk membership. Each test removes what it added.
+// the tags and AI Tagging panels, and chunk membership. Each test removes what it added.
 
 test.afterEach(async ({ request }) => {
   await deleteAddedSpans(request, 'owner', 'chronicles')
@@ -37,7 +37,7 @@ async function tallestMarker (page: Page): Promise<Locator> {
 test('a selection across two chunks is tagged, marked in the gutter and deleted again', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  // Approved fixture spans only: the AI suggestion is hidden outside the AI assist panel.
+  // Approved fixture spans only: the AI suggestion is hidden outside the AI Tagging panel.
   await expect(page.locator('.gutter-item')).toHaveCount(2)
 
   const chunk1Length = fixture.chunk('chronicle_1').text.length
@@ -95,6 +95,59 @@ test('a span someone else changed meanwhile is not deleted, and shows as it is n
   }
 })
 
+test('dragging a span\'s start into the previous chunk moves the same span there', async ({ page, request }) => {
+  const brno = fixture.span('brno_manual') // "Brně" on chronicle_2
+  const collectionId = fixture.collection('chronicles').id
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const chunk1Length = fixture.chunk('chronicle_1').text.length
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  try {
+    await annotation(page, 'brno_manual').click()
+    await expect(popover(page).getByRole('button', { name: 'Change tag' })).toBeVisible()
+
+    // Drag the start handle onto "hostinci" in chronicle_1 (#436).
+    const handle = await page.locator('.selection-handle.handle-start').boundingBox()
+    const target = await page.evaluate(({ chunkId, offset }) => {
+      const segments = document.querySelectorAll<HTMLElement>(`.chunk-annotator[data-chunk-id="${chunkId}"] .text-segment`)
+      for (const segment of Array.from(segments)) {
+        const start = Number(segment.dataset.start)
+        if (offset >= start && offset < Number(segment.dataset.end)) {
+          const range = document.createRange()
+          const text = Array.from(segment.childNodes).find((n) => n.nodeType === Node.TEXT_NODE)!
+          range.setStart(text, offset - start)
+          range.setEnd(text, offset - start + 1)
+          const rect = range.getBoundingClientRect()
+          return { x: rect.left + 1, y: rect.top + rect.height / 2 }
+        }
+      }
+      throw new Error('offset not rendered')
+    }, { chunkId: fixture.chunk('chronicle_1').id, offset: 60 })
+    await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(target.x, target.y, { steps: 10 })
+    await page.mouse.up()
+    await popover(page).getByRole('button', { name: 'Save position' }).click()
+
+    await expect(taggedSegment(page, 'chronicle_1', 60, chunk1Length)).toBeVisible()
+    await expect(taggedSegment(page, 'chronicle_2', 0, brno.end)).toBeVisible()
+    await expect(page.locator('.gutter-item')).toHaveCount(2)
+    // Stored on chronicle_1 under the same id, not as a new span.
+    const response = await request.get('/api/tag_spans', {
+      headers, params: { collection_id: collectionId, chunk_id: fixture.chunk('chronicle_1').id }
+    })
+    const moved = (await response.json() as { id: string, start: number, end: number }[]).find((s) => s.id === brno.id)
+    expect(moved).toMatchObject({ start: 60, end: chunk1Length + brno.end })
+  } finally {
+    const restored = await request.patch(`/api/tag_spans/${brno.id}`, {
+      headers,
+      params: { collection_id: collectionId },
+      data: { chunkId: fixture.chunk('chronicle_2').id, start: brno.start, end: brno.end }
+    })
+    expect(restored.ok()).toBe(true)
+  }
+})
+
 test('a selection after clicking a marker opens the tag picker instead of reusing its tag', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
@@ -117,6 +170,135 @@ test('a selection after clicking a marker opens the tag picker instead of reusin
   await expect(page.locator('.tag-card.is-active')).toHaveCount(0)
 })
 
+// #479: a tag focused from the tags panel tags each new selection directly.
+test('a tag focused in the tags panel tags new selections directly until Escape', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+  const place = fixture.tag('place').name
+
+  await page.getByRole('button', { name: `Tag with ${place}` }).click()
+  await expect(page.locator('.tag-card.is-focused')).toContainText(place)
+  await expect(page.getByRole('status').filter({ hasText: 'Tagging with:' })).toContainText(place)
+  // The other tag's marker (Jan Novák) fades; Brno's stays.
+  await expect(page.locator('.gutter-item.is-faded')).toHaveCount(1)
+
+  const text = fixture.chunk('chronicle_1').text
+  const start = text.indexOf('hejtman')
+  await selectText(page, 'chronicle_1', start, 'chronicle_1', start + 'hejtman'.length)
+  await expect(taggedSegment(page, 'chronicle_1', start, start + 'hejtman'.length)).toBeVisible()
+  await expect(page.locator('.gutter-item')).toHaveCount(3)
+  await expect(popover(page)).toHaveCount(0)
+
+  // A click on an annotation still opens it; Escape closes it first, then ends the focus.
+  await annotation(page, 'brno_manual').click()
+  await expect(popover(page).getByRole('button', { name: 'Change tag' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(popover(page)).toHaveCount(0)
+  await expect(page.locator('.tag-card.is-focused')).toContainText(place)
+  await page.keyboard.press('Escape')
+  await expect(page.getByText('Tagging with:')).toHaveCount(0)
+  await expect(page.locator('.tag-card.is-focused')).toHaveCount(0)
+  await expect(page.locator('.gutter-item.is-faded')).toHaveCount(0)
+  const hostinci = text.indexOf('hostinci')
+  await selectText(page, 'chronicle_1', hostinci, 'chronicle_1', hostinci + 'hostinci'.length)
+  await expect(popover(page).getByText('Select tag')).toBeVisible()
+})
+
+test('a double-clicked word is tagged once with the focused tag', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+  await page.getByRole('button', { name: `Tag with ${fixture.tag('place').name}` }).click()
+
+  const text = fixture.chunk('chronicle_1').text
+  const start = text.indexOf('hostinci')
+  const word = await chunkText(page, 'chronicle_1').evaluate((chunk, start) => {
+    for (const segment of Array.from(chunk.querySelectorAll<HTMLElement>('.text-segment'))) {
+      const segmentStart = Number(segment.dataset.start)
+      if (start < segmentStart || start >= Number(segment.dataset.end)) continue
+      const node = Array.from(segment.childNodes).find((n) => n.nodeType === Node.TEXT_NODE)!
+      const range = document.createRange()
+      range.setStart(node, start - segmentStart + 1)
+      range.setEnd(node, start - segmentStart + 2)
+      const box = range.getBoundingClientRect()
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+    throw new Error('word not rendered')
+  }, start)
+  await page.mouse.dblclick(word.x, word.y)
+
+  await expect(taggedSegment(page, 'chronicle_1', start, start + 'hostinci'.length)).toBeVisible()
+  await expect(page.locator('.gutter-item')).toHaveCount(3)
+  await expect(popover(page)).toHaveCount(0)
+})
+
+test('the focus ends with its ✕, a second click on its card, or hiding its tag', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  const person = fixture.tag('person').name
+  const personCard = page.locator('.tag-card').filter({ hasText: person })
+  const focused = page.locator('.tag-card.is-focused')
+
+  // A click anywhere on the card but its buttons focuses the tag.
+  await personCard.locator('.tag-definition').click()
+  await expect(focused).toContainText(person)
+  await page.getByRole('button', { name: 'Stop tagging with this tag' }).click()
+  await expect(focused).toHaveCount(0)
+
+  await personCard.locator('.tag-definition').click()
+  await personCard.locator('.tag-nav-row').getByRole('button').last().click() // its buttons don't change it
+  await expect(focused).toContainText(person)
+  await personCard.locator('.tag-definition').click()
+  await expect(focused).toHaveCount(0)
+
+  await personCard.locator('.tag-definition').click()
+  await personCard.locator('.visibility-btn').click()
+  await expect(focused).toHaveCount(0)
+  await expect(annotation(page, 'novak_manual')).toHaveCount(0)
+  // Focusing a hidden tag shows it again.
+  await personCard.locator('.tag-definition').click()
+  await expect(focused).toContainText(person)
+  await expect(annotation(page, 'novak_manual')).toBeVisible()
+})
+
+test('the tags panel sorts its tags by name or by number of annotations', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+  const tagNames = page.locator('.tag-card .tag-name')
+  const [place, person] = [fixture.tag('place').name, fixture.tag('person').name]
+  // One annotation each: the tie is broken by name.
+  await expect(tagNames).toHaveText([place, person])
+
+  // A second annotation of Osoba.
+  const text = fixture.chunk('chronicle_2').text
+  const start = text.indexOf('Jan Novák')
+  await selectText(page, 'chronicle_2', start, 'chronicle_2', start + 'Jan Novák'.length)
+  await popover(page).locator('.tag-row').filter({ hasText: person }).click()
+  await expect(page.locator('.gutter-item')).toHaveCount(3)
+  // Counts are not re-sorted while annotating; choosing the sort again does it.
+  await expect(tagNames).toHaveText([place, person])
+  const byCount = page.getByRole('button', { name: 'Sort tags by number of annotations' })
+  await expect(byCount).toHaveAttribute('aria-pressed', 'true')
+  await byCount.click()
+  await expect(tagNames).toHaveText([person, place])
+
+  const byName = page.getByRole('button', { name: 'Sort tags by name' })
+  await byName.click()
+  await expect(byName).toHaveAttribute('aria-pressed', 'true')
+  await expect(byCount).toHaveAttribute('aria-pressed', 'false')
+  await expect(tagNames).toHaveText([place, person])
+
+  // The choice is remembered.
+  await page.reload()
+  await expect(page.locator('.gutter-item')).toHaveCount(3)
+  await expect(page.getByRole('button', { name: 'Sort tags by name' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(tagNames).toHaveText([place, person])
+  await page.getByRole('button', { name: 'Sort tags by number of annotations' }).click()
+  await expect(tagNames).toHaveText([person, place])
+})
+
 // #379: the create-tag dialog covers the popover (see the tests further down), and Escape
 // there belongs to the dialog, so the new tag still goes onto the selection.
 test('Escape in the create-tag dialog keeps the selection the new tag goes onto', async ({ page }) => {
@@ -131,9 +313,11 @@ test('Escape in the create-tag dialog keeps the selection the new tag goes onto'
   const dialog = page.locator('.q-dialog')
   await expect(dialog.getByLabel('Tag Name')).toBeVisible()
 
+  // Escape closes the empty dialog (#479) but leaves the selection and its popover.
   await page.keyboard.press('Escape')
-  await expect(dialog.getByLabel('Tag Name')).toBeVisible()
+  await expect(dialog.getByLabel('Tag Name')).toHaveCount(0)
   await expect(popover(page)).toBeVisible()
+  await popover(page).getByText('Create new tag').click()
   await dialog.getByLabel('Tag Name').fill('Inn')
   await dialog.getByLabel('Tag Shorthand').fill('INN')
   await dialog.getByRole('button', { name: 'Create' }).click()
@@ -228,7 +412,7 @@ test('a double-click on a tag row creates one span', async ({ page }) => {
 test('a new selection clears the AI suggestion highlighted from its marker', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   const card = page.locator('.auto-span-card').filter({ hasText: fixture.tag('place').name })
 
   await page.locator('.gutter-item.is-auto').click()
@@ -242,7 +426,7 @@ test('a new selection clears the AI suggestion highlighted from its marker', asy
 test('a new selection keeps the AI suggestion reached with the panel arrows', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   const card = page.locator('.auto-span-card').filter({ hasText: fixture.tag('place').name })
   const nav = page.locator('.ai-tag-nav')
 
@@ -341,7 +525,7 @@ test('the tags panel hides tags, steps through their annotations and is searched
   await personCard.locator('.visibility-btn').click()
   await expect(annotation(page, 'novak_manual')).toHaveCount(0)
   await expect(annotation(page, 'brno_manual')).toBeVisible()
-  await page.locator('.tags-toolbar').getByRole('button').nth(1).click() // Show all
+  await page.getByRole('button', { name: 'Show all tags' }).click()
   await expect(annotation(page, 'novak_manual')).toBeVisible()
 
   await expect(personCard.locator('.tag-nav-counter')).toHaveText('–/1')
@@ -356,13 +540,13 @@ test('the tags panel hides tags, steps through their annotations and is searched
   await expect(page.locator('.tag-card')).toContainText(fixture.tag('place').name)
 })
 
-test('AI suggestions show only with the AI assist panel and highlight between card and gutter', async ({ page }) => {
+test('AI suggestions show only with the AI Tagging panel and highlight between card and gutter', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expect(annotation(page, 'lhota_automatic')).toHaveCount(0)
 
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await expect(annotation(page, 'lhota_automatic')).toBeVisible()
   const card = page.locator('.auto-span-card').filter({ hasText: fixture.tag('place').name })
   await expect(card).toHaveCount(1)
@@ -375,7 +559,7 @@ test('AI suggestions show only with the AI assist panel and highlight between ca
   await expect(page.locator('.gutter-item.is-highlighted')).toHaveCount(0)
 })
 
-test('Suggest tags on a selection runs in the AI assist panel', async ({ page }) => {
+test('Suggest tags on a selection runs in the AI Tagging panel', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
 
@@ -387,7 +571,7 @@ test('Suggest tags on a selection runs in the AI assist panel', async ({ page })
   await popover(page).getByRole('button', { name: 'Run AI' }).click()
 
   await expect(popover(page)).toHaveCount(0)
-  await expect(sidebarPanelButton(page, 'AI assist')).toHaveAttribute('aria-current', 'true')
+  await expect(sidebarPanelButton(page, 'AI Tagging')).toHaveAttribute('aria-current', 'true')
   await expect(page.locator('.auto-span-card').filter({ hasText: fixture.tag('person').name }).first()).toBeVisible()
 })
 
@@ -439,7 +623,7 @@ test('on a narrow window the text, gutters and side panel stay usable', async ({
   await expect(sidebar).toBeHidden()
 })
 
-test('the AI assist and tags panels keep their state across panel switches', async ({ page }) => {
+test('the AI Tagging and tags panels keep their state across panel switches', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   // Retrying assertions: tags load asynchronously after the view opens.
@@ -455,14 +639,14 @@ test('the AI assist and tags panels keep their state across panel switches', asy
   await person.dragTo(place, { targetPosition: { x: 40, y: 5 } })
   await expect(tagNames).toHaveText([fixture.tag('person').name, fixture.tag('place').name])
 
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
   await page.getByRole('radio', { name: 'Thorough (every chunk in collection)' }).click()
 
   await sidebarPanelButton(page, 'Tags').click()
   await expect(tagNames).toHaveText([fixture.tag('person').name, fixture.tag('place').name])
 
-  await sidebarPanelButton(page, 'AI assist').click()
+  await sidebarPanelButton(page, 'AI Tagging').click()
   await expect(page.getByRole('radio', { name: 'Thorough (every chunk in collection)' })).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('person').name })).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('place').name })).toHaveAttribute('aria-checked', 'false')

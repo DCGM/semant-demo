@@ -2,19 +2,8 @@
   <q-page class="q-pt-sm">
     <div class="collection-topbar q-px-md q-pb-xs">
       <div class="collection-header">
-        <div class="collection-page-kicker">Collection workspace</div>
+        <BackLink :to="{ name: 'collections' }" label="Collections" aria-label="Back to collections" />
         <div class="collection-title-row">
-          <q-btn
-            flat
-            round
-            dense
-            icon="arrow_back"
-            :to="{ name: 'collections' }"
-            class="collection-back-btn"
-            aria-label="Back to collections"
-          >
-            <q-tooltip>Back to collections</q-tooltip>
-          </q-btn>
           <button
             v-if="activeCollectionColor"
             type="button"
@@ -63,7 +52,6 @@
             class="collection-title-input"
             :disable="isSavingName"
             @keyup.enter="submitNameEdit"
-            @keyup.esc="cancelNameEdit"
           >
             <template #append>
               <q-btn
@@ -87,16 +75,21 @@
               />
             </template>
           </q-input>
+          <!-- A long name is cut off with an ellipsis (#479), so the tooltips show it whole.
+               Only the owner gets a button: a disabled one would never show its tooltip. -->
           <button
-            v-else
+            v-else-if="activeCollectionLabel && rights.editMetadata"
             type="button"
             class="collection-title-button"
-            :disabled="!activeCollectionLabel || !rights.editMetadata"
             @click="startNameEdit"
           >
             <h1 class="collection-page-title">{{ activeCollectionLabel }}</h1>
-            <q-tooltip v-if="activeCollectionLabel && rights.editMetadata">Click to edit</q-tooltip>
+            <q-tooltip>{{ activeCollectionLabel }}<br>Click to edit</q-tooltip>
           </button>
+          <h1 v-else class="collection-page-title">
+            {{ activeCollectionLabel }}
+            <q-tooltip v-if="activeCollectionLabel">{{ activeCollectionLabel }}</q-tooltip>
+          </h1>
         </div>
       </div>
 
@@ -105,7 +98,8 @@
         active-class="active-tab text-primary"
         narrow-indicator
         inline-label
-        class="collection-tabs q-pl-md"
+        outside-arrows
+        class="collection-tabs"
         align="justify"
         >
         <q-route-tab
@@ -137,13 +131,6 @@
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
-          name="taggingJobs"
-          label="Tagging Jobs"
-          icon="assignment"
-          :to="{ name: 'collectionTaggingJobs' }"
-        />
-        <q-separator vertical size="1.8px" inset />
-        <q-route-tab
           name="members"
           label="Members"
           icon="people"
@@ -159,11 +146,13 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import { collectionRights } from './permissions'
+import BackLink from 'src/shared/ui/BackLink.vue'
+import { overlayOpen } from 'src/shared/overlays'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
@@ -208,11 +197,8 @@ const rights = computed(() =>
 
 const normalizedEditedName = computed(() => editableCollectionName.value.trim())
 
-const isNameSaveDisabled = computed(() =>
-  isSavingName.value ||
-  !normalizedEditedName.value ||
-  normalizedEditedName.value === activeCollectionLabel.value
-)
+// An unchanged name may be confirmed too; it just closes the editor.
+const isNameSaveDisabled = computed(() => isSavingName.value || !normalizedEditedName.value)
 
 const startNameEdit = () => {
   if (!activeCollectionLabel.value || !rights.value.editMetadata) return
@@ -220,7 +206,9 @@ const startNameEdit = () => {
   isEditingName.value = true
 }
 
+// A save already sent cannot be taken back, so the editor stays until it is answered.
 const cancelNameEdit = () => {
+  if (isSavingName.value) return
   isEditingName.value = false
   editableCollectionName.value = activeCollectionLabel.value
 }
@@ -229,13 +217,34 @@ const submitNameEdit = async () => {
   if (!collectionId.value || isNameSaveDisabled.value) return
 
   const updatedName = normalizedEditedName.value
+  if (updatedName === activeCollectionLabel.value) {
+    isEditingName.value = false
+    return
+  }
   isSavingName.value = true
-  await updateCollection(collectionId.value, { name: updatedName })
-  await fetchCollection(collectionId.value)
-  isSavingName.value = false
-
-  isEditingName.value = false
+  try {
+    // The store keeps the saved collection; a failed rename keeps the editor open with the
+    // typed name (the store reports the error).
+    if (await updateCollection(collectionId.value, { name: updatedName })) isEditingName.value = false
+  } finally {
+    isSavingName.value = false
+  }
 }
+
+// Escape cancels the name edit also when the focus left the input, but not when it is
+// meant for another field (e.g. a search box) or closes a dialog or menu (the color picker).
+const OTHER_FIELD = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="combobox"]'
+const onEditKeydown = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || overlayOpen()) return
+  const target = e.target
+  if (target instanceof Element && target.closest(OTHER_FIELD) && !target.closest('.collection-title-input')) return
+  cancelNameEdit()
+}
+watch(isEditingName, (editing) => {
+  if (editing) window.addEventListener('keydown', onEditKeydown)
+  else window.removeEventListener('keydown', onEditKeydown)
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', onEditKeydown))
 
 const openCollectionColorPicker = () => {
   if (!activeCollectionColor.value || !rights.value.editMetadata) return
@@ -255,7 +264,6 @@ const submitColorEdit = async () => {
   isSavingColor.value = false
 
   closeColor()
-  await fetchCollection(collectionId.value)
 }
 
 onMounted(async () => {
@@ -273,21 +281,14 @@ onMounted(async () => {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  flex-wrap: wrap;
-}
-
-.collection-page-kicker {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(0, 0, 0, 0.52);
-  margin-bottom: 4px;
+  // The tabs keep their place; a long name shrinks and ends in an ellipsis (#479).
+  flex-wrap: nowrap;
 }
 
 .collection-header {
   padding: 2px 0;
   flex: 0 1 auto;
+  min-width: 12rem;
 }
 
 .collection-title-row {
@@ -297,6 +298,7 @@ onMounted(async () => {
 }
 
 .collection-title-button {
+  min-width: 0;
   border: 0;
   padding: 0;
   background: transparent;
@@ -304,16 +306,8 @@ onMounted(async () => {
   text-align: left;
 }
 
-.collection-title-button:disabled {
-  cursor: default;
-}
-
 .collection-title-input {
   width: min(350px, 65vw);
-}
-
-.collection-back-btn {
-  color: rgba(0, 0, 0, 0.72);
 }
 
 .collection-color-button {
@@ -340,18 +334,29 @@ onMounted(async () => {
   font-weight: 700;
   line-height: 1.15;
   color: #1f2a37;
+  max-width: 36ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .collection-tabs {
-  flex: 1 1 520px;
-  min-width: 380px;
-  width: 100%;
+  // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page;
+  // the arrows sit outside the tabs (outside-arrows), so they never cover the last one (#489).
+  flex: 1 1 auto;
+  min-width: 0;
+  // A margin, not q-pl-md: outside-arrows sets the tabs' own padding.
+  margin-left: 16px;
 }
 
 @media (max-width: 900px) {
+  .collection-topbar {
+    flex-wrap: wrap;
+  }
+
   .collection-tabs {
     min-width: 0;
-    width: 100%;
+    width: calc(100% - 16px);
   }
 }
 </style>

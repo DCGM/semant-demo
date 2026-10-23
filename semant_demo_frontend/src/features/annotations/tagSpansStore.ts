@@ -123,12 +123,26 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   const findSpan = (spanId: string, chunkId: string) =>
     spansByChunkId.value[chunkId]?.find((s) => s.id === spanId)
 
+  /** Replaces the span stored on `chunkId` by `span`, under the chunk `span` is on now
+   * (moved, #436), in place when that is the same chunk. */
+  const replaceSpan = (spanId: string, chunkId: string, span: TagSpan) => {
+    const list = spansByChunkId.value[chunkId] ?? []
+    if (span.chunkId === chunkId) {
+      spansByChunkId.value[chunkId] = list.map((s) => (s.id === spanId ? span : s))
+    } else {
+      spansByChunkId.value[chunkId] = list.filter((s) => s.id !== spanId)
+      // Shown only where the spans of that chunk are loaded.
+      const target = spansByChunkId.value[span.chunkId]
+      if (target) spansByChunkId.value[span.chunkId] = [...target.filter((s) => s.id !== spanId), span]
+    }
+    spansVersion.value++
+  }
+
   /** After a refused write: shows the span as it is now, and the error to report. */
   const reconcileRefused = async (err: unknown, spanId: string, chunkId: string): Promise<unknown> => {
     const current = await currentOfConflict(err)
     if (current) {
-      spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).map((s) => (s.id === spanId ? current : s))
-      spansVersion.value++
+      replaceSpan(spanId, chunkId, current)
       return new ApiError(409, CHANGED)
     }
     if (errorStatus(err) === 404 && findSpan(spanId, chunkId)) {
@@ -139,15 +153,14 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     return err
   }
 
+  /** Updates the span stored on `chunkId`; with `update.chunkId` it moves there (#436). */
   const updateSpan = async (spanId: string, chunkId: string, update: PatchSpan) => {
     const isCurrent = scope.capture()
     try {
       const result = await repo.update(spanId, currentCollection(), update, findSpan(spanId, chunkId)?.editVersion)
       warnIfIncomplete(spanWriteWarning(result, 'saved'))
       if (!isCurrent()) return
-      const updatedSpan = spanOf(result)
-      spansByChunkId.value[chunkId] = (spansByChunkId.value[chunkId] ?? []).map((s) => (s.id === spanId ? updatedSpan : s))
-      spansVersion.value++
+      replaceSpan(spanId, chunkId, spanOf(result))
     } catch (err) {
       if (!isCurrent()) throw err
       console.error('Failed to update span', err)

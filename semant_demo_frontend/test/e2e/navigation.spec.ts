@@ -112,7 +112,7 @@ test('back arrows go to the parent page without changing the navigation drawer',
 
   // Direct link to the document view: no in-app history, back still goes to the collection.
   await page.goto(`/#/collections/${collection.id}/documents/${document.id}`)
-  await expect(page.getByText('Document detail')).toBeVisible()
+  await expect(page.locator('.doc-header .text-h5')).toBeVisible()
   await page.getByRole('link', { name: 'Back to collection documents' }).click()
   await expect(page).toHaveURL(new RegExp(`#/collections/${collection.id}/documents$`))
   await expect(drawer(page)).toHaveClass(/q-drawer--mini/)
@@ -136,7 +136,7 @@ test('on a phone, back arrows navigate and leave the overlay navigation closed',
   await useViewport(page, 'phone')
 
   await page.goto(`/#/collections/${collection.id}/documents/${fixture.document('chronicle').id}`)
-  await expect(page.getByText('Document detail')).toBeVisible()
+  await expect(page.locator('.doc-header .text-h5')).toBeVisible()
   await expect(drawer(page)).toBeHidden()
   await expect(page.getByRole('button', { name: /^(Collapse|Expand) navigation$/ })).toHaveCount(0)
 

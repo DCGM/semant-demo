@@ -11,6 +11,8 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+
+from tests.chunk_fakes import in_range, positioned
 from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
@@ -18,7 +20,8 @@ from semant_demo.core.errors import EditConflictError, IncompleteWriteError, Inv
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
 from semant_demo.features.annotations.schemas import (
-    AnnotationChunk, AnnotationReviewRequest, ChunkTagPair, ChunkTagSyncRequest, PatchSpan, PatchTag, PostSpan, PostTag,
+    AnnotationChunk, AnnotationRestoreItem, AnnotationRestoreRequest, AnnotationReviewRequest, AnnotationValues,
+    ChunkTagPair, ChunkTagSyncRequest, PatchSpan, PatchTag, PostSpan, PostTag,
     ReviewAction, SpanType, TagSpan,
 )
 from semant_demo.features.annotations.service import AnnotationStore
@@ -33,6 +36,8 @@ CHUNK_1, CHUNK_2, OUTSIDE_CHUNK = uuid4(), uuid4(), uuid4()
 TAG, OTHER_TAG = uuid4(), uuid4()
 SPAN_A, SPAN_B = uuid4(), uuid4()
 TEXTS = {CHUNK_1: (0, "Jan Novák"), CHUNK_2: (1, " a Brno 😀")}  # 9 and 10 UTF-16 units
+# A chunk of the collection from another document.
+ELSEWHERE_CHUNK, ELSEWHERE_DOCUMENT = uuid4(), uuid4()
 
 
 class FakeCollections:
@@ -40,7 +45,7 @@ class FakeCollections:
         return {COLLECTION: (OWNER.id, {SHARED.id}), SECOND_COLLECTION: (OWNER.id, set())}.get(cid)
 
     async def chunk_ids_in_collection(self, ids, cid, document=None):
-        return {i for i in ids if i in TEXTS} if cid == COLLECTION else set()
+        return {i for i in ids if i in TEXTS or i == ELSEWHERE_CHUNK} if cid == COLLECTION else set()
 
     async def document_in_collection(self, document_id, cid):
         return (document_id, cid) == (DOCUMENT, COLLECTION)
@@ -107,6 +112,8 @@ class FakeSpans(Recorder):
             },
         }
         self.inserted_documents = []
+        self.references: dict[UUID, UUID] = {}
+        """``text_chunk`` per span, as moves replaced it (#436)."""
 
     def lock(self, span_id):
         return self._locks.setdefault(span_id, asyncio.Lock())
@@ -142,6 +149,10 @@ class FakeSpans(Recorder):
             self.recorded[span_id] = self.recorded.get(span_id, {}) | provenance
         tenant[span_id] = tenant[span_id].model_copy(update=update)
 
+    async def replace_anchor_reference(self, cid, span_id, chunk_id):
+        await self._write("replace_anchor_reference", span_id, chunk_id)
+        self.references[span_id] = chunk_id
+
     async def delete(self, cid, span_id):
         await self._write("delete_span", span_id)
         self._tenant(cid).pop(span_id, None)
@@ -174,15 +185,16 @@ class FakeDocuments:
     def __init__(self):
         self.reads = []
 
+    chunks = positioned([AnnotationChunk(id=ELSEWHERE_CHUNK, document_id=ELSEWHERE_DOCUMENT, order=0, text="Praha"),
+                         *(AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t) for c, (o, t) in TEXTS.items())])
+
     async def read_chunk_text(self, chunk_id):
         self.reads.append(("anchor", chunk_id))
-        order, text = TEXTS[chunk_id]
-        return AnnotationChunk(id=chunk_id, document_id=DOCUMENT, order=order, text=text)
+        return next(c for c in self.chunks if c.id == chunk_id)
 
-    async def read_following_chunk_texts(self, document_id, after_order, limit):
-        self.reads.append(("following", after_order))
-        return [AnnotationChunk(id=c, document_id=DOCUMENT, order=o, text=t)
-                for c, (o, t) in TEXTS.items() if o > after_order][:limit]
+    async def read_chunk_texts_in_range(self, document_id, first, last):
+        self.reads.append(("range", first, last))
+        return in_range(self.chunks, document_id, first, last)
 
 
 @pytest.fixture
@@ -206,6 +218,18 @@ def review(action, *ids, tag=None, versions=None):
                                    expected_versions=versions or dict.fromkeys(ids, 0))
 
 
+def restore(*items):
+    """Restore request items as (span, expected version, values)."""
+    return AnnotationRestoreRequest(items=[AnnotationRestoreItem(id=i, expected_version=v, values=AnnotationValues(**values))
+                                           for i, v, values in items])
+
+
+async def restore_with_versions(store, user):
+    """An undo (#461), which needs the collection's edit versions."""
+    store.spans.provenance = True
+    return await service.restore_annotations(store, user, COLLECTION, restore((SPAN_A, 0, {"type": SpanType.pos})))
+
+
 def sync_pairs(*pairs):
     return ChunkTagSyncRequest(pairs=[ChunkTagPair(chunk_id=c, tag_id=t) for c, t in pairs])
 
@@ -225,6 +249,7 @@ WRITES = [
     lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.approve)),
     lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.delete)),
     lambda s, u: service.sync_annotation_chunk_tags(s, u, COLLECTION, sync_pairs((CHUNK_1, TAG))),
+    restore_with_versions,
 ]
 READS = [
     lambda s, u: service.get_tag(s, u, TAG),
@@ -375,7 +400,8 @@ async def test_chunk_tags_are_synced_also_when_the_span_write_raises(store, writ
 async def test_cross_chunk_span_reads_the_following_chunks(store, writes):
     await service.create_span(store, OWNER, post_span(start=4, end=15))  # "Novák" + " a Brno"
 
-    assert store.documents.reads == [("anchor", CHUNK_1), ("following", 0)]
+    # One narrow range of orders after the anchor (#463), not the rest of the document.
+    assert store.documents.reads == [("anchor", CHUNK_1), ("range", 1, 4)]
     assert writes[0] == ("insert_span", str(CHUNK_1))
 
 
@@ -433,6 +459,83 @@ async def test_tag_change_syncs_the_old_and_the_new_pair(store, writes):
     await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)))
 
     assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_1, OTHER_TAG)}))
+
+
+async def test_moving_a_span_to_another_chunk_keeps_its_id_and_syncs_both_pairs(store, writes):
+    # Its start moved into chunk 2 (#436): one write, offsets counted from chunk 2.
+    result = await service.update_span(store, OWNER, COLLECTION, SPAN_A,
+                                       PatchSpan(chunkId=str(CHUNK_2), start=1, end=7))
+
+    assert (result.id, result.chunkId, result.start, result.end) == (str(SPAN_A), str(CHUNK_2), 1, 7)
+    assert writes == [("update_span", SPAN_A), ("replace_anchor_reference", SPAN_A, CHUNK_2),
+                      ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)}))]
+
+
+async def test_a_move_with_a_tag_change_syncs_the_new_chunk_with_the_new_tag(store, writes):
+    await service.update_span(store, OWNER, COLLECTION, SPAN_A,
+                              PatchSpan(chunkId=str(CHUNK_2), start=1, end=7, tagId=str(OTHER_TAG)))
+
+    assert writes[2] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, OTHER_TAG)}))
+
+
+async def test_a_failed_reference_update_keeps_the_move_and_saving_it_again_repairs_it(recording, writes):
+    move = PatchSpan(chunkId=str(CHUNK_2), start=1, end=7)
+    recording.spans.fail["replace_anchor_reference"] = RuntimeError("down")
+
+    result = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=0)
+
+    assert (result.outcome, result.chunkId) == ("partial", str(CHUNK_2))
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(SPAN_A), "update_chunk_reference")]
+    del recording.spans.fail["replace_anchor_reference"]
+    writes.clear()
+    # Saving the same move again (as the client knew it) writes no span, only the reference.
+    again = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=0)
+    assert again.outcome == "complete"
+    assert [w[0] for w in writes] == ["replace_anchor_reference", "sync"]
+
+
+@pytest.mark.parametrize("provenance", [False, True], ids=["unversioned", "versioned"])
+async def test_overlapping_moves_leave_the_reference_at_the_chunk_the_span_is_on(provenance, store):
+    # The first move's reference write starts a second move back and gives it every chance
+    # to finish first: the reference is replaced under the span's lock, so the second move
+    # waits and its reference is the last one written.
+    store.spans.provenance = provenance
+    original_replace, later = store.spans.replace_anchor_reference, {}
+
+    async def replace(cid, span_id, chunk_id):
+        if "back" not in later:
+            later["back"] = asyncio.create_task(service.update_span(
+                store, SHARED, COLLECTION, SPAN_A, PatchSpan(chunkId=str(CHUNK_1), start=0, end=3)))
+            await asyncio.wait({later["back"]}, timeout=0.05)
+        await original_replace(cid, span_id, chunk_id)
+
+    store.spans.replace_anchor_reference = replace
+    await service.update_span(store, OWNER, COLLECTION, SPAN_A, PatchSpan(chunkId=str(CHUNK_2), start=1, end=7))
+    back = await later["back"]
+
+    assert (back.outcome, back.chunkId) == ("complete", str(CHUNK_1))
+    assert stored(store).chunkId == str(store.spans.references[SPAN_A]) == str(CHUNK_1)
+
+
+@pytest.mark.parametrize("patch, error", [
+    (PatchSpan(chunkId=str(CHUNK_2)), InvalidRequestError),  # offsets in the new chunk are required
+    (PatchSpan(chunkId=str(CHUNK_2), start=1), InvalidRequestError),
+    (PatchSpan(chunkId=str(OUTSIDE_CHUNK), start=0, end=3), NotFoundError),
+    (PatchSpan(chunkId=str(ELSEWHERE_CHUNK), start=0, end=3), InvalidRequestError),  # another document
+    (PatchSpan(chunkId=str(CHUNK_2), start=1, end=50), InvalidSpanRange),
+], ids=["no-offsets", "no-end", "outside-collection", "other-document", "past-end"])
+async def test_an_invalid_move_writes_nothing(patch, error, store, writes):
+    with pytest.raises(error):
+        await service.update_span(store, OWNER, COLLECTION, SPAN_A, patch)
+    assert writes == []
+    assert stored(store).chunkId == str(CHUNK_1)
+
+
+async def test_bulk_updates_do_not_move_spans(store, writes):
+    with pytest.raises(InvalidRequestError):
+        await service.bulk_update_spans(store, OWNER, COLLECTION, [SPAN_A],
+                                        PatchSpan(chunkId=str(CHUNK_2), start=1, end=7))
+    assert writes == []
 
 
 async def test_bulk_update_keeps_completed_updates_and_reports_failed_ones(store, writes):
@@ -683,6 +786,24 @@ async def test_a_write_already_applied_counts_as_done_without_writing(recording,
     assert [w for w in writes if w[0] == "update_span"] == []
 
 
+async def test_a_move_is_a_checked_edit_that_keeps_the_provenance(recording, writes):
+    move = PatchSpan(chunkId=str(CHUNK_2), start=1, end=7)
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(tagId=str(OTHER_TAG)), expected_version=0)
+
+    with pytest.raises(EditConflictError):
+        await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=0)
+    assert stored(recording).chunkId == str(CHUNK_1)
+
+    result = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=1)
+    assert (result.id, result.chunkId, result.editVersion) == (str(SPAN_A), str(CHUNK_2), 2)
+    assert set(recording.spans.recorded[SPAN_A]) == {"editVersion", "lastEditedBy", "lastEditedAt"}
+
+    # A retry of the move whose answer was lost: no conflict, nothing written.
+    writes.clear()
+    again = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, move, expected_version=1)
+    assert (again.editVersion, [w for w in writes if w[0] == "update_span"]) == (2, [])
+
+
 async def test_a_delete_based_on_an_outdated_version_is_refused(recording, writes):
     await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos), expected_version=0)
     writes.clear()
@@ -737,3 +858,130 @@ async def test_scoped_cleanups_delete_without_a_version_check(recording, writes)
     result = await service.delete_suggestions_in_document(recording, OWNER, COLLECTION, DOCUMENT, [TAG])
 
     assert set(result.succeeded) == {str(SPAN_A), str(SPAN_B)}
+
+
+# ── Undo of a review or boundary edit (#461) ──────────────────────────────
+
+async def test_a_review_returns_the_previous_values_of_the_annotations_it_changed(recording):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_B, PatchSpan(type=SpanType.pos), expected_version=0)
+
+    approved = await service.review_annotations(recording, OWNER, COLLECTION,
+                                                review(ReviewAction.approve, versions={SPAN_A: 0, SPAN_B: 1}))
+    retagged = await service.review_annotations(recording, OWNER, COLLECTION,
+                                                review(ReviewAction.retag, SPAN_A, tag=OTHER_TAG, versions={SPAN_A: 1}))
+
+    # SPAN_B already was approved: nothing to undo for it.
+    assert approved.succeeded == [str(SPAN_A), str(SPAN_B)]
+    assert approved.previous == {SPAN_A: AnnotationValues(type=SpanType.auto)}
+    assert retagged.previous == {SPAN_A: AnnotationValues(tag_id=TAG)}
+
+
+async def test_a_review_another_writer_made_first_returns_nothing_to_undo(recording):
+    # The shared user approves SPAN_A after the review read it and before its locked check:
+    # the review finds it already approved and writes nothing, so it has nothing to undo
+    # (undoing it would revert the other user's approval).
+    original_read_many = recording.spans.read_many
+
+    async def read_many(cid, ids):
+        snapshot = await original_read_many(cid, ids)
+        recording.spans.read_many = original_read_many  # once: the other write reads too
+        await service.update_span(recording, SHARED, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos),
+                                  expected_version=0)
+        return snapshot
+
+    recording.spans.read_many = read_many
+    result = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.approve, SPAN_A))
+
+    assert (result.succeeded, result.versions, result.previous) == ([str(SPAN_A)], {SPAN_A: 1}, {})
+    assert recording.spans.recorded[SPAN_A]["reviewedBy"] == SHARED.id
+
+
+async def test_a_deletion_returns_nothing_to_undo(recording):
+    result = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.delete, SPAN_A))
+
+    assert (result.succeeded, result.previous) == ([str(SPAN_A)], {})
+
+
+async def test_undoing_an_approval_is_an_edit_that_clears_the_review(recording, writes):
+    approved = await service.review_annotations(recording, SHARED, COLLECTION, review(ReviewAction.approve, SPAN_A))
+    writes.clear()
+
+    result = await service.restore_annotations(recording, OWNER, COLLECTION,
+                                               restore((SPAN_A, approved.versions[SPAN_A], {"type": SpanType.auto})))
+
+    assert (result.outcome, result.succeeded, result.versions) == ("complete", [str(SPAN_A)], {SPAN_A: 2})
+    assert stored(recording).type == SpanType.auto
+    recorded = recording.spans.recorded[SPAN_A]
+    assert (recorded["reviewedBy"], recorded["reviewedAt"], recorded["lastEditedBy"]) == (None, None, OWNER.id)
+    assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG)}))
+
+
+async def test_undo_restores_only_the_annotations_not_changed_since_and_reports_the_rest(recording, writes):
+    approved = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.approve))
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_B, PatchSpan(type=SpanType.neg), expected_version=1)
+    gone = uuid4()
+
+    result = await service.restore_annotations(recording, OWNER, COLLECTION, restore(
+        *((i, approved.versions[i], v.model_dump(exclude_none=True)) for i, v in approved.previous.items()),
+        (gone, 0, {"type": SpanType.auto})))
+
+    assert result.outcome == "partial"
+    assert result.succeeded == [str(SPAN_A)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(gone), "find_annotation"), (str(SPAN_B), "edit_conflict")]
+    assert result.versions == {SPAN_A: 2, SPAN_B: 2}
+    assert (stored(recording).type, stored(recording, SPAN_B).type) == (SpanType.auto, SpanType.neg)
+
+
+async def test_undoing_a_move_puts_the_span_back_on_its_chunk(recording, writes):
+    moved = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(chunkId=str(CHUNK_2), start=1, end=7),
+                                      expected_version=0)
+    writes.clear()
+
+    result = await service.restore_annotations(recording, SHARED, COLLECTION, restore(
+        (SPAN_A, moved.editVersion, {"chunk_id": CHUNK_1, "start": 0, "end": 3})))
+
+    assert result.succeeded == [str(SPAN_A)]
+    assert (stored(recording).chunkId, stored(recording).start, stored(recording).end) == (str(CHUNK_1), 0, 3)
+    assert recording.spans.references[SPAN_A] == CHUNK_1
+    assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)}))
+
+
+async def test_undo_reports_a_range_that_no_longer_fits_and_restores_the_rest(recording, writes):
+    approved = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.approve, SPAN_A))
+
+    result = await service.restore_annotations(recording, OWNER, COLLECTION, restore(
+        (SPAN_A, approved.versions[SPAN_A], {"type": SpanType.auto}),
+        (SPAN_B, 0, {"start": 5, "end": 99})))
+
+    assert result.succeeded == [str(SPAN_A)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(SPAN_B), "check_range")]
+    assert ("update_span", SPAN_B) not in writes
+
+
+async def test_undo_is_refused_without_edit_versions(store, writes):
+    with pytest.raises(InvalidRequestError):
+        await service.restore_annotations(store, OWNER, COLLECTION, restore((SPAN_A, 0, {"type": SpanType.auto})))
+    assert writes == []
+
+
+@pytest.mark.parametrize("values, error", [
+    ({"tag_id": SECOND_TAG}, NotFoundError),  # a tag of another collection
+    ({"chunk_id": OUTSIDE_CHUNK, "start": 0, "end": 3}, NotFoundError),  # a chunk outside the collection
+])
+async def test_undo_into_another_collection_is_refused_before_any_write(values, error, recording, writes):
+    with pytest.raises(error):
+        await service.restore_annotations(recording, OWNER, COLLECTION, restore((SPAN_A, 0, values)))
+    assert writes == []
+
+
+def test_restore_request_is_bounded_and_names_each_annotation_once():
+    with pytest.raises(ValueError):
+        AnnotationRestoreRequest(items=[])
+    with pytest.raises(ValueError):
+        restore(*((uuid4(), 0, {"type": SpanType.auto}) for _ in range(201)))
+    with pytest.raises(ValueError):
+        restore((SPAN_A, 0, {"type": SpanType.auto}), (SPAN_A, 1, {"type": SpanType.pos}))
+    with pytest.raises(ValueError):
+        restore((SPAN_A, 0, {}))
+    with pytest.raises(ValueError):
+        restore((SPAN_A, 0, {"chunk_id": CHUNK_1, "start": 0}))

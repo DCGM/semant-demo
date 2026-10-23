@@ -67,12 +67,13 @@
               class="chunk-context__target-label text-caption text-weight-bold"
               data-testid="chunk-context-target-label"
             >{{ targetLabel }}</div>
-            <div class="chunk-context__chunk-text text-body2"><template
+            <div class="chunk-context__chunk-text text-body2" data-chunk-text><template
               v-for="(part, index) in textParts(chunk)"
               :key="index"
             ><mark
               v-if="part.marked"
               class="chunk-context__mark"
+              :class="{ 'chunk-context__mark--pending': highlight?.pending }"
               data-testid="chunk-context-mark"
             >{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></div>
           </section>
@@ -110,6 +111,14 @@ export interface ContextHighlight {
   chunkId: string
   start: number
   end: number
+  /** A range being edited, not saved yet: marked differently. */
+  pending?: boolean
+}
+
+/** A point of the shown text: an offset (UTF-16) in a chunk's text. */
+export interface ContextTextPoint {
+  chunkId: string
+  offset: number
 }
 
 const props = withDefaults(defineProps<{
@@ -198,6 +207,30 @@ const documentTitle = computed(() => {
 
 const headerEl = ref<HTMLElement | null>(null)
 
+/** The point of a DOM selection boundary in a chunk's text, or null outside the text. */
+function textPoint (node: Node, offset: number): ContextTextPoint | null {
+  const element = node instanceof Element ? node : node.parentElement
+  const text = element?.closest('[data-chunk-text]')
+  const chunkId = text?.closest<HTMLElement>('[data-chunk-id]')?.dataset.chunkId
+  if (!text || !chunkId) return null
+  const before = window.document.createRange()
+  before.setStart(text, 0)
+  before.setEnd(node, offset)
+  return { chunkId, offset: before.toString().length }
+}
+
+/** The text selected in the shown passage, as its two ends, or null (nothing selected there). */
+function textSelection (): [ContextTextPoint, ContextTextPoint] | null {
+  const selected = window.getSelection()
+  if (!selected || selected.rangeCount === 0 || selected.isCollapsed) return null
+  const range = selected.getRangeAt(0)
+  const from = textPoint(range.startContainer, range.startOffset)
+  const to = textPoint(range.endContainer, range.endOffset)
+  return from && to ? [from, to] : null
+}
+
+defineExpose({ textSelection })
+
 // Chunk elements by id, to bring the target into view.
 const chunkEls = new Map<string, HTMLElement>()
 function setChunkEl (id: string, el: HTMLElement | null) {
@@ -266,6 +299,13 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value] as const, as
   color: inherit;
   border-radius: 2px;
   box-shadow: 0 0 0 1px #c49000;
+}
+
+.chunk-context__mark--pending {
+  background-color: #b3e5fc;
+  box-shadow: 0 0 0 1px #0277bd;
+  outline: 1px dashed #01579b;
+  outline-offset: 1px;
 }
 
 .chunk-context__target-label {

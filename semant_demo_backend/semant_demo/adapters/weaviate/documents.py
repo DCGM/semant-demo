@@ -19,18 +19,38 @@ def _to_text_chunk(obj, document_id: UUID) -> DocumentChunk:
     return DocumentChunk(**{**obj.properties, "id": obj.uuid, "document": document_id})
 
 
-def _to_chunk_text(obj) -> AnnotationChunk:
-    return AnnotationChunk(id=obj.uuid, document_id=_document_id(obj),
-                     order=obj.properties["order"], text=obj.properties.get("text") or "")
+POSITION_PROPERTIES = {"startChar": "start_char", "startWord": "start_word", "wordOpenAtStart": "word_open_at_start"}
+"""``Chunks`` properties of a chunk's absolute position in its document (#463), by field of
+``AnnotationChunk`` / ``ChunkPosition``."""
+
+
+def _to_chunk_text(obj, document_id: UUID | None = None) -> AnnotationChunk:
+    props = obj.properties
+    return AnnotationChunk(id=obj.uuid, document_id=document_id or _document_id(obj), order=props["order"],
+                           text=props.get("text") or "",
+                           **{field: props.get(name) for name, field in POSITION_PROPERTIES.items()})
+
+
+async def missing_position_properties(client: WeaviateAsyncClient, names: CollectionNames) -> list[str]:
+    """The chunk position properties (#463) the ``Chunks`` collection does not declare."""
+    config = await client.collections.get(names.chunks_collection_name).config.get()
+    declared = {p.name for p in config.properties}
+    return [name for name in POSITION_PROPERTIES if name not in declared]
 
 
 class DocumentRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
+        self.positions = False
+        """``Chunks`` declares the position properties (#463): chunk text reads return them
+        (set at startup; a property that is not declared cannot be read)."""
 
     def _chunks(self):
         return self.client.collections.get(self.collectionNames.chunks_collection_name)
+
+    def _text_properties(self) -> list[str]:
+        return ["order", "text", *(POSITION_PROPERTIES if self.positions else ())]
 
     async def read(self, document_id: UUID) -> Document | None:
         """The document with this id, or None if it does not exist."""
@@ -70,11 +90,30 @@ class DocumentRepository:
         return DocumentDetail(document=document, chunks=chunks)
 
     async def read_chunk_text(self, chunk_id: UUID) -> AnnotationChunk | None:
-        """The chunk's document, order and text, or None if it does not exist."""
+        """The chunk's document, order, text and position, or None if it does not exist."""
         obj = await self._chunks().query.fetch_object_by_id(
-            chunk_id, return_properties=["order", "text"],
+            chunk_id, return_properties=self._text_properties(),
             return_references=[QueryReference(link_on="document", return_properties=[])])
         return _to_chunk_text(obj) if obj is not None else None
+
+    async def read_chunk_texts_in_range(self, document_id: UUID, first: int, last: int) -> list[AnnotationChunk]:
+        """The document's chunks with ``first <= order <= last`` (order, text, position), in
+        order; several chunks with one order are all returned.
+
+        No server-side sort (which loads every chunk of the document, #376), and the orders
+        are listed rather than bounded: without a range index Weaviate evaluates ``>=`` and
+        ``<=`` over every chunk on either side of the bound, so the cost would grow with
+        the length of the document; equality lookups of the few orders do not.
+        """
+        if last < first:
+            return []
+        response = await self._chunks().query.fetch_objects(
+            filters=Filter.all_of([Filter.by_ref("document").by_id().equal(document_id),
+                                   Filter.by_property("order").contains_any(list(range(first, last + 1)))]),
+            # A margin over the range, so that duplicate orders are seen rather than cut off.
+            limit=2 * (last - first + 1),
+            return_properties=self._text_properties())
+        return sorted((_to_chunk_text(o, document_id) for o in response.objects), key=lambda c: c.order)
 
     async def read_following_chunk_texts(self, document_id: UUID, after_order: int, limit: int) -> list[AnnotationChunk]:
         """Up to ``limit`` chunks of the document with order greater than ``after_order``, in order."""
@@ -87,15 +126,6 @@ class DocumentRepository:
             return_references=[QueryReference(link_on="document", return_properties=[])],
         )
         return [_to_chunk_text(o) for o in response.objects]
-
-    async def read_chunk_texts(self, document_id: UUID) -> list[AnnotationChunk]:
-        """Order and text of every chunk of the document, in order (annotation derivation, #328)."""
-        objects = await fetch_all(
-            self._chunks(), filters=Filter.by_ref("document").by_id().equal(document_id), page_size=500,
-            return_properties=["order", "text"])
-        return sorted((AnnotationChunk(id=o.uuid, document_id=document_id, order=o.properties["order"],
-                                       text=o.properties.get("text") or "") for o in objects),
-                      key=lambda c: c.order)
 
     async def read_many(self, document_ids: list[UUID]) -> dict[UUID, Document]:
         """The existing documents among ``document_ids``."""

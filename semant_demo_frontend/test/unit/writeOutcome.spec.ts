@@ -49,6 +49,17 @@ describe('write outcomes', () => {
     }, 'saved')).toMatch(/saved, but tag search and its search text or similarity vector were not updated/)
   })
 
+  it('names the statistics of a moved span whose chunk reference was not updated', () => {
+    const step = (name: string) => ({ itemId: 's', step: name, message: 'x', uncertain: false })
+    expect(spanWriteWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed: [step('update_chunk_reference')] }, 'saved'))
+      .toBe('The annotation was saved, but its count in the collection statistics was not updated for it. Save the annotation again to retry.')
+    expect(spanWriteWarning({
+      outcome: WriteOutcome.partial,
+      succeeded: ['s'],
+      failed: [step('update_chunk_tags'), step('embed_annotation'), step('update_chunk_reference')]
+    }, 'saved')).toMatch(/saved, but tag search, its search text or similarity vector and its count in the collection statistics were not updated/)
+  })
+
   it('keeps only the span fields of a span write result', () => {
     const span = { id: 's', chunkId: 'c', tagId: 't', start: 1, end: 4, type: SpanType.pos, reason: null, confidence: null }
     expect(spanOf({ ...span, outcome: WriteOutcome.complete, succeeded: ['s'], failed: [], unattempted: [] }))

@@ -101,6 +101,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserRepository } from 'src/features/auth/useUserRepository'
 import { useUserCollectionsRepository } from './useUserCollectionsRepository'
+import { memberName } from './members'
 import { useUserStore } from 'src/features/auth/userStore'
 import { UserSearchResult } from 'src/generated/api'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
@@ -141,7 +142,7 @@ const showMinLengthHint = computed(() =>
   searchQuery.value.trim().length > 0 && searchQuery.value.trim().length < MIN_SEARCH_LENGTH
 )
 
-const displayName = (user: UserSearchResult) => user.name || user.username || 'Unknown user'
+const displayName = memberName
 
 const initials = (user: UserSearchResult) => {
   const name = displayName(user)
@@ -256,6 +257,8 @@ onMounted(() => {
 <style scoped lang="scss">
 .collection-members {
   width: 100%;
+  // Narrow, so Share/Unshare sit next to the names (#479).
+  max-width: 640px;
 }
 
 .panel-card {

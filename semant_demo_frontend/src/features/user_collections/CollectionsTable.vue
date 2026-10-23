@@ -1,5 +1,6 @@
 <template>
   <q-table
+    ref="tableRef"
     class="q-mt-sm"
     flat
     square
@@ -22,36 +23,24 @@
         Collections ({{ collections.length }} {{ collections.length === 1 ? 'item' : 'items' }})
       </div>
       <q-space />
-      <q-select
-        v-model="visibleColumns"
-        multiple
-        outlined
-        options-dense
-        dense
-        :display-value="$q.lang.table.columns"
-        :options="columnOptions"
-        option-value="name"
-        emit-value
-        style="min-width: 150px"
-        transition-hide="scale"
-        transition-show="scale"
-        color="primary"
-        class="text-grey-2"
-      >
-        <template #option="{ itemProps, opt, selected, toggleOption }">
-          <q-item v-bind="itemProps">
-            <q-item-section>
-              <q-item-label>{{ opt.label }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-toggle
-                :model-value="selected"
-                @update:model-value="toggleOption(opt)"
-              />
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
+      <ColumnPicker v-model="visibleColumns" :columns="columns" />
+    </template>
+    <!-- Every column but Actions can be resized by dragging the right edge of its header. -->
+    <template #header-cell="tableProps">
+      <q-th :props="tableProps" class="resizable-th">
+        {{ tableProps.col.label }}
+        <span
+          v-if="tableProps.col.name !== 'actions'"
+          class="col-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          :aria-label="`Resize the ${tableProps.col.label} column`"
+          title="Drag to resize, double-click to reset"
+          @pointerdown.stop.prevent="startResize($event, tableProps.col.name)"
+          @click.stop
+          @dblclick.stop="resetWidth(tableProps.col.name)"
+        />
+      </q-th>
     </template>
     <template #body-cell-actions="tableProps">
       <q-td :props="tableProps">
@@ -150,11 +139,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useQuasar, type QTableColumn } from 'quasar'
+import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
+import { computed, ref, watch } from 'vue'
+import type { QTable, QTableColumn } from 'quasar'
 import { Collection, UserSearchResult } from 'src/generated/api'
 import useShareCollectionsDialog from './useShareCollectionsDialog'
 import { collectionRights } from './permissions'
+import useConfirmDelete from 'src/shared/useConfirmDelete'
+import { plural } from 'src/shared/plural'
+import { annotationsOfCollections } from 'src/features/annotations/annotationCounts'
+import { useResizableColumns } from 'src/shared/useResizableColumns'
 
 interface Props {
   collections: Collection[]
@@ -176,7 +170,7 @@ const emit = defineEmits<
   (event: 'shareMany', payload: { collectionIds: string[]; userId: string }): void
 }>()
 
-const $q = useQuasar()
+const confirmDelete = useConfirmDelete()
 const selected = ref<Collection[]>([])
 const { openShareCollectionsDialog } = useShareCollectionsDialog()
 
@@ -187,7 +181,7 @@ const initialPagination = {
   rowsPerPage: 12
 }
 
-const columns: QTableColumn<Collection>[] = [
+const baseColumns: QTableColumn<Collection>[] = [
   {
     name: 'actions',
     label: 'Actions',
@@ -240,8 +234,19 @@ const columns: QTableColumn<Collection>[] = [
   }
 ]
 
+const { columns, startResize, resetWidth } = useResizableColumns('collections', baseColumns)
+
 const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
-const columnOptions = columns.filter((column) => !column.required)
+
+// A selected collection the table no longer shows (filtered out by My/Shared/All or the
+// search, or deleted) leaves the selection, so the bulk actions act only on what is shown.
+// The table's filtered rows span all its pages.
+const tableRef = ref<QTable | null>(null)
+watch(() => tableRef.value?.filteredSortedRows as Collection[] | undefined, (rows) => {
+  if (!rows) return
+  const shown = new Set(rows.map((c) => c.id))
+  if (selected.value.some((c) => !shown.has(c.id))) selected.value = selected.value.filter((c) => shown.has(c.id))
+})
 
 // Sharing and deleting are the owner's (ADR 0007).
 const isOwned = (collection: Collection) => collectionRights(collection).share
@@ -260,18 +265,14 @@ const handleBulkShare = () => {
 const handleBulkDelete = () => {
   if (selected.value.length === 0 || !allSelectedOwned.value) return
   const count = selected.value.length
-  $q.dialog({
+  const ids = selected.value.map(c => c.id)
+  confirmDelete({
     title: 'Delete Selected Collections',
-    html: true,
-    message: `Are you sure you want to delete <strong>${count}</strong> selected collection${count === 1 ? '' : 's'}?`,
-    cancel: true,
-    ok: {
-      label: 'Delete selected',
-      color: 'negative'
-    },
-    persistent: true
+    message: `Delete ${plural(count, 'selected collection')}?`,
+    okLabel: 'Delete selected',
+    alsoDeletes: annotationsOfCollections(ids)
   }).onOk(() => {
-    emit('deleteMany', selected.value.map(c => c.id))
+    emit('deleteMany', ids)
     selected.value = []
   })
 }
@@ -286,6 +287,40 @@ const loading = computed(() => props.loading)
 </script>
 
 <style scoped>
+.resizable-th {
+  position: relative;
+}
+
+/* The drag handle on the header's right edge; a line shows while hovered. */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  right: 3px;
+  width: 2px;
+  height: 50%;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.resizable-th:hover .col-resizer::after {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.col-resizer:hover::after {
+  background: #1976d2;
+}
+
 .color-swatch {
   width: 20px;
   height: 20px;

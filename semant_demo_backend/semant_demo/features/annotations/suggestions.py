@@ -59,7 +59,7 @@ from semant_demo.adapters.topicer.client import (
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations import service
-from semant_demo.features.annotations.derivation import DocumentText
+from semant_demo.features.annotations.source import ChunkSource
 from semant_demo.features.annotations.offsets import code_point_offset, text_length, utf16_offset
 from semant_demo.features.annotations.schemas import (
     PostSpan, SuggestionRunOutcome, SuggestSpansChunkResult, SuggestSpansRequest, SuggestSpansRunEnd,
@@ -111,9 +111,9 @@ class _Tally:
     """The refusal that stopped the run before all its units."""
     max_chunks_per_tag: int | None = None
     tag_limits: list[SuggestTagLimit] = field(default_factory=list)
-    document_texts: dict[UUID, DocumentText] = field(default_factory=dict)
-    """The run's document text for the derived data of its saved spans (#328): read by the first
-    save and reused (saves that start before the first read finished read it too)."""
+    chunk_source: ChunkSource | None = None
+    """The chunks read for the derived data of the run's saved spans (#328, #463), created by the
+    first save and reused by the next ones."""
     actor: service.Actor | None = None
     """The user who started the run and the run's id, recorded on its spans (#460)."""
 
@@ -416,9 +416,11 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
     chunk of the document) in the collection's tenant."""
     span = PostSpan(chunkId=chunk_id, tagId=proposal.tag_id, start=start, end=end, type=SpanType.auto,
                     reason=proposal.reason, confidence=proposal.confidence)
+    if event.tally.chunk_source is None:
+        event.tally.chunk_source = ChunkSource(store.documents)
     try:
         result = await _uninterrupted(service.save_span(store, collection_id, document_id, span,
-                                                        event.tally.document_texts, actor=event.tally.actor))
+                                                        event.tally.chunk_source, actor=event.tally.actor))
     except Exception as e:
         failure = step_failure("insert_span", chunk_id, e)
         event.unsaved += 1
@@ -733,7 +735,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
         """
         between = range(anchor.order + 1, last.order)
         if any(order not in by_order for order in between):
-            more = await store.documents.read_following_chunk_texts(anchor.document_id, anchor.order, len(between))
+            more = await store.documents.read_chunk_texts_in_range(anchor.document_id, between.start, between.stop - 1)
             by_order.update({c.order: c for c in more if c.order not in by_order})
         if any(order not in by_order for order in between):
             return None

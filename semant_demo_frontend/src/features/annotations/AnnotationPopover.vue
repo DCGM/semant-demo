@@ -213,6 +213,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { Tag } from 'src/generated/api'
 import { buildTagSuggestions } from './tagSuggestion'
+import { byName } from './tagSortMode'
 
 // The popover for a text selection or an edited span: tag picker, AI tag picker
 // ("Suggest tags") and the span actions. The page decides what each action does.
@@ -254,7 +255,7 @@ const tagSearch = ref('')
 const selectedTag = computed(() => props.tags.find((t) => t.id === props.selectedTagId) ?? null)
 
 const sortedTags = computed(() =>
-  [...props.tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  [...props.tags].sort(byName)
 )
 
 // Computed lazily (only once the tag list is actually rendered), so this never delays the
@@ -359,7 +360,7 @@ const aiTagPickerSelected = ref<Set<string>>(new Set())
 
 const onOpenAiTagPicker = () => {
   if (!props.tags.length) return
-  // Default to all tags selected — matches the document-wide "AI assist"
+  // Default to all tags selected — matches the document-wide "AI Tagging"
   // panel, where the user typically wants Topicer to look for everything.
   aiTagPickerSelected.value = new Set(props.tags.map((t) => t.id))
   tagSearch.value = ''
@@ -392,9 +393,10 @@ watch(
 
 // Re-clamp the popover whenever its content (and therefore size) changes —
 // switching into the tag picker / AI tag picker, or the editing-state of the
-// current selection toggling Approve/Reject/Save buttons on or off.
+// current selection toggling Approve/Reject/Save buttons on or off — and when it
+// appears, as it can after being placed while hidden (a failed focused-tag save).
 watch(
-  [showTagPicker, showAiTagPicker, () => props.selection],
+  [showTagPicker, showAiTagPicker, () => props.selection, () => props.visible],
   () => {
     void nextTick(() => clampPopover())
   }

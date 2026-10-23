@@ -112,7 +112,7 @@ export function useDocumentSummary () {
   }
 
   // Nothing of an in-flight, not-yet-answered request is worth keeping: cancelling it is
-  // the same as resetting (unlike AI assist, there are no incremental results to retain).
+  // the same as resetting (unlike AI Tagging, there are no incremental results to retain).
   const cancel = reset
 
   /** Called from the summary panel's `cite` event; the reader page watches this to scroll

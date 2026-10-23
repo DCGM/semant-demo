@@ -71,6 +71,8 @@ const props = defineProps<{
   tags: Tag[]
   hoveredSpanId: string | null
   highlightedSpanId: string | null
+  /** The tag focused in the tags panel: the other tags' markers fade. */
+  focusedTagId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -98,7 +100,8 @@ const labelsWidth = computed(() => columnCount.value * COLUMN_WIDTH + GUTTER_PAD
 const markerClasses = (item: SpanMarker) => ({
   'is-active': props.hoveredSpanId === item.spanId,
   'is-auto': item.isAuto,
-  'is-highlighted': props.highlightedSpanId === item.spanId
+  'is-highlighted': props.highlightedSpanId === item.spanId,
+  'is-faded': !!props.focusedTagId && props.focusedTagId !== item.tagId
 })
 
 const markerTitle = (item: SpanMarker) => tagInfo(item.tagId).name + (item.isAuto ? ' (AI suggestion)' : '')
@@ -379,5 +382,10 @@ onBeforeUnmount(() => {
    text or gutter so the panel mirrors the choice. */
 .gutter-item.is-highlighted {
   box-shadow: 0 0 0 2px #f8fafc, 0 0 0 4px var(--tag-color);
+}
+
+/* Another tag is focused in the tags panel (#479); hovering brings the marker back. */
+.gutter-item.is-faded:not(:hover, .is-active, .is-highlighted) {
+  opacity: 0.3;
 }
 </style>

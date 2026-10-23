@@ -66,8 +66,8 @@ scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/pyth
 (cd semant_demo_frontend && npx playwright install --only-shell chromium)
 scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON=../.venv/bin/python npm run test:e2e'
 
-# make dev-up / dev-backend / dev-frontend / dev-down / dev-reset
-scripts/local-dev.sh up | backend | frontend | down | reset
+# make dev-up / dev-backend / dev-frontend / dev-down / dev-reset / dev-add-documents
+scripts/local-dev.sh up | backend | frontend | down | reset | add-documents
 ```
 
 Backend dependencies (`semant_demo_backend/`, target CPython 3.12 on Linux x86_64):

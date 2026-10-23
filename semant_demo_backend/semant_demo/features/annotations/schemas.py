@@ -12,11 +12,15 @@ from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 
 class AnnotationChunk(BaseModel):
     """Internal, not an HTTP model: a chunk's position in its document and its canonical
-    text, for offset checks."""
+    text, for offset checks and derived data; its stored absolute position (#463,
+    ``features/documents/positions.py``) when read, otherwise ``None``."""
     id: UUID
     document_id: UUID | None
     order: int
     text: str
+    start_char: int | None = None
+    start_word: int | None = None
+    word_open_at_start: bool | None = None
 
 
 class Tag(BaseModel):
@@ -95,6 +99,10 @@ class PatchSpan(BaseModel):
     type: SpanType | None = None
 
     tagId: str | None = None
+    chunkId: str | None = None
+    """Moves the span to another chunk of its document and collection (its start moved
+    there, #436): ``start`` and ``end`` are then required and count from that chunk. Only
+    for a single span (``PATCH /api/tag_spans/{id}``), not in bulk updates."""
 
 
 class EnrichmentStatus(str, Enum):
@@ -160,7 +168,6 @@ class AnnotationRow(BaseModel):
     text: str | None = None
     leftContext: str | None = None
     rightContext: str | None = None
-    positionSegment: int | None = None
     documentStartChar: int | None = None
     documentEndChar: int | None = None
     documentStartWord: int | None = None
@@ -261,6 +268,17 @@ class AnnotationPage(BaseModel):
     limit: int
 
 
+class AnnotationCounts(BaseModel):
+    """How many annotations a collection holds per type (of some tags only, when asked), e.g.
+    what deleting a tag or the collection would delete along (#479)."""
+    approved: int
+    """``pos``: manual or approved."""
+    suggestions: int
+    """``auto``: AI suggestions not yet approved or rejected."""
+    rejected: int
+    """``neg``: rejected suggestions."""
+
+
 class AnnotatedDocument(BaseModel):
     """A document with annotations matching a concordance query, for the source and year
     filters (#329). ``available`` is false when the document cannot be read."""
@@ -330,6 +348,45 @@ class AnnotationReviewRequest(BaseModel):
         return self
 
 
+class AnnotationValues(BaseModel):
+    """Values of an annotation a review or boundary edit changed, as an undo puts them back
+    (#461): only the fields that are set. ``chunk_id``, ``start`` and ``end`` are its range
+    (offsets counted from that chunk, as ``PatchSpan``); ``chunk_id`` needs both offsets."""
+    type: SpanType | None = None
+    tag_id: UUID | None = None
+    chunk_id: UUID | None = None
+    start: int | None = None
+    end: int | None = None
+
+    @model_validator(mode="after")
+    def check_values(self) -> "AnnotationValues":
+        if not self.model_dump(exclude_none=True):
+            raise ValueError("Give at least one value to restore")
+        if self.chunk_id is not None and (self.start is None or self.end is None):
+            raise ValueError("chunk_id needs start and end")
+        return self
+
+
+class AnnotationRestoreItem(BaseModel):
+    id: UUID
+    expected_version: int
+    """The ``editVersion`` the change being undone saved: an annotation written since is
+    not restored (``edit_conflict``)."""
+    values: AnnotationValues
+
+
+class AnnotationRestoreRequest(BaseModel):
+    """Undo of the last review or boundary change (#461): the previous values of up to
+    ``MAX_REVIEW_BATCH`` annotations, each with the version the change left it at."""
+    items: list[AnnotationRestoreItem] = Field(min_length=1, max_length=MAX_REVIEW_BATCH)
+
+    @model_validator(mode="after")
+    def check_items(self) -> "AnnotationRestoreRequest":
+        if len({i.id for i in self.items}) != len(self.items):
+            raise ValueError("Each annotation can be restored once per request")
+        return self
+
+
 class AnnotationReviewResult(WriteResult):
     """The outcome of a review action per annotation (best effort, ADR 0002; nothing is
     rolled back). ``succeeded``: annotations changed or deleted, and those already as the
@@ -340,8 +397,11 @@ class AnnotationReviewResult(WriteResult):
     ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it;
     ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion).
     ``versions``: the ``editVersion`` of each changed annotation after the action, and the
-    current one of each conflicting annotation."""
+    current one of each conflicting annotation.
+    ``previous``: for each annotation the action changed, the values it changed as they were
+    before, which ``annotations/restore`` puts back (undo, #461); none for a deletion."""
     versions: dict[UUID, int] = {}
+    previous: dict[UUID, AnnotationValues] = {}
 
 
 class ChunkTagPair(BaseModel):
@@ -361,8 +421,10 @@ class TagSpanWriteResult(TagSpan, WriteResult):
     id. ``failed`` lists the later steps that did not complete; the span is saved either
     way, and saving it again retries them: ``update_chunk_tags`` (tag-filtered search
     does not reflect the span), ``derive_annotation`` (its stored text, context and
-    positions could not be updated) and ``embed_annotation`` (its contextual vector could
-    not be computed or stored; semantic search leaves the span out).
+    positions could not be updated), ``embed_annotation`` (its contextual vector could
+    not be computed or stored; semantic search leaves the span out) and, for a span moved
+    to another chunk, ``update_chunk_reference`` (collection statistics may still count it
+    on its old chunk).
     """
 
 

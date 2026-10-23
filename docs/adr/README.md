@@ -17,7 +17,7 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | [0006 - Context and text](0006-context-and-text.md) | Search context/line-level roadmap agreed; mapping implementation left open. |
 | [0007 - Access and collaboration](0007-access-and-collaboration.md) | Implemented shared annotation editing, owner-only membership and local progressive UI. |
 | [0008 - Multi-tenant annotation storage](0008-multi-tenant-annotation-storage.md) | Implemented one annotation tenant per collection; deployed stores migrated 2026-10-18; idle deactivation pending. |
-| [0009 - Derived annotation data](0009-derived-annotation-data.md) | Proposed with #328: annotation text, context, segment positions and a revision-guarded contextual vector; store rollout pending. |
+| [0009 - Derived annotation data](0009-derived-annotation-data.md) | Proposed with #328: annotation text, context, absolute document positions (#463) and a revision-guarded contextual vector; store rollout pending. |
 | [0010 - Annotation provenance and edit versions](0010-annotation-provenance-and-edit-versions.md) | Proposed with #460: current-state provenance on annotations and `editVersion` conflicts for single and batch writes; store rollout pending. |
 
 ## Confirmed decisions

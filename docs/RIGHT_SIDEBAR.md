@@ -28,7 +28,7 @@ which tools (if any) it shows there.
   header's toggle on a phone, so it then has its own *Close sidebar* button next to the
   panel title.
 
-The document view (`/collections/:cid/documents/:did/v1`) adds its tags, AI assist and
+The document view (`/collections/:cid/documents/:did/v1`) adds its tags, AI Tagging and
 document tools as panels (#230); see section 6.
 
 ## 1. Files
@@ -146,7 +146,7 @@ import NotesPanel from 'src/features/notes/NotesPanel.vue'
 | `icon` | `string` | Icon in the rail ([Material icon](https://fonts.google.com/icons) name). |
 | `order` | `number` | Optional, default `0`. Panels are sorted in ascending order. |
 | `busy` | `boolean` | Optional. Shows a small spinner (and `aria-busy`) on the rail icon while work of the tool is under way, so it is seen from other panels too. |
-| `fill` | `boolean` | Optional. The content gets exactly the sidebar's height and is not scrolled by the sidebar; for a tool that scrolls parts of itself (the document's AI assist keeps its controls in view and scrolls only the suggestion list). |
+| `fill` | `boolean` | Optional. The content gets exactly the sidebar's height and is not scrolled by the sidebar; for a tool that scrolls parts of itself (the document's AI Tagging panel keeps its controls in view and scrolls only the suggestion list). |
 
 `label`, `icon`, `order` and `busy` follow the props; `id` is fixed when the panel mounts.
 

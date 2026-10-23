@@ -471,14 +471,54 @@ server** sharing its Docker daemon.
 
 ### Runners
 
+#### Runner installation layout
+
+This is the canonical on-host layout for the semANT GitHub Actions runners. Runner
+applications are installed below `/opt/actions-runners/`, with one independent
+installation per runner:
+
+```text
+/opt/actions-runners/
+|-- actions-runner-semant-server/
+|-- actions-runner-semant-ci-01/
+|-- actions-runner-semant-ci-02/
+|-- actions-runner-semant-ci-03/
+|-- actions-runner-semant-ci-04/
+`-- actions-runner-semant-ci-05/
+```
+
+Each installation is owned and run by `runner:runner`, contains its own `_work/`
+directory for GitHub Actions job workspaces, and is registered as its own systemd
+service. Inspect or manage one runner through the `svc.sh` in that runner's installation,
+for example:
+
+```bash
+cd /opt/actions-runners/actions-runner-semant-ci-01
+sudo ./svc.sh status
+sudo ./svc.sh stop
+sudo ./svc.sh start
+```
+
+These paths have different purposes:
+
+| Path | Purpose |
+|---|---|
+| `/opt/actions-runners/` | Installation root for the six runner applications |
+| `/opt/actions-runners/<runner>/_work/` | Job workspace local to one runner installation; GitHub Actions manages its contents |
+| `RUNNER_WORKDIR=/opt/runner-workdir` | Root for persistent CI-managed deployments used by the dedicated `semant-server` runner: production is in `semant-demo/`, `test-main` in `semant-demo-test-main/`, and PR previews in `semant-demo-test-pr-<N>/`. It is not a runner installation or runner-local `_work` directory |
+| `/opt/semant-demo/` | Operator-managed working directory for shared Compose services run outside CI (the production and test databases, embedder and Topicer). It may also contain app deployment files for manual operation; CI-managed app deployments do not run from this directory |
+
+#### Labels and jobs
+
 | Label | Runners | Jobs |
 |---|---|---|
-| `semant-ci` | two runners for CI | `test-backend`, `test-frontend`, `test-integration`, `test-browser`, `api-client-drift`, `python-locks` |
-| `semant-server` | the original runner, configured for deployment | `deploy-production`, `deploy-test-main`, `deploy-test-pr`, `teardown-test-pr` |
+| `semant-ci` | five CI runners (`actions-runner-semant-ci-01` through `actions-runner-semant-ci-05`) | `test-backend`, `test-frontend`, `test-integration`, `test-browser`, `api-client-drift`, `python-locks` |
+| `semant-server` | one dedicated deployment runner (`actions-runner-semant-server`) | `deploy-production`, `deploy-test-main`, `deploy-test-pr`, `teardown-test-pr` |
 
-Jobs select runners with `runs-on: [self-hosted, <label>]`. The two `semant-ci` runners let
-the test jobs of one run, or of two runs, execute in parallel, while deployments stay on
-the runner that holds their working directory, Compose projects and database paths.
+Jobs select runners with `runs-on: [self-hosted, <label>]`. The five `semant-ci` runners
+let eligible test jobs execute in parallel, while deployments stay on the dedicated
+`semant-server` runner that uses `RUNNER_WORKDIR`, the deployment Compose projects and
+database paths.
 
 Because all runners share one host, parallel jobs compete for CPU, memory and disk, and
 every job's containers (including the per-job Weaviate service of the integration tests)
@@ -507,7 +547,7 @@ Set these in **Settings → Secrets and variables → Actions → Variables**:
 | Variable | Example value | Description |
 |---|---|---|
 | `BASE_DOMAIN` | `demo.semant.cz` | Base domain; `DOMAIN`, `BACKEND_URL`, `ALLOWED_ORIGIN` are derived from it |
-| `RUNNER_WORKDIR` | `/home/runner/semant-demo` | Working directory on the runner |
+| `RUNNER_WORKDIR` | `/opt/runner-workdir` | Root for the CI-managed production, `test-main` and PR-preview deployment directories used by the `semant-server` runner; separate from `/opt/actions-runners/`, runner-local `_work/` directories and `/opt/semant-demo/` |
 | `DEPLOY_SUBDIR` | `semant-demo` | Subdirectory under `RUNNER_WORKDIR` for the production deploy |
 | `SQL_DB_DIR` | `/mnt/ssd2/semant_demo_app_data` | Production SQLite database directory (must exist, owned by `runner`) |
 | `SQL_DB_DIR_TEST` | `/mnt/ssd2/semant_demo_app_test_data` | Test SQLite database root (subdirectories are created per instance) |
@@ -581,7 +621,7 @@ sudo chown runner:runner /mnt/ssd2/semant_demo_app_test_data
 
 The backend, integration and browser test jobs mount `CI_PIP_CACHE_DIR` (default
 `/var/cache/semant-ci/pip`) into their containers as pip's cache (`PIP_CACHE_DIR=/pip-cache`),
-so pinned packages are not downloaded on every run. Both `semant-ci` runners use the same
+so pinned packages are not downloaded on every run. All five `semant-ci` runners use the same
 directory: pip writes each cache entry to a temporary file and renames it into place, so
 concurrent jobs never read a partial entry. Runners on another host need their own
 directory.
