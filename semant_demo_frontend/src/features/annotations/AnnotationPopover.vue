@@ -359,7 +359,7 @@ const aiTagPickerSelected = ref<Set<string>>(new Set())
 
 const onOpenAiTagPicker = () => {
   if (!props.tags.length) return
-  // Default to all tags selected — matches the document-wide "AI assist"
+  // Default to all tags selected — matches the document-wide "AI Tagging"
   // panel, where the user typically wants Topicer to look for everything.
   aiTagPickerSelected.value = new Set(props.tags.map((t) => t.id))
   tagSearch.value = ''

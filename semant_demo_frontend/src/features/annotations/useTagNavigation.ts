@@ -20,6 +20,20 @@ function setActiveTagId(tagId: string | null) {
   activeTagId.value = tagId
 }
 
+// ── Focused tag (#479) ──
+// Picked in the tags panel: the reader fades the other tags' spans and tags a new selection
+// with it directly. A hidden tag is shown when focused; hiding it ends the focus.
+const focusedTagId = ref<string | null>(null)
+
+function setFocusedTagId(tagId: string | null) {
+  if (tagId) hiddenTagIds.delete(tagId)
+  focusedTagId.value = tagId
+}
+
+function toggleFocusedTag(tagId: string) {
+  setFocusedTagId(focusedTagId.value === tagId ? null : tagId)
+}
+
 // ── Tag visibility ──
 const hiddenTagIds = reactive(new Set<string>())
 
@@ -32,11 +46,13 @@ function toggleTag(tagId: string) {
     hiddenTagIds.delete(tagId)
   } else {
     hiddenTagIds.add(tagId)
+    if (focusedTagId.value === tagId) focusedTagId.value = null
   }
 }
 
 function hideAllTags(tagIds: string[]) {
   for (const id of tagIds) hiddenTagIds.add(id)
+  if (focusedTagId.value && hiddenTagIds.has(focusedTagId.value)) focusedTagId.value = null
 }
 
 function showAllTags() {
@@ -103,6 +119,9 @@ export function useTagNavigation() {
     currentIndex,
     activeTagId,
     setActiveTagId,
+    focusedTagId,
+    setFocusedTagId,
+    toggleFocusedTag,
     hiddenTagIds,
     spanCount,
     navIndex,

@@ -11,10 +11,29 @@
         @click="tagEditing.createTag()"
       />
       <div class="tags-toolbar-spacer" />
-      <q-btn flat dense round size="xs" icon="visibility" @click="tagNav.showAllTags()">
+      <q-btn
+        flat dense round size="xs" icon="sort_by_alpha"
+        class="sort-btn" :class="{ 'is-on': sortMode === 'name' }"
+        aria-label="Sort tags by name"
+        :aria-pressed="sortMode === 'name'"
+        @click="sortBy('name')"
+      >
+        <q-tooltip>Sort by name</q-tooltip>
+      </q-btn>
+      <q-btn
+        flat dense round size="xs" icon="format_list_numbered"
+        class="sort-btn" :class="{ 'is-on': sortMode === 'count' }"
+        aria-label="Sort tags by number of annotations"
+        :aria-pressed="sortMode === 'count'"
+        @click="sortBy('count')"
+      >
+        <q-tooltip>Sort by number of approved annotations</q-tooltip>
+      </q-btn>
+      <q-separator vertical class="q-mx-xs" />
+      <q-btn flat dense round size="xs" icon="visibility" aria-label="Show all tags" @click="tagNav.showAllTags()">
         <q-tooltip>Show all</q-tooltip>
       </q-btn>
-      <q-btn flat dense round size="xs" icon="visibility_off" @click="tagNav.hideAllTags(tags.map(t => t.id))">
+      <q-btn flat dense round size="xs" icon="visibility_off" aria-label="Hide all tags" @click="tagNav.hideAllTags(tags.map(t => t.id))">
         <q-tooltip>Hide all</q-tooltip>
       </q-btn>
     </div>
@@ -34,8 +53,10 @@
         :key="tag.id"
         :data-tag-id="tag.id"
         class="tag-card"
+        :style="{ '--tag-color': tag.color || '#64748b' }"
         :class="{
           'is-active': tagNav.activeTagId.value === tag.id,
+          'is-focused': tagNav.focusedTagId.value === tag.id,
           'is-hidden': !tagNav.isTagVisible(tag.id),
           'is-dragging': dragTagId === tag.id,
           'is-drop-before': dropTargetId === tag.id && dragTagId !== tag.id && dropHalf === 'before',
@@ -47,6 +68,7 @@
         @dragleave="onDragLeave(tag.id)"
         @drop.prevent="onDrop(tag.id)"
         @dragend="onDragEnd"
+        @click="onCardClick($event, tag.id)"
       >
         <div class="tag-card-header">
           <q-btn
@@ -56,12 +78,24 @@
             :class="tagNav.isTagVisible(tag.id) ? 'visibility-btn' : 'visibility-btn is-off'"
             @click="tagNav.toggleTag(tag.id)"
           />
-          <q-icon
-            :name="tag.pictogram || 'label'"
-            :style="{ color: tag.color || '#64748b' }"
-            size="20px"
-          />
-          <span class="tag-name">{{ tag.name }}</span>
+          <!-- The whole card focuses the tag on click; this is its keyboard target. -->
+          <span
+            class="tag-focus-target"
+            role="button"
+            tabindex="0"
+            :aria-pressed="tagNav.focusedTagId.value === tag.id"
+            :aria-label="`Tag with ${tag.name}`"
+            :title="tagNav.focusedTagId.value === tag.id ? 'Stop tagging with this tag' : 'Tag new selections with this tag'"
+            @keydown.enter.prevent="tagNav.toggleFocusedTag(tag.id)"
+            @keydown.space.prevent="tagNav.toggleFocusedTag(tag.id)"
+          >
+            <q-icon
+              :name="tag.pictogram || 'label'"
+              :style="{ color: tag.color || '#64748b' }"
+              size="20px"
+            />
+            <span class="tag-name">{{ tag.name }}</span>
+          </span>
           <q-badge
             v-if="tag.shorthand"
             :label="tag.shorthand"
@@ -128,6 +162,7 @@ import TagExamples from './TagExamples.vue'
 import TagSearch from './TagSearch.vue'
 import { useTagEditing } from './useTagEditing'
 import { useTagNavigation } from './useTagNavigation'
+import { getTagSortMode, setTagSortMode, type TagSortMode } from './tagSortMode'
 import { useTagSearch } from './useTagSearch'
 import useTagSpans from './useTagSpans'
 
@@ -146,13 +181,33 @@ const tagNav = useTagNavigation()
 const tagSpans = useTagSpans()
 const deletingTagSpansId = ref<string | null>(null)
 
-// ── Tag drag-reorder ──
+// Per-tag count of approved (pos) spans in the currently loaded chunks. Used to sort by
+// number of annotations and by the per-tag delete-sweep button, which only wipes
+// positives — auto suggestions and negative feedback are intentionally left alone.
+const posSpanCountByTag = computed<Record<string, number>>(() => {
+  const out: Record<string, number> = {}
+  const byChunk = tagSpans.spansByChunkId.value
+  for (const chunkId of Object.keys(byChunk)) {
+    for (const s of byChunk[chunkId] || []) {
+      if (s.type !== SpanType.pos) continue
+      out[s.tagId] = (out[s.tagId] ?? 0) + 1
+    }
+  }
+  return out
+})
+
+// ── Tag order: by name, by number of annotations, or as dragged ──
 const tagOrder = ref<string[]>([])
 const dragTagId = ref<string | null>(null)
 const dropTargetId = ref<string | null>(null)
 const dropHalf = ref<'before' | 'after'>('before')
+const sortMode = ref<TagSortMode>(getTagSortMode())
+
+const byName = (a: Tag, b: Tag) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
 
 const sortedTags = computed(() => {
+  // By name stays sorted as tags are added or renamed.
+  if (sortMode.value === 'name') return [...tags.value].sort(byName)
   if (!tagOrder.value.length) return tags.value
   const orderMap = new Map(tagOrder.value.map((id, i) => [id, i]))
   return [...tags.value].sort((a, b) => {
@@ -179,49 +234,55 @@ watch(() => tagNav.activeTagId.value, (tagId) => {
   })
 })
 
-// Sync tagOrder when tags change (new tags appended at end).
-// Initial order favours tags that already have annotations — most occurrences
-// first — so the most-used tags surface at the top on first render.
-// Tags load before spans, so we keep re-seeding until either spans arrive
-// (giving us real counts) or the user manually reorders.
+// By number of annotations, the order is taken when chosen and once the document's spans
+// arrive, not on every change, so a tag doesn't move away while it is being used. Tags
+// load before spans, so the order is taken again until spans arrive or the user sorts.
 const orderSeeded = ref(false)
 
-function seedTagOrder(newTags: { id: string }[]) {
-  const sorted = [...newTags].sort(
-    (a, b) => tagNav.spanCount(b.id) - tagNav.spanCount(a.id)
-  )
-  tagOrder.value = sorted.map(t => t.id)
+function sortByCount() {
+  const counts = posSpanCountByTag.value
+  tagOrder.value = [...tags.value]
+    .sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || byName(a, b))
+    .map(t => t.id)
+}
+
+/** Sorts the tags by `mode`; choosing the current mode again sorts again. */
+function sortBy(mode: Exclude<TagSortMode, 'custom'>) {
+  sortMode.value = mode
+  setTagSortMode(mode)
+  orderSeeded.value = true
+  if (mode === 'count') sortByCount()
 }
 
 watch(tags, (newTags) => {
   const existing = new Set(tagOrder.value)
   const fresh = newTags.map(t => t.id).filter(id => !existing.has(id))
   if (!orderSeeded.value) {
-    seedTagOrder(newTags)
+    sortByCount()
   } else if (fresh.length) {
     tagOrder.value = [...tagOrder.value.filter(id => newTags.some(t => t.id === id)), ...fresh]
   }
 })
 
-// Re-seed once spans arrive, so initial sort reflects real occurrence counts.
+// Sort again once spans arrive, so the first order reflects real counts.
 watch(
-  () => tagNav.groups.value.reduce((sum, g) => sum + g.items.length, 0),
-  (total) => {
-    if (orderSeeded.value) return
-    if (total === 0) return
-    seedTagOrder(tags.value)
+  () => Object.keys(posSpanCountByTag.value).length,
+  (tagsWithSpans) => {
+    if (orderSeeded.value || tagsWithSpans === 0) return
+    sortByCount()
     orderSeeded.value = true
   }
 )
 
 // The panel stays alive while another sidebar panel is shown and keeps its order and search;
-// another collection has other tags, so both start over.
+// another collection has other tags, so both start over (the sort mode is kept).
 watch(
   () => props.collectionId,
   () => {
     tagOrder.value = []
     orderSeeded.value = false
     searchedTagName.value = ''
+    if (sortMode.value === 'custom') sortMode.value = getTagSortMode()
   }
 )
 
@@ -247,7 +308,8 @@ function onDrop(targetTagId: string) {
     return
   }
 
-  const order = [...tagOrder.value]
+  // Dragging starts from the order shown and leaves it as dragged.
+  const order = sortedTags.value.map(t => t.id)
   const fromIdx = order.indexOf(dragTagId.value)
   let toIdx = order.indexOf(targetTagId)
   if (fromIdx === -1 || toIdx === -1) return
@@ -264,6 +326,7 @@ function onDrop(targetTagId: string) {
   }
   tagOrder.value = order
   orderSeeded.value = true
+  sortMode.value = 'custom'
 
   dragTagId.value = null
   dropTargetId.value = null
@@ -273,21 +336,6 @@ function onDragEnd() {
   dragTagId.value = null
   dropTargetId.value = null
 }
-
-// Per-tag count of approved (pos) spans in the currently loaded chunks. Used
-// by the per-tag delete-sweep button which only wipes positives — auto
-// suggestions and negative feedback are intentionally left alone.
-const posSpanCountByTag = computed<Record<string, number>>(() => {
-  const out: Record<string, number> = {}
-  const byChunk = tagSpans.spansByChunkId.value
-  for (const chunkId of Object.keys(byChunk)) {
-    for (const s of byChunk[chunkId] || []) {
-      if (s.type !== SpanType.pos) continue
-      out[s.tagId] = (out[s.tagId] ?? 0) + 1
-    }
-  }
-  return out
-})
 
 function onDeleteAllTagSpans(tag: Tag) {
   const count = posSpanCountByTag.value[tag.id] ?? 0
@@ -329,6 +377,14 @@ function onDeleteAllTagSpans(tag: Tag) {
   })
 }
 
+// A click on the card (not on one of its buttons, examples or fields) focuses its tag in
+// the reader (#479); a click on the focused tag's card ends it.
+function onCardClick(e: MouseEvent, tagId: string) {
+  const target = e.target as HTMLElement
+  if (target.closest('button, a, input, textarea, .q-btn, .q-field, .tag-examples')) return
+  tagNav.toggleFocusedTag(tagId)
+}
+
 /** Focuses the tag search field (Ctrl+F in the document view). */
 function focusSearch() {
   tagSearchRef.value?.focus()
@@ -350,8 +406,9 @@ defineExpose({ focusSearch })
   background: rgba(15, 23, 42, 0.03);
   border: 1px solid rgba(15, 23, 42, 0.06);
   min-height: 80px;
-  cursor: grab;
-  transition: opacity 0.15s, border-color 0.15s;
+  /* A click focuses the tag; the card can still be dragged to reorder. */
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s, background-color 0.15s;
 }
 
 .tag-card:active {
@@ -362,6 +419,19 @@ defineExpose({ focusSearch })
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.tag-focus-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border-radius: 4px;
+}
+
+.tag-focus-target:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
 }
 
 .tag-name {
@@ -395,6 +465,15 @@ defineExpose({ focusSearch })
   font-size: 0.85rem;
 }
 
+.sort-btn {
+  color: #94a3b8;
+}
+
+.sort-btn.is-on {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
 .visibility-btn {
   color: #94a3b8;
   transition: color 0.15s;
@@ -411,6 +490,13 @@ defineExpose({ focusSearch })
 .tag-card.is-active {
   border-color: #3b82f6;
   box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* The focused tag (#479): its spans stay highlighted in the reader, new selections get it. */
+.tag-card.is-focused {
+  border-color: var(--tag-color);
+  box-shadow: 0 0 0 1px var(--tag-color);
+  background: color-mix(in srgb, var(--tag-color) 12%, #ffffff);
 }
 
 .tag-card.is-hidden {
