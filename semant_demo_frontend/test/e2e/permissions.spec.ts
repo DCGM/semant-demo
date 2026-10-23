@@ -4,20 +4,24 @@ import { ensureLoggedIn, fixture, openDocument } from './support'
 // Shared users read and annotate a collection and may edit its tag definitions and see its
 // members; membership, metadata and sharing are the owner's (ADR 0007). Read-only checks.
 
-const TAB_PATHS = { 'Documents & tagging': 'documents', Tags: 'tags', Members: 'members' } as const
-type CollectionTab = keyof typeof TAB_PATHS
-
 // A click that lands on something covering the tab (e.g. the tabs' scroll arrow, #489) fails
 // here, at the click, rather than as missing page content.
-async function clickCollectionTab (page: Page, tab: CollectionTab) {
-  await page.getByText(tab, { exact: true }).click()
-  await expect(page, `the ${tab} tab did not open`).toHaveURL(new RegExp(`/${TAB_PATHS[tab]}$`))
+async function clickCollectionTab (page: Page, tab: string) {
+  const routeTab = page.getByRole('tab', { name: tab, exact: true })
+  await routeTab.click()
+  await expect(routeTab, `the ${tab} tab did not open`).toHaveAttribute('aria-selected', 'true')
 }
 
-async function openCollectionTab (page: Page, collectionKey: string, tab: CollectionTab) {
+// Waits for the collection's name in the header: it loads after the route and moves the tabs.
+async function openCollection (page: Page, collectionKey: string) {
+  const name = fixture.collection(collectionKey).name
+  await page.getByText(name, { exact: true }).click()
+  await expect(page.locator('.collection-page-title')).toHaveText(name)
+}
+
+async function openCollectionTab (page: Page, collectionKey: string, tab: string) {
   await page.locator('.q-drawer').getByText('Collections', { exact: true }).click()
-  await page.getByText(fixture.collection(collectionKey).name, { exact: true }).click()
-  await expect(page).toHaveURL(/\/overview$/)
+  await openCollection(page, collectionKey)
   await clickCollectionTab(page, tab)
 }
 
@@ -28,7 +32,7 @@ test('a shared user gets no owner-only collection controls', async ({ page }) =>
   await expect(page.getByRole('button', { name: 'Share collection' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Delete collection' })).toHaveCount(0)
 
-  await page.getByText(fixture.collection('chronicles').name, { exact: true }).click()
+  await openCollection(page, 'chronicles')
   await expect(page.getByRole('button', { name: 'Edit collection color' })).toBeDisabled()
 
   await clickCollectionTab(page, 'Members')
