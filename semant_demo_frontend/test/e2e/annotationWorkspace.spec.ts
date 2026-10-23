@@ -341,3 +341,143 @@ test('a batch review leaves annotations changed since they were selected and can
     await patchSpan(request, proposals[1].id, { type: 'auto' })
   }
 })
+
+// ── Boundary editing in the sidebar and undo (#461) ──
+
+/** Selects the text between two offsets of chunks shown in the sidebar's passage. */
+async function selectPassage (page: Page, from: [string, number], to: [string, number]) {
+  await page.evaluate(([a, b]) => {
+    const point = ([chunkId, offset]: [string, number]): [Node, number] => {
+      const text = document.querySelector(`[data-chunk-id="${chunkId}"] [data-chunk-text]`)
+      if (!text) throw new Error(`chunk ${chunkId} is not shown`)
+      const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT)
+      let left = offset
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const length = node.textContent?.length ?? 0
+        if (left <= length) return [node, left]
+        left -= length
+      }
+      throw new Error('offset past the chunk')
+    }
+    const range = document.createRange()
+    range.setStart(...point(a))
+    range.setEnd(...point(b))
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }, [from, to] as const)
+}
+
+test('boundaries are edited from the sidebar by keyboard or selection and each edit can be undone', async ({ page, request }) => {
+  const brno = fixture.span('brno_manual')
+  const first = fixture.chunk('chronicle_1')
+  const second = fixture.chunk('chronicle_2')
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  const context = page.getByTestId('annotation-context')
+  const editor = context.getByTestId('boundary-editor')
+  try {
+    await row(page, 'Brně').click()
+    await context.getByRole('button', { name: 'Edit boundaries' }).click()
+    // By keyboard: the editor takes focus; one word earlier, then the end one word later.
+    await expect(editor.getByRole('button', { name: 'Move the start one word earlier' })).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(editor.getByTestId('boundary-preview')).toHaveText('v Brně')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    await expect(editor.getByRole('button', { name: 'Move the end one word later' })).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(editor.getByTestId('boundary-preview')).toHaveText('v Brně konala')
+    await expect(panel(page).locator('.chunk-context__mark--pending')).toHaveText('v Brně konala')
+    await editor.getByRole('button', { name: 'Save boundaries' }).click()
+
+    await expect(editor).toHaveCount(0)
+    await expect(row(page, 'v Brně konala')).toHaveAttribute('data-annotation-id', brno.id)
+    await expect(context.getByTestId('annotation-context-text')).toHaveText('v Brně konala')
+    await expect(page.getByTestId('undo-bar')).toContainText('you changed the boundaries of 1 annotation')
+
+    // By selection, starting in the previous chunk: the annotation moves there (#436).
+    await context.getByRole('button', { name: 'Edit boundaries' }).click()
+    const jelena = first.text.indexOf('jelena.')
+    await selectPassage(page, [first.id, jelena], [second.id, 'Kronikář'.length])
+    await editor.getByRole('button', { name: 'Use selected text' }).click()
+    await expect(editor.getByTestId('boundary-preview')).toHaveText('jelena.Kronikář')
+    await editor.getByRole('button', { name: 'Save boundaries' }).click()
+    await expect(editor).toHaveCount(0)
+    await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText(['jelena.', 'Kronikář'])
+    await expect(rows(page).and(page.locator(`[data-annotation-id="${brno.id}"]`))).toContainText('jelena.')
+
+    // Undo puts back the range before the last edit, on the chunk it was on.
+    await page.getByTestId('undo').click()
+    await expect(page.getByTestId('review-report')).toContainText('Undo: restored 1 of 1.')
+    await expect(row(page, 'v Brně konala')).toHaveAttribute('data-annotation-id', brno.id)
+    await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('v Brně konala')
+    await expect(page.getByTestId('undo')).toHaveCount(0)
+  } finally {
+    await patchSpan(request, brno.id, { chunkId: second.id, start: 29, end: 33 })
+  }
+})
+
+test('a boundary edit of an annotation changed meanwhile is refused, then saved on request', async ({ page, request }) => {
+  const brno = fixture.span('brno_manual')
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  const context = page.getByTestId('annotation-context')
+  const editor = context.getByTestId('boundary-editor')
+  try {
+    await row(page, 'Brně').click()
+    await context.getByRole('button', { name: 'Edit boundaries' }).click()
+    await editor.getByRole('button', { name: 'Move the start one word earlier' }).click()
+    // The shared annotator retags it meanwhile.
+    await patchSpan(request, brno.id, { tagId: fixture.tag('person').id }, 'annotator')
+    await editor.getByRole('button', { name: 'Save boundaries' }).click()
+
+    const conflict = context.getByTestId('annotation-conflict')
+    await expect(conflict).toContainText('Your boundary change was not saved.')
+    await expect(row(page, 'Brně')).toHaveAttribute('data-annotation-id', brno.id)
+    await expect(editor.getByTestId('boundary-preview')).toHaveText('v Brně')
+
+    await conflict.getByRole('button', { name: 'Apply to current version' }).click()
+    await expect(row(page, 'v Brně')).toHaveAttribute('data-annotation-id', brno.id)
+    await expect(conflict).toHaveCount(0)
+    // Escape leaves a new edit without saving.
+    await context.getByRole('button', { name: 'Edit boundaries' }).click()
+    await page.keyboard.press('Escape')
+    await expect(editor).toHaveCount(0)
+  } finally {
+    await patchSpan(request, brno.id, { start: 29, end: 33, tagId: fixture.tag('place').id })
+  }
+})
+
+test('undoing a batch approval restores the proposals not changed since; a deletion has no undo', async ({ page, request }) => {
+  const [lhota, praha] = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  await createSpan(request, 'chronicle_1', 0, 4) // "Roku"
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  try {
+    await page.getByTestId('concordance-status-pos').click() // proposals only
+    await page.getByTestId('select-all-matches').click()
+    await page.getByTestId('review-approve').click()
+    await expect(page.getByTestId('review-report')).toContainText('Approved 2 of 2.')
+    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you approved 2 annotations.')
+
+    // The owner rejects one of them meanwhile.
+    await patchSpan(request, praha.id, { type: 'neg' })
+    await page.getByTestId('undo').click()
+    const report = page.getByTestId('review-report')
+    await expect(report).toContainText('Undo: restored 1 of 2.')
+    await expect(report).toContainText('1 was changed again since then; not restored.')
+    await expect(row(page, 'Lhoty')).toContainText('Proposal')
+    await expect(page.getByTestId('undo')).toHaveCount(0)
+
+    await page.getByTestId('concordance-status-pos').click() // all statuses again
+    await row(page, 'Roku').click()
+    await page.getByTestId('annotation-review').getByRole('button', { name: 'Delete…' }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
+    await expect(page.getByTestId('undo-bar')).toHaveText('Deleted annotations cannot be restored.')
+    await expect(page.getByTestId('undo')).toHaveCount(0)
+  } finally {
+    for (const span of [lhota, praha]) await patchSpan(request, span.id, { type: 'auto' })
+  }
+})

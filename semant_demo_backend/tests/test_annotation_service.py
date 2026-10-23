@@ -18,7 +18,8 @@ from semant_demo.core.errors import EditConflictError, IncompleteWriteError, Inv
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.offsets import InvalidSpanRange
 from semant_demo.features.annotations.schemas import (
-    AnnotationChunk, AnnotationReviewRequest, ChunkTagPair, ChunkTagSyncRequest, PatchSpan, PatchTag, PostSpan, PostTag,
+    AnnotationChunk, AnnotationRestoreItem, AnnotationRestoreRequest, AnnotationReviewRequest, AnnotationValues,
+    ChunkTagPair, ChunkTagSyncRequest, PatchSpan, PatchTag, PostSpan, PostTag,
     ReviewAction, SpanType, TagSpan,
 )
 from semant_demo.features.annotations.service import AnnotationStore
@@ -216,6 +217,18 @@ def review(action, *ids, tag=None, versions=None):
                                    expected_versions=versions or dict.fromkeys(ids, 0))
 
 
+def restore(*items):
+    """Restore request items as (span, expected version, values)."""
+    return AnnotationRestoreRequest(items=[AnnotationRestoreItem(id=i, expected_version=v, values=AnnotationValues(**values))
+                                           for i, v, values in items])
+
+
+async def restore_with_versions(store, user):
+    """An undo (#461), which needs the collection's edit versions."""
+    store.spans.provenance = True
+    return await service.restore_annotations(store, user, COLLECTION, restore((SPAN_A, 0, {"type": SpanType.pos})))
+
+
 def sync_pairs(*pairs):
     return ChunkTagSyncRequest(pairs=[ChunkTagPair(chunk_id=c, tag_id=t) for c, t in pairs])
 
@@ -235,6 +248,7 @@ WRITES = [
     lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.approve)),
     lambda s, u: service.review_annotations(s, u, COLLECTION, review(ReviewAction.delete)),
     lambda s, u: service.sync_annotation_chunk_tags(s, u, COLLECTION, sync_pairs((CHUNK_1, TAG))),
+    restore_with_versions,
 ]
 READS = [
     lambda s, u: service.get_tag(s, u, TAG),
@@ -842,3 +856,110 @@ async def test_scoped_cleanups_delete_without_a_version_check(recording, writes)
     result = await service.delete_suggestions_in_document(recording, OWNER, COLLECTION, DOCUMENT, [TAG])
 
     assert set(result.succeeded) == {str(SPAN_A), str(SPAN_B)}
+
+
+# ── Undo of a review or boundary edit (#461) ──────────────────────────────
+
+async def test_a_review_returns_the_previous_values_of_the_annotations_it_changed(recording):
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_B, PatchSpan(type=SpanType.pos), expected_version=0)
+
+    approved = await service.review_annotations(recording, OWNER, COLLECTION,
+                                                review(ReviewAction.approve, versions={SPAN_A: 0, SPAN_B: 1}))
+    retagged = await service.review_annotations(recording, OWNER, COLLECTION,
+                                                review(ReviewAction.retag, SPAN_A, tag=OTHER_TAG, versions={SPAN_A: 1}))
+
+    # SPAN_B already was approved: nothing to undo for it.
+    assert approved.succeeded == [str(SPAN_A), str(SPAN_B)]
+    assert approved.previous == {SPAN_A: AnnotationValues(type=SpanType.auto)}
+    assert retagged.previous == {SPAN_A: AnnotationValues(tag_id=TAG)}
+
+
+async def test_a_deletion_returns_nothing_to_undo(recording):
+    result = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.delete, SPAN_A))
+
+    assert (result.succeeded, result.previous) == ([str(SPAN_A)], {})
+
+
+async def test_undoing_an_approval_is_an_edit_that_clears_the_review(recording, writes):
+    approved = await service.review_annotations(recording, SHARED, COLLECTION, review(ReviewAction.approve, SPAN_A))
+    writes.clear()
+
+    result = await service.restore_annotations(recording, OWNER, COLLECTION,
+                                               restore((SPAN_A, approved.versions[SPAN_A], {"type": SpanType.auto})))
+
+    assert (result.outcome, result.succeeded, result.versions) == ("complete", [str(SPAN_A)], {SPAN_A: 2})
+    assert stored(recording).type == SpanType.auto
+    recorded = recording.spans.recorded[SPAN_A]
+    assert (recorded["reviewedBy"], recorded["reviewedAt"], recorded["lastEditedBy"]) == (None, None, OWNER.id)
+    assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG)}))
+
+
+async def test_undo_restores_only_the_annotations_not_changed_since_and_reports_the_rest(recording, writes):
+    approved = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.approve))
+    await service.update_span(recording, SHARED, COLLECTION, SPAN_B, PatchSpan(type=SpanType.neg), expected_version=1)
+    gone = uuid4()
+
+    result = await service.restore_annotations(recording, OWNER, COLLECTION, restore(
+        *((i, approved.versions[i], v.model_dump(exclude_none=True)) for i, v in approved.previous.items()),
+        (gone, 0, {"type": SpanType.auto})))
+
+    assert result.outcome == "partial"
+    assert result.succeeded == [str(SPAN_A)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(gone), "find_annotation"), (str(SPAN_B), "edit_conflict")]
+    assert result.versions == {SPAN_A: 2, SPAN_B: 2}
+    assert (stored(recording).type, stored(recording, SPAN_B).type) == (SpanType.auto, SpanType.neg)
+
+
+async def test_undoing_a_move_puts_the_span_back_on_its_chunk(recording, writes):
+    moved = await service.update_span(recording, OWNER, COLLECTION, SPAN_A, PatchSpan(chunkId=str(CHUNK_2), start=1, end=7),
+                                      expected_version=0)
+    writes.clear()
+
+    result = await service.restore_annotations(recording, SHARED, COLLECTION, restore(
+        (SPAN_A, moved.editVersion, {"chunk_id": CHUNK_1, "start": 0, "end": 3})))
+
+    assert result.succeeded == [str(SPAN_A)]
+    assert (stored(recording).chunkId, stored(recording).start, stored(recording).end) == (str(CHUNK_1), 0, 3)
+    assert recording.spans.references[SPAN_A] == CHUNK_1
+    assert writes[-1] == ("sync", frozenset({ChunkTag(CHUNK_1, TAG), ChunkTag(CHUNK_2, TAG)}))
+
+
+async def test_undo_reports_a_range_that_no_longer_fits_and_restores_the_rest(recording, writes):
+    approved = await service.review_annotations(recording, OWNER, COLLECTION, review(ReviewAction.approve, SPAN_A))
+
+    result = await service.restore_annotations(recording, OWNER, COLLECTION, restore(
+        (SPAN_A, approved.versions[SPAN_A], {"type": SpanType.auto}),
+        (SPAN_B, 0, {"start": 5, "end": 99})))
+
+    assert result.succeeded == [str(SPAN_A)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(SPAN_B), "check_range")]
+    assert ("update_span", SPAN_B) not in writes
+
+
+async def test_undo_is_refused_without_edit_versions(store, writes):
+    with pytest.raises(InvalidRequestError):
+        await service.restore_annotations(store, OWNER, COLLECTION, restore((SPAN_A, 0, {"type": SpanType.auto})))
+    assert writes == []
+
+
+@pytest.mark.parametrize("values, error", [
+    ({"tag_id": SECOND_TAG}, NotFoundError),  # a tag of another collection
+    ({"chunk_id": OUTSIDE_CHUNK, "start": 0, "end": 3}, NotFoundError),  # a chunk outside the collection
+])
+async def test_undo_into_another_collection_is_refused_before_any_write(values, error, recording, writes):
+    with pytest.raises(error):
+        await service.restore_annotations(recording, OWNER, COLLECTION, restore((SPAN_A, 0, values)))
+    assert writes == []
+
+
+def test_restore_request_is_bounded_and_names_each_annotation_once():
+    with pytest.raises(ValueError):
+        AnnotationRestoreRequest(items=[])
+    with pytest.raises(ValueError):
+        restore(*((uuid4(), 0, {"type": SpanType.auto}) for _ in range(201)))
+    with pytest.raises(ValueError):
+        restore((SPAN_A, 0, {"type": SpanType.auto}), (SPAN_A, 1, {"type": SpanType.pos}))
+    with pytest.raises(ValueError):
+        restore((SPAN_A, 0, {}))
+    with pytest.raises(ValueError):
+        restore((SPAN_A, 0, {"chunk_id": CHUNK_1, "start": 0}))

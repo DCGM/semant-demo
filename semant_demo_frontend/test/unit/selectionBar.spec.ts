@@ -123,4 +123,32 @@ describe('SelectionBar', () => {
     expect(byTestId(wrapper, 'review-approve').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('Saving 200 / 400')
   })
+
+  it('offers to undo the last change and says when it cannot be undone (#461)', async () => {
+    const wrapper = mountBar({ undoable: { kind: 'boundary', items: [{ id: 'a', version: 2, values: { start: 0, end: 3 } }] } })
+    expect(byTestId(wrapper, 'undo-bar').text()).toContain('Last change: you changed the boundaries of 1 annotation.')
+    await byTestId(wrapper, 'undo').trigger('click')
+    expect(wrapper.emitted('undo')).toHaveLength(1)
+
+    await wrapper.setProps({ undoable: null, undoNote: 'Deleted annotations cannot be restored.' })
+    expect(byTestId(wrapper, 'undo-bar').text()).toBe('Deleted annotations cannot be restored.')
+    expect(byTestId(wrapper, 'undo').exists()).toBe(false)
+  })
+
+  it('reports an undo per item', () => {
+    const report: ReviewReport = {
+      action: 'restore',
+      tagId: null,
+      target: 3,
+      saved: ['a'],
+      failed: [],
+      conflicts: [{ id: 'b', version: 4 }],
+      missing: ['c'],
+      unsynced: [],
+      notSent: 0,
+      error: null
+    }
+    expect(byTestId(mountBar({ report }), 'review-report').text())
+      .toContain('Undo: restored 1 of 3. 1 was changed again since then; not restored. 1 no longer exist')
+  })
 })

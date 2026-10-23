@@ -554,6 +554,109 @@ describe('annotation review store', () => {
     reviewCalls()[1].answer({ outcome: 'complete', succeeded: ['id-0'], failed: [] })
     expect(await again).toBeNull()
   })
+
+  // ── Undo (#461) ──
+  const restoreCalls = () => calls.filter(c => c.url.pathname.endsWith('/annotations/restore'))
+
+  it('keeps the previous values of the last review and restores the unchanged ones once', async () => {
+    const review = useAnnotationReviewStore()
+    const running = review.review('col-1', 'approve' as never, at0(['a', 'b', 'c']))
+    await flush()
+    // b already was approved: the backend returns nothing to undo for it.
+    reviewCalls()[0].answer({
+      outcome: 'complete',
+      succeeded: ['a', 'b', 'c'],
+      failed: [],
+      versions: { a: 1, b: 0, c: 1 },
+      previous: { a: { type: 'auto' }, c: { type: 'auto' } }
+    })
+    await running
+    expect(review.undoable).toEqual({
+      kind: 'approve',
+      items: [{ id: 'a', version: 1, values: expect.objectContaining({ type: 'auto' }) },
+        { id: 'c', version: 1, values: expect.objectContaining({ type: 'auto' }) }]
+    })
+
+    const undoing = review.undo('col-1')
+    await flush()
+    expect(restoreCalls()[0].url.pathname).toBe('/api/user_collections/col-1/annotations/restore')
+    expect(restoreCalls()[0].body).toEqual({
+      items: [{ id: 'a', expected_version: 1, values: { type: 'auto' } }, { id: 'c', expected_version: 1, values: { type: 'auto' } }]
+    })
+    restoreCalls()[0].answer({
+      outcome: 'partial',
+      succeeded: ['a'],
+      failed: [{ item_id: 'c', step: 'edit_conflict', message: 'changed' }],
+      versions: { a: 2, c: 4 }
+    })
+    const report = await undoing
+
+    expect([report?.action, report?.saved, report?.conflicts]).toEqual(['restore', ['a'], [{ id: 'c', version: 4 }]])
+    expect(review.report).toBe(report)
+    // Undone once: nothing more to undo.
+    expect(review.undoable).toBeNull()
+    expect(await review.undo('col-1')).toBeNull()
+  })
+
+  it('retries an undo whose answer was lost with the same values', async () => {
+    const review = useAnnotationReviewStore()
+    review.noteChange({ kind: 'boundary', items: [{ id: 'a', version: 3, values: { chunkId: 'c1', start: 0, end: 4 } }] })
+    const undoing = review.undo('col-1')
+    await flush()
+    restoreCalls()[0].answer({ detail: 'down' }, 503)
+    const report = await undoing
+    expect(report?.failed.map(f => [f.id, f.uncertain, f.version])).toEqual([['a', true, 3]])
+
+    const retrying = review.retry('col-1')
+    await flush()
+    expect(restoreCalls()[1].body).toEqual({ items: [{ id: 'a', expected_version: 3, values: { chunk_id: 'c1', start: 0, end: 4 } }] })
+    restoreCalls()[1].answer({ outcome: 'complete', succeeded: ['a'], failed: [], versions: { a: 4 } })
+    expect((await retrying)?.saved).toEqual(['a'])
+    expect(review.undoable).toBeNull()
+  })
+
+  it('says a deletion, or a change of more than 200 annotations, cannot be undone', async () => {
+    const review = useAnnotationReviewStore()
+    review.noteChange({ kind: 'reject', items: [{ id: 'a', version: 1, values: { type: 'auto' } }] })
+    const deleting = review.review('col-1', 'delete' as never, at0(['a']))
+    await flush()
+    reviewCalls()[0].answer({ outcome: 'complete', succeeded: ['a'], failed: [] })
+    await deleting
+    expect([review.undoable, review.undoNote]).toEqual([null, 'Deleted annotations cannot be restored.'])
+
+    const many = ids(201)
+    const approving = review.review('col-1', 'approve' as never, at0(many))
+    await flush()
+    reviewCalls()[1].answer({
+      outcome: 'complete',
+      succeeded: many.slice(0, 200),
+      failed: [],
+      versions: Object.fromEntries(many.slice(0, 200).map(i => [i, 1])),
+      previous: Object.fromEntries(many.slice(0, 200).map(i => [i, { type: 'auto' }]))
+    })
+    await flush()
+    reviewCalls()[2].answer({ outcome: 'complete', succeeded: ['id-200'], failed: [], versions: { 'id-200': 1 }, previous: { 'id-200': { type: 'auto' } } })
+    await approving
+    expect([review.undoable, review.undoNote]).toEqual([null, 'Changes of more than 200 annotations cannot be undone.'])
+  })
+
+  it('keeps the change to undo when a review changes nothing', async () => {
+    const review = useAnnotationReviewStore()
+    const change = { kind: 'boundary' as const, items: [{ id: 'a', version: 3, values: { start: 0, end: 4 } }] }
+    review.noteChange(change)
+    const approving = review.review('col-1', 'approve' as never, at0(['b']))
+    await flush()
+    reviewCalls()[0].answer({ outcome: 'failed', succeeded: [], failed: [{ item_id: 'b', step: 'edit_conflict', message: 'x' }] })
+    await approving
+    expect(review.undoable).toStrictEqual(change)
+  })
+
+  it('forgets the change to undo with the collection', () => {
+    const review = useAnnotationReviewStore()
+    review.noteChange({ kind: 'retag', items: [{ id: 'a', version: 1, values: { tagId: 't' } }] })
+    review.clear()
+    expect(review.undoable).toBeNull()
+  })
 })
 
 describe('annotation selection store', () => {

@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
-    AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationPage, AnnotationReviewRequest,
-    AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
+    AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationPage, AnnotationRestoreRequest,
+    AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
@@ -292,6 +292,24 @@ async def review_collection_annotations(
     Nothing is rolled back.
     """
     return await service.review_annotations(store, current_user, collection_id, body)
+
+
+@span_router.post("/api/user_collections/{collection_id}/annotations/restore", response_model=AnnotationReviewResult)
+async def restore_collection_annotations(
+    collection_id: str,
+    body: AnnotationRestoreRequest,
+    store: AnnotationStore = Depends(get_annotation_store),
+    current_user: User = Depends(current_active_user),
+) -> AnnotationReviewResult:
+    """
+    Undo the last review or boundary change (#461): put back the previous values of up to
+    200 annotations of the collection, each only while it still has the version that change
+    left. Per item like a review: ``edit_conflict`` for an annotation written since (not
+    restored), ``find_annotation`` for one deleted meanwhile, ``check_range`` for a range
+    that no longer fits the document's text. Refused (400) where annotations have no edit
+    versions.
+    """
+    return await service.restore_annotations(store, current_user, collection_id, body)
 
 
 @span_router.post("/api/user_collections/{collection_id}/annotations/chunk-tags/sync", response_model=WriteResult)

@@ -35,7 +35,7 @@ Provenance and edit versions (#460, once the collection holds them,
 ``SpanRepository.provenance``): a create records its ``origin`` (``ai`` with the run's
 ``aiRunId`` for suggestions, else ``manual``), actor and time; every span write (type,
 tag, offsets) increments ``editVersion`` and records the last edit, an approve or reject
-also the review. ``origin``, ``aiRunId``, ``reason`` and ``confidence`` are never
+also the review (a change back to ``auto``, an undo of #461, clears it). ``origin``, ``aiRunId``, ``reason`` and ``confidence`` are never
 changed. A write or delete that names the version its caller expects reads the span
 under its lock and is refused (``EditConflictError``; per item ``edit_conflict`` in
 batches) when the span was written since, unless it already is as the write asks (then
@@ -51,8 +51,8 @@ from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
     MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
-    AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationReviewRequest, AnnotationReviewResult,
-    AnnotationRow, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
+    AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
+    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
 )
 from semant_demo.features.documents.schemas import Document
 from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
@@ -134,11 +134,13 @@ def _created(store: AnnotationStore, actor: Actor | None) -> dict | None:
 
 def _edited(current: TagSpan, patch: PatchSpan, actor: Actor) -> dict:
     """The provenance a patch of ``current`` records: the next version and the last edit,
-    and the review when it approves or rejects (changes the type to ``pos`` / ``neg``)."""
+    and the review when it approves or rejects (changes the type to ``pos`` / ``neg``); a
+    change back to ``auto`` (an undone review, #461) clears the review."""
     now = _now()
     props: dict = {"editVersion": current.editVersion + 1, "lastEditedBy": actor.user_id, "lastEditedAt": now}
-    if patch.type in (SpanType.pos, SpanType.neg) and patch.type != current.type:
-        props |= {"reviewedBy": actor.user_id, "reviewedAt": now}
+    if patch.type is not None and patch.type != current.type:
+        reviewed = patch.type in (SpanType.pos, SpanType.neg)
+        props |= {"reviewedBy": actor.user_id if reviewed else None, "reviewedAt": now if reviewed else None}
     return props
 
 
@@ -352,11 +354,12 @@ async def _check_patched_ranges(store: AnnotationStore, spans: dict[UUID, TagSpa
                 raise InvalidRequestError("A span can only move to another chunk of its document")
 
 
-def _pairs_touched_by(spans: dict[UUID, TagSpan], patch: PatchSpan) -> set[ChunkTag]:
-    """The spans' current (chunk, tag) pairs and those they have after the patch: on a tag
+def _pairs_touched_by(spans: dict[UUID, TagSpan], patches: dict[UUID, PatchSpan]) -> set[ChunkTag]:
+    """The spans' current (chunk, tag) pairs and those they have after their patch: on a tag
     change the new tag's, on a move the new chunk's."""
     pairs = {pair_of(span) for span in spans.values()}
-    for span in spans.values():
+    for sid, span in spans.items():
+        patch = patches[sid]
         pairs.add(ChunkTag.of(patch.chunkId or span.chunkId, patch.tagId or span.tagId))
     return pairs
 
@@ -440,8 +443,8 @@ async def update_span(store: AnnotationStore, user: Principal | None, collection
     """
     cid, spans = await _authorize_span_patch(store, user, collection_id, [span_id], patch)
     await _check_patched_ranges(store, spans, patch)
-    pairs = _pairs_touched_by(spans, patch)
     [sid] = spans
+    pairs = _pairs_touched_by(spans, {sid: patch})
     try:
         span, refresh, anchor_failed = await _update_and_read(store, cid, sid, patch, Actor.of(user), expected_version)
     except EditConflictError:
@@ -493,17 +496,18 @@ async def bulk_update_spans(store: AnnotationStore, user: Principal | None, coll
     cid, spans = await _authorize_span_patch(store, user, collection_id, span_ids, patch)
     await _check_patched_ranges(store, spans, patch)
     expected = {access.parse_id(i, "Span"): v for i, v in (expected_versions or {}).items()}
-    updated, failed, conflicts = await _update_spans(store, cid, spans, patch, Actor.of(user), expected)
+    updated, failed, conflicts = await _update_spans(store, cid, spans, dict.fromkeys(spans, patch), Actor.of(user),
+                                                     expected)
     return BulkUpdateSpansResponse(outcome=outcome_of(len(updated), len(failed)),
                                    succeeded=[s.id for s in updated], failed=failed, spans=updated,
                                    conflicts=conflicts)
 
 
-async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, TagSpan], patch: PatchSpan,
-                        actor: Actor, expected: dict[UUID, int] | None = None
+async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, TagSpan],
+                        patches: dict[UUID, PatchSpan], actor: Actor, expected: dict[UUID, int] | None = None
                         ) -> tuple[list[TagSpan], list[StepFailure], list[TagSpan]]:
-    """Applies a checked patch to the spans concurrently (each checked against its version
-    in ``expected``), then re-derives every touched chunk tag pair once (also of spans whose
+    """Applies each span's checked patch concurrently (each checked against its version in
+    ``expected``), then re-derives every touched chunk tag pair once (also of spans whose
     update failed) and stores new vectors; returns the updated spans in request order, the
     failures and the current state of the conflicting spans."""
     updated: list[TagSpan] = []
@@ -512,7 +516,7 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
     refreshes: dict[UUID, Refresh] = {}
     ids = list(spans)
     expected = expected or {}
-    results = await _gather(*(_update_and_read(store, cid, sid, patch, actor, expected.get(sid)) for sid in ids))
+    results = await _gather(*(_update_and_read(store, cid, sid, patches[sid], actor, expected.get(sid)) for sid in ids))
     for sid, res in zip(ids, results):
         if isinstance(res, EditConflictError):
             failed.append(_conflict_failure(sid))
@@ -526,7 +530,7 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
             failed += res[2]
             if res[1] is not None:
                 refreshes[sid] = res[1]
-    failed += await store.chunk_tags.sync(cid, _pairs_touched_by(spans, patch))
+    failed += await store.chunk_tags.sync(cid, _pairs_touched_by(spans, patches))
     for sid, refresh in refreshes.items():
         failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
     return updated, failed, conflicts
@@ -1047,7 +1051,8 @@ async def review_annotations(store: AnnotationStore, user: Principal | None, col
     not changed, the others are written best effort and reported per item. Type and tag
     changes keep offsets, revision and derived data (no embedding). Each annotation is
     checked against its expected version (``edit_conflict``, not changed, when it was
-    written since); one already as the action asks counts as succeeded.
+    written since); one already as the action asks counts as succeeded. ``previous`` holds
+    the type or tag of each annotation the action changed as it was, for an undo.
     """
     grant = await access.require_annotation_edit(store.collections, user, collection_id)
     ids = list(dict.fromkeys(request.annotation_ids))
@@ -1063,6 +1068,7 @@ async def review_annotations(store: AnnotationStore, user: Principal | None, col
     found = {i: spans[i] for i in ids if i in spans}
     expected = {i: request.expected_versions[i] for i in found}
     versions: dict[UUID, int] = {}
+    previous: dict[UUID, AnnotationValues] = {}
     if not found:
         succeeded, failed = [], []
     elif request.action == ReviewAction.delete:
@@ -1070,10 +1076,72 @@ async def review_annotations(store: AnnotationStore, user: Principal | None, col
             store, cid, {i: {pair_of(s)} for i, s in found.items()}, expected)
     else:
         patch = _REVIEW_PATCHES.get(request.action) or PatchSpan(tagId=str(request.tag_id))
-        updated, failed, conflicts = await _update_spans(store, cid, found, patch, Actor.of(user), expected)
+        updated, failed, conflicts = await _update_spans(store, cid, found, dict.fromkeys(found, patch),
+                                                         Actor.of(user), expected)
         succeeded = [str(s.id) for s in updated]
         versions = {UUID(str(s.id)): s.editVersion for s in [*updated, *conflicts]}
+        # An annotation that already was as the action asks was not changed: nothing to undo.
+        for span in updated:
+            before = found[UUID(str(span.id))]
+            if patch.type is not None and before.type is not None and before.type != patch.type:
+                previous[UUID(str(span.id))] = AnnotationValues(type=before.type)
+            elif patch.tagId is not None and before.tagId and before.tagId != patch.tagId:
+                previous[UUID(str(span.id))] = AnnotationValues(tag_id=before.tagId)
     failed = missing + failed
+    return AnnotationReviewResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded,
+                                  failed=failed, versions=versions, previous=previous)
+
+
+def _restore_patch(values: AnnotationValues) -> PatchSpan:
+    return PatchSpan(type=values.type, start=values.start, end=values.end,
+                     tagId=str(values.tag_id) if values.tag_id else None,
+                     chunkId=str(values.chunk_id) if values.chunk_id else None)
+
+
+async def restore_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                              request: AnnotationRestoreRequest) -> AnnotationReviewResult:
+    """
+    Undo (#461): puts back the previous values of annotations of the collection that a
+    review or boundary edit changed, each only while it still has the version that change
+    left (``edit_conflict``, not restored, when it was written since). An ordinary edit by
+    ``user``: a new version and last edit, a restored range a new revision derived again,
+    a type restored to ``auto`` no longer reviewed. Per item like ``review_annotations``,
+    with ``check_range`` for a range that no longer describes the document's text. Needs
+    the collection's edit versions: without them an undo could overwrite anyone's change.
+    """
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    if not store.spans.provenance:
+        raise InvalidRequestError("Undo needs the annotations' edit versions, which this collection does not record yet")
+    values = {i.id: i.values for i in request.items}
+    tags = {str(v.tag_id) for v in values.values() if v.tag_id is not None}
+    if tags:
+        await access.require_tags_in_collection(store.tags, list(tags), grant.collection_id)
+    chunks = {str(v.chunk_id) for v in values.values() if v.chunk_id is not None}
+    if chunks:
+        await access.require_chunks_in_collection(store.collections, list(chunks), grant.collection_id)
+    cid = await use_tenant(store, grant)
+    spans = await store.spans.read_many(cid, list(values))
+    failed = [_missing_failure(i) for i in values if i not in spans]
+    patches: dict[UUID, PatchSpan] = {}
+    for sid in values:
+        if sid not in spans:
+            continue
+        patch = _restore_patch(values[sid])
+        try:
+            await _check_patched_ranges(store, {sid: spans[sid]}, patch)
+        except (InvalidRequestError, NotFoundError) as e:  # also InvalidSpanRange
+            failed.append(StepFailure(item_id=str(sid), step="check_range", message=str(e)))
+            continue
+        patches[sid] = patch
+    versions: dict[UUID, int] = {}
+    succeeded: list[str] = []
+    if patches:
+        found = {sid: spans[sid] for sid in patches}
+        expected = {i.id: i.expected_version for i in request.items if i.id in patches}
+        updated, update_failed, conflicts = await _update_spans(store, cid, found, patches, Actor.of(user), expected)
+        succeeded = [str(s.id) for s in updated]
+        versions = {UUID(str(s.id)): s.editVersion for s in [*updated, *conflicts]}
+        failed += update_failed
     return AnnotationReviewResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded,
                                   failed=failed, versions=versions)
 

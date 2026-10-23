@@ -247,6 +247,46 @@ test('annotation provenance and edit conflicts (#460)', async ({ page, request }
   }
 })
 
+test('annotation boundary editing and undo (#461)', async ({ page, request }, testInfo) => {
+  // The sidebar's boundary editor with the new range marked, then the saved edit with its undo.
+  const collectionId = fixture.collection('chronicles').id
+  const brno = fixture.span('brno_manual')
+  const restore = async () => request.patch(`/api/tag_spans/${brno.id}`, {
+    headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
+    params: { collection_id: collectionId },
+    data: { chunkId: fixture.chunk('chronicle_2').id, start: 29, end: 33 }
+  })
+  try {
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${collectionId}/annotations`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+    await page.locator(`[data-testid="kwic-row"][data-annotation-id="${brno.id}"]`).click()
+    await expectRightSidebarIn(page)
+    await expectSidebarsOpen(page, testInfo)
+    await page.getByRole('button', { name: 'Edit boundaries' }).click()
+    const editor = page.getByTestId('boundary-editor')
+    await editor.getByRole('button', { name: 'Move the start one word earlier' }).click()
+    await editor.getByRole('button', { name: 'Move the end one word later' }).click()
+    await expect(editor.getByTestId('boundary-preview')).toHaveText('v Brně konala')
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'annotation-boundary-editor')
+
+    await editor.getByRole('button', { name: 'Save boundaries' }).click()
+    await expect(page.getByTestId('undo')).toBeVisible()
+    if (testInfo.project.name === 'phone') {
+      await page.getByRole('button', { name: 'Close sidebar' }).click()
+      // Slid out completely (it is animated).
+      await expect.poll(async () => (await page.locator('.q-drawer--right').boundingBox())?.x ?? 0)
+        .toBeGreaterThanOrEqual(page.viewportSize()?.width ?? 0)
+    }
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'annotation-boundary-undo')
+  } finally {
+    await restore()
+  }
+})
+
 test('corpus overview', async ({ page }, testInfo) => {
   // A synced store has libraries; the fixture store has none (shown as unavailable).
   await page.route('**/api/analytics/corpus/overview', async (route) => {

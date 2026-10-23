@@ -20,6 +20,7 @@ import type {
   AnnotationIds,
   AnnotationIdsRequest,
   AnnotationPage,
+  AnnotationRestoreRequest,
   AnnotationReviewRequest,
   AnnotationReviewResult,
   AnnotationSort,
@@ -89,6 +90,8 @@ import {
     AnnotationIdsRequestToJSON,
     AnnotationPageFromJSON,
     AnnotationPageToJSON,
+    AnnotationRestoreRequestFromJSON,
+    AnnotationRestoreRequestToJSON,
     AnnotationReviewRequestFromJSON,
     AnnotationReviewRequestToJSON,
     AnnotationReviewResultFromJSON,
@@ -403,6 +406,11 @@ export interface RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocum
 export interface ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest {
     collectionId: string;
     annotationIdsRequest: AnnotationIdsRequest;
+}
+
+export interface RestoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequest {
+    collectionId: string;
+    annotationRestoreRequest: AnnotationRestoreRequest;
 }
 
 export interface ReviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPostRequest {
@@ -1686,6 +1694,32 @@ export interface DefaultApiInterface {
      * Resolve Collection Annotation Ids
      */
     resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationIds>;
+
+    /**
+     * Creates request options for restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePost without sending the request
+     * @param {string} collectionId 
+     * @param {AnnotationRestoreRequest} annotationRestoreRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequestOpts(requestParameters: RestoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Undo the last review or boundary change (#461): put back the previous values of up to 200 annotations of the collection, each only while it still has the version that change left. Per item like a review: ``edit_conflict`` for an annotation written since (not restored), ``find_annotation`` for one deleted meanwhile, ``check_range`` for a range that no longer fits the document\'s text. Refused (400) where annotations have no edit versions.
+     * @summary Restore Collection Annotations
+     * @param {string} collectionId 
+     * @param {AnnotationRestoreRequest} annotationRestoreRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRaw(requestParameters: RestoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationReviewResult>>;
+
+    /**
+     * Undo the last review or boundary change (#461): put back the previous values of up to 200 annotations of the collection, each only while it still has the version that change left. Per item like a review: ``edit_conflict`` for an annotation written since (not restored), ``find_annotation`` for one deleted meanwhile, ``check_range`` for a range that no longer fits the document\'s text. Refused (400) where annotations have no edit versions.
+     * Restore Collection Annotations
+     */
+    restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePost(requestParameters: RestoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationReviewResult>;
 
     /**
      * Creates request options for reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost without sending the request
@@ -4741,6 +4775,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationIds> {
         const response = await this.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePost without sending the request
+     */
+    async restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequestOpts(requestParameters: RestoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePost().'
+            );
+        }
+
+        if (requestParameters['annotationRestoreRequest'] == null) {
+            throw new runtime.RequiredError(
+                'annotationRestoreRequest',
+                'Required parameter "annotationRestoreRequest" was null or undefined when calling restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/restore`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AnnotationRestoreRequestToJSON(requestParameters['annotationRestoreRequest']),
+        };
+    }
+
+    /**
+     * Undo the last review or boundary change (#461): put back the previous values of up to 200 annotations of the collection, each only while it still has the version that change left. Per item like a review: ``edit_conflict`` for an annotation written since (not restored), ``find_annotation`` for one deleted meanwhile, ``check_range`` for a range that no longer fits the document\'s text. Refused (400) where annotations have no edit versions.
+     * Restore Collection Annotations
+     */
+    async restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRaw(requestParameters: RestoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationReviewResult>> {
+        const requestOptions = await this.restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationReviewResultFromJSON(jsonValue));
+    }
+
+    /**
+     * Undo the last review or boundary change (#461): put back the previous values of up to 200 annotations of the collection, each only while it still has the version that change left. Per item like a review: ``edit_conflict`` for an annotation written since (not restored), ``find_annotation`` for one deleted meanwhile, ``check_range`` for a range that no longer fits the document\'s text. Refused (400) where annotations have no edit versions.
+     * Restore Collection Annotations
+     */
+    async restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePost(requestParameters: RestoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationReviewResult> {
+        const response = await this.restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

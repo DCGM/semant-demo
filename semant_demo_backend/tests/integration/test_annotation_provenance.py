@@ -101,6 +101,57 @@ async def test_a_review_refuses_annotations_changed_since_they_were_selected(api
     assert (row["provenance"]["origin"], row["provenance"]["createdBy"]) == ("unknown", None)
 
 
+async def test_undoing_an_approval_restores_the_proposal_unless_changed_since(api_client, login, ids):
+    # #461: the review returns the previous values; restoring clears the stored review.
+    owner, annotator = await login("owner"), await login("annotator")
+    collection = ids.col["chronicles"]
+    c = {"collection_id": collection}
+    first, second = [(await api_client.post("/api/tag_spans", headers=owner, json=_span(ids))).json()["id"]
+                     for _ in range(2)]
+    approved = (await api_client.post(f"/api/user_collections/{collection}/annotations/review", headers=annotator,
+                                      json={"action": "approve", "annotation_ids": [first, second],
+                                            "expected_versions": {first: 0, second: 0}})).json()
+    assert approved["previous"] == {i: {"type": "auto", "tag_id": None, "chunk_id": None, "start": None, "end": None}
+                                    for i in (first, second)}
+    # Someone rejects the second one meanwhile.
+    await api_client.patch(f"/api/tag_spans/{second}", headers=owner, params=c | {"expected_version": 1},
+                           json={"type": "neg"})
+
+    undone = await api_client.post(f"/api/user_collections/{collection}/annotations/restore", headers=annotator,
+                                   json={"items": [{"id": i, "expected_version": approved["versions"][i],
+                                                    "values": approved["previous"][i]} for i in (first, second)]})
+
+    assert undone.status_code == 200
+    result = undone.json()
+    assert result["succeeded"] == [first]
+    assert [(f["item_id"], f["step"]) for f in result["failed"]] == [(second, "edit_conflict")]
+    row = await _row(api_client, owner, collection, first)
+    assert (row["type"], row["editVersion"]) == ("auto", 2)
+    assert (row["provenance"]["reviewedBy"], row["provenance"]["reviewedAt"]) == (None, None)
+    assert row["provenance"]["lastEditedBy"] == ids.user["annotator"]
+    assert (await _row(api_client, owner, collection, second))["type"] == "neg"
+
+
+async def test_undoing_a_boundary_edit_restores_the_range_and_its_text(api_client, login, ids):
+    owner = await login("owner")
+    collection = ids.col["chronicles"]
+    c = {"collection_id": collection}
+    span_id = (await api_client.post("/api/tag_spans", headers=owner, json=_span(ids))).json()["id"]
+    before = await _row(api_client, owner, collection, span_id)
+    edited = (await api_client.patch(f"/api/tag_spans/{span_id}", headers=owner, params=c | {"expected_version": 0},
+                                     json={"start": 1, "end": 8})).json()
+    assert (await _row(api_client, owner, collection, span_id))["text"] != before["text"]
+
+    undone = (await api_client.post(f"/api/user_collections/{collection}/annotations/restore", headers=owner,
+                                    json={"items": [{"id": span_id, "expected_version": edited["editVersion"],
+                                                     "values": {"start": 0, "end": 3}}]})).json()
+
+    assert undone["outcome"] == "complete"
+    row = await _row(api_client, owner, collection, span_id)
+    assert (row["start"], row["end"], row["text"], row["editVersion"]) == (0, 3, before["text"], 2)
+    assert row["revision"] == before["revision"] + 2
+
+
 # ── A collection created before #460 ─────────────────────────────────────
 
 
