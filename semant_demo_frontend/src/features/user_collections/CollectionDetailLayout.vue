@@ -1,7 +1,7 @@
 <template>
   <q-page class="q-pt-sm">
     <div class="collection-topbar q-px-md q-pb-xs">
-      <div class="collection-header">
+      <div class="collection-header" :class="{ 'collection-header--editing': isEditingName }">
         <BackLink :to="{ name: 'collections' }" label="Collections" aria-label="Back to collections" />
         <div class="collection-title-row">
           <button
@@ -98,6 +98,7 @@
         active-class="active-tab text-primary"
         narrow-indicator
         inline-label
+        outside-arrows
         class="collection-tabs q-pl-md"
         align="justify"
         >
@@ -286,10 +287,14 @@ onMounted(async () => {
 
 .collection-header {
   padding: 2px 0;
-  // The name gives way first, down to its minimum; only then do the tabs scroll, since
-  // their scroll arrow covers the last tab (#489).
+  // The name gives way first, down to its minimum; only then do the tabs scroll (#489).
   flex: 0 1000 auto;
   min-width: 12rem;
+}
+
+// The name editor keeps its width; the tabs scroll instead of being covered by it.
+.collection-header--editing {
+  flex-shrink: 0;
 }
 
 .collection-title-row {
@@ -342,7 +347,8 @@ onMounted(async () => {
 }
 
 .collection-tabs {
-  // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page.
+  // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page;
+  // the arrows sit outside the tabs (outside-arrows), so they never cover the last one (#489).
   flex: 1 1 auto;
   min-width: 0;
 }
