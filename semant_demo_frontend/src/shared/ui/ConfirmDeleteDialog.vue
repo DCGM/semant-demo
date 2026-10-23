@@ -53,20 +53,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { QBtn, useDialogPluginComponent } from 'quasar'
+import type { ConfirmDeleteOptions } from './ConfirmDeleteDialogTypes'
 
 const CONFIRM_WORD = 'DELETE'
 
-/** Reads what else would be deleted along, as text; empty when nothing. */
-type AlsoDeletes = () => Promise<string>
-
-const props = defineProps<{
-  title: string
-  /** What is deleted, as plain text (names are not HTML). */
-  message: string
-  okLabel?: string
-  /** e.g. "3 approved annotations" */
-  alsoDeletes: AlsoDeletes
-}>()
+const props = defineProps<ConfirmDeleteOptions>()
 
 defineEmits([...useDialogPluginComponent.emits])
 const { dialogRef, onDialogHide, onDialogOK, onDialogCancel } = useDialogPluginComponent()
