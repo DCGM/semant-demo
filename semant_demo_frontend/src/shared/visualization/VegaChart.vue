@@ -20,6 +20,10 @@
  * Drawings can overlap (a resize during a spec change) and finish in any order, so each one
  * is made in its own detached element. Only the newest is put into the container; an older
  * one finishing late is finalized without ever being shown.
+ *
+ * The Vega signals named in `signals` (e.g. an interval selection) are reported as
+ * `signal` events of the shown drawing, so the page can react to an interaction without
+ * the chart being drawn again on every pointer movement.
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Result, VisualizationSpec } from 'vega-embed'
@@ -29,7 +33,11 @@ const props = defineProps<{
   spec: VisualizationSpec
   /** Accessible name of the drawing. */
   label: string
+  /** Names of Vega signals to report as `signal` events. */
+  signals?: string[]
 }>()
+
+const emit = defineEmits<{ signal: [name: string, value: unknown] }>()
 
 const container = ref<HTMLElement | null>(null)
 const failed = ref(false)
@@ -73,6 +81,9 @@ async function render () {
     dispose()
     container.value.appendChild(drawing)
     result = embedded
+    for (const name of props.signals ?? []) {
+      embedded.view.addSignalListener(name, (signal, value) => emit('signal', signal, value))
+    }
     failed.value = false
   } catch (e) {
     if (current !== generation) return

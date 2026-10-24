@@ -192,7 +192,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `ANNOTATION_TENANT_IDLE_SECONDS` / `ANNOTATION_TENANT_DEACTIVATION_ENABLED` | `3600` / `false` | Idle time after which `maintenance.annotation_tenants deactivate-idle` deactivates a tenant, and whether it may (keep `false` until rehearsed, [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-tenants-annotation_tenants-327)) |
 | `SPAN_CHAT_TEMPERATURE` / `SPAN_CHAT_MAX_TOKENS` | `0.4` / `1024` | Span discussion replies (`span_chat` tier; the tokens are capped by its `max_output_tokens`) |
 | `SPAN_CHAT_CONTEXT_CHARS` / `SPAN_CHAT_HISTORY_LIMIT` | `1500` / `20` | Context window around the span; chat messages forwarded |
-| `CORPUS_OVERVIEW_MAX_AGE` | `600` | Seconds a computed corpus overview (`/api/analytics/corpus/overview`) is served again before it is recomputed; `0` computes it on every request |
+| `CORPUS_OVERVIEW_MAX_AGE` | `600` | Seconds the computed unfiltered corpus counts (`/api/analytics/corpus/overview`, and `/api/analytics/corpus/distributions` without filters) are served again before they are recomputed; `0` computes them on every request; filtered counts are never cached |
 | `FEEDBACK_LOG_PATH` | `semant_demo/feedback.log.jsonl` | JSONL file receiving in-app feedback. An empty value means the default. Deployed instances use `/app/feedback/feedback.log.jsonl`, a host directory mounted from the instance data ([deploy/README](../deploy/README.md#in-app-feedback-storage)) |
 | `FEEDBACK_WEBHOOK_URL` | empty | Optional webhook that also receives in-app feedback |
 | `OTEL_ENABLED`, `OTEL_*`, `DEPLOYMENT_ENVIRONMENT` | off | Telemetry export; see [OBSERVABILITY.md](OBSERVABILITY.md#runtime-configuration) |
