@@ -63,8 +63,10 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository, pair_of
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.writes import step_failure
-from semant_demo.core.errors import EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError
-from semant_demo.features.attributes import codec
+from semant_demo.core.errors import (
+    EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
+)
+from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, MissingChunkPositions, derive
 from semant_demo.features.annotations.enrichment import Enrichment, text_current, vector_current
 from semant_demo.features.annotations.offsets import InvalidSpanRange, check_span_range
@@ -851,6 +853,17 @@ def _parse_ids(values: list[Id] | None, kind: str) -> list[UUID] | None:
         raise InvalidRequestError(f"Malformed {kind} id") from None
 
 
+ATTRIBUTES_NOT_ENABLED = ("Attributes are not enabled on this store: run "
+                          "python -m semant_demo.maintenance.annotation_attributes add-schema and restart the backend.")
+
+
+def _require_attribute_properties(store: AnnotationStore, query: AnnotationQuery) -> None:
+    """Attribute filters on a store without the attribute properties would fail in Weaviate
+    (an undeclared property): refuse them with 503 as assignments are (#331)."""
+    if (query.attribute_values or query.attribute_unassigned) and not store.spans.attributes:
+        raise ServiceUnavailableError(ATTRIBUTES_NOT_ENABLED)
+
+
 def _attribute_filter(values: list[str] | None, unassigned: list[Id] | None
                       ) -> tuple[dict[UUID, list[UUID]], list[UUID]]:
     """The attribute conditions of a query from ``<attribute id>:<value id>`` pairs and attribute
@@ -900,7 +913,7 @@ def _list_row(row: AnnotationRow, document: Document | None) -> AnnotationListRo
         rightContext=row.rightContext if ready else None, documentAvailable=document is not None,
         documentTitle=document.title if document else None, documentYear=document.yearIssued if document else None,
         editVersion=row.editVersion or 0, provenance=row.provenance(),
-        attributes=codec.group(row.attributeValues), attributeVersion=row.attributeVersion or 0)
+        attributes=codec.group(row.attributeValues) if row.type == SpanType.pos else {}, attributeVersion=row.attributeVersion or 0)
 
 
 def _title_key(document: Document | None) -> tuple:
@@ -1018,6 +1031,7 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
         raise InvalidRequestError(f"limit must be between 1 and {_MAX_PAGE} and offset not negative")
     query = _concordance_query(tag_ids, types, text, _parse_ids(annotation_ids, "annotation"),
                                attribute_values, attribute_unassigned)
+    _require_attribute_properties(store, query)
     documents = _parse_ids(document_ids, "document")
     cid = await use_tenant(store, grant)
     by_year = year_from is not None or year_to is not None
@@ -1075,6 +1089,7 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
         raise InvalidRequestError(f"Ask about at most {MAX_RESOLVED_IDS} annotations")
     query = _concordance_query(request.tag_ids, request.types, request.q, within, request.attribute_values,
                                request.attribute_unassigned)
+    _require_attribute_properties(store, query)
     documents = request.document_ids or None
     cid = await use_tenant(store, grant)
     if within == []:

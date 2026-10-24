@@ -5,6 +5,8 @@ and ``verify`` of the development tooling account for them.
 The test store stands in for the development store: the ownership checks of
 ``cmd_add_documents`` are covered without Weaviate (``tests/test_local_dev.py``).
 """
+from datetime import UTC, datetime
+
 import pytest
 
 from tests import local_dev
@@ -29,7 +31,13 @@ async def test_documents_are_added_once_and_counted_by_the_overview(api_client, 
     body = (await api_client.get("/api/analytics/corpus/overview")).json()
     assert body["total_documents"] == len(stored)
     years = body["publication_year"]
-    assert (years["bins"][0]["start"], years["bins"][-1]["start"]) == (310, 2870)  # the outliers
+    # The outlier 311 opens the decades; 2879 lies in the future, so it is an unknown or
+    # invalid year (#361), as are the documents without one.
+    assert years["bins"][0]["start"] == 310
+    assert years["bins"][-1]["start"] < 2870
+    this_year = datetime.now(UTC).year
+    assert years["unknown_count"] == sum(
+        1 for o in stored if not 1 <= (o.properties.get("yearIssued") or 0) <= this_year)
     libraries = body["libraries"]
     assert libraries["available"] and libraries["values"]
     assert sum(v["count"] for v in libraries["values"]) + libraries["other_count"] + libraries["unknown_count"] \

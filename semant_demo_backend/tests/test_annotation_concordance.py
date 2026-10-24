@@ -11,14 +11,14 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from semant_demo.core.errors import InvalidRequestError
+from semant_demo.core.errors import InvalidRequestError, ServiceUnavailableError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION
 from semant_demo.features.annotations.schemas import (
     AnnotationIdsRequest, AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus,
 )
 from semant_demo.features.annotations.service import AnnotationStore
-from semant_demo.features.attributes import codec
+from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.documents.schemas import Document
 from semant_demo.features.user_collections.access import AuthenticationRequired, ResourceNotFound
 
@@ -63,6 +63,7 @@ class FakeSpans:
         self.rows: list[AnnotationRow] = []
         self.queries = 0
         self.provenance = False
+        self.attributes = True
 
     def _match(self, query, document_ids):
         return [r for r in self.rows
@@ -74,10 +75,11 @@ class FakeSpans:
                         for w in query.words)
                 and (document_ids is None or r.documentId in document_ids)
                 and (query.ids is None or r.id in query.ids)
+                and (not query.attribute_values or r.type == SpanType.pos)
                 and all(any(codec.encode(a, v) in (r.attributeValues or []) for v in vs)
                         for a, vs in query.attribute_values.items())
                 and not any(c.startswith(f"{a}:") for a in query.attribute_unassigned
-                            for c in (r.attributeValues or []))]
+                            for c in (r.attributeValues or []) if r.type == SpanType.pos)]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
@@ -429,6 +431,34 @@ async def test_attribute_filters_match_any_value_of_an_attribute_all_attributes_
     resolved = await service.resolve_annotation_ids(
         store, OWNER, COLLECTION, AnnotationIdsRequest(attribute_values=[f"{ATTRIBUTE}:{VALUE}"]))
     assert set(resolved.ids) == {with_value.id, with_both.id} and resolved.attribute_versions[with_both.id] == 3
+
+
+async def test_values_kept_on_rejected_annotations_are_not_accepted_classifications(store):
+    approved, rejected = row(DOC_A, 0), row(DOC_A, 1, type=SpanType.neg)
+    for r in (approved, rejected):
+        r.attributeValues = [codec.encode(ATTRIBUTE, VALUE)]
+    store.spans.rows = [approved, rejected]
+    every_type = [SpanType.pos, SpanType.auto, SpanType.neg]
+
+    page = await service.query_annotations(store, OWNER, COLLECTION, types=every_type,
+                                           attribute_values=[f"{ATTRIBUTE}:{VALUE}"])
+    assert [r.id for r in page.rows] == [approved.id]
+    page = await service.query_annotations(store, OWNER, COLLECTION, types=every_type)
+    by_id = {r.id: r for r in page.rows}
+    assert by_id[approved.id].attributes == {ATTRIBUTE: [VALUE]} and by_id[rejected.id].attributes == {}
+    page = await service.query_annotations(store, OWNER, COLLECTION, types=every_type,
+                                           attribute_unassigned=[str(ATTRIBUTE)])
+    assert [r.id for r in page.rows] == [rejected.id]
+
+
+async def test_attribute_filters_are_refused_on_a_store_without_the_attribute_properties(store):
+    store.spans.attributes = False
+    with pytest.raises(ServiceUnavailableError):
+        await service.query_annotations(store, OWNER, COLLECTION, attribute_values=[f"{ATTRIBUTE}:{VALUE}"])
+    with pytest.raises(ServiceUnavailableError):
+        await service.resolve_annotation_ids(
+            store, OWNER, COLLECTION, AnnotationIdsRequest(attribute_unassigned=[str(ATTRIBUTE)]))
+    await service.query_annotations(store, OWNER, COLLECTION)  # without attribute filters nothing changes
 
 
 @pytest.mark.parametrize("values, unassigned", [(["x"], None), ([f"{ATTRIBUTE}:{VALUE} "], None),

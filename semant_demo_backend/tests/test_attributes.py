@@ -10,7 +10,7 @@ below and tests/integration/test_annotation_attributes.py.
 """
 import asyncio
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -21,7 +21,8 @@ from semant_demo.adapters.sql.base import Base
 from semant_demo.core.errors import InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.features.annotations.service import AnnotationStore
-from semant_demo.features.attributes import codec, service
+from semant_demo.features.annotations import attribute_codec as codec
+from semant_demo.features.attributes import service
 from semant_demo.features.attributes.schemas import (
     AssignMode, AssignSource, AttributeAssignRequest, PatchAttribute, PatchAttributeValue, PostAttribute,
     PostAttributeValue, ValueKind,
@@ -74,12 +75,13 @@ class FakeSpans:
         span.attributes = {str(a): [str(v) for v in vs] for a, vs in grouped.items()}
         span.attributeVersion = version
 
-    async def count_attribute_use(self, cid, attribute_id, value_id=None):
+    async def count_attribute_use(self, cid, attribute_id, value_id=None, outside_tags=None):
         self.counted += 1
         total = 0
         for (c, _), span in self.spans.items():
             values = span.attributes.get(str(attribute_id), [])
-            total += c == cid and (bool(values) if value_id is None else str(value_id) in values)
+            outside = outside_tags is None or UUID(span.tagId) not in outside_tags
+            total += c == cid and outside and (bool(values) if value_id is None else str(value_id) in values)
         return total
 
 
@@ -417,6 +419,29 @@ async def test_one_failed_record_does_not_cost_the_records_of_the_other_annotati
     assert len(await definitions.read_changes(COLLECTION, other)) == 1
 
 
+async def test_consecutive_changes_of_one_annotation_are_recorded_in_order(store, spans, definitions, monkeypatch):
+    attribute = await define(store)
+    author, narrator = attribute.values
+    record = definitions.record_changes
+    first = True
+
+    async def slow_first(cid, changes):
+        nonlocal first
+        if first:
+            first = False
+            await asyncio.sleep(0.05)
+        await record(cid, changes)
+    monkeypatch.setattr(definitions, "record_changes", slow_first)
+    a = service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.replace, [author]))
+    b = service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.replace, [narrator],
+                                                                   {APPROVED: 1}))
+    first_result, second_result = await asyncio.gather(a, b)
+
+    history = await definitions.read_changes(COLLECTION, APPROVED)
+    assert (first_result.outcome.value, second_result.outcome.value) == ("complete", "complete")
+    assert [(c.previous, c.current) for c in history] == [([], [author.id]), ([author.id], [narrator.id])]
+
+
 async def test_a_batch_writes_a_bounded_number_of_annotations_at_a_time(store, spans, monkeypatch):
     attribute = await define(store)
     ids = [uuid4() for _ in range(service.ASSIGN_CONCURRENCY * 3)]
@@ -447,10 +472,20 @@ async def test_tags_cannot_be_narrowed_while_annotations_hold_values_but_can_be_
                                                                     attribute.values[:1]))
     await service.assign_attributes(store, OWNER, COLLECTION, assign(free, [APPROVED], AssignMode.add,
                                                                     free.values[:1], {APPROVED: 1}))
-    for narrowed, tags in ((attribute, [PLACE]), (free, [PERSON])):
+    for narrowed, tags in ((attribute, [PLACE]), (free, [PLACE])):
         with pytest.raises(InUseError) as used:
             await service.update_attribute(store, OWNER, COLLECTION, narrowed.id, PatchAttribute(tag_ids=tags))
         assert used.value.affected == 1
+    # Values on an annotation whose tag stays applicable do not block narrowing the other tags.
+    both = await define(store, name="both", tag_ids=[PERSON, PLACE])
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(both, [APPROVED], AssignMode.add,
+                                                                    both.values[:1], {APPROVED: 2}))
+    kept = await service.update_attribute(store, OWNER, COLLECTION, both.id, PatchAttribute(tag_ids=[PERSON]))
+    assert kept.tag_ids == [PERSON]
+    everywhere = await service.update_attribute(store, OWNER, COLLECTION, free.id, PatchAttribute(tag_ids=[PERSON]))
+    assert everywhere.tag_ids == [PERSON]
+    with pytest.raises(InUseError):
+        await service.update_attribute(store, OWNER, COLLECTION, both.id, PatchAttribute(tag_ids=[PLACE]))
     widened = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
                                              PatchAttribute(tag_ids=[PERSON, PLACE]))
     assert set(widened.tag_ids) == {PERSON, PLACE}
@@ -462,17 +497,17 @@ async def test_tags_cannot_be_narrowed_while_annotations_hold_values_but_can_be_
     assert narrowed.tag_ids == [PLACE]
 
 
-async def test_ai_assisted_decisions_name_their_run_and_manual_ones_cannot(store, definitions):
+async def test_ai_assisted_assignments_name_a_run_but_are_not_accepted_before_runs_exist(store, definitions):
     attribute = await define(store)
     run = uuid4()
     with pytest.raises(ValueError):
         assign(attribute, [APPROVED], AssignMode.add, attribute.values[:1], source=AssignSource.ai_assisted)
     with pytest.raises(ValueError):
         assign(attribute, [APPROVED], AssignMode.add, attribute.values[:1], run_id=run)
-    await service.assign_attributes(store, OWNER, COLLECTION, assign(
-        attribute, [APPROVED], AssignMode.add, attribute.values[:1], source=AssignSource.ai_assisted, run_id=run))
-    [change] = await definitions.read_changes(COLLECTION, APPROVED)
-    assert (change.source, change.run_id) == (AssignSource.ai_assisted, run)
+    with pytest.raises(InvalidRequestError, match="#338"):
+        await service.assign_attributes(store, OWNER, COLLECTION, assign(
+            attribute, [APPROVED], AssignMode.add, attribute.values[:1], source=AssignSource.ai_assisted, run_id=run))
+    assert await definitions.read_changes(COLLECTION, APPROVED) == []
 
 
 async def test_denied_assignments_reach_no_storage_and_values_of_other_attributes_are_not_found(store, spans):
@@ -519,33 +554,51 @@ async def test_deleting_the_definitions_of_a_collection_keeps_other_collections(
     other = await service.create_attribute(store, OWNER, SECOND_COLLECTION, attribute_body())
     await service.assign_attributes(store, OWNER, COLLECTION, assign(mine, [APPROVED], AssignMode.add, mine.values[:1]))
 
-    await service.delete_collection_attributes(definitions, COLLECTION)
-    await service.delete_collection_attributes(definitions, COLLECTION)  # safe to repeat
+    await definitions.delete_collection(COLLECTION)
+    await definitions.delete_collection(COLLECTION)  # safe to repeat
     assert await definitions.read_all(COLLECTION) == [] and await definitions.read_changes(COLLECTION, APPROVED) == []
     assert [a.id for a in await definitions.read_all(SECOND_COLLECTION)] == [other.id]
 
 
 class _Collections(FakeCollections):
-    def __init__(self):
+    def __init__(self, fail: Exception | None = None):
         self.deleted: list = []
+        self.fail = fail
 
     async def delete(self, cid):
+        if self.fail is not None:
+            raise self.fail
         self.deleted.append(cid)
 
 
-async def test_a_collection_is_deleted_after_its_definitions_and_not_when_they_cannot_be_deleted(definitions):
-    from semant_demo.core.errors import IncompleteWriteError
+async def test_a_collection_is_deleted_before_its_definitions_and_they_survive_a_failed_deletion(store, definitions):
     from semant_demo.features.user_collections import service as collection_service
+
+    attribute = await define(store)
+    await service.assign_attributes(store, OWNER, COLLECTION,
+                                    assign(attribute, [APPROVED], AssignMode.add, attribute.values[:1]))
+    failing = _Collections(RuntimeError("weaviate is down"))
+    with pytest.raises(RuntimeError):
+        await collection_service.delete_collection(failing, OWNER, COLLECTION, definitions)
+    assert [a.id for a in await definitions.read_all(COLLECTION)] == [attribute.id]
+    assert len(await definitions.read_changes(COLLECTION, APPROVED)) == 1
 
     collections = _Collections()
     await collection_service.delete_collection(collections, OWNER, COLLECTION, definitions)
-    assert collections.deleted == [COLLECTION]
+    assert collections.deleted == [COLLECTION] and await definitions.read_all(COLLECTION) == []
+
+
+async def test_a_failed_definition_cleanup_after_the_collection_is_gone_is_reported(definitions):
+    from semant_demo.core.errors import IncompleteWriteError
+    from semant_demo.features.user_collections import service as collection_service
 
     class Broken:
         async def delete_collection(self, cid):
             raise RuntimeError("database is locked")
+    collections = _Collections()
     with pytest.raises(IncompleteWriteError) as error:
         await collection_service.delete_collection(collections, OWNER, COLLECTION, Broken())
     assert error.value.step == "delete_attribute_definitions" and collections.deleted == [COLLECTION]
+    assert error.value.completed == {"delete_collection": 1}
     with pytest.raises(AccessDenied):  # a shared user may not delete the collection or its definitions
         await collection_service.delete_collection(collections, SHARED, COLLECTION, definitions)

@@ -338,7 +338,7 @@ Attribute properties (#331, [ADR 0011](adr/0011-collection-attributes.md); writt
 add-schema`). Absent on older annotations: no accepted values, version 0:
 - `attributeValues` (`TEXT[]`, whole-element tokenization, filterable, not searchable) — the
   accepted categorical assignments, elements `<attribute id>:<value id>` (canonical lowercase
-  UUIDs; `features/attributes/codec.py`); the authoritative current state, sorted. Only approved
+  UUIDs; `features/annotations/attribute_codec.py`); the authoritative current state, sorted. Only approved
   annotations get values; AI-proposed values are never stored here until a person accepts them
 - `attributeVersion` (`INT`) — assignment writes since creation; separate from `editVersion`
   and `revision`, refuses an assignment based on an outdated copy

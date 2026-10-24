@@ -38,6 +38,8 @@ docs/Collection.md
 docs/CollectionChunk.md
 docs/CollectionPerson.md
 docs/CollectionStats.md
+docs/CorpusDistributions.md
+docs/CorpusDistributionsRequest.md
 docs/CorpusOverview.md
 docs/CreateResponse.md
 docs/DefaultApi.md
@@ -52,6 +54,7 @@ docs/DocumentBrowse.md
 docs/DocumentChunk.md
 docs/DocumentChunkWindow.md
 docs/DocumentDetail.md
+docs/DocumentFilters.md
 docs/DocumentStats.md
 docs/DocumentSummaryCitation.md
 docs/DocumentSummaryResponse.md
@@ -61,6 +64,8 @@ docs/ExplainRequest.md
 docs/FeedbackRequest.md
 docs/FilterType.md
 docs/HTTPValidationError.md
+docs/LibraryYearDistribution.md
+docs/LibraryYears.md
 docs/LocationInner.md
 docs/MaxValue.md
 docs/MaxValue1.md
@@ -79,6 +84,7 @@ docs/PostAttributeValue.md
 docs/PostCollection.md
 docs/PostSpan.md
 docs/PostTag.md
+docs/PublicationYearCounts.md
 docs/PublicationYearDistribution.md
 docs/QuestionRequest.md
 docs/QuotaExhaustedResponse.md
@@ -126,6 +132,7 @@ docs/ValuesAnyOfInner.md
 docs/WriteOutcome.md
 docs/WriteResult.md
 docs/YearBin.md
+docs/YearCount.md
 index.ts
 models/AdjacentChunks.ts
 models/AnnotatedDocument.ts
@@ -162,6 +169,8 @@ models/Collection.ts
 models/CollectionChunk.ts
 models/CollectionPerson.ts
 models/CollectionStats.ts
+models/CorpusDistributions.ts
+models/CorpusDistributionsRequest.ts
 models/CorpusOverview.ts
 models/CreateResponse.ts
 models/DeleteAutoSpansRequest.ts
@@ -175,6 +184,7 @@ models/DocumentBrowse.ts
 models/DocumentChunk.ts
 models/DocumentChunkWindow.ts
 models/DocumentDetail.ts
+models/DocumentFilters.ts
 models/DocumentStats.ts
 models/DocumentSummaryCitation.ts
 models/DocumentSummaryResponse.ts
@@ -184,6 +194,8 @@ models/ExplainRequest.ts
 models/FeedbackRequest.ts
 models/FilterType.ts
 models/HTTPValidationError.ts
+models/LibraryYearDistribution.ts
+models/LibraryYears.ts
 models/LocationInner.ts
 models/MaxValue.ts
 models/MaxValue1.ts
@@ -202,6 +214,7 @@ models/PostAttributeValue.ts
 models/PostCollection.ts
 models/PostSpan.ts
 models/PostTag.ts
+models/PublicationYearCounts.ts
 models/PublicationYearDistribution.ts
 models/QuestionRequest.ts
 models/QuotaExhaustedResponse.ts
@@ -248,5 +261,6 @@ models/ValuesAnyOfInner.ts
 models/WriteOutcome.ts
 models/WriteResult.ts
 models/YearBin.ts
+models/YearCount.ts
 models/index.ts
 runtime.ts

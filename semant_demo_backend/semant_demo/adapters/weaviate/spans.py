@@ -30,7 +30,7 @@ recognizable instead of trusted. They are written only when the service passes t
 to an existing collection on the operator's request.
 
 Attributes (#331): ``attributeValues`` (accepted categorical assignments as ``<attribute id>:<value id>``
-elements, ``features/attributes/codec.py``) and ``attributeVersion`` (assignment writes since
+elements, ``features/annotations/attribute_codec.py``) and ``attributeVersion`` (assignment writes since
 creation, separate from ``editVersion``). Read and written only when the collection holds them
 (``SpanRepository.attributes``, set at startup from ``attribute_schema``); ``add_attribute_schema`` adds
 them on the operator's request.
@@ -63,7 +63,7 @@ from semant_demo.adapters.weaviate.writes import NoProgressError
 from semant_demo.features.annotations.schemas import (
     AnnotationQuery, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan,
 )
-from semant_demo.features.attributes import codec
+from semant_demo.features.annotations import attribute_codec as codec
 
 logger = logging.getLogger(__name__)
 
@@ -296,12 +296,18 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
         conditions.append(Filter.by_property("documentId").contains_any(list(document_ids)))
     if query.ids is not None:
         conditions.append(Filter.by_id().contains_any(list(query.ids)))
+    if query.attribute_values:
+        # Values stay on a rejected or retagged annotation, but are accepted classifications only on approved ones.
+        conditions.append(Filter.by_property("type").equal(SpanType.pos.value))
     for attribute, values in query.attribute_values.items():
         conditions.append(Filter.by_property("attributeValues").contains_any(
             [codec.encode(attribute, v) for v in values]))
     for attribute in query.attribute_unassigned:
-        # Explicit: no stored element carries the attribute's fixed-length id prefix.
-        conditions.append(Filter.not_(Filter.by_property("attributeValues").like(codec.attribute_pattern(attribute))))
+        # Explicit: no stored element carries the attribute's fixed-length id prefix. Values kept on a
+        # non-approved annotation are not shown, so it counts as unassigned too.
+        conditions.append(
+            Filter.not_(Filter.by_property("attributeValues").like(codec.attribute_pattern(attribute)))
+            | Filter.by_property("type").not_equal(SpanType.pos.value))
     return Filter.all_of(conditions)
 
 
@@ -483,7 +489,7 @@ class SpanRepository:
             await self._tenant(collection_id).data.update(uuid=span_id, properties=properties)
 
     async def write_attributes(self, collection_id: UUID, span_id: UUID, values: list[str], version: int) -> None:
-        """Sets the span's accepted attribute assignments (``features/attributes/codec.py``, sorted)
+        """Sets the span's accepted attribute assignments (``features/annotations/attribute_codec.py``, sorted)
         and ``attributeVersion`` in one write; nothing else of the span changes."""
         await self._tenant(collection_id).data.update(
             uuid=span_id, properties={"attributeValues": sorted(set(values)), "attributeVersion": version})
@@ -666,12 +672,15 @@ class SpanRepository:
 
     # ── Attributes (#331) ─────────────────────────────────────────────────
 
-    async def count_attribute_use(self, collection_id: UUID, attribute_id: UUID, value_id: UUID | None = None) -> int:
+    async def count_attribute_use(self, collection_id: UUID, attribute_id: UUID, value_id: UUID | None = None,
+                                  outside_tags: list[UUID] | None = None) -> int:
         """Annotations of the collection holding an accepted value of the attribute (of this value
-        when given), whatever their type."""
+        when given), whatever their type; with ``outside_tags`` only those whose tag is not among them."""
         values = Filter.by_property("attributeValues")
         where = (values.contains_any([codec.encode(attribute_id, value_id)]) if value_id is not None
                  else values.like(codec.attribute_pattern(attribute_id)))
+        if outside_tags is not None:
+            where = where & Filter.not_(Filter.by_property("tagId").contains_any(list(outside_tags)))
 
         async def count():
             result = await self._tenant(collection_id).aggregate.over_all(filters=where, total_count=True)

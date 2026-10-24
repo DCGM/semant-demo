@@ -1,12 +1,13 @@
 /**
- * Rows, labels and chart specifications of the corpus overview (#254).
+ * Rows, labels, filters and chart specifications of the corpus overview (#254, #361); the
+ * publication timeline is in `timeline.ts`.
  *
  * Every count is a number of documents. Rows keep the stored value (`key`) next to its
  * display label, so two codes with the same name (`ces`, `cze`: Czech) stay two rows. The
  * charts and the tables are drawn from the same rows.
  */
 import type { VisualizationSpec } from 'vega-embed'
-import type { CategoryDistribution, PublicationYearDistribution } from 'src/generated/api'
+import type { CategoryDistribution, DocumentFilters } from 'src/generated/api'
 
 export type RowKind = 'value' | 'other' | 'unknown'
 
@@ -15,13 +16,6 @@ export interface CategoryRow {
   label: string
   count: number
   kind: RowKind
-}
-
-export interface YearRow {
-  start: number
-  endExclusive: number
-  label: string
-  count: number
 }
 
 /** Names of the libraries most corpus documents come from; other codes are shown as stored. */
@@ -72,14 +66,55 @@ export function categoryRows (distribution: CategoryDistribution, label: (value:
   return rows
 }
 
-/** "1900–1909" for the bin from 1900 (inclusive) to 1910 (exclusive). */
-export function yearRows (distribution: PublicationYearDistribution): YearRow[] {
-  return (distribution.bins ?? []).map(bin => ({
-    start: bin.start,
-    endExclusive: bin.endExclusive,
-    label: `${bin.start}–${bin.endExclusive - 1}`,
-    count: bin.count
-  }))
+export type FilterKey = 'years' | 'title' | 'libraries' | 'languages'
+type ListKey = Exclude<FilterKey, 'years'>
+
+/** One removable value of an applied filter; `value` is the list entry it stands for. */
+export interface FilterChip {
+  label: string
+  value?: string
+}
+
+/** The applied values of one kind of filter; several values match any of them. */
+export interface FilterGroup {
+  key: FilterKey
+  label: string
+  chips: FilterChip[]
+}
+
+const LISTS: Record<ListKey, { field: 'titleContains' | 'libraries' | 'languages', label: string, name: (v: string) => string }> = {
+  title: { field: 'titleContains', label: 'Title contains', name: (v) => v },
+  libraries: { field: 'libraries', label: 'Library', name: libraryLabel },
+  languages: { field: 'languages', label: 'Language', name: languageLabel }
+}
+
+/** True when the filters select every document. */
+export function isUnfiltered (filters: DocumentFilters): boolean {
+  return filterGroups(filters).length === 0
+}
+
+/** The applied filters by kind, in the order of the filter panel. */
+export function filterGroups (filters: DocumentFilters): FilterGroup[] {
+  const groups: FilterGroup[] = []
+  const { yearMin, yearMax } = filters
+  if (yearMin != null || yearMax != null) {
+    const label = yearMin != null && yearMax != null
+      ? (yearMin === yearMax ? `${yearMin}` : `${yearMin}–${yearMax}`)
+      : (yearMin != null ? `from ${yearMin}` : `until ${yearMax}`)
+    groups.push({ key: 'years', label: 'Years', chips: [{ label }] })
+  }
+  for (const [key, list] of Object.entries(LISTS) as [ListKey, typeof LISTS[ListKey]][]) {
+    const values = filters[list.field] ?? []
+    if (values.length) groups.push({ key, label: list.label, chips: values.map(value => ({ label: list.name(value), value })) })
+  }
+  return groups
+}
+
+/** The filters without one value of a list filter, or without the year range. */
+export function withoutFilter (filters: DocumentFilters, key: FilterKey, value?: string): DocumentFilters {
+  if (key === 'years') return { ...filters, yearMin: undefined, yearMax: undefined }
+  const field = LISTS[key].field
+  return { ...filters, [field]: (filters[field] ?? []).filter(v => v !== value) }
 }
 
 export interface Coverage {
@@ -98,25 +133,6 @@ const SCHEMA = 'https://vega.github.io/schema/vega-lite/v6.json'
 /** Height of one bar row in pixels. */
 const BAR_STEP = 22
 const COLORS = { value: '#1976d2', other: '#78909c', unknown: '#b0bec5' }
-
-/** Documents per decade; decades are labelled on the axis and in the tooltip. */
-export function yearHistogramSpec (rows: YearRow[]): VisualizationSpec {
-  return {
-    $schema: SCHEMA,
-    data: { values: rows },
-    height: 220,
-    mark: { type: 'bar', color: COLORS.value, tooltip: true },
-    encoding: {
-      x: { field: 'start', type: 'quantitative', bin: { binned: true, step: 10 }, title: 'Publication year (decade)', axis: { format: 'd', labelOverlap: true } },
-      x2: { field: 'endExclusive' },
-      y: { field: 'count', type: 'quantitative', title: 'Documents', axis: { format: ',d', tickMinStep: 1 } },
-      tooltip: [
-        { field: 'label', type: 'nominal', title: 'Decade' },
-        { field: 'count', type: 'quantitative', title: 'Documents', format: ',d' }
-      ]
-    }
-  }
-}
 
 /** Documents per value as horizontal bars in row order; Other and Unknown are named on the axis. */
 export function categoryBarSpec (rows: CategoryRow[], title: string): VisualizationSpec {

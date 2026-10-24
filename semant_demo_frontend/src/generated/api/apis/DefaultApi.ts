@@ -37,6 +37,8 @@ import type {
   CollectionChunk,
   CollectionPerson,
   CollectionStats,
+  CorpusDistributions,
+  CorpusDistributionsRequest,
   CorpusOverview,
   CreateResponse,
   DeleteAutoSpansRequest,
@@ -53,6 +55,7 @@ import type {
   ExplainRequest,
   FeedbackRequest,
   HTTPValidationError,
+  LibraryYearDistribution,
   PatchAttribute,
   PatchAttributeValue,
   PatchCollection,
@@ -133,6 +136,10 @@ import {
     CollectionPersonToJSON,
     CollectionStatsFromJSON,
     CollectionStatsToJSON,
+    CorpusDistributionsFromJSON,
+    CorpusDistributionsToJSON,
+    CorpusDistributionsRequestFromJSON,
+    CorpusDistributionsRequestToJSON,
     CorpusOverviewFromJSON,
     CorpusOverviewToJSON,
     CreateResponseFromJSON,
@@ -165,6 +172,8 @@ import {
     FeedbackRequestToJSON,
     HTTPValidationErrorFromJSON,
     HTTPValidationErrorToJSON,
+    LibraryYearDistributionFromJSON,
+    LibraryYearDistributionToJSON,
     PatchAttributeFromJSON,
     PatchAttributeToJSON,
     PatchAttributeValueFromJSON,
@@ -270,6 +279,14 @@ export interface BrowseDocumentsApiDocumentsBrowseGetRequest {
 
 export interface BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest {
     bulkUpdateSpansRequest: BulkUpdateSpansRequest;
+}
+
+export interface CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest {
+    corpusDistributionsRequest: CorpusDistributionsRequest;
+}
+
+export interface CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest {
+    corpusDistributionsRequest: CorpusDistributionsRequest;
 }
 
 export interface CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGetRequest {
@@ -756,6 +773,54 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
 
     /**
+     * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
+     * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0.
+     * @summary Corpus Distributions
+     * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>>;
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0.
+     * Corpus Distributions
+     */
+    corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions>;
+
+    /**
+     * Creates request options for corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost without sending the request
+     * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * @summary Corpus Library Years
+     * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>>;
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * Corpus Library Years
+     */
+    corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution>;
+
+    /**
      * Creates request options for corpusOverviewApiAnalyticsCorpusOverviewGet without sending the request
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1014,7 +1079,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiUserCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * @summary Delete Collection
      * @param {string} collectionId 
      * @param {*} [options] Override http request option.
@@ -1024,7 +1089,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     deleteCollectionApiUserCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -2903,6 +2968,104 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
+     */
+    async corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['corpusDistributionsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'corpusDistributionsRequest',
+                'Required parameter "corpusDistributionsRequest" was null or undefined when calling corpusDistributionsApiAnalyticsCorpusDistributionsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/analytics/corpus/distributions`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CorpusDistributionsRequestToJSON(requestParameters['corpusDistributionsRequest']),
+        };
+    }
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0.
+     * Corpus Distributions
+     */
+    async corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>> {
+        const requestOptions = await this.corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CorpusDistributionsFromJSON(jsonValue));
+    }
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0.
+     * Corpus Distributions
+     */
+    async corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions> {
+        const response = await this.corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost without sending the request
+     */
+    async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['corpusDistributionsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'corpusDistributionsRequest',
+                'Required parameter "corpusDistributionsRequest" was null or undefined when calling corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+
+        let urlPath = `/api/analytics/corpus/library-years`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CorpusDistributionsRequestToJSON(requestParameters['corpusDistributionsRequest']),
+        };
+    }
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * Corpus Library Years
+     */
+    async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>> {
+        const requestOptions = await this.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => LibraryYearDistributionFromJSON(jsonValue));
+    }
+
+    /**
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+     * Corpus Library Years
+     */
+    async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution> {
+        const response = await this.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for corpusOverviewApiAnalyticsCorpusOverviewGet without sending the request
      */
     async corpusOverviewApiAnalyticsCorpusOverviewGetRequestOpts(): Promise<runtime.RequestOpts> {
@@ -3497,7 +3660,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -3508,7 +3671,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags and annotations. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiUserCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

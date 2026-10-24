@@ -199,7 +199,7 @@ class AnnotationRow(BaseModel):
     """Provenance (#460), read only when the collection holds it."""
     attributeValues: list[str] | None = None
     attributeVersion: int | None = None
-    """Accepted attribute assignments (#331, ``features/attributes/codec.py``), read only when the
+    """Accepted attribute assignments (#331, ``features/annotations/attribute_codec.py``), read only when the
     collection holds them."""
 
     def provenance(self) -> AnnotationProvenance:

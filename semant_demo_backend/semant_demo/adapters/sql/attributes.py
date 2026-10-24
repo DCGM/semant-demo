@@ -1,7 +1,7 @@
 """Collection attributes: definitions, their values and the record of assignment changes (#331).
 
 Definitions belong to one user collection (never global). Attributes and values have stable
-UUIDs that annotations store (``features/attributes/codec.py``); labels, descriptions and the
+UUIDs that annotations store (``features/annotations/attribute_codec.py``); labels, descriptions and the
 tags an attribute applies to can change without touching any annotation. Names are unique per
 collection and labels per attribute, ignoring case and surrounding spaces. The accepted
 assignments themselves live on the annotations in Weaviate; ``AttributeChangeRow`` only records

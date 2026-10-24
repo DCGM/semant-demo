@@ -25,21 +25,24 @@ renames categories later without rewriting annotations or losing who decided wha
 - **The accepted assignments of an annotation are one array on the annotation**,
   `Annotation.attributeValues` (`text[]`, whole-element tokenization, filterable, not searchable):
   elements `<attribute id>:<value id>` with both ids in canonical lowercase UUID form
-  (`features/attributes/codec.py`). Fixed-length parts make the encoding unambiguous: no element is a
+  (`features/annotations/attribute_codec.py`). Fixed-length parts make the encoding unambiguous: no element is a
   prefix of another, the prefix `<attribute id>:` selects exactly one attribute, labels and
   punctuation never take part. The array is the only copy of the current state.
 - **Filters** use the array only: any of an attribute's values (`contains_any`), all attributes
   (conditions are ANDed), and "no accepted value of attribute A" as the explicit negation of the
-  prefix `like` (`NOT (attributeValues like "A:*")`), which also holds for annotations that never
+  prefix `like` (`NOT (attributeValues like "A:*")`, or a non-approved annotation), which also holds for annotations that never
   had the property or hold an empty array. Verified on Weaviate 1.40.1
   (`tests/integration/test_annotation_attributes.py`). Filters are part of the concordance query and
   of id resolution; ids of another collection simply match nothing in the tenant.
 - **Only approved (`pos`) annotations receive values.** Unresolved AI suggestions and rejected
   annotations carry no accepted classification, and nothing here writes AI-proposed values: those
-  belong to a separate proposal structure (#336/#337) and enter the array only through a person's
-  decision (`source: ai_assisted` with the run id). Values stay on an annotation that is later
-  rejected or retagged; accepted-only counts must also filter by `type = pos`. Removing values is
-  allowed for any type.
+  belong to a separate proposal structure (#337/#338) and enter the array only through a person's
+  decision (`source: ai_assisted` with the run id). `ai_assisted` is refused (400) until that
+  exists, because a run cannot be checked yet; the record shape is ready for it. Values stay
+  stored on an annotation that is later rejected or retagged but are not shown: rows of a non-`pos`
+  annotation carry no `attributes`, `?attribute=` matches only `pos` annotations and
+  `?unassigned=` counts a non-`pos` annotation as unassigned. Approving it again shows the values
+  again. Removing values is allowed for any type.
 - **A separate `attributeVersion`** (`INT`, 0 at creation) counts assignment writes. An assignment
   names the version it expects per annotation; one written since is refused (`edit_conflict`) and
   changes nothing, one already as asked counts as done without a write (a retry). Attribute
@@ -64,7 +67,8 @@ renames categories later without rewriting annotations or losing who decided wha
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
   with the number affected) but can be retired. Narrowing an attribute's applicable tags while
-  annotations hold values of it is refused the same way (409); widening is always allowed. Merging values (reassigning the affected
+  annotations hold values of it is refused the same way (409, counting only annotations whose tag
+  would fall outside the new tags); widening is always allowed. Merging values (reassigning the affected
   annotations) is not implemented here.
 - **The properties are added by an operator command**
   (`annotation_attributes add-schema`), never at startup or by a request; the backend reads and
@@ -82,7 +86,10 @@ A value or attribute deleted between the usage count and the delete can be left 
 without a definition (a small race; clients must show unknown ids as such, and a maintenance check
 for orphaned ids is a follow-up). The conflict check uses the in-process span lock, so it holds
 for one backend process only. `run_id` of an AI-assisted assignment is not checked against a run.
-Collection deletion crosses two stores (SQL first). Retagging an annotation to a tag an
+Collection deletion crosses two stores: the collection (Weaviate) first, then its definitions and
+change records (SQL), so a failed collection deletion never costs a surviving collection its
+definitions or history; rows a failed second step leaves behind belong to a collection that no
+longer exists and are unreachable (cleaning them is a follow-up, `docs/TODO.md`). Retagging an annotation to a tag an
 attribute does not apply to keeps its values. The document view does not show attributes yet.
 
 ## Verification

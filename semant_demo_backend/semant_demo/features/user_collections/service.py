@@ -82,24 +82,27 @@ async def change_owner(collections: UserCollectionRepository, users: UserLookup,
 
 
 async def delete_collection(collections: UserCollectionRepository, user: Principal | None,
-                            collection_id: Id, attributes: AttributeRepository | None = None) -> None:
+                            collection_id: Id, attributes: AttributeRepository) -> None:
     """
-    Deletes the collection with its attribute definitions (#331, first, so that deleting again
-    still finds the collection), tags and annotations. Owner only. A failed step raises
-    ``IncompleteWriteError`` naming it and the completed steps; deleting again continues.
+    Deletes the collection with its tags and annotations, then its attribute definitions and
+    change records (#331). Owner only. A failed step raises ``IncompleteWriteError`` naming it
+    and the completed steps; after a failed collection deletion deleting again continues. The definitions go last so that a failed
+    collection deletion never costs a surviving collection its definitions and history; rows a
+    failed last step leaves behind belong to a collection that no longer exists (ids are never
+    reused), so nothing reaches them.
     """
     grant = await access.require_collection_owner(collections, user, collection_id)
-    if attributes is not None:
-        try:
-            await attributes.delete_collection(grant.collection_id)
-        except Exception as exc:
-            logger.warning("Deleting the attribute definitions of collection %s failed: %s",
-                           grant.collection_id, type(exc).__name__)
-            raise IncompleteWriteError(
-                "Deleting the collection stopped at step delete_attribute_definitions "
-                f"({type(exc).__name__}). Nothing was deleted; deleting the collection again continues.",
-                step="delete_attribute_definitions") from exc
     await collections.delete(grant.collection_id)
+    try:
+        await attributes.delete_collection(grant.collection_id)
+    except Exception as exc:
+        logger.warning("Deleting the attribute definitions of collection %s failed: %s",
+                       grant.collection_id, type(exc).__name__)
+        raise IncompleteWriteError(
+            "The collection was deleted, but deleting its attribute definitions stopped at step "
+            f"delete_attribute_definitions ({type(exc).__name__}). The leftover rows are unreachable "
+            "and can be removed later (see docs/TODO.md).",
+            step="delete_attribute_definitions", completed={"delete_collection": 1}) from exc
 
 
 ###########

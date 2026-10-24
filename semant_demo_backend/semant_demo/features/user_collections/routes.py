@@ -165,7 +165,7 @@ async def delete_collection(collection_id: str, collections: UserCollectionRepos
                             attributes: AttributeRepository = Depends(get_attribute_definitions),
                             current_user: User = Depends(current_active_user)) -> Response:
     """
-    Deletes a collection with its tags and annotations. Owner only. If a step fails, the
+    Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the
     request fails (500) with the completed steps in the body; completed deletions are kept
     and deleting again continues.
     """

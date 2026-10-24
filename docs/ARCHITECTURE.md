@@ -89,7 +89,7 @@ semant_demo_backend/semant_demo/
     summarization/        routes, service (results summary, question), base and templated
                           (search summarizer), schemas (SummaryResponse)
     feedback/             app feedback: routes, service (feedback log, webhook), schemas
-    analytics/            corpus overview: routes, service (counting rules, overview cache), schemas
+    analytics/            corpus overview: routes, service (counting and filter rules, overview cache), schemas
     quota/                daily LLM allowances: principal (account or guest cookie), service
                           (status, admission, settlement), routes (GET /api/quota), schemas
   adapters/
@@ -237,7 +237,8 @@ but not change membership, metadata or sharing. Public corpus reads (`GET /api/d
 `/api/documents/browse` without a collection, `/api/documents/{id}/chunks/count`,
 `/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a
 chunk and its extension), search
-without collection and tags, the corpus overview `/api/analytics/corpus/overview`) need no login. RAG, `/api/summarize/results` and
+without collection and tags, the corpus overview `/api/analytics/corpus/overview` and
+`/api/analytics/corpus/distributions`) need no login. RAG, `/api/summarize/results` and
 `/api/question` are public too and call LLM providers with client-supplied text, within the
 caller's daily AI allowance (guest or account, [below](#daily-llm-allowances-featuresquota-adapterssqlquotapy)).
 
@@ -288,6 +289,55 @@ library (`Documents.library`) and per bibliographic language (`Documents.languag
 chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
 (`documents`), `computed_at` and `data_source`; it carries counts, not chart specifications.
 
+`POST /api/analytics/corpus/distributions` (public, #361) returns the same counts for the
+documents matching optional metadata `filters`, with years per year (only years with
+documents, ascending; the page groups them into bins) and the filters it applied, normalized.
+The `/corpus` page uses it for every view, also the unfiltered one; `GET` stays for other
+clients.
+
+`POST /api/analytics/corpus/library-years` (public, #361, optional heatmap) takes the same
+filters and returns the matching documents per source library and publication year: one row
+per library (at most 20, most documents first) and one for the remaining documents ("unknown",
+or "other or unknown" when not every library has a row). Weaviate groups by one property only,
+so the years are counted once per library with a filter on it, and the remaining row is the
+difference to the distributions (documents without a library cannot be filtered). Those
+distributions are computed with it, never taken from the overview cache, as older totals and
+live per-library counts would not add up; when the corpus changes between the readings, it is
+counted once more before failing. At most 4 libraries are counted at once in the backend, over
+all requests (`PER_VALUE_CONCURRENCY`), as the endpoint is public. Library values that differ
+only in surrounding whitespace match the same documents (`field` tokenization) and form one
+row. It costs about twice as much as the distributions (it computes them too), so the page
+asks for it only when the heatmap is opened, and it is not cached. Measured on 2026-10-23 on a
+throwaway Weaviate 1.40.1 with 300,002 synthetic documents from `make dev-add-documents` (4
+libraries; median of 5 warm runs): unfiltered 1.25 s (the distributions alone 1.0 s), filtered
+0.15–0.85 s, 5 concurrent unfiltered requests 3.7 s. With more libraries the per-library counts
+take longer, in rounds of 4; the reproducible benchmark is #494.
+
+- **Filters.** All given filters must match (AND); several libraries or languages match any
+  of them (OR). One Weaviate filter is built once and applied to the total and to every
+  grouped aggregate, so all counts describe the same documents.
+  - `year_min`/`year_max`: whole years, inclusive, `1 ≤ min ≤ max ≤` the current year. A
+    document without a year never matches; one with a fractional year (possible in the
+    dev/test `number` schema, e.g. 1909.5) matches the numeric range but is counted as an
+    unknown or invalid year. The bound is sent as an integer for an `int` property
+    (production) and as a float for `number` (dev/test, #128).
+  - `title_contains`: up to 10 alternatives; a document matches any of them (e.g. `brno`,
+    `brna`). Each is split into words at anything but letters and digits, as Weaviate's
+    `word` tokenization does; one-letter words are ignored, at most 5 words and 100
+    characters, `*` and `?` are rejected. Each word becomes `like("*word*")` on
+    `Documents.title`, and all words of one alternative must match: each inside some title
+    word, in any order, ignoring case but not diacritics (`skola` does not match "Škola").
+    This relies on `word` tokenization of `title`, which production, the shared test store
+    and dev/test all use (confirmed on #128 from the 2026-10-22 schema snapshot).
+  - `libraries`/`languages`: at most 50 stored values each, compared with `equal`, which
+    follows the property's tokenization: `library` (`field` in production) matches exactly
+    apart from surrounding whitespace; `language` (`word`, in production too) matches by word,
+    ignoring case, so `ces` also matches `CES`. The language counts still list both stored values, so the
+    page shows what matched. An exact language filter needs `field` tokenization (#128).
+  - Invalid filters are rejected with 422 before the store is queried. So is a filter on a
+    property the store does not declare or cannot filter (e.g. `library` in the dev/test
+    schema): it is never answered with 0.
+
 - **Population.** Every object of `Documents`, as Search covers the whole public corpus;
   `Documents.public` is not used (#279). A future public-read policy must restrict the
   counting query itself, and the cache below must then be kept per scope. Documents without
@@ -298,7 +348,8 @@ chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
   most 10,000 values). Missing values are `total - known` (the deployed collections do not
   index null state, so `is_none` filters fail), and empty or blank values count as unknown.
   Decades are `[start, start + 10)` and run without gaps from the earliest to the latest;
-  years that are not whole numbers from 1 to 9999 are unknown. Libraries and languages list
+  years that are not whole numbers from 1 to the current year are unknown or invalid (e.g.
+  2879, probably a typo). Libraries and languages list
   at most 50 values, with the remaining documents in `other_count`; stored values are
   returned unchanged (the page adds names but keeps the codes). For each available
   dimension, listed counts + `other_count` + `unknown_count` = `total_documents`; counts that
@@ -315,7 +366,11 @@ chunks' language). The response states its `scope` (`searchable_corpus`), `unit`
   again with `data_source: "cached_aggregation"` and the original `computed_at`; concurrent
   requests wait for one computation. Each backend process has its own cache; nothing is
   precomputed or stored, and a failure is not cached (an error response, never an empty
-  overview).
+  overview). The cache holds the unfiltered counts, which both endpoints serve; filtered
+  counts are always computed live. In the #361 query spike (Weaviate 1.40.1, 300,000
+  synthetic documents) a filtered request took 30–760 ms and grows with the number of
+  matching documents, not with the kind of filter: a filter matching most of the corpus is
+  the slow case, a short title word is not.
 
 #### RAG System
 
@@ -513,7 +568,7 @@ The last approve, reject, retag or boundary edit of at most 200 annotations can 
 
 Researchers define categorical attributes (`speaker_type`, `topic`) per collection and assign values to approved annotations (`features/attributes/`). **Definitions** (attribute: name, description, `single`/`multi`, applicable tags, retired; value: label, description, examples, kind `value`/`unknown`/`not_applicable`, retired) are SQL rows with stable UUIDs (`adapters/sql/attributes.py`; owner and shared users edit them, like tags); renaming, describing or retiring never touches an annotation. **Accepted assignments** are the array `attributeValues` on the annotation, elements `<attribute id>:<value id>` (`codec.py`), with an `attributeVersion` of its own. The concordance reads (`GET .../annotations?attribute=<attribute id>:<value id>&unassigned=<attribute id>`, `AnnotationIdsRequest.attribute_values`/`attribute_unassigned`) filter on the array exactly: any of an attribute's values, all attributes, and "no value of A" as the negation of the prefix `A:*`; rows and the resolved selection carry `attributes` and the versions an assignment expects (`attributeVersion`, `attribute_versions`).
 
-`POST /api/user_collections/{id}/annotations/attributes/assign` (`service.assign_attributes`, annotation-edit access) adds, removes or replaces the values of one attribute on at most 200 annotations, each on its own and reported per item (ADR 0002): the annotation must be approved (`pos`), the tag one the attribute applies to, retired values are not assigned again, a single-valued attribute takes one value, Unknown/Not applicable stand alone, and an annotation whose `attributeVersion` differs from the expected one is reported `edit_conflict` and not changed (an annotation already as asked counts as done, so retrying a lost answer is safe). Definition routes under `/api/user_collections/{id}/attributes` refuse to delete a used attribute or value with 409 and the number of annotations affected (retire instead), and refuse narrowing an attribute's tags the same way while values exist. At most 16 annotations of a request are written at a time. Every saved change appends a change record (`GET .../annotations/{id}/attribute-changes`: actor, time, previous and new value ids, manual or AI-assisted with the run id, the annotation's `editVersion` and the attribute's revision); a record is written right after each annotation's write, and a failed one is reported as `record_attribute_changes` for that annotation and does not undo the assignment. Without the attribute properties on the `Annotation` collection (`annotation_attributes add-schema`, detected at startup) definitions work and assignments answer 503. Tag, type and attribute changes never re-embed (ADR 0009). Not yet: the workspace UI (row and batch assignment, definition manager), value merging, AI-proposed values, attributes in the document view and in statistics.
+`POST /api/user_collections/{id}/annotations/attributes/assign` (`service.assign_attributes`, annotation-edit access) adds, removes or replaces the values of one attribute on at most 200 annotations, each on its own and reported per item (ADR 0002): `source: ai_assisted` is refused until attribute proposals exist (#338), the annotation must be approved (`pos`), the tag one the attribute applies to, retired values are not assigned again, a single-valued attribute takes one value, Unknown/Not applicable stand alone, and an annotation whose `attributeVersion` differs from the expected one is reported `edit_conflict` and not changed (an annotation already as asked counts as done, so retrying a lost answer is safe). Definition routes under `/api/user_collections/{id}/attributes` refuse to delete a used attribute or value with 409 and the number of annotations affected (retire instead), and refuse narrowing an attribute's tags the same way while annotations with a tag outside the new set hold values. Rows show `attributes` only for approved annotations and `?attribute=` matches only those (values stay stored on a rejected or retagged annotation); attribute filters answer 503 on a store without the attribute properties. Deleting a collection deletes the collection first and its definitions and change records afterwards. At most 16 annotations of a request are written at a time. Every saved change appends a change record (`GET .../annotations/{id}/attribute-changes`: actor, time, previous and new value ids, manual or AI-assisted with the run id, the annotation's `editVersion` and the attribute's revision); a record is written right after each annotation's write, and a failed one is reported as `record_attribute_changes` for that annotation and does not undo the assignment. Without the attribute properties on the `Annotation` collection (`annotation_attributes add-schema`, detected at startup) definitions work and assignments answer 503. Tag, type and attribute changes never re-embed (ADR 0009). Not yet: the workspace UI (row and batch assignment, definition manager), value merging, AI-proposed values, attributes in the document view and in statistics.
 
 The legacy single-tenant `Span` collection (references `tag`, `text_chunk`) is read only by the operator-run migration (`maintenance/annotation_migration.py`) and kept unchanged for rollback.
 
@@ -574,7 +629,7 @@ and `router/` the routes and sign-in guard.
 | `auth` | login/register/account dialogs, `userStore`, user search |
 | `quota` | the daily AI allowance: `quotaStore`, `useQuotaScope`, header indicator and near-limit/used-up banner ([above](#daily-llm-allowances-featuresquota-adapterssqlquotapy)) |
 | `feedback` | feedback page and its schema |
-| `analytics` | corpus overview page, its request (`useCorpusOverview`: abort on leave, retry, slow notice), rows/labels/chart specifications (`corpusOverview.ts`) |
+| `analytics` | corpus overview page, its filter form (`CorpusFilters`: years and titles applied by Apply/Enter, library and language at once; applied values are shown as grouped removable chips), the publication timeline (`PublicationTimeline`, `timeline.ts`: main range and outliers, zoom/pan/drag selection in the browser, bin width from the visible window, table with collapsed empty periods; only "Apply … as filter" changes the counted documents), the period × library heatmap (`LibraryHeatmap`, `libraryHeatmap.ts`: loaded when opened, periods follow the timeline's view), its request (`useCorpusOverview`: filtered counts, abort on a newer request or on leave, retry, slow notice), rows/labels/filter chips/chart specifications (`corpusOverview.ts`) |
 
 The document view (`features/documents/viewer/`) is `DocumentViewLayout` (header; the tags,
 AI Tagging and document tools as panels of the app's right sidebar; loads the document,
@@ -591,7 +646,7 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 |---|---|---|
 | `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
 | `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations (`[S1]`...); the conversation's sources and one of them in its document in the right sidebar |
-| `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication decade, library and language, with tables and unknown/unavailable values (no sign-in) |
+| `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication year (zoomable timeline), library and language, with tables and unknown/unavailable values, filtered by year, title, library and language (no sign-in) |
 | `/collections` | `user_collections/UserCollectionsPage` | List user collections: tiles (size slider, 5 snapped sizes) or table (sortable, resizable columns via `shared/useResizableColumns`); My / Shared with me / All by `isSharedWithMe`; view, filter, tile size and column widths remembered in the browser (#479) |
 | `/collections/:cid/overview` | `user_collections/CollectionOverviewPage` | Collection summary & stats: details incl. the users it is shared with; documents, chunks, tags, approved annotations and unresolved AI suggestions (`…/annotations/counts`) |
 | `/collections/:cid/documents` | `user_collections/CollectionDocumentsPage` | Documents inside a collection |

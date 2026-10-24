@@ -30,10 +30,11 @@ from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.core.outcomes import StepFailure, outcome_of
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
+from semant_demo.features.annotations.service import ATTRIBUTES_NOT_ENABLED as NOT_ENABLED
 from semant_demo.features.annotations.service import AnnotationStore, use_tenant
-from semant_demo.features.attributes import codec
+from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.attributes.schemas import (
-    Attribute, AttributeAssignRequest, AttributeAssignResult, AttributeChange, AssignMode, Cardinality,
+    Attribute, AttributeAssignRequest, AttributeAssignResult, AttributeChange, AssignMode, AssignSource, Cardinality,
     PatchAttribute, PatchAttributeValue, PostAttribute, PostAttributeValue, ValueKind,
 )
 from semant_demo.features.user_collections import access
@@ -43,8 +44,6 @@ logger = logging.getLogger(__name__)
 
 Id = str | UUID
 
-NOT_ENABLED = ("Attribute assignments are not enabled on this store: run "
-               "python -m semant_demo.maintenance.annotation_attributes add-schema and restart the backend.")
 ASSIGN_CONCURRENCY = 16
 """Annotations of one assign request written at the same time (each is a read and a write)."""
 EDIT_CONFLICT = "Changed by someone else since it was loaded; nothing was saved."
@@ -109,21 +108,23 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
         await access.require_tags_in_collection(store.annotations.tags, patch.tag_ids, grant.collection_id)
         current = await _read(store, grant.collection_id, attribute_id)
         if not current.tag_ids or not set(current.tag_ids) <= set(patch.tag_ids):
-            used = await _usage(store, grant, current.id)
+            used = await _usage(store, grant, current.id, outside_tags=patch.tag_ids)
             if used:
-                raise InUseError(f"{used} annotations have values of this attribute; its applicable tags cannot "
-                                 "be narrowed while they do.", used)
+                raise InUseError(f"{used} annotations with values of this attribute have a tag outside the new "
+                                 "applicable tags; change or remove those values first.", used)
     updated = await store.definitions.update(grant.collection_id, access.parse_id(attribute_id, "Attribute"), patch)
     if updated is None:
         raise _attribute_not_found()
     return updated
 
 
-async def _usage(store: AttributeStore, grant, attribute_id: UUID, value_id: UUID | None = None) -> int:
+async def _usage(store: AttributeStore, grant, attribute_id: UUID, value_id: UUID | None = None,
+                 outside_tags: list[UUID] | None = None) -> int:
     spans = store.annotations.spans
     if not spans.attributes:
         return 0
-    return await spans.count_attribute_use(await use_tenant(store.annotations, grant), attribute_id, value_id)
+    return await spans.count_attribute_use(await use_tenant(store.annotations, grant), attribute_id, value_id,
+                                           outside_tags)
 
 
 async def delete_attribute(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id) -> None:
@@ -177,11 +178,6 @@ async def delete_value(store: AttributeStore, user: Principal | None, collection
     return deleted
 
 
-async def delete_collection_attributes(definitions: AttributeRepository, collection_id: UUID) -> None:
-    """Removes a deleted collection's definitions and change records (repeating it is safe)."""
-    await definitions.delete_collection(collection_id)
-
-
 ##############
 # Assignments #
 ##############
@@ -214,8 +210,6 @@ class _Item:
     failure: StepFailure | None = None
     version: int | None = None
     values: list[UUID] | None = None
-    change: AttributeChange | None = None
-    """Set when the assignment wrote something, to be recorded."""
     record_failure: StepFailure | None = None
     """Set when that record could not be written; the assignment stays."""
 
@@ -271,12 +265,19 @@ async def _assign_one(store: AttributeStore, cid: UUID, attribute: Attribute, re
                                          version)
         except Exception as exc:
             return _Item(sid, failure=step_failure("update_attributes", sid, exc))
-    change = AttributeChange(
-        annotation_id=sid, attribute_id=attribute.id, previous=previous, current=result, actor_id=actor, at=_now(),
-        source=request.source, run_id=request.run_id,
-        annotation_edit_version=span.editVersion if spans.provenance else None,
-        attribute_revision=attribute.revision)
-    return _Item(sid, version=version, values=result, change=change)
+        # Recorded under the lock too, so consecutive changes of one annotation are stored in the
+        # order they were made and their previous / current values chain.
+        item = _Item(sid, version=version, values=result)
+        change = AttributeChange(
+            annotation_id=sid, attribute_id=attribute.id, previous=previous, current=result, actor_id=actor,
+            at=_now(), source=request.source, run_id=request.run_id,
+            annotation_edit_version=span.editVersion if spans.provenance else None,
+            attribute_revision=attribute.revision)
+        try:
+            await store.definitions.record_changes(cid, [change])
+        except Exception as exc:
+            item.record_failure = step_failure("record_attribute_changes", sid, exc)
+        return item
 
 
 async def assign_attributes(store: AttributeStore, user: Principal | None, collection_id: Id,
@@ -287,13 +288,16 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
     rolled back). A refused request (400/404) changed nothing; per item, ``failed`` names why an
     annotation was not changed (``find_annotation``, ``edit_conflict``, ``check_annotation_type``,
     ``check_applicable``, ``check_value``, ``check_cardinality``, ``update_attributes`` -
-    ``uncertain`` on a timeout). Each saved change is recorded right after its write; when that fails the
+    ``uncertain`` on a timeout). Each saved change is recorded right after its write, under the same lock; when that fails the
     assignment stays and ``record_attribute_changes`` is reported for that annotation.
     """
     grant = await access.require_annotation_edit(store.annotations.collections, user, collection_id)
     spans = store.annotations.spans
     if not spans.attributes:
         raise ServiceUnavailableError(NOT_ENABLED)
+    if request.source == AssignSource.ai_assisted:
+        raise InvalidRequestError("AI-assisted assignments come with attribute proposals (#338) and are not "
+                                  "accepted yet: a run cannot be checked.")
     attribute = await _read(store, grant.collection_id, request.attribute_id)
     ids = list(dict.fromkeys(request.annotation_ids))
     asked = list(dict.fromkeys(request.value_ids))
@@ -311,17 +315,11 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
     cid = await use_tenant(store.annotations, grant)
     limit = asyncio.Semaphore(ASSIGN_CONCURRENCY)
 
-    async def assign_and_record(sid: UUID) -> _Item:
+    async def bounded(sid: UUID) -> _Item:
         async with limit:
-            item = await _assign_one(store, cid, attribute, request, sid, user.id)
-            if item.change is not None:
-                try:
-                    await store.definitions.record_changes(cid, [item.change])
-                except Exception as exc:
-                    item.record_failure = step_failure("record_attribute_changes", sid, exc)
-            return item
+            return await _assign_one(store, cid, attribute, request, sid, user.id)
 
-    items = await asyncio.gather(*(assign_and_record(sid) for sid in ids))
+    items = await asyncio.gather(*(bounded(sid) for sid in ids))
 
     failed = [i.failure for i in items if i.failure is not None]
     saved = [i for i in items if i.failure is None]

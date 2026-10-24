@@ -17,7 +17,7 @@ from semant_demo.adapters.weaviate.spans import (
     ATTRIBUTE_PROPERTIES, SpanRepository, add_attribute_schema, attribute_schema,
 )
 from semant_demo.features.annotations.schemas import AnnotationQuery, SpanType
-from semant_demo.features.attributes import codec
+from semant_demo.features.annotations import attribute_codec as codec
 
 pytestmark = pytest.mark.integration
 
@@ -244,6 +244,12 @@ async def test_a_collection_without_the_attribute_properties_refuses_assignments
                         expected_versions={novak: 0}, mode="add", value_ids=[value])
     refused = await api_client.post(url, headers=owner, json=body)
     assert refused.status_code == 503 and "add-schema" in refused.json()["detail"]
+    # Attribute filters would fail on the undeclared property: they are refused the same way.
+    list_url = f"/api/user_collections/{collection}/annotations"
+    for params in ({"attribute": f"{attribute['id']}:{value}"}, {"unassigned": attribute["id"]}):
+        filtered = await api_client.get(list_url, headers=owner, params=params)
+        assert filtered.status_code == 503 and "add-schema" in filtered.json()["detail"]
+    assert (await api_client.get(list_url, headers=owner)).status_code == 200
     # Definitions keep working; adding the properties again changes nothing.
     assert (await api_client.get(f"/api/user_collections/{collection}/attributes", headers=owner)).status_code == 200
     assert await add_attribute_schema(seeded_store, collection_names) == []
@@ -266,3 +272,37 @@ async def test_deleting_a_collection_removes_its_definitions(api_client, login, 
                     ).scalar_one_or_none() is None
     finally:
         await engine.dispose()
+
+
+async def test_values_kept_on_a_rejected_annotation_are_hidden_and_assignments_do_not_re_embed(api_client, login, ids):
+    owner = await login("owner")
+    collection, brno = ids.col["chronicles"], ids.span["brno_manual"]
+    attribute = await _define(api_client, owner, collection, name="stance", values=[{"label": "for"}])
+    value = attribute["values"][0]["id"]
+    before = (await _rows(api_client, owner, collection))[brno]
+
+    url, body = _assign(collection, attribute_id=attribute["id"], annotation_ids=[brno],
+                        expected_versions={brno: 0}, mode="add", value_ids=[value])
+    assert (await api_client.post(url, headers=owner, json=body)).json()["succeeded"] == [brno]
+    after = (await _rows(api_client, owner, collection))[brno]
+    # An attribute change moves neither the annotation's revision nor its derived text (ADR 0009).
+    assert (after["revision"], after["textStatus"], after["text"]) == \
+        (before["revision"], before["textStatus"], before["text"])
+    assert after["attributes"] == {attribute["id"]: [value]}
+
+    async def review(action):
+        row = (await _rows(api_client, owner, collection))[brno]
+        response = await api_client.post(
+            f"/api/user_collections/{collection}/annotations/review", headers=owner,
+            json={"action": action, "annotation_ids": [brno], "expected_versions": {brno: row["editVersion"]}})
+        assert response.json()["succeeded"] == [brno], response.text
+
+    await review("reject")
+    # The value is still stored, but a rejected annotation is no accepted classification.
+    assert (await _rows(api_client, owner, collection))[brno]["attributes"] == {}
+    assert brno not in await _rows(api_client, owner, collection, attribute=f"{attribute['id']}:{value}")
+    assert brno in await _rows(api_client, owner, collection, unassigned=attribute["id"])
+
+    await review("approve")
+    assert (await _rows(api_client, owner, collection))[brno]["attributes"] == {attribute["id"]: [value]}
+    assert brno in await _rows(api_client, owner, collection, attribute=f"{attribute['id']}:{value}")
