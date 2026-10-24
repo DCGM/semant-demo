@@ -284,6 +284,11 @@ python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--
   the configured vector) to the existing collection; it changes no object and is idempotent.
   Restart the backend afterwards: it decides at startup what it stores and logs an error while
   properties or the vector are missing.
+- Contextual annotation vectors may set `max_input_chars` to limit the rendered embedding input.
+  The Qwen config uses a 2048-character limit. Inputs under the limit are unchanged; longer
+  inputs shorten context first, then the end of the span while keeping its start and markers.
+  The Qwen vector config id is `qwen3-embedding-0.6b-context-v2`, so vectors created with the
+  previous id are `stale` and replaced by the normal annotation enrichment backfill.
 - `status` counts each tenant's spans by text state (`current`, `outdated` derivation policy,
   `missing`, `failed`, `invalid`) and vector state (`current`, `pending`, `failed`, `stale`),
   and `incomplete` (what a backfill would write). Reading a tenant activates it.
