@@ -33,6 +33,12 @@ export interface AnnotationIds {
      * @memberof AnnotationIds
      */
     versions?: { [key: string]: number; };
+    /**
+     * 
+     * @type {{ [key: string]: number; }}
+     * @memberof AnnotationIds
+     */
+    attributeVersions?: { [key: string]: number; };
 }
 
 /**
@@ -55,6 +61,7 @@ export function AnnotationIdsFromJSONTyped(json: any, ignoreDiscriminator: boole
         
         'ids': json['ids'],
         'versions': json['versions'] == null ? undefined : json['versions'],
+        'attributeVersions': json['attribute_versions'] == null ? undefined : json['attribute_versions'],
     };
 }
 
@@ -71,6 +78,7 @@ export function AnnotationIdsToJSONTyped(value?: AnnotationIds | null, ignoreDis
         
         'ids': value['ids'],
         'versions': value['versions'],
+        'attribute_versions': value['attributeVersions'],
     };
 }
 

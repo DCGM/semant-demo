@@ -26,6 +26,10 @@ import type {
   AnnotationReviewResult,
   AnnotationSort,
   AppFeedbackRequest,
+  Attribute,
+  AttributeAssignRequest,
+  AttributeAssignResult,
+  AttributeChange,
   BulkUpdateSpansRequest,
   BulkUpdateSpansResponse,
   ChunkTagSyncRequest,
@@ -49,10 +53,14 @@ import type {
   ExplainRequest,
   FeedbackRequest,
   HTTPValidationError,
+  PatchAttribute,
+  PatchAttributeValue,
   PatchCollection,
   PatchCollectionOwner,
   PatchSpan,
   PatchTag,
+  PostAttribute,
+  PostAttributeValue,
   PostCollection,
   PostSpan,
   PostTag,
@@ -103,6 +111,14 @@ import {
     AnnotationSortToJSON,
     AppFeedbackRequestFromJSON,
     AppFeedbackRequestToJSON,
+    AttributeFromJSON,
+    AttributeToJSON,
+    AttributeAssignRequestFromJSON,
+    AttributeAssignRequestToJSON,
+    AttributeAssignResultFromJSON,
+    AttributeAssignResultToJSON,
+    AttributeChangeFromJSON,
+    AttributeChangeToJSON,
     BulkUpdateSpansRequestFromJSON,
     BulkUpdateSpansRequestToJSON,
     BulkUpdateSpansResponseFromJSON,
@@ -149,6 +165,10 @@ import {
     FeedbackRequestToJSON,
     HTTPValidationErrorFromJSON,
     HTTPValidationErrorToJSON,
+    PatchAttributeFromJSON,
+    PatchAttributeToJSON,
+    PatchAttributeValueFromJSON,
+    PatchAttributeValueToJSON,
     PatchCollectionFromJSON,
     PatchCollectionToJSON,
     PatchCollectionOwnerFromJSON,
@@ -157,6 +177,10 @@ import {
     PatchSpanToJSON,
     PatchTagFromJSON,
     PatchTagToJSON,
+    PostAttributeFromJSON,
+    PostAttributeToJSON,
+    PostAttributeValueFromJSON,
+    PostAttributeValueToJSON,
     PostCollectionFromJSON,
     PostCollectionToJSON,
     PostSpanFromJSON,
@@ -211,6 +235,12 @@ import {
     WriteResultToJSON,
 } from '../models/index';
 
+export interface AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest {
+    collectionId: string;
+    attributeId: string;
+    postAttributeValue: PostAttributeValue;
+}
+
 export interface AddChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPostRequest {
     collectionId: string;
     chunkId: string;
@@ -219,6 +249,11 @@ export interface AddChunkToCollectionApiUserCollectionsCollectionIdChunksChunkId
 export interface AddDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPostRequest {
     collectionId: string;
     documentId: string;
+}
+
+export interface AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest {
+    collectionId: string;
+    attributeAssignRequest: AttributeAssignRequest;
 }
 
 export interface BrowseDocumentsApiDocumentsBrowseGetRequest {
@@ -246,6 +281,11 @@ export interface CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest 
     documentId: string;
 }
 
+export interface CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest {
+    collectionId: string;
+    postAttribute: PostAttribute;
+}
+
 export interface CreateTagApiTagsPostRequest {
     collectionId: string;
     postTag: PostTag;
@@ -257,6 +297,17 @@ export interface CreateTagSpanApiTagSpansPostRequest {
 
 export interface CreateUserCollectionApiUserCollectionsPostRequest {
     postCollection: PostCollection;
+}
+
+export interface DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest {
+    collectionId: string;
+    attributeId: string;
+}
+
+export interface DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest {
+    collectionId: string;
+    attributeId: string;
+    valueId: string;
 }
 
 export interface DeleteAutoSpansApiAiAutoSpansDeletePostRequest {
@@ -356,6 +407,15 @@ export interface ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotations
     type?: Array<SpanType> | null;
 }
 
+export interface ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest {
+    collectionId: string;
+    annotationId: string;
+}
+
+export interface ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest {
+    collectionId: string;
+}
+
 export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest {
     collectionId: string;
     tagId?: Array<string> | null;
@@ -368,6 +428,8 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     limit?: number;
     offset?: number;
     annotationId?: Array<string> | null;
+    attribute?: Array<string> | null;
+    unassigned?: Array<string> | null;
 }
 
 export interface QuestionApiQuestionPostRequest {
@@ -481,6 +543,19 @@ export interface UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDelet
     userId: string;
 }
 
+export interface UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest {
+    collectionId: string;
+    attributeId: string;
+    patchAttribute: PatchAttribute;
+}
+
+export interface UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest {
+    collectionId: string;
+    attributeId: string;
+    valueId: string;
+    patchAttributeValue: PatchAttributeValue;
+}
+
 export interface UpdateCollectionApiUserCollectionsCollectionIdPatchRequest {
     collectionId: string;
     patchCollection: PatchCollection;
@@ -510,6 +585,34 @@ export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
  * @interface DefaultApiInterface
  */
 export interface DefaultApiInterface {
+    /**
+     * Creates request options for addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost without sending the request
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {PostAttributeValue} postAttributeValue 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequestOpts(requestParameters: AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Adds a value; returns the attribute.
+     * @summary Add Attribute Value
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {PostAttributeValue} postAttributeValue 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRaw(requestParameters: AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>>;
+
+    /**
+     * Adds a value; returns the attribute.
+     * Add Attribute Value
+     */
+    addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost(requestParameters: AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute>;
+
     /**
      * Creates request options for addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost without sending the request
      * @param {string} collectionId 
@@ -561,6 +664,32 @@ export interface DefaultApiInterface {
      * Add Document To Collection
      */
     addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
+
+    /**
+     * Creates request options for assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost without sending the request
+     * @param {string} collectionId 
+     * @param {AttributeAssignRequest} attributeAssignRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequestOpts(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * @summary Assign Attribute Values
+     * @param {string} collectionId 
+     * @param {AttributeAssignRequest} attributeAssignRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRaw(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AttributeAssignResult>>;
+
+    /**
+     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * Assign Attribute Values
+     */
+    assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AttributeAssignResult>;
 
     /**
      * Creates request options for browseDocumentsApiDocumentsBrowseGet without sending the request
@@ -699,6 +828,32 @@ export interface DefaultApiInterface {
     countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number>;
 
     /**
+     * Creates request options for createAttributeApiUserCollectionsCollectionIdAttributesPost without sending the request
+     * @param {string} collectionId 
+     * @param {PostAttribute} postAttribute 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createAttributeApiUserCollectionsCollectionIdAttributesPostRequestOpts(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Defines an attribute (with initial values) of the collection. Owner and shared users.
+     * @summary Create Attribute
+     * @param {string} collectionId 
+     * @param {PostAttribute} postAttribute 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createAttributeApiUserCollectionsCollectionIdAttributesPostRaw(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>>;
+
+    /**
+     * Defines an attribute (with initial values) of the collection. Owner and shared users.
+     * Create Attribute
+     */
+    createAttributeApiUserCollectionsCollectionIdAttributesPost(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute>;
+
+    /**
      * Creates request options for createTagApiTagsPost without sending the request
      * @param {string} collectionId 
      * @param {PostTag} postTag 
@@ -771,6 +926,60 @@ export interface DefaultApiInterface {
      * Create User Collection
      */
     createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
+
+    /**
+     * Creates request options for deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete without sending the request
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequestOpts(requestParameters: DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Deletes an attribute no annotation has a value of; otherwise 409 with the number affected.
+     * @summary Delete Attribute
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRaw(requestParameters: DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Deletes an attribute no annotation has a value of; otherwise 409 with the number affected.
+     * Delete Attribute
+     */
+    deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete(requestParameters: DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete without sending the request
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {string} valueId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequestOpts(requestParameters: DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Deletes a value no annotation has; otherwise 409 with the number affected. Returns the attribute.
+     * @summary Delete Attribute Value
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {string} valueId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRaw(requestParameters: DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>>;
+
+    /**
+     * Deletes a value no annotation has; otherwise 409 with the number affected. Returns the attribute.
+     * Delete Attribute Value
+     */
+    deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete(requestParameters: DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute>;
 
     /**
      * Creates request options for deleteAutoSpansApiAiAutoSpansDeletePost without sending the request
@@ -1452,6 +1661,56 @@ export interface DefaultApiInterface {
     listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AnnotatedDocument>>;
 
     /**
+     * Creates request options for listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet without sending the request
+     * @param {string} collectionId 
+     * @param {string} annotationId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequestOpts(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * @summary List Attribute Changes
+     * @param {string} collectionId 
+     * @param {string} annotationId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRaw(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AttributeChange>>>;
+
+    /**
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * List Attribute Changes
+     */
+    listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AttributeChange>>;
+
+    /**
+     * Creates request options for listAttributesApiUserCollectionsCollectionIdAttributesGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listAttributesApiUserCollectionsCollectionIdAttributesGetRequestOpts(requestParameters: ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The collection\'s attributes with their values (also retired ones), by name.
+     * @summary List Attributes
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listAttributesApiUserCollectionsCollectionIdAttributesGetRaw(requestParameters: ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Attribute>>>;
+
+    /**
+     * The collection\'s attributes with their values (also retired ones), by name.
+     * List Attributes
+     */
+    listAttributesApiUserCollectionsCollectionIdAttributesGet(requestParameters: ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Attribute>>;
+
+    /**
      * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
      * @param {string} collectionId 
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
@@ -1464,6 +1723,8 @@ export interface DefaultApiInterface {
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
+     * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
+     * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1483,6 +1744,8 @@ export interface DefaultApiInterface {
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
+     * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
+     * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2081,6 +2344,64 @@ export interface DefaultApiInterface {
     unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete(requestParameters: UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
+     * Creates request options for updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch without sending the request
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {PatchAttribute} patchAttribute 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequestOpts(requestParameters: UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Renames, describes, retires or restricts to tags an attribute. Annotations are not rewritten.
+     * @summary Update Attribute
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {PatchAttribute} patchAttribute 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRaw(requestParameters: UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>>;
+
+    /**
+     * Renames, describes, retires or restricts to tags an attribute. Annotations are not rewritten.
+     * Update Attribute
+     */
+    updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch(requestParameters: UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute>;
+
+    /**
+     * Creates request options for updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch without sending the request
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {string} valueId 
+     * @param {PatchAttributeValue} patchAttributeValue 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequestOpts(requestParameters: UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Renames, describes or retires a value; its assignments stay.
+     * @summary Update Attribute Value
+     * @param {string} collectionId 
+     * @param {string} attributeId 
+     * @param {string} valueId 
+     * @param {PatchAttributeValue} patchAttributeValue 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRaw(requestParameters: UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>>;
+
+    /**
+     * Renames, describes or retires a value; its assignments stay.
+     * Update Attribute Value
+     */
+    updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch(requestParameters: UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute>;
+
+    /**
      * Creates request options for updateCollectionApiUserCollectionsCollectionIdPatch without sending the request
      * @param {string} collectionId 
      * @param {PatchCollection} patchCollection 
@@ -2194,6 +2515,76 @@ export interface DefaultApiInterface {
  * 
  */
 export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
+
+    /**
+     * Creates request options for addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost without sending the request
+     */
+    async addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequestOpts(requestParameters: AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost().'
+            );
+        }
+
+        if (requestParameters['attributeId'] == null) {
+            throw new runtime.RequiredError(
+                'attributeId',
+                'Required parameter "attributeId" was null or undefined when calling addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost().'
+            );
+        }
+
+        if (requestParameters['postAttributeValue'] == null) {
+            throw new runtime.RequiredError(
+                'postAttributeValue',
+                'Required parameter "postAttributeValue" was null or undefined when calling addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/attributes/{attribute_id}/values`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"attribute_id"}}`, encodeURIComponent(String(requestParameters['attributeId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PostAttributeValueToJSON(requestParameters['postAttributeValue']),
+        };
+    }
+
+    /**
+     * Adds a value; returns the attribute.
+     * Add Attribute Value
+     */
+    async addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRaw(requestParameters: AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>> {
+        const requestOptions = await this.addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AttributeFromJSON(jsonValue));
+    }
+
+    /**
+     * Adds a value; returns the attribute.
+     * Add Attribute Value
+     */
+    async addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost(requestParameters: AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute> {
+        const response = await this.addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      * Creates request options for addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost without sending the request
@@ -2312,6 +2703,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost(requestParameters: AddDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
         const response = await this.addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost without sending the request
+     */
+    async assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequestOpts(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost().'
+            );
+        }
+
+        if (requestParameters['attributeAssignRequest'] == null) {
+            throw new runtime.RequiredError(
+                'attributeAssignRequest',
+                'Required parameter "attributeAssignRequest" was null or undefined when calling assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/attributes/assign`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AttributeAssignRequestToJSON(requestParameters['attributeAssignRequest']),
+        };
+    }
+
+    /**
+     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * Assign Attribute Values
+     */
+    async assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRaw(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AttributeAssignResult>> {
+        const requestOptions = await this.assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AttributeAssignResultFromJSON(jsonValue));
+    }
+
+    /**
+     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * Assign Attribute Values
+     */
+    async assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AttributeAssignResult> {
+        const response = await this.assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -2596,6 +3049,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for createAttributeApiUserCollectionsCollectionIdAttributesPost without sending the request
+     */
+    async createAttributeApiUserCollectionsCollectionIdAttributesPostRequestOpts(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling createAttributeApiUserCollectionsCollectionIdAttributesPost().'
+            );
+        }
+
+        if (requestParameters['postAttribute'] == null) {
+            throw new runtime.RequiredError(
+                'postAttribute',
+                'Required parameter "postAttribute" was null or undefined when calling createAttributeApiUserCollectionsCollectionIdAttributesPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/attributes`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PostAttributeToJSON(requestParameters['postAttribute']),
+        };
+    }
+
+    /**
+     * Defines an attribute (with initial values) of the collection. Owner and shared users.
+     * Create Attribute
+     */
+    async createAttributeApiUserCollectionsCollectionIdAttributesPostRaw(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>> {
+        const requestOptions = await this.createAttributeApiUserCollectionsCollectionIdAttributesPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AttributeFromJSON(jsonValue));
+    }
+
+    /**
+     * Defines an attribute (with initial values) of the collection. Owner and shared users.
+     * Create Attribute
+     */
+    async createAttributeApiUserCollectionsCollectionIdAttributesPost(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute> {
+        const response = await this.createAttributeApiUserCollectionsCollectionIdAttributesPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for createTagApiTagsPost without sending the request
      */
     async createTagApiTagsPostRequestOpts(requestParameters: CreateTagApiTagsPostRequest): Promise<runtime.RequestOpts> {
@@ -2765,6 +3280,133 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async createUserCollectionApiUserCollectionsPost(requestParameters: CreateUserCollectionApiUserCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
         const response = await this.createUserCollectionApiUserCollectionsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete without sending the request
+     */
+    async deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequestOpts(requestParameters: DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete().'
+            );
+        }
+
+        if (requestParameters['attributeId'] == null) {
+            throw new runtime.RequiredError(
+                'attributeId',
+                'Required parameter "attributeId" was null or undefined when calling deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/attributes/{attribute_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"attribute_id"}}`, encodeURIComponent(String(requestParameters['attributeId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Deletes an attribute no annotation has a value of; otherwise 409 with the number affected.
+     * Delete Attribute
+     */
+    async deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRaw(requestParameters: DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Deletes an attribute no annotation has a value of; otherwise 409 with the number affected.
+     * Delete Attribute
+     */
+    async deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete(requestParameters: DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete without sending the request
+     */
+    async deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequestOpts(requestParameters: DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete().'
+            );
+        }
+
+        if (requestParameters['attributeId'] == null) {
+            throw new runtime.RequiredError(
+                'attributeId',
+                'Required parameter "attributeId" was null or undefined when calling deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete().'
+            );
+        }
+
+        if (requestParameters['valueId'] == null) {
+            throw new runtime.RequiredError(
+                'valueId',
+                'Required parameter "valueId" was null or undefined when calling deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"attribute_id"}}`, encodeURIComponent(String(requestParameters['attributeId'])));
+        urlPath = urlPath.replace(`{${"value_id"}}`, encodeURIComponent(String(requestParameters['valueId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Deletes a value no annotation has; otherwise 409 with the number affected. Returns the attribute.
+     * Delete Attribute Value
+     */
+    async deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRaw(requestParameters: DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>> {
+        const requestOptions = await this.deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AttributeFromJSON(jsonValue));
+    }
+
+    /**
+     * Deletes a value no annotation has; otherwise 409 with the number affected. Returns the attribute.
+     * Delete Attribute Value
+     */
+    async deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete(requestParameters: DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute> {
+        const response = await this.deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -4245,6 +4887,118 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet without sending the request
+     */
+    async listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequestOpts(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet().'
+            );
+        }
+
+        if (requestParameters['annotationId'] == null) {
+            throw new runtime.RequiredError(
+                'annotationId',
+                'Required parameter "annotationId" was null or undefined when calling listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/{annotation_id}/attribute-changes`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"annotation_id"}}`, encodeURIComponent(String(requestParameters['annotationId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * List Attribute Changes
+     */
+    async listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRaw(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AttributeChange>>> {
+        const requestOptions = await this.listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AttributeChangeFromJSON));
+    }
+
+    /**
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * List Attribute Changes
+     */
+    async listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AttributeChange>> {
+        const response = await this.listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listAttributesApiUserCollectionsCollectionIdAttributesGet without sending the request
+     */
+    async listAttributesApiUserCollectionsCollectionIdAttributesGetRequestOpts(requestParameters: ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling listAttributesApiUserCollectionsCollectionIdAttributesGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/attributes`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The collection\'s attributes with their values (also retired ones), by name.
+     * List Attributes
+     */
+    async listAttributesApiUserCollectionsCollectionIdAttributesGetRaw(requestParameters: ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Attribute>>> {
+        const requestOptions = await this.listAttributesApiUserCollectionsCollectionIdAttributesGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AttributeFromJSON));
+    }
+
+    /**
+     * The collection\'s attributes with their values (also retired ones), by name.
+     * List Attributes
+     */
+    async listAttributesApiUserCollectionsCollectionIdAttributesGet(requestParameters: ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Attribute>> {
+        const response = await this.listAttributesApiUserCollectionsCollectionIdAttributesGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest): Promise<runtime.RequestOpts> {
@@ -4295,6 +5049,14 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['annotationId'] != null) {
             queryParameters['annotation_id'] = requestParameters['annotationId'];
+        }
+
+        if (requestParameters['attribute'] != null) {
+            queryParameters['attribute'] = requestParameters['attribute'];
+        }
+
+        if (requestParameters['unassigned'] != null) {
+            queryParameters['unassigned'] = requestParameters['unassigned'];
         }
 
         const headerParameters: runtime.HTTPHeaders = {};
@@ -5676,6 +6438,154 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete(requestParameters: UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
         const response = await this.unshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch without sending the request
+     */
+    async updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequestOpts(requestParameters: UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch().'
+            );
+        }
+
+        if (requestParameters['attributeId'] == null) {
+            throw new runtime.RequiredError(
+                'attributeId',
+                'Required parameter "attributeId" was null or undefined when calling updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch().'
+            );
+        }
+
+        if (requestParameters['patchAttribute'] == null) {
+            throw new runtime.RequiredError(
+                'patchAttribute',
+                'Required parameter "patchAttribute" was null or undefined when calling updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/attributes/{attribute_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"attribute_id"}}`, encodeURIComponent(String(requestParameters['attributeId'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchAttributeToJSON(requestParameters['patchAttribute']),
+        };
+    }
+
+    /**
+     * Renames, describes, retires or restricts to tags an attribute. Annotations are not rewritten.
+     * Update Attribute
+     */
+    async updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRaw(requestParameters: UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>> {
+        const requestOptions = await this.updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AttributeFromJSON(jsonValue));
+    }
+
+    /**
+     * Renames, describes, retires or restricts to tags an attribute. Annotations are not rewritten.
+     * Update Attribute
+     */
+    async updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch(requestParameters: UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute> {
+        const response = await this.updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch without sending the request
+     */
+    async updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequestOpts(requestParameters: UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch().'
+            );
+        }
+
+        if (requestParameters['attributeId'] == null) {
+            throw new runtime.RequiredError(
+                'attributeId',
+                'Required parameter "attributeId" was null or undefined when calling updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch().'
+            );
+        }
+
+        if (requestParameters['valueId'] == null) {
+            throw new runtime.RequiredError(
+                'valueId',
+                'Required parameter "valueId" was null or undefined when calling updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch().'
+            );
+        }
+
+        if (requestParameters['patchAttributeValue'] == null) {
+            throw new runtime.RequiredError(
+                'patchAttributeValue',
+                'Required parameter "patchAttributeValue" was null or undefined when calling updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"attribute_id"}}`, encodeURIComponent(String(requestParameters['attributeId'])));
+        urlPath = urlPath.replace(`{${"value_id"}}`, encodeURIComponent(String(requestParameters['valueId'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchAttributeValueToJSON(requestParameters['patchAttributeValue']),
+        };
+    }
+
+    /**
+     * Renames, describes or retires a value; its assignments stay.
+     * Update Attribute Value
+     */
+    async updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRaw(requestParameters: UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Attribute>> {
+        const requestOptions = await this.updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AttributeFromJSON(jsonValue));
+    }
+
+    /**
+     * Renames, describes or retires a value; its assignments stay.
+     * Update Attribute Value
+     */
+    async updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch(requestParameters: UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute> {
+        const response = await this.updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
