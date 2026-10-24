@@ -50,6 +50,17 @@ corpus, the years 311 and 2879, unless `OUTLIERS=no`. A larger `COUNT` (at most 
 gives a corpus for measuring aggregates; 2,000 documents take a few seconds. The fixture schema
 declares `library` as production does (`text`, `field` tokenization, #496); an older store
 without it gets it declared the same way first.
+
+**Existing local stores after #496.** The updated schema is used for *newly initialized*
+development stores. `make dev-up` preserves an existing store; it does not convert
+`Documents.yearIssued` from `number` to `int` or add its range index.
+`make dev-add-documents` may add a missing `library` property, but does not change
+the year type. To recreate an existing local store with the updated schema, use
+`make dev-reset` **only if its local data can be discarded**: it deletes and reseeds
+both the local Weaviate and SQLite stores (see [Lifecycle, reset and safety](#2-lifecycle-reset-and-safety)).
+If the data must be retained, plan a separate, backed-up migration; the reset and
+automated-test tools must never target the shared test or production databases.
+
 Document `n` is always the same and existing ones are skipped, so running again adds
 nothing and a larger `COUNT` adds the difference. The documents have no chunks, so Search
 and Document view do not show them; `make dev-verify` reports them as one difference and
