@@ -8,6 +8,7 @@ read, write or provider call. Rights:
 | ``require_collection_read`` | yes | yes | not found |
 | ``require_annotation_edit`` (spans, AI suggestions/review) | yes | yes | not found |
 | ``require_tag_definition_edit`` (create/edit/delete tags) | yes | yes | not found |
+| ``require_attribute_definition_edit`` (create/edit/delete attributes and values, #331) | yes | yes | not found |
 | ``require_membership_edit`` (add/remove documents/chunks) | yes | forbidden | not found |
 | ``require_collection_owner`` (metadata, delete, sharing) | yes | forbidden | not found |
 | ``require_admin`` (change a collection's owner) | no | no | admins only |
@@ -98,6 +99,12 @@ async def require_annotation_edit(collections: UserCollectionRepository, user: P
 async def require_tag_definition_edit(collections: UserCollectionRepository, user: Principal | None,
                                       collection_id: str | UUID) -> CollectionGrant:
     # Decided 2026-10-07 (#201): shared users may create, edit and delete tag definitions.
+    return await _grant(collections, user, collection_id)
+
+
+async def require_attribute_definition_edit(collections: UserCollectionRepository, user: Principal | None,
+                                            collection_id: str | UUID) -> CollectionGrant:
+    # Like tag definitions (#201, ADR 0011): attributes are the collection's shared vocabulary.
     return await _grant(collections, user, collection_id)
 
 

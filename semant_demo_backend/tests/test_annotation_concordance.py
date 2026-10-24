@@ -18,6 +18,7 @@ from semant_demo.features.annotations.schemas import (
     AnnotationIdsRequest, AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus,
 )
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.features.attributes import codec
 from semant_demo.features.documents.schemas import Document
 from semant_demo.features.user_collections.access import AuthenticationRequired, ResourceNotFound
 
@@ -72,7 +73,11 @@ class FakeSpans:
                 and all(r.text is not None and any(w.lower() in t.lower() for t in r.text.split())
                         for w in query.words)
                 and (document_ids is None or r.documentId in document_ids)
-                and (query.ids is None or r.id in query.ids)]
+                and (query.ids is None or r.id in query.ids)
+                and all(any(codec.encode(a, v) in (r.attributeValues or []) for v in vs)
+                        for a, vs in query.attribute_values.items())
+                and not any(c.startswith(f"{a}:") for a in query.attribute_unassigned
+                            for c in (r.attributeValues or []))]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
@@ -92,7 +97,8 @@ class FakeSpans:
 
     async def query_ids(self, cid, query, *, document_ids=None, limit):
         self.queries += 1
-        return {r.id: r.editVersion or 0 for r in sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]}
+        return {r.id: (r.editVersion or 0, r.attributeVersion or 0)
+                for r in sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]}
 
 
 def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=True, rid=None):
