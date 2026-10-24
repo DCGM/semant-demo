@@ -1,0 +1,319 @@
+"""Collection attribute use cases (#331, ADR 0011): definitions and accepted assignments.
+
+Every public function checks access itself (``features/user_collections/access.py``, ADR 0007)
+before any other read or write: reading needs collection read access, definition writes
+attribute-definition-edit access and assignments annotation-edit access (owner and shared users
+for all three; none changes collection membership). Definitions are stored in SQL per collection
+(``adapters/sql/attributes.py``); an attribute or value id of another collection is "not found".
+
+The accepted assignments of an annotation are the array ``Annotation.attributeValues`` in its
+collection's tenant, the one authoritative copy; every change also appends a change record (who,
+when, previous and new values, manual or AI-assisted, the annotation's ``editVersion`` and the
+definition's revision). Assignments are written best effort per annotation (ADR 0002) and
+checked against the annotation's ``attributeVersion``, which only assignments move: a write
+based on an outdated copy is refused (``edit_conflict``) and changes nothing; one that finds the
+annotation already as it asks counts as done without writing. The check runs under the span's
+per-process lock (as ADR 0010). Only approved (``pos``) annotations receive values; proposals and
+rejected annotations never carry accepted assignments, and nothing here inserts AI-proposed values.
+
+Assignments need the attribute properties on the annotation collection
+(``SpanRepository.attributes``); without them they are refused (503) while definitions still work.
+"""
+import asyncio
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from uuid import UUID
+
+from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.adapters.weaviate.writes import step_failure
+from semant_demo.core.errors import InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
+from semant_demo.core.outcomes import StepFailure, outcome_of
+from semant_demo.features.annotations.schemas import SpanType, TagSpan
+from semant_demo.features.annotations.service import AnnotationStore, use_tenant
+from semant_demo.features.attributes import codec
+from semant_demo.features.attributes.schemas import (
+    Attribute, AttributeAssignRequest, AttributeAssignResult, AttributeChange, AssignMode, Cardinality,
+    PatchAttribute, PatchAttributeValue, PostAttribute, PostAttributeValue, ValueKind,
+)
+from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections.access import Principal
+
+logger = logging.getLogger(__name__)
+
+Id = str | UUID
+
+NOT_ENABLED = ("Attribute assignments are not enabled on this store: run "
+               "python -m semant_demo.maintenance.annotation_attributes add-schema and restart the backend.")
+EDIT_CONFLICT = "Changed by someone else since it was loaded; nothing was saved."
+
+
+@dataclass
+class AttributeStore:
+    """What attribute use cases read and write: the definitions and the annotation store."""
+    definitions: AttributeRepository
+    annotations: AnnotationStore
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _attribute_not_found() -> NotFoundError:
+    return NotFoundError("Attribute not found")
+
+
+def _check_kinds(existing: list[ValueKind], new: list[ValueKind]) -> None:
+    """At most one Unknown and one Not applicable value per attribute."""
+    kinds = [*existing, *new]
+    for kind in (ValueKind.unknown, ValueKind.not_applicable):
+        if kinds.count(kind) > 1:
+            raise InvalidRequestError(f"An attribute has at most one {kind.value.replace('_', ' ')} value")
+
+
+async def _read(store: AttributeStore, cid: UUID, attribute_id: Id) -> Attribute:
+    attribute = await store.definitions.read(cid, access.parse_id(attribute_id, "Attribute"))
+    if attribute is None:
+        raise _attribute_not_found()
+    return attribute
+
+
+##############
+# Definitions #
+##############
+
+async def list_attributes(store: AttributeStore, user: Principal | None, collection_id: Id) -> list[Attribute]:
+    """The collection's attributes with their values (also retired ones), by name."""
+    grant = await access.require_collection_read(store.annotations.collections, user, collection_id)
+    return await store.definitions.read_all(grant.collection_id)
+
+
+async def create_attribute(store: AttributeStore, user: Principal | None, collection_id: Id,
+                           attribute: PostAttribute) -> Attribute:
+    grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
+    _check_kinds([], [v.kind for v in attribute.values])
+    await access.require_tags_in_collection(store.annotations.tags, attribute.tag_ids, grant.collection_id)
+    return await store.definitions.create(grant.collection_id, attribute, user.id)
+
+
+async def update_attribute(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id,
+                           patch: PatchAttribute) -> Attribute:
+    """Renames, describes, retires or changes the tags of an attribute; ids of assigned values
+    are untouched, so no annotation is rewritten."""
+    grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
+    if patch.tag_ids:
+        await access.require_tags_in_collection(store.annotations.tags, patch.tag_ids, grant.collection_id)
+    updated = await store.definitions.update(grant.collection_id, access.parse_id(attribute_id, "Attribute"), patch)
+    if updated is None:
+        raise _attribute_not_found()
+    return updated
+
+
+async def _usage(store: AttributeStore, grant, attribute_id: UUID, value_id: UUID | None = None) -> int:
+    spans = store.annotations.spans
+    if not spans.attributes:
+        return 0
+    return await spans.count_attribute_use(await use_tenant(store.annotations, grant), attribute_id, value_id)
+
+
+async def delete_attribute(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id) -> None:
+    """Deletes an attribute no annotation holds a value of; otherwise ``InUseError`` (409) with
+    the number of annotations affected, and the attribute can be retired instead."""
+    grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
+    attribute = await _read(store, grant.collection_id, attribute_id)
+    used = await _usage(store, grant, attribute.id)
+    if used:
+        raise InUseError(f"{used} annotations have values of this attribute; retire it instead of deleting it.", used)
+    await store.definitions.delete(grant.collection_id, attribute.id)
+
+
+async def add_value(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id,
+                    value: PostAttributeValue) -> Attribute:
+    grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
+    attribute = await _read(store, grant.collection_id, attribute_id)
+    _check_kinds([v.kind for v in attribute.values], [value.kind])
+    added = await store.definitions.add_value(grant.collection_id, attribute.id, value)
+    if added is None:
+        raise _attribute_not_found()
+    return added
+
+
+async def update_value(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id,
+                       value_id: Id, patch: PatchAttributeValue) -> Attribute:
+    """Renames, describes or retires a value; its id and its assignments stay."""
+    grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
+    updated = await store.definitions.update_value(
+        grant.collection_id, access.parse_id(attribute_id, "Attribute"), access.parse_id(value_id, "Value"), patch)
+    if updated is None:
+        raise NotFoundError("Attribute or value not found")
+    return updated
+
+
+async def delete_value(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id,
+                       value_id: Id) -> Attribute:
+    """Deletes a value no annotation holds; otherwise ``InUseError`` (409) with the number of
+    annotations affected, and the value can be retired instead."""
+    grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
+    attribute = await _read(store, grant.collection_id, attribute_id)
+    vid = access.parse_id(value_id, "Value")
+    if all(v.id != vid for v in attribute.values):
+        raise NotFoundError("Attribute or value not found")
+    used = await _usage(store, grant, attribute.id, vid)
+    if used:
+        raise InUseError(f"{used} annotations have this value; retire it instead of deleting it.", used)
+    deleted = await store.definitions.delete_value(grant.collection_id, attribute.id, vid)
+    if deleted is None:
+        raise NotFoundError("Attribute or value not found")
+    return deleted
+
+
+async def delete_collection_attributes(definitions: AttributeRepository, collection_id: UUID) -> None:
+    """Removes a deleted collection's definitions and change records (repeating it is safe)."""
+    await definitions.delete_collection(collection_id)
+
+
+##############
+# Assignments #
+##############
+
+def _item_failure(annotation_id: UUID, step: str, message: str) -> StepFailure:
+    return StepFailure(item_id=str(annotation_id), step=step, message=message)
+
+
+def _stored(span: TagSpan) -> list[str]:
+    """The span's accepted assignments in the stored form."""
+    return [codec.encode(UUID(a), UUID(v)) for a, vs in span.attributes.items() for v in vs]
+
+
+def _values_of(span: TagSpan, attribute_id: UUID) -> list[UUID]:
+    return [UUID(v) for v in span.attributes.get(str(attribute_id), [])]
+
+
+def _result_values(mode: AssignMode, previous: list[UUID], asked: list[UUID]) -> list[UUID]:
+    if mode == AssignMode.add:
+        return [*previous, *[v for v in asked if v not in previous]]
+    if mode == AssignMode.remove:
+        return [v for v in previous if v not in asked]
+    return list(dict.fromkeys(asked))
+
+
+@dataclass
+class _Item:
+    """What one annotation's assignment came to: exactly one of ``failure`` and ``saved``."""
+    annotation_id: UUID
+    failure: StepFailure | None = None
+    version: int | None = None
+    values: list[UUID] | None = None
+    change: AttributeChange | None = None
+    """Set when the assignment wrote something, to be recorded."""
+
+
+def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: TagSpan, previous: list[UUID],
+                  result: list[UUID], sid: UUID) -> StepFailure | None:
+    """Why the assignment is not allowed for this annotation, or None. Removing is always allowed."""
+    if request.mode == AssignMode.remove:
+        return None
+    if span.type != SpanType.pos:
+        return _item_failure(sid, "check_annotation_type",
+                             "Only approved annotations take attribute values; approve it first.")
+    if attribute.tag_ids and UUID(span.tagId) not in attribute.tag_ids:
+        return _item_failure(sid, "check_applicable", "This attribute does not apply to the annotation's tag.")
+    retired = {v.id for v in attribute.values if v.retired}
+    if any(v in retired for v in result if v not in previous):
+        return _item_failure(sid, "check_value", "A retired value cannot be assigned again.")
+    if attribute.cardinality == Cardinality.single and len(result) > 1:
+        return _item_failure(sid, "check_cardinality",
+                             "A single-valued attribute has one value; replace it instead of adding another.")
+    kinds = {v.id: v.kind for v in attribute.values}
+    if len(result) > 1 and any(kinds.get(v, ValueKind.value) != ValueKind.value for v in result):
+        return _item_failure(sid, "check_value", "Unknown and Not applicable cannot be combined with other values.")
+    return None
+
+
+async def _assign_one(store: AttributeStore, cid: UUID, attribute: Attribute, request: AttributeAssignRequest,
+                      sid: UUID, actor: UUID) -> _Item:
+    spans = store.annotations.spans
+    async with spans.lock(sid):
+        try:
+            span = await spans.read(cid, sid)
+        except Exception as exc:
+            return _Item(sid, failure=step_failure("find_annotation", sid, exc))
+        if span is None:
+            return _Item(sid, failure=_item_failure(
+                sid, "find_annotation", "No such annotation in this collection; it may have been deleted."))
+        previous = _values_of(span, attribute.id)
+        result = _result_values(request.mode, previous, request.value_ids)
+        if set(result) == set(previous):
+            # Already as asked: a retry of a write that landed is no conflict.
+            return _Item(sid, version=span.attributeVersion, values=previous)
+        if span.attributeVersion != request.expected_versions[sid]:
+            return _Item(sid, failure=_item_failure(sid, "edit_conflict", EDIT_CONFLICT),
+                         version=span.attributeVersion, values=previous)
+        failure = _rule_failure(attribute, request, span, previous, result, sid)
+        if failure is not None:
+            return _Item(sid, failure=failure)
+        others = [e for e in _stored(span) if codec.decode(e)[0] != attribute.id]
+        version = span.attributeVersion + 1
+        try:
+            await spans.write_attributes(cid, sid, [*others, *(codec.encode(attribute.id, v) for v in result)],
+                                         version)
+        except Exception as exc:
+            return _Item(sid, failure=step_failure("update_attributes", sid, exc))
+    change = AttributeChange(
+        annotation_id=sid, attribute_id=attribute.id, previous=previous, current=result, actor_id=actor, at=_now(),
+        source=request.source, run_id=request.run_id,
+        annotation_edit_version=span.editVersion if spans.provenance else None,
+        attribute_revision=attribute.revision)
+    return _Item(sid, version=version, values=result, change=change)
+
+
+async def assign_attributes(store: AttributeStore, user: Principal | None, collection_id: Id,
+                            request: AttributeAssignRequest) -> AttributeAssignResult:
+    """
+    Adds, removes or replaces the values of one attribute on up to ``MAX_ASSIGN_BATCH``
+    approved annotations, each on its own: written best effort and reported per item (nothing is
+    rolled back). A refused request (400/404) changed nothing; per item, ``failed`` names why an
+    annotation was not changed (``find_annotation``, ``edit_conflict``, ``check_annotation_type``,
+    ``check_applicable``, ``check_value``, ``check_cardinality``, ``update_attributes`` -
+    ``uncertain`` on a timeout). Saved changes are recorded afterwards; when that fails the
+    assignments stay and ``record_attribute_changes`` is reported.
+    """
+    grant = await access.require_annotation_edit(store.annotations.collections, user, collection_id)
+    spans = store.annotations.spans
+    if not spans.attributes:
+        raise ServiceUnavailableError(NOT_ENABLED)
+    attribute = await _read(store, grant.collection_id, request.attribute_id)
+    ids = list(dict.fromkeys(request.annotation_ids))
+    asked = list(dict.fromkeys(request.value_ids))
+    known = {v.id: v for v in attribute.values}
+    if any(v not in known for v in asked):
+        raise NotFoundError("Value not found")
+    if request.mode != AssignMode.remove:
+        if attribute.retired:
+            raise InvalidRequestError("This attribute is retired; values can only be removed.")
+        if attribute.cardinality == Cardinality.single and len(asked) > 1:
+            raise InvalidRequestError("A single-valued attribute takes one value.")
+        if len(asked) > 1 and any(known[v].kind != ValueKind.value for v in asked):
+            raise InvalidRequestError("Unknown and Not applicable cannot be combined with other values.")
+    request = request.model_copy(update={"annotation_ids": ids, "value_ids": asked})
+    cid = await use_tenant(store.annotations, grant)
+    items = await asyncio.gather(*(_assign_one(store, cid, attribute, request, sid, user.id) for sid in ids))
+
+    failed = [i.failure for i in items if i.failure is not None]
+    saved = [i for i in items if i.failure is None]
+    changes = [i.change for i in saved if i.change is not None]
+    try:
+        await store.definitions.record_changes(cid, changes)
+    except Exception as exc:
+        failed.append(step_failure("record_attribute_changes", None, exc))
+    return AttributeAssignResult(
+        outcome=outcome_of(len(saved), len(failed)), succeeded=[str(i.annotation_id) for i in saved], failed=failed,
+        versions={i.annotation_id: i.version for i in items if i.version is not None},
+        values={i.annotation_id: i.values for i in items if i.values is not None})
+
+
+async def read_attribute_changes(store: AttributeStore, user: Principal | None, collection_id: Id,
+                                 annotation_id: Id) -> list[AttributeChange]:
+    """The annotation's attribute change records (who, when, previous and new values), oldest first."""
+    grant = await access.require_collection_read(store.annotations.collections, user, collection_id)
+    return await store.definitions.read_changes(grant.collection_id, access.parse_id(annotation_id, "Annotation"))

@@ -148,6 +148,18 @@ export interface AnnotationListRow {
      * @memberof AnnotationListRow
      */
     provenance?: AnnotationProvenance;
+    /**
+     * 
+     * @type {{ [key: string]: Array<string>; }}
+     * @memberof AnnotationListRow
+     */
+    attributes?: { [key: string]: Array<string>; };
+    /**
+     * 
+     * @type {number}
+     * @memberof AnnotationListRow
+     */
+    attributeVersion?: number;
 }
 
 
@@ -190,6 +202,8 @@ export function AnnotationListRowFromJSONTyped(json: any, ignoreDiscriminator: b
         'documentYear': json['documentYear'] == null ? undefined : json['documentYear'],
         'editVersion': json['editVersion'] == null ? undefined : json['editVersion'],
         'provenance': json['provenance'] == null ? undefined : AnnotationProvenanceFromJSON(json['provenance']),
+        'attributes': json['attributes'] == null ? undefined : json['attributes'],
+        'attributeVersion': json['attributeVersion'] == null ? undefined : json['attributeVersion'],
     };
 }
 
@@ -221,6 +235,8 @@ export function AnnotationListRowToJSONTyped(value?: AnnotationListRow | null, i
         'documentYear': value['documentYear'],
         'editVersion': value['editVersion'],
         'provenance': AnnotationProvenanceToJSON(value['provenance']),
+        'attributes': value['attributes'],
+        'attributeVersion': value['attributeVersion'],
     };
 }
 

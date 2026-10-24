@@ -18,6 +18,7 @@ from semant_demo.features.annotations.schemas import (
     AnnotationIdsRequest, AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus,
 )
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.features.attributes import codec
 from semant_demo.features.documents.schemas import Document
 from semant_demo.features.user_collections.access import AuthenticationRequired, ResourceNotFound
 
@@ -72,7 +73,11 @@ class FakeSpans:
                 and all(r.text is not None and any(w.lower() in t.lower() for t in r.text.split())
                         for w in query.words)
                 and (document_ids is None or r.documentId in document_ids)
-                and (query.ids is None or r.id in query.ids)]
+                and (query.ids is None or r.id in query.ids)
+                and all(any(codec.encode(a, v) in (r.attributeValues or []) for v in vs)
+                        for a, vs in query.attribute_values.items())
+                and not any(c.startswith(f"{a}:") for a in query.attribute_unassigned
+                            for c in (r.attributeValues or []))]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
@@ -92,7 +97,8 @@ class FakeSpans:
 
     async def query_ids(self, cid, query, *, document_ids=None, limit):
         self.queries += 1
-        return {r.id: r.editVersion or 0 for r in sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]}
+        return {r.id: (r.editVersion or 0, r.attributeVersion or 0)
+                for r in sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]}
 
 
 def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=True, rid=None):
@@ -390,3 +396,50 @@ async def test_counts_need_read_access_and_valid_tag_ids(store):
         await service.count_annotations(store, OTHER, COLLECTION)
     with pytest.raises(InvalidRequestError):
         await service.count_annotations(store, OWNER, COLLECTION, tag_ids=["not-a-uuid"])
+
+
+ATTRIBUTE, OTHER_ATTRIBUTE = uuid4(), uuid4()
+VALUE, OTHER_VALUE = uuid4(), uuid4()
+
+
+async def test_attribute_filters_match_any_value_of_an_attribute_all_attributes_and_unassigned(store):
+    with_value, with_both, with_other_value, none = (row(DOC_A, i) for i in range(4))
+    with_value.attributeValues = [codec.encode(ATTRIBUTE, VALUE)]
+    with_both.attributeValues = [codec.encode(ATTRIBUTE, VALUE), codec.encode(OTHER_ATTRIBUTE, OTHER_VALUE)]
+    with_other_value.attributeValues = [codec.encode(ATTRIBUTE, OTHER_VALUE)]
+    store.spans.rows = [with_value, with_both, with_other_value, none]
+
+    async def found(**kwargs):
+        return {r.id for r in (await service.query_annotations(store, OWNER, COLLECTION, **kwargs)).rows}
+
+    assert await found(attribute_values=[f"{ATTRIBUTE}:{VALUE}"]) == {with_value.id, with_both.id}
+    assert await found(attribute_values=[f"{ATTRIBUTE}:{VALUE}", f"{ATTRIBUTE}:{OTHER_VALUE}"]) \
+        == {with_value.id, with_both.id, with_other_value.id}
+    assert await found(attribute_values=[f"{ATTRIBUTE}:{VALUE}", f"{OTHER_ATTRIBUTE}:{OTHER_VALUE}"]) == {with_both.id}
+    assert await found(attribute_unassigned=[str(OTHER_ATTRIBUTE)]) == {with_value.id, with_other_value.id, none.id}
+    assert await found(attribute_unassigned=[str(ATTRIBUTE)]) == {none.id}
+    assert await found(attribute_values=[f"{OTHER_ATTRIBUTE}:{OTHER_VALUE}"], attribute_unassigned=[str(ATTRIBUTE)]) == set()
+
+    # Rows carry the accepted values and the version assignments expect; the resolved selection too.
+    with_both.attributeVersion = 3
+    page = await service.query_annotations(store, OWNER, COLLECTION, attribute_values=[f"{ATTRIBUTE}:{VALUE}"])
+    by_id = {r.id: r for r in page.rows}
+    assert by_id[with_both.id].attributes == {ATTRIBUTE: [VALUE], OTHER_ATTRIBUTE: [OTHER_VALUE]}
+    assert (by_id[with_both.id].attributeVersion, by_id[with_value.id].attributeVersion) == (3, 0)
+    resolved = await service.resolve_annotation_ids(
+        store, OWNER, COLLECTION, AnnotationIdsRequest(attribute_values=[f"{ATTRIBUTE}:{VALUE}"]))
+    assert set(resolved.ids) == {with_value.id, with_both.id} and resolved.attribute_versions[with_both.id] == 3
+
+
+@pytest.mark.parametrize("values, unassigned", [(["x"], None), ([f"{ATTRIBUTE}:{VALUE} "], None),
+                                                (None, ["x"]), (["a:b"], None)])
+async def test_malformed_attribute_filters_are_refused(store, values, unassigned):
+    with pytest.raises(InvalidRequestError):
+        await service.query_annotations(store, OWNER, COLLECTION, attribute_values=values,
+                                        attribute_unassigned=unassigned)
+
+
+async def test_too_many_attribute_filters_are_refused(store):
+    with pytest.raises(InvalidRequestError, match="at most"):
+        await service.query_annotations(store, OWNER, COLLECTION,
+                                        attribute_unassigned=[str(uuid4()) for _ in range(21)])

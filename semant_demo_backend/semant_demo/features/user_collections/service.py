@@ -8,12 +8,14 @@ through ``UserLookup``. Unknown collections, documents, chunks and users raise
 
 Other features may call these functions instead of using the collection repository.
 """
+import logging
 from uuid import UUID
 
+from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
-from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.user_collections.schemas import (
@@ -24,6 +26,8 @@ from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
 from semant_demo.users.schemas import UserSearchResult
+
+logger = logging.getLogger(__name__)
 
 Id = str | UUID
 
@@ -78,12 +82,23 @@ async def change_owner(collections: UserCollectionRepository, users: UserLookup,
 
 
 async def delete_collection(collections: UserCollectionRepository, user: Principal | None,
-                            collection_id: Id) -> None:
+                            collection_id: Id, attributes: AttributeRepository | None = None) -> None:
     """
-    Deletes the collection with its tags and annotations. Owner only. A failed step raises
+    Deletes the collection with its attribute definitions (#331, first, so that deleting again
+    still finds the collection), tags and annotations. Owner only. A failed step raises
     ``IncompleteWriteError`` naming it and the completed steps; deleting again continues.
     """
     grant = await access.require_collection_owner(collections, user, collection_id)
+    if attributes is not None:
+        try:
+            await attributes.delete_collection(grant.collection_id)
+        except Exception as exc:
+            logger.warning("Deleting the attribute definitions of collection %s failed: %s",
+                           grant.collection_id, type(exc).__name__)
+            raise IncompleteWriteError(
+                "Deleting the collection stopped at step delete_attribute_definitions "
+                f"({type(exc).__name__}). Nothing was deleted; deleting the collection again continues.",
+                step="delete_attribute_definitions") from exc
     await collections.delete(grant.collection_id)
 
 

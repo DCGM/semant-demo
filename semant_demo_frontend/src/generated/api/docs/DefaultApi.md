@@ -4,16 +4,21 @@ All URIs are relative to *http://localhost*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
+| [**addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost**](DefaultApi.md#addattributevalueapiusercollectionscollectionidattributesattributeidvaluespost) | **POST** /api/user_collections/{collection_id}/attributes/{attribute_id}/values | Add Attribute Value |
 | [**addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost**](DefaultApi.md#addchunktocollectionapiusercollectionscollectionidchunkschunkidpost) | **POST** /api/user_collections/{collection_id}/chunks/{chunk_id} | Add Chunk To Collection |
 | [**addDocumentToCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdPost**](DefaultApi.md#adddocumenttocollectionapiusercollectionscollectioniddocumentsdocumentidpost) | **POST** /api/user_collections/{collection_id}/documents/{document_id} | Add Document To Collection |
+| [**assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost**](DefaultApi.md#assignattributevaluesapiusercollectionscollectionidannotationsattributesassignpost) | **POST** /api/user_collections/{collection_id}/annotations/attributes/assign | Assign Attribute Values |
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
 | [**countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet**](DefaultApi.md#countcollectionannotationsapiusercollectionscollectionidannotationscountsget) | **GET** /api/user_collections/{collection_id}/annotations/counts | Count Collection Annotations |
 | [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
+| [**createAttributeApiUserCollectionsCollectionIdAttributesPost**](DefaultApi.md#createattributeapiusercollectionscollectionidattributespost) | **POST** /api/user_collections/{collection_id}/attributes | Create Attribute |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
 | [**createTagSpanApiTagSpansPost**](DefaultApi.md#createtagspanapitagspanspost) | **POST** /api/tag_spans | Create Tag Span |
 | [**createUserCollectionApiUserCollectionsPost**](DefaultApi.md#createusercollectionapiusercollectionspost) | **POST** /api/user_collections | Create User Collection |
+| [**deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete**](DefaultApi.md#deleteattributeapiusercollectionscollectionidattributesattributeiddelete) | **DELETE** /api/user_collections/{collection_id}/attributes/{attribute_id} | Delete Attribute |
+| [**deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete**](DefaultApi.md#deleteattributevalueapiusercollectionscollectionidattributesattributeidvaluesvalueiddelete) | **DELETE** /api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id} | Delete Attribute Value |
 | [**deleteAutoSpansApiAiAutoSpansDeletePost**](DefaultApi.md#deleteautospansapiaiautospansdeletepost) | **POST** /api/ai/auto_spans/delete | Delete Auto Spans |
 | [**deleteCollectionApiUserCollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiusercollectionscollectioniddelete) | **DELETE** /api/user_collections/{collection_id} | Delete Collection |
 | [**deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost**](DefaultApi.md#deletespansfortagsindocumentapitagspansindocumentdeletepost) | **POST** /api/tag_spans/in_document/delete | Delete Spans For Tags In Document |
@@ -42,6 +47,8 @@ All URIs are relative to *http://localhost*
 | [**getTopicerConfigsApiAiTopicerConfigsGet**](DefaultApi.md#gettopicerconfigsapiaitopicerconfigsget) | **GET** /api/ai/topicer_configs | Get Topicer Configs |
 | [**healthHealthGet**](DefaultApi.md#healthhealthget) | **GET** /health | Health |
 | [**listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet**](DefaultApi.md#listannotateddocumentsapiusercollectionscollectionidannotationsdocumentsget) | **GET** /api/user_collections/{collection_id}/annotations/documents | List Annotated Documents |
+| [**listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet**](DefaultApi.md#listattributechangesapiusercollectionscollectionidannotationsannotationidattributechangesget) | **GET** /api/user_collections/{collection_id}/annotations/{annotation_id}/attribute-changes | List Attribute Changes |
+| [**listAttributesApiUserCollectionsCollectionIdAttributesGet**](DefaultApi.md#listattributesapiusercollectionscollectionidattributesget) | **GET** /api/user_collections/{collection_id}/attributes | List Attributes |
 | [**listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet**](DefaultApi.md#listcollectionannotationsapiusercollectionscollectionidannotationsget) | **GET** /api/user_collections/{collection_id}/annotations | List Collection Annotations |
 | [**questionApiQuestionPost**](DefaultApi.md#questionapiquestionpost) | **POST** /api/question | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
@@ -66,11 +73,91 @@ All URIs are relative to *http://localhost*
 | [**summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost**](DefaultApi.md#summarizedocumentapiusercollectionscollectioniddocumentsdocumentidsummarypost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/summary | Summarize Document |
 | [**syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost**](DefaultApi.md#synccollectionannotationchunktagsapiusercollectionscollectionidannotationschunktagssyncpost) | **POST** /api/user_collections/{collection_id}/annotations/chunk-tags/sync | Sync Collection Annotation Chunk Tags |
 | [**unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapiusercollectionscollectionidshareuseriddelete) | **DELETE** /api/user_collections/{collection_id}/share/{user_id} | Unshare Collection |
+| [**updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch**](DefaultApi.md#updateattributeapiusercollectionscollectionidattributesattributeidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id} | Update Attribute |
+| [**updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch**](DefaultApi.md#updateattributevalueapiusercollectionscollectionidattributesattributeidvaluesvalueidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id} | Update Attribute Value |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
 | [**updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapiusercollectionscollectionidownerpatch) | **PATCH** /api/user_collections/{collection_id}/owner | Update Collection Owner |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
 | [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
 
+
+
+## addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost
+
+> Attribute addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost(collectionId, attributeId, postAttributeValue)
+
+Add Attribute Value
+
+Adds a value; returns the attribute.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    attributeId: attributeId_example,
+    // PostAttributeValue
+    postAttributeValue: ...,
+  } satisfies AddAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPostRequest;
+
+  try {
+    const data = await api.addAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **attributeId** | `string` |  | [Defaults to `undefined`] |
+| **postAttributeValue** | [PostAttributeValue](PostAttributeValue.md) |  | |
+
+### Return type
+
+[**Attribute**](Attribute.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
 ## addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost
@@ -211,6 +298,81 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost
+
+> AttributeAssignResult assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost(collectionId, attributeAssignRequest)
+
+Assign Attribute Values
+
+Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its &#x60;&#x60;attributeVersion&#x60;&#x60;. Best effort and per item: &#x60;&#x60;succeeded&#x60;&#x60; lists the changed annotations (or those already as asked), &#x60;&#x60;failed&#x60;&#x60; the ones not changed or uncertain, with &#x60;&#x60;edit_conflict&#x60;&#x60; for an annotation whose attributes were written since; &#x60;&#x60;versions&#x60;&#x60; and &#x60;&#x60;values&#x60;&#x60; give the current state. Nothing is rolled back.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // AttributeAssignRequest
+    attributeAssignRequest: ...,
+  } satisfies AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest;
+
+  try {
+    const data = await api.assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **attributeAssignRequest** | [AttributeAssignRequest](AttributeAssignRequest.md) |  | |
+
+### Return type
+
+[**AttributeAssignResult**](AttributeAssignResult.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 
@@ -593,6 +755,81 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## createAttributeApiUserCollectionsCollectionIdAttributesPost
+
+> Attribute createAttributeApiUserCollectionsCollectionIdAttributesPost(collectionId, postAttribute)
+
+Create Attribute
+
+Defines an attribute (with initial values) of the collection. Owner and shared users.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // PostAttribute
+    postAttribute: ...,
+  } satisfies CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest;
+
+  try {
+    const data = await api.createAttributeApiUserCollectionsCollectionIdAttributesPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **postAttribute** | [PostAttribute](PostAttribute.md) |  | |
+
+### Return type
+
+[**Attribute**](Attribute.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## createTagApiTagsPost
 
 > Tag createTagApiTagsPost(collectionId, postTag)
@@ -807,6 +1044,159 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **201** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete
+
+> deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete(collectionId, attributeId)
+
+Delete Attribute
+
+Deletes an attribute no annotation has a value of; otherwise 409 with the number affected.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    attributeId: attributeId_example,
+  } satisfies DeleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDeleteRequest;
+
+  try {
+    const data = await api.deleteAttributeApiUserCollectionsCollectionIdAttributesAttributeIdDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **attributeId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete
+
+> Attribute deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete(collectionId, attributeId, valueId)
+
+Delete Attribute Value
+
+Deletes a value no annotation has; otherwise 409 with the number affected. Returns the attribute.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    attributeId: attributeId_example,
+    // string
+    valueId: valueId_example,
+  } satisfies DeleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDeleteRequest;
+
+  try {
+    const data = await api.deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **attributeId** | `string` |  | [Defaults to `undefined`] |
+| **valueId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Attribute**](Attribute.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -2780,9 +3170,156 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet
+
+> Array&lt;AttributeChange&gt; listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet(collectionId, annotationId)
+
+List Attribute Changes
+
+Who changed the annotation\&#39;s attribute values when (oldest first), manual or AI-assisted.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    annotationId: annotationId_example,
+  } satisfies ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest;
+
+  try {
+    const data = await api.listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **annotationId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;AttributeChange&gt;**](AttributeChange.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## listAttributesApiUserCollectionsCollectionIdAttributesGet
+
+> Array&lt;Attribute&gt; listAttributesApiUserCollectionsCollectionIdAttributesGet(collectionId)
+
+List Attributes
+
+The collection\&#39;s attributes with their values (also retired ones), by name.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+  } satisfies ListAttributesApiUserCollectionsCollectionIdAttributesGetRequest;
+
+  try {
+    const data = await api.listAttributesApiUserCollectionsCollectionIdAttributesGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;Attribute&gt;**](Attribute.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset, annotationId)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset, annotationId, attribute, unassigned)
 
 List Collection Annotations
 
@@ -2828,6 +3365,10 @@ async function example() {
     offset: 56,
     // Array<string> | Only these annotations (optional)
     annotationId: ...,
+    // Array<string> | Only annotations with this accepted attribute value, as <attribute id>:<value id> (repeat; values of one attribute match any, different attributes all) (optional)
+    attribute: ...,
+    // Array<string> | Only annotations without an accepted value of this attribute id (repeat) (optional)
+    unassigned: ...,
   } satisfies ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest;
 
   try {
@@ -2858,6 +3399,8 @@ example().catch(console.error);
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
 | **annotationId** | `Array<string>` | Only these annotations | [Optional] |
+| **attribute** | `Array<string>` | Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all) | [Optional] |
+| **unassigned** | `Array<string>` | Only annotations without an accepted value of this attribute id (repeat) | [Optional] |
 
 ### Return type
 
@@ -4568,6 +5111,165 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch
+
+> Attribute updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch(collectionId, attributeId, patchAttribute)
+
+Update Attribute
+
+Renames, describes, retires or restricts to tags an attribute. Annotations are not rewritten.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    attributeId: attributeId_example,
+    // PatchAttribute
+    patchAttribute: ...,
+  } satisfies UpdateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatchRequest;
+
+  try {
+    const data = await api.updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **attributeId** | `string` |  | [Defaults to `undefined`] |
+| **patchAttribute** | [PatchAttribute](PatchAttribute.md) |  | |
+
+### Return type
+
+[**Attribute**](Attribute.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch
+
+> Attribute updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch(collectionId, attributeId, valueId, patchAttributeValue)
+
+Update Attribute Value
+
+Renames, describes or retires a value; its assignments stay.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    attributeId: attributeId_example,
+    // string
+    valueId: valueId_example,
+    // PatchAttributeValue
+    patchAttributeValue: ...,
+  } satisfies UpdateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatchRequest;
+
+  try {
+    const data = await api.updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **attributeId** | `string` |  | [Defaults to `undefined`] |
+| **valueId** | `string` |  | [Defaults to `undefined`] |
+| **patchAttributeValue** | [PatchAttributeValue](PatchAttributeValue.md) |  | |
+
+### Return type
+
+[**Attribute**](Attribute.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 

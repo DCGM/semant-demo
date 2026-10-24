@@ -29,6 +29,12 @@ recognizable instead of trusted. They are written only when the service passes t
 (the collection holds them, ``enrichment_schema``); ``add_enrichment_schema`` adds them
 to an existing collection on the operator's request.
 
+Attributes (#331): ``attributeValues`` (accepted categorical assignments as ``<attribute id>:<value id>``
+elements, ``features/attributes/codec.py``) and ``attributeVersion`` (assignment writes since
+creation, separate from ``editVersion``). Read and written only when the collection holds them
+(``SpanRepository.attributes``, set at startup from ``attribute_schema``); ``add_attribute_schema`` adds
+them on the operator's request.
+
 Provenance (#460): ``origin``, ``createdBy``/``createdAt``, ``reviewedBy``/``reviewedAt``,
 ``lastEditedBy``/``lastEditedAt``, ``aiRunId`` and ``editVersion`` (span writes since
 creation). They are read and written only when the collection holds them
@@ -57,6 +63,7 @@ from semant_demo.adapters.weaviate.writes import NoProgressError
 from semant_demo.features.annotations.schemas import (
     AnnotationQuery, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan,
 )
+from semant_demo.features.attributes import codec
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +126,15 @@ PROVENANCE_PROPERTIES: list[Property] = [
 ]
 """Provenance properties of #460, in the order ``add_provenance_schema`` adds them."""
 
+ATTRIBUTE_PROPERTIES: list[Property] = [
+    # Whole-element tokenization: a filter matches an element exactly (or by the ``<attribute id>:``
+    # prefix with ``like``), never a part of one. Filterable only; nothing searches the text.
+    Property(name="attributeValues", data_type=DataType.TEXT_ARRAY, tokenization=Tokenization.FIELD,
+             index_searchable=False, index_filterable=True),
+    Property(name="attributeVersion", data_type=DataType.INT),
+]
+"""Attribute properties of #331, in the order ``add_attribute_schema`` adds them."""
+
 _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "enrichmentStatus",
         "enrichedRevision", "derivationVersion", "vectorStatus", "vectorRevision", "vectorConfig", "text",
         "leftContext", "rightContext", "documentStartChar", "documentEndChar",
@@ -126,7 +142,8 @@ _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "e
 
 
 _PROVENANCE = [p.name for p in PROVENANCE_PROPERTIES]
-_ROW_FIELDS = {*_ROW, *_PROVENANCE}
+_ATTRIBUTES = [p.name for p in ATTRIBUTE_PROPERTIES]
+_ROW_FIELDS = {*_ROW, *_PROVENANCE, *_ATTRIBUTES}
 
 
 def _contextual_vector(name: str):
@@ -140,7 +157,7 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
 
     No tenant is created here. Vectors are self-provided: ``default`` (flat index, unused)
     and the contextual vector ``annotation_vector`` (#328; ``None``: none). The derived
-    properties of #328 and the provenance of #460 are included. A reference cannot target an alias, so when the chunk
+    properties of #328, the provenance of #460 and the attributes of #331 are included. A reference cannot target an alias, so when the chunk
     collection name is an alias (production: ``Chunks`` -> ``Chunks_test``) the reference
     targets the collection it names.
     """
@@ -166,6 +183,7 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
             Property(name="confidence", data_type=DataType.NUMBER),
             *ENRICHMENT_PROPERTIES,
             *PROVENANCE_PROPERTIES,
+            *ATTRIBUTE_PROPERTIES,
         ],
         references=[ReferenceProperty(name="text_chunk", target_collection=chunk_target)],
     )
@@ -215,6 +233,24 @@ async def add_provenance_schema(client: WeaviateAsyncClient, names: CollectionNa
     return missing
 
 
+async def attribute_schema(client: WeaviateAsyncClient, names: CollectionNames) -> list[str]:
+    """The attribute properties (#331) the annotation collection lacks."""
+    config = await client.collections.get(names.annotation_collection_name).config.get()
+    present = {p.name for p in config.properties}
+    return [p.name for p in ATTRIBUTE_PROPERTIES if p.name not in present]
+
+
+async def add_attribute_schema(client: WeaviateAsyncClient, names: CollectionNames) -> list[str]:
+    """Add the missing attribute properties to the existing annotation collection; returns what
+    was added. Existing objects are not changed (they have no accepted values, version 0)."""
+    missing = await attribute_schema(client, names)
+    config = client.collections.get(names.annotation_collection_name).config
+    for prop in ATTRIBUTE_PROPERTIES:
+        if prop.name in missing:
+            await config.add_property(prop)
+    return missing
+
+
 def _uuid(value) -> UUID | None:
     return UUID(str(value)) if value is not None else None
 
@@ -233,6 +269,8 @@ def to_span(obj) -> TagSpan:
         reason=props.get("reason"),
         confidence=float(confidence) if confidence is not None else None,
         editVersion=props.get("editVersion") or 0,
+        attributes={str(a): [str(v) for v in vs] for a, vs in codec.group(props.get("attributeValues")).items()},
+        attributeVersion=props.get("attributeVersion") or 0,
     )
 
 
@@ -258,6 +296,12 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
         conditions.append(Filter.by_property("documentId").contains_any(list(document_ids)))
     if query.ids is not None:
         conditions.append(Filter.by_id().contains_any(list(query.ids)))
+    for attribute, values in query.attribute_values.items():
+        conditions.append(Filter.by_property("attributeValues").contains_any(
+            [codec.encode(attribute, v) for v in values]))
+    for attribute in query.attribute_unassigned:
+        # Explicit: no stored element carries the attribute's fixed-length id prefix.
+        conditions.append(Filter.not_(Filter.by_property("attributeValues").like(codec.attribute_pattern(attribute))))
     return Filter.all_of(conditions)
 
 
@@ -267,12 +311,16 @@ def pair_of(span: TagSpan) -> ChunkTag:
 
 
 class SpanRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames, provenance: bool = False):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames, provenance: bool = False,
+                 attributes: bool = False):
         self.client = client
         self.collectionNames = collectionNames
         self.provenance = provenance
         """The collection holds the provenance properties (#460): they are read, and the
         service writes them. Decided at startup (``bootstrap.detect_provenance``)."""
+        self.attributes = attributes
+        """The collection holds the attribute properties (#331): they are read, and the attribute
+        service writes them. Decided at startup (``bootstrap.detect_attributes``)."""
         # Tenants this process created or saw; a removed tenant is forgotten by ``remove_tenant``.
         self._known_tenants: set[str] = set()
         # A lock exists while some write holds or waits for it.
@@ -287,10 +335,10 @@ class SpanRepository:
         return lock
 
     def _span_properties(self) -> list[str]:
-        return _PROPERTIES + ["editVersion"] if self.provenance else _PROPERTIES
+        return [*_PROPERTIES, *(["editVersion"] if self.provenance else []), *(_ATTRIBUTES if self.attributes else [])]
 
     def _row_properties(self) -> list[str]:
-        return _ROW + _PROVENANCE if self.provenance else _ROW
+        return [*_ROW, *(_PROVENANCE if self.provenance else []), *(_ATTRIBUTES if self.attributes else [])]
 
     def _collection(self):
         return self.client.collections.get(self.collectionNames.annotation_collection_name)
@@ -434,6 +482,12 @@ class SpanRepository:
         if properties:
             await self._tenant(collection_id).data.update(uuid=span_id, properties=properties)
 
+    async def write_attributes(self, collection_id: UUID, span_id: UUID, values: list[str], version: int) -> None:
+        """Sets the span's accepted attribute assignments (``features/attributes/codec.py``, sorted)
+        and ``attributeVersion`` in one write; nothing else of the span changes."""
+        await self._tenant(collection_id).data.update(
+            uuid=span_id, properties={"attributeValues": sorted(set(values)), "attributeVersion": version})
+
     async def replace_anchor_reference(self, collection_id: UUID, span_id: UUID, chunk_id: UUID) -> None:
         """Points the span's ``text_chunk`` reference at ``chunk_id`` only (an update would
         add it to the old one)."""
@@ -523,17 +577,20 @@ class SpanRepository:
         return await self._read(collection_id, read, [])
 
     async def query_ids(self, collection_id: UUID, query: AnnotationQuery, *,
-                        document_ids: list[UUID] | None = None, limit: int) -> dict[UUID, int]:
+                        document_ids: list[UUID] | None = None, limit: int) -> dict[UUID, tuple[int, int]]:
         """The ids of at most ``limit`` matching spans (of the given documents when
-        ``document_ids`` is not None), by id, with their ``editVersion`` (#460)."""
+        ``document_ids`` is not None), by id, with their ``editVersion`` (#460) and
+        ``attributeVersion`` (#331)."""
         if (document_ids is not None and not document_ids) or (query.ids is not None and not query.ids):
             return {}
 
         async def read():
             response = await self._tenant(collection_id).query.fetch_objects(
                 filters=_query_filter(query, document_ids), sort=Sort.by_property("_id"), limit=limit,
-                return_properties=["editVersion"] if self.provenance else [])
-            return {UUID(str(o.uuid)): o.properties.get("editVersion") or 0 for o in response.objects}
+                return_properties=[*(["editVersion"] if self.provenance else []),
+                                   *(["attributeVersion"] if self.attributes else [])])
+            return {UUID(str(o.uuid)): (o.properties.get("editVersion") or 0, o.properties.get("attributeVersion") or 0)
+                    for o in response.objects}
         return await self._read(collection_id, read, {})
 
     async def near_vector(self, collection_id: UUID, target_vector: str, vector: list[float], config_id: str,
@@ -606,6 +663,20 @@ class SpanRepository:
             if not result.successful:
                 raise NoProgressError(f"{result.matches} spans matched and none was deleted")
         raise NoProgressError("Spans of the tag still match after the maximum number of delete rounds")
+
+    # ── Attributes (#331) ─────────────────────────────────────────────────
+
+    async def count_attribute_use(self, collection_id: UUID, attribute_id: UUID, value_id: UUID | None = None) -> int:
+        """Annotations of the collection holding an accepted value of the attribute (of this value
+        when given), whatever their type."""
+        values = Filter.by_property("attributeValues")
+        where = (values.contains_any([codec.encode(attribute_id, value_id)]) if value_id is not None
+                 else values.like(codec.attribute_pattern(attribute_id)))
+
+        async def count():
+            result = await self._tenant(collection_id).aggregate.over_all(filters=where, total_count=True)
+            return result.total_count or 0
+        return await self._read(collection_id, count, 0)
 
     # ── Statistics ────────────────────────────────────────────────────────
 

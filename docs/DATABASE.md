@@ -333,6 +333,16 @@ time, version 0, and nothing is invented for them:
   names the version it expects is refused when it differs (HTTP 409, per item `edit_conflict`
   in batches). `revision` keeps counting offset changes only
 
+Attribute properties (#331, [ADR 0011](adr/0011-collection-attributes.md); written by
+`features/attributes/service.py`; added on an existing collection by `annotation_attributes
+add-schema`). Absent on older annotations: no accepted values, version 0:
+- `attributeValues` (`TEXT[]`, whole-element tokenization, filterable, not searchable) — the
+  accepted categorical assignments, elements `<attribute id>:<value id>` (canonical lowercase
+  UUIDs; `features/attributes/codec.py`); the authoritative current state, sorted. Only approved
+  annotations get values; AI-proposed values are never stored here until a person accepts them
+- `attributeVersion` (`INT`) — assignment writes since creation; separate from `editVersion`
+  and `revision`, refuses an assignment based on an outdated copy
+
 User ids are stored; the client names them from the collection's owner and members
 (`GET /api/user_collections/{id}/people`), anyone else as a former member.
 
@@ -379,8 +389,9 @@ The SQL database (`SQL_DB_URL`, SQLite file `tasks.db` by default — the name i
 holds the application tables, declared on `adapters/sql/base.Base` and created at startup by
 `adapters/sql/tables.create_tables` when missing: `user` (below), `rag_user_feedback` (likes /
 dislikes of RAG answers, `adapters/sql/feedback.py`), the LLM quota ledger (below,
-`adapters/sql/quota.py`) and `annotation_tenant_activity` (below). Startup never drops or
-alters existing tables or rows.
+`adapters/sql/quota.py`), `annotation_tenant_activity` (below) and the collection attributes
+(`annotation_attribute`, `annotation_attribute_value`, `annotation_attribute_change`, below).
+Startup never drops or alters existing tables or rows.
 
 Databases created before the refactor may also contain a `tasks` table from the removed
 background tagging jobs. Nothing reads or writes it any more; it is left in place (dropping it
@@ -464,6 +475,47 @@ Written by the backend at most once per `ANNOTATION_TENANT_TOUCH_SECONDS` per te
 process (and by long operations with a heartbeat), read by the idle deactivation
 (`maintenance.annotation_tenants`). Advisory: a failed write is logged and never fails a
 request. Rows of removed tenants are dropped by the deactivation command.
+
+### Collection attributes (#331)
+
+Definitions and change records of the user-defined categorical attributes
+([ADR 0011](adr/0011-collection-attributes.md)); the accepted assignments themselves are on the
+annotations in Weaviate (`Annotation.attributeValues`). `adapters/sql/attributes.py`.
+
+```sql
+CREATE TABLE annotation_attribute (
+    id            VARCHAR(36)  PRIMARY KEY,   -- UUID, stored in assignments
+    collection_id VARCHAR(36)  NOT NULL,      -- indexed; the user collection
+    name          VARCHAR(200) NOT NULL,
+    name_key      VARCHAR(200) NOT NULL,      -- casefolded, trimmed; UNIQUE (collection_id, name_key)
+    description   TEXT         NOT NULL,
+    cardinality   VARCHAR(8)   NOT NULL,      -- single | multi (immutable)
+    tag_ids       JSON         NOT NULL,      -- tags it applies to; [] = all
+    retired       BOOLEAN      NOT NULL,
+    revision      INTEGER      NOT NULL,      -- +1 per edit of the attribute or its values
+    created_by    VARCHAR(36)  NOT NULL,
+    created_at    DATETIME     NOT NULL
+);
+CREATE TABLE annotation_attribute_value (
+    id            VARCHAR(36)  PRIMARY KEY,   -- UUID, stored in assignments
+    attribute_id  VARCHAR(36)  NOT NULL REFERENCES annotation_attribute (id),  -- indexed
+    label         VARCHAR(200) NOT NULL,
+    label_key     VARCHAR(200) NOT NULL,      -- UNIQUE (attribute_id, label_key)
+    description   TEXT         NOT NULL,
+    examples      JSON         NOT NULL,
+    kind          VARCHAR(16)  NOT NULL,      -- value | unknown | not_applicable
+    retired       BOOLEAN      NOT NULL,
+    position      INTEGER      NOT NULL
+);
+CREATE TABLE annotation_attribute_change (    -- append-only
+    id INTEGER PRIMARY KEY, collection_id VARCHAR(36) NOT NULL, annotation_id VARCHAR(36) NOT NULL,
+    attribute_id VARCHAR(36) NOT NULL, previous JSON NOT NULL, current JSON NOT NULL,   -- value ids
+    actor_id VARCHAR(36) NOT NULL, at DATETIME NOT NULL, source VARCHAR(16) NOT NULL,   -- manual | ai_assisted
+    run_id VARCHAR(36), annotation_edit_version INTEGER, attribute_revision INTEGER NOT NULL
+);
+```
+
+Deleting a collection removes its definitions and records first (best effort, ADR 0002).
 
 ---
 

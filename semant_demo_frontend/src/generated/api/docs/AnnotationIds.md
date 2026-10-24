@@ -9,6 +9,7 @@ Name | Type
 ------------ | -------------
 `ids` | Array&lt;string&gt;
 `versions` | { [key: string]: number; }
+`attributeVersions` | { [key: string]: number; }
 
 ## Example
 
@@ -19,6 +20,7 @@ import type { AnnotationIds } from ''
 const example = {
   "ids": null,
   "versions": null,
+  "attributeVersions": null,
 } satisfies AnnotationIds
 
 console.log(example)
