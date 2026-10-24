@@ -51,6 +51,18 @@ async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, cor
     await insert_corpus(client, names, corpus)
 
 
+async def insert_documents(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
+    """Insert the corpus documents into the (already created) documents collection."""
+    await _insert(client, names.document_collection_name, [
+        DataObject(
+            uuid=doc["id"],
+            properties=doc["properties"],
+            references={"collection": [corpus.collections[c]["id"] for c in doc["collections"]]},
+        )
+        for doc in corpus.documents.values()
+    ])
+
+
 async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
     """Insert the corpus into the (already created, empty) application collections. The
     spans go to the annotation tenants; the legacy ``Span`` collection stays empty. The
@@ -86,14 +98,7 @@ async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, cor
         )
         for tag in tags.values()
     ])
-    await _insert(client, names.document_collection_name, [
-        DataObject(
-            uuid=doc["id"],
-            properties=doc["properties"],
-            references={"collection": [collections[c]["id"] for c in doc["collections"]]},
-        )
-        for doc in corpus.documents.values()
-    ])
+    await insert_documents(client, names, corpus)
 
     chunk_tags = {entry["chunk"]: entry for entry in corpus.chunk_tags}
     positions = corpus_positions(chunks)

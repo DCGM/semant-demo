@@ -1,9 +1,11 @@
 """Corpus overview against the real test store (#254).
 
 Documents are counted once however many chunks they have (the fixture chronicle has three).
-Like the local snapshot, the fixture store declares no ``library`` property: the overview
-reports it unavailable until it is added (``add_text_property``). Further documents cover
-the decade boundary (1909/1910), invalid years and missing, empty and multi-word values.
+The fixture store declares the documents as production does (#496): ``library`` with
+``field`` tokenization, ``yearIssued`` as ``int``. Older stores (``legacy_documents``) lack
+``library`` and store ``number`` years such as 1909.5: the overview reports
+the library unavailable and a fractional year as invalid. Further documents cover the decade
+boundary (1909/1910), invalid years and missing, empty and multi-word values.
 
 Filtered distributions (#361): every filter is checked against the documents it must match,
 which pins down the store's matching (title words ignore case but not diacritics, ``word``
@@ -16,7 +18,6 @@ from weaviate.classes.data import DataObject
 
 from semant_demo.adapters.weaviate.analytics import (
     AnyOf, CorpusAnalyticsRepository, NumberRange, Unavailable, UnavailableFilter, ValueCounts)
-from semant_demo.adapters.weaviate.document_metadata import add_text_property
 
 pytestmark = pytest.mark.integration
 
@@ -29,14 +30,14 @@ EXTRA = [UUID(f"5e3a0000-0000-4000-8000-0000000da0{n:02}") for n in range(1, 9)]
 FILTERED = {
     "skola": {"title": "Škola a život", "yearIssued": 1909, "library": "mzk", "language": "ces"},
     "skolni": {"title": "ŠKOLNÍ věstník", "yearIssued": 1910, "library": "nkp", "language": "CES"},
-    "listy": {"title": "Listy z Brna", "yearIssued": 1909.5, "library": " mzk", "language": "Old Czech"},
+    "listy": {"title": "Listy z Brna", "yearIssued": 1908, "library": " mzk", "language": "Old Czech"},
     "plain": {"title": "Skola bez diakritiky", "yearIssued": 1920, "library": "MZK", "language": "deu"},
     "prazske": {"title": "Pražské listy", "language": "lat"},
 }
 FIXTURE_YEARS = {"chronicle": 1851, "letters": 1902, "gazette": None}
 
 
-async def test_overview_counts_fixture_documents_once_and_reports_missing_library(api_client, corpus):
+async def test_overview_counts_fixture_documents_once(api_client, corpus):
     response = await api_client.get(PATH)  # anonymous
 
     assert response.status_code == 200
@@ -49,19 +50,35 @@ async def test_overview_counts_fixture_documents_once_and_reports_missing_librar
     assert body["publication_year"]["unknown_count"] == 1
     assert body["languages"]["values"] == [{"value": "ces", "count": 3}]
     assert (body["languages"]["other_count"], body["languages"]["unknown_count"]) == (0, 0)
+    assert body["libraries"] == {"available": True, "unavailable_reason": None,
+                                 "values": [], "other_count": 0, "unknown_count": 3}
+
+
+async def test_overview_of_a_legacy_store_reports_the_missing_library_and_fractional_years(
+        legacy_documents, api_client, collection_names):
+    documents = legacy_documents.collections.get(collection_names.document_collection_name)
+    inserted = await documents.data.insert_many([DataObject(uuid=uuid, properties={"yearIssued": year})
+                                                 for uuid, year in zip(EXTRA, [1909.0, 1909.5])])
+    assert not inserted.errors
+
+    body = (await api_client.get(PATH)).json()
+
+    assert body["total_documents"] == 5
+    # chronicle 1851; letters 1902 and 1909.0 | gazette without a year and 1909.5
+    assert [(b["start"], b["count"]) for b in body["publication_year"]["bins"]][-1] == (1900, 2)
+    assert body["publication_year"]["unknown_count"] == 2
     assert body["libraries"] == {"available": False, "unavailable_reason": "missing_property",
                                  "values": None, "other_count": None, "unknown_count": None}
 
 
 async def test_overview_accounts_for_every_document(api_client, seeded_store, collection_names):
-    await add_text_property(seeded_store, collection_names, "library")
     documents = seeded_store.collections.get(collection_names.document_collection_name)
     inserted = await documents.data.insert_many([DataObject(uuid=uuid, properties=properties) for uuid, properties in zip(EXTRA, [
         {"yearIssued": 1909, "library": "mzk", "language": "deu"},
         {"yearIssued": 1910, "library": "mzk", "language": "deu"},
         {"yearIssued": 1919, "library": "nkp", "language": "lat"},
         {"yearIssued": 0, "library": "", "language": ""},
-        {"yearIssued": 1909.5, "library": "  ", "language": "Old Czech"},
+        {"yearIssued": -5, "library": "  ", "language": "Old Czech"},
         {"library": "mzk"},
         {"language": "ces"},
         {},
@@ -74,7 +91,7 @@ async def test_overview_accounts_for_every_document(api_client, seeded_store, co
     assert body["total_documents"] == total
     years = body["publication_year"]
     assert [(b["start"], b["count"]) for b in years["bins"]][-2:] == [(1900, 2), (1910, 2)]  # 1902, 1909 | 1910, 1919
-    # gazette, 0, 1909.5 and three documents without a year
+    # gazette, 0, -5 and three documents without a year
     assert years["unknown_count"] == 6
     assert body["libraries"]["values"] == [{"value": "mzk", "count": 3}, {"value": "nkp", "count": 1}]
     # three fixture documents and two extra without a library, two with an empty one
@@ -107,7 +124,6 @@ async def test_repository_reads_through_an_alias_and_rejects_list_properties(see
 
 
 async def _add_filtered_documents(store, collection_names):
-    await add_text_property(store, collection_names, "library")
     documents = store.collections.get(collection_names.document_collection_name)
     inserted = await documents.data.insert_many([
         DataObject(uuid=uuid, properties=properties) for uuid, properties in zip(EXTRA, FILTERED.values())])
@@ -116,7 +132,7 @@ async def _add_filtered_documents(store, collection_names):
 
 @pytest.mark.parametrize("filters, matching", [
     ({}, {"chronicle", "letters", "gazette", *FILTERED}),
-    # Inclusive bounds; 1909.5 is in no single year and below 1910.
+    # Inclusive bounds.
     ({"year_min": 1909, "year_max": 1909}, {"skola"}),
     ({"year_min": 1910}, {"skolni", "plain"}),
     ({"year_min": 1900, "year_max": 1910}, {"letters", "skola", "skolni", "listy"}),
@@ -166,7 +182,7 @@ async def test_filtered_counts_describe_exactly_the_matching_documents(
         assert sum(v["count"] for v in d["values"]) + d["other_count"] + d["unknown_count"] == len(matching)
 
 
-async def test_a_library_filter_on_a_store_without_libraries_is_rejected(api_client, seeded_store):
+async def test_a_library_filter_on_a_store_without_libraries_is_rejected(legacy_documents, api_client):
     response = await api_client.post(DISTRIBUTIONS, json={"filters": {"libraries": ["mzk"]}})
 
     assert response.status_code == 422
@@ -174,18 +190,18 @@ async def test_a_library_filter_on_a_store_without_libraries_is_rejected(api_cli
     assert (await api_client.post(DISTRIBUTIONS, json={"filters": {"languages": ["ces"]}})).json()["total_documents"] == 3
 
 
-async def test_repository_filters_through_an_alias(seeded_store, collection_names):
+async def test_repository_filters_a_legacy_store_through_an_alias(legacy_documents, collection_names):
     alias = "AnalyticsFilterDocuments"
-    await seeded_store.alias.create(alias_name=alias, target_collection=collection_names.document_collection_name)
+    await legacy_documents.alias.create(alias_name=alias, target_collection=collection_names.document_collection_name)
     try:
         names = collection_names.model_copy(update={"document_collection_name": alias})
-        repository = CorpusAnalyticsRepository(seeded_store, names)
+        repository = CorpusAnalyticsRepository(legacy_documents, names)
         counts = await repository.count_documents({"yearIssued": "number"}, group_limit=10,
                                                   conditions=[NumberRange("yearIssued", minimum=1900)])
         with pytest.raises(UnavailableFilter):
             await repository.count_documents({}, group_limit=10, conditions=[AnyOf("library", ("mzk",))])
     finally:
-        await seeded_store.alias.delete(alias_name=alias)
+        await legacy_documents.alias.delete(alias_name=alias)
 
     assert counts.total == 1  # letters 1902
     assert counts.properties["yearIssued"] == ValueCounts(known=1, groups=[(1902.0, 1)], complete=True)
@@ -200,8 +216,8 @@ async def test_library_years_put_every_matching_document_in_one_row(api_client, 
     rows = [(r["library"], r["kind"], r["total_documents"], [(y["year"], y["count"]) for y in r["years"]],
              r["unknown_year_count"]) for r in body["rows"]]
     assert rows == [
-        # "mzk" and " mzk" are the same library (field tokenization); 1909.5 is no valid year.
-        ("mzk", "value", 2, [(1909, 1)], 1),
+        # "mzk" and " mzk" are the same library (field tokenization).
+        ("mzk", "value", 2, [(1908, 1), (1909, 1)], 0),
         # MZK is another stored code: library codes are case-sensitive.
         ("MZK", "value", 1, [(1920, 1)], 0),
         ("nkp", "value", 1, [(1910, 1)], 0),

@@ -134,7 +134,12 @@ The property list in the diagram above is older than the local development snaps
 `partNumber` (`text`), `url` (`uuid`), `placeOfPublication`, `editors`, `seriesName`,
 `seriesNumber` (`text`), `edition`, `illustrators`, `translators`, `redaktors` and has no
 `library`, `authors`, `subTitle`, `description`, `keywords`, `genre`, `placeTerm`,
-`section`, `region` or `id_code`. Deployed databases were not checked. The API reads every
+`section`, `region` or `id_code`. The deployed production and shared test stores
+(checked 2026-10-24, #496) declare the same `Documents` properties: `library` (`text`, `field`
+tokenization), `yearIssued` and `yearIssuedMetadata` (`int`, range index), `dateIssued` and
+`dateIssuedMetadata` (`date`, range index), `title` and `language` (`word`); the disposable
+dev/test schema (`tests/weaviate_store.py`) declares `library` and `yearIssued` the same way.
+The API reads every
 store through one model, `features/documents/schemas.Document`: the snapshot's properties plus the
 older `library`, `description`, `keywords` (`text[]`), `genre` and `placeTerm`. Properties
 a store lacks are absent from the answer; stored properties the model does not name (e.g.

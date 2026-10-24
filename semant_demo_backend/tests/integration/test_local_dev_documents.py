@@ -1,6 +1,6 @@
-"""Synthetic development documents (#361) in a real store: ``add_documents`` declares the
-missing ``library`` property, adds only documents not stored yet, and the corpus overview
-and ``verify`` of the development tooling account for them.
+"""Synthetic development documents (#361) in a real store: ``add_documents`` adds only
+documents not stored yet, declares ``library`` in a store that lacks it (the local snapshot),
+and the corpus overview and ``verify`` of the development tooling account for them.
 
 The test store stands in for the development store: the ownership checks of
 ``cmd_add_documents`` are covered without Weaviate (``tests/test_local_dev.py``).
@@ -42,6 +42,16 @@ async def test_documents_are_added_once_and_counted_by_the_overview(api_client, 
     assert libraries["available"] and libraries["values"]
     assert sum(v["count"] for v in libraries["values"]) + libraries["other_count"] + libraries["unknown_count"] \
         == len(stored)
+
+
+async def test_documents_declare_the_library_in_a_store_without_it(legacy_documents, collection_names):
+    documents = legacy_documents.collections.get(collection_names.document_collection_name)
+
+    assert await local_dev.add_documents(legacy_documents, 5, outliers=False) == 5
+
+    library = next(p for p in (await documents.config.get()).properties if p.name == "library")
+    assert library.tokenization.value == "field"
+    assert await local_dev.add_documents(legacy_documents, 5, outliers=False) == 0
 
 
 async def test_verify_reports_the_synthetic_documents_as_one_difference(seeded_store, corpus, tmp_path):

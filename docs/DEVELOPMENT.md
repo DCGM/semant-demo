@@ -47,9 +47,9 @@ annotated Document view. This small corpus is for checking workflows, not search
 `nkp`, `svkhk` and `vkol`; the languages `ces`, its alias `cze`, `deu`, `lat` and `slk`; Czech,
 German and Latin titles; and some values missing. It also adds the two outliers of the real
 corpus, the years 311 and 2879, unless `OUTLIERS=no`. A larger `COUNT` (at most 1,000,000)
-gives a corpus for measuring aggregates; 2,000 documents take a few seconds. When the store
-has no `library` property (the fixture schema lacks it, #128), it is declared as production
-has it, `text` with `field` tokenization.
+gives a corpus for measuring aggregates; 2,000 documents take a few seconds. The fixture schema
+declares `library` as production does (`text`, `field` tokenization, #496); an older store
+without it gets it declared the same way first.
 Document `n` is always the same and existing ones are skipped, so running again adds
 nothing and a larger `COUNT` adds the difference. The documents have no chunks, so Search
 and Document view do not show them; `make dev-verify` reports them as one difference and
