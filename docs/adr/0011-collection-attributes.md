@@ -57,12 +57,14 @@ renames categories later without rewriting annotations or losing who decided wha
 - **Change records** (`annotation_attribute_change`, SQL) hold, per annotation and attribute and
   assignment: actor, time, previous and new value ids, `manual`/`ai_assisted` source with the run
   id, the annotation's `editVersion` when it has one and the attribute's `revision`. Records are
-  appended after the Weaviate write; when that fails the assignment stays and the response says
-  `record_attribute_changes` failed. Ids not labels are stored, so renaming keeps the history.
+  appended right after each annotation's Weaviate write (one record per annotation, so one failure
+  costs one record); when that fails the assignment stays and the response says
+  `record_attribute_changes` failed for that annotation. Ids not labels are stored, so renaming keeps the history.
   There is no undo of assignments yet.
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
-  with the number affected) but can be retired. Merging values (reassigning the affected
+  with the number affected) but can be retired. Narrowing an attribute's applicable tags while
+  annotations hold values of it is refused the same way (409); widening is always allowed. Merging values (reassigning the affected
   annotations) is not implemented here.
 - **The properties are added by an operator command**
   (`annotation_attributes add-schema`), never at startup or by a request; the backend reads and
@@ -73,9 +75,13 @@ renames categories later without rewriting annotations or losing who decided wha
 ## Consequences
 
 Assignments read the annotation once under its lock and write one update (two for the record
-afterwards, SQL). Definitions in SQLite are part of the daily backup (#399) and, being product
+afterwards, SQL); one request writes at most 16 annotations at a time. Definitions in SQLite are part of the daily backup (#399) and, being product
 data, not recoverable from Weaviate alone; a restore of Weaviate without the matching SQL database
 leaves assignments whose ids have no definition (shown as unknown values, filters still exact).
+A value or attribute deleted between the usage count and the delete can be left on an annotation
+without a definition (a small race; clients must show unknown ids as such, and a maintenance check
+for orphaned ids is a follow-up). The conflict check uses the in-process span lock, so it holds
+for one backend process only. `run_id` of an AI-assisted assignment is not checked against a run.
 Collection deletion crosses two stores (SQL first). Retagging an annotation to a tag an
 attribute does not apply to keeps its values. The document view does not show attributes yet.
 

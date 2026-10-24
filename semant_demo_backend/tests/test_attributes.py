@@ -392,8 +392,74 @@ async def test_saved_assignments_are_kept_when_their_records_cannot_be_written(s
     result = await service.assign_attributes(store, OWNER, COLLECTION,
                                              assign(attribute, [APPROVED], AssignMode.add, attribute.values[:1]))
     assert result.succeeded == [str(APPROVED)] and result.outcome.value == "partial"
-    assert [(f.step, f.item_id) for f in result.failed] == [("record_attribute_changes", None)]
+    assert [(f.step, f.item_id) for f in result.failed] == [("record_attribute_changes", str(APPROVED))]
     assert values_of(spans, APPROVED, attribute) == [str(attribute.values[0].id)]
+
+
+async def test_one_failed_record_does_not_cost_the_records_of_the_other_annotations(store, spans, definitions,
+                                                                                    monkeypatch):
+    attribute = await define(store)
+    other = uuid4()
+    spans.spans[(COLLECTION, other)] = span(other)
+    record = definitions.record_changes
+
+    async def fails_for_one(cid, changes):
+        if changes[0].annotation_id == APPROVED:
+            raise RuntimeError("database is locked")
+        await record(cid, changes)
+    monkeypatch.setattr(definitions, "record_changes", fails_for_one)
+    result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                             assign(attribute, [APPROVED, other], AssignMode.add, attribute.values[:1]))
+
+    assert sorted(result.succeeded) == sorted([str(APPROVED), str(other)])
+    assert [(f.step, f.item_id) for f in result.failed] == [("record_attribute_changes", str(APPROVED))]
+    assert await definitions.read_changes(COLLECTION, APPROVED) == []
+    assert len(await definitions.read_changes(COLLECTION, other)) == 1
+
+
+async def test_a_batch_writes_a_bounded_number_of_annotations_at_a_time(store, spans, monkeypatch):
+    attribute = await define(store)
+    ids = [uuid4() for _ in range(service.ASSIGN_CONCURRENCY * 3)]
+    for sid in ids:
+        spans.spans[(COLLECTION, sid)] = span(sid)
+    running = peak = 0
+    write = spans.write_attributes
+
+    async def counted(*args):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0.01)
+        await write(*args)
+        running -= 1
+    monkeypatch.setattr(spans, "write_attributes", counted)
+    result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                             assign(attribute, ids, AssignMode.add, attribute.values[:1]))
+
+    assert len(result.succeeded) == len(ids)
+    assert 1 < peak <= service.ASSIGN_CONCURRENCY
+
+
+async def test_tags_cannot_be_narrowed_while_annotations_hold_values_but_can_be_widened(store, spans):
+    attribute = await define(store, tag_ids=[PERSON])
+    free = await define(store, name="free")
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add,
+                                                                    attribute.values[:1]))
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(free, [APPROVED], AssignMode.add,
+                                                                    free.values[:1], {APPROVED: 1}))
+    for narrowed, tags in ((attribute, [PLACE]), (free, [PERSON])):
+        with pytest.raises(InUseError) as used:
+            await service.update_attribute(store, OWNER, COLLECTION, narrowed.id, PatchAttribute(tag_ids=tags))
+        assert used.value.affected == 1
+    widened = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                             PatchAttribute(tag_ids=[PERSON, PLACE]))
+    assert set(widened.tag_ids) == {PERSON, PLACE}
+    cleared = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(tag_ids=[]))
+    assert cleared.tag_ids == []
+
+    unused = await define(store, name="unused", tag_ids=[PERSON])
+    narrowed = await service.update_attribute(store, OWNER, COLLECTION, unused.id, PatchAttribute(tag_ids=[PLACE]))
+    assert narrowed.tag_ids == [PLACE]
 
 
 async def test_ai_assisted_decisions_name_their_run_and_manual_ones_cannot(store, definitions):

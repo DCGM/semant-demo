@@ -45,6 +45,8 @@ Id = str | UUID
 
 NOT_ENABLED = ("Attribute assignments are not enabled on this store: run "
                "python -m semant_demo.maintenance.annotation_attributes add-schema and restart the backend.")
+ASSIGN_CONCURRENCY = 16
+"""Annotations of one assign request written at the same time (each is a read and a write)."""
 EDIT_CONFLICT = "Changed by someone else since it was loaded; nothing was saved."
 
 
@@ -99,10 +101,18 @@ async def create_attribute(store: AttributeStore, user: Principal | None, collec
 async def update_attribute(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id,
                            patch: PatchAttribute) -> Attribute:
     """Renames, describes, retires or changes the tags of an attribute; ids of assigned values
-    are untouched, so no annotation is rewritten."""
+    are untouched, so no annotation is rewritten. Narrowing the applicable tags of an attribute
+    that annotations hold values of is refused (``InUseError``, 409, with the number of
+    annotations affected): those values would stop being applicable."""
     grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
     if patch.tag_ids:
         await access.require_tags_in_collection(store.annotations.tags, patch.tag_ids, grant.collection_id)
+        current = await _read(store, grant.collection_id, attribute_id)
+        if not current.tag_ids or not set(current.tag_ids) <= set(patch.tag_ids):
+            used = await _usage(store, grant, current.id)
+            if used:
+                raise InUseError(f"{used} annotations have values of this attribute; its applicable tags cannot "
+                                 "be narrowed while they do.", used)
     updated = await store.definitions.update(grant.collection_id, access.parse_id(attribute_id, "Attribute"), patch)
     if updated is None:
         raise _attribute_not_found()
@@ -206,6 +216,8 @@ class _Item:
     values: list[UUID] | None = None
     change: AttributeChange | None = None
     """Set when the assignment wrote something, to be recorded."""
+    record_failure: StepFailure | None = None
+    """Set when that record could not be written; the assignment stays."""
 
 
 def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: TagSpan, previous: list[UUID],
@@ -275,8 +287,8 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
     rolled back). A refused request (400/404) changed nothing; per item, ``failed`` names why an
     annotation was not changed (``find_annotation``, ``edit_conflict``, ``check_annotation_type``,
     ``check_applicable``, ``check_value``, ``check_cardinality``, ``update_attributes`` -
-    ``uncertain`` on a timeout). Saved changes are recorded afterwards; when that fails the
-    assignments stay and ``record_attribute_changes`` is reported.
+    ``uncertain`` on a timeout). Each saved change is recorded right after its write; when that fails the
+    assignment stays and ``record_attribute_changes`` is reported for that annotation.
     """
     grant = await access.require_annotation_edit(store.annotations.collections, user, collection_id)
     spans = store.annotations.spans
@@ -297,15 +309,23 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
             raise InvalidRequestError("Unknown and Not applicable cannot be combined with other values.")
     request = request.model_copy(update={"annotation_ids": ids, "value_ids": asked})
     cid = await use_tenant(store.annotations, grant)
-    items = await asyncio.gather(*(_assign_one(store, cid, attribute, request, sid, user.id) for sid in ids))
+    limit = asyncio.Semaphore(ASSIGN_CONCURRENCY)
+
+    async def assign_and_record(sid: UUID) -> _Item:
+        async with limit:
+            item = await _assign_one(store, cid, attribute, request, sid, user.id)
+            if item.change is not None:
+                try:
+                    await store.definitions.record_changes(cid, [item.change])
+                except Exception as exc:
+                    item.record_failure = step_failure("record_attribute_changes", sid, exc)
+            return item
+
+    items = await asyncio.gather(*(assign_and_record(sid) for sid in ids))
 
     failed = [i.failure for i in items if i.failure is not None]
     saved = [i for i in items if i.failure is None]
-    changes = [i.change for i in saved if i.change is not None]
-    try:
-        await store.definitions.record_changes(cid, changes)
-    except Exception as exc:
-        failed.append(step_failure("record_attribute_changes", None, exc))
+    failed.extend(i.record_failure for i in saved if i.record_failure is not None)
     return AttributeAssignResult(
         outcome=outcome_of(len(saved), len(failed)), succeeded=[str(i.annotation_id) for i in saved], failed=failed,
         versions={i.annotation_id: i.version for i in items if i.version is not None},
