@@ -212,9 +212,8 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   document reference (#153). It is not maintained by document writes or chunk ingestion:
   `python -m semant_demo.maintenance.chunk_year` declares it, copies the years and checks them
   ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)); keeping it
-  current at ingestion is [#313](https://github.com/DCGM/semant-demo/issues/313). The test
-  store's `documentYearIssued` (an earlier copy that a declared property cannot be removed from)
-  is not used.
+  current at ingestion is [#313](https://github.com/DCGM/semant-demo/issues/313). The shared
+  test store's earlier copy `documentYearIssued` was removed by recreating `Chunks` (#496).
 - `order` (`int`) — the chunk's place in its document; a document's orders are consecutive
   (each the previous + 1, the first any integer) and its text is the chunks' `text` concatenated
   in `order` without separators (whatever their collections). A document with a gap or a
