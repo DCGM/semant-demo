@@ -519,7 +519,8 @@ CREATE TABLE annotation_attribute_change (    -- append-only
 );
 ```
 
-Deleting a collection removes its definitions and records first (best effort, ADR 0002).
+Deleting a collection deletes the collection (Weaviate) first and its definitions and records
+afterwards; a failure of that second step is reported and leaves unreachable rows (cleanup: #499).
 
 ---
 

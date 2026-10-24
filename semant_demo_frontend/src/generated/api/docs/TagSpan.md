@@ -15,7 +15,6 @@ Name | Type
 `reason` | string
 `confidence` | number
 `editVersion` | number
-`attributes` | { [key: string]: Array&lt;string&gt;; }
 `attributeVersion` | number
 
 ## Example
@@ -34,7 +33,6 @@ const example = {
   "reason": null,
   "confidence": null,
   "editVersion": null,
-  "attributes": null,
   "attributeVersion": null,
 } satisfies TagSpan
 

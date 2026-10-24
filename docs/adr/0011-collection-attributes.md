@@ -21,7 +21,8 @@ renames categories later without rewriting annotations or losing who decided wha
   unique per collection and labels per attribute, ignoring case and surrounding spaces; nothing is
   global. A definition has the same rights as a tag definition (owner and shared users,
   `require_attribute_definition_edit`). The cardinality cannot change after creation. Deleting a
-  collection removes its definitions first, so a repeated deletion still finds the collection.
+  collection deletes the collection first and its definitions and change records afterwards
+  (see Consequences).
 - **The accepted assignments of an annotation are one array on the annotation**,
   `Annotation.attributeValues` (`text[]`, whole-element tokenization, filterable, not searchable):
   elements `<attribute id>:<value id>` with both ids in canonical lowercase UUID form
@@ -39,10 +40,13 @@ renames categories later without rewriting annotations or losing who decided wha
   belong to a separate proposal structure (#337/#338) and enter the array only through a person's
   decision (`source: ai_assisted` with the run id). `ai_assisted` is refused (400) until that
   exists, because a run cannot be checked yet; the record shape is ready for it. Values stay
-  stored on an annotation that is later rejected or retagged but are not shown: rows of a non-`pos`
+  stored on an annotation that is later rejected but are not shown: rows of a non-`pos`
   annotation carry no `attributes`, `?attribute=` matches only `pos` annotations and
   `?unassigned=` counts a non-`pos` annotation as unassigned. Approving it again shows the values
-  again. Removing values is allowed for any type.
+  again. Asking for a kept value again on a non-`pos` annotation is refused
+  (`check_annotation_type`), not taken as "already as asked". Removing values is allowed for any
+  type. Spans (`TagSpan`: `GET /api/tag_spans` and the span write results) carry no values at all,
+  only `attributeVersion`; the attribute service reads the stored array itself.
 - **A separate `attributeVersion`** (`INT`, 0 at creation) counts assignment writes. An assignment
   names the version it expects per annotation; one written since is refused (`edit_conflict`) and
   changes nothing, one already as asked counts as done without a write (a retry). Attribute
@@ -66,7 +70,9 @@ renames categories later without rewriting annotations or losing who decided wha
   There is no undo of assignments yet.
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
-  with the number affected) but can be retired. Narrowing an attribute's applicable tags while
+  with the number affected) but can be retired. When the usage cannot be counted (the count fails,
+  or startup could not read the schema, so whether annotations hold values is unknown), deleting
+  and narrowing are refused with 503 rather than taken as unused. Narrowing an attribute's applicable tags while
   annotations hold values of it is refused the same way (409, counting only annotations whose tag
   would fall outside the new tags); widening is always allowed. Merging values (reassigning the affected
   annotations) is not implemented here.
@@ -90,7 +96,8 @@ Collection deletion crosses two stores: the collection (Weaviate) first, then it
 change records (SQL), so a failed collection deletion never costs a surviving collection its
 definitions or history; rows a failed second step leaves behind belong to a collection that no
 longer exists and are unreachable (cleaning them is a follow-up, `docs/TODO.md`). Retagging an annotation to a tag an
-attribute does not apply to keeps its values. The document view does not show attributes yet.
+attribute does not apply to keeps its values and, unlike a rejection, still shows them in rows and
+filters: the state narrowing refuses to create. How to handle it is open (#500). The document view does not show attributes yet.
 
 ## Verification
 

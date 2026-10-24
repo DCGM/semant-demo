@@ -52,8 +52,11 @@ class FakeSpans:
 
     def __init__(self):
         self.attributes = True
+        self.attributes_checked = True
         self.provenance = True
         self.spans: dict = {}
+        self.stored: dict = {}
+        """Stored ``attributeValues`` per (collection, span)."""
         self.writes: list = []
         self.fail: Exception | None = None
         self.counted = 0
@@ -62,24 +65,24 @@ class FakeSpans:
     def lock(self, span_id):
         return self._locks.setdefault(span_id, asyncio.Lock())
 
-    async def read(self, cid, span_id):
+    async def read_assignments(self, cid, span_id):
         span = self.spans.get((cid, span_id))
-        return span.model_copy(deep=True) if span else None
+        return (span.model_copy(deep=True), list(self.stored.get((cid, span_id), []))) if span else None
 
     async def write_attributes(self, cid, span_id, values, version):
         if self.fail is not None:
             raise self.fail
         self.writes.append((span_id, sorted(values), version))
-        grouped = codec.group(values)
-        span = self.spans[(cid, span_id)]
-        span.attributes = {str(a): [str(v) for v in vs] for a, vs in grouped.items()}
-        span.attributeVersion = version
+        self.stored[(cid, span_id)] = sorted(set(values))
+        self.spans[(cid, span_id)].attributeVersion = version
 
     async def count_attribute_use(self, cid, attribute_id, value_id=None, outside_tags=None):
+        if not self.attributes:
+            raise RuntimeError("no such property: attributeValues")
         self.counted += 1
         total = 0
-        for (c, _), span in self.spans.items():
-            values = span.attributes.get(str(attribute_id), [])
+        for (c, sid), span in self.spans.items():
+            values = [str(v) for v in codec.group(self.stored.get((c, sid))).get(attribute_id, [])]
             outside = outside_tags is None or UUID(span.tagId) not in outside_tags
             total += c == cid and outside and (bool(values) if value_id is None else str(value_id) in values)
         return total
@@ -136,7 +139,7 @@ def assign(attribute, annotations, mode, values, versions=None, **kwargs):
 
 
 def values_of(spans, sid, attribute):
-    return spans.spans[(COLLECTION, sid)].attributes.get(str(attribute.id), [])
+    return [str(v) for v in codec.group(spans.stored.get((COLLECTION, sid))).get(attribute.id, [])]
 
 
 # ── The stored encoding ───────────────────────────────────────────────────
@@ -246,6 +249,40 @@ async def test_definitions_work_but_assignments_are_refused_without_the_attribut
     assert spans.writes == [] and spans.counted == 0
 
 
+async def test_usage_guarded_changes_are_refused_when_whether_values_exist_is_unknown(store, spans):
+    attribute = await define(store, tag_ids=[PERSON])
+    author = attribute.values[0]
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [author]))
+    # Startup could not read the schema: the values may well be there, so nothing counts as unused.
+    spans.attributes, spans.attributes_checked = False, False
+    with pytest.raises(ServiceUnavailableError):
+        await service.delete_attribute(store, OWNER, COLLECTION, attribute.id)
+    with pytest.raises(ServiceUnavailableError):
+        await service.delete_value(store, OWNER, COLLECTION, attribute.id, author.id)
+    with pytest.raises(ServiceUnavailableError):
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(tag_ids=[PLACE]))
+    # A count that fails on a store with the properties is no "unused" either.
+    spans.attributes, spans.attributes_checked = True, True
+
+    async def failing(*args):
+        raise RuntimeError("weaviate is down")
+    spans.count_attribute_use = failing
+    with pytest.raises(ServiceUnavailableError):
+        await service.delete_attribute(store, OWNER, COLLECTION, attribute.id)
+    assert [a.id for a in await service.list_attributes(store, OWNER, COLLECTION)] == [attribute.id]
+    assert (await service.list_attributes(store, OWNER, COLLECTION))[0].tag_ids == [PERSON]
+
+
+def test_public_spans_do_not_carry_attribute_values():
+    from semant_demo.adapters.weaviate.spans import to_span
+
+    stored = SimpleNamespace(uuid=REJECTED, properties={
+        "chunkId": uuid4(), "tagId": PERSON, "start": 0, "end": 3, "type": "neg",
+        "attributeValues": [codec.encode(uuid4(), uuid4())], "attributeVersion": 2})
+    public = to_span(stored).model_dump()
+    assert "attributes" not in public and public["attributeVersion"] == 2
+
+
 # ── Assignments ───────────────────────────────────────────────────────────
 
 async def test_assignment_modes_on_a_multi_valued_attribute_and_the_change_records(store, spans, definitions):
@@ -268,8 +305,10 @@ async def test_assignment_modes_on_a_multi_valued_attribute_and_the_change_recor
     assert cleared.values == {APPROVED: []} and spans.spans[(COLLECTION, APPROVED)].attributeVersion == 5
 
     changes = await service.read_attribute_changes(store, SHARED, COLLECTION, APPROVED)
-    assert [(ch.actor_id, ch.previous, ch.current, ch.source) for ch in changes][:2] == [
-        (SHARED.id, [], [a.id, b.id], AssignSource.manual), (OWNER.id, [a.id, b.id], [a.id, b.id, c.id], AssignSource.manual)]
+    # Values are stored sorted (as in Weaviate), so the order within one record is not the request's.
+    assert [(ch.actor_id, sorted(ch.previous), sorted(ch.current), ch.source) for ch in changes][:2] == [
+        (SHARED.id, [], sorted([a.id, b.id]), AssignSource.manual),
+        (OWNER.id, sorted([a.id, b.id]), sorted([a.id, b.id, c.id]), AssignSource.manual)]
     assert [ch.annotation_edit_version for ch in changes] == [4] * 5 and {ch.attribute_revision for ch in changes} == {1}
     assert await definitions.read_changes(SECOND_COLLECTION, APPROVED) == []
 
@@ -297,6 +336,21 @@ async def test_per_item_rules_report_what_was_not_changed_and_why(store, spans):
     assert steps == {str(APPROVED): "check_applicable", str(SUGGESTION): "check_annotation_type",
                      str(REJECTED): "check_annotation_type", str(request.annotation_ids[4]): "find_annotation"}
     assert [w[0] for w in spans.writes] == [PLACE_SPAN]
+
+
+async def test_values_kept_on_a_rejected_annotation_are_not_accepted_by_asking_again(store, spans, definitions):
+    attribute = await define(store)
+    author = attribute.values[0]
+    spans.stored[(COLLECTION, REJECTED)] = [codec.encode(attribute.id, author.id)]  # assigned, then rejected
+    again = await service.assign_attributes(store, OWNER, COLLECTION,
+                                            assign(attribute, [REJECTED], AssignMode.add, [author]))
+    assert again.succeeded == [] and [f.step for f in again.failed] == ["check_annotation_type"]
+    assert REJECTED not in again.values and spans.writes == []
+    # Removing them is allowed on any annotation.
+    removed = await service.assign_attributes(store, OWNER, COLLECTION,
+                                              assign(attribute, [REJECTED], AssignMode.remove, [author]))
+    assert removed.succeeded == [str(REJECTED)] and values_of(spans, REJECTED, attribute) == []
+    assert len(await definitions.read_changes(COLLECTION, REJECTED)) == 1
 
 
 async def test_cardinality_and_exclusive_unknown_and_retired_values(store, spans):

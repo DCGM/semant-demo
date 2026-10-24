@@ -269,7 +269,6 @@ def to_span(obj) -> TagSpan:
         reason=props.get("reason"),
         confidence=float(confidence) if confidence is not None else None,
         editVersion=props.get("editVersion") or 0,
-        attributes={str(a): [str(v) for v in vs] for a, vs in codec.group(props.get("attributeValues")).items()},
         attributeVersion=props.get("attributeVersion") or 0,
     )
 
@@ -327,6 +326,9 @@ class SpanRepository:
         self.attributes = attributes
         """The collection holds the attribute properties (#331): they are read, and the attribute
         service writes them. Decided at startup (``bootstrap.detect_attributes``)."""
+        self.attributes_checked = True
+        """False when startup could not read the schema: ``attributes`` is then off, but whether
+        annotations hold values is unknown, so the attribute service does not take it as "none"."""
         # Tenants this process created or saw; a removed tenant is forgotten by ``remove_tenant``.
         self._known_tenants: set[str] = set()
         # A lock exists while some write holds or waits for it.
@@ -341,7 +343,9 @@ class SpanRepository:
         return lock
 
     def _span_properties(self) -> list[str]:
-        return [*_PROPERTIES, *(["editVersion"] if self.provenance else []), *(_ATTRIBUTES if self.attributes else [])]
+        # The values themselves are read only by ``read_assignments``: ``TagSpan`` does not carry them.
+        return [*_PROPERTIES, *(["editVersion"] if self.provenance else []),
+                *(["attributeVersion"] if self.attributes else [])]
 
     def _row_properties(self) -> list[str]:
         return [*_ROW, *(_PROVENANCE if self.provenance else []), *(_ATTRIBUTES if self.attributes else [])]
@@ -436,6 +440,15 @@ class SpanRepository:
         async def read():
             obj = await self._tenant(collection_id).query.fetch_object_by_id(span_id, return_properties=self._span_properties())
             return to_span(obj) if obj is not None else None
+        return await self._read(collection_id, read, None)
+
+    async def read_assignments(self, collection_id: UUID, span_id: UUID) -> tuple[TagSpan, list[str]] | None:
+        """The collection's span with this id and its stored ``attributeValues`` whatever its type
+        (only the attribute service reads them; rows show them for approved spans only), or None."""
+        async def read():
+            obj = await self._tenant(collection_id).query.fetch_object_by_id(
+                span_id, return_properties=[*self._span_properties(), "attributeValues"])
+            return (to_span(obj), list(obj.properties.get("attributeValues") or [])) if obj is not None else None
         return await self._read(collection_id, read, None)
 
     async def read_many(self, collection_id: UUID, span_ids: list[UUID]) -> dict[UUID, TagSpan]:

@@ -83,12 +83,6 @@ export interface TagSpan {
     editVersion?: number;
     /**
      * 
-     * @type {{ [key: string]: Array<string>; }}
-     * @memberof TagSpan
-     */
-    attributes?: { [key: string]: Array<string>; };
-    /**
-     * 
      * @type {number}
      * @memberof TagSpan
      */
@@ -127,7 +121,6 @@ export function TagSpanFromJSONTyped(json: any, ignoreDiscriminator: boolean): T
         'reason': json['reason'] == null ? undefined : json['reason'],
         'confidence': json['confidence'] == null ? undefined : json['confidence'],
         'editVersion': json['editVersion'] == null ? undefined : json['editVersion'],
-        'attributes': json['attributes'] == null ? undefined : json['attributes'],
         'attributeVersion': json['attributeVersion'] == null ? undefined : json['attributeVersion'],
     };
 }
@@ -152,7 +145,6 @@ export function TagSpanToJSONTyped(value?: TagSpan | null, ignoreDiscriminator: 
         'reason': value['reason'],
         'confidence': value['confidence'],
         'editVersion': value['editVersion'],
-        'attributes': value['attributes'],
         'attributeVersion': value['attributeVersion'],
     };
 }

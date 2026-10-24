@@ -128,12 +128,6 @@ export interface TagSpanWriteResult {
     editVersion?: number;
     /**
      * 
-     * @type {{ [key: string]: Array<string>; }}
-     * @memberof TagSpanWriteResult
-     */
-    attributes?: { [key: string]: Array<string>; };
-    /**
-     * 
      * @type {number}
      * @memberof TagSpanWriteResult
      */
@@ -177,7 +171,6 @@ export function TagSpanWriteResultFromJSONTyped(json: any, ignoreDiscriminator: 
         'reason': json['reason'] == null ? undefined : json['reason'],
         'confidence': json['confidence'] == null ? undefined : json['confidence'],
         'editVersion': json['editVersion'] == null ? undefined : json['editVersion'],
-        'attributes': json['attributes'] == null ? undefined : json['attributes'],
         'attributeVersion': json['attributeVersion'] == null ? undefined : json['attributeVersion'],
     };
 }
@@ -206,7 +199,6 @@ export function TagSpanWriteResultToJSONTyped(value?: TagSpanWriteResult | null,
         'reason': value['reason'],
         'confidence': value['confidence'],
         'editVersion': value['editVersion'],
-        'attributes': value['attributes'],
         'attributeVersion': value['attributeVersion'],
     };
 }

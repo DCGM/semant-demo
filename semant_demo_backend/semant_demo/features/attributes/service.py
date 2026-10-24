@@ -47,6 +47,7 @@ Id = str | UUID
 ASSIGN_CONCURRENCY = 16
 """Annotations of one assign request written at the same time (each is a read and a write)."""
 EDIT_CONFLICT = "Changed by someone else since it was loaded; nothing was saved."
+USAGE_UNKNOWN = "Could not check which annotations hold these values; nothing was changed. Try again later."
 
 
 @dataclass
@@ -120,11 +121,19 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
 
 async def _usage(store: AttributeStore, grant, attribute_id: UUID, value_id: UUID | None = None,
                  outside_tags: list[UUID] | None = None) -> int:
+    """Annotations holding values of the attribute (of the value). None without the attribute
+    properties; when startup could not tell whether they exist, or the count fails, the guarded
+    change is refused (503) rather than let through unchecked."""
     spans = store.annotations.spans
-    if not spans.attributes:
+    if not spans.attributes and spans.attributes_checked:
         return 0
-    return await spans.count_attribute_use(await use_tenant(store.annotations, grant), attribute_id, value_id,
-                                           outside_tags)
+    try:
+        return await spans.count_attribute_use(await use_tenant(store.annotations, grant), attribute_id, value_id,
+                                               outside_tags)
+    except Exception as exc:
+        logger.warning("Could not count the annotations holding values of attribute %s: %s",
+                       attribute_id, type(exc).__name__)
+        raise ServiceUnavailableError(USAGE_UNKNOWN) from exc
 
 
 async def delete_attribute(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id) -> None:
@@ -186,15 +195,6 @@ def _item_failure(annotation_id: UUID, step: str, message: str) -> StepFailure:
     return StepFailure(item_id=str(annotation_id), step=step, message=message)
 
 
-def _stored(span: TagSpan) -> list[str]:
-    """The span's accepted assignments in the stored form."""
-    return [codec.encode(UUID(a), UUID(v)) for a, vs in span.attributes.items() for v in vs]
-
-
-def _values_of(span: TagSpan, attribute_id: UUID) -> list[UUID]:
-    return [UUID(v) for v in span.attributes.get(str(attribute_id), [])]
-
-
 def _result_values(mode: AssignMode, previous: list[UUID], asked: list[UUID]) -> list[UUID]:
     if mode == AssignMode.add:
         return [*previous, *[v for v in asked if v not in previous]]
@@ -214,14 +214,22 @@ class _Item:
     """Set when that record could not be written; the assignment stays."""
 
 
+def _type_failure(request: AttributeAssignRequest, span: TagSpan, sid: UUID) -> StepFailure | None:
+    """Only approved annotations take values (removing is always allowed). Checked before "already
+    as asked": values kept on a rejected annotation are not accepted ones, so asking for them again
+    is no success."""
+    if request.mode == AssignMode.remove or span.type == SpanType.pos:
+        return None
+    return _item_failure(sid, "check_annotation_type",
+                         "Only approved annotations take attribute values; approve it first.")
+
+
 def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: TagSpan, previous: list[UUID],
                   result: list[UUID], sid: UUID) -> StepFailure | None:
-    """Why the assignment is not allowed for this annotation, or None. Removing is always allowed."""
+    """Why the assignment is not allowed for this annotation, or None. Removing is always allowed.
+    The annotation type is checked earlier (``_type_failure``)."""
     if request.mode == AssignMode.remove:
         return None
-    if span.type != SpanType.pos:
-        return _item_failure(sid, "check_annotation_type",
-                             "Only approved annotations take attribute values; approve it first.")
     if attribute.tag_ids and UUID(span.tagId) not in attribute.tag_ids:
         return _item_failure(sid, "check_applicable", "This attribute does not apply to the annotation's tag.")
     retired = {v.id for v in attribute.values if v.retired}
@@ -241,13 +249,18 @@ async def _assign_one(store: AttributeStore, cid: UUID, attribute: Attribute, re
     spans = store.annotations.spans
     async with spans.lock(sid):
         try:
-            span = await spans.read(cid, sid)
+            found = await spans.read_assignments(cid, sid)
         except Exception as exc:
             return _Item(sid, failure=step_failure("find_annotation", sid, exc))
-        if span is None:
+        if found is None:
             return _Item(sid, failure=_item_failure(
                 sid, "find_annotation", "No such annotation in this collection; it may have been deleted."))
-        previous = _values_of(span, attribute.id)
+        span, stored = found
+        failure = _type_failure(request, span, sid)
+        if failure is not None:
+            return _Item(sid, failure=failure)
+        grouped = codec.group(stored)
+        previous = grouped.get(attribute.id, [])
         result = _result_values(request.mode, previous, request.value_ids)
         if set(result) == set(previous):
             # Already as asked: a retry of a write that landed is no conflict.
@@ -258,7 +271,7 @@ async def _assign_one(store: AttributeStore, cid: UUID, attribute: Attribute, re
         failure = _rule_failure(attribute, request, span, previous, result, sid)
         if failure is not None:
             return _Item(sid, failure=failure)
-        others = [e for e in _stored(span) if codec.decode(e)[0] != attribute.id]
+        others = [codec.encode(a, v) for a, vs in grouped.items() if a != attribute.id for v in vs]
         version = span.attributeVersion + 1
         try:
             await spans.write_attributes(cid, sid, [*others, *(codec.encode(attribute.id, v) for v in result)],

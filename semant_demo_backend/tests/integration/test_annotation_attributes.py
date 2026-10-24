@@ -300,6 +300,10 @@ async def test_values_kept_on_a_rejected_annotation_are_hidden_and_assignments_d
     await review("reject")
     # The value is still stored, but a rejected annotation is no accepted classification.
     assert (await _rows(api_client, owner, collection))[brno]["attributes"] == {}
+    # The document view's spans never carry values, of any type (only rows show them, approved only).
+    spans = (await api_client.get("/api/tag_spans", headers=owner, params={"collection_id": collection})).json()
+    rejected = next(s for s in spans if s["id"] == brno)
+    assert rejected["type"] == "neg" and "attributes" not in rejected and rejected["attributeVersion"] == 1
     assert brno not in await _rows(api_client, owner, collection, attribute=f"{attribute['id']}:{value}")
     assert brno in await _rows(api_client, owner, collection, unassigned=attribute["id"])
 

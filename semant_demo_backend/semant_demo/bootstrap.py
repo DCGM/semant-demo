@@ -165,8 +165,10 @@ async def detect_provenance(client: WeaviateAsyncClient, config: Config) -> bool
     return True
 
 
-async def detect_attributes(client: WeaviateAsyncClient, config: Config) -> bool:
-    """Whether the annotation collection holds the attribute properties of #331.
+async def detect_attributes(client: WeaviateAsyncClient, config: Config) -> bool | None:
+    """Whether the annotation collection holds the attribute properties of #331; None when the
+    schema could not be read (assignments are off, and changes guarded by a usage count are
+    refused rather than taken as unused).
 
     Until it does, attribute definitions work but assignments are refused (503); the operator
     adds the properties with ``python -m semant_demo.maintenance.annotation_attributes add-schema``.
@@ -175,7 +177,7 @@ async def detect_attributes(client: WeaviateAsyncClient, config: Config) -> bool
         missing = await attribute_schema(client, config.collectionNames)
     except Exception as e:
         logger.warning("Could not read the annotation schema; attribute assignments are off: %s", type(e).__name__)
-        return False
+        return None
     if missing:
         logger.error("The annotation collection lacks the attribute properties of #331 (%s): attributes cannot be "
                      "assigned until python -m semant_demo.maintenance.annotation_attributes add-schema adds them.",
@@ -255,6 +257,7 @@ class AppResources:
             exists = await client.collections.exists(name)
         except Exception as e:
             logger.warning("Could not check the annotation collection %s: %s", name, type(e).__name__)
+            self.weaviate.spans.attributes_checked = False
             return
         if not exists:
             logger.error("The annotation collection %s does not exist: annotations cannot be read or saved until "
@@ -263,7 +266,9 @@ class AppResources:
             return
         self.annotation_enrichment = await detect_enrichment(client, self.config, self.annotation_vector)
         self.weaviate.spans.provenance = await detect_provenance(client, self.config)
-        self.weaviate.spans.attributes = await detect_attributes(client, self.config)
+        attributes = await detect_attributes(client, self.config)
+        self.weaviate.spans.attributes = attributes is True
+        self.weaviate.spans.attributes_checked = attributes is not None
         if self.annotation_enrichment.derived:
             self.weaviate.documents.positions = await detect_chunk_positions(client, self.config)
 

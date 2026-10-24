@@ -51,7 +51,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
-    MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
+    MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
     AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
 )
@@ -839,7 +839,6 @@ _MAX_WINDOW = 10_000
 # Annotated documents a document-ordered or year-filtered query reads (one aggregation).
 _MAX_DOCUMENTS = 10_000
 _MAX_WORDS = 10
-_MAX_ATTRIBUTE_FILTERS = 20
 _WORD = re.compile(r"\w+")
 DEFAULT_TYPES = (SpanType.pos, SpanType.auto)
 
@@ -868,6 +867,8 @@ def _attribute_filter(values: list[str] | None, unassigned: list[Id] | None
                       ) -> tuple[dict[UUID, list[UUID]], list[UUID]]:
     """The attribute conditions of a query from ``<attribute id>:<value id>`` pairs and attribute
     ids (#331). Ids of other collections are not checked: they match nothing in this tenant."""
+    if len(values or []) > MAX_ATTRIBUTE_FILTER_VALUES:
+        raise InvalidRequestError(f"Filter by at most {MAX_ATTRIBUTE_FILTER_VALUES} attribute values")
     try:
         pairs = [codec.decode(v) for v in values or []]
     except ValueError:
@@ -878,8 +879,8 @@ def _attribute_filter(values: list[str] | None, unassigned: list[Id] | None
         if value not in wanted[attribute]:
             wanted[attribute].append(value)
     missing = _parse_ids(unassigned, "attribute") or []
-    if len(wanted) + len(missing) > _MAX_ATTRIBUTE_FILTERS:
-        raise InvalidRequestError(f"Filter by at most {_MAX_ATTRIBUTE_FILTERS} attributes")
+    if len(wanted) + len(missing) > MAX_ATTRIBUTE_FILTERS:
+        raise InvalidRequestError(f"Filter by at most {MAX_ATTRIBUTE_FILTERS} attributes")
     return wanted, list(dict.fromkeys(missing))
 
 

@@ -78,10 +78,9 @@ class TagSpan(BaseModel):
     """Span writes (type, tag, offsets) since creation (#460); 0 for spans never written
     since. Sent back as ``expected_version`` so a collaborator's intervening write is
     refused instead of overwritten."""
-    attributes: dict[str, list[str]] = {}
-    """Accepted attribute values (#331): attribute id -> value ids. Empty without any."""
     attributeVersion: int = 0
-    """Attribute assignments written since creation; sent back with an assignment."""
+    """Attribute assignments written since creation; sent back with an assignment (#331). The
+    values themselves are on concordance rows (``AnnotationListRow.attributes``), approved only."""
 
 
 class PostSpan(BaseModel):
@@ -312,6 +311,10 @@ MAX_REVIEW_BATCH = 200
 """Annotations one review request may change (#459); a client sends larger selections in parts."""
 MAX_SYNC_PAIRS = 1000
 """(chunk, tag) pairs one chunk tag repair request may re-derive (#459)."""
+MAX_ATTRIBUTE_FILTERS = 20
+"""Attributes one concordance query may filter by (#331), with values or as unassigned."""
+MAX_ATTRIBUTE_FILTER_VALUES = 200
+"""``<attribute id>:<value id>`` pairs one concordance query may filter by (#331), all attributes together."""
 
 
 class AnnotationIdsRequest(BaseModel):
@@ -326,10 +329,10 @@ class AnnotationIdsRequest(BaseModel):
     year_from: int | None = None
     year_to: int | None = None
     within: list[UUID] | None = Field(default=None, max_length=MAX_RESOLVED_IDS)
-    attribute_values: list[str] = []
+    attribute_values: list[str] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTER_VALUES)
     """Stored form ``<attribute id>:<value id>`` (#331): values of one attribute match any, different
     attributes all."""
-    attribute_unassigned: list[UUID] = []
+    attribute_unassigned: list[UUID] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTERS)
     """Only annotations without an accepted value of these attributes."""
 
 

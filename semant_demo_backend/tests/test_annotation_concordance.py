@@ -15,7 +15,7 @@ from semant_demo.core.errors import InvalidRequestError, ServiceUnavailableError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION
 from semant_demo.features.annotations.schemas import (
-    AnnotationIdsRequest, AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus,
+    MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, AnnotationIdsRequest, AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus,
 )
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations import attribute_codec as codec
@@ -473,3 +473,11 @@ async def test_too_many_attribute_filters_are_refused(store):
     with pytest.raises(InvalidRequestError, match="at most"):
         await service.query_annotations(store, OWNER, COLLECTION,
                                         attribute_unassigned=[str(uuid4()) for _ in range(21)])
+    # One attribute with many values is bounded too, in both the GET query and the id resolution body.
+    many = [codec.encode(ATTRIBUTE, uuid4()) for _ in range(MAX_ATTRIBUTE_FILTER_VALUES + 1)]
+    with pytest.raises(InvalidRequestError, match="attribute values"):
+        await service.query_annotations(store, OWNER, COLLECTION, attribute_values=many)
+    with pytest.raises(ValueError):
+        AnnotationIdsRequest(attribute_values=many)
+    with pytest.raises(ValueError):
+        AnnotationIdsRequest(attribute_unassigned=[uuid4() for _ in range(MAX_ATTRIBUTE_FILTERS + 1)])
