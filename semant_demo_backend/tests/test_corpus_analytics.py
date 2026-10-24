@@ -413,7 +413,7 @@ def _parts(f):
 
 @pytest.mark.parametrize("data_type, bound_type", [("int", int), ("number", float)])
 def test_a_year_range_is_compared_as_the_declared_type(data_type, bound_type):
-    # Production declares yearIssued as int, the dev/test schema as number (#128).
+    # Production and the fixtures declare yearIssued as int (#496), older stores as number.
     f = where([NumberRange("yearIssued", 1900, 1920)], {"yearIssued": data_type})
 
     assert _parts(f) == [("yearIssued", "GreaterThanEqual", 1900), ("yearIssued", "LessThanEqual", 1920)]

@@ -5,7 +5,8 @@ import { closePhoneNavigation, fixture, useViewport } from './support'
 // Corpus overview (#254, #361): document counts of the whole public corpus or of the
 // documents matching metadata filters, without signing in. The fixture store has three
 // documents (chronicle "Kronika obce Lhota" 1851, letters "Dopisy z Prahy" 1902, gazette
-// "Pražský věstník" without a year), all in `ces`, and declares no `library` property.
+// "Pražský věstník" without a year), all in `ces`. It declares `library` as production does
+// (#496), but none of the documents has one.
 
 const DISTRIBUTIONS = '**/api/analytics/corpus/distributions'
 const LIBRARY_YEARS = '**/api/analytics/corpus/library-years'
@@ -49,7 +50,24 @@ test('an anonymous user opens the corpus overview from the navigation', async ({
   await expect(card(page, 'languages').locator('svg').first()).toBeVisible()
   expect(await tableRows(page, 'languages')).toEqual([['Czech (ces)', 'ces', '3'], ['Unknown', '—', '0']])
 
-  // The store has no library property: unavailable, not a chart of zeros, not a filter, no heatmap.
+  // Libraries are recorded, but none of these documents has one.
+  expect(await tableRows(page, 'libraries')).toEqual([['Unknown', '—', '3']])
+  await expect(page.getByTestId('filter-libraries')).toBeEnabled()
+  await expect(page.getByTestId('heatmap-show')).toBeVisible()
+})
+
+test('a store without a library property shows libraries as not available', async ({ page }) => {
+  // An older store (e.g. the local snapshot) that declares no library property.
+  await page.route(DISTRIBUTIONS, async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.libraries = { available: false, unavailable_reason: 'missing_property', values: null, other_count: null, unknown_count: null }
+    await route.fulfill({ response, json: body })
+  })
+  await page.goto('/#/corpus')
+  await expect(page.getByTestId('corpus-total')).toHaveText('3')
+
+  // Unavailable, not a chart of zeros, not a filter, no heatmap.
   await expect(card(page, 'libraries')).toContainText('Not available')
   await expect(card(page, 'libraries').locator('svg')).toHaveCount(0)
   await expect(page.getByTestId('corpus-filters')).toContainText('does not record libraries')
@@ -139,7 +157,7 @@ test('the overview fits a phone screen and lists the libraries of a synced store
   expect(overflow).toBeLessThanOrEqual(0)
   await expect(page.getByTestId('filter-libraries')).toBeEnabled()
 
-  // The heatmap of a synced store (its counts stubbed: the fixture store has no libraries).
+  // The heatmap of a synced store (its counts stubbed: the fixture documents have no library).
   await page.route(LIBRARY_YEARS, (route) => route.fulfill({
     json: {
       scope: 'searchable_corpus',

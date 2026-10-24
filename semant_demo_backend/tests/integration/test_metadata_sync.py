@@ -1,8 +1,9 @@
 """Kramerius metadata synchronization against the real test store (#257).
 
-The mirror is an in-memory SQLite ``meta_records`` table. The fixture store, like the local
-snapshot, declares no ``library`` property: it is added (``add_text_property``) and the
-source library comes from a library map. Applied metadata is read back through the document
+The mirror is an in-memory SQLite ``meta_records`` table. The fixture store declares
+``library`` as production does (#496), without values; the source library comes from a
+library map. A store without the property (``legacy_documents``, e.g. the local snapshot)
+gets it from ``add_text_property``. Applied metadata is read back through the document
 repository and, after copying the year to the chunks, the search adapter's year filter.
 """
 import json
@@ -50,8 +51,6 @@ async def test_report_apply_and_read_back(seeded_store, collection_names, corpus
         row(chronicle, "nkp", title="Never used"),
     ])
     library_map = {UUID(gazette): "mzk", UUID(letters): "mzk"}
-    assert "library" not in await document_property_types(seeded_store, collection_names)
-    await add_text_property(seeded_store, collection_names, "library")
 
     report = json.loads(json.dumps(await build_report(
         seeded_store, collection_names, source, endpoint="test", source_name="sqlite", library_map=library_map)))
@@ -120,7 +119,6 @@ async def test_inferred_libraries_are_applied_with_their_access(seeded_store, co
         page_row(start["gazette_1"], "mzk", gazette), page_row(start["gazette_1"], "nkp", gazette),
         row(letters, "mzk", public=True),  # no page rows: the mirror's only library
     ])
-    await add_text_property(seeded_store, collection_names, "library")
 
     report = json.loads(json.dumps(await build_report(
         seeded_store, collection_names, source, endpoint="test", source_name="sqlite", infer_from_pages=True,
@@ -154,15 +152,16 @@ async def test_inferred_libraries_are_applied_with_their_access(seeded_store, co
     assert read_library_map(inferred) == {UUID(chronicle): "nkp", UUID(gazette): "mzk", UUID(letters): "mzk"}
 
 
-async def test_library_property_is_added_through_an_alias(seeded_store, collection_names):
+async def test_library_property_is_added_through_an_alias(legacy_documents, collection_names):
     # The deployment reaches Documents_test through the alias Documents; Weaviate does not
     # resolve an alias for a schema update, so the property goes to the aliased collection.
     alias = "MetadataSyncDocumentsAlias"
-    await seeded_store.alias.create(alias_name=alias, target_collection=collection_names.document_collection_name)
+    await legacy_documents.alias.create(alias_name=alias, target_collection=collection_names.document_collection_name)
     try:
+        assert "library" not in await document_property_types(legacy_documents, collection_names)
         through_alias = collection_names.model_copy(update={"document_collection_name": alias})
-        await add_text_property(seeded_store, through_alias, "library")
-        assert (await document_property_types(seeded_store, collection_names))["library"] == "text"
-        assert (await document_property_types(seeded_store, through_alias))["library"] == "text"
+        await add_text_property(legacy_documents, through_alias, "library")
+        assert (await document_property_types(legacy_documents, collection_names))["library"] == "text"
+        assert (await document_property_types(legacy_documents, through_alias))["library"] == "text"
     finally:
-        await seeded_store.alias.delete(alias_name=alias)
+        await legacy_documents.alias.delete(alias_name=alias)

@@ -27,7 +27,7 @@ from typing import Mapping
 
 import weaviate
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty
+from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
 from weaviate.classes.query import Filter
 
 from semant_demo.features.search.filters import TASK_CLASSES
@@ -215,6 +215,45 @@ async def _delete_all_objects(collection) -> None:
         raise RuntimeError(f"Resetting {collection.name} left {remaining} objects.")
 
 
+async def create_documents_collection(client: WeaviateAsyncClient, names: CollectionNames,
+                                     legacy: bool = False) -> None:
+    """Create the documents collection of ``create_app_schema``: as declared in production
+    (#496), ``library`` matched as a whole value (``field``), integer years with a range index,
+    ``title`` and ``language`` matched by word. ``legacy`` declares it as older stores do (these
+    fixtures before #496): no ``library`` and ``yearIssued`` as ``number``."""
+    text, text_array = DataType.TEXT, DataType.TEXT_ARRAY
+    year = (Property(name="yearIssued", data_type=DataType.NUMBER) if legacy
+            else Property(name="yearIssued", data_type=DataType.INT, index_range_filters=True))
+    library = [] if legacy else [Property(name="library", data_type=text, tokenization=Tokenization.FIELD)]
+    await client.collections.create(
+        names.document_collection_name,
+        vector_config=Configure.Vectors.self_provided(),
+        properties=[
+            Property(name="title", data_type=text, tokenization=Tokenization.WORD),
+            Property(name="subtitle", data_type=text),
+            Property(name="public", data_type=DataType.BOOL),
+            *library,
+            Property(name="documentType", data_type=text),
+            Property(name="partNumber", data_type=text),
+            Property(name="partName", data_type=text),
+            Property(name="dateIssued", data_type=DataType.DATE),
+            year,
+            Property(name="language", data_type=text, tokenization=Tokenization.WORD),
+            Property(name="publisher", data_type=text),
+            Property(name="placeOfPublication", data_type=text),
+            Property(name="seriesName", data_type=text),
+            Property(name="seriesNumber", data_type=text),
+            Property(name="edition", data_type=text),
+            Property(name="author", data_type=text_array),
+            Property(name="editors", data_type=text_array),
+            Property(name="illustrators", data_type=text_array),
+            Property(name="translators", data_type=text_array),
+            Property(name="redaktors", data_type=text_array),
+        ],
+        references=[ReferenceProperty(name="collection", target_collection=names.user_collection_name)],
+    )
+
+
 async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames) -> None:
     """Create the application collections as the backend expects them.
 
@@ -257,32 +296,7 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
         ],
         references=[ReferenceProperty(name="userCollection", target_collection=names.user_collection_name)],
     )
-    await client.collections.create(
-        names.document_collection_name,
-        vector_config=vectors,
-        properties=[
-            Property(name="title", data_type=text),
-            Property(name="subtitle", data_type=text),
-            Property(name="public", data_type=DataType.BOOL),
-            Property(name="documentType", data_type=text),
-            Property(name="partNumber", data_type=text),
-            Property(name="partName", data_type=text),
-            Property(name="dateIssued", data_type=DataType.DATE),
-            Property(name="yearIssued", data_type=DataType.NUMBER),
-            Property(name="language", data_type=text),
-            Property(name="publisher", data_type=text),
-            Property(name="placeOfPublication", data_type=text),
-            Property(name="seriesName", data_type=text),
-            Property(name="seriesNumber", data_type=text),
-            Property(name="edition", data_type=text),
-            Property(name="author", data_type=text_array),
-            Property(name="editors", data_type=text_array),
-            Property(name="illustrators", data_type=text_array),
-            Property(name="translators", data_type=text_array),
-            Property(name="redaktors", data_type=text_array),
-        ],
-        references=[ReferenceProperty(name="collection", target_collection=names.user_collection_name)],
-    )
+    await create_documents_collection(client, names)
     await client.collections.create(
         names.chunks_collection_name,
         vector_config=[Configure.Vectors.self_provided(name="default"),
