@@ -26,8 +26,9 @@ from tests.app_support import make_test_config
 from tests.auth_support import auth_headers
 from tests.corpus import load_corpus
 from tests.fake_providers import FAKE_TOPICER_CONFIGS, create_fake_provider_app
-from tests.seed import seed_users, seed_weaviate
-from tests.weaviate_store import StoreEndpoint, connect, reset_app_collections
+from tests.seed import insert_documents, seed_users, seed_weaviate
+from tests.weaviate_store import (
+    StoreEndpoint, claim_store, connect, create_documents_collection, reset_app_collections)
 
 
 @pytest.fixture
@@ -75,6 +76,19 @@ async def seeded_store(weaviate_client, collection_names, corpus, store_token, c
     await reset_app_collections(weaviate_client, collection_names, store_token, created_app_schema)
     await seed_weaviate(weaviate_client, collection_names, corpus, store_token)
     return weaviate_client
+
+
+@pytest.fixture
+async def legacy_documents(seeded_store, collection_names, corpus, store_token):
+    """``seeded_store`` with its documents collection declared as in older stores (the
+    fixtures before #496; the local snapshot also lacks ``library``): no ``library``,
+    ``yearIssued`` as ``number`` (``create_documents_collection``). The chunks still reference the same document ids; the
+    next ``seeded_store`` recreates the application schema, as it differs."""
+    await claim_store(seeded_store, store_token)
+    await seeded_store.collections.delete(collection_names.document_collection_name)
+    await create_documents_collection(seeded_store, collection_names, legacy=True)
+    await insert_documents(seeded_store, collection_names, corpus)
+    return seeded_store
 
 
 @pytest.fixture

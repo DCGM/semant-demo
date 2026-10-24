@@ -314,10 +314,11 @@ take longer, in rounds of 4; the reproducible benchmark is #494.
   of them (OR). One Weaviate filter is built once and applied to the total and to every
   grouped aggregate, so all counts describe the same documents.
   - `year_min`/`year_max`: whole years, inclusive, `1 ≤ min ≤ max ≤` the current year. A
-    document without a year never matches; one with a fractional year (possible in the
-    dev/test `number` schema, e.g. 1909.5) matches the numeric range but is counted as an
-    unknown or invalid year. The bound is sent as an integer for an `int` property
-    (production) and as a float for `number` (dev/test, #128).
+    document without a year never matches; one with a fractional year (possible only in an older
+    store declaring `yearIssued` as `number`, e.g. 1909.5) matches the numeric range but is
+    counted as an unknown or invalid year. The bound is sent as an integer for an `int`
+    property (production, the shared test store and the dev/test fixtures since #496) and as a
+    float for `number`.
   - `title_contains`: up to 10 alternatives; a document matches any of them (e.g. `brno`,
     `brna`). Each is split into words at anything but letters and digits, as Weaviate's
     `word` tokenization does; one-letter words are ignored, at most 5 words and 100
@@ -332,8 +333,8 @@ take longer, in rounds of 4; the reproducible benchmark is #494.
     ignoring case, so `ces` also matches `CES`. The language counts still list both stored values, so the
     page shows what matched. An exact language filter needs `field` tokenization (#128).
   - Invalid filters are rejected with 422 before the store is queried. So is a filter on a
-    property the store does not declare or cannot filter (e.g. `library` in the dev/test
-    schema): it is never answered with 0.
+    property the store does not declare or cannot filter (e.g. `library` in an older local
+    store without it): it is never answered with 0.
 
 - **Population.** Every object of `Documents`, as Search covers the whole public corpus;
   `Documents.public` is not used (#279). A future public-read policy must restrict the

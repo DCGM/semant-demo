@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { editSearchResults, ensureLoggedIn, fixture, openDocument, search, sidebarPanelButton } from './support'
 
 // Links to the original digitized document in its digital library (#255). The fixture
-// store declares no `library`; the answers get one here, as a synced store has.
+// documents have no `library`; the answers get one here, as a synced store has.
 
 const chronicle = fixture.document('chronicle')
 const chronicle1 = fixture.chunk('chronicle_1')
