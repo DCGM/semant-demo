@@ -13,7 +13,7 @@
     />
     <div class="page-shell">
       <ChunkMembershipGutter
-        v-show="chunkGutterVisible"
+        v-if="chunkGutterVisible"
         :rows="gutters.chunkRows.value"
         :chunks="displayChunks"
         :selected-ids="membership.selectedChunkIds.value"
@@ -270,12 +270,24 @@ const linkedSpanId = ref<string | null>(null)
 
 // Approved spans of visible tags; AI suggestions only while the AI Tagging panel is active.
 const gutters = useReaderGutters(
-  documentTextRef, displayChunks, hiddenPreviewChunks,
+  documentTextRef,
+  displayChunks,
+  hiddenPreviewChunks,
   () => annotations.spansByChunkId.value,
-  (span) => span.id === linkedSpanId.value || (span.type !== SpanType.neg &&
+  (span) => span.id === linkedSpanId.value || (
+    span.type !== SpanType.neg &&
     (aiPanelActive.value || span.type !== SpanType.auto) &&
-    tagNav.isTagVisible(span.tagId))
+    tagNav.isTagVisible(span.tagId)
+  ),
+  () => chunkGutterVisible.value
 )
+
+watch(chunkGutterVisible, (visible) => {
+  if (visible) {
+    void nextTick(() => relayout())
+  }
+})
+
 const relayout = () => gutters.relayout()
 
 // ── Hover state shared by the text and the gutters ──
@@ -329,15 +341,29 @@ function onChunkGutterHover(chunkId: string | null, controls: boolean) {
 // boundary-drag pointermove) — otherwise every visible chunk gets a new
 // array identity each drag tick, forcing a full re-render/flicker across
 // the whole document instead of just the chunk being dragged.
+let previousVisibleSpansByChunkId: Record<string, ProjectedSpan[]> = {}
+
+const sameSpanReferences = (a: ProjectedSpan[] | undefined, b: ProjectedSpan[]): boolean =>
+  !!a && a.length === b.length && a.every((span, index) => span === b[index])
+
 const visibleSpansByChunkId = computed<Record<string, ProjectedSpan[]>>(() => {
-  const map: Record<string, ProjectedSpan[]> = {}
+  const next: Record<string, ProjectedSpan[]> = {}
+
   for (const chunk of displayChunks.value) {
-    map[chunk.id] = annotations.getProjectedSpans(chunk.id).filter(
+    const filtered = annotations.getProjectedSpans(chunk.id).filter(
       (s) => s.id === linkedSpanId.value ||
         (tagNav.isTagVisible(s.tagId) && (aiPanelActive.value || s.type !== SpanType.auto))
     )
+
+    const previous = previousVisibleSpansByChunkId[chunk.id]
+
+    next[chunk.id] = sameSpanReferences(previous, filtered)
+      ? previous
+      : filtered
   }
-  return map
+
+  previousVisibleSpansByChunkId = next
+  return next
 })
 
 function getVisibleSpans(chunkId: string): ProjectedSpan[] {

@@ -31,4 +31,24 @@ describe('span offsets', () => {
     expect(anchorAtStart(chunks, 2, -1, 2)).toBeNull()
     expect(anchorAtStart(chunks, 0, 1, 1)).toBeNull()
   })
+
+  it('does not walk the rest of a long document once the span has ended', () => {
+    let textReads = 0
+
+    const chunks = Array.from({ length: 5000 }, (_, order) => ({
+      order,
+      get text () {
+        textReads++
+        return 'abcd'
+      }
+    }))
+
+    expect(projectSpan(chunks, 0, 1, 2)).toEqual([
+      { chunk: 0, start: 1, end: 2 }
+    ])
+
+    // The amount of work depends on chunks covered by the span, not on the
+    // remaining 4999 chunks in the document.
+    expect(textReads).toBeLessThan(10)
+  })
 })

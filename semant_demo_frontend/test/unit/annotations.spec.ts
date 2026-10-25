@@ -81,3 +81,106 @@ describe('retagging a span', () => {
     expect(updateSpan).toHaveBeenCalledWith('s1', 'c1', { tagId: 't2' })
   })
 })
+
+describe('span projection', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('keeps unaffected chunk arrays stable in a long document', () => {
+    const longChunks = Array.from({ length: 2000 }, (_, order) => ({
+      id: `c${order}`,
+      order,
+      text: 'abcd'
+    })) as CollectionChunk[]
+
+    const changedSpan: TagSpan = {
+      id: 'changed',
+      chunkId: 'c0',
+      tagId: 't1',
+      start: 0,
+      end: 2,
+      type: 'pos'
+    }
+
+    const untouchedSpan: TagSpan = {
+      id: 'untouched',
+      chunkId: 'c1999',
+      tagId: 't1',
+      start: 0,
+      end: 2,
+      type: 'pos'
+    }
+
+    const store = useTagSpansStore()
+
+    store.spansByChunkId = {
+      c0: [changedSpan],
+      c1999: [untouchedSpan]
+    }
+
+    const annotations = useAnnotations(() => longChunks)
+
+    const changedBefore = annotations.getProjectedSpans('c0')
+    const untouchedBefore = annotations.getProjectedSpans('c1999')
+
+    // Simulate a store update of one span.
+    store.spansByChunkId.c0 = [
+      {
+        ...changedSpan,
+        tagId: 't2'
+      }
+    ]
+
+    const changedAfter = annotations.getProjectedSpans('c0')
+    const untouchedAfter = annotations.getProjectedSpans('c1999')
+
+    expect(changedAfter).not.toBe(changedBefore)
+
+    // Critical for #492: an unrelated ChunkAnnotator must receive the same
+    // spans array instance and therefore does not need to rerender.
+    expect(untouchedAfter).toBe(untouchedBefore)
+  })
+
+  it('projects a sparse long document in linear work', () => {
+    let textReads = 0
+
+    const longChunks = Array.from({ length: 2000 }, (_, order) => ({
+      id: `c${order}`,
+      order,
+      get text () {
+        textReads++
+        return 'abcd'
+      }
+    })) as CollectionChunk[]
+
+    const store = useTagSpansStore()
+
+    store.spansByChunkId = {
+      c0: [{
+        id: 'start',
+        chunkId: 'c0',
+        tagId: 't1',
+        start: 0,
+        end: 2,
+        type: 'pos'
+      }],
+      c1999: [{
+        id: 'end',
+        chunkId: 'c1999',
+        tagId: 't1',
+        start: 0,
+        end: 2,
+        type: 'pos'
+      }]
+    }
+
+    const annotations = useAnnotations(() => longChunks)
+
+    expect(annotations.getProjectedSpans('c1999')).toHaveLength(1)
+
+    // Prefix positions inspect the document once. Sparse span projection must
+    // not turn that into an all-pairs traversal.
+    expect(textReads).toBeLessThan(5000)
+  })
+})

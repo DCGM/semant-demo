@@ -23,24 +23,52 @@ export function useReaderGutters (
   displayChunks: Ref<CollectionChunk[]>,
   hiddenChunks: Ref<CollectionChunk[]>,
   spansByChunkId: () => Record<string, TagSpan[]>,
-  showsSpan: (span: TagSpan) => boolean
+  showsSpan: (span: TagSpan) => boolean,
+  measureChunkRows: () => boolean = () => true
 ) {
   const spanMarkers = ref<SpanMarker[]>([])
   const chunkRows = ref<ChunkRow[]>([])
 
-  const cardOf = (container: HTMLElement) => container.closest('.paper-card') as HTMLElement | null
+  const cardOf = (container: HTMLElement) =>
+    container.closest('.paper-card') as HTMLElement | null
 
-  function relayoutChunkRows () {
+  const chunkElementsOf = (container: HTMLElement): Map<string, HTMLElement> => {
+    const result = new Map<string, HTMLElement>()
+
+    for (const element of Array.from(
+      container.querySelectorAll<HTMLElement>('[data-chunk-id]')
+    )) {
+      const chunkId = element.dataset.chunkId
+      if (chunkId) result.set(chunkId, element)
+    }
+
+    return result
+  }
+
+  function relayoutChunkRows (
+    chunkElements?: Map<string, HTMLElement>,
+    knownCardRect?: DOMRect
+  ) {
+    if (!measureChunkRows()) return
+
     const container = textEl.value
     const cardEl = container && cardOf(container)
-    if (!container || !cardEl) { chunkRows.value = []; return }
-    const cardRect = cardEl.getBoundingClientRect()
+
+    if (!container || !cardEl) {
+      chunkRows.value = []
+      return
+    }
+
+    const cardRect = knownCardRect ?? cardEl.getBoundingClientRect()
+    const elements = chunkElements ?? chunkElementsOf(container)
     const rows: ChunkRow[] = []
 
     for (const chunk of displayChunks.value) {
-      const chunkEl = container.querySelector(`[data-chunk-id="${chunk.id}"]`) as HTMLElement | null
+      const chunkEl = elements.get(chunk.id)
       if (!chunkEl) continue
+
       const rect = chunkEl.getBoundingClientRect()
+
       rows.push({
         chunkId: chunk.id,
         order: chunk.order,
@@ -48,35 +76,71 @@ export function useReaderGutters (
         height: Math.max(rect.height, 24)
       })
     }
+
     chunkRows.value = rows
   }
 
   function relayout () {
     const container = textEl.value
     const cardEl = container && cardOf(container)
-    if (!container || !cardEl) { spanMarkers.value = []; return }
+
+    if (!container || !cardEl) {
+      spanMarkers.value = []
+      return
+    }
+
     const cardRect = cardEl.getBoundingClientRect()
     const markers: SpanMarker[] = []
 
-    // Use all known chunks (display + hidden) so a marker bridges gaps caused by removed chunks.
-    const known = knownChunksInOrder(displayChunks.value, hiddenChunks.value)
+    const known = knownChunksInOrder(
+      displayChunks.value,
+      hiddenChunks.value
+    )
+
+    const knownIndexById = new Map(
+      known.map((chunk, index) => [chunk.id, index] as const)
+    )
+
+    // Build the DOM chunk lookup once instead of querySelector over the
+    // whole document for every span part.
+    const chunkElements = chunkElementsOf(container)
+
+    // Segment lookups are lazy: chunks without a shown span are never queried.
+    const segmentsByChunkId = new Map<string, HTMLElement[]>()
+
+    const segmentsFor = (chunkId: string): HTMLElement[] => {
+      const cached = segmentsByChunkId.get(chunkId)
+      if (cached) return cached
+
+      const chunkEl = chunkElements.get(chunkId)
+      const segments = chunkEl
+        ? Array.from(chunkEl.querySelectorAll<HTMLElement>('.text-segment'))
+        : []
+
+      segmentsByChunkId.set(chunkId, segments)
+      return segments
+    }
 
     for (const chunk of displayChunks.value) {
-      const anchor = known.findIndex(c => c.id === chunk.id)
-      if (anchor === -1) continue
+      const anchor = knownIndexById.get(chunk.id)
+      if (anchor === undefined) continue
 
-      for (const span of spansByChunkId()[chunk.id] || []) {
+      const spans = spansByChunkId()[chunk.id] ?? []
+      if (!spans.length) continue
+
+      for (const span of spans) {
         if (!span.id || !showsSpan(span)) continue
 
         let minTop = Infinity
         let maxBottom = -Infinity
+
         for (const part of projectSpan(known, anchor, span.start, span.end)) {
-          // A hidden chunk has no element; it only shifts the offsets of the next ones.
-          const chunkEl = container.querySelector(`[data-chunk-id="${known[part.chunk].id}"]`) as HTMLElement | null
-          if (!chunkEl) continue
-          for (const segEl of Array.from(chunkEl.querySelectorAll<HTMLElement>('.text-segment'))) {
+          const targetChunk = known[part.chunk]
+
+          for (const segEl of segmentsFor(targetChunk.id)) {
             const segStart = parseInt(segEl.dataset.start || '0')
             const segEnd = parseInt(segEl.dataset.end || '0')
+
             if (segStart < part.end && segEnd > part.start) {
               const rect = segEl.getBoundingClientRect()
               minTop = Math.min(minTop, rect.top - cardRect.top)
@@ -84,6 +148,7 @@ export function useReaderGutters (
             }
           }
         }
+
         if (minTop === Infinity) continue
 
         markers.push({
@@ -101,11 +166,13 @@ export function useReaderGutters (
     }
 
     spanMarkers.value = assignColumns(markers)
-    relayoutChunkRows()
+
+    // Reuse the same DOM index for chunk-row measurement.
+    relayoutChunkRows(chunkElements, cardRect)
   }
 
   // When the span gutter appears or disappears the reader card width changes, text
-  // reflows and chunk heights change → re-measure the chunk rows.
+  // reflows and chunk heights change -> re-measure the chunk rows.
   watch(spanMarkers, (markers, oldMarkers) => {
     if ((markers.length > 0) !== (oldMarkers.length > 0)) {
       requestAnimationFrame(() => relayoutChunkRows())

@@ -43,12 +43,25 @@ export function localRange (start: number, end: number, offset: number, length: 
 /** The parts of a span anchored on `chunks[anchor]` in each chunk it covers. */
 export function projectSpan (chunks: OrderedText[], anchor: number, start: number, end: number): ChunkPart[] {
   const parts: ChunkPart[] = []
+  let offset = 0
+
   for (let i = anchor; i < chunks.length; i++) {
-    const offset = offsetBetween(chunks, anchor, i)
-    if (offset === null) break
+    if (i > anchor) {
+      const previous = chunks[i - 1]
+      const current = chunks[i]
+
+      if (current.order !== previous.order + 1) break
+
+      offset += previous.text.length
+    }
+
+    // The span already ended before this chunk starts.
+    if (offset >= end) break
+
     const range = localRange(start, end, offset, chunks[i].text.length)
     if (range) parts.push({ chunk: i, ...range })
   }
+
   return parts
 }
 
