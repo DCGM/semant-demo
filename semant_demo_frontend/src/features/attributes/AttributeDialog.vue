@@ -185,7 +185,7 @@ const saving = ref(false)
 const error = ref<string | null>(null)
 
 const allTagOptions = computed(() => props.tags().map(tag => ({ label: tag.name, value: tag.id })))
-// Applicable ids of tags deleted since (#500): shown as such, and they cannot be sent again.
+// Applicable ids of tags deleted since (#508): shown as such, and they cannot be sent again.
 const deletedTagIds = computed(() => {
   const known = new Set(props.tags().map(tag => tag.id))
   return tagIds.value.filter(id => !known.has(id))

@@ -28,7 +28,7 @@ export function tagNames (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): st
 }
 
 /** What a card says about the tags an attribute applies to. Ids of deleted tags (their ids
- * stay on the attribute, #500) are not named; an attribute left with only those applies to no
+ * stay on the attribute, #508) are not named; an attribute left with only those applies to no
  * existing tag. */
 export function appliesTo (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): string {
   if (!attribute.tagIds?.length) return 'all tags'
