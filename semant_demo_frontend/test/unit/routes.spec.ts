@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { createMemoryHistory, createRouter, type RouteComponent, type RouteRecordRaw } from 'vue-router'
 
 import routes from 'src/router/routes'
@@ -17,6 +17,12 @@ function lazyComponents (records: RouteRecordRaw[]): (() => Promise<RouteCompone
 }
 
 describe('routes', () => {
+  // router.push waits for the lazy page components; their first (cold) import can take longer than
+  // a test's timeout in a loaded worker (#501). These tests check resolution, not import speed.
+  beforeAll(async () => {
+    await Promise.all(lazyComponents(routes).map((load) => load()))
+  }, 60_000)
+
   it.each([
     ['/search', 'search', false],
     ['/rag', 'rag', false],
