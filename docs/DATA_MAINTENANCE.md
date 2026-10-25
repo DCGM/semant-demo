@@ -373,6 +373,9 @@ python -m semant_demo.maintenance.annotation_attributes add-schema --execute --c
 
 Rolling back the release needs no data change (older releases ignore the properties and tables).
 Rehearsed only on disposable Weaviate 1.40.1 (`tests/integration/test_annotation_attributes.py`).
+Applied to production (`localhost:8080`) and the shared test store (`localhost:8082`) on
+2026-10-25, before the backends with #331 started (`v0.1.30`, `test-main`), so no extra restart
+was needed; both added `attributeValues` and `attributeVersion` and the SQL tables appeared at startup.
 
 ## Annotation tenants (`annotation_tenants`, #327)
 
