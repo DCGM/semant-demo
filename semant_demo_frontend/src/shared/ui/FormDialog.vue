@@ -14,8 +14,8 @@
     <q-card ref="card" class="q-pa-sm" style="width: 900px">
       <slot />
       <q-card-actions align="right">
-        <q-btn flat label="Cancel" color="primary" @click="requestClose" />
-        <q-btn unelevated color="primary" :label="props.okLabel" @click="emit('confirm')" />
+        <q-btn flat label="Cancel" color="primary" :disable="props.busy" @click="requestClose" />
+        <q-btn unelevated color="primary" :label="props.okLabel" :loading="props.busy" @click="emit('confirm')" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -29,6 +29,8 @@ const props = defineProps<{
   /** Whether the form has changes that closing would discard. */
   dirty: boolean
   okLabel: string
+  /** A save is under way: the form stays open and cannot be closed or sent again. */
+  busy?: boolean
 }>()
 
 // confirm: the OK button; the form validates and closes the dialog itself.
@@ -43,6 +45,7 @@ const hide = () => dialog.value?.hide()
 
 /** Closes at once when nothing was changed, otherwise asks before discarding (Cancel, Escape, outside click). */
 const requestClose = () => {
+  if (props.busy) return
   if (!props.dirty) {
     hide()
     return

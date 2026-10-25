@@ -4,6 +4,7 @@ import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
+import { useAttributesStore } from 'src/features/attributes/attributesStore'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 import { useConcordanceStore } from 'src/features/annotations/concordance/concordanceStore'
 import { useChunksStore } from 'src/features/documents/chunksStore'
@@ -12,7 +13,7 @@ import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import { endSession, onStoredTokenChange, onUnauthorized } from 'src/shared/api'
 
 /**
- * Forgets everything loaded for the signed-in user: collections, documents, tags,
+ * Forgets everything loaded for the signed-in user: collections, documents, tags, attributes,
  * annotations (also the annotation workspace with its selection and review), statistics and running AI suggestion runs. Requests still under way
  * for that user are ignored when they answer.
  */
@@ -22,6 +23,7 @@ export function clearUserScopedState (): void {
   useTagSpansStore().clearAll()
   useConcordanceStore().clear()
   useTagsStore().clear()
+  useAttributesStore().clear()
   useChunksStore().clear()
   useDocumentsStore().clear()
   useCollectionStatsStore().clear()

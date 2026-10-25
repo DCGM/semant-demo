@@ -1,7 +1,8 @@
 # ADR 0011 - Collection attributes and accepted assignments
 
-Status: proposed with #331 (backend in review; workspace UI follows); store rollout pending an
-operator step. Date: 2026-10-24. Decided in the collection-workspace plan (#311, #324, #331);
+Status: proposed with #331; backend merged (#495) and its schema on the deployed stores
+(2026-10-25); definitions are edited in the Attributes tab, the workspace assignment UI follows.
+Date: 2026-10-24. Decided in the collection-workspace plan (#311, #324, #331);
 refines ADR 0008 (annotation storage), ADR 0010 (provenance and edit versions) and ADR 0007
 (rights); the exact-match design follows the issue's Weaviate representation.
 
