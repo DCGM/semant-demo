@@ -35,8 +35,9 @@ the model and is reported, not worked around); chunks are only appended at its e
   tag, type and AI metadata are not embedded, so changing them never re-embeds. Its configuration
   may set `max_input_chars` to limit the rendered embedding input; inputs under the limit are
   unchanged, while overlong inputs shorten context first and then the end of the span, keeping
-  the span start and markers. Its configuration `id` is stored per vector and must change when
-  the input policy changes; span-only vectors are later evaluation.
+  the span start and markers. Its configuration `id` is stored per vector; changing only the
+  input length limit does not invalidate previously successful vectors. Span-only vectors are
+  later evaluation.
 - Freshness: `revision` counts offset changes; derived data names the revision, derivation policy
   (`derivationVersion`) and vector config it was computed for and counts only while they match; a
   vector also only while the text is current, and re-deriving the text marks the vector pending.

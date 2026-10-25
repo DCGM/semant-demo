@@ -33,7 +33,7 @@ class AnnotationVectorSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
-    """Recorded with each vector; change it with the model, dimensions, prefixes, template or input policy."""
+    """Recorded with each vector; change it with the model, dimensions, prefixes or template."""
     target_vector: str = Field(default="contextual", pattern=r"^[_A-Za-z][_A-Za-z0-9]*$")
     """Named vector of the ``Annotation`` collection (a GraphQL name, see search vectors)."""
     template: str = DEFAULT_TEMPLATE
