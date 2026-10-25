@@ -78,6 +78,9 @@ class TagSpan(BaseModel):
     """Span writes (type, tag, offsets) since creation (#460); 0 for spans never written
     since. Sent back as ``expected_version`` so a collaborator's intervening write is
     refused instead of overwritten."""
+    attributeVersion: int = 0
+    """Attribute assignments written since creation; sent back with an assignment (#331). The
+    values themselves are on concordance rows (``AnnotationListRow.attributes``), approved only."""
 
 
 class PostSpan(BaseModel):
@@ -193,6 +196,10 @@ class AnnotationRow(BaseModel):
     lastEditedAt: datetime | None = None
     aiRunId: UUID | None = None
     """Provenance (#460), read only when the collection holds it."""
+    attributeValues: list[str] | None = None
+    attributeVersion: int | None = None
+    """Accepted attribute assignments (#331, ``features/annotations/attribute_codec.py``), read only when the
+    collection holds them."""
 
     def provenance(self) -> AnnotationProvenance:
         return AnnotationProvenance(**{k: getattr(self, k) for k in PROVENANCE_FIELDS
@@ -210,6 +217,11 @@ class AnnotationQuery(BaseModel):
     derivation_version: int | None = None
     ids: list[UUID] | None = None
     """Only these annotations (a selection whose matching members are asked for, #459)."""
+    attribute_values: dict[UUID, list[UUID]] = {}
+    """Attribute id -> value ids (#331): an annotation matches an attribute when it has any of its
+    values; every attribute must match."""
+    attribute_unassigned: list[UUID] = []
+    """Attributes the annotation must have no accepted value of."""
 
 
 class AnnotationSort(str, Enum):
@@ -258,6 +270,10 @@ class AnnotationListRow(BaseModel):
     editVersion: int = 0
     """The version a write of this annotation expects (#460)."""
     provenance: AnnotationProvenance = Field(default_factory=AnnotationProvenance)
+    attributes: dict[UUID, list[UUID]] = {}
+    """Accepted attribute values (#331): attribute id -> value ids."""
+    attributeVersion: int = 0
+    """The version an attribute assignment of this annotation expects."""
 
 
 class AnnotationPage(BaseModel):
@@ -295,6 +311,10 @@ MAX_REVIEW_BATCH = 200
 """Annotations one review request may change (#459); a client sends larger selections in parts."""
 MAX_SYNC_PAIRS = 1000
 """(chunk, tag) pairs one chunk tag repair request may re-derive (#459)."""
+MAX_ATTRIBUTE_FILTERS = 20
+"""Attributes one concordance query may filter by (#331), with values or as unassigned."""
+MAX_ATTRIBUTE_FILTER_VALUES = 200
+"""``<attribute id>:<value id>`` pairs one concordance query may filter by (#331), all attributes together."""
 
 
 class AnnotationIdsRequest(BaseModel):
@@ -309,6 +329,11 @@ class AnnotationIdsRequest(BaseModel):
     year_from: int | None = None
     year_to: int | None = None
     within: list[UUID] | None = Field(default=None, max_length=MAX_RESOLVED_IDS)
+    attribute_values: list[str] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTER_VALUES)
+    """Stored form ``<attribute id>:<value id>`` (#331): values of one attribute match any, different
+    attributes all."""
+    attribute_unassigned: list[UUID] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTERS)
+    """Only annotations without an accepted value of these attributes."""
 
 
 class AnnotationIds(BaseModel):
@@ -317,6 +342,8 @@ class AnnotationIds(BaseModel):
     ``versions``: each one's ``editVersion`` then, which review actions send back (#460)."""
     ids: list[UUID]
     versions: dict[UUID, int] = {}
+    attribute_versions: dict[UUID, int] = {}
+    """Each one's ``attributeVersion`` then, which attribute assignments send back (#331)."""
 
 
 class ReviewAction(str, Enum):

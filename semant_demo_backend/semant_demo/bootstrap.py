@@ -17,6 +17,7 @@ from semant_demo.adapters.embeddings.openai_compatible import OpenAICompatibleEm
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.llm.usage import LlmMetrics
+from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.tenant_activity import TenantActivity
 from semant_demo.adapters.topicer.client import TopicerClient
@@ -26,7 +27,7 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository, missing_position_properties
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository, enrichment_schema, provenance_schema
+from semant_demo.adapters.weaviate.spans import SpanRepository, attribute_schema, enrichment_schema, provenance_schema
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
@@ -164,6 +165,27 @@ async def detect_provenance(client: WeaviateAsyncClient, config: Config) -> bool
     return True
 
 
+async def detect_attributes(client: WeaviateAsyncClient, config: Config) -> bool | None:
+    """Whether the annotation collection holds the attribute properties of #331; None when the
+    schema could not be read (assignments are off, and changes guarded by a usage count are
+    refused rather than taken as unused).
+
+    Until it does, attribute definitions work but assignments are refused (503); the operator
+    adds the properties with ``python -m semant_demo.maintenance.annotation_attributes add-schema``.
+    """
+    try:
+        missing = await attribute_schema(client, config.collectionNames)
+    except Exception as e:
+        logger.warning("Could not read the annotation schema; attribute assignments are off: %s", type(e).__name__)
+        return None
+    if missing:
+        logger.error("The annotation collection lacks the attribute properties of #331 (%s): attributes cannot be "
+                     "assigned until python -m semant_demo.maintenance.annotation_attributes add-schema adds them.",
+                     ", ".join(missing))
+        return False
+    return True
+
+
 @dataclass
 class AppResources:
     config: Config
@@ -177,6 +199,7 @@ class AppResources:
     quota_ledger: QuotaLedger
     quota_policy: QuotaPolicy
     tenant_activity: TenantActivity
+    attributes: AttributeRepository
     annotation_vector: AnnotationVector | None = None
     """The configured contextual annotation vector; used only when the store holds it."""
     annotation_enrichment: Enrichment = field(default_factory=Enrichment.disabled)
@@ -210,7 +233,8 @@ class AppResources:
                                          max_tokens=config.SPAN_CHAT_MAX_TOKENS),
                    corpus_overview=OverviewCache(config.CORPUS_OVERVIEW_MAX_AGE),
                    quota_ledger=QuotaLedger(session_maker), quota_policy=quota_policy,
-                   tenant_activity=TenantActivity(session_maker, config.ANNOTATION_TENANT_TOUCH_SECONDS))
+                   tenant_activity=TenantActivity(session_maker, config.ANNOTATION_TENANT_TOUCH_SECONDS),
+                   attributes=AttributeRepository(session_maker))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
         """Open the application's Weaviate client; raises if it cannot be connected.
@@ -218,8 +242,8 @@ class AppResources:
         Logs an error when the multi-tenant annotation collection does not exist (#327):
         span reads and writes then fail until the operator has run the migration. The
         application never creates or migrates it itself. Annotation enrichment (#328) and
-        provenance (#460) are enabled as far as the collection's schema supports them
-        (``detect_enrichment``, ``detect_provenance``); chunk text reads return the chunk
+        provenance (#460) and attributes (#331) are enabled as far as the collection's schema supports them
+        (``detect_enrichment``, ``detect_provenance``, ``detect_attributes``); chunk text reads return the chunk
         positions of #463 when the chunk collection declares them (``detect_chunk_positions``).
         """
         client = await connector(self.config)
@@ -233,6 +257,7 @@ class AppResources:
             exists = await client.collections.exists(name)
         except Exception as e:
             logger.warning("Could not check the annotation collection %s: %s", name, type(e).__name__)
+            self.weaviate.spans.attributes_checked = False
             return
         if not exists:
             logger.error("The annotation collection %s does not exist: annotations cannot be read or saved until "
@@ -241,6 +266,9 @@ class AppResources:
             return
         self.annotation_enrichment = await detect_enrichment(client, self.config, self.annotation_vector)
         self.weaviate.spans.provenance = await detect_provenance(client, self.config)
+        attributes = await detect_attributes(client, self.config)
+        self.weaviate.spans.attributes = attributes is True
+        self.weaviate.spans.attributes_checked = attributes is not None
         if self.annotation_enrichment.derived:
             self.weaviate.documents.positions = await detect_chunk_positions(client, self.config)
 

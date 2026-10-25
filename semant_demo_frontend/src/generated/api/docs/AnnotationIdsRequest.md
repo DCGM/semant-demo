@@ -14,6 +14,8 @@ Name | Type
 `yearFrom` | number
 `yearTo` | number
 `within` | Array&lt;string&gt;
+`attributeValues` | Array&lt;string&gt;
+`attributeUnassigned` | Array&lt;string&gt;
 
 ## Example
 
@@ -29,6 +31,8 @@ const example = {
   "yearFrom": null,
   "yearTo": null,
   "within": null,
+  "attributeValues": null,
+  "attributeUnassigned": null,
 } satisfies AnnotationIdsRequest
 
 console.log(example)

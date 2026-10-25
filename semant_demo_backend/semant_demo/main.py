@@ -9,7 +9,7 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.config import Config, config
 from semant_demo.adapters.llm.gateway import limit_provider_sdk_logs
 from semant_demo.core.errors import (
-    EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
+    EditConflictError, InUseError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
 )
 from semant_demo.features.quota.guest_cookie import GuestCookieMiddleware
 from semant_demo.features.quota.service import QuotaExhausted, utc_now
@@ -104,6 +104,11 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     async def edit_conflict(request: Request, exc: EditConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content=jsonable_encoder(exc.body()))
     app.add_exception_handler(EditConflictError, edit_conflict)
+
+    # A definition that annotations still use cannot be deleted (#331).
+    async def in_use(request: Request, exc: InUseError) -> JSONResponse:
+        return JSONResponse(status_code=409, content=exc.body())
+    app.add_exception_handler(InUseError, in_use)
 
     # An AI operation refused for the caller's daily allowance (features/quota).
     async def quota_exhausted(request: Request, exc: QuotaExhausted) -> JSONResponse:
