@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { useTagSpansStore } from './tagSpansStore'
 import { SpanType, TagSpan, CollectionChunk } from 'src/generated/api'
-import { anchorAtStart, localRange, offsetBetween } from './spanOffsets'
+import { anchorAtStart, localRange, projectSpan } from './spanOffsets'
 import { createContextGuard, errorStatus } from 'src/shared/api'
 
 // ── Types ──────────────────────────────────────────────
@@ -75,9 +75,39 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     return Array.from(byId.values()).sort((a, b) => a.order - b.order)
   })
 
-  const allKnownChunkIndexById = computed(() => {
-    const map: Record<string, number> = {}
-    allKnownChunks.value.forEach((chunk, index) => { map[chunk.id] = index })
+  interface KnownChunkPosition {
+    index: number
+    segment: number
+    offset: number
+  }
+
+  const allKnownChunkPositionById = computed(() => {
+    const map: Record<string, KnownChunkPosition> = {}
+    const known = allKnownChunks.value
+
+    let segment = 0
+    let offset = 0
+
+    for (let i = 0; i < known.length; i++) {
+      if (i > 0) {
+        const previous = known[i - 1]
+        const current = known[i]
+
+        if (current.order === previous.order + 1) {
+          offset += previous.text.length
+        } else {
+          segment++
+          offset = 0
+        }
+      }
+
+      map[known[i].id] = {
+        index: i,
+        segment,
+        offset
+      }
+    }
+
     return map
   })
 
@@ -106,10 +136,14 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
    * anywhere along the path.
    */
   const getOffsetBetweenChunks = (fromChunkId: string, toChunkId: string): number | null => {
-    const fromIndex = allKnownChunkIndexById.value[fromChunkId]
-    const toIndex = allKnownChunkIndexById.value[toChunkId]
-    if (fromIndex === undefined || toIndex === undefined) return null
-    return offsetBetween(allKnownChunks.value, fromIndex, toIndex)
+    const from = allKnownChunkPositionById.value[fromChunkId]
+    const to = allKnownChunkPositionById.value[toChunkId]
+
+    if (!from || !to) return null
+    if (to.index < from.index) return null
+    if (to.segment !== from.segment) return null
+
+    return to.offset - from.offset
   }
 
   // ── Selection projection ──
@@ -159,48 +193,93 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   // ── Span projection ──
 
   /**
-   * All visible spans, pre-projected into every known chunk's local
-   * coordinates and keyed by chunk id. Memoized so the O(N²)-ish walk (every
-   * chunk re-checks every earlier chunk's spans) only reruns when the
-   * underlying chunks/spans change, instead of on every render.
+   * All visible spans, projected into every known chunk's local coordinates.
+   * Each source span is walked once and placed only into chunks it overlaps.
+   * Unchanged per-chunk arrays keep their identity so unaffected annotators
+   * do not rerender after a span write.
    */
-  const projectedSpansByChunkId = computed(() => {
-    const map: Record<string, ProjectedSpan[]> = {}
-    const known = allKnownChunks.value
+  const projectedSpanCache = new WeakMap<TagSpan, Map<string, ProjectedSpan>>()
+  let previousProjectedSpansByChunkId: Record<string, ProjectedSpan[]> = {}
 
-    for (let targetIndex = 0; targetIndex < known.length; targetIndex++) {
-      const targetChunkId = known[targetIndex].id
-      const targetLength = known[targetIndex].text.length
-      const result: ProjectedSpan[] = []
+  const sameReferences = <T>(a: T[] | undefined, b: T[]): boolean =>
+    !!a &&
+    a.length === b.length &&
+    a.every((item, index) => item === b[index])
 
-      // Check all known chunks (incl. hidden gap chunks) from the start up to and including the target
-      for (let srcIndex = 0; srcIndex <= targetIndex; srcIndex++) {
-        const srcChunk = known[srcIndex]
-        const srcSpans = spansByChunkId.value[srcChunk.id] || []
+  const cachedProjectedSpan = (
+    span: TagSpan,
+    targetChunkId: string,
+    start: number,
+    end: number
+  ): ProjectedSpan => {
+    let byChunk = projectedSpanCache.get(span)
 
-        for (const span of srcSpans) {
-          if (span.type === SpanType.neg) continue
-
-          if (srcIndex === targetIndex) {
-            // Same chunk — no projection needed
-            result.push({ ...span })
-          } else {
-            // Cross-chunk projection — only if every intermediate known chunk is consecutive
-            const offsetToTarget = offsetBetween(known, srcIndex, targetIndex)
-            if (offsetToTarget === null) continue
-
-            const range = localRange(span.start, span.end, offsetToTarget, targetLength)
-            if (!range) continue
-
-            result.push({ ...span, ...range })
-          }
-        }
-      }
-
-      map[targetChunkId] = result
+    if (!byChunk) {
+      byChunk = new Map()
+      projectedSpanCache.set(span, byChunk)
     }
 
-    return map
+    const cached = byChunk.get(targetChunkId)
+
+    if (cached && cached.start === start && cached.end === end) {
+      return cached
+    }
+
+    const projected: ProjectedSpan = {
+      ...span,
+      start,
+      end
+    }
+
+    byChunk.set(targetChunkId, projected)
+    return projected
+  }
+
+  const projectedSpansByChunkId = computed(() => {
+    const known = allKnownChunks.value
+    const next: Record<string, ProjectedSpan[]> = {}
+
+    // Every known chunk gets a bucket once.
+    for (const chunk of known) {
+      next[chunk.id] = []
+    }
+
+    // Walk source spans once and place each one only in the chunks it actually covers.
+    for (let srcIndex = 0; srcIndex < known.length; srcIndex++) {
+      const srcChunk = known[srcIndex]
+      const spans = spansByChunkId.value[srcChunk.id] ?? []
+
+      for (const span of spans) {
+        if (span.type === SpanType.neg) continue
+
+        for (const part of projectSpan(known, srcIndex, span.start, span.end)) {
+          const target = known[part.chunk]
+
+          // Preserve the old anchor-chunk semantics: its end may extend beyond
+          // the chunk. Following chunks use their projected local range.
+          const start = part.chunk === srcIndex ? span.start : part.start
+          const end = part.chunk === srcIndex ? span.end : part.end
+
+          next[target.id].push(
+            cachedProjectedSpan(span, target.id, start, end)
+          )
+        }
+      }
+    }
+
+    // Keep the exact same array instance for chunks whose projected spans did
+    // not change. This lets Vue skip their ChunkAnnotator updates.
+    for (const chunk of known) {
+      const current = next[chunk.id]
+      const previous = previousProjectedSpansByChunkId[chunk.id]
+
+      if (sameReferences(previous, current)) {
+        next[chunk.id] = previous
+      }
+    }
+
+    previousProjectedSpansByChunkId = next
+    return next
   })
 
   /**

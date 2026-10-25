@@ -78,9 +78,17 @@ export function shortestMarker<T extends { start: number, end: number, isAuto: b
 
 /** Displayed and hidden chunks without duplicates, in document order. */
 export function knownChunksInOrder (displayed: CollectionChunk[], hidden: CollectionChunk[]): CollectionChunk[] {
-  return [...displayed, ...hidden]
-    .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i)
-    .sort((a, b) => a.order - b.order)
+  const byId = new Map<string, CollectionChunk>()
+
+  for (const chunk of displayed) {
+    if (!byId.has(chunk.id)) byId.set(chunk.id, chunk)
+  }
+
+  for (const chunk of hidden) {
+    if (!byId.has(chunk.id)) byId.set(chunk.id, chunk)
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.order - b.order)
 }
 
 /**
