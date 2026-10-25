@@ -8,15 +8,15 @@
 # neighborhood; tag, type and AI metadata are not embedded. Queries use the same model's
 # query embedding: the Qwen embedder of search_vectors_qwen.yaml (#385).
 #
-# `id` is stored with every vector. Change it whenever the model, its dimensions,
-# prefixes, template or input-limiting policy change: vectors of another id are not current,
-# semantic search leaves them out and `annotation_enrichment backfill` replaces them.
+# `id` is stored with every vector. Change it whenever the model, its dimensions or
+# prefixes, or the template change: vectors of another id are not current, semantic search
+# leaves them out and `annotation_enrichment backfill` replaces them.
 #
 # Nothing is stored until the annotation collection has the derived properties and the
 # named vector `target_vector` (`python -m semant_demo.maintenance.annotation_enrichment
 # add-schema`, docs/DATA_MAINTENANCE.md).
 
-id: qwen3-embedding-0.6b-context-v2
+id: qwen3-embedding-0.6b-context-v1
 target_vector: contextual
 template: "{left}<<<{text}>>>{right}"
 max_input_chars: 2048

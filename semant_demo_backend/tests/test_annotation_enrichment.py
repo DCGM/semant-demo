@@ -591,7 +591,7 @@ def test_the_default_vector_configuration_loads_and_an_empty_one_configures_none
     from semant_demo.config import SCRIPT_PATH, Config
 
     default = load_annotation_vector(Config(environ={}))
-    assert (default.id, default.target_vector) == ("qwen3-embedding-0.6b-context-v2", "contextual")
+    assert (default.id, default.target_vector) == ("qwen3-embedding-0.6b-context-v1", "contextual")
     assert default.settings.max_input_chars == 2048
     gemma = load_annotation_vector(Config(environ={
         "ANNOTATION_VECTOR_CONFIG": str(SCRIPT_PATH / "configs" / "annotation_vector_gemma.yaml")}))
