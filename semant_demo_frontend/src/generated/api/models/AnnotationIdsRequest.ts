@@ -71,6 +71,18 @@ export interface AnnotationIdsRequest {
      * @memberof AnnotationIdsRequest
      */
     within?: Array<string> | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof AnnotationIdsRequest
+     */
+    attributeValues?: Array<string>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof AnnotationIdsRequest
+     */
+    attributeUnassigned?: Array<string>;
 }
 
 /**
@@ -97,6 +109,8 @@ export function AnnotationIdsRequestFromJSONTyped(json: any, ignoreDiscriminator
         'yearFrom': json['year_from'] == null ? undefined : json['year_from'],
         'yearTo': json['year_to'] == null ? undefined : json['year_to'],
         'within': json['within'] == null ? undefined : json['within'],
+        'attributeValues': json['attribute_values'] == null ? undefined : json['attribute_values'],
+        'attributeUnassigned': json['attribute_unassigned'] == null ? undefined : json['attribute_unassigned'],
     };
 }
 
@@ -118,6 +132,8 @@ export function AnnotationIdsRequestToJSONTyped(value?: AnnotationIdsRequest | n
         'year_from': value['yearFrom'],
         'year_to': value['yearTo'],
         'within': value['within'],
+        'attribute_values': value['attributeValues'],
+        'attribute_unassigned': value['attributeUnassigned'],
     };
 }
 

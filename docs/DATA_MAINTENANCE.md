@@ -356,6 +356,32 @@ python -m semant_demo.maintenance.annotation_provenance add-schema --execute --c
 Rolling back the release needs no data change (older releases ignore the properties).
 Rehearsed only on disposable Weaviate 1.40.1 (`tests/integration/test_annotation_provenance.py`).
 
+## Collection attributes (`annotation_attributes`, #331)
+
+Accepted attribute values are stored on each annotation (`attributeValues`, `attributeVersion`;
+[ADR 0011](adr/0011-collection-attributes.md)) once the `Annotation` collection has the
+properties. Collections created by the migration have them; an existing collection gets them
+from this command (definitions live in SQL and need nothing):
+
+```bash
+python -m semant_demo.maintenance.annotation_attributes add-schema                      # dry run: what is missing
+python -m semant_demo.maintenance.annotation_attributes add-schema --execute --confirm-endpoint HOST:PORT
+```
+
+- `add-schema` adds the missing properties; it changes no object and is idempotent. Existing
+  annotations have no accepted values and version 0: no backfill.
+- Until the properties exist and the backend has been restarted, attribute definitions work but
+  assignments are refused (503; the backend logs an error at startup). Adding properties does not
+  disturb a running backend; restart every instance afterwards.
+- Back up the SQLite database together with Weaviate: the definitions (names of attributes and
+  values) and the change records exist only there.
+
+Rolling back the release needs no data change (older releases ignore the properties and tables).
+Rehearsed only on disposable Weaviate 1.40.1 (`tests/integration/test_annotation_attributes.py`).
+Applied to production (`localhost:8080`) and the shared test store (`localhost:8082`) on
+2026-10-25, before the backends with #331 started (`v0.1.30`, `test-main`), so no extra restart
+was needed; both added `attributeValues` and `attributeVersion` and the SQL tables appeared at startup.
+
 ## Annotation tenants (`annotation_tenants`, #327)
 
 Lists the annotation tenants with their status and last recorded use, and deactivates idle

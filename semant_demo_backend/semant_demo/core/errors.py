@@ -1,8 +1,8 @@
 """Application errors that services and adapters raise independently of the storage SDK.
 
 ``create_app`` maps them to HTTP responses (``NotFoundError`` -> 404,
-``InvalidRequestError`` -> 400, ``ServiceUnavailableError`` -> 503, ``IncompleteWriteError`` -> 500
-and ``EditConflictError`` -> 409 with a structured body).
+``InvalidRequestError`` -> 400, ``ServiceUnavailableError`` -> 503, ``IncompleteWriteError`` -> 500,
+``EditConflictError`` and ``InUseError`` -> 409 with a structured body).
 Other storage/SDK failures are not wrapped: they propagate and become 500 responses.
 """
 
@@ -54,3 +54,17 @@ class EditConflictError(Exception):
 
     def body(self) -> dict:
         return {"detail": self.detail, "current": self.current}
+
+
+class InUseError(Exception):
+    """A definition cannot be deleted because annotations still use it (#331): nothing was
+    changed. ``create_app`` answers 409 with ``detail`` and ``affected`` (how many annotations),
+    so the client can offer to retire it instead."""
+
+    def __init__(self, detail: str, affected: int):
+        super().__init__(detail)
+        self.detail = detail
+        self.affected = affected
+
+    def body(self) -> dict:
+        return {"detail": self.detail, "affected": self.affected}

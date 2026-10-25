@@ -8,12 +8,14 @@ through ``UserLookup``. Unknown collections, documents, chunks and users raise
 
 Other features may call these functions instead of using the collection repository.
 """
+import logging
 from uuid import UUID
 
+from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
-from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.core.errors import IncompleteWriteError, InvalidRequestError, NotFoundError
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.user_collections.schemas import (
@@ -24,6 +26,8 @@ from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
 from semant_demo.users.schemas import UserSearchResult
+
+logger = logging.getLogger(__name__)
 
 Id = str | UUID
 
@@ -78,13 +82,27 @@ async def change_owner(collections: UserCollectionRepository, users: UserLookup,
 
 
 async def delete_collection(collections: UserCollectionRepository, user: Principal | None,
-                            collection_id: Id) -> None:
+                            collection_id: Id, attributes: AttributeRepository) -> None:
     """
-    Deletes the collection with its tags and annotations. Owner only. A failed step raises
-    ``IncompleteWriteError`` naming it and the completed steps; deleting again continues.
+    Deletes the collection with its tags and annotations, then its attribute definitions and
+    change records (#331). Owner only. A failed step raises ``IncompleteWriteError`` naming it
+    and the completed steps; after a failed collection deletion deleting again continues. The definitions go last so that a failed
+    collection deletion never costs a surviving collection its definitions and history; rows a
+    failed last step leaves behind belong to a collection that no longer exists (ids are never
+    reused), so nothing reaches them.
     """
     grant = await access.require_collection_owner(collections, user, collection_id)
     await collections.delete(grant.collection_id)
+    try:
+        await attributes.delete_collection(grant.collection_id)
+    except Exception as exc:
+        logger.warning("Deleting the attribute definitions of collection %s failed: %s",
+                       grant.collection_id, type(exc).__name__)
+        raise IncompleteWriteError(
+            "The collection was deleted, but deleting its attribute definitions stopped at step "
+            f"delete_attribute_definitions ({type(exc).__name__}). The leftover rows are unreachable "
+            "and can be removed later (see docs/TODO.md).",
+            step="delete_attribute_definitions", completed={"delete_collection": 1}) from exc
 
 
 ###########
