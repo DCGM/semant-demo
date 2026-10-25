@@ -123,7 +123,7 @@
           :to="{ name: 'collectionAnnotations' }"
         />
         <q-separator vertical size="1.8px" inset />
-        <!-- Leads to the part shown last, so the tab stays active on either of its routes. -->
+        <!-- Leads to the part shown, so the tab stays active on either of its routes; from another tab it opens Tags. -->
         <q-route-tab
           name="tags"
           label="Tags & attributes"
