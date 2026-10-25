@@ -25,6 +25,11 @@ def collection(**update) -> Collection:
     return Collection(id=COLLECTION, name="C", owner="Owner", created_at=NOW, updated_at=NOW, color="red", **update)
 
 
+class FakeAttributes:
+    async def delete_collection(self, collection_id):
+        pass
+
+
 class FakeCollections:
     """Owner/shared record for one collection; every other method is recorded and returns ``result``."""
 
@@ -67,7 +72,7 @@ MEMBERSHIP_WRITES = [
 ]
 OWNER_WRITES = [
     lambda c, u: service.update_collection(c, u, COLLECTION, PatchCollection(name="x")),
-    lambda c, u: service.delete_collection(c, u, COLLECTION),
+    lambda c, u: service.delete_collection(c, u, COLLECTION, FakeAttributes()),
     lambda c, u: service.share_collection(c, FakeUsers(OTHER), u, COLLECTION, OTHER.id),
     lambda c, u: service.unshare_collection(c, u, COLLECTION, SHARED.id),
 ]

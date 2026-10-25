@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
+from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway
@@ -13,6 +14,7 @@ from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.features.attributes.service import AttributeStore
 from semant_demo.features.quota.service import QuotaPolicy
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.search.vectors import SearchVectors
@@ -72,6 +74,13 @@ async def get_annotation_store(connection: HTTPConnection) -> AnnotationStore:
     return AnnotationStore(collections=weaviate.user_collections, tags=weaviate.tags, spans=weaviate.spans,
                            chunk_tags=weaviate.chunk_tags, documents=weaviate.documents,
                            activity=resources.tenant_activity, enrichment=resources.annotation_enrichment)
+
+def get_attribute_definitions(connection: HTTPConnection) -> AttributeRepository:
+    return get_resources(connection).attributes
+
+async def get_attribute_store(connection: HTTPConnection) -> AttributeStore:
+    return AttributeStore(definitions=get_resources(connection).attributes,
+                          annotations=await get_annotation_store(connection))
 
 async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)

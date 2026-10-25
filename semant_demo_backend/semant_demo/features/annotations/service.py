@@ -51,7 +51,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
-    MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
+    MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
     AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
 )
@@ -63,7 +63,10 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository, pair_of
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.writes import step_failure
-from semant_demo.core.errors import EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError
+from semant_demo.core.errors import (
+    EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
+)
+from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, MissingChunkPositions, derive
 from semant_demo.features.annotations.enrichment import Enrichment, text_current, vector_current
 from semant_demo.features.annotations.offsets import InvalidSpanRange, check_span_range
@@ -849,13 +852,48 @@ def _parse_ids(values: list[Id] | None, kind: str) -> list[UUID] | None:
         raise InvalidRequestError(f"Malformed {kind} id") from None
 
 
+ATTRIBUTES_NOT_ENABLED = ("Attributes are not enabled on this store: run "
+                          "python -m semant_demo.maintenance.annotation_attributes add-schema and restart the backend.")
+
+
+def _require_attribute_properties(store: AnnotationStore, query: AnnotationQuery) -> None:
+    """Attribute filters on a store without the attribute properties would fail in Weaviate
+    (an undeclared property): refuse them with 503 as assignments are (#331)."""
+    if (query.attribute_values or query.attribute_unassigned) and not store.spans.attributes:
+        raise ServiceUnavailableError(ATTRIBUTES_NOT_ENABLED)
+
+
+def _attribute_filter(values: list[str] | None, unassigned: list[Id] | None
+                      ) -> tuple[dict[UUID, list[UUID]], list[UUID]]:
+    """The attribute conditions of a query from ``<attribute id>:<value id>`` pairs and attribute
+    ids (#331). Ids of other collections are not checked: they match nothing in this tenant."""
+    if len(values or []) > MAX_ATTRIBUTE_FILTER_VALUES:
+        raise InvalidRequestError(f"Filter by at most {MAX_ATTRIBUTE_FILTER_VALUES} attribute values")
+    try:
+        pairs = [codec.decode(v) for v in values or []]
+    except ValueError:
+        raise InvalidRequestError("Malformed attribute value filter") from None
+    wanted: dict[UUID, list[UUID]] = {}
+    for attribute, value in pairs:
+        wanted.setdefault(attribute, [])
+        if value not in wanted[attribute]:
+            wanted[attribute].append(value)
+    missing = _parse_ids(unassigned, "attribute") or []
+    if len(wanted) + len(missing) > MAX_ATTRIBUTE_FILTERS:
+        raise InvalidRequestError(f"Filter by at most {MAX_ATTRIBUTE_FILTERS} attributes")
+    return wanted, list(dict.fromkeys(missing))
+
+
 def _concordance_query(tag_ids: list[Id] | None, types: list[SpanType] | None, text: str | None,
-                       ids: list[UUID] | None = None) -> AnnotationQuery:
+                       ids: list[UUID] | None = None, attribute_values: list[str] | None = None,
+                       attribute_unassigned: list[Id] | None = None) -> AnnotationQuery:
     words = _WORD.findall(text or "")
     if len(words) > _MAX_WORDS:
         raise InvalidRequestError(f"Search for at most {_MAX_WORDS} words")
+    wanted, missing = _attribute_filter(attribute_values, attribute_unassigned)
     return AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)),
-                           words=words, derivation_version=DERIVATION_VERSION, ids=ids)
+                           words=words, derivation_version=DERIVATION_VERSION, ids=ids,
+                           attribute_values=wanted, attribute_unassigned=missing)
 
 
 def _text_status(row: AnnotationRow) -> TextStatus:
@@ -875,7 +913,8 @@ def _list_row(row: AnnotationRow, document: Document | None) -> AnnotationListRo
         text=row.text if ready else None, leftContext=row.leftContext if ready else None,
         rightContext=row.rightContext if ready else None, documentAvailable=document is not None,
         documentTitle=document.title if document else None, documentYear=document.yearIssued if document else None,
-        editVersion=row.editVersion or 0, provenance=row.provenance())
+        editVersion=row.editVersion or 0, provenance=row.provenance(),
+        attributes=codec.group(row.attributeValues) if row.type == SpanType.pos else {}, attributeVersion=row.attributeVersion or 0)
 
 
 def _title_key(document: Document | None) -> tuple:
@@ -971,7 +1010,9 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
                             text: str | None = None, document_ids: list[Id] | None = None,
                             year_from: int | None = None, year_to: int | None = None,
                             sort: AnnotationSort = AnnotationSort.document, limit: int = 50,
-                            offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
+                            offset: int = 0, annotation_ids: list[Id] | None = None,
+                            attribute_values: list[str] | None = None,
+                            attribute_unassigned: list[Id] | None = None) -> AnnotationPage:
     """
     One page of the collection's annotations as concordance (KWIC) rows, and the number of
     all that match: of some tags, types (default ``pos`` and ``auto``; rejected ``neg``
@@ -979,7 +1020,9 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     word of ``text`` (inside a word, ignoring case). The order is total (``AnnotationSort``),
     so pages do not overlap or skip rows while the annotations do not change.
     ``annotation_ids``: only these annotations (the workspace reads one it shows as it is
-    now, whether or not it still matches the page's filters; #460).
+    now, whether or not it still matches the page's filters; #460). ``attribute_values``
+    (``<attribute id>:<value id>``: any of one attribute's values, all attributes) and
+    ``attribute_unassigned`` (attribute ids with no accepted value) filter by attributes (#331).
 
     Reads the annotations and, for document order or a year filter, the metadata of the
     annotated documents once (at most ``_MAX_DOCUMENTS``); never the source chunks.
@@ -987,7 +1030,9 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     grant = await access.require_collection_read(store.collections, user, collection_id)
     if not 1 <= limit <= _MAX_PAGE or offset < 0:
         raise InvalidRequestError(f"limit must be between 1 and {_MAX_PAGE} and offset not negative")
-    query = _concordance_query(tag_ids, types, text, _parse_ids(annotation_ids, "annotation"))
+    query = _concordance_query(tag_ids, types, text, _parse_ids(annotation_ids, "annotation"),
+                               attribute_values, attribute_unassigned)
+    _require_attribute_properties(store, query)
     documents = _parse_ids(document_ids, "document")
     cid = await use_tenant(store, grant)
     by_year = year_from is not None or year_to is not None
@@ -1043,11 +1088,13 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
     within = list(dict.fromkeys(request.within)) if request.within is not None else None
     if within is not None and len(within) > MAX_RESOLVED_IDS:
         raise InvalidRequestError(f"Ask about at most {MAX_RESOLVED_IDS} annotations")
-    query = _concordance_query(request.tag_ids, request.types, request.q, within)
+    query = _concordance_query(request.tag_ids, request.types, request.q, within, request.attribute_values,
+                               request.attribute_unassigned)
+    _require_attribute_properties(store, query)
     documents = request.document_ids or None
     cid = await use_tenant(store, grant)
     if within == []:
-        return AnnotationIds(ids=[], versions={})
+        return AnnotationIds(ids=[], versions={}, attribute_versions={})
     if request.year_from is not None or request.year_to is not None:
         found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents,
                                            request.year_from, request.year_to)
@@ -1058,7 +1105,8 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
         raise InvalidRequestError(
             f"{total} annotations match; at most {MAX_RESOLVED_IDS} can be selected at once. Narrow the filters.")
     versions = await store.spans.query_ids(cid, query, document_ids=documents, limit=MAX_RESOLVED_IDS)
-    return AnnotationIds(ids=list(versions), versions=versions)
+    return AnnotationIds(ids=list(versions), versions={i: v[0] for i, v in versions.items()},
+                         attribute_versions={i: v[1] for i, v in versions.items()})
 
 
 _REVIEW_PATCHES = {ReviewAction.approve: PatchSpan(type=SpanType.pos), ReviewAction.reject: PatchSpan(type=SpanType.neg)}

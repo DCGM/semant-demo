@@ -24,6 +24,8 @@ Name | Type
 `documentYear` | number
 `editVersion` | number
 `provenance` | [AnnotationProvenance](AnnotationProvenance.md)
+`attributes` | { [key: string]: Array&lt;string&gt;; }
+`attributeVersion` | number
 
 ## Example
 
@@ -49,6 +51,8 @@ const example = {
   "documentYear": null,
   "editVersion": null,
   "provenance": null,
+  "attributes": null,
+  "attributeVersion": null,
 } satisfies AnnotationListRow
 
 console.log(example)

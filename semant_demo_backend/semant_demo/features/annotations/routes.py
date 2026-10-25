@@ -230,6 +230,11 @@ async def list_collection_annotations(
     offset: int = Query(default=0, ge=0),
     annotation_id: list[str] | None = Query(default=None, max_length=200,
                                             description="Only these annotations"),
+    attribute: list[str] | None = Query(default=None, max_length=20, description=(
+        "Only annotations with this accepted attribute value, as <attribute id>:<value id> (repeat; values of "
+        "one attribute match any, different attributes all)")),
+    unassigned: list[str] | None = Query(default=None, max_length=20, description=(
+        "Only annotations without an accepted value of this attribute id (repeat)")),
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> AnnotationPage:
@@ -241,7 +246,8 @@ async def list_collection_annotations(
     """
     return await service.query_annotations(
         store, current_user, collection_id, tag_ids=tag_id, types=types, text=q, document_ids=document_id,
-        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id)
+        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id,
+        attribute_values=attribute, attribute_unassigned=unassigned)
 
 
 @span_router.get("/api/user_collections/{collection_id}/annotations/counts", response_model=AnnotationCounts)
