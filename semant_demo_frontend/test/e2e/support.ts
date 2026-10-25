@@ -394,9 +394,10 @@ export async function deleteAddedAttributes (request: APIRequestContext, userKey
           value_ids: []
         }
       })
-      expect((await cleared.json()).outcome).toBe('complete')
+      const result = await cleared.json() as { outcome: string, versions?: Record<string, number> }
+      expect(result.outcome).toBe('complete')
       // A row read before this clearing has an outdated version for the next attribute.
-      for (const r of holding) r.attributeVersion += 1
+      for (const r of holding) r.attributeVersion = result.versions![r.id]!
     }
     expect((await request.delete(`${base}/attributes/${attribute.id}`, { headers })).ok()).toBe(true)
   }

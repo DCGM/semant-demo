@@ -48,7 +48,7 @@ test('a shared user gets no owner-only collection controls', async ({ page }) =>
 
 test('a shared user can still edit tag definitions', async ({ page }) => {
   await ensureLoggedIn(page, 'annotator')
-  await openCollectionTab(page, 'chronicles', 'Tags')
+  await openCollectionTab(page, 'chronicles', 'Tags & attributes')
 
   await expect(page.getByText(fixture.tag('person').name, { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Edit tag' }).first()).toBeEnabled()

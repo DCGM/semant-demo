@@ -23,7 +23,8 @@ const byName = (a: Attribute, b: Attribute) => a.name.localeCompare(b.name, unde
  *
  * Every write answers with the whole attribute, which replaces the listed one unless the
  * listed one is newer (`revision` counts its edits), so answers arriving out of order never
- * bring back an older state. A write that fails throws an `AttributeWriteError` carrying the
+ * bring back an older state; a list read before a write answered keeps what the write brought
+ * (e.g. an attribute created meanwhile). A write that fails throws an `AttributeWriteError` carrying the
  * backend's message; nothing changes locally then.
  */
 export const useAttributesStore = defineStore('attributes', () => {
@@ -35,9 +36,14 @@ export const useAttributesStore = defineStore('attributes', () => {
   const error = ref<string | null>(null)
   // Attributes deleted in this scope; ids are never reused, so an older list cannot bring one back.
   const deletedIds = new Set<string>()
+  // When each attribute was last kept from a write answer (a running count), so a list read
+  // before that answer does not drop it.
+  let writes = 0
+  const keptAt = new Map<string, number>()
 
   function keep (attribute: Attribute) {
     if (deletedIds.has(attribute.id)) return
+    keptAt.set(attribute.id, ++writes)
     const index = attributes.value.findIndex(a => a.id === attribute.id)
     if (index < 0) {
       attributes.value = [...attributes.value, attribute].sort(byName)
@@ -57,6 +63,7 @@ export const useAttributesStore = defineStore('attributes', () => {
     if (scope.enter(collectionId)) {
       attributes.value = []
       deletedIds.clear()
+      keptAt.clear()
     }
     listRequests.enter()
     const isCurrent = listRequests.capture()
@@ -64,17 +71,22 @@ export const useAttributesStore = defineStore('attributes', () => {
     const applies = () => isCurrent() && inSession()
     loading.value = true
     error.value = null
+    const sent = writes
     try {
       const list = await repository.getAll(collectionId)
       if (!applies()) return
-      // Keep a listed attribute that is newer than the answer (a write answered meanwhile).
+      // Keep a listed attribute that is newer than the answer, and one a write answered with
+      // after the request was sent (created meanwhile, so not in the list).
       const listed = new Map(attributes.value.map(a => [a.id, a]))
+      const answered = new Set(list.map(a => a.id))
+      const keptMeanwhile = attributes.value.filter(a => !answered.has(a.id) && (keptAt.get(a.id) ?? 0) > sent)
       attributes.value = list
         .filter(a => !deletedIds.has(a.id))
         .map(a => {
           const known = listed.get(a.id)
           return known && (known.revision ?? 0) > (a.revision ?? 0) ? known : a
         })
+        .concat(keptMeanwhile)
         .sort(byName)
     } catch (e) {
       if (applies()) error.value = await apiErrorMessage(e, 'The attributes could not be loaded.')
@@ -127,6 +139,7 @@ export const useAttributesStore = defineStore('attributes', () => {
     scope.reset()
     listRequests.enter()
     deletedIds.clear()
+    keptAt.clear()
     attributes.value = []
     loading.value = false
     error.value = null

@@ -123,18 +123,12 @@
           :to="{ name: 'collectionAnnotations' }"
         />
         <q-separator vertical size="1.8px" inset />
+        <!-- Leads to the part shown last, so the tab stays active on either of its routes. -->
         <q-route-tab
           name="tags"
-          label="Tags"
+          label="Tags & attributes"
           icon="label"
-          :to="{ name: 'collectionTags' }"
-        />
-        <q-separator vertical size="1.8px" inset />
-        <q-route-tab
-          name="attributes"
-          label="Attributes"
-          icon="category"
-          :to="{ name: 'collectionAttributes' }"
+          :to="{ name: $route.name === 'collectionAttributes' ? 'collectionAttributes' : 'collectionTags' }"
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
