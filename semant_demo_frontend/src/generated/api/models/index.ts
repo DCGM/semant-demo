@@ -22,6 +22,7 @@ export * from './Attribute';
 export * from './AttributeAssignRequest';
 export * from './AttributeAssignResult';
 export * from './AttributeChange';
+export * from './AttributeChangeValue';
 export * from './AttributeValue';
 export * from './BearerResponse';
 export * from './BulkUpdateSpansRequest';

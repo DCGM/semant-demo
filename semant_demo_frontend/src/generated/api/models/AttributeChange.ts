@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { AttributeChangeValue } from './AttributeChangeValue';
+import {
+    AttributeChangeValueFromJSON,
+    AttributeChangeValueFromJSONTyped,
+    AttributeChangeValueToJSON,
+    AttributeChangeValueToJSONTyped,
+} from './AttributeChangeValue';
 import type { AssignSource } from './AssignSource';
 import {
     AssignSourceFromJSON,
@@ -22,7 +29,8 @@ import {
 } from './AssignSource';
 
 /**
- * What the change record of one annotation and attribute holds (#331).
+ * What the change record of one annotation and attribute holds (#331); immutable once
+ * written, readable without the current definitions.
  * @export
  * @interface AttributeChange
  */
@@ -47,16 +55,22 @@ export interface AttributeChange {
     attributeId: string;
     /**
      * 
-     * @type {Array<string>}
+     * @type {string}
      * @memberof AttributeChange
      */
-    previous: Array<string>;
+    attributeName: string;
     /**
      * 
-     * @type {Array<string>}
+     * @type {Array<AttributeChangeValue>}
      * @memberof AttributeChange
      */
-    current: Array<string>;
+    previous: Array<AttributeChangeValue>;
+    /**
+     * 
+     * @type {Array<AttributeChangeValue>}
+     * @memberof AttributeChange
+     */
+    current: Array<AttributeChangeValue>;
     /**
      * 
      * @type {string}
@@ -103,6 +117,7 @@ export interface AttributeChange {
 export function instanceOfAttributeChange(value: object): value is AttributeChange {
     if (!('annotationId' in value) || value['annotationId'] === undefined) return false;
     if (!('attributeId' in value) || value['attributeId'] === undefined) return false;
+    if (!('attributeName' in value) || value['attributeName'] === undefined) return false;
     if (!('previous' in value) || value['previous'] === undefined) return false;
     if (!('current' in value) || value['current'] === undefined) return false;
     if (!('actorId' in value) || value['actorId'] === undefined) return false;
@@ -125,8 +140,9 @@ export function AttributeChangeFromJSONTyped(json: any, ignoreDiscriminator: boo
         'id': json['id'] == null ? undefined : json['id'],
         'annotationId': json['annotation_id'],
         'attributeId': json['attribute_id'],
-        'previous': json['previous'],
-        'current': json['current'],
+        'attributeName': json['attribute_name'],
+        'previous': ((json['previous'] as Array<any>).map(AttributeChangeValueFromJSON)),
+        'current': ((json['current'] as Array<any>).map(AttributeChangeValueFromJSON)),
         'actorId': json['actor_id'],
         'at': (new Date(json['at'])),
         'source': AssignSourceFromJSON(json['source']),
@@ -150,8 +166,9 @@ export function AttributeChangeToJSONTyped(value?: AttributeChange | null, ignor
         'id': value['id'],
         'annotation_id': value['annotationId'],
         'attribute_id': value['attributeId'],
-        'previous': value['previous'],
-        'current': value['current'],
+        'attribute_name': value['attributeName'],
+        'previous': ((value['previous'] as Array<any>).map(AttributeChangeValueToJSON)),
+        'current': ((value['current'] as Array<any>).map(AttributeChangeValueToJSON)),
         'actor_id': value['actorId'],
         'at': value['at'].toISOString(),
         'source': AssignSourceToJSON(value['source']),

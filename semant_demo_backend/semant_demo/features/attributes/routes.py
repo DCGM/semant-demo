@@ -100,5 +100,6 @@ async def assign_attribute_values(collection_id: str, body: AttributeAssignReque
 async def list_attribute_changes(collection_id: str, annotation_id: str,
                                  store: AttributeStore = Depends(get_attribute_store),
                                  current_user: User = Depends(current_active_user)) -> list[AttributeChange]:
-    """Who changed the annotation's attribute values when (oldest first), manual or AI-assisted."""
+    """Who changed the annotation's attribute values when (oldest first), manual or AI-assisted, with
+    the attribute name and value labels as they were then."""
     return await service.read_attribute_changes(store, current_user, collection_id, annotation_id)

@@ -24,6 +24,7 @@ docs/Attribute.md
 docs/AttributeAssignRequest.md
 docs/AttributeAssignResult.md
 docs/AttributeChange.md
+docs/AttributeChangeValue.md
 docs/AttributeValue.md
 docs/AuthApi.md
 docs/BearerResponse.md
@@ -156,6 +157,7 @@ models/Attribute.ts
 models/AttributeAssignRequest.ts
 models/AttributeAssignResult.ts
 models/AttributeChange.ts
+models/AttributeChangeValue.ts
 models/AttributeValue.ts
 models/BearerResponse.ts
 models/BulkUpdateSpansRequest.ts

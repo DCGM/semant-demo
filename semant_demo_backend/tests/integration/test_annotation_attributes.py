@@ -180,12 +180,19 @@ async def test_definitions_are_per_collection_and_assignments_are_exact_and_vers
                         value_ids=[values["Author"]])
     assert (await api_client.post(url, headers=owner, json=body)).status_code == 404
 
-    # Every change is recorded with who made it, what it replaced, and the versions it saw.
-    changes = (await api_client.get(f"/api/user_collections/{collection}/annotations/{novak}/attribute-changes",
-                                    headers=owner)).json()
-    assert [(c["actor_id"], c["previous"], c["current"], c["source"]) for c in changes] == [
-        (ids.user["annotator"], [], [values["Author"]], "manual"),
-        (ids.user["owner"], [values["Author"]], [values["Unknown"]], "manual")]
+    # Every change is recorded with who made it, what it replaced (with the names of that time),
+    # and the versions it saw; renaming the definitions afterwards does not rewrite the history.
+    base = f"/api/user_collections/{collection}"
+    assert (await api_client.patch(f"{base}/attributes/{speaker['id']}", headers=owner,
+                                   json={"name": "voice"})).status_code == 200
+    assert (await api_client.patch(f"{base}/attributes/{speaker['id']}/values/{values['Author']}", headers=owner,
+                                   json={"label": "Writer"})).status_code == 200
+    changes = (await api_client.get(f"{base}/annotations/{novak}/attribute-changes", headers=owner)).json()
+    author = {"id": values["Author"], "label": "Author", "kind": "value"}
+    unknown = {"id": values["Unknown"], "label": "Unknown", "kind": "unknown"}
+    assert [(c["actor_id"], c["attribute_name"], c["previous"], c["current"], c["source"]) for c in changes] == [
+        (ids.user["annotator"], "speaker_type", [], [author], "manual"),
+        (ids.user["owner"], "speaker_type", [author], [unknown], "manual")]
 
 
 async def test_tags_can_limit_an_attribute_and_retired_or_used_definitions_are_kept(api_client, login, ids):

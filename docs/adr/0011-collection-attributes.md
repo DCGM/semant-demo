@@ -62,12 +62,17 @@ renames categories later without rewriting annotations or losing who decided wha
   applicable are explicit values, at most one each per attribute, never combined with other
   values; retired values and attributes cannot be assigned again but can be removed.
 - **Change records** (`annotation_attribute_change`, SQL) hold, per annotation and attribute and
-  assignment: actor, time, previous and new value ids, `manual`/`ai_assisted` source with the run
-  id, the annotation's `editVersion` when it has one and the attribute's `revision`. Records are
+  assignment: actor, time, the attribute id with its name at that time, the previous and new
+  values as ids with their labels and kinds at that time, `manual`/`ai_assisted` source with the
+  run id, the annotation's `editVersion` when it has one and the attribute's `revision`. Records are
   appended right after each annotation's Weaviate write (one record per annotation, so one failure
   costs one record); when that fails the assignment stays and the response says
-  `record_attribute_changes` failed for that annotation. Ids not labels are stored, so renaming keeps the history.
-  There is no undo of assignments yet.
+  `record_attribute_changes` failed for that annotation. A record is never rewritten: the ids are
+  the identity, the names, labels and kinds only what the history shows, so a later rename,
+  retirement or deletion of the definition neither changes nor hides what a past decision said
+  (an id without a definition when recorded keeps no label). Descriptions and examples are not
+  copied into records; interpreting a past decision by the definition of its time needs versioned
+  definitions (#502). There is no undo of assignments yet.
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
   with the number affected) but can be retired. When the usage cannot be counted (the count fails,
@@ -92,6 +97,9 @@ A value or attribute deleted between the usage count and the delete can be left 
 without a definition (a small race; clients must show unknown ids as such, and a maintenance check
 for orphaned ids is a follow-up). The conflict check uses the in-process span lock, so it holds
 for one backend process only. `run_id` of an AI-assisted assignment is not checked against a run.
+Change records keep only the name, labels and kinds of their time, not the descriptions and
+examples, so what a value meant when it was assigned is known only as far as its label tells
+(versioned definitions: #502).
 Collection deletion crosses two stores: the collection (Weaviate) first, then its definitions and
 change records (SQL), so a failed collection deletion never costs a surviving collection its
 definitions or history; rows a failed second step leaves behind belong to a collection that no

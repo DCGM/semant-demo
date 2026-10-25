@@ -9,7 +9,8 @@ for all three; none changes collection membership). Definitions are stored in SQ
 The accepted assignments of an annotation are the array ``Annotation.attributeValues`` in its
 collection's tenant, the one authoritative copy; every change also appends a change record (who,
 when, previous and new values, manual or AI-assisted, the annotation's ``editVersion`` and the
-definition's revision). Assignments are written best effort per annotation (ADR 0002) and
+definition's revision) that keeps the attribute's name and the values' labels and kinds as
+defined then, so history does not take on a later rename or depend on the definition still existing. Assignments are written best effort per annotation (ADR 0002) and
 checked against the annotation's ``attributeVersion``, which only assignments move: a write
 based on an outdated copy is refused (``edit_conflict``) and changes nothing; one that finds the
 annotation already as it asks counts as done without writing. The check runs under the span's
@@ -34,7 +35,7 @@ from semant_demo.features.annotations.service import ATTRIBUTES_NOT_ENABLED as N
 from semant_demo.features.annotations.service import AnnotationStore, use_tenant
 from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.attributes.schemas import (
-    Attribute, AttributeAssignRequest, AttributeAssignResult, AttributeChange, AssignMode, AssignSource, Cardinality,
+    Attribute, AttributeAssignRequest, AttributeAssignResult, AttributeChange, AttributeChangeValue, AssignMode, AssignSource, Cardinality,
     PatchAttribute, PatchAttributeValue, PostAttribute, PostAttributeValue, ValueKind,
 )
 from semant_demo.features.user_collections import access
@@ -203,6 +204,14 @@ def _result_values(mode: AssignMode, previous: list[UUID], asked: list[UUID]) ->
     return list(dict.fromkeys(asked))
 
 
+def _snapshot(attribute: Attribute, value_ids: list[UUID]) -> list[AttributeChangeValue]:
+    """The values as the attribute defines them now, for a change record (an id it no longer
+    defines keeps no label)."""
+    known = {v.id: v for v in attribute.values}
+    return [AttributeChangeValue(id=v, label=known[v].label, kind=known[v].kind) if v in known
+            else AttributeChangeValue(id=v) for v in value_ids]
+
+
 @dataclass
 class _Item:
     """What one annotation's assignment came to: exactly one of ``failure`` and ``saved``."""
@@ -282,7 +291,8 @@ async def _assign_one(store: AttributeStore, cid: UUID, attribute: Attribute, re
         # order they were made and their previous / current values chain.
         item = _Item(sid, version=version, values=result)
         change = AttributeChange(
-            annotation_id=sid, attribute_id=attribute.id, previous=previous, current=result, actor_id=actor,
+            annotation_id=sid, attribute_id=attribute.id, attribute_name=attribute.name,
+            previous=_snapshot(attribute, previous), current=_snapshot(attribute, result), actor_id=actor,
             at=_now(), source=request.source, run_id=request.run_id,
             annotation_edit_version=span.editVersion if spans.provenance else None,
             attribute_revision=attribute.revision)
@@ -345,6 +355,7 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
 
 async def read_attribute_changes(store: AttributeStore, user: Principal | None, collection_id: Id,
                                  annotation_id: Id) -> list[AttributeChange]:
-    """The annotation's attribute change records (who, when, previous and new values), oldest first."""
+    """The annotation's attribute change records (who, when, previous and new values with the names
+    and labels of that time), oldest first; also for attributes and values deleted since."""
     grant = await access.require_collection_read(store.annotations.collections, user, collection_id)
     return await store.definitions.read_changes(grant.collection_id, access.parse_id(annotation_id, "Annotation"))

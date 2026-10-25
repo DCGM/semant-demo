@@ -1735,7 +1735,7 @@ export interface DefaultApiInterface {
     listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequestOpts(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted, with the attribute name and value labels as they were then.
      * @summary List Attribute Changes
      * @param {string} collectionId 
      * @param {string} annotationId 
@@ -1746,7 +1746,7 @@ export interface DefaultApiInterface {
     listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRaw(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AttributeChange>>>;
 
     /**
-     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted, with the attribute name and value labels as they were then.
      * List Attribute Changes
      */
     listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AttributeChange>>;
@@ -5090,7 +5090,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted, with the attribute name and value labels as they were then.
      * List Attribute Changes
      */
     async listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRaw(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AttributeChange>>> {
@@ -5101,7 +5101,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted.
+     * Who changed the annotation\'s attribute values when (oldest first), manual or AI-assisted, with the attribute name and value labels as they were then.
      * List Attribute Changes
      */
     async listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet(requestParameters: ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AttributeChange>> {

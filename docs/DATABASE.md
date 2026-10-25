@@ -513,13 +513,16 @@ CREATE TABLE annotation_attribute_value (
 );
 CREATE TABLE annotation_attribute_change (    -- append-only
     id INTEGER PRIMARY KEY, collection_id VARCHAR(36) NOT NULL, annotation_id VARCHAR(36) NOT NULL,
-    attribute_id VARCHAR(36) NOT NULL, previous JSON NOT NULL, current JSON NOT NULL,   -- value ids
+    attribute_id VARCHAR(36) NOT NULL, attribute_name VARCHAR(200) NOT NULL,          -- name when recorded
+    previous JSON NOT NULL, current JSON NOT NULL,  -- [{id, label, kind}] as defined when recorded
     actor_id VARCHAR(36) NOT NULL, at DATETIME NOT NULL, source VARCHAR(16) NOT NULL,   -- manual | ai_assisted
     run_id VARCHAR(36), annotation_edit_version INTEGER, attribute_revision INTEGER NOT NULL
 );
 ```
 
-Deleting a collection deletes the collection (Weaviate) first and its definitions and records
+Change records are never rewritten: they keep the attribute name and value labels and kinds of
+their time (an id without a definition then has `label` and `kind` null), not descriptions or
+examples (versioned definitions: #502). Deleting a collection deletes the collection (Weaviate) first and its definitions and records
 afterwards; a failure of that second step is reported and leaves unreachable rows (cleanup: #499).
 
 ---

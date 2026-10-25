@@ -3314,7 +3314,7 @@ example().catch(console.error);
 
 List Attribute Changes
 
-Who changed the annotation\&#39;s attribute values when (oldest first), manual or AI-assisted.
+Who changed the annotation\&#39;s attribute values when (oldest first), manual or AI-assisted, with the attribute name and value labels as they were then.
 
 ### Example
 

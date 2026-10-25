@@ -1,7 +1,7 @@
 
 # AttributeChange
 
-What the change record of one annotation and attribute holds (#331).
+What the change record of one annotation and attribute holds (#331); immutable once written, readable without the current definitions.
 
 ## Properties
 
@@ -10,8 +10,9 @@ Name | Type
 `id` | number
 `annotationId` | string
 `attributeId` | string
-`previous` | Array&lt;string&gt;
-`current` | Array&lt;string&gt;
+`attributeName` | string
+`previous` | [Array&lt;AttributeChangeValue&gt;](AttributeChangeValue.md)
+`current` | [Array&lt;AttributeChangeValue&gt;](AttributeChangeValue.md)
 `actorId` | string
 `at` | Date
 `source` | [AssignSource](AssignSource.md)
@@ -29,6 +30,7 @@ const example = {
   "id": null,
   "annotationId": null,
   "attributeId": null,
+  "attributeName": null,
   "previous": null,
   "current": null,
   "actorId": null,

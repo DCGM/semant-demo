@@ -306,7 +306,7 @@ async def test_assignment_modes_on_a_multi_valued_attribute_and_the_change_recor
 
     changes = await service.read_attribute_changes(store, SHARED, COLLECTION, APPROVED)
     # Values are stored sorted (as in Weaviate), so the order within one record is not the request's.
-    assert [(ch.actor_id, sorted(ch.previous), sorted(ch.current), ch.source) for ch in changes][:2] == [
+    assert [(ch.actor_id, ids(ch.previous), ids(ch.current), ch.source) for ch in changes][:2] == [
         (SHARED.id, [], sorted([a.id, b.id]), AssignSource.manual),
         (OWNER.id, sorted([a.id, b.id]), sorted([a.id, b.id, c.id]), AssignSource.manual)]
     assert [ch.annotation_edit_version for ch in changes] == [4] * 5 and {ch.attribute_revision for ch in changes} == {1}
@@ -493,7 +493,64 @@ async def test_consecutive_changes_of_one_annotation_are_recorded_in_order(store
 
     history = await definitions.read_changes(COLLECTION, APPROVED)
     assert (first_result.outcome.value, second_result.outcome.value) == ("complete", "complete")
-    assert [(c.previous, c.current) for c in history] == [([], [author.id]), ([author.id], [narrator.id])]
+    assert [(ids(c.previous), ids(c.current)) for c in history] == [([], [author.id]), ([author.id], [narrator.id])]
+
+
+def ids(values):
+    return sorted(v.id for v in values)
+
+
+def recorded(change):
+    return (change.attribute_name, [(v.label, v.kind) for v in change.previous],
+            [(v.label, v.kind) for v in change.current])
+
+
+async def test_history_keeps_the_names_and_labels_of_the_time_after_a_rename(store):
+    attribute = await define(store, values=[PostAttributeValue(label="Author"),
+                                            PostAttributeValue(label="Unknown", kind=ValueKind.unknown)])
+    author, unknown = attribute.values
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [author]))
+    await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(name="voice"))
+    await service.update_value(store, OWNER, COLLECTION, attribute.id, author.id, PatchAttributeValue(label="Writer"))
+    renamed = await service.update_value(store, OWNER, COLLECTION, attribute.id, unknown.id,
+                                         PatchAttributeValue(label="Not known", retired=True))
+    await service.assign_attributes(store, OWNER, COLLECTION,
+                                    assign(renamed, [APPROVED], AssignMode.replace, [], {APPROVED: 1}))
+
+    history = await service.read_attribute_changes(store, OWNER, COLLECTION, APPROVED)
+    assert [recorded(c) for c in history] == [
+        ("speaker_type", [], [("Author", ValueKind.value)]),
+        ("voice", [("Writer", ValueKind.value)], [])]
+    assert [ids(c.current) for c in history] == [[author.id], []]  # the ids stay the identity
+
+
+async def test_history_stays_readable_after_the_definitions_are_deleted(store, definitions):
+    attribute = await define(store)
+    author, narrator = attribute.values
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [author]))
+    await service.assign_attributes(store, OWNER, COLLECTION,
+                                    assign(attribute, [APPROVED], AssignMode.replace, [], {APPROVED: 1}))
+    await service.delete_value(store, OWNER, COLLECTION, attribute.id, author.id)
+    await service.delete_attribute(store, OWNER, COLLECTION, attribute.id)
+    assert await definitions.read_all(COLLECTION) == []
+
+    history = await service.read_attribute_changes(store, OWNER, COLLECTION, APPROVED)
+    assert [recorded(c) for c in history] == [
+        ("speaker_type", [], [("Author", ValueKind.value)]),
+        ("speaker_type", [("Author", ValueKind.value)], [])]
+    assert [c.attribute_id for c in history] == [attribute.id] * 2
+
+
+async def test_a_stored_id_without_a_definition_is_recorded_without_a_label(store, spans):
+    attribute = await define(store)
+    orphan = uuid4()  # e.g. a value deleted between its usage count and its deletion
+    spans.stored[(COLLECTION, APPROVED)] = [codec.encode(attribute.id, orphan)]
+    await service.assign_attributes(store, OWNER, COLLECTION,
+                                    assign(attribute, [APPROVED], AssignMode.replace, attribute.values[:1]))
+
+    [change] = await service.read_attribute_changes(store, OWNER, COLLECTION, APPROVED)
+    assert [(v.id, v.label, v.kind) for v in change.previous] == [(orphan, None, None)]
+    assert [v.label for v in change.current] == ["Author"]
 
 
 async def test_a_batch_writes_a_bounded_number_of_annotations_at_a_time(store, spans, monkeypatch):

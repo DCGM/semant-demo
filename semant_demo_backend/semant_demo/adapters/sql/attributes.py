@@ -5,7 +5,9 @@ UUIDs that annotations store (``features/annotations/attribute_codec.py``); labe
 tags an attribute applies to can change without touching any annotation. Names are unique per
 collection and labels per attribute, ignoring case and surrounding spaces. The accepted
 assignments themselves live on the annotations in Weaviate; ``AttributeChangeRow`` only records
-who changed what (ADR 0011), never a second copy of the current state.
+who changed what (ADR 0011), never a second copy of the current state. A record keeps the
+attribute's name and the values' labels and kinds as they were when it was written, so it stays
+readable after the definitions change or are deleted.
 
 Every method takes the collection whose definitions it uses; the service passes only a
 collection it has authorized, so an id of another collection is "not found".
@@ -23,7 +25,7 @@ from sqlalchemy.orm import selectinload, relationship
 from semant_demo.adapters.sql.base import Base
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.attributes.schemas import (
-    Attribute, AttributeChange, AttributeValue, AssignSource, Cardinality, PatchAttribute, PatchAttributeValue,
+    Attribute, AttributeChange, AttributeChangeValue, AttributeValue, AssignSource, Cardinality, PatchAttribute, PatchAttributeValue,
     PostAttribute, PostAttributeValue, ValueKind,
 )
 
@@ -67,7 +69,9 @@ class AttributeChangeRow(Base):
     collection_id = Column(String(36), nullable=False, index=True)
     annotation_id = Column(String(36), nullable=False, index=True)
     attribute_id = Column(String(36), nullable=False)
+    attribute_name = Column(String(200), nullable=False)
     previous = Column(JSON, nullable=False)
+    """``[{"id", "label", "kind"}]`` as defined when recorded (label and kind null for an unknown id)."""
     current = Column(JSON, nullable=False)
     actor_id = Column(String(36), nullable=False)
     at = Column(DateTime(timezone=True), nullable=False)
@@ -95,6 +99,15 @@ def _attribute(row: AttributeRow) -> Attribute:
     return Attribute(id=UUID(row.id), name=row.name, description=row.description or "",
                      cardinality=Cardinality(row.cardinality), tag_ids=[UUID(t) for t in row.tag_ids or []],
                      retired=bool(row.retired), revision=row.revision, values=[_value(v) for v in row.values])
+
+
+def _recorded(values: list[AttributeChangeValue]) -> list[dict]:
+    return [{"id": str(v.id), "label": v.label, "kind": v.kind.value if v.kind else None} for v in values]
+
+
+def _recalled(values: list[dict]) -> list[AttributeChangeValue]:
+    return [AttributeChangeValue(id=UUID(v["id"]), label=v.get("label"),
+                                 kind=ValueKind(v["kind"]) if v.get("kind") else None) for v in values]
 
 
 def _new_value(attribute_id: str, value: PostAttributeValue, position: int) -> AttributeValueRow:
@@ -221,8 +234,8 @@ class AttributeRepository:
         async with self.session_maker() as session:
             session.add_all(AttributeChangeRow(
                 collection_id=str(collection_id), annotation_id=str(c.annotation_id),
-                attribute_id=str(c.attribute_id), previous=[str(v) for v in c.previous],
-                current=[str(v) for v in c.current], actor_id=str(c.actor_id), at=c.at, source=c.source.value,
+                attribute_id=str(c.attribute_id), attribute_name=c.attribute_name, previous=_recorded(c.previous),
+                current=_recorded(c.current), actor_id=str(c.actor_id), at=c.at, source=c.source.value,
                 run_id=str(c.run_id) if c.run_id else None, annotation_edit_version=c.annotation_edit_version,
                 attribute_revision=c.attribute_revision) for c in changes)
             await session.commit()
@@ -236,7 +249,7 @@ class AttributeRepository:
                 .order_by(AttributeChangeRow.id))
             return [AttributeChange(
                 id=r.id, annotation_id=UUID(r.annotation_id), attribute_id=UUID(r.attribute_id),
-                previous=[UUID(v) for v in r.previous], current=[UUID(v) for v in r.current],
+                attribute_name=r.attribute_name, previous=_recalled(r.previous), current=_recalled(r.current),
                 actor_id=UUID(r.actor_id), at=_utc(r.at), source=AssignSource(r.source),
                 run_id=UUID(r.run_id) if r.run_id else None, annotation_edit_version=r.annotation_edit_version,
                 attribute_revision=r.attribute_revision) for r in result.scalars()]

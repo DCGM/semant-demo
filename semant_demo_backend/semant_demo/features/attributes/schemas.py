@@ -141,13 +141,28 @@ class AttributeAssignResult(BaseModel):
     """The annotation's accepted values of the attribute as stored now."""
 
 
+class AttributeChangeValue(BaseModel):
+    """A value of a change record with its label and kind as defined when the change was made.
+    The id is the identity; label and kind are only what the history shows, so a later rename,
+    retirement or deletion of the value does not change what a past decision says. Descriptions
+    and examples are not kept: reading a decision as its definition then meant needs versioned
+    definitions (#502)."""
+    id: UUID
+    label: str | None = None
+    """None: the id had no definition when the change was made (deleted meanwhile)."""
+    kind: ValueKind | None = None
+
+
 class AttributeChange(BaseModel):
-    """What the change record of one annotation and attribute holds (#331)."""
+    """What the change record of one annotation and attribute holds (#331); immutable once
+    written, readable without the current definitions."""
     id: int | None = None
     annotation_id: UUID
     attribute_id: UUID
-    previous: list[UUID]
-    current: list[UUID]
+    attribute_name: str
+    """The attribute's name when the change was made."""
+    previous: list[AttributeChangeValue]
+    current: list[AttributeChangeValue]
     actor_id: UUID
     at: datetime
     source: AssignSource
