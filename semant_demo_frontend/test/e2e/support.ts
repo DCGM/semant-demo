@@ -369,6 +369,39 @@ export async function deleteAddedTags (request: APIRequestContext, userKey: stri
   }
 }
 
+/** Deletes a collection's attribute definitions (#331), first removing their values from the
+ * approved annotations that hold them (a used attribute cannot be deleted). */
+export async function deleteAddedAttributes (request: APIRequestContext, userKey: string, collectionKey: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${await apiToken(request, userKey)}` }
+  const base = `/api/user_collections/${fixture.collection(collectionKey).id}`
+  const listed = await request.get(`${base}/attributes`, { headers })
+  expect(listed.ok()).toBe(true)
+  const attributes = await listed.json() as { id: string }[]
+  if (!attributes.length) return
+  const page = await request.get(`${base}/annotations`, { headers, params: { type: 'pos', limit: 200 } })
+  expect(page.ok()).toBe(true)
+  const rows = (await page.json()).rows as { id: string, attributes?: Record<string, string[]>, attributeVersion: number }[]
+  for (const attribute of attributes) {
+    const holding = rows.filter((r) => r.attributes?.[attribute.id]?.length)
+    if (holding.length) {
+      const cleared = await request.post(`${base}/annotations/attributes/assign`, {
+        headers,
+        data: {
+          attribute_id: attribute.id,
+          annotation_ids: holding.map((r) => r.id),
+          expected_versions: Object.fromEntries(holding.map((r) => [r.id, r.attributeVersion])),
+          mode: 'replace',
+          value_ids: []
+        }
+      })
+      expect((await cleared.json()).outcome).toBe('complete')
+      // A row read before this clearing has an outdated version for the next attribute.
+      for (const r of holding) r.attributeVersion += 1
+    }
+    expect((await request.delete(`${base}/attributes/${attribute.id}`, { headers })).ok()).toBe(true)
+  }
+}
+
 /** Removes a chunk from a collection; does nothing when it is not a member. */
 export async function removeChunk (
   request: APIRequestContext, userKey: string, collectionKey: string, chunkKey: string

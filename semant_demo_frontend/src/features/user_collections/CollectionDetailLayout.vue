@@ -131,6 +131,13 @@
         />
         <q-separator vertical size="1.8px" inset />
         <q-route-tab
+          name="attributes"
+          label="Attributes"
+          icon="category"
+          :to="{ name: 'collectionAttributes' }"
+        />
+        <q-separator vertical size="1.8px" inset />
+        <q-route-tab
           name="members"
           label="Members"
           icon="people"

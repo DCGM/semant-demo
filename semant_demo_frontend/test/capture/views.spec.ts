@@ -1,6 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import {
-  annotation, answerChat, apiToken, deleteAddedSpans, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, selectText,
+  annotation, answerChat, apiToken, deleteAddedAttributes, deleteAddedSpans, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, selectText,
   sidebarPanelButton
 } from '../e2e/support'
 
@@ -310,6 +310,51 @@ async function withLibraries (page: Page) {
     }
   }))
 }
+
+test('collection attributes (#331)', async ({ page, request }, testInfo) => {
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const base = `/api/user_collections/${fixture.collection('chronicles').id}/attributes`
+  const attributes = [
+    {
+      name: 'Speaker type',
+      description: 'Who says the quoted words, as the source presents them.',
+      cardinality: 'single',
+      tag_ids: [fixture.tag('person').id],
+      values: [
+        { label: 'politician', description: 'Holds or seeks a public office.' },
+        { label: 'journalist' },
+        { label: 'chronicler' },
+        { label: 'not known', kind: 'unknown' }
+      ]
+    },
+    { name: 'Topic', cardinality: 'multi', values: [{ label: 'economy' }, { label: 'migration' }, { label: 'health' }] }
+  ]
+  try {
+    for (const data of attributes) expect((await request.post(base, { headers, data })).ok()).toBe(true)
+    const listed = await (await request.get(base, { headers })).json() as { id: string, name: string, values: { id: string, label: string }[] }[]
+    const speaker = listed.find(a => a.name === 'Speaker type')!
+    const chronicler = speaker.values.find(v => v.label === 'chronicler')!
+    expect((await request.patch(`${base}/${speaker.id}/values/${chronicler.id}`, { headers, data: { retired: true } })).ok()).toBe(true)
+
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${fixture.collection('chronicles').id}/attributes`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+    await expect(page.getByTestId('attribute')).toHaveCount(2)
+    await save(page, testInfo, 'attributes')
+
+    await page.getByTestId('attribute-create').click()
+    await page.getByLabel('Name').fill('Stance')
+    await page.getByLabel('Value 1', { exact: true }).fill('for')
+    await page.getByRole('button', { name: 'Add value', exact: true }).click()
+    await page.getByLabel('Value 2', { exact: true }).fill('against')
+    await page.keyboard.press('Tab') // to the kind; a focused field's label is still floating up
+    await expect(page.locator('.q-dialog .q-card')).toBeVisible()
+    await save(page, testInfo, 'attribute-dialog')
+  } finally {
+    await deleteAddedAttributes(request, 'owner', 'chronicles')
+  }
+})
 
 test('corpus overview', async ({ page }, testInfo) => {
   await withLibraries(page)
