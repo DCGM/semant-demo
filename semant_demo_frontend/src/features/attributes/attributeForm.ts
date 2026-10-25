@@ -27,6 +27,15 @@ export function tagNames (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): st
   return tags.filter(tag => ids.has(tag.id)).map(tag => tag.name)
 }
 
+/** What a card says about the tags an attribute applies to. Ids of deleted tags (their ids
+ * stay on the attribute, #500) are not named; an attribute left with only those applies to no
+ * existing tag. */
+export function appliesTo (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): string {
+  if (!attribute.tagIds?.length) return 'all tags'
+  const names = tagNames(attribute, tags)
+  return names.length ? `tags ${names.join(', ')}` : 'only deleted tags'
+}
+
 /** Text entries trimmed, without empty ones. */
 export function cleanList (items: string[]): string[] {
   return items.map(item => item.trim()).filter(item => item.length > 0)

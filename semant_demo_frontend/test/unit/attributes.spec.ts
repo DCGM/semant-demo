@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { Cardinality, ResponseError, type Attribute } from 'src/generated/api'
 import { endSession } from 'src/shared/api'
 import { AttributeWriteError, useAttributesStore } from 'src/features/attributes/attributesStore'
-import { repeatedKinds, tagNames } from 'src/features/attributes/attributeForm'
+import { appliesTo, repeatedKinds, tagNames } from 'src/features/attributes/attributeForm'
 
 // Attribute definitions of a collection (#331): answers of a collection, a reload or a
 // session left meanwhile are dropped, an older answer never replaces a newer attribute, and a
@@ -92,6 +92,26 @@ describe('attributes store', () => {
     expect(store.attributes.map(a => a.id)).toEqual(['a2'])
   })
 
+  it('keeps an attribute created after a list was sent that the list does not have', async () => {
+    const store = useAttributesStore()
+    const first = store.load('c1')
+    next('list:c1').resolve([attribute('a1', 'speaker')])
+    await first
+    const reload = store.load('c1')
+    const created = store.createAttribute('c1', { name: 'topic' })
+    next('create:c1').resolve(attribute('a2', 'topic'))
+    await created
+    next('list:c1').resolve([attribute('a1', 'speaker')])
+    await reload
+    expect(store.attributes.map(a => a.id)).toEqual(['a1', 'a2'])
+
+    // A list sent after the creation answered is complete: it decides on its own.
+    const later = store.load('c1')
+    next('list:c1').resolve([attribute('a1', 'speaker')])
+    await later
+    expect(store.attributes.map(a => a.id)).toEqual(['a1'])
+  })
+
   it('throws the backend message and status of a refused write and changes nothing', async () => {
     const store = useAttributesStore()
     const load = store.load('c1')
@@ -153,5 +173,12 @@ describe('attribute form helpers', () => {
   it('names the applicable tags in collection order and skips unknown ids', () => {
     const tags = [{ id: 't1', name: 'Person' }, { id: 't2', name: 'Place' }] as never
     expect(tagNames({ tagIds: ['t2', 'gone', 't1'] }, tags)).toEqual(['Person', 'Place'])
+  })
+
+  it('says which tags an attribute applies to, without naming deleted ones', () => {
+    const tags = [{ id: 't1', name: 'Person' }, { id: 't2', name: 'Place' }] as never
+    expect(appliesTo({ tagIds: [] }, tags)).toBe('all tags')
+    expect(appliesTo({ tagIds: ['gone', 't2'] }, tags)).toBe('tags Place')
+    expect(appliesTo({ tagIds: ['gone'] }, tags)).toBe('only deleted tags')
   })
 })

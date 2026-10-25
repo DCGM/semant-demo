@@ -5,7 +5,7 @@
         Attributes ({{ shown.length }})
       </div>
       <div class="col-auto">
-        <CreateButton :disable="!collectionId" data-testid="attribute-create" @click="createAttribute" />
+        <CreateButton :disable="!collectionId || !tagsReady" data-testid="attribute-create" @click="createAttribute" />
       </div>
       <div class="col-grow col-sm-auto">
         <q-input v-model="filter" dense outlined clearable debounce="200" placeholder="Search" aria-label="Search attributes">
@@ -24,6 +24,12 @@
       {{ error }}
       <template #action>
         <q-btn flat no-caps label="Try again" @click="reload" />
+      </template>
+    </q-banner>
+    <q-banner v-else-if="tagsFailed" rounded class="bg-red-1 text-negative q-mb-md" role="alert" data-testid="attribute-tags-error">
+      The tags could not be loaded, so attributes cannot be created or edited.
+      <template #action>
+        <q-btn flat no-caps label="Try again" @click="loadTags" />
       </template>
     </q-banner>
 
@@ -56,12 +62,21 @@
           </div>
           <div class="text-caption text-grey-8 q-mt-xs">
             {{ attribute.cardinality === Cardinality.single ? 'One value' : 'Several values' }} per annotation ·
-            <span data-testid="attribute-tags">{{ appliesTo(attribute) }}</span>
+            <span data-testid="attribute-tags">{{ appliesTo(attribute, tags) }}</span>
           </div>
           <div v-if="attribute.description" class="text-body2 q-mt-sm attribute__description">{{ attribute.description }}</div>
         </div>
         <div class="col-auto row no-wrap">
-          <q-btn flat round dense color="primary" icon="edit" :aria-label="`Edit ${attribute.name}`" @click="editAttribute(attribute)">
+          <q-btn
+            flat
+            round
+            dense
+            color="primary"
+            icon="edit"
+            :disable="!tagsReady"
+            :aria-label="`Edit ${attribute.name}`"
+            @click="editAttribute(attribute)"
+          >
             <q-tooltip>Edit</q-tooltip>
           </q-btn>
           <q-btn
@@ -154,7 +169,7 @@ import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { errorNotification, successNotification } from 'src/shared/notification'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { AttributeWriteError, useAttributesStore } from './attributesStore'
-import { KIND_LABELS, MAX_VALUES, tagNames } from './attributeForm'
+import { KIND_LABELS, MAX_VALUES, appliesTo } from './attributeForm'
 import AttributeDialog from './AttributeDialog.vue'
 import AttributeValueDialog from './AttributeValueDialog.vue'
 
@@ -185,16 +200,28 @@ function valuesOf (attribute: Attribute): AttributeValue[] {
   return (attribute.values ?? []).filter(v => showRetired.value || !v.retired)
 }
 
-function appliesTo (attribute: Attribute): string {
-  if (!attribute.tagIds?.length) return 'all tags'
-  const names = tagNames(attribute, tags.value)
-  return names.length ? `tags ${names.join(', ')}` : `${attribute.tagIds.length} tags`
+// The dialogs need the collection's tags (the options, and which applicable ids are deleted
+// tags), so creating and editing wait for them.
+const tagsReady = ref(false)
+const tagsFailed = ref(false)
+let tagRequest = 0
+
+async function loadTags () {
+  const id = collectionId.value
+  const request = ++tagRequest
+  tagsReady.value = false
+  tagsFailed.value = false
+  if (!id) return
+  await tagsStore.fetchTagsByCollection(id)
+  if (request !== tagRequest) return
+  tagsFailed.value = !!tagsStore.error
+  tagsReady.value = !tagsFailed.value
 }
 
 function reload () {
   if (!collectionId.value) return
   void store.load(collectionId.value)
-  void tagsStore.fetchTagsByCollection(collectionId.value)
+  void loadTags()
 }
 
 onMounted(reload)
@@ -217,7 +244,7 @@ function createAttribute () {
   $q.dialog({
     component: AttributeDialog,
     componentProps: {
-      tags: tags.value,
+      tags: () => tags.value,
       save: (payload: PostAttribute) => store.createAttribute(id, payload)
     }
   }).onOk((created: Attribute | null) => {
@@ -231,7 +258,7 @@ function editAttribute (attribute: Attribute) {
     component: AttributeDialog,
     componentProps: {
       attribute,
-      tags: tags.value,
+      tags: () => tags.value,
       save: (patch: PatchAttribute) => store.updateAttribute(id, attribute.id, patch)
     }
   }).onOk((saved: Attribute | null) => {

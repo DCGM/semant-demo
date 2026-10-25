@@ -62,8 +62,24 @@
           label="Applies to tags"
           hint="Leave empty to apply to annotations of every tag."
           :options="tagOptions"
+          :rules="[() => sameTags || !deletedTagIds.length || 'Remove the deleted tags, or leave the tags unchanged']"
           @filter="filterTags"
-        />
+        >
+          <template #selected-item="scope">
+            <q-chip
+              removable
+              dense
+              class="q-my-none q-ml-xs q-mr-none"
+              :tabindex="scope.tabindex"
+              :color="isKnownTag(scope.opt) ? undefined : 'grey-4'"
+              :icon="isKnownTag(scope.opt) ? undefined : 'label_off'"
+              :data-testid="isKnownTag(scope.opt) ? undefined : 'attribute-deleted-tag'"
+              @remove="scope.removeAtIndex(scope.index)"
+            >
+              {{ isKnownTag(scope.opt) ? scope.opt.label : 'Deleted tag' }}
+            </q-chip>
+          </template>
+        </q-select>
 
         <div v-if="!props.attribute">
           <div class="text-subtitle1">Values</div>
@@ -80,6 +96,9 @@
                 dense
                 :label="`Value ${index + 1}`"
                 :maxlength="MAX_NAME"
+                :rules="[(v: string) => !!v.trim() || value.kind === ValueKind.value || 'Label is required']"
+                lazy-rules
+                hide-bottom-space
               />
             </div>
             <div class="col col-sm-auto" style="min-width: 170px">
@@ -135,12 +154,14 @@ import { Cardinality, ValueKind, type Attribute, type PatchAttribute, type PostA
 import { KIND_LABELS, MAX_DESCRIPTION, MAX_NAME, MAX_VALUES, kindOptions, repeatedKinds } from './attributeForm'
 
 type Save = (payload: PostAttribute | PatchAttribute) => Promise<unknown>
+type Tags = () => Tag[]
 
 const props = defineProps<{
   /** The attribute to edit; none: a new one. */
   attribute?: Attribute
-  /** The collection's tags, for the tags it applies to. */
-  tags: Tag[]
+  /** The collection's tags, for the tags it applies to; read when needed, so tags that arrive
+   * while the dialog is open are offered. */
+  tags: Tags
   /** Saves the form; the dialog stays open, showing the message, when it throws. */
   save: Save
 }>()
@@ -163,7 +184,14 @@ const values = ref<{ label: string, kind: ValueKind }[]>([{ label: '', kind: Val
 const saving = ref(false)
 const error = ref<string | null>(null)
 
-const allTagOptions = computed(() => props.tags.map(tag => ({ label: tag.name, value: tag.id })))
+const allTagOptions = computed(() => props.tags().map(tag => ({ label: tag.name, value: tag.id })))
+// Applicable ids of tags deleted since (#500): shown as such, and they cannot be sent again.
+const deletedTagIds = computed(() => {
+  const known = new Set(props.tags().map(tag => tag.id))
+  return tagIds.value.filter(id => !known.has(id))
+})
+// With emit-value and map-options, a selected id with no option comes as the bare id.
+const isKnownTag = (opt: unknown): opt is { label: string } => typeof opt === 'object' && opt !== null
 const tagFilter = ref('')
 const tagOptions = computed(() => {
   const needle = tagFilter.value.toLowerCase()
@@ -176,12 +204,15 @@ function filterTags (value: string, update: (fn: () => void) => void) {
 const sameTags = computed(() =>
   tagIds.value.length === initialTags.length && tagIds.value.every(id => initialTags.includes(id)))
 
+// A row with neither a label nor a special kind is left out; any other one is sent.
+const isFilled = (v: { label: string, kind: ValueKind }) => !!v.label.trim() || v.kind !== ValueKind.value
+
 const isDirty = computed(() =>
   name.value.trim() !== (props.attribute?.name ?? '') ||
   description.value.trim() !== (props.attribute?.description ?? '') ||
   (!props.attribute && cardinality.value !== Cardinality.single) ||
   !sameTags.value ||
-  (!props.attribute && values.value.some(v => v.label.trim()))
+  (!props.attribute && values.value.some(isFilled))
 )
 
 function removeValue (index: number) {
@@ -197,7 +228,7 @@ function payload (): PostAttribute | PatchAttribute | null {
       cardinality: cardinality.value,
       tagIds: tagIds.value,
       values: values.value
-        .filter(v => v.label.trim())
+        .filter(isFilled)
         .map(v => ({ label: v.label.trim(), kind: v.kind }))
     }
   }
@@ -211,7 +242,7 @@ function payload (): PostAttribute | PatchAttribute | null {
 async function submit () {
   if (saving.value) return
   error.value = null
-  const repeated = props.attribute ? [] : repeatedKinds(values.value.filter(v => v.label.trim()).map(v => v.kind))
+  const repeated = props.attribute ? [] : repeatedKinds(values.value.filter(isFilled).map(v => v.kind))
   if (repeated.length) {
     error.value = `An attribute has at most one ${KIND_LABELS[repeated[0]!]} value.`
     return
