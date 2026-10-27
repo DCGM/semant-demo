@@ -70,7 +70,7 @@ test('a link to the retired V2 document view opens the document view', async ({ 
   await expect(page.getByRole('button', { name: 'V2' })).toHaveCount(0)
 })
 
-test('a new user registers, logs in and out', async ({ page }) => {
+test('a new user registers signed in, logs out and logs in again', async ({ page }) => {
   // The e2e profile's user database is a temporary file; a unique name keeps reruns apart.
   const name = `newcomer${Date.now()}`
   await page.goto('/')
@@ -82,7 +82,11 @@ test('a new user registers, logs in and out', async ({ page }) => {
   await page.getByLabel('Password', { exact: true }).fill('a-long-test-password')
   await page.getByLabel('Confirm Password').fill('a-long-test-password')
   await page.getByRole('button', { name: 'Register' }).click()
-  await expect(page.getByText('Account created! You can now log in.')).toBeVisible()
+  await expect(page.getByText('Account created. You are now signed in.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'User menu' }).click()
+  await page.getByText('Log Out', { exact: true }).click()
+  await expect(page.getByText('You have been logged out.')).toBeVisible()
 
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.locator('.q-menu').getByText('Log In', { exact: true }).click()
@@ -90,8 +94,4 @@ test('a new user registers, logs in and out', async ({ page }) => {
   await page.getByLabel('Password', { exact: true }).fill('a-long-test-password')
   await page.getByRole('button', { name: 'Log In' }).click()
   await expect(page.getByText('Welcome, New Comer!')).toBeVisible()
-
-  await page.getByRole('button', { name: 'User menu' }).click()
-  await page.getByText('Log Out', { exact: true }).click()
-  await expect(page.getByText('You have been logged out.')).toBeVisible()
 })
