@@ -89,16 +89,6 @@ def _format_metadata(doc: Document | None) -> str:
     return "\n".join(lines) if lines else "(no metadata fields populated)"
 
 
-async def _chunks_in_range(store: AnnotationStore, document_id: UUID, min_order: int,
-                           max_order: int) -> list[AnnotationChunk]:
-    """Chunks of the document with ``min_order <= order <= max_order``, ascending."""
-    if max_order < min_order:
-        return []
-    chunks = await store.documents.read_following_chunk_texts(document_id, min_order - 1,
-                                                              max_order - min_order + 1)
-    return [c for c in chunks if c.order <= max_order]
-
-
 async def _assemble_chunks_covering_span(
     store: AnnotationStore,
     *,
@@ -124,8 +114,8 @@ async def _assemble_chunks_covering_span(
     if span_end <= text_length(assembled) or document_id is None or first_chunk_order is None:
         return assembled, consumed
 
-    next_chunks = await _chunks_in_range(store, document_id, first_chunk_order + 1,
-                                         first_chunk_order + _FOLLOWING_CHUNKS)
+    next_chunks = await store.documents.read_chunk_texts_in_range(document_id, first_chunk_order + 1,
+                                                                  first_chunk_order + _FOLLOWING_CHUNKS)
     for c in next_chunks:
         assembled += c.text
         consumed.append(c.order)
@@ -192,7 +182,7 @@ async def build_context_message(store: AnnotationStore, *, span: TagSpan, contex
     if document_id and chunk_order is not None and (needs_prev or needs_next):
         try:
             last_consumed = consumed_orders[-1] if consumed_orders else chunk_order
-            chunks = await _chunks_in_range(store, document_id, chunk_order - 2, last_consumed + 2)
+            chunks = await store.documents.read_chunk_texts_in_range(document_id, chunk_order - 2, last_consumed + 2)
             consumed_set = set(consumed_orders)
             neighbours = [c for c in chunks if c.order not in consumed_set]
         except Exception as e:

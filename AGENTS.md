@@ -15,6 +15,7 @@ Do not restate those rules elsewhere; change them where they are defined.
 - **Reading:** [CONTRIBUTING §1](CONTRIBUTING.md#1-working-on-a-change) lists what to read.
   From [ARCHITECTURE.md](docs/ARCHITECTURE.md), read the module map and the sections for the
   affected feature, not the whole document.
+  For UI work, read the [UI guidelines](docs/UI_GUIDELINES.md).
 - **Rules you must not break:** code structure and API rules in
   [CONTRIBUTING §3](CONTRIBUTING.md#3-code-and-api-rules); best-effort writes, request-scoped
   AI and data safety in [CONTRIBUTING §5](CONTRIBUTING.md#5-data-failures-and-safety); the
