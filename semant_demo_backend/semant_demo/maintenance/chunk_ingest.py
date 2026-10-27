@@ -480,7 +480,7 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
                     blocked.append(str(document))
                     lines.append({"document": str(document), "status": "blocked", "reason": outcome.failure,
                                   "inserted": outcome.inserted})
-                    if plan_.action == "new":
+                    if plan_.action == "new" and (outcome.created_document or not plan_.create_document):
                         lines.append({"document": str(document), "status": "incomplete_document",
                                       "reason": f"{outcome.inserted} of {len(plan_.inserts)} chunks inserted"})
         _append(manifest, lines)
