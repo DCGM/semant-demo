@@ -96,9 +96,9 @@ class DocumentRepository:
             return_references=[QueryReference(link_on="document", return_properties=[])])
         return _to_chunk_text(obj) if obj is not None else None
 
-    async def read_chunk_texts_in_range(self, document_id: UUID, first: int, last: int) -> list[AnnotationChunk]:
-        """The document's chunks with ``first <= order <= last`` (order, text, position), in
-        order; several chunks with one order are all returned.
+    async def _read_orders(self, document_id: UUID, first: int, last: int, **query) -> list:
+        """The document's chunk objects with ``first <= order <= last``, sorted by order;
+        several chunks with one order are all returned.
 
         No server-side sort (which loads every chunk of the document, #376), and the orders
         are listed rather than bounded: without a range index Weaviate evaluates ``>=`` and
@@ -112,20 +112,14 @@ class DocumentRepository:
                                    Filter.by_property("order").contains_any(list(range(first, last + 1)))]),
             # A margin over the range, so that duplicate orders are seen rather than cut off.
             limit=2 * (last - first + 1),
-            return_properties=self._text_properties())
-        return sorted((_to_chunk_text(o, document_id) for o in response.objects), key=lambda c: c.order)
+            **query)
+        return sorted(response.objects, key=lambda o: o.properties["order"])
 
-    async def read_following_chunk_texts(self, document_id: UUID, after_order: int, limit: int) -> list[AnnotationChunk]:
-        """Up to ``limit`` chunks of the document with order greater than ``after_order``, in order."""
-        response = await self._chunks().query.fetch_objects(
-            filters=(Filter.by_ref("document").by_id().equal(document_id)
-                     & Filter.by_property("order").greater_than(after_order)),
-            sort=Sort.by_property("order", ascending=True),
-            limit=limit,
-            return_properties=["order", "text"],
-            return_references=[QueryReference(link_on="document", return_properties=[])],
-        )
-        return [_to_chunk_text(o) for o in response.objects]
+    async def read_chunk_texts_in_range(self, document_id: UUID, first: int, last: int) -> list[AnnotationChunk]:
+        """The document's chunks with ``first <= order <= last`` (order, text, position), in
+        order; several chunks with one order are all returned."""
+        objects = await self._read_orders(document_id, first, last, return_properties=self._text_properties())
+        return [_to_chunk_text(o, document_id) for o in objects]
 
     async def read_many(self, document_ids: list[UUID]) -> dict[UUID, Document]:
         """The existing documents among ``document_ids``."""
@@ -147,17 +141,16 @@ class DocumentRepository:
         """
         Up to ``limit`` chunks of the document directly before (``direction="before"``) or
         after (``"after"``) the chunk with ``order``, nearest first, returned in document order.
+
+        Reads the ``limit`` orders next to ``order`` (#376): a document's orders are
+        consecutive (ADR 0009), so fewer chunks than ``limit`` means the document starts or
+        ends there. In a document that violates this, the read stops at a gap.
         """
         before = direction == "before"
-        position = Filter.by_property("order")
-        response = await self._chunks().query.fetch_objects(
-            filters=(Filter.by_ref("document").by_id().equal(document_id)
-                     & (position.less_than(order) if before else position.greater_than(order))),
-            sort=Sort.by_property("order", ascending=not before),
-            limit=limit,
-        )
-        chunks = [_to_text_chunk(o, document_id) for o in response.objects]
-        return chunks[::-1] if before else chunks
+        first, last = (order - limit, order - 1) if before else (order + 1, order + limit)
+        chunks = [_to_text_chunk(o, document_id) for o in await self._read_orders(document_id, first, last)]
+        # Duplicate orders may return more than ``limit``: keep the nearest.
+        return chunks[max(len(chunks) - limit, 0):] if before else chunks[:limit]
 
     async def count_chunks(self, document_id: UUID) -> int:
         """The number of chunks of the document (0 for an unknown document)."""

@@ -10,6 +10,7 @@ from weaviate.classes.data import DataObject
 from weaviate.classes.query import Filter, QueryReference
 
 from semant_demo.core.errors import NotFoundError
+from semant_demo.features.documents import service as document_service
 from semant_demo.features.user_collections.schemas import PatchCollection
 from semant_demo.features.annotations.schemas import PatchTag, PostTag, SpanType
 from tests.fakes import fake_embedding
@@ -584,3 +585,64 @@ async def test_chunk_and_adjacent_chunks_in_document_order(documents, big_docume
     assert {c.document for c in before + after} == {document_id}
     assert at_end == []
     assert await documents.read_chunk(UNKNOWN) is None
+
+
+async def insert_document(client, names, orders: list[int]) -> tuple[UUID, list[UUID]]:
+    """A document in no collection with one chunk per entry of ``orders`` (text "Část <order>")."""
+    document_id = uuid4()
+    await insert(client, names.document_collection_name, [DataObject(uuid=document_id, properties={"title": "Části"})])
+    chunk_ids = [uuid4() for _ in orders]
+    await insert(client, names.chunks_collection_name, [
+        DataObject(uuid=chunk_id, properties={"text": f"Část {order}", "order": order, "start_page_id": str(UUID(int=1)),
+                                              "from_page": 0, "to_page": 0, "end_paragraph": True},
+                   references={"document": str(document_id)}, vector={"default": fake_embedding(f"Část {order}")})
+        for order, chunk_id in zip(orders, chunk_ids)
+    ])
+    return document_id, chunk_ids
+
+
+async def test_adjacent_chunks_stop_at_both_ends_of_the_document(documents, big_document):
+    # #376: the orders next to the anchor are read without a sort; a short read is the edge.
+    document_id, chunk_ids = big_document
+    last = BIG_DOCUMENT_CHUNKS - 1
+
+    assert await documents.read_adjacent_chunks(document_id, 0, "before", 5) == []
+    assert [c.id for c in await documents.read_adjacent_chunks(document_id, 2, "before", 5)] == chunk_ids[:2]
+    assert [c.id for c in await documents.read_adjacent_chunks(document_id, last - 2, "after", 5)] == chunk_ids[-2:]
+    assert [c.id for c in await documents.read_adjacent_chunks(document_id, 100, "after", 51)] == chunk_ids[101:152]
+    assert await documents.read_adjacent_chunks(document_id, 100, "after", 0) == []
+
+
+async def test_chunk_window_flags_the_ends_of_a_document_not_starting_at_order_zero(
+        documents, seeded_store, collection_names):
+    # #376: orders 7..16 (the first order may be any integer, ADR 0009).
+    document_id, chunk_ids = await insert_document(seeded_store, collection_names, list(range(7, 17)))
+
+    middle = await document_service.read_chunk_window(documents, document_id, chunk_ids[5], 2, 2)
+    start = await document_service.read_chunk_window(documents, document_id, chunk_ids[1], 3, 1)
+    end = await document_service.read_chunk_window(documents, document_id, chunk_ids[8], 1, 1)
+    more = await document_service.read_adjacent_chunks(documents, document_id, chunk_ids[9], "before", 8)
+    all_before = await document_service.read_adjacent_chunks(documents, document_id, chunk_ids[9], "before", 10)
+
+    assert ([c.id for c in middle.chunks], middle.has_before, middle.has_after) == (chunk_ids[3:8], True, True)
+    assert ([c.id for c in start.chunks], start.has_before, start.has_after) == (chunk_ids[:3], False, True)
+    assert ([c.id for c in end.chunks], end.has_before, end.has_after) == (chunk_ids[7:10], True, False)
+    assert ([c.id for c in more.chunks], more.has_more) == (chunk_ids[1:9], True)
+    assert ([c.id for c in all_before.chunks], all_before.has_more) == (chunk_ids[:9], False)
+    assert middle.total_chunks == 10
+
+
+async def test_adjacent_chunks_of_documents_violating_consecutive_orders(documents, seeded_store, collection_names):
+    # ADR 0009: a gap or a duplicate order is reported, not worked around. The read stops at
+    # a gap and keeps duplicates, never returning another document's chunks.
+    gap, gap_ids = await insert_document(seeded_store, collection_names, [0, 1, 2, 5, 6])
+    duplicate, duplicate_ids = await insert_document(seeded_store, collection_names, [0, 1, 1, 2, 3])
+
+    assert [c.id for c in await documents.read_adjacent_chunks(gap, 1, "after", 3)] == gap_ids[2:3]
+    assert [c.id for c in await documents.read_adjacent_chunks(gap, 5, "before", 2)] == []
+    after = await documents.read_adjacent_chunks(duplicate, 0, "after", 3)
+    before = await documents.read_adjacent_chunks(duplicate, 3, "before", 2)
+
+    assert [c.order for c in after] == [1, 1, 2] and set(duplicate_ids[1:3]) <= {c.id for c in after}
+    assert [c.order for c in before] == [1, 2]
+    assert {c.document for c in after + before} == {duplicate}

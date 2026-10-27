@@ -218,7 +218,10 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   (each the previous + 1, the first any integer) and its text is the chunks' `text` concatenated
   in `order` without separators (whatever their collections). A document with a gap or a
   duplicate order violates this model: its annotations are not derived and the position
-  backfill reports it.
+  backfill reports it. Reads of neighbouring chunks (chunk context, span chat, annotation
+  sources) rely on it: they look up the listed orders next to a chunk (`order` has no range
+  index, and a sort by `order` loads every chunk of the document, #376), so a missing order
+  is taken as the document's start or end.
 - `startChar` (`int`), `startWord` (`int`), `wordOpenAtStart` (`boolean`) — where the chunk starts
   in its document's text (#463): the UTF-16 code units of all preceding chunks, the words that
   start in them (one continuing into this chunk included), and whether the last preceding

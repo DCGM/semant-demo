@@ -38,7 +38,7 @@ class FakeStore:
         self.spans = SimpleNamespace(read_many=self._spans_of, read=self._span)
         self.activity = NoTenantActivity()
         self.documents = SimpleNamespace(read_chunk_text=self._chunk, read=self._document,
-                                         read_following_chunk_texts=self._following)
+                                         read_chunk_texts_in_range=self._range)
 
     async def _access(self, cid):
         return {COLLECTION: (OWNER.id, {SHARED.id}), OTHER_COLLECTION: (OWNER.id, set())}.get(cid)
@@ -67,9 +67,9 @@ class FakeStore:
         self.reads.append("document")
         return Document(id=DOCUMENT, title="Kronika", author=["A", "B"])
 
-    async def _following(self, document_id, after_order, limit):
-        self.reads.append(f"following:{after_order}:{limit}")
-        return [c for c in self.chunks if c.order > after_order][:limit]
+    async def _range(self, document_id, first, last):
+        self.reads.append(f"range:{first}:{last}")
+        return [c for c in self.chunks if first <= c.order <= last]
 
 
 def request(stored: TagSpan, *messages: tuple[str, str]) -> DiscussSpanRequest:
@@ -153,7 +153,7 @@ async def test_cross_chunk_span_reads_the_following_chunks():
     assert "<<<SPAN>>>Jan Novák<<<END_SPAN>>> went" in instructions
     # The following chunk is part of the span, not repeated as later context.
     assert "[later in document, ~5 chars] After..." in instructions
-    assert "following:1:8" in store.reads
+    assert "range:2:9" in store.reads
 
 
 # Span offsets are UTF-16 code units (ADR 0006): a non-BMP character counts as two.
@@ -236,7 +236,7 @@ async def test_failed_context_reads_log_only_the_error_class(caplog):
         raise RuntimeError(f"weaviate echoed key={SECRET} text=Jan Novák")
 
     store, provider = FakeStore(span(0, 3)), FakeStreamingChat(["ok"])
-    store.tags.read = store.documents.read = store.documents.read_following_chunk_texts = failing
+    store.tags.read = store.documents.read = store.documents.read_chunk_texts_in_range = failing
 
     assert await run(store, provider) == ["ok"]
 
