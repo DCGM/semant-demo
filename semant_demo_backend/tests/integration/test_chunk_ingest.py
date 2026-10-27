@@ -102,7 +102,8 @@ def jsonl(tmp_path, name: str, records: list) -> list:
 
 async def run(s, tmp_path, inputs, checkpoint="run.json", write=True):
     result = await chunk_ingest.run(s.client, s.names, inputs, checkpoint=tmp_path / checkpoint, endpoint="test",
-                                    write_=write, progress=quiet)
+                                    write_=write, backup={"offline_backup": "test copy"} if write else None,
+                                    progress=quiet)
     return result, chunk_ingest.exit_code(result)
 
 
@@ -250,6 +251,33 @@ async def test_an_uncertain_write_that_arrived_is_verified_and_continues(ingest_
     assert code == 0 and result["counts"]["chunks_inserted"] == 3
 
 
+async def test_every_write_run_records_its_backup_and_a_check_takes_none(ingest_store, tmp_path, monkeypatch):
+    s = ingest_store
+    inputs = jsonl(tmp_path, "new.jsonl", [line(NEW, i) for i in range(2)])
+    for kwargs in ({"write_": True}, {"write_": False, "backup": {"offline_backup": "x"}}):
+        with pytest.raises(LookupError, match="backup"):
+            await chunk_ingest.run(s.client, s.names, inputs, checkpoint=tmp_path / "refused.json", endpoint="test",
+                                   progress=quiet, **kwargs)
+    assert not (tmp_path / "refused.json").exists()
+
+    real = store.insert_chunk
+
+    async def failing(client, collection, chunk_id, document_id, properties):
+        if chunk_id == cid(NEW, 1):
+            raise ConnectionError("simulated")
+        await real(client, collection, chunk_id, document_id, properties)
+    monkeypatch.setattr(store, "insert_chunk", failing)
+    await chunk_ingest.run(s.client, s.names, inputs, checkpoint=tmp_path / "run.json", endpoint="test", write_=True,
+                           backup={"offline_backup": "/copies/2026-10-27"}, progress=quiet)
+    monkeypatch.setattr(store, "insert_chunk", real)
+    result = await chunk_ingest.run(s.client, s.names, inputs, checkpoint=tmp_path / "run.json", endpoint="test",
+                                    write_=True, backup={"backup_id": "pre-import"}, progress=quiet)
+    state = json.loads((tmp_path / "run.json").read_text())
+    assert [{k: v for k, v in b.items() if k != "at"} for b in state["backups"]] == [
+        {"offline_backup": "/copies/2026-10-27"}, {"backup_id": "pre-import"}]
+    assert result["backups"] == state["backups"] and chunk_ingest.exit_code(result) == 0
+
+
 async def test_an_existing_id_is_never_overwritten(ingest_store):
     s = ingest_store
     before = await snapshot(s.client)
@@ -268,7 +296,8 @@ async def test_a_schema_without_positions_is_refused_before_writing(ingest_store
     names = s.names.model_copy(update={"chunks_collection_name": "IngestBareChunks"})
     with pytest.raises(LookupError, match="startChar is missing"):
         await chunk_ingest.run(s.client, names, jsonl(tmp_path, "new.jsonl", [line(NEW, 0)]),
-                               checkpoint=tmp_path / "run.json", endpoint="test", write_=True, progress=quiet)
+                               checkpoint=tmp_path / "run.json", endpoint="test", write_=True,
+                               backup={"offline_backup": "test copy"}, progress=quiet)
     assert not await s.client.collections.get(DOCS).query.fetch_object_by_id(NEW)
 
 

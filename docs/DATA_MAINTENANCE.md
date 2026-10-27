@@ -316,7 +316,14 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
 - A created document whose chunks did not all arrive is listed as `incomplete_document` and never
   deleted (#281).
 - The checkpoint holds the endpoint, the resolved collections, the input files (size, SHA-256), the
-  cursor and the blocked documents. A finished checkpoint, or one for other input, is refused.
+  cursor, the blocked documents and the backup of every write run (`backups`), recorded before anything
+  is written. A finished checkpoint, or one for other input, is refused.
+- Backups:
+  - `--backup-id` must be a successful `backup-filesystem` backup holding the chunks and documents
+    collections; this is checked.
+  - `--offline-backup NOTE` describes an offline copy of the data directory made with Weaviate stopped;
+    it is recorded as given and not checked.
+  - `--check` takes neither.
 - Reported documents and invalid lines go to `CHECKPOINT.manifest.jsonl`.
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
