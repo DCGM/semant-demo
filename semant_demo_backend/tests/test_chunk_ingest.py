@@ -198,6 +198,7 @@ def test_exit_code():
 @pytest.mark.parametrize("argv", [
     ["--check", "c.json", "--offline-backup", "note", "in.jsonl"],
     ["--check", "c.json", "--backup-id", "b", "in.jsonl"],
+    ["--check", "c.json", "--bulk", "in.jsonl"],
 ])
 async def test_a_check_with_a_backup_option_is_refused(argv):
     assert await chunk_ingest._main(argv) == 2
