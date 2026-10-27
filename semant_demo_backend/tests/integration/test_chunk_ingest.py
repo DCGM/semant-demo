@@ -224,6 +224,19 @@ async def test_a_failed_write_blocks_only_its_document_and_a_rerun_finishes_it(i
     assert [(await stored_chunk(s.client, NEW, i)).position for i in range(5)] == expected
 
 
+async def test_a_failed_document_creation_writes_no_chunk_and_reports_no_incomplete_document(
+        ingest_store, tmp_path, monkeypatch):
+    s = ingest_store
+
+    async def failing(client, collection, document_id):
+        raise ConnectionError("simulated")
+    monkeypatch.setattr(store, "insert_document", failing)
+    result, code = await run(s, tmp_path, jsonl(tmp_path, "new.jsonl", [line(NEW, i) for i in range(2)]))
+    assert code == 1 and result["blocked"] == 1 and result["counts"]["documents_created"] == 0
+    assert [m["status"] for m in manifest(tmp_path)] == ["blocked"]
+    assert await stored_chunk(s.client, NEW, 0) is None
+
+
 async def test_an_uncertain_write_that_arrived_is_verified_and_continues(ingest_store, tmp_path, monkeypatch):
     s = ingest_store
     real = store.insert_chunk
