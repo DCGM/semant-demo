@@ -193,3 +193,11 @@ def test_exit_code():
     assert chunk_ingest.exit_code(done) == 0
     for change in ({"done": False}, {"blocked": 1}, {"invalid_lines": 1}, {"counts": {"rejected": 1}}):
         assert chunk_ingest.exit_code(done | change) == 1
+
+
+@pytest.mark.parametrize("argv", [
+    ["--check", "c.json", "--offline-backup", "note", "in.jsonl"],
+    ["--check", "c.json", "--backup-id", "b", "in.jsonl"],
+])
+async def test_a_check_with_a_backup_option_is_refused(argv):
+    assert await chunk_ingest._main(argv) == 2

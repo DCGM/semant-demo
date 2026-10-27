@@ -54,7 +54,11 @@ The checkpoint (JSON, replaced atomically after each page of documents) holds th
 endpoint, the resolved collections, the mode, the input files (size and SHA-256), the
 cursor, the counts and the blocked documents, which a rerun retries first. A finished
 checkpoint is refused, as is one for other input: a new run needs a new file name. Every
-reported document gets a line in ``CHECKPOINT.manifest.jsonl``.
+write run records its backup in the checkpoint (``backups``) before writing: a
+``--backup-id`` is checked (a successful ``backup-filesystem`` backup holding the chunks and
+documents collections), an ``--offline-backup`` note is recorded as given and not checked
+(an offline copy of the data directory, made with Weaviate stopped). A check takes neither.
+Every reported document gets a line in ``CHECKPOINT.manifest.jsonl``.
 
 Afterwards run ``metadata_sync`` (document metadata), then ``chunk_year`` (the year on the
 new chunks) and ``data_tools/embedder`` (their vectors; until then they are missing from
@@ -424,10 +428,16 @@ def _fingerprint(path: Path) -> dict[str, Any]:
 
 
 async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[Path], *, checkpoint: Path,
-              endpoint: str, write_: bool, concurrency: int = CONCURRENCY,
+              endpoint: str, write_: bool, backup: dict[str, str] | None = None, concurrency: int = CONCURRENCY,
               progress=lambda line: print(line, file=sys.stderr, flush=True)) -> dict[str, Any]:
     """One pass over the input documents (see the module docstring); returns the summary.
-    Raises ``LookupError`` before writing for a schema or checkpoint problem."""
+    ``backup`` (``{"backup_id": ...}`` or ``{"offline_backup": ...}``) is required for a write,
+    refused for a check, and recorded in the checkpoint before anything is written. Raises
+    ``LookupError`` before writing for a backup, schema or checkpoint problem."""
+    if write_ and not backup:
+        raise LookupError("A write needs a backup (--backup-id or --offline-backup, docs/DATA_MAINTENANCE.md)")
+    if not write_ and backup:
+        raise LookupError("A check writes nothing and takes no backup")
     target = await preflight(client, names)
     data = read_input(inputs)
     identity = {"endpoint": endpoint, "chunks": target.chunks, "documents": target.documents,
@@ -445,6 +455,9 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
                  "lines": data.lines, "ignored_fields": data.ignored, "invalid_lines": data.unattributed}
         _write_json(checkpoint, state)
         _append(manifest_path(checkpoint), [{"status": "invalid_line", "reason": r} for r in data.unattributed])
+    if backup:
+        state.setdefault("backups", []).append({"at": _now(), **backup})
+        _write_json(checkpoint, state)
     counts, manifest = state["counts"], manifest_path(checkpoint)
     semaphore = asyncio.Semaphore(concurrency)
 
@@ -518,6 +531,7 @@ def summary(state: dict[str, Any], checkpoint: Path) -> dict[str, Any]:
     return {key: state[key] for key in ("endpoint", "chunks", "documents", "mode", "done", "counts", "lines",
                                         "ignored_fields")} | {
         "invalid_lines": len(state["invalid_lines"]), "blocked": len(state["blocked"]),
+        "backups": state.get("backups", []),
         "checkpoint": str(checkpoint), "manifest": str(manifest_path(checkpoint)),
         "next": "metadata_sync, then chunk_year and data_tools/embedder (docs/DATA_MAINTENANCE.md)"}
 
@@ -553,7 +567,8 @@ def _parser() -> argparse.ArgumentParser:
     backup = p.add_mutually_exclusive_group()
     backup.add_argument("--backup-id", help="with --write: a successful backup-filesystem backup of chunks and documents")
     backup.add_argument("--offline-backup", metavar="NOTE",
-                        help="with --write: where an offline copy of the store is (recorded, not checked)")
+                        help="with --write: where an offline copy of the store is (recorded in the checkpoint, "
+                             "not checked)")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help=f"documents in parallel (default {CONCURRENCY})")
     p.add_argument("inputs", nargs="+", type=Path, metavar="FILE.jsonl")
     return p
@@ -564,13 +579,18 @@ async def _main(argv: list[str]) -> int:
     from semant_demo.config import Config
 
     args = _parser().parse_args(argv)
+    if args.check and (args.backup_id or args.offline_backup):
+        print("--backup-id and --offline-backup belong to --write; a check writes nothing", file=sys.stderr)
+        return 2
+    backup = {"backup_id": args.backup_id} if args.backup_id else (
+        {"offline_backup": args.offline_backup} if args.offline_backup else None)
     config = Config()
     endpoint = f"{config.WEAVIATE_HOST}:{config.WEAVIATE_REST_PORT}"
     if args.write and args.confirm_endpoint != endpoint:
         print(f"Refusing to write: configured endpoint {endpoint}, --confirm-endpoint {args.confirm_endpoint}",
               file=sys.stderr)
         return 2
-    if args.write and not (args.backup_id or args.offline_backup):
+    if args.write and not backup:
         print("Refusing to write without --backup-id or --offline-backup (docs/DATA_MAINTENANCE.md)", file=sys.stderr)
         return 2
     missing = [str(p) for p in args.inputs if not p.is_file()]
@@ -583,9 +603,7 @@ async def _main(argv: list[str]) -> int:
         if args.write and args.backup_id:
             await check_backup(client, await preflight(client, config.collectionNames), args.backup_id)
         result = await run(client, config.collectionNames, args.inputs, checkpoint=args.write or args.check,
-                           endpoint=endpoint, write_=bool(args.write), concurrency=args.concurrency)
-        if args.write:
-            result["backup"] = args.backup_id or {"offline": args.offline_backup}
+                           endpoint=endpoint, write_=bool(args.write), backup=backup, concurrency=args.concurrency)
         print(json.dumps(result, indent=2))
         return exit_code(result)
     except LookupError as e:
