@@ -40,7 +40,7 @@ Kramerius digital libraries
    Embedding generation (Qwen/Qwen3-Embedding-0.6B)
         │
         ▼
-   Weaviate insertion (db_insert_jsonl.py)
+   Weaviate insertion (append-only import, semant_demo.maintenance.chunk_ingest)
 ```
 
 Each chunk stored in Weaviate carries its text, vector embedding, NER annotations, and a reference to its parent document with full bibliographic metadata.

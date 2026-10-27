@@ -479,13 +479,13 @@ cd deploy
 # Clear the storage mounted by docker-compose.database.yml (verify the path first)
 rm -r /mnt/ssd2/weaviate_semant/*
 ./update.sh database-up
-# Reload data; db_insert_jsonl.py connects to localhost:8080
-cd ../weaviate_utils
-python db_insert_jsonl.py --source-dir /path/to/jsonl_data --delete-old
 ```
 
-See [DATABASE.md](../docs/DATABASE.md#data-ingestion) for the input format and
-[DATA_MAINTENANCE.md](../docs/DATA_MAINTENANCE.md) for the reviewed audit/repair commands.
+An empty store has no collections: create the schema first (there is no supported command
+yet, #128), then load the chunks with the append-only import and the metadata
+([DATA_MAINTENANCE.md](../docs/DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313); the import
+never creates collections). See [DATA_MAINTENANCE.md](../docs/DATA_MAINTENANCE.md) for the
+reviewed audit/repair commands.
 
 ---
 
