@@ -45,8 +45,8 @@ After the last batch, every affected user collection's document list is checked 
 contain a deleted document and its document count is compared with the count before. Exit
 code 1 while ids remain to retry or the run stopped. Collections and schema are never changed.
 
-A deleted document comes back by importing it again from its source (the JSON metadata and
-JSONL chunks, ``weaviate_utils/db_insert_jsonl.py``) with the same UUID, listed in the manifest;
+A deleted document comes back by importing its chunks again with the same UUIDs
+(``maintenance/chunk_ingest.py``) and then its metadata (``metadata_sync``), listed in the manifest;
 collection memberships are not restored (``collection_ids`` in the manifest records them).
 
 The Weaviate endpoint comes from ``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` /

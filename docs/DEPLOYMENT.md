@@ -72,10 +72,11 @@ development Weaviate of `make dev-up` uses 8180/50151 and does not conflict.
 
 ### 2. Data Ingestion
 
-Load documents and chunks with `weaviate_utils/db_insert_jsonl.py`; the input format and
-options are in [DATABASE.md](DATABASE.md#data-ingestion). The script connects to
-`localhost:8080`, and `--delete-old` drops and recreates the collections: verify the endpoint
-first.
+Add chunks with the append-only import `python -m semant_demo.maintenance.chunk_ingest`
+into the existing collections, then fill the document metadata and the derived data; the
+commands, input format and safety rules are in
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313). The import never
+creates the schema.
 
 ### 3. Embedding Service
 
