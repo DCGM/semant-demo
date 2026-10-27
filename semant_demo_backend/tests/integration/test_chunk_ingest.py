@@ -15,7 +15,7 @@ import pytest
 from weaviate.classes.backup import BackupStorage
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty
 from weaviate.classes.data import DataObject
-from weaviate.classes.query import MetadataQuery, QueryReference
+from weaviate.classes.query import Filter, MetadataQuery, QueryReference
 
 from semant_demo.adapters.weaviate import chunk_ingest as store
 from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
@@ -100,9 +100,9 @@ def jsonl(tmp_path, name: str, records: list) -> list:
     return [path]
 
 
-async def run(s, tmp_path, inputs, checkpoint="run.json", write=True):
+async def run(s, tmp_path, inputs, checkpoint="run.json", write=True, bulk=False):
     result = await chunk_ingest.run(s.client, s.names, inputs, checkpoint=tmp_path / checkpoint, endpoint="test",
-                                    write_=write, backup={"offline_backup": "test copy"} if write else None,
+                                    write_=write, backup={"offline_backup": "test copy"} if write else None, bulk=bulk,
                                     progress=quiet)
     return result, chunk_ingest.exit_code(result)
 
@@ -273,9 +273,9 @@ async def test_every_write_run_records_its_backup_and_a_check_takes_none(ingest_
     result = await chunk_ingest.run(s.client, s.names, inputs, checkpoint=tmp_path / "run.json", endpoint="test",
                                     write_=True, backup={"backup_id": "pre-import"}, progress=quiet)
     state = json.loads((tmp_path / "run.json").read_text())
-    assert [{k: v for k, v in b.items() if k != "at"} for b in state["backups"]] == [
-        {"offline_backup": "/copies/2026-10-27"}, {"backup_id": "pre-import"}]
-    assert result["backups"] == state["backups"] and chunk_ingest.exit_code(result) == 0
+    assert [{k: v for k, v in b.items() if k != "at"} for b in state["runs"]] == [
+        {"bulk": False, "offline_backup": "/copies/2026-10-27"}, {"bulk": False, "backup_id": "pre-import"}]
+    assert result["runs"] == state["runs"] and chunk_ingest.exit_code(result) == 0
 
 
 async def test_an_existing_id_is_never_overwritten(ingest_store):
@@ -322,3 +322,61 @@ async def test_inserted_chunks_have_no_vector_until_the_embedder_runs(ingest_sto
     chunk = await s.client.collections.get(CHUNKS).query.fetch_object_by_id(cid(NEW, 0), include_vector=True)
     assert chunk.vector == {}
     assert ChunkPosition(0, 0, False) == (await stored_chunk(s.client, NEW, 0)).position
+
+
+async def empty_chunks(client) -> None:
+    """Remove the stored chunks of the fixture, leaving the chunk collection empty."""
+    await client.collections.get(CHUNKS).data.delete_many(
+        where=Filter.by_ref("document").by_id().equal(EXISTING))
+    assert not (await client.collections.get(CHUNKS).aggregate.over_all(total_count=True)).total_count
+
+
+async def test_bulk_into_an_empty_chunk_collection_writes_what_the_single_inserts_write(ingest_store, tmp_path):
+    s = ingest_store
+    await empty_chunks(s.client)
+    records = [line(d, i) for d in (NEW, OTHER, EXISTING) for i in range(len(TEXTS))]
+    result, code = await run(s, tmp_path, jsonl(tmp_path, "all.jsonl", records), bulk=True)
+    assert code == 0 and result["counts"]["chunks_inserted"] == 3 * len(TEXTS)
+    assert result["counts"]["documents_created"] == 2  # EXISTING was there; NEW and OTHER created
+    assert [r["bulk"] for r in result["runs"]] == [True]
+    expected = list(chunk_positions(TEXTS))
+    for d in (NEW, OTHER, EXISTING):
+        assert [(await stored_chunk(s.client, d, i)).position for i in range(len(TEXTS))] == expected
+    checked = await backfill.run(s.client, s.names, checkpoint=tmp_path / "positions.json", endpoint="test",
+                                 write=False, progress=quiet)
+    assert checked["counts"]["consistent"] == 3 and checked["counts"]["conflict"] == checked["counts"]["missing"] == 0
+
+
+async def test_bulk_is_refused_when_any_chunk_is_stored(ingest_store, tmp_path):
+    s = ingest_store
+    before = await snapshot(s.client)
+    with pytest.raises(LookupError, match="--bulk needs an empty"):
+        await run(s, tmp_path, jsonl(tmp_path, "new.jsonl", [line(NEW, 0)]), bulk=True)
+    assert await snapshot(s.client) == before and not (tmp_path / "run.json").exists()
+
+
+async def test_a_refused_bulk_chunk_blocks_only_its_document_and_a_run_without_bulk_finishes_it(
+        ingest_store, tmp_path, monkeypatch):
+    s = ingest_store
+    await empty_chunks(s.client)
+    inputs = jsonl(tmp_path, "new.jsonl", [line(d, i) for d in (NEW, OTHER) for i in range(4)])
+    real, rounds = store.insert_chunks, []
+
+    async def refusing(client, collection, chunks):
+        rounds.append([c[0] for c in chunks])
+        assert len({c[1] for c in chunks}) == len(chunks)  # at most one chunk per document per batch
+        kept = [c for c in chunks if c[0] != cid(NEW, 1)]
+        errors = await real(client, collection, kept)
+        return errors | ({cid(NEW, 1): "simulated"} if len(kept) < len(chunks) else {})
+    monkeypatch.setattr(store, "insert_chunks", refusing)
+    result, code = await run(s, tmp_path, inputs, bulk=True)
+    assert code == 1 and result["blocked"] == 1 and len(rounds) == 4
+    assert [await stored_chunk(s.client, NEW, i) is not None for i in range(4)] == [True, False, False, False]
+    assert all([await stored_chunk(s.client, OTHER, i) is not None for i in range(4)])
+
+    monkeypatch.setattr(store, "insert_chunks", real)
+    with pytest.raises(LookupError, match="--bulk needs an empty"):
+        await run(s, tmp_path, inputs, bulk=True)
+    result, code = await run(s, tmp_path, inputs)  # resumes the checkpoint with single inserts
+    assert code == 0 and [r["bulk"] for r in result["runs"]] == [True, False]
+    assert [(await stored_chunk(s.client, NEW, i)).position for i in range(4)] == list(chunk_positions(TEXTS[:4]))

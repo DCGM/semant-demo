@@ -1,20 +1,22 @@
 """Reads and inserts of the append-only chunk import (#313).
 
 Only two writes exist: inserting an absent ``Documents`` object without properties and
-inserting an absent ``Chunks`` object. Both use the single-object insert, which Weaviate
-refuses for an existing id (``AlreadyExists``); the batch insert would silently replace
-the object, losing its tags, memberships and vectors. Never updates or deletes an
-object, never creates, drops or alters a collection. Reads return properties and the
-``document`` reference, never vectors. Collection names are resolved through aliases by
-the caller.
+inserting an absent ``Chunks`` object. They use the single-object insert, which Weaviate
+refuses for an existing id (``AlreadyExists``). The batch insert (``insert_chunks``)
+silently replaces an object with the same id, losing its tags, memberships and vectors, so
+the import uses it only with ``--bulk`` into an empty chunk collection. Never updates or
+deletes an object, never creates, drops or alters a collection. Reads return properties
+and the ``document`` reference, never vectors. Collection names are resolved through
+aliases by the caller.
 """
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
+from weaviate.classes.data import DataObject
 from weaviate.classes.query import Filter, QueryReference
-from weaviate.exceptions import UnexpectedStatusCodeError
+from weaviate.exceptions import UnexpectedStatusCodeError, WeaviateInsertManyAllFailedError
 
 from semant_demo.adapters.weaviate.documents import POSITION_PROPERTIES
 from semant_demo.features.documents.positions import ChunkPosition
@@ -108,6 +110,20 @@ async def insert_document(client: WeaviateAsyncClient, collection: str, document
         if _already_exists(e):
             raise AlreadyExists(str(document_id)) from e
         raise
+
+
+async def insert_chunks(client: WeaviateAsyncClient, collection: str,
+                        chunks: list[tuple[UUID, UUID, dict[str, Any]]]) -> dict[UUID, str]:
+    """Batch-insert ``(chunk id, document id, properties)``; the error of each chunk that was
+    refused (for example a reference to a missing document). **Replaces an object with the
+    same id without an error**: only for a chunk collection that held nothing at the start."""
+    objects = [DataObject(uuid=chunk_id, properties=properties, references={"document": document_id})
+               for chunk_id, document_id, properties in chunks]
+    try:
+        result = await client.collections.get(collection).data.insert_many(objects)
+    except WeaviateInsertManyAllFailedError as e:
+        return {chunk_id: str(e) for chunk_id, _, _ in chunks}
+    return {chunks[index][0]: error.message for index, error in result.errors.items()}
 
 
 async def insert_chunk(client: WeaviateAsyncClient, collection: str, chunk_id: UUID, document_id: UUID,
