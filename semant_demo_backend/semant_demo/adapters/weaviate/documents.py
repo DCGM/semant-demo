@@ -142,9 +142,10 @@ class DocumentRepository:
         Up to ``limit`` chunks of the document directly before (``direction="before"``) or
         after (``"after"``) the chunk with ``order``, nearest first, returned in document order.
 
-        Reads the ``limit`` orders next to ``order`` (#376): a document's orders are
-        consecutive (ADR 0009), so fewer chunks than ``limit`` means the document starts or
-        ends there. In a document that violates this, the read stops at a gap.
+        Reads the ``limit`` orders next to ``order`` (#376). Since a document's orders are
+        consecutive (ADR 0009), fewer chunks than ``limit`` indicates a boundary for
+        valid documents. Gaps and duplicates violate the model; no recovery is attempted
+        and results for such documents are not guaranteed.
         """
         before = direction == "before"
         first, last = (order - limit, order - 1) if before else (order + 1, order + limit)

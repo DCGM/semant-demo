@@ -633,8 +633,8 @@ async def test_chunk_window_flags_the_ends_of_a_document_not_starting_at_order_z
 
 
 async def test_adjacent_chunks_of_documents_violating_consecutive_orders(documents, seeded_store, collection_names):
-    # ADR 0009: a gap or a duplicate order is reported, not worked around. The read stops at
-    # a gap and keeps duplicates, never returning another document's chunks.
+    # ADR 0009: a gap or duplicate order violates the model and is reported by maintenance.
+    # No gap-repair logic is required; reads remain document-scoped even on invalid data.
     gap, gap_ids = await insert_document(seeded_store, collection_names, [0, 1, 2, 5, 6])
     duplicate, duplicate_ids = await insert_document(seeded_store, collection_names, [0, 1, 1, 2, 3])
 
