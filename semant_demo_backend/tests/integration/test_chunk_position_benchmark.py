@@ -24,7 +24,7 @@ from uuid import UUID
 
 import pytest
 from weaviate.classes.data import DataObject
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, Sort
 
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.paging import fetch_all
@@ -69,7 +69,16 @@ class Counting:
         return await self._timed(self.inner.read_chunk_texts_in_range(document_id, first, last))
 
     async def read_following_chunk_texts(self, document_id, after_order, limit):
-        return await self._timed(self.inner.read_following_chunk_texts(document_id, after_order, limit))
+        """Up to ``limit`` chunks after ``after_order``, sorted by Weaviate, as read before #463
+        (and before #376 removed the read)."""
+        async def read():
+            response = await self.inner._chunks().query.fetch_objects(
+                filters=(Filter.by_ref("document").by_id().equal(document_id)
+                         & Filter.by_property("order").greater_than(after_order)),
+                sort=Sort.by_property("order", ascending=True), limit=limit, return_properties=["order", "text"])
+            return [AnnotationChunk(id=o.uuid, document_id=document_id, order=o.properties["order"],
+                                    text=o.properties.get("text") or "") for o in response.objects]
+        return await self._timed(read())
 
     async def read_chunk_texts(self, document_id):
         """Every chunk of the document, as span writes read it before #463."""
