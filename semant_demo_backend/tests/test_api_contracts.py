@@ -63,7 +63,7 @@ def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
     assert set(components["DocumentChunk"]["properties"]) == stored
     assert set(components["DocumentViewChunk"]["properties"]) == stored | {"in_user_collection"}
     assert set(components["SearchResultChunk"]["properties"]) == stored | {
-        "query_title", "query_summary", "summary", "document_object", "metadata"}
+        "query_title", "query_summary", "summary", "document_object", "metadata", "origin"}
     assert set(components["CollectionChunk"]["properties"]) == {
         "id", "text", "start_page_id", "from_page", "to_page", "end_paragraph", "title", "language", "order",
         "in_collection"}

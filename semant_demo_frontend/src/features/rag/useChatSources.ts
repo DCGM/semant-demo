@@ -35,6 +35,14 @@ export function sourceRegistry (messages: readonly MessageWithSources[]): ChatSo
 }
 
 /**
+ * Whether the source is a corpus chunk with a document to show. A web search result of an
+ * answer (`origin: 'web'`, #370) is not: its ids name no corpus document.
+ */
+export function hasDocument (source: SearchResultChunk): boolean {
+  return source.origin !== 'web'
+}
+
+/**
  * The chunk id an answer's own citation `[doc N]` refers to (its `sources[N-1]`), or null
  * when the answer has no such source; such a citation must not be relabelled.
  */
@@ -99,10 +107,14 @@ export function useChatSources (messages: Ref<readonly MessageWithSources[]>) {
     return true
   }
 
-  /** Selects a source and shows it in its document (again: brings it back into view). */
+  /**
+   * Selects a source and shows it in its document (again: brings it back into view). Returns
+   * false, changing nothing, for a source without a document (`hasDocument`).
+   */
   function openDocument (id: string): boolean {
-    if (!select(id)) return false
-    const { source } = byId.value.get(id)!
+    const entry = byId.value.get(id)
+    if (!entry || !hasDocument(entry.source) || !select(id)) return false
+    const { source } = entry
     documentSourceId.value = id
     void context.open({ documentId: source.document, chunkId: source.id })
     return true
