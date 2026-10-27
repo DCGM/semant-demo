@@ -29,6 +29,10 @@ import {
  * 
  * ``metadata`` holds the chunk's stored classifications (``filters.TASK_CLASSES``) that
  * have values: property name -> values, in ``TASK_CLASSES`` order.
+ * 
+ * ``origin`` is ``"web"`` for a web search result that a RAG answer used (#370): not a
+ * corpus chunk, so there is no document or chunk window to open; its ids are made up for
+ * that answer only.
  * @export
  * @interface SearchResultChunk
  */
@@ -165,7 +169,24 @@ export interface SearchResultChunk {
      * @memberof SearchResultChunk
      */
     metadata?: { [key: string]: Array<string>; };
+    /**
+     * 
+     * @type {SearchResultChunkOriginEnum}
+     * @memberof SearchResultChunk
+     */
+    origin?: SearchResultChunkOriginEnum;
 }
+
+
+/**
+ * @export
+ */
+export const SearchResultChunkOriginEnum = {
+    corpus: 'corpus',
+    web: 'web'
+} as const;
+export type SearchResultChunkOriginEnum = typeof SearchResultChunkOriginEnum[keyof typeof SearchResultChunkOriginEnum];
+
 
 /**
  * Check if a given object implements the SearchResultChunk interface.
@@ -214,6 +235,7 @@ export function SearchResultChunkFromJSONTyped(json: any, ignoreDiscriminator: b
         'summary': json['summary'] == null ? undefined : json['summary'],
         'documentObject': DocumentFromJSON(json['document_object']),
         'metadata': json['metadata'] == null ? undefined : json['metadata'],
+        'origin': json['origin'] == null ? undefined : json['origin'],
     };
 }
 
@@ -250,6 +272,7 @@ export function SearchResultChunkToJSONTyped(value?: SearchResultChunk | null, i
         'summary': value['summary'],
         'document_object': DocumentToJSON(value['documentObject']),
         'metadata': value['metadata'],
+        'origin': value['origin'],
     };
 }
 

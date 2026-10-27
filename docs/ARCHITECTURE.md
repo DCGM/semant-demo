@@ -411,6 +411,8 @@ flowchart TD
 
 **TestRag** — Returns a fixed answer without retrieval or model calls (route tests).
 
+**Sources and citations (#370).** An answer cites `sources[N-1]` of its own `RagResponse` by `[doc N]`; the chat page relabels them as conversation-wide `[S1]`... by chunk id. Each pipeline numbers the passages it shows the model in the order of the sources it returns. The agent numbers the chunks of all its searches once per answer (a chunk found again keeps its number) and returns all of them; its final synthesis keeps those numbers. Citations without a source are logged (`features/rag/citations.py`, counts only) and left as written, never moved to another source. A web search result is a source of its own (`origin: "web"`, ids made up for that answer), with no corpus document to open.
+
 The default `RAG_CONFIGS_PATH` is `configs/rag/demo_configs/` (the configurations offered in the deployed demo). `configs/rag/configs/` holds further loadable variants of the same classes for development and `run_demo`; a test loads both sets, so every shipped configuration names an existing class and a permitted tier.
 
 #### Incremental RAG:

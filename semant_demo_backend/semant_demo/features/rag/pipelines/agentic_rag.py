@@ -9,14 +9,16 @@ import time
 import json
 import uuid
 import logging
+from uuid import UUID
 
 
 from semant_demo.adapters.llm.gateway import message_text
 from semant_demo.adapters.llm.models import Capability
+from semant_demo.features.rag.citations import check_citations
 from semant_demo.features.rag.registry import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.features.search.service import Retriever
-from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchType
+from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchResultChunk, SearchType
 from semant_demo.features.rag.schemas import RagSearch, RagRequest, RagResponse
 
 logger = logging.getLogger(__name__)
@@ -100,13 +102,40 @@ AGENT_TOOLS = [
 ]
 
 
+class AnswerSources:
+    """The sources of one agent answer (#370): every chunk that any search of the answer
+    found, once, numbered ``[doc N]`` in order of first retrieval. A chunk found again keeps
+    its number, so a citation from any search names ``sources[N-1]`` of the response."""
+
+    def __init__(self):
+        self.sources: list[SearchResultChunk] = []
+        self._numbers: dict[UUID, int] = {}
+
+    def add(self, chunks: list[SearchResultChunk]) -> list[tuple[int, SearchResultChunk]]:
+        """Numbers the chunks of one search, in its order, each chunk once."""
+        numbered: dict[int, SearchResultChunk] = {}
+        for chunk in chunks:
+            number = self._numbers.get(chunk.id)
+            if number is None:
+                self.sources.append(chunk)
+                number = self._numbers[chunk.id] = len(self.sources)
+            numbered.setdefault(number, chunk)
+        return list(numbered.items())
+
+
+def format_numbered(numbered: list[tuple[int, SearchResultChunk]]) -> str:
+    return "\n\n".join(f"[doc {number}] {chunk.text}" for number, chunk in numbered)
+
+
 class WeaviateToolWrapper:
     def __init__(self, retrieve: Retriever, rag_search: RagSearch, alpha: float, chunk_limit: int):
         self.retrieve = retrieve
         self.rag_search = rag_search
         self.alpha = alpha
         self.chunk_limit = chunk_limit
-        self.last_results = None 
+        self.sources = AnswerSources()
+        # The numbered chunks of the last search.
+        self.last_results: list[tuple[int, SearchResultChunk]] = []
 
     async def _call_weaviate_search(self, rag_search: RagSearch,  type: SearchType) -> SearchResponse:
         #create db search request
@@ -137,14 +166,8 @@ class WeaviateToolWrapper:
             self.rag_search.search_type
         )
 
-        self.last_results = response.results
-
-        formatted_chunks = []
-
-        for i, hit in enumerate(response.results, start=1):
-            formatted_chunks.append(f"[doc {i}] {hit.text}")
-
-        return "\n\n".join(formatted_chunks)
+        self.last_results = self.sources.add(response.results)
+        return format_numbered(self.last_results)
 
 
 class AssessRetrievalQualityTool:
@@ -314,7 +337,7 @@ class xmartiAgentRag(BaseRag):
 
                 # Handle different tool responses
                 if tool_name == "weaviate_search":
-                    retrieved_sources = weaviate_tool.last_results or []
+                    retrieved_sources = weaviate_tool.last_results
                     # Add tool response
                     messages.append(
                         ToolMessage(
@@ -392,21 +415,13 @@ class xmartiAgentRag(BaseRag):
                 continue
 
             final_answer = message_text(ai_msg.content)
-
-            return RagResponse(
-                response_id = str(uuid.uuid4()),
-                rag_answer=final_answer,
-                sources=weaviate_tool.last_results or [],
-                time_spent=time.perf_counter() - start_time
-            )
+            return self._response(final_answer, weaviate_tool.sources, start_time)
 
 
         # Final attempt: if we have ANY retrieved sources, always try to synthesize an answer
         if retrieved_sources:
-            formatted_chunks = []
-            for i, hit in enumerate(retrieved_sources[:5], start=1):
-                formatted_chunks.append(f"[doc {i}] {hit.text}")
-            retrieved_docs_text = "\n\n".join(formatted_chunks)
+            # The first chunks of the last search, with their numbers of this answer.
+            retrieved_docs_text = format_numbered(retrieved_sources[:5])
 
             try:
                 final_synthesis = await synthesize_tool.synthesize_evidence(
@@ -415,20 +430,22 @@ class xmartiAgentRag(BaseRag):
                 )
 
                 logger.debug("Agent answered by final synthesis")
-                return RagResponse(
-                    response_id=str(uuid.uuid4()),
-                    rag_answer=final_synthesis,
-                    sources=weaviate_tool.last_results or [],
-                    time_spent=time.perf_counter() - start_time
-                )
+                return self._response(final_synthesis, weaviate_tool.sources, start_time)
             except Exception as e:
                 logger.debug("Agent final synthesis failed: %s", type(e).__name__)
                 # Fall through to default response if synthesis fails
 
         # Fallback if loop ends without final answer AND no sources were retrieved
+        return self._response("Sorry, I can´t answer the question based on the retrieved information.",
+                              weaviate_tool.sources, start_time)
+
+    @staticmethod
+    def _response(answer: str, sources: AnswerSources, start_time: float) -> RagResponse:
+        """The answer with all sources of its searches, as numbered for its citations."""
+        check_citations(answer, len(sources.sources), "agentic")
         return RagResponse(
-            response_id = str(uuid.uuid4()),
-            rag_answer="Sorry, I can´t answer the question based on the retrieved information.",
-            sources=weaviate_tool.last_results or [],
+            response_id=str(uuid.uuid4()),
+            rag_answer=answer,
+            sources=sources.sources,
             time_spent=time.perf_counter() - start_time
         )

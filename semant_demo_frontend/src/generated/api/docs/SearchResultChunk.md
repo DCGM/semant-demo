@@ -1,7 +1,7 @@
 
 # SearchResultChunk
 
-A search hit: the chunk, its document and optional generated summaries. ``text`` is display text (``service.display_text``: hyphenated line breaks joined), not the canonical stored text; span offsets do not apply to it. The document view reads canonical text (``DocumentDetail``).  ``metadata`` holds the chunk\'s stored classifications (``filters.TASK_CLASSES``) that have values: property name -> values, in ``TASK_CLASSES`` order.
+A search hit: the chunk, its document and optional generated summaries. ``text`` is display text (``service.display_text``: hyphenated line breaks joined), not the canonical stored text; span offsets do not apply to it. The document view reads canonical text (``DocumentDetail``).  ``metadata`` holds the chunk\'s stored classifications (``filters.TASK_CLASSES``) that have values: property name -> values, in ``TASK_CLASSES`` order.  ``origin`` is ``\"web\"`` for a web search result that a RAG answer used (#370): not a corpus chunk, so there is no document or chunk window to open; its ids are made up for that answer only.
 
 ## Properties
 
@@ -29,6 +29,7 @@ Name | Type
 `summary` | string
 `documentObject` | [Document](Document.md)
 `metadata` | { [key: string]: Array&lt;string&gt;; }
+`origin` | string
 
 ## Example
 
@@ -59,6 +60,7 @@ const example = {
   "summary": null,
   "documentObject": null,
   "metadata": null,
+  "origin": null,
 } satisfies SearchResultChunk
 
 console.log(example)
