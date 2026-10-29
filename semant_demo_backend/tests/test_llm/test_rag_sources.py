@@ -111,6 +111,20 @@ async def test_agent_final_synthesis_keeps_the_numbers_of_the_answer(tmp_path, l
     assert cited(response) == {4: "Delta", 2: "Beta"}
 
 
+async def test_agent_final_synthesis_uses_earlier_searches_when_the_last_finds_nothing(tmp_path, llm):  # noqa: F811
+    model = ScriptedChat(search("first", "1"), search("second", "2"))
+    synthesize = ScriptedChat(AIMessage(content="Beta [doc 2]."))
+    rag = agent(tmp_path, llm, model, synthesize, agent_iterations=2)
+
+    response = await rag.rag_request(RagRequest(question="Q", rag_search=RagSearch()), ScriptedRetriever(
+        {"first": [A, B], "second": []}))
+
+    assert synthesize.received[0][-1].content.endswith("[doc 1] Alfa\n\n[doc 2] Beta")
+    assert response.rag_answer == "Beta [doc 2]."
+    assert [s.id for s in response.sources] == [A.id, B.id]
+    assert cited(response) == {2: "Beta"}
+
+
 async def test_agent_answer_without_searches_has_no_sources(tmp_path, llm):  # noqa: F811
     rag = agent(tmp_path, llm, ScriptedChat(AIMessage(content="Nothing [doc 1].")))
 

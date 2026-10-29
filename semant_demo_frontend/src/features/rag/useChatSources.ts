@@ -43,6 +43,21 @@ export function hasDocument (source: SearchResultChunk): boolean {
 }
 
 /**
+ * The page of a web search result (its `documentObject.url`), or null for a corpus source
+ * or a URL that is not a well-formed HTTP(S) URL.
+ */
+export function webPageUrl (source: SearchResultChunk): string | null {
+  const url: unknown = source.documentObject?.url
+  if (source.origin !== 'web' || typeof url !== 'string') return null
+  try {
+    const parsed = new URL(url.trim())
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * The chunk id an answer's own citation `[doc N]` refers to (its `sources[N-1]`), or null
  * when the answer has no such source; such a citation must not be relabelled.
  */

@@ -282,4 +282,29 @@ describe('ChatSourcesPanel', () => {
     expect(wrapper.emitted('select')).toEqual([['w']])
     expect(wrapper.emitted('open')).toBeUndefined()
   })
+
+  it('links a web search result to its web page, only for an HTTP(S) URL', () => {
+    const withUrl = (id: string, url: string): SearchResultChunk => {
+      const web = webSource(id)
+      return { ...web, documentObject: { ...web.documentObject!, url } }
+    }
+    const wrapper = mount(ChatSourcesPanel, {
+      props: {
+        entries: sourceRegistry([{
+          sources: [withUrl('w1', 'https://example.org/a?b=1'), withUrl('w2', 'javascript:alert(1)'),
+            withUrl('w3', 'not a url'), webSource('w4')]
+        }])
+      },
+      global: { plugins: [Quasar] }
+    })
+    const items = wrapper.findAll('li')
+    const links = items.map(i => i.find('[data-testid="chat-source-web-link"]'))
+
+    expect(links[0].text()).toContain('Open web page')
+    expect(links[0].attributes()).toMatchObject({
+      href: 'https://example.org/a?b=1', target: '_blank', rel: 'noopener noreferrer'
+    })
+    expect(links.slice(1).map(l => l.exists())).toEqual([false, false, false])
+    expect(items.map(i => i.find('.chat-sources__view').exists())).toEqual([false, false, false, false])
+  })
 })

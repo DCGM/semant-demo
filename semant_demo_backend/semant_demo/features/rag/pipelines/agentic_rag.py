@@ -122,6 +122,10 @@ class AnswerSources:
             numbered.setdefault(number, chunk)
         return list(numbered.items())
 
+    def numbered(self) -> list[tuple[int, SearchResultChunk]]:
+        """All chunks of the answer with their numbers."""
+        return list(enumerate(self.sources, start=1))
+
 
 def format_numbered(numbered: list[tuple[int, SearchResultChunk]]) -> str:
     return "\n\n".join(f"[doc {number}] {chunk.text}" for number, chunk in numbered)
@@ -285,8 +289,6 @@ class xmartiAgentRag(BaseRag):
         decompose_tool = DecomposeQuestionTool(self.decompose_model, self.decompose_prompt)
         synthesize_tool = SynthesizeEvidenceTool(self.synthesize_model, self.synthesize_prompt)
 
-        retrieved_sources = []
-
 
         tools = {
             "weaviate_search": weaviate_tool.weaviate_search,
@@ -337,7 +339,6 @@ class xmartiAgentRag(BaseRag):
 
                 # Handle different tool responses
                 if tool_name == "weaviate_search":
-                    retrieved_sources = weaviate_tool.last_results
                     # Add tool response
                     messages.append(
                         ToolMessage(
@@ -369,7 +370,7 @@ class xmartiAgentRag(BaseRag):
                                     content="Assessment shows relevant retrieval. I should now generate the final answer using synthesize_evidence. A partial answer is better than no answer."
                                 )
                             )
-                        elif retrieved_sources:
+                        elif weaviate_tool.sources.sources:
                             # Even if assessment is low, if we have sources, encourage answering
                             messages.append(
                                 AIMessage(
@@ -378,7 +379,7 @@ class xmartiAgentRag(BaseRag):
                             )
                     except (json.JSONDecodeError, ValueError):
                         # If parsing fails, encourage synthesis if we have sources
-                        if retrieved_sources:
+                        if weaviate_tool.sources.sources:
                             messages.append(
                                 AIMessage(
                                     content="Assessment parsing failed, but I have retrieved documents. I should attempt to answer using synthesize_evidence."
@@ -418,10 +419,12 @@ class xmartiAgentRag(BaseRag):
             return self._response(final_answer, weaviate_tool.sources, start_time)
 
 
-        # Final attempt: if we have ANY retrieved sources, always try to synthesize an answer
-        if retrieved_sources:
-            # The first chunks of the last search, with their numbers of this answer.
-            retrieved_docs_text = format_numbered(retrieved_sources[:5])
+        # Final attempt: if any search found sources, always try to synthesize an answer from
+        # the first chunks of the last search or, if it found none, of the whole answer.
+        evidence = weaviate_tool.last_results or weaviate_tool.sources.numbered()
+        if evidence:
+            # With their numbers of this answer.
+            retrieved_docs_text = format_numbered(evidence[:5])
 
             try:
                 final_synthesis = await synthesize_tool.synthesize_evidence(
