@@ -272,6 +272,9 @@ test('a web search result is a source of its own, without a document to open', a
   await expect(sourceItem(page, 'S2')).toContainText('Web snippet 1 about Lhota.')
   await expect(sourceItem(page, 'S2')).toContainText('Web search result, not in the corpus')
   await expect(sourceItem(page, 'S2').getByRole('button', { name: /View source/ })).toHaveCount(0)
+  // Its page opens outside semANT.
+  await expect(sourceItem(page, 'S2').getByRole('link', { name: /Open the web page of source S2/ }))
+    .toHaveAttribute('href', 'https://example.org/1')
   await sourceSummary(page, 'S2').dblclick()
   await expect(documentPanel(page)).toHaveCount(0)
   await expect(selectedCitations(page)).toHaveText(['[S2]'])
