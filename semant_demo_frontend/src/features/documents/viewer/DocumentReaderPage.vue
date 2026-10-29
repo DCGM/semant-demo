@@ -213,7 +213,7 @@ import ReaderToolbar from './ReaderToolbar.vue'
 import { getLastUsedTagId, setLastUsedTagId } from 'src/features/annotations/lastUsedTag'
 import {
   gapSize, groupParagraphs, missingChunksText, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText,
-  shortestMarker
+  shortestMarker, memoizeVisibleSpansByChunkId
 } from './readerOffsets'
 import { useChunkMembership } from './useChunkMembership'
 import { useChunkWindow } from './useChunkWindow'
@@ -272,8 +272,7 @@ const linkedSpanId = ref<string | null>(null)
 const gutters = useReaderGutters(
   documentTextRef,
   displayChunks,
-  hiddenPreviewChunks,
-  () => annotations.spansByChunkId.value,
+  (chunkId) => annotations.getAllProjectedSpans(chunkId),
   (span) => span.id === linkedSpanId.value || (
     span.type !== SpanType.neg &&
     (aiPanelActive.value || span.type !== SpanType.auto) &&
@@ -282,10 +281,8 @@ const gutters = useReaderGutters(
   () => chunkGutterVisible.value
 )
 
-watch(chunkGutterVisible, (visible) => {
-  if (visible) {
-    void nextTick(() => relayout())
-  }
+watch(chunkGutterVisible, () => {
+  void nextTick(() => gutters.relayoutChunkRows())
 })
 
 const relayout = () => gutters.relayout()
@@ -343,24 +340,16 @@ function onChunkGutterHover(chunkId: string | null, controls: boolean) {
 // the whole document instead of just the chunk being dragged.
 let previousVisibleSpansByChunkId: Record<string, ProjectedSpan[]> = {}
 
-const sameSpanReferences = (a: ProjectedSpan[] | undefined, b: ProjectedSpan[]): boolean =>
-  !!a && a.length === b.length && a.every((span, index) => span === b[index])
-
 const visibleSpansByChunkId = computed<Record<string, ProjectedSpan[]>>(() => {
-  const next: Record<string, ProjectedSpan[]> = {}
-
-  for (const chunk of displayChunks.value) {
-    const filtered = annotations.getProjectedSpans(chunk.id).filter(
-      (s) => s.id === linkedSpanId.value ||
-        (tagNav.isTagVisible(s.tagId) && (aiPanelActive.value || s.type !== SpanType.auto))
-    )
-
-    const previous = previousVisibleSpansByChunkId[chunk.id]
-
-    next[chunk.id] = sameSpanReferences(previous, filtered)
-      ? previous
-      : filtered
-  }
+  const next = memoizeVisibleSpansByChunkId(
+    displayChunks.value,
+    (chunkId) => annotations.getProjectedSpans(chunkId),
+    (span) => span.id === linkedSpanId.value || (
+      tagNav.isTagVisible(span.tagId) &&
+      (aiPanelActive.value || span.type !== SpanType.auto)
+    ),
+    previousVisibleSpansByChunkId
+  )
 
   previousVisibleSpansByChunkId = next
   return next

@@ -13,6 +13,33 @@ export interface OrderedText {
   text: string
 }
 
+/** Displayed and hidden chunks without duplicates, in document order. */
+export function knownChunksInOrder<T extends { id: string, order: number }> (displayed: T[], hidden: T[]): T[] {
+  const byId = new Map<string, T>()
+
+  for (const chunk of displayed) {
+    if (!byId.has(chunk.id)) byId.set(chunk.id, chunk)
+  }
+
+  for (const chunk of hidden) {
+    if (!byId.has(chunk.id)) byId.set(chunk.id, chunk)
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.order - b.order)
+}
+
+/**
+ * Reuse the previous array when all elements have the same references.
+ * Stable array identities prevent unnecessary Vue child-component updates.
+ */
+export function reuseIfSameReferences<T> (previous: T[] | undefined, next: T[]): T[] {
+  if (!previous || previous.length !== next.length) return next
+
+  return previous.every((item, index) => item === next[index])
+    ? previous
+    : next
+}
+
 export interface ChunkPart {
   chunk: number
   start: number
