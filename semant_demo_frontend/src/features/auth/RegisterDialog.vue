@@ -121,18 +121,22 @@ async function submit() {
   loading.value = true
   try {
     await userStore.register(email.value, password.value, username.value, name.value, institution.value || undefined)
-    resetForm()
-    emit('update:modelValue', false)
-    $q.notify({
-      type: 'positive',
-      message: 'Account created! You can now log in.',
-      position: 'top',
-      timeout: 4000
-    })
-  } catch (e: unknown) {
+  } catch {
     errorMsg.value = 'Registration failed. The email or username may already be in use.'
-  } finally {
     loading.value = false
+    return
   }
+
+  // The account exists, we can log-in
+  const signedIn = await userStore.login(email.value, password.value).then(() => true, () => false)
+  loading.value = false
+  resetForm()
+  emit('update:modelValue', false)
+  $q.notify({
+    type: 'positive',
+    message: signedIn ? 'Account created. You are now signed in.' : 'Account created! You can now log in.',
+    position: 'top',
+    timeout: 4000
+  })
 }
 </script>
