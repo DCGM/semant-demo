@@ -13,7 +13,7 @@ application started with `make dev-up`, and the optional advanced snapshot workf
 | Component | Version | Notes |
 |---|---|---|
 | Python | ≥ 3.12 | Backend and embedding service |
-| Node.js | 22 | Frontend build (`package.json` engines) |
+| Node.js | 22.23.4 | Frontend build (`semant_demo_frontend/.nvmrc`; `package.json` engines allow any 22) |
 | Docker + Docker Compose | Latest | Weaviate container |
 | GPU (optional for standalone setup) | CUDA-capable | Required for the deployed Qwen embedder and GPU-based Topicer configurations |
 | Ollama | Latest | If using local LLM models |
@@ -37,6 +37,12 @@ application started with `make dev-up`, and the optional advanced snapshot workf
 For server deployments, use the compose files in `deploy/` instead of the manual steps below; see [deploy/README.md](../deploy/README.md). CI/CD deploys production from a `v*.*.*` tag on `main`, a persistent `test-main` instance from `main`, and an ephemeral preview per PR (deployed even when checks fail, with separate preview credentials).
 
 The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release). Production uses a pinned vLLM image and model revision for Qwen embeddings ([deploy/README](../deploy/README.md#qwen-embedding-service-385)), not the legacy `deploy/Dockerfile.embedder` (which still installs unpinned requirements). Topicer is built separately from a pinned upstream release tag with independently resolved dependencies ([Topicer deployment](../deploy/README.md#topicer)); it is not covered by the backend lock.
+
+### Frontend build toolchain
+
+The `node-build` stage of `deploy/Dockerfile` uses a Node image pinned by patch release and multi-architecture digest (npm is the version bundled with it), and the `quasar` command from `@quasar/app-vite` in `package-lock.json`, not a global CLI (#261). The CI *Frontend checks* job runs in the same image and ends with the production `npx quasar build`.
+
+To upgrade Node, in one reviewed PR (a major version also needs `@quasar/app-vite` and Vite support): get the digest with `docker buildx imagetools inspect node:<version>-bookworm`, then update the `FROM` line in `deploy/Dockerfile`, the *Frontend checks* image in `.github/workflows/ci-cd.yml`, `semant_demo_frontend/.nvmrc` and the Node row above.
 
 ---
 
