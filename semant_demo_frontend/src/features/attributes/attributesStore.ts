@@ -4,9 +4,10 @@ import { ref } from 'vue'
 import type { Attribute, PatchAttribute, PatchAttributeValue, PostAttribute, PostAttributeValue } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus } from 'src/shared/api'
 import { useAttributesRepository } from './useAttributesRepository'
+import { KIND_LABELS, specialValue, type SpecialKind } from './attributeForm'
 
 /** A refused or failed definition write, with the backend's message (e.g. the number of
- * annotations that hold a value, for a 409). */
+ * annotations a narrowing of the tags affects, for a 409). */
 export class AttributeWriteError extends Error {
   constructor (message: string, readonly status: number | null) {
     super(message)
@@ -18,8 +19,10 @@ const byName = (a: Attribute, b: Attribute) => a.name.localeCompare(b.name, unde
 
 /**
  * The attribute definitions of one collection (#331, ADR 0011): attributes with their values,
- * retired ones included. Loading another collection first drops the current ones, and an
- * answer for an earlier collection, an earlier reload or an earlier session is ignored.
+ * retired ones included. The UI retires and restores them and never deletes them (#506); one
+ * deleted elsewhere is gone with the next load. Loading another collection first drops the
+ * current ones, and an answer for an earlier collection, an earlier reload or an earlier
+ * session is ignored.
  *
  * Every write answers with the whole attribute, which replaces the listed one unless the
  * listed one is newer (`revision` counts its edits), so answers arriving out of order never
@@ -34,15 +37,12 @@ export const useAttributesStore = defineStore('attributes', () => {
   const attributes = ref<Attribute[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
-  // Attributes deleted in this scope; ids are never reused, so an older list cannot bring one back.
-  const deletedIds = new Set<string>()
   // When each attribute was last kept from a write answer (a running count), so a list read
   // before that answer does not drop it.
   let writes = 0
   const keptAt = new Map<string, number>()
 
   function keep (attribute: Attribute) {
-    if (deletedIds.has(attribute.id)) return
     keptAt.set(attribute.id, ++writes)
     const index = attributes.value.findIndex(a => a.id === attribute.id)
     if (index < 0) {
@@ -54,15 +54,9 @@ export const useAttributesStore = defineStore('attributes', () => {
     }
   }
 
-  function forget (attributeId: string) {
-    deletedIds.add(attributeId)
-    attributes.value = attributes.value.filter(a => a.id !== attributeId)
-  }
-
   async function load (collectionId: string) {
     if (scope.enter(collectionId)) {
       attributes.value = []
-      deletedIds.clear()
       keptAt.clear()
     }
     listRequests.enter()
@@ -81,7 +75,6 @@ export const useAttributesStore = defineStore('attributes', () => {
       const answered = new Set(list.map(a => a.id))
       const keptMeanwhile = attributes.value.filter(a => !answered.has(a.id) && (keptAt.get(a.id) ?? 0) > sent)
       attributes.value = list
-        .filter(a => !deletedIds.has(a.id))
         .map(a => {
           const known = listed.get(a.id)
           return known && (known.revision ?? 0) > (a.revision ?? 0) ? known : a
@@ -118,10 +111,6 @@ export const useAttributesStore = defineStore('attributes', () => {
     write(collectionId, () => repository.update(collectionId, attributeId, patch), keep,
       'The attribute could not be saved.')
 
-  const deleteAttribute = (collectionId: string, attributeId: string) =>
-    write(collectionId, () => repository.delete(collectionId, attributeId), () => forget(attributeId),
-      'The attribute could not be deleted.')
-
   const addValue = (collectionId: string, attributeId: string, value: PostAttributeValue) =>
     write(collectionId, () => repository.addValue(collectionId, attributeId, value), keep,
       'The value could not be added.')
@@ -130,15 +119,24 @@ export const useAttributesStore = defineStore('attributes', () => {
     write(collectionId, () => repository.updateValue(collectionId, attributeId, valueId, patch), keep,
       'The value could not be saved.')
 
-  const deleteValue = (collectionId: string, attributeId: string, valueId: string) =>
-    write(collectionId, () => repository.deleteValue(collectionId, attributeId, valueId), keep,
-      'The value could not be deleted.')
+  /** Offers (`allowed`) or withdraws a special kind of the attribute as it is known: withdrawing
+   * retires its value, so the assignments it has stay; offering it again restores that value,
+   * keeping its id, and adds one only when the attribute never had one (at most one of each
+   * kind, retired ones included). Already as asked: no write, the attribute as given. */
+  async function setSpecialValue (collectionId: string, attribute: Attribute, kind: SpecialKind,
+    allowed: boolean): Promise<Attribute> {
+    const existing = specialValue(attribute, kind)
+    if (!existing) {
+      return allowed ? addValue(collectionId, attribute.id, { label: KIND_LABELS[kind], kind }) : attribute
+    }
+    if (!existing.retired === allowed) return attribute
+    return updateValue(collectionId, attribute.id, existing.id, { retired: !allowed })
+  }
 
   /** Forgets everything (sign-out). */
   function clear () {
     scope.reset()
     listRequests.enter()
-    deletedIds.clear()
     keptAt.clear()
     attributes.value = []
     loading.value = false
@@ -152,10 +150,9 @@ export const useAttributesStore = defineStore('attributes', () => {
     load,
     createAttribute,
     updateAttribute,
-    deleteAttribute,
     addValue,
     updateValue,
-    deleteValue,
+    setSpecialValue,
     clear
   }
 })

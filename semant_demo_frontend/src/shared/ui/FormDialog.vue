@@ -2,7 +2,8 @@
   <!-- The shell of the create/edit form dialogs (#479). Quasar sends Escape and backdrop clicks
        to the topmost overlay only and, with no-esc-dismiss/no-backdrop-dismiss, reports them as
        a shake: that closes the form, or asks first when it has changes. The shake animation
-       itself is turned off below. -->
+       itself is turned off below. The dialog fits the viewport: its body scrolls, so the
+       actions stay reachable however long the form is. -->
   <q-dialog
     ref="dialog"
     class="form-dialog"
@@ -11,18 +12,27 @@
     @shake="requestClose"
     @hide="emit('hide')"
   >
-    <q-card ref="card" class="q-pa-sm" style="width: 900px">
-      <slot />
-      <q-card-actions align="right">
-        <q-btn flat label="Cancel" color="primary" :disable="props.busy" @click="requestClose" />
-        <q-btn unelevated color="primary" :label="props.okLabel" :loading="props.busy" @click="emit('confirm')" />
+    <q-card ref="card" class="form-dialog__card q-pa-sm" style="width: 900px">
+      <div class="form-dialog__body">
+        <slot />
+      </div>
+      <q-card-actions align="right" class="form-dialog__actions">
+        <q-btn flat label="Cancel" color="primary" :disable="locked" @click="requestClose" />
+        <q-btn
+          unelevated
+          color="primary"
+          :label="props.okLabel"
+          :loading="props.busy"
+          :disable="props.pending"
+          @click="emit('confirm')"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { QCard, QDialog, useQuasar } from 'quasar'
 
 const props = defineProps<{
@@ -31,6 +41,9 @@ const props = defineProps<{
   okLabel: string
   /** A save is under way: the form stays open and cannot be closed or sent again. */
   busy?: boolean
+  /** Another write of the form is under way (one that saves on its own, not with OK): the
+   * form stays open and OK waits for it. */
+  pending?: boolean
 }>()
 
 // confirm: the OK button; the form validates and closes the dialog itself.
@@ -40,12 +53,14 @@ const $q = useQuasar()
 const dialog = ref<QDialog | null>(null)
 const card = ref<QCard | null>(null)
 
+const locked = computed(() => props.busy || props.pending)
+
 const show = () => dialog.value?.show()
 const hide = () => dialog.value?.hide()
 
 /** Closes at once when nothing was changed, otherwise asks before discarding (Cancel, Escape, outside click). */
 const requestClose = () => {
-  if (props.busy) return
+  if (locked.value) return
   if (!props.dirty) {
     hide()
     return
@@ -86,5 +101,21 @@ defineExpose({ show, hide })
 <style lang="scss">
 .form-dialog .q-dialog__inner.q-animate--scale {
   animation: none;
+}
+
+.form-dialog__card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 48px);
+}
+
+.form-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.form-dialog__actions {
+  flex: none;
 }
 </style>

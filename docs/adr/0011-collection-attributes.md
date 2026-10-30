@@ -76,7 +76,8 @@ renames categories later without rewriting annotations or losing who decided wha
   definitions (#502). There is no undo of assignments yet.
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
-  with the number affected) but can be retired. When the usage cannot be counted (the count fails,
+  with the number affected) but can be retired. The UI offers only retiring and restoring
+  (#506); deletion stays an API operation for exceptional cleanup. When the usage cannot be counted (the count fails,
   or startup could not read the schema, so whether annotations hold values is unknown), deleting
   and narrowing are refused with 503 rather than taken as unused. Narrowing an attribute's applicable tags while
   annotations hold values of it is refused the same way (409, counting only annotations whose tag
