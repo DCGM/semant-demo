@@ -277,6 +277,9 @@ human review. Keep CI execution isolated from production credentials and deploy 
 
 ### UI change checklist
 
+For interaction behavior in new or changed interfaces, follow
+[UI guidelines](docs/UI_GUIDELINES.md).
+
 Applies to a **meaningful UI change**: new or changed layout, components, responsive
 behavior, interaction or visible states. Match verification effort to what the change
 could reasonably affect; not every UI change needs all three widths. Backend-only and

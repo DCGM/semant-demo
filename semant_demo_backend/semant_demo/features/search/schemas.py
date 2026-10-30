@@ -6,7 +6,7 @@ how they map to stored properties, references and query calls.
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -120,12 +120,17 @@ class SearchResultChunk(DocumentChunk):
 
     ``metadata`` holds the chunk's stored classifications (``filters.TASK_CLASSES``) that
     have values: property name -> values, in ``TASK_CLASSES`` order.
+
+    ``origin`` is ``"web"`` for a web search result that a RAG answer used (#370): not a
+    corpus chunk, so there is no document or chunk window to open; its ids are made up for
+    that answer only.
     """
     query_title: str | None = None
     query_summary: str | None = None
     summary: str | None = None
     document_object: Document
     metadata: dict[str, list[str]] = {}
+    origin: Literal["corpus", "web"] = "corpus"
 
 
 class SearchResponse(BaseModel):

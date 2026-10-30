@@ -11,14 +11,15 @@
         :aria-label="`Source ${entry.label}`"
         :data-source-id="entry.id"
       >
-        <!-- One click selects (and expands) the source, a double click opens its document. -->
+        <!-- One click selects (and expands) the source, a double click opens its document
+             (a web search result has none). -->
         <div
           class="chat-sources__summary"
           role="button"
           tabindex="0"
           :aria-expanded="entry.id === selectedId ? 'true' : 'false'"
           @click="emit('select', entry.id)"
-          @dblclick="emit('open', entry.id)"
+          @dblclick="hasDocument(entry.source) && emit('open', entry.id)"
           @keydown.enter.prevent="emit('select', entry.id)"
           @keydown.space.prevent="emit('select', entry.id)"
         >
@@ -39,6 +40,7 @@
         </div>
         <div class="row items-center justify-between q-mt-xs">
           <q-btn
+            v-if="hasDocument(entry.source)"
             dense
             flat
             no-caps
@@ -49,7 +51,17 @@
             class="chat-sources__view"
             @click="emit('open', entry.id)"
           />
-          <OriginalSourceLink :document="entry.source.documentObject" :page-id="entry.source.startPageId" class="text-caption" />
+          <span v-else class="text-caption text-grey-8" data-testid="chat-source-web">Web search result, not in the corpus</span>
+          <a
+            v-if="webPageUrl(entry.source)"
+            :href="webPageUrl(entry.source)!"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="chat-sources__web-link text-caption text-primary"
+            :aria-label="`Open the web page of source ${entry.label} (opens in a new tab)`"
+            data-testid="chat-source-web-link"
+          ><q-icon name="open_in_new" size="1.1em" class="q-mr-xs" />Open web page</a>
+          <OriginalSourceLink v-else :document="entry.source.documentObject" :page-id="entry.source.startPageId" class="text-caption" />
         </div>
       </li>
     </ol>
@@ -58,10 +70,10 @@
 
 <script setup lang="ts">
 import { nextTick, watch } from 'vue'
-import { QBtn } from 'quasar'
+import { QBtn, QIcon } from 'quasar'
 import type { SearchResultChunk } from 'src/generated/api'
 import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
-import type { ChatSourceEntry } from './useChatSources'
+import { hasDocument, webPageUrl, type ChatSourceEntry } from './useChatSources'
 
 /**
  * The sources of a whole chat conversation, labelled as their citations (`S1`, `S2`...).
@@ -82,6 +94,7 @@ const emit = defineEmits<{
 }>()
 
 function details (source: SearchResultChunk): string {
+  if (!hasDocument(source)) return 'Web search'
   const year = source.documentObject?.yearIssued
   const pages = source.fromPage === source.toPage ? `page ${source.fromPage}` : `pages ${source.fromPage}–${source.toPage}`
   return [year ? String(year) : 'Year N/A', pages].join(' · ')
@@ -173,5 +186,17 @@ watch(() => props.reveal, async (reveal) => {
 
 .chat-sources__view {
   margin-left: -6px;
+}
+
+.chat-sources__web-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chat-sources__web-link:hover,
+.chat-sources__web-link:focus-visible {
+  text-decoration: underline;
 }
 </style>

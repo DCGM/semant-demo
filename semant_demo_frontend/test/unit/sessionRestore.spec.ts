@@ -10,6 +10,7 @@ import { useSessionScope } from 'src/app/session'
 import { installAuthGuard } from 'src/router/authGuard'
 import { captureSession, getAuthToken, setAuthToken, useApi } from 'src/shared/api'
 import LoginDialog from 'src/features/auth/LoginDialog.vue'
+import RegisterDialog from 'src/features/auth/RegisterDialog.vue'
 import MainLayout from 'src/app/MainLayout.vue'
 import { muteConsole } from './console'
 
@@ -454,5 +455,59 @@ describe('signing in', () => {
     } finally {
       notify.restore()
     }
+  })
+})
+
+describe('registering', () => {
+  async function submit () {
+    const wrapper = mount(RegisterDialog, {
+      props: { modelValue: true },
+      global: {
+        plugins: [[Quasar, { plugins: { Notify } }]],
+        stubs: { QDialog: { template: '<div><slot /></div>' } }
+      }
+    })
+
+    const notify = vi.fn()
+    ;(wrapper.vm as unknown as { $q: { notify: unknown } }).$q.notify = notify
+    const values = ['usera', 'User A', '', 'a@example.com', 'password1', 'password1']
+    const inputs = wrapper.findAll('input')
+    for (const [index, value] of values.entries()) await inputs[index]!.setValue(value)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    return { wrapper, messages: () => notify.mock.calls.map(([options]) => (options as { message: string }).message) }
+  }
+
+  it('signs the new account in', async () => {
+    answers['/api/auth/register'] = [json(userA, 201)]
+    answers['/api/auth/jwt/login'] = [json({ access_token: 'token-new', token_type: 'bearer' })]
+    answers['/api/users/me'] = [json(userA)]
+    const { wrapper, messages } = await submit()
+    const store = useUserStore()
+
+    expect([store.isLoggedIn, store.getUserId, getAuthToken()]).toEqual([true, 'uA', 'token-new'])
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
+    expect(messages()).toEqual(['Account created. You are now signed in.'])
+  })
+
+  it('reports the created account, not a failed registration, when signing in fails', async () => {
+    answers['/api/auth/register'] = [json(userA, 201)]
+    answers['/api/auth/jwt/login'] = [offline]
+    const { wrapper, messages } = await submit()
+    const store = useUserStore()
+
+    expect([store.isLoggedIn, store.token]).toEqual([false, null])
+    expect(wrapper.text()).not.toContain('Registration failed')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
+    expect(messages()).toEqual(['Account created! You can now log in.'])
+  })
+
+  it('keeps the dialog open with an error when the registration fails', async () => {
+    answers['/api/auth/register'] = [json({ detail: 'REGISTER_USER_ALREADY_EXISTS' }, 400)]
+    const { wrapper } = await submit()
+
+    expect(wrapper.text()).toContain('Registration failed')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(sent).not.toContain('/api/auth/jwt/login')
   })
 })
