@@ -15,11 +15,11 @@
       <q-route-tab name="attributes" label="Attributes" icon="category" exact :to="{ name: 'collectionAttributes' }" />
     </q-tabs>
     <AttributesList v-if="$route.name === 'collectionAttributes'" />
-    <TagsTable v-else />
+    <TagsAttributesTable v-else />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import TagsTable from 'src/features/annotations/TagsTable.vue'
+import TagsAttributesTable from 'src/features/attributes/TagsAttributesTable.vue'
 import AttributesList from 'src/features/attributes/AttributesList.vue'
 </script>

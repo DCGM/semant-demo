@@ -11,40 +11,30 @@
       <div class="text-h4 text-grey-9 text-center">
         {{ props.value ? 'Edit Value' : 'Add Value' }}
       </div>
-      <div class="text-subtitle1 text-grey-7 text-center">{{ props.attributeName }}</div>
+      <div class="text-subtitle1 text-grey-7 text-center attribute-value-dialog__attribute">{{ props.attributeName }}</div>
     </q-card-section>
 
     <q-card-section>
+      <!-- While saving, nothing that goes into the request can change. -->
       <q-form ref="formRef" class="q-gutter-y-md" @submit="submit">
         <q-input
           v-model="label"
           autofocus
           outlined
           label="Label"
+          :disable="saving"
           :rules="[(v: string) => !!v.trim() || 'Label is required']"
           lazy-rules
           counter
           :maxlength="MAX_NAME"
         />
-        <q-select
-          v-if="!props.value"
-          v-model="kind"
-          outlined
-          emit-value
-          map-options
-          label="Kind"
-          :options="kindChoices"
-          hint="Unknown and Not applicable are explicit decisions, distinct from no value."
-        />
-        <div v-else class="text-body2">
-          Kind: {{ KIND_LABELS[kind] }} <span class="text-grey-7">(cannot be changed)</span>
-        </div>
         <q-input
           v-model="description"
           outlined
           type="textarea"
-          autogrow
           label="Description"
+          :disable="saving"
+          :input-style="DESCRIPTION_STYLE"
           counter
           :maxlength="MAX_DESCRIPTION"
         />
@@ -57,7 +47,7 @@
             class="row items-center q-col-gutter-sm q-mb-sm"
           >
             <div class="col">
-              <q-input v-model="examples[index]" outlined dense :label="`Example ${index + 1}`" />
+              <q-input v-model="examples[index]" outlined dense :disable="saving" :label="`Example ${index + 1}`" />
             </div>
             <div class="col-auto">
               <q-btn
@@ -65,6 +55,7 @@
                 round
                 color="negative"
                 icon="delete"
+                :disable="saving"
                 :aria-label="`Remove example ${index + 1}`"
                 @click="removeExample(index)"
               />
@@ -76,7 +67,7 @@
             color="primary"
             icon="add"
             label="Add example"
-            :disable="examples.length >= MAX_EXAMPLES"
+            :disable="saving || examples.length >= MAX_EXAMPLES"
             @click="examples.push('')"
           />
         </div>
@@ -94,17 +85,17 @@ import { computed, ref } from 'vue'
 import { QForm, useDialogPluginComponent } from 'quasar'
 
 import FormDialog from 'src/shared/ui/FormDialog.vue'
-import { ValueKind, type AttributeValue, type PatchAttributeValue, type PostAttributeValue } from 'src/generated/api'
-import { KIND_LABELS, MAX_DESCRIPTION, MAX_EXAMPLES, MAX_NAME, cleanList, kindOptions } from './attributeForm'
+import type { AttributeValue, PatchAttributeValue, PostAttributeValue } from 'src/generated/api'
+import { DESCRIPTION_STYLE, MAX_DESCRIPTION, MAX_EXAMPLES, MAX_NAME, cleanList } from './attributeForm'
 
 type Save = (payload: PostAttributeValue | PatchAttributeValue) => Promise<unknown>
 
+// An ordinary value of an attribute; Unknown and Not applicable are fixed and are offered or
+// withdrawn in the attribute dialog instead (#506).
 const props = defineProps<{
   attributeName: string
   /** The value to edit; none: a new one. */
   value?: AttributeValue
-  /** Special kinds the attribute already has (at most one of each). */
-  takenKinds?: ValueKind[]
   /** Saves the form; the dialog stays open, showing the message, when it throws. */
   save: Save
 }>()
@@ -114,17 +105,11 @@ const { dialogRef, onDialogHide, onDialogOK } = useDialogPluginComponent()
 
 const formRef = ref<QForm | null>(null)
 const label = ref(props.value?.label ?? '')
-const kind = ref<ValueKind>(props.value?.kind ?? ValueKind.value)
 const description = ref(props.value?.description ?? '')
 const initialExamples = props.value?.examples ?? []
 const examples = ref<string[]>(initialExamples.length ? [...initialExamples] : [''])
 const saving = ref(false)
 const error = ref<string | null>(null)
-
-const kindChoices = computed(() => kindOptions.map(option => ({
-  ...option,
-  disable: option.value !== ValueKind.value && (props.takenKinds ?? []).includes(option.value)
-})))
 
 const sameExamples = computed(() =>
   JSON.stringify(cleanList(examples.value)) === JSON.stringify(cleanList(initialExamples)))
@@ -132,7 +117,6 @@ const sameExamples = computed(() =>
 const isDirty = computed(() =>
   label.value.trim() !== (props.value?.label ?? '') ||
   description.value.trim() !== (props.value?.description ?? '') ||
-  (!props.value && kind.value !== ValueKind.value) ||
   !sameExamples.value
 )
 
@@ -143,7 +127,7 @@ function removeExample (index: number) {
 
 function payload (): PostAttributeValue | PatchAttributeValue | null {
   if (!props.value) {
-    return { label: label.value.trim(), kind: kind.value, description: description.value.trim(), examples: cleanList(examples.value) }
+    return { label: label.value.trim(), description: description.value.trim(), examples: cleanList(examples.value) }
   }
   const patch: PatchAttributeValue = {}
   if (label.value.trim() !== props.value.label) patch.label = label.value.trim()
@@ -170,3 +154,9 @@ async function submit () {
   }
 }
 </script>
+
+<style scoped>
+.attribute-value-dialog__attribute {
+  overflow-wrap: anywhere;
+}
+</style>

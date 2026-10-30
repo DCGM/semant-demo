@@ -5,10 +5,10 @@
         Attributes ({{ shown.length }})
       </div>
       <div class="col-auto">
-        <CreateButton :disable="!collectionId || !tagsReady" data-testid="attribute-create" @click="createAttribute" />
+        <CreateButton :disable="!collectionId || tagsState !== 'ready'" data-testid="attribute-create" @click="createAttribute" />
       </div>
       <div class="col-grow col-sm-auto">
-        <q-input v-model="filter" dense outlined clearable debounce="200" placeholder="Search" aria-label="Search attributes">
+        <q-input v-model="filter" dense outlined clearable debounce="200" placeholder="Search" aria-label="Search attributes and values">
           <template #prepend>
             <q-icon name="search" />
           </template>
@@ -26,27 +26,33 @@
         <q-btn flat no-caps label="Try again" @click="reload" />
       </template>
     </q-banner>
-    <q-banner v-else-if="tagsFailed" rounded class="bg-red-1 text-negative q-mb-md" role="alert" data-testid="attribute-tags-error">
+    <q-banner v-else-if="tagsState === 'failed'" rounded class="bg-red-1 text-negative q-mb-md" role="alert" data-testid="attribute-tags-error">
       The tags could not be loaded, so attributes cannot be created or edited.
       <template #action>
         <q-btn flat no-caps label="Try again" @click="loadTags" />
       </template>
     </q-banner>
 
+    <!-- A match the Show retired setting hides is said, not shown and not left unexplained. -->
+    <div v-if="search.hiddenMatches" class="row items-center q-gutter-x-sm text-grey-8 q-mb-sm" data-testid="attribute-hidden-matches">
+      <span>{{ plural(search.hiddenMatches, 'retired match', 'retired matches') }} hidden.</span>
+      <q-btn flat dense no-caps color="primary" label="Show retired" @click="showRetired = true" />
+    </div>
+
     <div v-if="loading && !attributes.length" class="row justify-center q-pa-lg">
       <q-spinner size="32px" color="primary" />
     </div>
 
     <div v-else-if="!shown.length && !error" class="text-grey-8 q-pa-md" data-testid="attributes-empty">
-      <template v-if="attributes.length">No attributes match.</template>
-      <template v-else>
+      <template v-if="attributes.length && !search.hiddenMatches">No attributes match.</template>
+      <template v-else-if="!attributes.length">
         No attributes yet. An attribute classifies approved annotations, for example a speaker type with the values
         politician and journalist; its values are assigned in the Annotations tab.
       </template>
     </div>
 
     <q-card
-      v-for="attribute in shown"
+      v-for="{ attribute, values, scope } in cards"
       :key="attribute.id"
       flat
       bordered
@@ -54,17 +60,17 @@
       :class="{ 'attribute--retired': attribute.retired }"
       data-testid="attribute"
     >
-      <q-card-section class="row items-start no-wrap q-pb-sm">
+      <q-card-section class="row items-start no-wrap q-pb-xs">
         <div class="col">
           <div class="row items-center q-gutter-x-sm">
-            <span class="text-h6 attribute__name" data-testid="attribute-name">{{ attribute.name }}</span>
+            <span class="text-h6 attribute__name" data-testid="attribute-name">
+              <HighlightedText :text="attribute.name" :needle="filter" />
+            </span>
             <q-badge v-if="attribute.retired" color="grey-7" label="Retired" />
           </div>
-          <div class="text-caption text-grey-8 q-mt-xs">
-            {{ attribute.cardinality === Cardinality.single ? 'One value' : 'Several values' }} per annotation ·
-            <span data-testid="attribute-tags">{{ appliesTo(attribute, tags) }}</span>
+          <div class="text-caption text-grey-8" data-testid="attribute-cardinality">
+            {{ attribute.cardinality === Cardinality.multi ? 'Multiple values per annotation' : 'One value per annotation' }}
           </div>
-          <div v-if="attribute.description" class="text-body2 q-mt-sm attribute__description">{{ attribute.description }}</div>
         </div>
         <div class="col-auto row no-wrap">
           <q-btn
@@ -73,11 +79,11 @@
             dense
             color="primary"
             icon="edit"
-            :disable="!tagsReady"
+            :disable="tagsState !== 'ready'"
             :aria-label="`Edit ${attribute.name}`"
             @click="editAttribute(attribute)"
           >
-            <q-tooltip>Edit</q-tooltip>
+            <q-tooltip>Edit the attribute and its values</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -85,97 +91,99 @@
             dense
             color="grey-8"
             :icon="attribute.retired ? 'unarchive' : 'archive'"
+            :loading="retiring.has(attribute.id)"
             :aria-label="`${attribute.retired ? 'Restore' : 'Retire'} ${attribute.name}`"
             @click="setAttributeRetired(attribute, !attribute.retired)"
           >
-            <q-tooltip>{{ attribute.retired ? 'Restore: can be assigned again' : 'Retire: keeps its values, but no new ones are assigned' }}</q-tooltip>
-          </q-btn>
-          <q-btn flat round dense color="negative" icon="delete" :aria-label="`Delete ${attribute.name}`" @click="removeAttribute(attribute)">
-            <q-tooltip>Delete</q-tooltip>
+            <q-tooltip>{{ attribute.retired ? 'Restore: can be assigned again' : 'Retire: annotations keep its values, but no new ones are assigned' }}</q-tooltip>
           </q-btn>
         </div>
       </q-card-section>
 
-      <q-separator inset />
-
-      <q-list dense class="q-py-xs">
-        <q-item
-          v-for="value in valuesOf(attribute)"
-          :key="value.id"
-          :class="{ 'attribute--retired': value.retired }"
-          data-testid="attribute-value"
-        >
-          <q-item-section>
-            <q-item-label>
-              <span data-testid="attribute-value-label">{{ value.label }}</span>
-              <q-badge v-if="value.kind !== ValueKind.value" outline color="primary" class="q-ml-sm" :label="KIND_LABELS[value.kind ?? ValueKind.value]" />
-              <q-badge v-if="value.retired" color="grey-7" class="q-ml-sm" label="Retired" />
-            </q-item-label>
-            <q-item-label v-if="value.description || value.examples?.length" caption class="attribute__description">
-              {{ value.description }}<template v-if="value.description && value.examples?.length"> · </template>
-              <template v-if="value.examples?.length">e.g. {{ value.examples.join('; ') }}</template>
-            </q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <div class="row no-wrap">
-              <q-btn flat round dense size="sm" color="primary" icon="edit" :aria-label="`Edit ${value.label}`" @click="editValue(attribute, value)" />
-              <q-btn
-                flat
-                round
-                dense
-                size="sm"
-                color="grey-8"
-                :icon="value.retired ? 'unarchive' : 'archive'"
-                :aria-label="`${value.retired ? 'Restore' : 'Retire'} ${value.label}`"
-                @click="setValueRetired(attribute, value, !value.retired)"
-              />
-              <q-btn flat round dense size="sm" color="negative" icon="delete" :aria-label="`Delete ${value.label}`" @click="removeValue(attribute, value)" />
-            </div>
-          </q-item-section>
-        </q-item>
-        <q-item v-if="!valuesOf(attribute).length">
-          <q-item-section class="text-grey-7">No values yet.</q-item-section>
-        </q-item>
-      </q-list>
-
-      <q-card-actions>
-        <q-btn
-          flat
-          no-caps
-          color="primary"
-          icon="add"
-          label="Add value"
-          :disable="(attribute.values ?? []).length >= MAX_VALUES"
-          :aria-label="`Add a value to ${attribute.name}`"
-          @click="addValue(attribute)"
+      <q-card-section class="q-pt-none">
+        <ClampedText
+          v-if="attribute.description"
+          :text="attribute.description"
+          class="text-body2 q-mb-sm"
+          data-testid="attribute-description"
         />
-      </q-card-actions>
+
+        <div class="attribute__field">
+          <div class="attribute__field-label text-caption text-grey-8">Applies to</div>
+          <div class="col" data-testid="attribute-tags">
+            <span v-if="scope.kind === 'all'">All tags</span>
+            <span v-else-if="scope.kind === 'loading'" class="text-grey-7">
+              <q-spinner size="14px" class="q-mr-xs" />Loading tags…
+            </span>
+            <span v-else-if="scope.kind === 'failed'" class="text-grey-7">Tags could not be loaded</span>
+            <span v-else-if="!scope.names.length" class="text-grey-7">Only deleted tags</span>
+            <WrappingBadges v-else :watch-key="scope" :badge-height="22" :expanded-lines="4">
+              <span v-for="tagName in scope.names" :key="tagName" class="attribute__chip">{{ tagName }}</span>
+              <span v-if="scope.deleted" class="attribute__chip attribute__chip--muted">
+                {{ plural(scope.deleted, 'deleted tag') }}
+              </span>
+            </WrappingBadges>
+          </div>
+        </div>
+
+        <div class="attribute__field q-mt-xs">
+          <!-- Counted like the Edit dialog: the ordinary values, not Unknown / Not applicable. -->
+          <div class="attribute__field-label text-caption text-grey-8">Values ({{ values.filter(v => !isSpecial(v)).length }})</div>
+          <div class="col">
+            <WrappingBadges
+              v-if="values.length"
+              :watch-key="[values.map(v => v.id), filter]"
+              :lines="2"
+              :expanded-lines="8"
+              :badge-height="22"
+            >
+              <span
+                v-for="value in values"
+                :key="value.id"
+                class="attribute__chip"
+                :class="{
+                  'attribute__chip--special': isSpecial(value),
+                  'attribute__chip--retired': value.retired,
+                  'attribute__chip--match': matches(valueName(value), filter)
+                }"
+                data-testid="attribute-value"
+              >
+                <HighlightedText :text="valueName(value)" :needle="filter" data-testid="attribute-value-label" />
+                <span v-if="value.retired" class="attribute__chip-badge">Retired</span>
+                <q-tooltip v-if="value.description" max-width="320px">{{ value.description }}</q-tooltip>
+              </span>
+            </WrappingBadges>
+            <span v-else class="text-grey-7">
+              {{ attribute.values?.length ? 'Only retired values, which are hidden' : 'No values yet' }}
+            </span>
+          </div>
+        </div>
+      </q-card-section>
     </q-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useQuasar } from 'quasar'
 import { useRoute } from 'vue-router'
 
-import {
-  Cardinality, ValueKind, type Attribute, type AttributeValue, type PatchAttribute, type PatchAttributeValue,
-  type PostAttribute, type PostAttributeValue
-} from 'src/generated/api'
+import { Cardinality, type Attribute, type PatchAttribute, type PostAttribute } from 'src/generated/api'
 import CreateButton from 'src/shared/ui/CreateButton.vue'
-import useConfirmDelete from 'src/shared/useConfirmDelete'
+import ClampedText from 'src/shared/ui/ClampedText.vue'
+import WrappingBadges from 'src/shared/ui/WrappingBadges.vue'
 import { errorNotification, successNotification } from 'src/shared/notification'
+import { plural } from 'src/shared/plural'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
-import { AttributeWriteError, useAttributesStore } from './attributesStore'
-import { KIND_LABELS, MAX_VALUES, appliesTo } from './attributeForm'
+import { useAttributesStore } from './attributesStore'
+import { isSpecial, tagScope, valueName, type TagsState, type ValueActions } from './attributeForm'
+import { matches, searchAttributes } from './attributeSearch'
 import AttributeDialog from './AttributeDialog.vue'
-import AttributeValueDialog from './AttributeValueDialog.vue'
+import HighlightedText from './HighlightedText.vue'
 
 const $q = useQuasar()
 const route = useRoute()
-const confirmDelete = useConfirmDelete()
 const store = useAttributesStore()
 const { attributes, loading, error } = storeToRefs(store)
 const tagsStore = useTagsStore()
@@ -189,33 +197,22 @@ const collectionId = computed(() => {
   return typeof value === 'string' ? value : ''
 })
 
-const shown = computed(() => {
-  const needle = (filter.value ?? '').trim().toLowerCase()
-  return attributes.value.filter(a =>
-    (showRetired.value || !a.retired) &&
-    (!needle || a.name.toLowerCase().includes(needle) || (a.values ?? []).some(v => v.label.toLowerCase().includes(needle))))
-})
-
-function valuesOf (attribute: Attribute): AttributeValue[] {
-  return (attribute.values ?? []).filter(v => showRetired.value || !v.retired)
-}
+const search = computed(() => searchAttributes(attributes.value, filter.value, showRetired.value))
+const shown = computed(() => search.value.shown)
 
 // The dialogs need the collection's tags (the options, and which applicable ids are deleted
-// tags), so creating and editing wait for them.
-const tagsReady = ref(false)
-const tagsFailed = ref(false)
+// tags), so creating and editing wait for them; until then no card names a tag.
+const tagsState = ref<TagsState>('loading')
 let tagRequest = 0
 
 async function loadTags () {
   const id = collectionId.value
   const request = ++tagRequest
-  tagsReady.value = false
-  tagsFailed.value = false
+  tagsState.value = 'loading'
   if (!id) return
   await tagsStore.fetchTagsByCollection(id)
   if (request !== tagRequest) return
-  tagsFailed.value = !!tagsStore.error
-  tagsReady.value = !tagsFailed.value
+  tagsState.value = tagsStore.error ? 'failed' : 'ready'
 }
 
 function reload () {
@@ -224,20 +221,13 @@ function reload () {
   void loadTags()
 }
 
+const cards = computed(() => shown.value.map(card => ({
+  ...card,
+  scope: tagScope(card.attribute, tags.value, tagsState.value)
+})))
+
 onMounted(reload)
 watch(collectionId, reload)
-
-/** Runs a list action, reporting its outcome; a refusal shows the backend's message. */
-async function run (action: () => Promise<unknown>, done: string): Promise<boolean> {
-  try {
-    await action()
-    successNotification(done)
-    return true
-  } catch (e) {
-    errorNotification(e instanceof Error ? e.message : 'The change could not be saved.')
-    return false
-  }
-}
 
 function createAttribute () {
   const id = collectionId.value
@@ -254,105 +244,38 @@ function createAttribute () {
 
 function editAttribute (attribute: Attribute) {
   const id = collectionId.value
+  const valueActions: ValueActions = {
+    addValue: value => store.addValue(id, attribute.id, value),
+    updateValue: (valueId, patch) => store.updateValue(id, attribute.id, valueId, patch),
+    setSpecialValue: (current, kind, allowed) => store.setSpecialValue(id, current, kind, allowed)
+  }
   $q.dialog({
     component: AttributeDialog,
     componentProps: {
       attribute,
       tags: () => tags.value,
-      save: (patch: PatchAttribute) => store.updateAttribute(id, attribute.id, patch)
+      save: (patch: PatchAttribute) => store.updateAttribute(id, attribute.id, patch),
+      valueActions
     }
   }).onOk((saved: Attribute | null) => {
     if (saved) successNotification('Attribute saved')
   })
 }
 
-function setAttributeRetired (attribute: Attribute, retired: boolean) {
-  void run(() => store.updateAttribute(collectionId.value, attribute.id, { retired }),
-    `"${attribute.name}" ${retired ? 'retired' : 'restored'}`)
-}
+// Attributes whose retire or restore is running, so it is not sent twice.
+const retiring = reactive(new Set<string>())
 
-/** Offers retiring instead when the backend refused a deletion because annotations hold values. */
-function offerRetire (e: unknown, retire: (() => void) | null) {
-  const message = e instanceof Error ? e.message : 'It could not be deleted.'
-  if (!(e instanceof AttributeWriteError) || e.status !== 409 || !retire) {
-    errorNotification(message)
-    return
+async function setAttributeRetired (attribute: Attribute, retired: boolean) {
+  if (retiring.has(attribute.id)) return
+  retiring.add(attribute.id)
+  try {
+    await store.updateAttribute(collectionId.value, attribute.id, { retired })
+    successNotification(`"${attribute.name}" ${retired ? 'retired' : 'restored'}`)
+  } catch (e) {
+    errorNotification(e instanceof Error ? e.message : 'The change could not be saved.')
+  } finally {
+    retiring.delete(attribute.id)
   }
-  $q.dialog({
-    title: 'Still in use',
-    message,
-    ok: { label: 'Retire instead', color: 'primary', unelevated: true },
-    cancel: { label: 'Keep', flat: true, color: 'primary' }
-  }).onOk(retire)
-}
-
-function removeAttribute (attribute: Attribute) {
-  const id = collectionId.value
-  confirmDelete({
-    title: 'Delete Attribute',
-    message: `Delete the attribute "${attribute.name}" and its values? Only an attribute no annotation has a value of can be deleted.`,
-    alsoDeletes: async () => ''
-  }).onOk(async () => {
-    try {
-      await store.deleteAttribute(id, attribute.id)
-      successNotification(`Attribute "${attribute.name}" deleted`)
-    } catch (e) {
-      offerRetire(e, attribute.retired ? null : () => setAttributeRetired(attribute, true))
-    }
-  })
-}
-
-function takenKinds (attribute: Attribute): ValueKind[] {
-  return (attribute.values ?? []).map(v => v.kind ?? ValueKind.value).filter(kind => kind !== ValueKind.value)
-}
-
-function addValue (attribute: Attribute) {
-  const id = collectionId.value
-  $q.dialog({
-    component: AttributeValueDialog,
-    componentProps: {
-      attributeName: attribute.name,
-      takenKinds: takenKinds(attribute),
-      save: (value: PostAttributeValue) => store.addValue(id, attribute.id, value)
-    }
-  }).onOk((saved: Attribute | null) => {
-    if (saved) successNotification('Value added')
-  })
-}
-
-function editValue (attribute: Attribute, value: AttributeValue) {
-  const id = collectionId.value
-  $q.dialog({
-    component: AttributeValueDialog,
-    componentProps: {
-      attributeName: attribute.name,
-      value,
-      save: (patch: PatchAttributeValue) => store.updateValue(id, attribute.id, value.id, patch)
-    }
-  }).onOk((saved: Attribute | null) => {
-    if (saved) successNotification('Value saved')
-  })
-}
-
-function setValueRetired (attribute: Attribute, value: AttributeValue, retired: boolean) {
-  void run(() => store.updateValue(collectionId.value, attribute.id, value.id, { retired }),
-    `"${value.label}" ${retired ? 'retired' : 'restored'}`)
-}
-
-function removeValue (attribute: Attribute, value: AttributeValue) {
-  const id = collectionId.value
-  confirmDelete({
-    title: 'Delete Value',
-    message: `Delete the value "${value.label}" of "${attribute.name}"? Only a value no annotation has can be deleted.`,
-    alsoDeletes: async () => ''
-  }).onOk(async () => {
-    try {
-      await store.deleteValue(id, attribute.id, value.id)
-      successNotification(`Value "${value.label}" deleted`)
-    } catch (e) {
-      offerRetire(e, value.retired ? null : () => setValueRetired(attribute, value, true))
-    }
-  })
 }
 </script>
 
@@ -361,18 +284,87 @@ function removeValue (attribute: Attribute, value: AttributeValue) {
   max-width: 1100px;
 }
 
-.attribute__name,
-.attribute__description {
+.attribute__name {
   overflow-wrap: anywhere;
 }
 
-.attribute__description {
-  white-space: pre-line;
-}
-
-.attribute--retired .attribute__name,
-.attribute--retired [data-testid='attribute-value-label'] {
+.attribute--retired .attribute__name {
   color: rgba(0, 0, 0, 0.5);
   text-decoration: line-through;
+}
+
+.attribute__field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.attribute__field-label {
+  flex: none;
+  width: 84px;
+  line-height: 22px;
+}
+
+.attribute__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  max-width: 100%;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid #d8d8d8;
+  background: #f1f1f1;
+  color: rgba(0, 0, 0, 0.8);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attribute__chip--special {
+  border-style: dashed;
+  border-color: var(--q-primary);
+  background: transparent;
+  font-style: italic;
+}
+
+.attribute__chip--retired {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.attribute__chip--retired [data-testid='attribute-value-label'] {
+  text-decoration: line-through;
+}
+
+.attribute__chip--match {
+  border-color: #c9a600;
+}
+
+.attribute__chip--muted {
+  color: rgba(0, 0, 0, 0.55);
+  background: transparent;
+}
+
+.attribute__chip-badge {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #757575;
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+@media (max-width: 599px) {
+  .attribute__field {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .attribute__field-label {
+    width: auto;
+    line-height: 16px;
+  }
 }
 </style>

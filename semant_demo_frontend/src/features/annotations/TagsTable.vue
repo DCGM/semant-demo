@@ -117,6 +117,13 @@
       </q-td>
     </template>
 
+    <!-- A column filled by the page that shows the table (the attributes of each tag, #506). -->
+    <template v-if="$slots.attributes" #body-cell-attributes="props">
+      <q-td :props="props" class="tags-table__attributes">
+        <slot name="attributes" :tag="props.row" />
+      </q-td>
+    </template>
+
     <template #body-cell-definition="props">
       <q-td :props="props" class="ellipsis">
         {{ props.row.definition || '-' }}
@@ -154,7 +161,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, useSlots } from 'vue'
 import { QTableColumn } from 'quasar'
 import { useRoute } from 'vue-router'
 
@@ -167,6 +174,12 @@ import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { plural } from 'src/shared/plural'
 import { annotationsOfTags } from './annotationCounts'
 
+defineSlots<{
+  /** The cell of an Attributes column, which is shown only with this slot. */
+  attributes?(props: { tag: Tag }): unknown
+}>()
+
+const slots = useSlots()
 const route = useRoute()
 const confirmDelete = useConfirmDelete()
 const tagsStore = useTagsStore()
@@ -188,7 +201,8 @@ const visibleColumns = ref<string[]>([
   'color',
   'pictogram',
   'definition',
-  'examples'
+  'examples',
+  'attributes'
 ])
 
 const collectionId = computed<string>(() => {
@@ -249,7 +263,7 @@ onMounted(async () => {
   await fetchTagsByCollection(collectionId.value)
 })
 
-const columns: QTableColumn<Tag>[] = [
+const allColumns: QTableColumn<Tag>[] = [
   {
     name: 'actions',
     label: 'Actions',
@@ -299,12 +313,25 @@ const columns: QTableColumn<Tag>[] = [
     label: 'Examples',
     field: (tag) => tag.examples?.join(', ') || '-',
     align: 'left' as const
+  },
+  {
+    name: 'attributes',
+    label: 'Attributes',
+    field: () => '',
+    align: 'left' as const
   }
 ]
+const columns = computed(() => slots.attributes ? allColumns : allColumns.filter(c => c.name !== 'attributes'))
 
 </script>
 
 <style scoped>
+.tags-table__attributes {
+  min-width: 180px;
+  max-width: 360px;
+  white-space: normal;
+}
+
 .color-swatch {
   width: 20px;
   height: 20px;
