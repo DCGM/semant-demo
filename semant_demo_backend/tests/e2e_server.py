@@ -46,6 +46,8 @@ logger = logging.getLogger("e2e_server")
 
 E2E_JWT_SECRET = "e2e-only-secret-long-enough-for-hmac-sha256-32bytes"
 FAKE_TOPICER_STREAM_DELAY = 3.0
+E2E_KEEP_ALIVE = 120
+"""Seconds an idle keep-alive connection of the app stays open; longer than any test."""
 
 
 def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, fake_url: str, fake_port: int,
@@ -109,7 +111,11 @@ async def serve(port: int, static_dir: Path) -> None:
         config = Config()
         await prepare_stores(config, endpoint)
         servers = [
-            uvicorn.Server(uvicorn.Config(create_app(config), host="127.0.0.1", port=port, log_level="warning")),
+            # Playwright's API request context reuses a connection after a test's browser part;
+            # with uvicorn's default 5 s keep-alive, one idle about that long can be closed by the
+            # server just as it is reused ("socket hang up").
+            uvicorn.Server(uvicorn.Config(create_app(config), host="127.0.0.1", port=port, log_level="warning",
+                                          timeout_keep_alive=E2E_KEEP_ALIVE)),
             uvicorn.Server(uvicorn.Config(create_fake_provider_app(load_corpus(), FAKE_TOPICER_STREAM_DELAY),
                                           host="127.0.0.1", port=fake_port, log_level="warning")),
             # The build alone, for its API requests to cross origins.
