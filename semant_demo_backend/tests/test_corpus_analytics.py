@@ -373,15 +373,49 @@ async def test_a_filter_on_a_property_the_store_lacks_is_rejected_not_zero(tmp_p
 
 
 @pytest.mark.parametrize("path", [DISTRIBUTIONS, "/api/analytics/corpus/library-years"])
-@pytest.mark.parametrize("chunk_filters", [{"languages": ["ces"]}, {"classifications": {"complexity": ["easy"]}}])
-async def test_chunk_filters_are_rejected_not_ignored(tmp_path, path, chunk_filters):
-    # Document counts by chunk values need the per-document summaries of #529.
-    analytics = FakeAnalytics(5, language=counts([("ces", 5)]))
+async def test_chunk_filters_count_documents_by_their_chunk_value_summaries(tmp_path, path):
+    analytics = FakeAnalytics(2, yearIssued=counts([(1900.0, 2)]), library=counts([("mzk", 2)]),
+                              language=counts([("ces", 2)]), chunk_language=counts([]), chunk_complexity=counts([]))
+    analytics.per_value = {"mzk": analytics}
 
-    response, = await _request(tmp_path, analytics, (path, {"filters": {}, "chunk_filters": chunk_filters}))
+    response, = await _request(tmp_path, analytics, (path, {
+        "filters": {"libraries": ["mzk"]}, "chunk_filters": {"languages": ["CES"], "classifications": {"complexity": ["easy"]}}}))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["chunk_filters"] == {"languages": ["ces"], "classifications": {"complexity": ["easy"]}}
+    conditions = analytics.calls[0][-1]
+    assert [(c.prop, c.values) for c in conditions] == [
+        ("library", ("mzk",)), ("chunk_language", ("ces",)), ("chunk_complexity", ("easy",))]
+
+
+async def test_chunk_filters_are_never_answered_from_the_unfiltered_cache(tmp_path):
+    analytics = FakeAnalytics(3, language=counts([("ces", 3)]), chunk_style=counts([]))
+    chunk_filtered = {"chunk_filters": {"classifications": {"style": ["formal"]}}}
+
+    responses = await _request(tmp_path, analytics, (DISTRIBUTIONS, {}), (DISTRIBUTIONS, chunk_filtered))
+
+    assert [r.json()["data_source"] for r in responses] == ["live_aggregation", "live_aggregation"]
+    assert len(analytics.calls) == 2
+
+
+@pytest.mark.parametrize("path", [DISTRIBUTIONS, "/api/analytics/corpus/library-years"])
+async def test_chunk_filters_on_a_store_without_document_summaries_are_rejected_not_zero(tmp_path, path):
+    analytics = FakeAnalytics(5, language=counts([("ces", 5)]))  # chunk_summary_schema never applied
+
+    response, = await _request(tmp_path, analytics, (path, {"chunk_filters": {"languages": ["ces"]}}))
 
     assert response.status_code == 422
-    assert "cannot be restricted by chunk filters" in response.json()["detail"]
+    assert response.json()["detail"].startswith("Documents cannot be filtered by chunk values (chunk_language)")
+
+
+async def test_unconfigured_chunk_filters_are_a_bad_request_before_the_store_is_asked(tmp_path):
+    analytics = FakeAnalytics(5, language=counts([("ces", 5)]))
+
+    response, = await _request(tmp_path, analytics,
+                               (DISTRIBUTIONS, {"chunk_filters": {"classifications": {"complexity": ["hard"]}}}))
+
+    assert response.status_code == 400
+    assert "'hard' is not a valid option for 'complexity'" in response.json()["detail"]
     assert analytics.calls == []
 
 
@@ -598,8 +632,8 @@ async def test_per_value_counts_run_at_most_a_few_at_once_across_requests():
     repository = CorpusAnalyticsRepository(client=None, collection_names=None)
     running, most = 0, 0
 
-    async def property_types():
-        return {"library": "text", "yearIssued": "number"}
+    async def declared():
+        return {"library": "text", "yearIssued": "number"}, {}
 
     async def count(filters, properties, types, group_limit):
         nonlocal running, most
@@ -610,7 +644,7 @@ async def test_per_value_counts_run_at_most_a_few_at_once_across_requests():
         running -= 1
         return DocumentCounts(total=1, properties={})
 
-    repository._property_types = property_types
+    repository._declared = declared
     repository._count = count
     values = [f"lib{i:02}" for i in range(20)]
 

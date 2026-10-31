@@ -27,6 +27,13 @@ import {
     DocumentFiltersToJSON,
     DocumentFiltersToJSONTyped,
 } from './DocumentFilters';
+import type { ChunkFilters } from './ChunkFilters';
+import {
+    ChunkFiltersFromJSON,
+    ChunkFiltersFromJSONTyped,
+    ChunkFiltersToJSON,
+    ChunkFiltersToJSONTyped,
+} from './ChunkFilters';
 import type { PublicationYearCounts } from './PublicationYearCounts';
 import {
     PublicationYearCountsFromJSON,
@@ -60,6 +67,12 @@ export interface CorpusDistributions {
      * @memberof CorpusDistributions
      */
     filters: DocumentFilters;
+    /**
+     * 
+     * @type {ChunkFilters}
+     * @memberof CorpusDistributions
+     */
+    chunkFilters?: ChunkFilters;
     /**
      * 
      * @type {number}
@@ -154,6 +167,7 @@ export function CorpusDistributionsFromJSONTyped(json: any, ignoreDiscriminator:
         'scope': json['scope'],
         'unit': json['unit'],
         'filters': DocumentFiltersFromJSON(json['filters']),
+        'chunkFilters': json['chunk_filters'] == null ? undefined : ChunkFiltersFromJSON(json['chunk_filters']),
         'totalDocuments': json['total_documents'],
         'computedAt': (new Date(json['computed_at'])),
         'dataSource': json['data_source'],
@@ -177,6 +191,7 @@ export function CorpusDistributionsToJSONTyped(value?: CorpusDistributions | nul
         'scope': value['scope'],
         'unit': value['unit'],
         'filters': DocumentFiltersToJSON(value['filters']),
+        'chunk_filters': ChunkFiltersToJSON(value['chunkFilters']),
         'total_documents': value['totalDocuments'],
         'computed_at': value['computedAt'].toISOString(),
         'data_source': value['dataSource'],

@@ -206,20 +206,3 @@ async def test_browse_rejects_invalid_document_filters(api_client, params, messa
 
     assert response.status_code == 422
     assert message in str(response.json()["detail"])
-
-
-async def test_document_counts_reject_chunk_filters(api_client):
-    response = await api_client.post("/api/analytics/corpus/distributions",
-                                     json={"chunk_filters": {"languages": ["ces"]}})
-
-    assert response.status_code == 422
-    assert "cannot be restricted by chunk filters" in response.json()["detail"]
-
-
-@pytest.mark.parametrize("params", [{"chunk_languages": "ces"}, {"chunk_classifications": "complexity:easy"}])
-async def test_browse_rejects_chunk_filters_until_documents_summarize_them(api_client, params):
-    # Never ignored: an ignored filter would list every document as if it matched (#529).
-    response = await api_client.get("/api/documents/browse", params=params)
-
-    assert response.status_code == 422
-    assert "Document browsing cannot be restricted by chunk filters" in response.json()["detail"]

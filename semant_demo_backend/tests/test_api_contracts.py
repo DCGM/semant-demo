@@ -11,6 +11,7 @@ from asgi_lifespan import LifespanManager
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from semant_demo.features.documents.criteria import NumberRange
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
 from semant_demo.features.summarization.schemas import SummaryRequest
 from semant_demo.main import create_app
@@ -275,14 +276,27 @@ async def _browse(tmp_path, params):
         return await client.get("/api/documents/browse", params=params)
 
 
-@pytest.mark.parametrize("params", [{"chunk_languages": "ces"}, {"chunk_classifications": "complexity:easy"},
-                                    [("chunk_classifications", "complexity:easy"), ("year_min", "1900")]])
-async def test_browse_rejects_chunk_filters_until_documents_summarize_them(tmp_path, params):
-    # #532 review: browse takes ChunkFilters, but cannot apply them before #529.
+async def test_browse_applies_chunk_filters_per_dimension(tmp_path):
+    response = await _browse(tmp_path, [("chunk_languages", "CES"), ("chunk_classifications", "complexity:easy"),
+                                        ("chunk_classifications", "complexity:moderate"), ("year_min", "1900")])
+
+    assert response.status_code == 200, response.text
+    [call] = _RecordingDocuments.calls
+    year, language, complexity = call["conditions"]
+    assert year == NumberRange("yearIssued", 1900, None)
+    assert (language.prop, language.values) == ("chunk_language", ("ces",))  # the configured spelling
+    assert (complexity.prop, complexity.values) == ("chunk_complexity", ("easy", "moderate"))
+
+
+@pytest.mark.parametrize("params, message", [
+    ({"chunk_languages": "Czech"}, "'Czech' is not a valid option for 'languages'"),
+    ({"chunk_classifications": "emotion:calm"}, "'emotion' is not a configured classification"),
+])
+async def test_browse_rejects_unconfigured_chunk_filters(tmp_path, params, message):
     response = await _browse(tmp_path, params)
 
-    assert response.status_code == 422, response.text
-    assert "Document browsing cannot be restricted by chunk filters" in response.json()["detail"]
+    assert response.status_code == 400, response.text
+    assert message in response.json()["detail"]
     assert _RecordingDocuments.calls == []
 
 

@@ -159,6 +159,13 @@ Key fields:
 - `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
   id, not a link; source links are built from `library` and the id (above)
 - `public` — whether the document is publicly accessible
+- `chunk_language`, `chunk_<classification>` (one per `TASK_CLASSES` entry; `text[]`, `field`
+  tokenization) and `chunk_summaries_computed_at` (`date`) — the distinct chunk values of the
+  document and when they were last recomputed, for document-level chunk filters (#529).
+  Derived data: declared by `chunk_summary_schema`, written only by `chunk_summaries`
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#document-chunk-value-summaries-chunk_summary_schema-chunk_summaries-529)),
+  stale between runs; absent from stores where it was never run, including the disposable
+  dev/test schema
 
 #### Document metadata from the Kramerius mirror
 

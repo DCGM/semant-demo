@@ -72,7 +72,9 @@ class CorpusDistributionsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     filters: DocumentFilters = Field(default_factory=DocumentFilters)
     chunk_filters: ChunkFilters = Field(default_factory=ChunkFilters)
-    """Not applied to document counts yet (#529): any chunk filter is rejected (422)."""
+    """Per dimension: a document counts when, for each filter, some chunk of it has one of the
+    values, as its chunk-value summaries were last recomputed (#529). A corpus database without
+    the summaries rejects them (422)."""
 
 
 class YearCount(BaseModel):
@@ -97,6 +99,8 @@ class CorpusDistributions(BaseModel):
     unit: Literal["documents"]
     filters: DocumentFilters
     """The filters applied, normalized."""
+    chunk_filters: ChunkFilters = Field(default_factory=ChunkFilters)
+    """The chunk filters applied, normalized (configured spelling)."""
     total_documents: int
     computed_at: datetime
     data_source: Literal["live_aggregation", "cached_aggregation"]
@@ -128,6 +132,7 @@ class LibraryYearDistribution(BaseModel):
     scope: Literal["searchable_corpus"]
     unit: Literal["documents"]
     filters: DocumentFilters
+    chunk_filters: ChunkFilters = Field(default_factory=ChunkFilters)
     total_documents: int
     computed_at: datetime
     available: bool
