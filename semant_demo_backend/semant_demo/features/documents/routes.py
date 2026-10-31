@@ -8,9 +8,9 @@ from pydantic import ValidationError
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.features.documents.criteria import ChunkFilters, ChunkFiltersUnavailable, DocumentFilters
+from semant_demo.features.documents.criteria import ChunkFilters, ChunkVocabulary, DocumentFilters
 from semant_demo.features.documents import service
-from semant_demo.routes.dependencies import get_user_collections, get_documents
+from semant_demo.routes.dependencies import get_chunk_vocabulary, get_user_collections, get_documents
 from semant_demo.features.documents.schemas import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
@@ -44,6 +44,7 @@ async def browse_documents(collection_id: str | None = None,
                            chunk_classifications: list[str] = Query(default=[]),
                            documents: DocumentRepository = Depends(get_documents),
                            collections: UserCollectionRepository = Depends(get_user_collections),
+                           vocabulary: ChunkVocabulary = Depends(get_chunk_vocabulary),
                            current_user: User | None = Depends(current_active_optional_user)) -> DocumentBrowse:
     """
         Browses the corpus with pagination, filtering and sorting options. With ``collection_id``
@@ -57,9 +58,11 @@ async def browse_documents(collection_id: str | None = None,
 
         ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters
         (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as
-        ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for
-        each filter, some chunk of it has one of the values (#529). Until then any chunk filter is
-        rejected (422), never ignored; without them browsing is unchanged.
+        ``complexity:easy`` (repeat a parameter for alternatives). A document matches when, for
+        each filter, some chunk of it has one of the values; different filters may be met by
+        different chunks. They are answered from the documents' chunk-value summaries, as last
+        recomputed: a document never recomputed matches no chunk filter, and a corpus database
+        without the summaries rejects chunk filters (422). An unconfigured value is rejected (400).
     """
     try:
         filters = DocumentFilters(year_min=year_min, year_max=year_max, title_contains=title_contains,
@@ -77,10 +80,10 @@ async def browse_documents(collection_id: str | None = None,
                              "input": chunk_classifications}]) from e
     try:
         return await service.browse(documents, collections, current_user, collection_id, filters=filters,
-                                    chunk_filters=chunk_filters,
+                                    chunk_filters=chunk_filters, vocabulary=vocabulary,
                                     limit=limit, offset=offset, sort_by=sort_by, sort_desc=sort_desc,
                                     title=title, author=author, publisher=publisher, document_type=document_type)
-    except (UnavailableFilter, ChunkFiltersUnavailable) as e:
+    except UnavailableFilter as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
 

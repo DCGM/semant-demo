@@ -69,9 +69,8 @@ class CorpusAnalyticsRepository:
     def _documents(self):
         return self.client.collections.get(self.collection_names.document_collection_name)
 
-    async def _property_types(self) -> dict[str, str]:
-        types, _ = await declared(self.client, self.collection_names.document_collection_name)
-        return types
+    async def _declared(self) -> tuple[dict[str, str], dict[str, str]]:
+        return await declared(self.client, self.collection_names.document_collection_name)
 
     async def count_documents(self, properties: dict[str, ValueKind], group_limit: int,
                               conditions: Sequence[Condition] = ()) -> DocumentCounts:
@@ -79,8 +78,8 @@ class CorpusAnalyticsRepository:
         counts (at most ``group_limit`` values each). One aggregate reads the total and every
         property's ``known`` count together, one grouped aggregate per property runs alongside.
         Raises ``UnavailableFilter`` when a condition's property cannot be filtered."""
-        types = await self._property_types()
-        return await self._count(where(conditions, types), properties, types, group_limit)
+        types, tokenizations = await self._declared()
+        return await self._count(where(conditions, types, tokenizations), properties, types, group_limit)
 
     async def count_documents_per_value(self, prop: str, values: Sequence[str], properties: dict[str, ValueKind],
                                         group_limit: int, conditions: Sequence[Condition] = ()) -> dict[str, DocumentCounts]:
@@ -89,8 +88,8 @@ class CorpusAnalyticsRepository:
         values that match the same documents must be passed once). At most
         ``PER_VALUE_CONCURRENCY`` values are counted at once, also across concurrent calls.
         Weaviate groups by one property only, so this is how two properties are crossed."""
-        types = await self._property_types()
-        filters = [where([*conditions, AnyOf(prop, (value,))], types) for value in values]
+        types, tokenizations = await self._declared()
+        filters = [where([*conditions, AnyOf(prop, (value,))], types, tokenizations) for value in values]
 
         async def count(value_filter) -> DocumentCounts:
             async with self.per_value_slots:

@@ -17,19 +17,22 @@ Different filters combine with AND; the values of one filter are alternatives (O
 Chunk filters are categorical matches; missing values cannot be selected. On the current
 word-tokenized chunk properties they are not fully exact (``CategoryIn``, #533). Passages
 (chunk Search) need every chunk filter to hold on the **returned chunk** itself (same-chunk).
-Document-level operations (browse, Analytics) will apply them per dimension: for each
-filter, some chunk of the document matches it (#529, decided on #526). Until #529 stores the
-values they need, they reject chunk filters (``ChunkFiltersUnavailable``, 422), never ignore
-them or answer 0.
+Document-level operations (browse, Analytics) apply them per dimension (#529, decided on
+#526): for each filter, some chunk of the document has one of its values; different filters
+may be met by different chunks. They match the document's chunk-value summaries
+(``Documents.chunk_<dimension>``, ``summary_property``), the distinct values of its chunks as
+last recomputed by ``maintenance/chunk_summaries.py``; these are ``field``-tokenized, so
+values match whole. A document never recomputed has no summaries and matches no chunk filter;
+a store without the properties rejects chunk filters (422), never ignores them or answers 0.
 
-``document_conditions`` and ``chunk_conditions`` translate the filters into neutral
-predicates on application property names. The Weaviate adapters render them for the
+``document_conditions``, ``chunk_conditions`` and ``document_chunk_conditions`` translate the
+filters into neutral predicates on application property names. The Weaviate adapters render them for the
 collection they query (``adapters/weaviate/criteria.py``). This module imports no other
 feature, so Search, Documents and Analytics can all use it.
 """
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -54,6 +57,10 @@ TITLE_PROPERTY = "title"
 LIBRARY_PROPERTY = "library"
 LANGUAGE_PROPERTY = "language"
 """``Documents.language`` in document conditions, ``Chunks.language`` in chunk conditions."""
+SUMMARY_PREFIX = "chunk_"
+"""Of the document's chunk-value summary properties: ``chunk_language``, ``chunk_complexity``, ... (#529)."""
+SUMMARIES_COMPUTED_AT = "chunk_summaries_computed_at"
+"""When the document's chunk-value summaries were last recomputed; absent: never (no summaries)."""
 CLASSIFICATION_SEPARATOR = ":"
 """Between classification and value in a query parameter (``complexity:easy``, ``ChunkFilters.from_query``)."""
 
@@ -226,21 +233,6 @@ class InvalidChunkFilterError(InvalidRequestError):
     """A chunk filter names a classification or a value that is not configured (400)."""
 
 
-class ChunkFiltersUnavailable(Exception):
-    """The operation cannot apply chunk filters yet (422): rejected, never ignored or answered with 0."""
-
-    def __init__(self, operation: str):
-        super().__init__(
-            f"{operation} cannot be restricted by chunk filters (chunk language or classifications) yet; "
-            "remove them or search passages instead.")
-
-
-def reject_chunk_filters(filters: ChunkFilters | None, operation: str) -> None:
-    """Document-level operations until #529: raises ``ChunkFiltersUnavailable`` for any chunk filter."""
-    if filters is not None and not filters.is_empty():
-        raise ChunkFiltersUnavailable(operation)
-
-
 def validate_chunk_filters(filters: ChunkFilters, vocabulary: ChunkVocabulary) -> ChunkFilters:
     """``filters`` with every value in its configured spelling; raises ``InvalidChunkFilterError``
     for a classification or value that is not configured. Values are compared ignoring case."""
@@ -337,3 +329,31 @@ def chunk_conditions(filters: ChunkFilters, vocabulary: ChunkVocabulary) -> list
     for name, values in filters.classifications.items():
         conditions.append(category(name, values, vocabulary.classifications.get(name, ())))
     return conditions
+
+
+def summary_property(dimension: str) -> str:
+    """The ``Documents`` property summarizing a chunk dimension (``language`` or a classification)."""
+    return SUMMARY_PREFIX + dimension
+
+
+def document_chunk_conditions(filters: ChunkFilters, vocabulary: ChunkVocabulary) -> list[CategoryIn]:
+    """The predicates on the document's chunk-value summaries that validated ``filters`` mean:
+    one per dimension, each met by some chunk of the document (per-dimension semantics)."""
+    return [replace(condition, prop=summary_property(condition.prop))
+            for condition in chunk_conditions(filters, vocabulary)]
+
+
+def document_level_conditions(filters: DocumentFilters | None, chunk_filters: ChunkFilters | None,
+                              vocabulary: ChunkVocabulary | None) -> tuple[ChunkFilters, list[Condition]]:
+    """The normalized chunk filters and every predicate on ``Documents`` that document filters
+    and chunk filters mean together (AND); browsing and Analytics share it, so the same criteria
+    select the same documents. Raises ``InvalidChunkFilterError`` for an unconfigured chunk
+    filter, and ``InvalidRequestError`` for chunk filters without a ``vocabulary``."""
+    conditions: list[Condition] = document_conditions(filters) if filters is not None else []
+    chunks = chunk_filters or ChunkFilters()
+    if chunks.is_empty():
+        return ChunkFilters(), conditions
+    if vocabulary is None:
+        raise InvalidRequestError("Chunk filters are not available here.")
+    chunks = validate_chunk_filters(chunks, vocabulary)
+    return chunks, [*conditions, *document_chunk_conditions(chunks, vocabulary)]

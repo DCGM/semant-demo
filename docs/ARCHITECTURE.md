@@ -112,7 +112,8 @@ semant_demo_backend/semant_demo/
   users/                  FastAPI Users: model, manager, auth routers, schemas; routes (user search)
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks),
-                          chunk_year, db_benchmark (read-only Weaviate inventory and query benchmark, #374)
+                          chunk_year, chunk_summary_schema and chunk_summaries (documents' chunk-value
+                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374)
 ```
 
 ```mermaid
@@ -310,11 +311,16 @@ vector) stay in each endpoint's request, and collections, tags and annotations a
   fields is 400. The response echoes the normalized filters.
 - **Documents** (`GET /api/documents/browse` with `year_min`, `year_max`, `title_contains`,
   `libraries`, `languages`; Analytics `filters`): the same rendering on `Documents`, so browse
-  totals equal the Analytics counts for the same filters. Chunk filters will apply per
-  dimension (for each, some chunk of the document matches; #529); until then any chunk filter
-  is rejected with 422, never ignored: the Analytics requests' `chunk_filters`, and browse's
-  `chunk_languages` and `chunk_classifications` (repeated `<classification>:<value>`, e.g.
-  `complexity:easy`; `ChunkFilters.from_query`). Without them browse is unchanged.
+  totals equal the Analytics counts for the same filters. Chunk filters (the Analytics
+  requests' `chunk_filters`; browse's `chunk_languages` and `chunk_classifications`, repeated
+  `<classification>:<value>` such as `complexity:easy`, `ChunkFilters.from_query`) apply per
+  dimension: for each, some chunk of the document has one of the values (#529). Both go through
+  `document_level_conditions`, which validates them against the configured vocabulary
+  (`get_chunk_vocabulary`, 400 for an unknown value) and turns each into a `CategoryIn` on the
+  document's summary `Documents.chunk_<dimension>` (`field`-tokenized, matched whole), in the
+  same filter as the document predicates. The summaries are recomputed only by
+  `maintenance/chunk_summaries.py` and may be stale between runs; a document never recomputed
+  matches no chunk filter, and a store without the properties answers 422 (`UnavailableFilter`).
 - **Chunk value matching (limitation accepted for now).** The stored classifications are
   `text[]` with `word` tokenization, where `easy` also matches `very_easy` (and `national`
   `multi_national_or_continental`). A value is therefore matched without the configured values
@@ -381,8 +387,9 @@ take longer, in rounds of 4; the reproducible benchmark is #494.
   - Invalid filters are rejected with 422 before the store is queried. So is a filter on a
     property the store does not declare or cannot filter (e.g. `library` in an older local
     store without it): it is never answered with 0.
-  - `chunk_filters` (chunk language, classifications) are rejected with 422 for now: document
-    counts will apply them per dimension through document summaries of the chunk values (#529).
+  - `chunk_filters` (chunk language, classifications) apply per dimension through the
+    documents' chunk-value summaries, exactly as in document browsing (#529); the response
+    echoes them normalized. Chunk-filtered counts are always computed live, never cached.
 
 - **Population.** Every object of `Documents`, as Search covers the whole public corpus;
   `Documents.public` is not used (#279). A future public-read policy must restrict the
@@ -730,7 +737,10 @@ apply, or a checkpointed single-pass `--sync`; source library only — see
 chunks are audited, and on explicit request deleted, by
 `python -m semant_demo.maintenance.document_cleanup` (#281). The document year that the
 search filters on is copied to the chunks, and checked, by
-`python -m semant_demo.maintenance.chunk_year` (#153).
+`python -m semant_demo.maintenance.chunk_year` (#153). The documents' chunk-value summaries
+used by document-level chunk filters are declared by
+`python -m semant_demo.maintenance.chunk_summary_schema` and recomputed for the whole
+database by `python -m semant_demo.maintenance.chunk_summaries` (#529).
 
 ## Historical material
 
