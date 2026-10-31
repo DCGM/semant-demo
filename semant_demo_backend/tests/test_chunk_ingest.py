@@ -199,6 +199,29 @@ def test_exit_code():
     ["--check", "c.json", "--offline-backup", "note", "in.jsonl"],
     ["--check", "c.json", "--backup-id", "b", "in.jsonl"],
     ["--check", "c.json", "--bulk", "in.jsonl"],
+    ["--check", "c.json", "--batch", "5", "in.jsonl"],
+    ["--write", "w.json", "--offline-backup", "note", "--batch", "5", "in.jsonl"],
 ])
-async def test_a_check_with_a_backup_option_is_refused(argv):
+async def test_a_check_with_a_backup_option_or_a_batch_without_bulk_is_refused(argv, capsys):
     assert await chunk_ingest._main(argv) == 2
+    assert "belong" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("option", ["--page", "--batch"])
+@pytest.mark.parametrize("value", ["0", "-1", "x"])
+def test_page_and_batch_must_be_positive(option, value):
+    with pytest.raises(SystemExit) as raised:
+        chunk_ingest._parser().parse_args(["--write", "w.json", "--bulk", option, value, "in.jsonl"])
+    assert raised.value.code == 2
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    ({"batch": 5}, "--batch belongs to --bulk"),
+    ({"bulk": True, "page": 0}, "must be positive"),
+    ({"bulk": True, "batch": 0}, "must be positive"),
+])
+async def test_run_refuses_a_batch_without_bulk_and_a_non_positive_page_or_batch(tmp_path, kwargs, message):
+    with pytest.raises(LookupError, match=message):
+        await chunk_ingest.run(None, None, [], checkpoint=tmp_path / "w.json", endpoint="test", write_=True,
+                               backup={"offline_backup": "note"}, **kwargs)
+    assert not (tmp_path / "w.json").exists()

@@ -100,10 +100,10 @@ def jsonl(tmp_path, name: str, records: list) -> list:
     return [path]
 
 
-async def run(s, tmp_path, inputs, checkpoint="run.json", write=True, bulk=False):
+async def run(s, tmp_path, inputs, checkpoint="run.json", write=True, bulk=False, progress=quiet, **kwargs):
     result = await chunk_ingest.run(s.client, s.names, inputs, checkpoint=tmp_path / checkpoint, endpoint="test",
                                     write_=write, backup={"offline_backup": "test copy"} if write else None, bulk=bulk,
-                                    progress=quiet)
+                                    progress=progress, **kwargs)
     return result, chunk_ingest.exit_code(result)
 
 
@@ -274,7 +274,8 @@ async def test_every_write_run_records_its_backup_and_a_check_takes_none(ingest_
                                     write_=True, backup={"backup_id": "pre-import"}, progress=quiet)
     state = json.loads((tmp_path / "run.json").read_text())
     assert [{k: v for k, v in b.items() if k != "at"} for b in state["runs"]] == [
-        {"bulk": False, "offline_backup": "/copies/2026-10-27"}, {"bulk": False, "backup_id": "pre-import"}]
+        {"bulk": False, "page": 100, "offline_backup": "/copies/2026-10-27"},
+        {"bulk": False, "page": 100, "backup_id": "pre-import"}]
     assert result["runs"] == state["runs"] and chunk_ingest.exit_code(result) == 0
 
 
@@ -338,7 +339,8 @@ async def test_bulk_into_an_empty_chunk_collection_writes_what_the_single_insert
     result, code = await run(s, tmp_path, jsonl(tmp_path, "all.jsonl", records), bulk=True)
     assert code == 0 and result["counts"]["chunks_inserted"] == 3 * len(TEXTS)
     assert result["counts"]["documents_created"] == 2  # EXISTING was there; NEW and OTHER created
-    assert [r["bulk"] for r in result["runs"]] == [True]
+    assert [{k: v for k, v in r.items() if k in ("bulk", "page", "batch")} for r in result["runs"]] == [
+        {"bulk": True, "page": 100, "batch": 100}]
     expected = list(chunk_positions(TEXTS))
     for d in (NEW, OTHER, EXISTING):
         assert [(await stored_chunk(s.client, d, i)).position for i in range(len(TEXTS))] == expected
@@ -380,3 +382,23 @@ async def test_a_refused_bulk_chunk_blocks_only_its_document_and_a_run_without_b
     result, code = await run(s, tmp_path, inputs)  # resumes the checkpoint with single inserts
     assert code == 0 and [r["bulk"] for r in result["runs"]] == [True, False]
     assert [(await stored_chunk(s.client, NEW, i)).position for i in range(4)] == list(chunk_positions(TEXTS[:4]))
+
+
+async def test_a_resumed_run_may_use_another_page(ingest_store, tmp_path):
+    s = ingest_store
+    inputs = jsonl(tmp_path, "all.jsonl", [line(EXISTING, i) for i in range(STORED, len(TEXTS))]
+                   + [line(d, i) for d in (NEW, OTHER) for i in range(3)])
+
+    class Stopped(Exception):
+        pass
+
+    def stop(_line: str) -> None:  # after the first page is checkpointed, like a killed run
+        raise Stopped
+    with pytest.raises(Stopped):
+        await run(s, tmp_path, inputs, page=1, progress=stop)
+    assert json.loads((tmp_path / "run.json").read_text())["after"] == str(EXISTING)
+    result, code = await run(s, tmp_path, inputs, page=2)
+    assert code == 0 and [r["page"] for r in result["runs"]] == [1, 2]
+    assert result["counts"]["documents"] == 3 and result["counts"]["chunks_inserted"] == 3 + 3 + 3
+    assert [(await stored_chunk(s.client, EXISTING, i)).position for i in range(len(TEXTS))] == list(
+        chunk_positions(TEXTS))
