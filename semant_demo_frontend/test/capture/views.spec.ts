@@ -397,6 +397,96 @@ test('collection attributes (#331, #506, #522)', async ({ page, request }, testI
   }
 })
 
+test('attribute name taken (#331)', async ({ page, request }, testInfo) => {
+  // A taken name is shown at the Name field, which gets the focus, however the form is scrolled.
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const created = await request.post(`/api/user_collections/${fixture.collection('chronicles').id}/attributes`, {
+    headers, data: { name: 'Role', cardinality: 'single', all_tags: true, values: [{ label: 'statesman' }] }
+  })
+  expect(created.ok()).toBe(true)
+  try {
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${fixture.collection('chronicles').id}/attributes`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+    await page.getByTestId('attribute-create').click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Name').fill('role')
+    await dialog.getByRole('textbox', { name: 'Value 1', exact: true }).fill('statesman')
+    await dialog.getByRole('button', { name: 'Add value' }).click()
+    await dialog.getByRole('textbox', { name: 'Value 2', exact: true }).fill('Statesman')
+    await dialog.getByRole('button', { name: 'Create' }).click()
+    await expect(dialog.getByLabel('Name')).toBeFocused()
+    await expect(dialog).toContainText('An attribute named "Role" already exists in this collection.')
+    await save(page, testInfo, 'attribute-name-taken')
+  } finally {
+    await deleteAddedAttributes(request, 'owner', 'chronicles')
+  }
+})
+
+test('attribute assignment in the workspace (#331)', async ({ page, request }, testInfo) => {
+  // The Role column with values on the confirmed row, its picker, the batch dialog, the per-item
+  // result of a selection and the sidebar's attributes of the open annotation.
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const base = `/api/user_collections/${fixture.collection('chronicles').id}`
+  const created = await request.post(`${base}/attributes`, {
+    headers,
+    data: {
+      name: 'Role',
+      cardinality: 'multi',
+      tag_ids: [fixture.tag('person').id],
+      values: [{ label: 'statesman' }, { label: 'chronicler' }, { label: 'witness' }, { label: 'Unknown', kind: 'unknown' }]
+    }
+  })
+  expect(created.ok()).toBe(true)
+  const place = await request.post(`${base}/attributes`, {
+    headers, data: { name: 'Place type', cardinality: 'single', all_tags: true, values: [{ label: 'town' }, { label: 'village' }] }
+  })
+  expect(place.ok()).toBe(true)
+  try {
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+    await expect(page.getByTestId('kwic-row')).toHaveCount(4)
+    await page.getByTestId('concordance-show-attribute').click()
+    await page.getByRole('option', { name: 'Role', exact: true }).click()
+    const novak = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
+    await novak.getByTestId('kwic-attribute-edit').click()
+    const picker = page.getByTestId('attribute-value-picker')
+    await picker.getByText('statesman', { exact: true }).click()
+    await expect(novak.getByTestId('attribute-chips')).toHaveText('statesman')
+    await picker.getByText('witness', { exact: true }).click()
+    await expect(novak.getByTestId('attribute-chips')).toHaveText('statesmanwitness')
+    await expect(page.locator('.q-menu')).not.toHaveClass(/q-transition/)
+    await save(page, testInfo, 'attribute-assign-column')
+    await page.keyboard.press('Escape')
+
+    await page.getByTestId('select-all-matches').click()
+    await page.getByTestId('assign-attribute').click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByTestId('assign-dialog-attribute').click()
+    await page.getByRole('option', { name: 'Role (several values)' }).click()
+    await expect(page.locator('.q-menu')).toHaveCount(0)
+    await dialog.getByRole('checkbox', { name: 'chronicler' }).click()
+    await expect(dialog.getByTestId('assign-summary')).toContainText('Add "chronicler"')
+    await save(page, testInfo, 'attribute-assign-dialog')
+    await dialog.getByRole('button', { name: 'Add to 4' }).click()
+    await expect(page.getByTestId('assign-report')).toContainText('saved 1 of 4')
+    await expect(dialog).toHaveCount(0)
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'attribute-assign-result')
+
+    await novak.click()
+    await expect(page.getByTestId('annotation-attributes')).toBeVisible()
+    await expectRightSidebarIn(page)
+    await expectSidebarsOpen(page, testInfo)
+    await save(page, testInfo, 'attribute-assign-sidebar')
+  } finally {
+    await deleteAddedAttributes(request, 'owner', 'chronicles')
+  }
+})
+
 test('corpus overview', async ({ page }, testInfo) => {
   await withLibraries(page)
   await page.goto('/#/corpus')

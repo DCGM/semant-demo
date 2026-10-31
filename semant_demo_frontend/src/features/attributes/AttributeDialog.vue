@@ -23,7 +23,9 @@
           outlined
           label="Name"
           :disable="frozen"
-          :rules="[(v: string) => !!v.trim() || 'Name is required']"
+          :rules="[(v: string) => !!v.trim() || 'Name is required', (v: string) => nameTaken(v, others()) ?? true]"
+          :error="nameError ? true : undefined"
+          :error-message="nameError ?? undefined"
           lazy-rules
           counter
           :maxlength="MAX_NAME"
@@ -41,7 +43,7 @@
         />
 
         <div data-testid="attribute-cardinality">
-          <q-checkbox
+          <q-toggle
             v-model="multiple"
             label="Allow multiple values per annotation"
             :disable="frozen || !!props.attribute"
@@ -131,6 +133,7 @@
                   :label="`Value ${index + 1}`"
                   :disable="frozen"
                   :maxlength="MAX_NAME"
+                  :rules="[() => draftTaken(index) ?? true]"
                   hide-bottom-space
                 />
               </div>
@@ -157,7 +160,7 @@
             @click="addDraft"
           />
           <div class="column q-mt-sm">
-            <q-checkbox
+            <q-toggle
               v-for="kind in SPECIAL_KINDS"
               :key="kind"
               v-model="allowed[kind]"
@@ -173,7 +176,15 @@
           </div>
         </div>
 
-        <q-banner v-if="error" dense rounded class="bg-red-1 text-negative" role="alert" data-testid="attribute-dialog-error">
+        <q-banner
+          v-if="error"
+          ref="errorBanner"
+          dense
+          rounded
+          class="bg-red-1 text-negative"
+          role="alert"
+          data-testid="attribute-dialog-error"
+        >
           {{ error }}
         </q-banner>
       </q-form>
@@ -183,19 +194,20 @@
 
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { QForm, useDialogPluginComponent } from 'quasar'
+import { QBanner, QForm, useDialogPluginComponent } from 'quasar'
 
 import FormDialog from 'src/shared/ui/FormDialog.vue'
 import { Cardinality, type Attribute, type PatchAttribute, type PostAttribute, type Tag } from 'src/generated/api'
 import {
-  DESCRIPTION_STYLE, KIND_LABELS, MAX_DESCRIPTION, MAX_NAME, MAX_VALUES, SPECIAL_KINDS, type SpecialKind,
-  type ValueActions
+  DESCRIPTION_STYLE, KIND_LABELS, MAX_DESCRIPTION, MAX_NAME, MAX_VALUES, SPECIAL_KINDS, labelTaken, nameTaken,
+  type SpecialKind, type ValueActions
 } from './attributeForm'
 import { AttributeWriteError } from './attributesStore'
 import AttributeValuesEditor from './AttributeValuesEditor.vue'
 
 type Save = (payload: PostAttribute | PatchAttribute) => Promise<Attribute>
 type Tags = () => Tag[]
+type Others = () => Attribute[]
 
 const props = defineProps<{
   /** The attribute to edit; none: a new one. */
@@ -207,6 +219,8 @@ const props = defineProps<{
   save: Save
   /** The value writes of an edited attribute, saved at once. */
   valueActions?: ValueActions
+  /** The collection's other attributes, whose names this one cannot take; read when validated. */
+  others?: Others
 }>()
 
 defineEmits([...useDialogPluginComponent.emits])
@@ -233,6 +247,19 @@ const saving = ref(false)
 const valuesBusy = ref(false)
 const frozen = computed(() => saving.value || valuesBusy.value)
 const error = ref<string | null>(null)
+const errorBanner = ref<QBanner | null>(null)
+// A name the server refused as taken (another person created it meanwhile), shown at the field.
+const nameError = ref<string | null>(null)
+watch(name, () => { nameError.value = null })
+const others = () => props.others?.() ?? []
+
+/** Why the draft value at `index` cannot be created: an earlier draft or an allowed special
+ * value has its label. */
+function draftTaken (index: number): string | null {
+  const earlier = drafts.value.slice(0, index).map(label => ({ label }))
+  const specials = specialDrafts.value.map(kind => ({ label: KIND_LABELS[kind], kind }))
+  return labelTaken(drafts.value[index] ?? '', [...earlier, ...specials])
+}
 // A refusal of the tags (narrowing them while annotations hold values), shown at the field.
 const tagsError = ref<string | null>(null)
 watch([scope, tagIds], () => { tagsError.value = null })
@@ -316,6 +343,7 @@ async function submit () {
   if (frozen.value) return
   error.value = null
   tagsError.value = null
+  nameError.value = null
   const body = payload()
   if (!body) {
     onDialogOK(null)
@@ -331,7 +359,14 @@ async function submit () {
     const refusedTags = !!props.attribute && body.tagIds !== undefined && e instanceof AttributeWriteError &&
       (e.status === 409 || e.status === 503)
     if (refusedTags) tagsError.value = message
-    else error.value = message
+    else if (props.attribute && body.name !== undefined && message.startsWith('An attribute with this name')) {
+      nameError.value = message
+    } else {
+      error.value = message
+      // The form may be scrolled away from the message at its end.
+      await nextTick()
+      errorBanner.value?.$el?.scrollIntoView?.({ block: 'nearest' })
+    }
   } finally {
     saving.value = false
   }

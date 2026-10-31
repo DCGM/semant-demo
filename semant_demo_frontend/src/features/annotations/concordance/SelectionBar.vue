@@ -80,6 +80,17 @@
         data-testid="review-delete"
         @click="emit('review', ReviewAction.delete)"
       />
+      <q-btn
+        dense
+        outline
+        no-caps
+        color="primary"
+        icon="label"
+        :label="`Assign attribute to ${selectedCount}…`"
+        :disable="running || assignBusy"
+        data-testid="assign-attribute"
+        @click="emit('assign')"
+      />
       <span v-if="running" class="selection-bar__progress" role="status" aria-live="polite">
         <q-spinner size="1.1em" color="primary" />
         {{ runningTarget ? `Saving ${progress} / ${runningTarget}…` : 'Updating search…' }}
@@ -124,6 +135,54 @@
       <q-btn dense flat round size="sm" icon="close" aria-label="Dismiss the review result" @click="emit('dismiss')" />
     </div>
 
+    <div
+      v-if="assignReport"
+      class="selection-bar__report selection-bar__report--assign"
+      :class="{ 'selection-bar__report--problem': assignReportHasProblems(assignReport) }"
+      role="status"
+      aria-live="polite"
+      data-testid="assign-report"
+    >
+      <div class="selection-bar__report-head">
+        <span class="selection-bar__report-title" data-testid="assign-report-title">{{ assignSummary!.title }}</span>
+        <q-space />
+        <q-btn
+          v-if="assignReport.failed.length"
+          dense
+          flat
+          no-caps
+          color="primary"
+          icon="refresh"
+          :label="`Retry ${assignReport.failed.length}`"
+          :disable="assignBusy"
+          data-testid="assign-retry"
+          @click="emit('assign-retry')"
+        />
+        <q-btn
+          v-if="assignReport.conflicts.length"
+          dense
+          flat
+          no-caps
+          color="primary"
+          icon="manage_search"
+          label="Show changed"
+          :disable="assignBusy"
+          data-testid="assign-show-changed"
+          @click="emit('assign-show-changed')"
+        >
+          <q-tooltip>Select only the changed annotations, as they are now, to assign them again</q-tooltip>
+        </q-btn>
+        <q-btn dense flat round size="sm" icon="close" aria-label="Dismiss the assignment result" @click="emit('assign-dismiss')" />
+      </div>
+      <ul v-if="assignSummary!.lines.length" class="selection-bar__report-list" data-testid="assign-report-lines">
+        <li v-for="(line, i) in assignSummary!.lines" :key="i">
+          <span v-if="line.count !== null" class="selection-bar__report-count">{{ line.count }}</span>
+          <span class="selection-bar__report-label">{{ line.label }}</span>
+          <span v-if="line.detail" class="selection-bar__report-detail">{{ line.detail }}</span>
+        </li>
+      </ul>
+    </div>
+
     <div v-if="undoable || undoNote" class="selection-bar__undo" role="status" data-testid="undo-bar">
       <span>{{ undoText }}</span>
       <q-btn
@@ -146,8 +205,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { QBtn, QIcon, QSpinner, QTooltip } from 'quasar'
-import { ReviewAction, type Tag } from 'src/generated/api'
+import { QBtn, QIcon, QSpace, QSpinner, QTooltip } from 'quasar'
+import { ReviewAction, type Attribute, type Tag } from 'src/generated/api'
+import { assignReportHasProblems, assignReportSummary } from 'src/features/attributes/assignment'
+import type { AssignReport } from 'src/features/attributes/attributeAssignStore'
 import ReviewTagMenu from './ReviewTagMenu.vue'
 import type { ChangeKind, ReportAction, ReviewReport, UndoableChange } from './annotationReviewStore'
 
@@ -170,6 +231,11 @@ const props = defineProps<{
   undoable?: UndoableChange | null
   /** Why the last change cannot be undone. */
   undoNote?: string | null
+  /** An attribute assignment of the selection is under way, or one of its members' (#331). */
+  assignBusy?: boolean
+  assignReport?: AssignReport | null
+  /** The attribute of `assignReport`. */
+  assignAttribute?: Attribute | null
 }>()
 
 const emit = defineEmits<{
@@ -182,7 +248,14 @@ const emit = defineEmits<{
   'show-changed': []
   dismiss: []
   undo: []
+  assign: []
+  'assign-retry': []
+  'assign-show-changed': []
+  'assign-dismiss': []
 }>()
+
+const assignSummary = computed(() =>
+  props.assignReport ? assignReportSummary(props.assignReport, props.assignAttribute ?? null) : null)
 
 const canSelectAll = computed(() => props.total > 0 && !props.allSelected)
 
@@ -290,6 +363,54 @@ const reportText = computed(() => {
   padding: 4px 8px;
   border-left: 3px solid var(--q-positive);
   background: rgba(33, 186, 69, 0.06);
+}
+
+.selection-bar__report--assign {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.selection-bar__report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.selection-bar__report-title {
+  font-weight: 600;
+}
+
+.selection-bar__report-list {
+  margin: 0;
+  padding: 0 0 2px;
+  list-style: none;
+}
+
+.selection-bar__report-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.selection-bar__report-count {
+  min-width: 1.6em;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.selection-bar__report-label {
+  font-weight: 500;
+}
+
+.selection-bar__report-detail {
+  color: rgba(0, 0, 0, 0.72);
 }
 
 .selection-bar__report--problem {

@@ -5,9 +5,12 @@
       :tags="tags"
       :documents="store.documents"
       :documents-error="store.documentsError"
+      :attributes="attributesStore.attributes"
+      :shown-attribute-id="store.shownAttributeId"
       class="q-mb-sm"
       @change="store.setFilters"
       @reset="store.resetFilters"
+      @show-attribute="id => { store.shownAttributeId = id }"
     />
 
     <SelectionBar
@@ -25,6 +28,9 @@
       :report="review.report"
       :undoable="review.undoable"
       :undo-note="review.undoNote"
+      :assign-busy="assign.running || assign.pending.size > 0"
+      :assign-report="assign.report"
+      :assign-attribute="assignReportAttribute"
       @select-all="selectAllMatches"
       @clear="clearSelection"
       @deselect-hidden="store.deselectHidden"
@@ -34,6 +40,10 @@
       @show-changed="showChanged"
       @dismiss="review.dismiss"
       @undo="undoLast"
+      @assign="assignSelection"
+      @assign-retry="retryAssign"
+      @assign-show-changed="showChangedAssign"
+      @assign-dismiss="assign.dismiss"
     />
 
     <div class="collection-annotations__summary" aria-live="polite">
@@ -64,10 +74,13 @@
       :selected="selection.ids"
       :focused-id="selection.focused?.id ?? null"
       :loading="store.loading"
+      :attribute="shownAttribute"
+      :pending="assignWaiting"
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
       @toggle="toggleRow"
       @select-page="selectPage"
+      @assign="(row, attribute, change) => assignRow(row, attribute, change)"
     />
 
     <div v-if="store.total > PAGE_SIZE && store.rows.length" class="collection-annotations__summary q-mt-sm">
@@ -121,6 +134,16 @@
               :type="selection.focused.type"
               :people="store.people"
               :me="userStore.getUserId"
+            />
+            <AnnotationAttributes
+              v-if="!selection.focusedGone"
+              :row="selection.focused"
+              :attributes="attributesStore.attributes"
+              :loading="attributesStore.loading"
+              :error="attributesStore.error"
+              :busy="assign.running || assign.pending.has(selection.focused.id)"
+              :definitions-route="{ name: 'collectionAttributes', params: { collectionId } }"
+              @assign="(attribute, change) => selection.focused && assignRow(selection.focused, attribute, change)"
             />
             <div
               v-if="focusedConflict && !selection.focusedGone"
@@ -257,7 +280,9 @@ import { computed, defineComponent, h, nextTick, reactive, ref, watch } from 'vu
 import { QBtn, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { ReviewAction, SpanType, type AnnotationListRow } from 'src/generated/api'
+import {
+  ReviewAction, SpanType, type AnnotationListRow, type Attribute, type AttributeAssignResult
+} from 'src/generated/api'
 import { apiErrorMessage, captureSession, errorStatus } from 'src/shared/api'
 import { spanWriteWarning } from 'src/shared/writeOutcome'
 import { warningNotification } from 'src/shared/notification'
@@ -274,6 +299,11 @@ import SelectionBar from './SelectionBar.vue'
 import ReviewTagMenu from './ReviewTagMenu.vue'
 import ProvenanceSummary from './ProvenanceSummary.vue'
 import BoundaryEditor from './BoundaryEditor.vue'
+import AnnotationAttributes from './AnnotationAttributes.vue'
+import { useAttributesStore } from 'src/features/attributes/attributesStore'
+import { useAttributeAssignStore } from 'src/features/attributes/attributeAssignStore'
+import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
+import type { AssignChange } from 'src/features/attributes/assignment'
 import {
   rangeBetween, rangeText, sameRange, stepBoundary, type BoundaryHandle, type BoundaryRange, type BoundaryUnit
 } from './boundaryEdit'
@@ -290,6 +320,8 @@ const $q = useQuasar()
 const store = reactive(useConcordanceStore())
 const selection = reactive(useAnnotationSelectionStore())
 const review = reactive(useAnnotationReviewStore())
+const assign = reactive(useAttributeAssignStore())
+const attributesStore = reactive(useAttributesStore())
 const userStore = useUserStore()
 const tagsStore = useTagsStore()
 const { tags } = storeToRefs(tagsStore)
@@ -409,8 +441,8 @@ function tooMany () {
 }
 
 function toggleRow (id: string, value: boolean) {
-  const version = store.rows.find(r => r.id === id)?.editVersion ?? 0
-  if (!selection.toggle(id, version, value)) tooMany()
+  const row = store.rows.find(r => r.id === id)
+  if (!selection.toggle(id, row?.editVersion ?? 0, value, row?.attributeVersion ?? 0)) tooMany()
 }
 
 function selectPage (value: boolean) {
@@ -475,6 +507,7 @@ function afterReview (report: ReviewReport) {
 async function runReview (action: ReviewAction, items: SelectionEntry[], tagId?: string) {
   const id = collectionId.value
   if (!id || !items.length || !await confirmed(action, items.map(([i]) => i), tagId)) return null
+  assign.dismiss()
   const report = await review.review(id, action, items, tagId ?? null)
   return report ? { report, loaded: afterReview(report) } : null
 }
@@ -714,6 +747,101 @@ async function undoLast () {
   if (current?.chunkId && !chunkContext.chunks.some(c => c.id === current.chunkId)) void showContext(current)
 }
 
+// ── Attribute assignment (#331) ──
+const shownAttribute = computed(() =>
+  attributesStore.attributes.find(a => a.id === store.shownAttributeId) ?? null)
+const assignReportAttribute = computed(() =>
+  attributesStore.attributes.find(a => a.id === assign.report?.attributeId) ?? null)
+// While a selection's assignment runs, rows wait too: its later parts expect the versions the
+// selection had when it started.
+const assignWaiting = computed(() => assign.running ? new Set(store.rows.map(r => r.id)) : assign.pending)
+const filtersByAttribute = computed(() =>
+  store.filters.attributeValues.length > 0 || store.filters.attributeUnassigned.length > 0)
+
+/** Rows and the open annotation take what the server answered, never their own copy. */
+const answered = (attributeId: string) => (result: AttributeAssignResult) => store.applyAssignment(attributeId, result)
+
+/** An assignment that saved something is the last change, which cannot be undone (yet): the
+ * undo line no longer offers the change before it. */
+function noteAssigned (saved: number) {
+  if (saved && (review.undoable || review.undoNote)) review.noteChange(null, 'Attribute assignments cannot be undone.')
+}
+
+/** Assigns values to one annotation (a row's column or the sidebar), at the attribute version
+ * it shows; at most one at a time per annotation. */
+async function assignRow (row: AnnotationListRow, attribute: Attribute, change: AssignChange) {
+  const id = collectionId.value
+  if (!id) return
+  const report = await assign.assignOne(id, attribute.id, change, [row.id, row.attributeVersion ?? 0], answered(attribute.id))
+  if (!report) return
+  noteAssigned(report.saved.length)
+  if (report.missing.length) selection.remove(report.missing)
+  const problem = report.conflicts.length
+    ? 'Someone else changed this annotation\'s attributes meanwhile; it now shows them. Your change was not saved.'
+    : report.refused[0]?.message ?? report.failed[0]?.message ??
+      (report.missing.length ? 'This annotation no longer exists.' : null)
+  if (problem) $q.notify({ type: 'warning', message: problem })
+  else if (report.unrecorded.length) $q.notify({ type: 'warning', message: 'Saved, but the change history could not be recorded.' })
+  // Its values decide whether it still matches attribute filters.
+  if (filtersByAttribute.value || report.missing.length) await followFocused()
+}
+
+/** Reads the page again after a selection's assignment; missing members leave the selection. */
+function afterAssign (report: { missing: string[] }) {
+  if (report.missing.length) selection.remove(report.missing)
+  if (filtersByAttribute.value || report.missing.length) {
+    void store.load()
+    void store.loadShown()
+  }
+}
+
+function assignSelection () {
+  const id = collectionId.value
+  if (!id || !selection.size) return
+  const targets = [...selection.ids].map(i => [i, selection.attributeVersionOf(i)] as const)
+  const offPage = targets.filter(([i]) => !store.rows.some(r => r.id === i)).length
+  $q.dialog({
+    component: AssignAttributeDialog,
+    componentProps: {
+      attributes: attributesStore.attributes.filter(a => !a.retired),
+      tags: tags.value,
+      count: targets.length,
+      offPage,
+      progress: () => assign.progress,
+      save: async (attributeId: string, change: AssignChange) => {
+        review.dismiss()
+        const report = await assign.assign(id, attributeId, change, targets, answered(attributeId))
+        if (report) {
+          noteAssigned(report.saved.length)
+          afterAssign(report)
+        }
+        return report
+      }
+    }
+  })
+}
+
+async function retryAssign () {
+  const id = collectionId.value
+  const attributeId = assign.report?.attributeId
+  if (!id || !attributeId) return
+  const report = await assign.retry(id, answered(attributeId))
+  if (report) {
+    noteAssigned(report.saved.length)
+    afterAssign(report)
+  }
+}
+
+/** Selects the annotations someone else changed meanwhile, at their current attribute
+ * versions, to look at them and assign again. */
+function showChangedAssign () {
+  const conflicts = assign.report?.conflicts ?? []
+  if (!conflicts.length) return
+  selection.replace(conflicts.map(([i]) => [i, selection.versionOf(i)] as const), Object.fromEntries(conflicts))
+  assign.dismiss()
+  void store.loadShown()
+}
+
 function skip () {
   if (nextRow.value) void openContext(nextRow.value)
 }
@@ -728,6 +856,7 @@ watch(collectionId, async (id) => {
   chunkContext.clear()
   const returning = store.collectionId === id && !!store.page
   void tagsStore.fetchTagsByCollection(id)
+  void attributesStore.load(id)
   const loading = store.open(id)
   if (returning) {
     // Back from a document: the same place, then the rows as they are now.

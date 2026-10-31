@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import {
-  AnnotationSort, SpanType, type AnnotatedDocument, type AnnotationPage, type CollectionPerson
+  AnnotationSort, SpanType, type AnnotatedDocument, type AnnotationListRow, type AnnotationPage,
+  type AttributeAssignResult, type CollectionPerson
 } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
 import { MAX_SELECTION, useAnnotationSelectionStore } from '../annotationSelectionStore'
+import { useAttributeAssignStore } from 'src/features/attributes/attributeAssignStore'
 import { useAnnotationReviewStore } from './annotationReviewStore'
 
 /** Rows per page of the concordance. */
@@ -20,6 +22,11 @@ export interface ConcordanceFilters {
   documentIds: string[]
   yearFrom: number | null
   yearTo: number | null
+  /** Accepted attribute values, as `<attribute id>:<value id>`: values of one attribute match
+   * any, different attributes all (ADR 0011). */
+  attributeValues: string[]
+  /** Attribute ids the annotations must hold no value of. */
+  attributeUnassigned: string[]
   sort: AnnotationSort
 }
 
@@ -31,6 +38,8 @@ export function defaultFilters (): ConcordanceFilters {
     documentIds: [],
     yearFrom: null,
     yearTo: null,
+    attributeValues: [],
+    attributeUnassigned: [],
     sort: AnnotationSort.document
   }
 }
@@ -52,6 +61,8 @@ function idsRequest (f: ConcordanceFilters, within?: string[]) {
     documentIds: f.documentIds.length ? f.documentIds : null,
     yearFrom: f.yearFrom,
     yearTo: f.yearTo,
+    attributeValues: f.attributeValues.length ? f.attributeValues : undefined,
+    attributeUnassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
     within: within ?? null
   }
 }
@@ -99,6 +110,9 @@ export const useConcordanceStore = defineStore('concordance', () => {
   /** The collection's owner and members, to name who created or changed annotations (#460). */
   const people = shallowRef<CollectionPerson[]>([])
   const scrollY = ref(0)
+  /** The attribute whose values the rows show in a column of their own (none by default);
+   * a view setting, not a filter. */
+  const shownAttributeId = ref<string | null>(null)
   /** The query and offset of `page`. */
   let pageKey: string | null = null
 
@@ -141,6 +155,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     known.value = new Set()
     shownError.value = null
     people.value = []
+    shownAttributeId.value = null
     pageKey = null
     scrollY.value = 0
   }
@@ -185,6 +200,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
       reset()
       collectionId.value = id
       useAnnotationReviewStore().clear()
+      useAttributeAssignStore().clear()
     }
     selection.enter(id)
     // Names only label provenance: the workspace does not wait for them.
@@ -236,6 +252,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
         documentId: f.documentIds.length ? f.documentIds : undefined,
         yearFrom: f.yearFrom ?? undefined,
         yearTo: f.yearTo ?? undefined,
+        attribute: f.attributeValues.length ? f.attributeValues : undefined,
+        unassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
         sort: f.sort,
         limit: PAGE_SIZE,
         offset: offset.value
@@ -350,7 +368,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         collectionId: id, annotationIdsRequest: idsRequest(filters.value)
       })
       if (!applies()) return null
-      if (!selection.add(result.ids.map(i => [i, result.versions?.[i] ?? 0] as const))) {
+      if (!selection.add(result.ids.map(i => [i, result.versions?.[i] ?? 0] as const), result.attributeVersions ?? {})) {
         return `The selection can hold at most ${MAX_SELECTION} annotations; clear it or narrow the filters.`
       }
       // All matches are known now: every other member is hidden by the filters. This
@@ -410,7 +428,34 @@ export const useConcordanceStore = defineStore('concordance', () => {
       selection.remove(rows.value.map(r => r.id))
       return true
     }
-    return selection.add(rows.value.map(r => [r.id, r.editVersion ?? 0] as const))
+    return selection.add(rows.value.map(r => [r.id, r.editVersion ?? 0] as const),
+      Object.fromEntries(rows.value.map(r => [r.id, r.attributeVersion ?? 0])))
+  }
+
+  /**
+   * Shows what an assignment of `attributeId` answered (#331): the values and attribute
+   * version the server returned replace the listed ones, for saved annotations and for those
+   * refused because someone changed them, so a row never keeps its stale copy.
+   */
+  function applyAssignment (attributeId: string, result: AttributeAssignResult) {
+    const versions = result.versions ?? {}
+    const values = result.values ?? {}
+    const update = (row: AnnotationListRow): AnnotationListRow => {
+      if (!(row.id in versions) && !(row.id in values)) return row
+      const attributes = { ...(row.attributes ?? {}) }
+      const held = values[row.id]
+      if (held) {
+        if (held.length) attributes[attributeId] = held
+        else delete attributes[attributeId]
+      }
+      return { ...row, attributes, attributeVersion: versions[row.id] ?? row.attributeVersion }
+    }
+    if (page.value) page.value = { ...page.value, rows: page.value.rows.map(update) }
+    const focused = selection.focused
+    if (focused) {
+      const next = update(focused)
+      if (next !== focused) selection.focused = next
+    }
   }
 
   /** Forgets everything (sign-out, another account). */
@@ -420,6 +465,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     collectionId.value = null
     selection.clear()
     useAnnotationReviewStore().clear()
+    useAttributeAssignStore().clear()
   }
 
   return {
@@ -439,6 +485,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     resolving,
     people,
     scrollY,
+    shownAttributeId,
     open,
     load,
     readFocused,
@@ -450,6 +497,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     resetFilters,
     goTo,
     setPageSelected,
+    applyAssignment,
     clear
   }
 })
