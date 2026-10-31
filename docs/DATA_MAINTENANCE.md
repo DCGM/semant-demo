@@ -313,15 +313,16 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   its document; documents are written in parallel (`--concurrency`).
 - `--bulk` is for a **new store** whose chunk collection is empty at the start (refused otherwise,
   before any write):
-  - it batch-inserts the chunks in rounds of one next chunk from each of up to `--batch` (100)
+  - it batch-inserts the chunks in rounds of one next chunk from each of up to `--batch` (800)
     documents of the page, each round read back before the next; a finished document leaves its
     place to the next document of the page;
   - documents are still created with single inserts, because a batch insert could replace an
     existing document with its metadata;
   - an interrupted bulk run is finished without `--bulk`: by then the collection is no longer empty,
     so nothing already stored is ever written in a batch.
-- Documents are planned, written and checkpointed in pages of `--page` documents (100). A larger
-  page needs more memory and repeats more checks after an interruption. A resumed run may use
+- Documents are planned, written and checkpointed in pages of `--page` documents (100, with
+  `--bulk` 2000). A larger page needs more memory and repeats more checks after an interruption;
+  with `--bulk` it keeps the batches full while the short documents finish. A resumed run may use
   another page or batch.
 - A failed or uncertain write blocks only the rest of that document (`blocked`); running the same
   command again retries it, planned again from the store.

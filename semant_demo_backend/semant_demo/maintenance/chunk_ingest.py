@@ -13,7 +13,7 @@ Check (read-only, the default)::
 Write::
 
     python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endpoint HOST:PORT \\
-        (--backup-id BACKUP | --offline-backup NOTE) [--bulk [--batch 100]] [--page N] [--concurrency 8] \\
+        (--backup-id BACKUP | --offline-backup NOTE) [--bulk [--batch 800]] [--page N] [--concurrency 8] \\
         FILE.jsonl [...]
 
 Input: one JSON object per line and chunk, files read in sorted path order. Required:
@@ -58,8 +58,9 @@ again from what is stored then. A document created by the import whose
 chunks did not all arrive is listed as ``incomplete_document`` and never deleted (#281).
 Repeating a completed import inserts nothing.
 
-Documents are planned, written and checkpointed in pages (``--page``, 100 documents). A
-larger page needs more memory and repeats more checks after an interruption.
+Documents are planned, written and checkpointed in pages (``--page``, 100 documents and
+2000 with ``--bulk``). A larger page needs more memory and repeats more checks after an
+interruption; with ``--bulk`` it keeps the batches full while the short documents finish.
 
 The checkpoint (JSON, replaced atomically after each page of documents) holds the
 endpoint, the resolved collections, the mode, the input files (size and SHA-256), the
@@ -120,10 +121,12 @@ IGNORED = frozenset({
 """Input keys that are counted and never written."""
 DOCUMENT_PAGE = 100
 """Documents planned, written and checkpointed together (``--page``)."""
+BULK_PAGE = 2000
+"""The default page with ``--bulk``: large enough to keep the batches full while short documents finish."""
 WINDOW = 200
 """Chunk orders read per query when comparing the stored part of a document."""
 CONCURRENCY = 8
-BULK_BATCH = DOCUMENT_PAGE
+BULK_BATCH = 800
 """Chunks per batch insert with ``--bulk`` (``--batch``): one from each of up to this many documents."""
 ACTIONS = ("new", "append", "replayed", "rejected")
 QUERY_TIMEOUT = 600
@@ -509,7 +512,7 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
     ``backup`` (``{"backup_id": ...}`` or ``{"offline_backup": ...}``) is required for a write,
     refused for a check, and recorded in the checkpoint (``runs``) before anything is written.
     ``bulk`` batch-inserts the chunks and is refused unless the chunk collection is empty at the
-    start. ``page`` defaults to ``DOCUMENT_PAGE``; ``batch``
+    start. ``page`` defaults to ``DOCUMENT_PAGE`` (``BULK_PAGE`` with ``bulk``); ``batch``
     (default ``BULK_BATCH``) belongs to ``bulk``. Raises ``LookupError`` before writing for a
     backup, bulk, page, batch, schema or checkpoint problem."""
     if write_ and not backup:
@@ -520,7 +523,7 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
         raise LookupError("--batch belongs to --bulk")
     if (page is not None and page < 1) or (batch is not None and batch < 1):
         raise LookupError("--page and --batch must be positive")
-    page = page or DOCUMENT_PAGE
+    page = page or (BULK_PAGE if bulk else DOCUMENT_PAGE)
     batch = batch or BULK_BATCH
     if bulk and batch > page:
         progress(f"--batch {batch} exceeds --page {page}: a batch holds at most one chunk from each document of a page")
@@ -680,8 +683,8 @@ def _parser() -> argparse.ArgumentParser:
                    help=f"with --bulk: chunks per batch insert, one from each of up to N documents of the page "
                         f"(default {BULK_BATCH})")
     p.add_argument("--page", type=_positive, metavar="N",
-                   help=f"documents planned, written and checkpointed together (default {DOCUMENT_PAGE}); "
-                        f"a larger page needs more memory and repeats more checks after an interruption")
+                   help=f"documents planned, written and checkpointed together (default {DOCUMENT_PAGE}, with --bulk "
+                        f"{BULK_PAGE}); a larger page needs more memory and repeats more checks after an interruption")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help=f"documents in parallel (default {CONCURRENCY})")
     p.add_argument("inputs", nargs="+", type=Path, metavar="FILE.jsonl")
     return p
