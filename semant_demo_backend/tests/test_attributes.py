@@ -123,7 +123,10 @@ def store(definitions, spans):
 
 
 def attribute_body(**kwargs):
+    """All tags unless tags are given: All tags is chosen explicitly (#522)."""
     kwargs.setdefault("name", "speaker_type")
+    if "tag_ids" not in kwargs:
+        kwargs.setdefault("all_tags", True)
     kwargs.setdefault("values", [PostAttributeValue(label="Author"), PostAttributeValue(label="Narrator")])
     return PostAttribute(**kwargs)
 
@@ -583,9 +586,12 @@ async def test_tags_cannot_be_narrowed_while_annotations_hold_values_but_can_be_
                                                                     attribute.values[:1]))
     await service.assign_attributes(store, OWNER, COLLECTION, assign(free, [APPROVED], AssignMode.add,
                                                                     free.values[:1], {APPROVED: 1}))
-    for narrowed, tags in ((attribute, [PLACE]), (free, [PLACE])):
+    for narrowed, patch in ((attribute, PatchAttribute(tag_ids=[PLACE])),
+                            (free, PatchAttribute(all_tags=False, tag_ids=[PLACE])),
+                            # Down to no tag at all, from selected tags and from All tags (#522).
+                            (attribute, PatchAttribute(tag_ids=[])), (free, PatchAttribute(all_tags=False))):
         with pytest.raises(InUseError) as used:
-            await service.update_attribute(store, OWNER, COLLECTION, narrowed.id, PatchAttribute(tag_ids=tags))
+            await service.update_attribute(store, OWNER, COLLECTION, narrowed.id, patch)
         assert used.value.affected == 1
     # Values on an annotation whose tag stays applicable do not block narrowing the other tags.
     both = await define(store, name="both", tag_ids=[PERSON, PLACE])
@@ -593,19 +599,69 @@ async def test_tags_cannot_be_narrowed_while_annotations_hold_values_but_can_be_
                                                                     both.values[:1], {APPROVED: 2}))
     kept = await service.update_attribute(store, OWNER, COLLECTION, both.id, PatchAttribute(tag_ids=[PERSON]))
     assert kept.tag_ids == [PERSON]
-    everywhere = await service.update_attribute(store, OWNER, COLLECTION, free.id, PatchAttribute(tag_ids=[PERSON]))
-    assert everywhere.tag_ids == [PERSON]
+    everywhere = await service.update_attribute(store, OWNER, COLLECTION, free.id,
+                                                PatchAttribute(all_tags=False, tag_ids=[PERSON]))
+    assert (everywhere.all_tags, everywhere.tag_ids) == (False, [PERSON])
     with pytest.raises(InUseError):
         await service.update_attribute(store, OWNER, COLLECTION, both.id, PatchAttribute(tag_ids=[PLACE]))
     widened = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
                                              PatchAttribute(tag_ids=[PERSON, PLACE]))
     assert set(widened.tag_ids) == {PERSON, PLACE}
-    cleared = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(tag_ids=[]))
-    assert cleared.tag_ids == []
+    to_all = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(all_tags=True))
+    assert (to_all.all_tags, to_all.tag_ids) == (True, [])
 
     unused = await define(store, name="unused", tag_ids=[PERSON])
     narrowed = await service.update_attribute(store, OWNER, COLLECTION, unused.id, PatchAttribute(tag_ids=[PLACE]))
     assert narrowed.tag_ids == [PLACE]
+    # Removing the last selected tag leaves no tag; it never makes the attribute global.
+    emptied = await service.update_attribute(store, OWNER, COLLECTION, unused.id, PatchAttribute(tag_ids=[]))
+    assert (emptied.all_tags, emptied.tag_ids) == (False, [])
+    assert [(a.all_tags, a.tag_ids) for a in await service.list_attributes(store, OWNER, COLLECTION)
+            if a.id == unused.id] == [(False, [])]
+
+
+async def test_all_tags_selected_tags_and_no_tags_are_distinct(store, definitions):
+    everywhere = await define(store, name="everywhere")
+    some = await define(store, name="some", tag_ids=[PERSON, PERSON])
+    none = await define(store, name="none", tag_ids=[])
+    implicit = await service.create_attribute(store, OWNER, COLLECTION, PostAttribute(name="implicit"))
+    stored = {a.name: (a.all_tags, a.tag_ids) for a in await definitions.read_all(COLLECTION)}
+    assert stored == {"everywhere": (True, []), "some": (False, [PERSON]), "none": (False, []),
+                      "implicit": (False, [])}
+    assert (everywhere.all_tags, some.all_tags, none.all_tags, implicit.all_tags) == (True, False, False, False)
+
+    # All tags has no selected tags, and an All tags attribute selects tags only explicitly.
+    with pytest.raises(ValueError, match="all_tags"):
+        PostAttribute(name="both", all_tags=True, tag_ids=[PERSON])
+    with pytest.raises(ValueError, match="all_tags"):
+        PatchAttribute(all_tags=True, tag_ids=[PERSON])
+    with pytest.raises(InvalidRequestError, match="all_tags false"):
+        await service.update_attribute(store, OWNER, COLLECTION, everywhere.id, PatchAttribute(tag_ids=[PERSON]))
+    # Choosing All tags clears the selected tags; leaving it keeps none selected.
+    assert (await service.update_attribute(store, OWNER, COLLECTION, some.id, PatchAttribute(all_tags=True))
+            ).model_dump(include={"all_tags", "tag_ids"}) == {"all_tags": True, "tag_ids": []}
+    assert (await service.update_attribute(store, OWNER, COLLECTION, some.id, PatchAttribute(all_tags=False))
+            ).model_dump(include={"all_tags", "tag_ids"}) == {"all_tags": False, "tag_ids": []}
+    # An unchanged scope sent again is no narrowing.
+    assert (await service.update_attribute(store, OWNER, COLLECTION, none.id, PatchAttribute(tag_ids=[]))).tag_ids == []
+
+
+async def test_an_attribute_for_no_tag_takes_no_new_values(store, spans):
+    none = await define(store, name="none", tag_ids=[])
+    added = await service.assign_attributes(store, OWNER, COLLECTION, assign(none, [APPROVED, PLACE_SPAN],
+                                                                            AssignMode.add, none.values[:1]))
+    assert added.succeeded == []
+    assert {f.step for f in added.failed} == {"check_applicable"}
+    replaced = await service.assign_attributes(store, OWNER, COLLECTION, assign(none, [APPROVED], AssignMode.replace,
+                                                                               none.values[:1]))
+    assert [f.step for f in replaced.failed] == ["check_applicable"]
+    assert spans.writes == []
+    # Values kept from before (e.g. the tags were narrowed when none were held) can be removed.
+    spans.stored[(COLLECTION, APPROVED)] = [codec.encode(none.id, none.values[0].id)]
+    removed = await service.assign_attributes(store, OWNER, COLLECTION, assign(none, [APPROVED], AssignMode.remove,
+                                                                              none.values[:1]))
+    assert removed.succeeded == [str(APPROVED)]
+    assert values_of(spans, APPROVED, none) == []
 
 
 async def test_ai_assisted_assignments_name_a_run_but_are_not_accepted_before_runs_exist(store, definitions):

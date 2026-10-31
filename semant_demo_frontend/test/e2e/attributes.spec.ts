@@ -28,7 +28,9 @@ async function openAttributes (page: Page, userKey = 'owner') {
 
 const headersOf = async (request: APIRequestContext) => ({ Authorization: `Bearer ${await apiToken(request, 'owner')}` })
 
-type Listed = { id: string, name: string, values: { id: string, label: string, kind: string, retired: boolean }[] }
+type Listed = {
+  id: string, name: string, all_tags: boolean, tag_ids: string[], values: { id: string, label: string, kind: string, retired: boolean }[]
+}
 
 async function createAttribute (request: APIRequestContext, data: Record<string, unknown>): Promise<Listed> {
   const created = await request.post(`${base}/attributes`, { headers: await headersOf(request), data })
@@ -74,12 +76,13 @@ async function largeTopic (request: APIRequestContext) {
     name: 'Topic',
     description: Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of what a topic records, and how to choose one.`).join('\n'),
     cardinality: 'multi',
+    all_tags: true,
     values
   })
   const law = topic.values.find(v => v.label === 'electoral law')!
   const headers = await headersOf(request)
   expect((await request.patch(`${base}/attributes/${topic.id}/values/${law.id}`, { headers, data: { retired: true } })).ok()).toBe(true)
-  const year = await createAttribute(request, { name: 'Election year', values: [{ label: '1920' }] })
+  const year = await createAttribute(request, { name: 'Election year', all_tags: true, values: [{ label: '1920' }] })
   expect((await request.patch(`${base}/attributes/${year.id}`, { headers, data: { retired: true } })).ok()).toBe(true)
 }
 
@@ -105,8 +108,8 @@ test('the owner defines an attribute and manages its values in Edit, each saved 
   await expect(page.getByTestId('attribute-multiple-warning')).toContainText('cannot be reversed')
   await dialog(page).getByRole('checkbox', { name: 'Allow multiple values per annotation' }).click()
   await dialog(page).getByRole('radio', { name: 'Selected tags' }).click()
-  await dialog(page).getByRole('button', { name: 'Create' }).click()
-  await expect(dialog(page)).toContainText('Choose at least one tag, or choose All tags')
+  // Selected tags with none chosen is allowed and means no tag, never All tags (#522).
+  await expect(dialog(page)).toContainText('No tags: no annotation can take values of this attribute.')
   await dialog(page).getByLabel('Tags', { exact: true }).click()
   await page.getByRole('option', { name: fixture.tag('person').name }).click()
   await page.keyboard.press('Escape')
@@ -230,7 +233,7 @@ for (const viewport of ['wide', 'phone'] as const) {
 
 test('a shared user sees tag-side attributes, a refused narrowing and frozen fields while saving', async ({ page, request }) => {
   await speakerOnNovak(request)
-  await createAttribute(request, { name: 'Mood', values: [{ label: 'calm' }] })
+  await createAttribute(request, { name: 'Mood', all_tags: true, values: [{ label: 'calm' }] })
   await useViewport(page, 'phone')
   await ensureLoggedIn(page, 'annotator')
 
@@ -309,8 +312,20 @@ test('tags that are loading, failed or deleted are never shown as something else
   await page.keyboard.press('Escape')
   await dialog(page).getByRole('button', { name: 'Save' }).click()
   await expect(dialog(page)).toContainText('Remove the deleted tags, or leave the tags unchanged')
-  // Removing the deleted tag alone would leave no tag: Selected tags never becomes All tags.
   await page.getByTestId('attribute-deleted-tag').locator('.q-chip__icon--remove').click()
   await dialog(page).getByRole('button', { name: 'Save' }).click()
   await expect(card(page, 'Mood').getByTestId('attribute-tags')).toHaveText(fixture.tag('person').name)
+
+  // Removing the last tag leaves the attribute for no tag: it never becomes All tags (#522).
+  await page.getByRole('button', { name: 'Edit Mood' }).click()
+  await dialog(page).getByLabel('Tags', { exact: true }).click()
+  await page.getByRole('option', { name: fixture.tag('person').name }).click()
+  await page.keyboard.press('Escape')
+  await dialog(page).getByRole('button', { name: 'Save' }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  await expect(card(page, 'Mood').getByTestId('attribute-tags')).toHaveText('No tags')
+  expect(await listed(request, 'Mood')).toMatchObject({ all_tags: false, tag_ids: [] })
+  await page.goto(`/#/collections/${chronicles.id}/tags`)
+  const row = (name: string) => page.locator('tbody tr').filter({ has: page.getByText(name, { exact: true }) })
+  await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['Speaker'])
 })

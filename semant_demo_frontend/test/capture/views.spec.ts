@@ -311,7 +311,7 @@ async function withLibraries (page: Page) {
   }))
 }
 
-test('collection attributes (#331, #506)', async ({ page, request }, testInfo) => {
+test('collection attributes (#331, #506, #522)', async ({ page, request }, testInfo) => {
   const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
   const base = `/api/user_collections/${fixture.collection('chronicles').id}/attributes`
   // A realistic large attribute: ~100 values (one retired), a long description, Unknown.
@@ -335,11 +335,14 @@ test('collection attributes (#331, #506)', async ({ page, request }, testInfo) =
       description: Array.from({ length: 8 }, (_, i) =>
         `Guideline ${i + 1}: choose every topic the passage discusses at some length, not those it only mentions in passing.`).join('\n'),
       cardinality: 'multi',
+      all_tags: true,
       values: [
         ...Array.from({ length: 99 }, (_, i) => ({ label: `${topics[i % topics.length]}${i >= topics.length ? ` ${Math.floor(i / topics.length) + 1}` : ''}` })),
         { label: 'Not applicable', kind: 'not_applicable' }
       ]
-    }
+    },
+    // Applies to no tag (#522): Selected tags with none, distinct from All tags.
+    { name: 'Source reliability', cardinality: 'single', tag_ids: [], values: [{ label: 'reliable' }] }
   ]
   try {
     for (const data of attributes) expect((await request.post(base, { headers, data })).ok()).toBe(true)
@@ -352,7 +355,7 @@ test('collection attributes (#331, #506)', async ({ page, request }, testInfo) =
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/attributes`)
     await page.reload() // without the sign-in notification
     await closePhoneNavigation(page)
-    await expect(page.getByTestId('attribute')).toHaveCount(2)
+    await expect(page.getByTestId('attribute')).toHaveCount(3)
     await save(page, testInfo, 'attributes')
 
     const topic = page.getByTestId('attribute').filter({ hasText: 'Topic' })
@@ -364,7 +367,7 @@ test('collection attributes (#331, #506)', async ({ page, request }, testInfo) =
     await expect(page.getByTestId('attribute')).toHaveCount(1)
     await save(page, testInfo, 'attributes-search')
     await page.getByLabel('Search attributes and values').fill('')
-    await expect(page.getByTestId('attribute')).toHaveCount(2)
+    await expect(page.getByTestId('attribute')).toHaveCount(3)
 
     await page.getByRole('button', { name: 'Edit Topic' }).click()
     await expect(page.locator('.q-dialog .q-card')).toBeVisible()
@@ -379,6 +382,7 @@ test('collection attributes (#331, #506)', async ({ page, request }, testInfo) =
     await page.getByLabel('Value 1', { exact: true }).fill('for')
     await page.getByRole('button', { name: 'Add value', exact: true }).click()
     await page.getByLabel('Value 2', { exact: true }).fill('against')
+    await page.getByRole('dialog').getByRole('radio', { name: 'Selected tags' }).click()
     await page.keyboard.press('Tab') // a focused field's label is still floating up
     await expect(page.locator('.q-dialog .q-card')).toBeVisible()
     await save(page, testInfo, 'attribute-create-dialog')

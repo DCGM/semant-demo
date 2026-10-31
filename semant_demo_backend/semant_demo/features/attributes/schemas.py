@@ -11,6 +11,7 @@ MAX_VALUES_PER_ATTRIBUTE = 200
 MAX_ASSIGN_BATCH = 200
 """Annotations one assignment request changes (as a review, #459)."""
 MAX_VALUES_PER_ASSIGNMENT = 50
+ALL_TAGS_WITH_TAG_IDS = "An attribute for all tags has no selected tags; send tag_ids empty with all_tags true"
 
 
 class Cardinality(str, Enum):
@@ -42,8 +43,11 @@ class Attribute(BaseModel):
     name: str
     description: str = ""
     cardinality: Cardinality
+    all_tags: bool = False
+    """Applies to every tag of the collection, also tags created later; ``tag_ids`` is then empty."""
     tag_ids: list[UUID] = []
-    """Tags whose annotations the attribute applies to; empty: every tag of the collection."""
+    """With ``all_tags`` false, the tags whose annotations the attribute applies to; empty: no tag,
+    and no value can be assigned (#522)."""
     retired: bool = False
     revision: int = 1
     """Counts edits of the definition and its values; change records name it."""
@@ -74,21 +78,35 @@ class PostAttribute(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=2000)
     cardinality: Cardinality = Cardinality.single
+    all_tags: bool = False
+    """Explicit: an empty ``tag_ids`` alone means no tag, never All tags (#522)."""
     tag_ids: list[UUID] = Field(default=[], max_length=500)
     values: list[PostAttributeValue] = Field(default=[], max_length=MAX_VALUES_PER_ATTRIBUTE)
+
+    @model_validator(mode="after")
+    def check_scope(self) -> "PostAttribute":
+        if self.all_tags and self.tag_ids:
+            raise ValueError(ALL_TAGS_WITH_TAG_IDS)
+        return self
 
 
 class PatchAttribute(BaseModel):
     """The cardinality cannot be changed: existing assignments would turn contradictory."""
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
+    all_tags: bool | None = None
+    """True: All tags (the selected tags are cleared). False: Selected tags, ``tag_ids`` or, when
+    not sent, the tags selected now (none for an All tags attribute)."""
     tag_ids: list[UUID] | None = Field(default=None, max_length=500)
+    """The selected tags; an All tags attribute takes them only with ``all_tags`` false."""
     retired: bool | None = None
 
     @model_validator(mode="after")
     def check_any(self) -> "PatchAttribute":
-        if all(v is None for v in (self.name, self.description, self.tag_ids, self.retired)):
+        if all(v is None for v in (self.name, self.description, self.all_tags, self.tag_ids, self.retired)):
             raise ValueError("Send at least one field to change")
+        if self.all_tags and self.tag_ids:
+            raise ValueError(ALL_TAGS_WITH_TAG_IDS)
         return self
 
 

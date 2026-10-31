@@ -79,9 +79,15 @@ async def test_use_counts_per_attribute_and_value(spans, ids):
     assert await spans.count_attribute_use(collection, A1, V1) == 1
     assert await spans.count_attribute_use(collection, A1, V3) == 0
     assert await spans.count_attribute_use(collection, A2) == 1
+    # Outside the given tags; outside no tag (an attribute narrowed to none, #522) is every one.
+    assert await spans.count_attribute_use(collection, A1, outside_tags=[UUID(ids.tag["person"])]) == 1
+    assert await spans.count_attribute_use(collection, A1, outside_tags=[]) == 2
 
 
 async def _define(api_client, headers, collection, **body):
+    """All tags unless tags are given: All tags is chosen explicitly (#522)."""
+    if "tag_ids" not in body:
+        body.setdefault("all_tags", True)
     response = await api_client.post(f"/api/user_collections/{collection}/attributes", headers=headers, json=body)
     assert response.status_code == 201, response.text
     return response.json()
@@ -211,8 +217,28 @@ async def test_tags_can_limit_an_attribute_and_retired_or_used_definitions_are_k
     assert result["succeeded"] == [brno]
     assert [(f["item_id"], f["step"]) for f in result["failed"]] == [(novak, "check_applicable")]
 
-    # Used values and attributes are not deleted (409 with the number affected) but can be retired.
+    # All tags, selected tags and no tag round-trip distinctly; an empty list is never All tags (#522).
     base = f"/api/user_collections/{collection}/attributes/{only_places['id']}"
+    everywhere = await _define(api_client, owner, collection, name="everywhere")
+    nowhere = await _define(api_client, owner, collection, name="nowhere", tag_ids=[], values=[{"label": "x"}])
+    listed = {a["name"]: (a["all_tags"], a["tag_ids"]) for a in (await api_client.get(
+        f"/api/user_collections/{collection}/attributes", headers=owner)).json()}
+    assert {k: listed[k] for k in ("everywhere", "nowhere", "place_kind")} == {
+        "everywhere": (True, []), "nowhere": (False, []), "place_kind": (False, [ids.tag["place"]])}
+    assert (await api_client.post(f"/api/user_collections/{collection}/attributes", headers=owner, json={
+        "name": "both", "all_tags": True, "tag_ids": [ids.tag["place"]]})).status_code == 422
+    url, body = _assign(collection, attribute_id=nowhere["id"], annotation_ids=[brno],
+                        expected_versions={brno: 1}, mode="add", value_ids=[nowhere["values"][0]["id"]])
+    assert [f["step"] for f in (await api_client.post(url, headers=owner, json=body)).json()["failed"]] == [
+        "check_applicable"]
+    # Removing the last tag of a used attribute is narrowing, refused with the number affected.
+    emptied = await api_client.patch(base, headers=owner, json={"tag_ids": []})
+    assert (emptied.status_code, emptied.json()["affected"]) == (409, 1)
+    unused = await api_client.patch(f"/api/user_collections/{collection}/attributes/{everywhere['id']}",
+                                    headers=owner, json={"all_tags": False})
+    assert (unused.status_code, unused.json()["all_tags"], unused.json()["tag_ids"]) == (200, False, [])
+
+    # Used values and attributes are not deleted (409 with the number affected) but can be retired.
     in_use = await api_client.delete(f"{base}/values/{city}", headers=owner)
     assert (in_use.status_code, in_use.json()["affected"]) == (409, 1)
     assert (await api_client.delete(base, headers=owner)).status_code == 409

@@ -60,6 +60,12 @@ export interface Attribute {
     cardinality: Cardinality;
     /**
      * 
+     * @type {boolean}
+     * @memberof Attribute
+     */
+    allTags?: boolean;
+    /**
+     * 
      * @type {Array<string>}
      * @memberof Attribute
      */
@@ -110,6 +116,7 @@ export function AttributeFromJSONTyped(json: any, ignoreDiscriminator: boolean):
         'name': json['name'],
         'description': json['description'] == null ? undefined : json['description'],
         'cardinality': CardinalityFromJSON(json['cardinality']),
+        'allTags': json['all_tags'] == null ? undefined : json['all_tags'],
         'tagIds': json['tag_ids'] == null ? undefined : json['tag_ids'],
         'retired': json['retired'] == null ? undefined : json['retired'],
         'revision': json['revision'] == null ? undefined : json['revision'],
@@ -132,6 +139,7 @@ export function AttributeToJSONTyped(value?: Attribute | null, ignoreDiscriminat
         'name': value['name'],
         'description': value['description'],
         'cardinality': CardinalityToJSON(value['cardinality']),
+        'all_tags': value['allTags'],
         'tag_ids': value['tagIds'],
         'retired': value['retired'],
         'revision': value['revision'],

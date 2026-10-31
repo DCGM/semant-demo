@@ -214,7 +214,10 @@ describe('attribute form helpers', () => {
   })
 
   it('says which tags an attribute applies to only once the tags are known, counting deleted ones', () => {
-    expect(tagScope({ tagIds: [] }, [], 'loading')).toEqual({ kind: 'all' })
+    // All tags and no tag are known without the tags; an empty list is no tag, never All tags (#522).
+    expect(tagScope({ allTags: true, tagIds: [] }, [], 'loading')).toEqual({ kind: 'all' })
+    expect(tagScope({ allTags: false, tagIds: [] }, [], 'loading')).toEqual({ kind: 'none' })
+    expect(tagScope({ tagIds: [] }, tags, 'ready')).toEqual({ kind: 'none' })
     // Not "only deleted tags" while the tags have not arrived, or could not be loaded.
     expect(tagScope({ tagIds: ['t1'] }, [], 'loading')).toEqual({ kind: 'loading' })
     expect(tagScope({ tagIds: ['t1'] }, [], 'failed')).toEqual({ kind: 'failed' })
@@ -224,7 +227,8 @@ describe('attribute form helpers', () => {
 
   it('gives a tag the current attributes that name it, then those for all tags', () => {
     const attributes = [
-      attribute('a1', 'Mood', 1, { tagIds: [] }),
+      attribute('a1', 'Mood', 1, { allTags: true, tagIds: [] }),
+      attribute('a5', 'Unused', 1, { allTags: false, tagIds: [] }),
       attribute('a2', 'Speaker', 1, { tagIds: ['t1'] }),
       attribute('a3', 'Stance', 1, { tagIds: ['t1'], retired: true }),
       attribute('a4', 'Topic', 1, { tagIds: ['t2'] })

@@ -148,6 +148,9 @@ cmd_backend() {
   listening "$SEMANT_DEV_PROVIDER_PORT" || die "the fake providers did not start"
   say "backend with --reload on http://127.0.0.1:$BACKEND_PORT (API docs /docs); AI providers are fakes"
   cd "$BACKEND"
+  # A development database created before #522 lacks annotation_attribute.all_tags.
+  "$PYTHON" -m semant_demo.maintenance.attribute_scope_schema \
+    || die "the development SQLite schema could not be updated; make dev-reset CONFIRM=yes reseeds it (and drops its data)"
   "$PYTHON" -m uvicorn semant_demo.main:app --reload --reload-dir semant_demo \
     --host 127.0.0.1 --port "$BACKEND_PORT"
 }

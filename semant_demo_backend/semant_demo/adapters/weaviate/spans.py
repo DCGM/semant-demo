@@ -692,7 +692,7 @@ class SpanRepository:
         values = Filter.by_property("attributeValues")
         where = (values.contains_any([codec.encode(attribute_id, value_id)]) if value_id is not None
                  else values.like(codec.attribute_pattern(attribute_id)))
-        if outside_tags is not None:
+        if outside_tags:  # an empty list: every annotation is outside
             where = where & Filter.not_(Filter.by_property("tagId").contains_any(list(outside_tags)))
 
         async def count():

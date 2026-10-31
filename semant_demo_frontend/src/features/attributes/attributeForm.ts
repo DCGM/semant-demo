@@ -53,8 +53,8 @@ export const orderedValues = (attribute: Pick<Attribute, 'values'>): AttributeVa
   return [...values.filter(v => !isSpecial(v)), ...values.filter(isSpecial)]
 }
 
-/** Names of the tags an attribute applies to, in the collection's order; ids of tags no longer
- * in the collection are left out. Empty: every tag. */
+/** Names of the tags an attribute selects, in the collection's order; ids of tags no longer
+ * in the collection are left out. An All tags attribute (`allTags`) selects none. */
 export function tagNames (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): string[] {
   const ids = new Set(attribute.tagIds ?? [])
   return tags.filter(tag => ids.has(tag.id)).map(tag => tag.name)
@@ -63,17 +63,20 @@ export function tagNames (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): st
 /** Whether the collection's tags are known yet. */
 export type TagsState = 'loading' | 'failed' | 'ready'
 
-/** What is known about the tags an attribute applies to. Ids of deleted tags (their ids stay on
- * the attribute, #508) are counted, not named; while the tags are unknown, the selected ones
- * cannot be named, but an empty list is All tags whatever they are. */
+/** What is known about the tags an attribute applies to. All tags is explicit (`allTags`); with
+ * selected tags, an empty list is no tag at all (#522). Ids of deleted tags (their ids stay on the
+ * attribute, #508) are counted, not named; while the tags are unknown, the selected ones cannot
+ * be named. */
 export type TagScope =
   | { kind: 'all' }
+  | { kind: 'none' }
   | { kind: 'loading' }
   | { kind: 'failed' }
   | { kind: 'selected', names: string[], deleted: number }
 
-export function tagScope (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[], state: TagsState): TagScope {
-  if (!attribute.tagIds?.length) return { kind: 'all' }
+export function tagScope (attribute: Pick<Attribute, 'allTags' | 'tagIds'>, tags: Tag[], state: TagsState): TagScope {
+  if (attribute.allTags) return { kind: 'all' }
+  if (!attribute.tagIds?.length) return { kind: 'none' }
   if (state !== 'ready') return { kind: state }
   const names = tagNames(attribute, tags)
   return { kind: 'selected', names, deleted: attribute.tagIds.length - names.length }
@@ -84,8 +87,8 @@ export function tagScope (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[], sta
 export function attributesOfTag (attributes: Attribute[], tagId: string): { attribute: Attribute, allTags: boolean }[] {
   const current = attributes.filter(a => !a.retired)
   return [
-    ...current.filter(a => a.tagIds?.includes(tagId)).map(attribute => ({ attribute, allTags: false })),
-    ...current.filter(a => !a.tagIds?.length).map(attribute => ({ attribute, allTags: true }))
+    ...current.filter(a => !a.allTags && a.tagIds?.includes(tagId)).map(attribute => ({ attribute, allTags: false })),
+    ...current.filter(a => a.allTags).map(attribute => ({ attribute, allTags: true }))
   ]
 }
 

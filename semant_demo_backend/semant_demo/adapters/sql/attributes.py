@@ -39,6 +39,9 @@ class AttributeRow(Base):
     name_key = Column(String(200), nullable=False)
     description = Column(Text, nullable=False, default="")
     cardinality = Column(String(8), nullable=False)
+    all_tags = Column(Boolean, nullable=False, default=False)
+    """Applies to every tag; ``tag_ids`` is then empty. Added to existing databases by
+    ``maintenance/attribute_scope_schema.py`` (#522)."""
     tag_ids = Column(JSON, nullable=False, default=list)
     retired = Column(Boolean, nullable=False, default=False)
     revision = Column(Integer, nullable=False, default=1)
@@ -97,7 +100,7 @@ def _value(row: AttributeValueRow) -> AttributeValue:
 
 def _attribute(row: AttributeRow) -> Attribute:
     return Attribute(id=UUID(row.id), name=row.name, description=row.description or "",
-                     cardinality=Cardinality(row.cardinality), tag_ids=[UUID(t) for t in row.tag_ids or []],
+                     cardinality=Cardinality(row.cardinality), all_tags=bool(row.all_tags), tag_ids=[UUID(t) for t in row.tag_ids or []],
                      retired=bool(row.retired), revision=row.revision, values=[_value(v) for v in row.values])
 
 
@@ -152,7 +155,8 @@ class AttributeRepository:
             row = AttributeRow(
                 id=str(uuid4()), collection_id=str(collection_id), name=attribute.name.strip(),
                 name_key=_key(attribute.name), description=attribute.description,
-                cardinality=attribute.cardinality.value, tag_ids=[str(t) for t in dict.fromkeys(attribute.tag_ids)],
+                cardinality=attribute.cardinality.value, all_tags=attribute.all_tags,
+                tag_ids=[str(t) for t in dict.fromkeys(attribute.tag_ids)],
                 retired=False, revision=1, created_by=str(actor_id), created_at=datetime.now(timezone.utc))
             row.values = [_new_value(row.id, v, i) for i, v in enumerate(attribute.values)]
             session.add(row)
@@ -168,6 +172,8 @@ class AttributeRepository:
                 row.name, row.name_key = patch.name.strip(), _key(patch.name)
             if patch.description is not None:
                 row.description = patch.description
+            if patch.all_tags is not None:
+                row.all_tags = patch.all_tags
             if patch.tag_ids is not None:
                 row.tag_ids = [str(t) for t in dict.fromkeys(patch.tag_ids)]
             if patch.retired is not None:
