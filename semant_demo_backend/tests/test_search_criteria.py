@@ -46,6 +46,20 @@ def test_invalid_chunk_filters_are_rejected(data, message):
     assert message in str(error.value)
 
 
+def test_chunk_filters_from_query_parameters_group_values_by_classification():
+    filters = ChunkFilters.from_query(["deu", " ces"], ["style:formal", "complexity: easy", "style:informal"])
+
+    assert filters == ChunkFilters(languages=["ces", "deu"],
+                                   classifications={"complexity": ["easy"], "style": ["formal", "informal"]})
+    assert ChunkFilters.from_query([], []).is_empty()
+
+
+@pytest.mark.parametrize("item", ["complexity", "complexity:", ":easy", " :easy"])
+def test_chunk_filters_from_query_need_a_classification_and_a_value(item):
+    with pytest.raises(ValueError, match="<classification>:<value>"):
+        ChunkFilters.from_query([], [item])
+
+
 def test_search_criteria_have_an_optional_text_query_and_both_filter_kinds():
     assert SearchCriteria(text_query="  ") == SearchCriteria()
     criteria = SearchCriteria(text_query=" Lhota ", document_filters={"libraries": ["mzk"]},

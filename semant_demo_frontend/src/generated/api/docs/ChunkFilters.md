@@ -1,7 +1,7 @@
 
 # ChunkFilters
 
-Which text chunks qualify: every given filter must match (AND), each by one of its values (OR). Values are the stored ones, matched exactly; a request may name them in any case and gets the configured spelling back (``validate_chunk_filters``). Missing values cannot be selected. Normalized: trimmed, de-duplicated and sorted.
+Which text chunks qualify: every given filter must match (AND), each by one of its values (OR). Values are the stored ones, matched as whole values (with the word-tokenization limitation of ``CategoryIn``, #533); a request may name them in any case and gets the configured spelling back (``validate_chunk_filters``). Missing values cannot be selected. Normalized: trimmed, de-duplicated and sorted.
 
 ## Properties
 

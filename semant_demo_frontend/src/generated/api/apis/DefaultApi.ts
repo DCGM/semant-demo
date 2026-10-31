@@ -280,6 +280,8 @@ export interface BrowseDocumentsApiDocumentsBrowseGetRequest {
     titleContains?: Array<string>;
     libraries?: Array<string>;
     languages?: Array<string>;
+    chunkLanguages?: Array<string>;
+    chunkClassifications?: Array<string>;
 }
 
 export interface BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest {
@@ -729,13 +731,15 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [titleContains] 
      * @param {Array<string>} [libraries] 
      * @param {Array<string>} [languages] 
+     * @param {Array<string>} [chunkLanguages] 
+     * @param {Array<string>} [chunkClassifications] 
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     browseDocumentsApiDocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
      * @summary Browse Documents
      * @param {string} [collectionId] 
      * @param {number} [limit] 
@@ -751,6 +755,8 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [titleContains] 
      * @param {Array<string>} [libraries] 
      * @param {Array<string>} [languages] 
+     * @param {Array<string>} [chunkLanguages] 
+     * @param {Array<string>} [chunkClassifications] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -758,7 +764,7 @@ export interface DefaultApiInterface {
     browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>>;
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
      * Browse Documents
      */
     browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse>;
@@ -2910,6 +2916,14 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['languages'] = requestParameters['languages'];
         }
 
+        if (requestParameters['chunkLanguages'] != null) {
+            queryParameters['chunk_languages'] = requestParameters['chunkLanguages'];
+        }
+
+        if (requestParameters['chunkClassifications'] != null) {
+            queryParameters['chunk_classifications'] = requestParameters['chunkClassifications'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && this.configuration.accessToken) {
@@ -2929,7 +2943,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
      * Browse Documents
      */
     async browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>> {
@@ -2940,7 +2954,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
      * Browse Documents
      */
     async browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse> {

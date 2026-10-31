@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from asgi_lifespan import LifespanManager
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
@@ -256,3 +257,59 @@ def test_search_hit_classifications_are_optional_and_round_trip(tmp_path):
     # A client that does not know the field (e.g. an older search page posting results back).
     del wire["metadata"]
     assert SearchResultChunk.model_validate(wire).metadata == {}
+
+
+class _RecordingDocuments(_Documents):
+    calls: list[dict] = []
+
+    async def browse(self, **kwargs):
+        self.calls.append(kwargs)
+        return await super().browse(**kwargs)
+
+
+async def _browse(tmp_path, params):
+    _RecordingDocuments.calls = []
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_documents] = _RecordingDocuments
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.get("/api/documents/browse", params=params)
+
+
+@pytest.mark.parametrize("params", [{"chunk_languages": "ces"}, {"chunk_classifications": "complexity:easy"},
+                                    [("chunk_classifications", "complexity:easy"), ("year_min", "1900")]])
+async def test_browse_rejects_chunk_filters_until_documents_summarize_them(tmp_path, params):
+    # #532 review: browse takes ChunkFilters, but cannot apply them before #529.
+    response = await _browse(tmp_path, params)
+
+    assert response.status_code == 422, response.text
+    assert "Document browsing cannot be restricted by chunk filters" in response.json()["detail"]
+    assert _RecordingDocuments.calls == []
+
+
+@pytest.mark.parametrize("params, field", [
+    ({"chunk_classifications": "complexity"}, "chunk_classifications"),
+    ({"chunk_classifications": ":easy"}, "chunk_classifications"),
+    ({"chunk_languages": " "}, "chunk_languages"),
+])
+async def test_browse_rejects_malformed_chunk_filters(tmp_path, params, field):
+    response = await _browse(tmp_path, params)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"][0]["loc"][:2] == ["query", field]
+    assert _RecordingDocuments.calls == []
+
+
+async def test_browse_without_chunk_filters_is_unchanged(tmp_path):
+    response = await _browse(tmp_path, {"limit": 5})
+
+    assert response.status_code == 200, response.text
+    assert len(_RecordingDocuments.calls) == 1
+
+
+def test_browse_documents_its_chunk_filter_parameters(tmp_path):
+    operation = create_app(make_test_config(tmp_path)).openapi()["paths"]["/api/documents/browse"]["get"]
+    parameters = {p["name"]: p for p in operation["parameters"]}
+
+    assert parameters["chunk_languages"]["schema"]["type"] == "array"
+    assert parameters["chunk_classifications"]["schema"]["type"] == "array"
+    assert "<classification>:<value>" in operation["description"]

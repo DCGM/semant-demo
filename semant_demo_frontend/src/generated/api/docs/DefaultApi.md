@@ -389,11 +389,11 @@ example().catch(console.error);
 
 ## browseDocumentsApiDocumentsBrowseGet
 
-> DocumentBrowse browseDocumentsApiDocumentsBrowseGet(collectionId, limit, offset, sortBy, sortDesc, title, author, publisher, documentType, yearMin, yearMax, titleContains, libraries, languages)
+> DocumentBrowse browseDocumentsApiDocumentsBrowseGet(collectionId, limit, offset, sortBy, sortDesc, title, author, publisher, documentType, yearMin, yearMax, titleContains, libraries, languages, chunkLanguages, chunkClassifications)
 
 Browse Documents
 
-Browses the corpus with pagination, filtering and sorting options. With &#x60;&#x60;collection_id&#x60;&#x60; only that collection\&#39;s documents are browsed, which needs read access to it.  &#x60;&#x60;year_min&#x60;&#x60;, &#x60;&#x60;year_max&#x60;&#x60;, &#x60;&#x60;title_contains&#x60;&#x60;, &#x60;&#x60;libraries&#x60;&#x60; and &#x60;&#x60;languages&#x60;&#x60; are the shared document filters (&#x60;&#x60;DocumentFilters&#x60;&#x60;; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. &#x60;&#x60;title&#x60;&#x60;, &#x60;&#x60;author&#x60;&#x60;, &#x60;&#x60;publisher&#x60;&#x60; and &#x60;&#x60;document_type&#x60;&#x60; are older substring filters. A filter on a property this corpus database does not record is rejected (422).
+Browses the corpus with pagination, filtering and sorting options. With &#x60;&#x60;collection_id&#x60;&#x60; only that collection\&#39;s documents are browsed, which needs read access to it.  &#x60;&#x60;year_min&#x60;&#x60;, &#x60;&#x60;year_max&#x60;&#x60;, &#x60;&#x60;title_contains&#x60;&#x60;, &#x60;&#x60;libraries&#x60;&#x60; and &#x60;&#x60;languages&#x60;&#x60; are the shared document filters (&#x60;&#x60;DocumentFilters&#x60;&#x60;; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. &#x60;&#x60;title&#x60;&#x60;, &#x60;&#x60;author&#x60;&#x60;, &#x60;&#x60;publisher&#x60;&#x60; and &#x60;&#x60;document_type&#x60;&#x60; are older substring filters. A filter on a property this corpus database does not record is rejected (422).  &#x60;&#x60;chunk_languages&#x60;&#x60; and &#x60;&#x60;chunk_classifications&#x60;&#x60; are the shared chunk filters (&#x60;&#x60;ChunkFilters&#x60;&#x60;): chunk languages, and &#x60;&#x60;&lt;classification&gt;:&lt;value&gt;&#x60;&#x60; pairs such as &#x60;&#x60;complexity:easy&#x60;&#x60; (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
 
 ### Example
 
@@ -441,6 +441,10 @@ async function example() {
     libraries: ...,
     // Array<string> (optional)
     languages: ...,
+    // Array<string> (optional)
+    chunkLanguages: ...,
+    // Array<string> (optional)
+    chunkClassifications: ...,
   } satisfies BrowseDocumentsApiDocumentsBrowseGetRequest;
 
   try {
@@ -474,6 +478,8 @@ example().catch(console.error);
 | **titleContains** | `Array<string>` |  | [Optional] |
 | **libraries** | `Array<string>` |  | [Optional] |
 | **languages** | `Array<string>` |  | [Optional] |
+| **chunkLanguages** | `Array<string>` |  | [Optional] |
+| **chunkClassifications** | `Array<string>` |  | [Optional] |
 
 ### Return type
 
