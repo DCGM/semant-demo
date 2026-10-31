@@ -43,6 +43,13 @@ async function choose (page: Page, testid: string, option: string) {
   await page.getByRole('option', { name: option, exact: true }).click()
 }
 
+/** Closes the open value picker and waits until it has faded out, so the next picker opened is
+ * the only one on the page. */
+async function closePicker (page: Page) {
+  await page.keyboard.press('Escape')
+  await expect(picker(page)).toHaveCount(0)
+}
+
 /** Toggles one option of a multiple select and closes its menu. */
 async function toggleOption (page: Page, testid: string, option: string) {
   await choose(page, testid, option)
@@ -75,7 +82,7 @@ test('a row is classified in the attribute column and in the sidebar, and filter
   // Unknown stands alone: it replaces the values.
   await picker(page).getByText('Unknown', { exact: true }).click()
   await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('Unknown')
-  await page.keyboard.press('Escape')
+  await closePicker(page)
 
   // The sidebar shows the same values and changes them.
   await row(page, 'Jan Novák').click()
@@ -86,7 +93,7 @@ test('a row is classified in the attribute column and in the sidebar, and filter
   await picker(page).getByText('statesman', { exact: true }).click()
   await expect(attributes.getByTestId('attribute-chips')).toHaveText('statesman')
   await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesman')
-  await page.keyboard.press('Escape')
+  await closePicker(page)
 
   // Exact filters: the value, and "not assigned".
   await toggleOption(page, 'concordance-attributes', 'Role: statesman')
