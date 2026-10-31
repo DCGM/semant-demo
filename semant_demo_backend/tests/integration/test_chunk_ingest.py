@@ -340,7 +340,7 @@ async def test_bulk_into_an_empty_chunk_collection_writes_what_the_single_insert
     assert code == 0 and result["counts"]["chunks_inserted"] == 3 * len(TEXTS)
     assert result["counts"]["documents_created"] == 2  # EXISTING was there; NEW and OTHER created
     assert [{k: v for k, v in r.items() if k in ("bulk", "page", "batch")} for r in result["runs"]] == [
-        {"bulk": True, "page": 100, "batch": 100}]
+        {"bulk": True, "page": 2000, "batch": 800}]
     expected = list(chunk_positions(TEXTS))
     for d in (NEW, OTHER, EXISTING):
         assert [(await stored_chunk(s.client, d, i)).position for i in range(len(TEXTS))] == expected
@@ -402,3 +402,20 @@ async def test_a_resumed_run_may_use_another_page(ingest_store, tmp_path):
     assert result["counts"]["documents"] == 3 and result["counts"]["chunks_inserted"] == 3 + 3 + 3
     assert [(await stored_chunk(s.client, EXISTING, i)).position for i in range(len(TEXTS))] == list(
         chunk_positions(TEXTS))
+
+
+async def test_a_bulk_batch_refills_from_the_next_documents_of_the_page(ingest_store, tmp_path, monkeypatch):
+    s = ingest_store
+    await empty_chunks(s.client)
+    lengths = {EXISTING: 1, NEW: 4, OTHER: 3}
+    inputs = jsonl(tmp_path, "all.jsonl", [line(d, i) for d, n in lengths.items() for i in range(n)])
+    real, rounds = store.insert_chunks, []
+
+    async def recording(client, collection, chunks):
+        rounds.append([c[0] for c in chunks])
+        return await real(client, collection, chunks)
+    monkeypatch.setattr(store, "insert_chunks", recording)
+    result, code = await run(s, tmp_path, inputs, bulk=True, batch=2)
+    assert code == 0 and result["counts"]["chunks_inserted"] == 8
+    assert rounds == [[cid(EXISTING, 0), cid(NEW, 0)], [cid(NEW, 1), cid(OTHER, 0)],
+                      [cid(NEW, 2), cid(OTHER, 1)], [cid(NEW, 3), cid(OTHER, 2)]]
