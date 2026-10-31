@@ -311,13 +311,17 @@ vector) stay in each endpoint's request, and collections, tags and annotations a
 - **Documents** (`GET /api/documents/browse` with `year_min`, `year_max`, `title_contains`,
   `libraries`, `languages`; Analytics `filters`): the same rendering on `Documents`, so browse
   totals equal the Analytics counts for the same filters. Chunk filters will apply per
-  dimension (for each, some chunk of the document matches; #529); until then the Analytics
-  requests' `chunk_filters` are rejected with 422, and browse takes none.
-- **Exact chunk values.** The stored classifications are `text[]` with `word` tokenization,
-  where `easy` also matches `very_easy` (and `national` `multi_national_or_continental`). A
-  value is therefore matched without the configured values that contain all its words, read
-  from the declared tokenization; with `field` tokenization values match whole. Limitation:
-  a chunk holding both values (`["easy", "very_easy"]`) is not found by the shorter one.
+  dimension (for each, some chunk of the document matches; #529); until then any chunk filter
+  is rejected with 422, never ignored: the Analytics requests' `chunk_filters`, and browse's
+  `chunk_languages` and `chunk_classifications` (repeated `<classification>:<value>`, e.g.
+  `complexity:easy`; `ChunkFilters.from_query`). Without them browse is unchanged.
+- **Chunk value matching (limitation accepted for now).** The stored classifications are
+  `text[]` with `word` tokenization, where `easy` also matches `very_easy` (and `national`
+  `multi_national_or_continental`). A value is therefore matched without the configured values
+  that contain all its words, read from the declared tokenization; with `field` tokenization
+  values match whole. This is not fully exact: a chunk holding both values
+  (`["easy", "very_easy"]`) is not found by the shorter one. The correction, `field`-tokenized
+  chunk properties, needs a separate chunk-schema migration (#533).
 
 #### Corpus overview (`features/analytics/`, `adapters/weaviate/analytics.py`)
 

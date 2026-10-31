@@ -14,7 +14,8 @@ mean (docs/EXPLORATION.md).
 
 Different filters combine with AND; the values of one filter are alternatives (OR).
 
-Chunk filters are exact categorical matches; missing values cannot be selected. Passages
+Chunk filters are categorical matches; missing values cannot be selected. On the current
+word-tokenized chunk properties they are not fully exact (``CategoryIn``, #533). Passages
 (chunk Search) need every chunk filter to hold on the **returned chunk** itself (same-chunk).
 Document-level operations (browse, Analytics) will apply them per dimension: for each
 filter, some chunk of the document matches it (#529, decided on #526). Until #529 stores the
@@ -53,6 +54,8 @@ TITLE_PROPERTY = "title"
 LIBRARY_PROPERTY = "library"
 LANGUAGE_PROPERTY = "language"
 """``Documents.language`` in document conditions, ``Chunks.language`` in chunk conditions."""
+CLASSIFICATION_SEPARATOR = ":"
+"""Between classification and value in a query parameter (``complexity:easy``, ``ChunkFilters.from_query``)."""
 
 
 def _invalid(message: str) -> PydanticCustomError:
@@ -143,7 +146,8 @@ class DocumentFilters(BaseModel):
 
 class ChunkFilters(BaseModel):
     """Which text chunks qualify: every given filter must match (AND), each by one of its values
-    (OR). Values are the stored ones, matched exactly; a request may name them in any case and
+    (OR). Values are the stored ones, matched as whole values (with the word-tokenization
+    limitation of ``CategoryIn``, #533); a request may name them in any case and
     gets the configured spelling back (``validate_chunk_filters``). Missing values cannot be
     selected. Normalized: trimmed, de-duplicated and sorted."""
     model_config = ConfigDict(extra="forbid")
@@ -173,6 +177,22 @@ class ChunkFilters(BaseModel):
 
     def is_empty(self) -> bool:
         return not self.languages and not self.classifications
+
+    @classmethod
+    def from_query(cls, languages: Sequence[str], classifications: Sequence[str]) -> "ChunkFilters":
+        """The chunk filters of a GET request (document browsing): repeated ``chunk_languages``
+        values and repeated ``chunk_classifications`` values of the form ``<classification>:<value>``
+        (``complexity:easy``); several values of one classification are alternatives. Raises
+        ``ValueError`` for an item without a classification or value, and ``ValidationError`` as
+        the model does."""
+        by_name: dict[str, list[str]] = {}
+        for item in classifications:
+            name, separator, value = item.partition(CLASSIFICATION_SEPARATOR)
+            if not separator or not name.strip() or not value.strip():
+                raise ValueError(
+                    f"A chunk classification filter must have the form <classification>:<value>, not '{item}'.")
+            by_name.setdefault(name.strip(), []).append(value)
+        return cls(languages=list(languages), classifications=by_name)
 
 
 class SearchCriteria(BaseModel):
@@ -281,7 +301,9 @@ class CategoryIn:
     """The property (one value or a list) holds one of ``values`` exactly. ``others`` are the
     remaining configured values of the same filter: where the store matches by word, a value
     whose words all occur in another value (``easy`` in ``very_easy``) would otherwise also
-    match that one (``adapters/weaviate/criteria.py``)."""
+    match that one, so they are excluded (``adapters/weaviate/criteria.py``). Accepted
+    limitation there: a record holding both (``["easy", "very_easy"]``) is not found by the
+    shorter value (#533)."""
     prop: str
     values: tuple[str, ...]
     others: tuple[str, ...] = ()

@@ -13,7 +13,8 @@ values. With ``word`` tokenization (Weaviate's default, which the stored chunk c
 have) it matches words, so ``easy`` also matches ``very_easy``. Such a value is then required
 without each configured value that contains all of its words. A record holding both values
 (``["easy", "very_easy"]``) cannot be told apart from one holding only the longer value, and is
-not found by the shorter one. Stored values are also compared ignoring case there.
+not found by the shorter one: an accepted limitation until the chunk properties are
+``field``-tokenized (#533). Stored values are also compared ignoring case there.
 """
 import re
 from collections.abc import Callable, Mapping, Sequence
