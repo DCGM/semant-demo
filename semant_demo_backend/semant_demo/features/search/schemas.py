@@ -11,6 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from semant_demo.features.documents.criteria import ChunkFilters, Condition, DocumentFilters
 from semant_demo.features.documents.schemas import DocumentChunk, Document
 from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 
@@ -92,6 +93,13 @@ class SearchRequest(SummaryRequestBase):
     hybrid_search_alpha: float = 0.5
     search_llm_filter: bool = False
 
+    # The shared search criteria filters (features/documents/criteria.py, #526): applied inside
+    # retrieval; every chunk filter must hold on the returned chunk. Either these or the older
+    # ``filters`` and ``min_year``/``max_year``/``language`` fields, not both (400).
+    document_filters: DocumentFilters | None = None
+    chunk_filters: ChunkFilters | None = None
+
+    # Older filter fields, kept for existing clients.
     filters: list[SearchFilterInput] | None = None
 
     min_year: int | None = None
@@ -194,3 +202,8 @@ class ChunkQuery:
     collection_id: UUID | None = None
     tags: TagFilter | None = None
     conditions: tuple[FieldCondition, ...] = ()
+    """Older filters (``SearchRequest.filters`` and the legacy fields)."""
+    document_conditions: tuple[Condition, ...] = ()
+    """Search criteria predicates on the chunk's document (``features/documents/criteria.py``)."""
+    chunk_conditions: tuple[Condition, ...] = ()
+    """Search criteria predicates that the returned chunk itself must satisfy (same-chunk)."""

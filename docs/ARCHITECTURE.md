@@ -76,7 +76,9 @@ semant_demo_backend/semant_demo/
     documents/            routes, service, schemas (Document, DocumentChunk, DocumentViewChunk, ...):
                           public corpus reads (/api/document(s)/...) and the collection's
                           document view (GET /api/user_collections/{collection_id}/documents/{document_id});
-                          positions (the chunk position calculator and word rule, #463)
+                          positions (the chunk position calculator and word rule, #463);
+                          criteria (the shared search criteria: SearchCriteria, DocumentFilters,
+                          ChunkFilters, their validation and predicates, #526)
     annotations/          tags and spans (routes, service, offsets, schemas incl. internal AnnotationChunk),
                           derived annotation data (derivation, source, enrichment, backfill; #328, #463),
                           AI suggestions (suggestions, suggestion_routes), span chat (span_chat, span_chat_routes)
@@ -94,7 +96,8 @@ semant_demo_backend/semant_demo/
                           (status, admission, settlement), routes (GET /api/quota), schemas
   adapters/
     weaviate/             one repository per concern: user_collections, documents, tags, spans,
-                          chunk_tags, search, analytics (document aggregates); client, paging, writes (best-effort cascades),
+                          chunk_tags, search, analytics (document aggregates); criteria (Weaviate filters
+                          of the search criteria predicates); client, paging, writes (best-effort cascades),
                           names (CollectionNames: configured Weaviate collection names)
     sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback,
                           quota (QuotaLedger: daily allowance ledger), attributes (AttributeRepository: attribute
@@ -279,7 +282,42 @@ Optional HyDE (Hypothetical Document Embedding): when `is_hyde=true`, the query 
 
 **Search vectors (#217).** The chunk collection may hold several Weaviate named vectors, created and populated offline (`data_tools/embedder`, #192). `SEARCH_VECTORS_CONFIG` (default `configs/search_vectors_qwen.yaml`) lists those the application may use — an application `id`, a display `name`/`description`, the Weaviate `target_vector` and the query embedding: `embedding_service` (the project's embedding service) or `openai` (an OpenAI-compatible `/embeddings` endpoint, e.g. vLLM, with `model`, optional query/document prefixes and `dimensions`) — and names the `default` (`qwen3-embedding-0.6b`, the deployed Qwen vector; `search_vectors_gemma.yaml` configures the original `default` vector instead). It is validated at startup (an invalid file stops the app); vectors are never discovered from Weaviate. `GET /api/search/vectors` lists the ids, names and descriptions with the default (`default_vector`), no provider details. `SearchRequest.vector` selects one for vector and hybrid search; `null` uses the default, an unknown id answers 400 before any embedding or query (also for text search, which otherwise ignores the selection). `features/search/vectors.py` resolves the selection and the service embeds the query (or the HyDE document) with that vector's embedder (built per vector by `bootstrap.create_embedder`, `adapters/embeddings/`); the Weaviate adapter receives the resolved `ChunkQuery.target_vector` and passes it to every `near_vector`/`hybrid` call, so a collection with several named vectors works; it reads no configuration. `SearchResponse.vector` is the vector used (`null` for text search). The Search page offers the configured vectors in its filter panel when there is more than one and sends no selection for the default.
 
-Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, vector selection, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+Filters: the shared search criteria filters `document_filters` and `chunk_filters` (below), or, for existing clients, configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, vector selection, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+
+#### Search criteria (`features/documents/criteria.py`, `adapters/weaviate/criteria.py`)
+
+One definition of what Search, document browsing and Analytics filter by (#526; the planned
+Explore contract, [EXPLORATION.md](EXPLORATION.md)). `SearchCriteria` is an optional
+`text_query` with `DocumentFilters` and `ChunkFilters`; retrieval settings (method, limit,
+vector) stay in each endpoint's request, and collections, tags and annotations are not criteria.
+
+- `DocumentFilters` (`year_min`/`year_max`, `title_contains`, `libraries`, `languages`):
+  document metadata, with the rules listed under *Corpus overview* below. `languages` is
+  `Documents.language`.
+- `ChunkFilters` (`languages`, `classifications`: classification -> values): the chunk's own
+  `Chunks.language` and the configured classifications (`TASK_CLASSES`). They are validated
+  against the configured nominal search filters (`search/filters.chunk_vocabulary`, 400 for
+  an unknown classification or value; values in any case get the configured spelling). No
+  year, no named entities, no "missing" value.
+- Different filters AND, values of one filter OR. `document_conditions`/`chunk_conditions`
+  turn them into neutral predicates; `adapters/weaviate/criteria.py` renders them for the
+  queried collection, checked against the declared schema: a property the store lacks (or
+  holds as another type) is `UnavailableFilter`, 422, never 0 matches.
+- **Passages** (`POST /api/search` with `document_filters`/`chunk_filters`): the predicates are
+  part of the retrieval filter. Every chunk filter holds on the returned chunk (same-chunk);
+  document predicates go through the `document` reference, except the year, which uses the
+  chunks' copy `Chunks.yearIssued` (#153). A request with both these and the older filter
+  fields is 400. The response echoes the normalized filters.
+- **Documents** (`GET /api/documents/browse` with `year_min`, `year_max`, `title_contains`,
+  `libraries`, `languages`; Analytics `filters`): the same rendering on `Documents`, so browse
+  totals equal the Analytics counts for the same filters. Chunk filters will apply per
+  dimension (for each, some chunk of the document matches; #529); until then the Analytics
+  requests' `chunk_filters` are rejected with 422, and browse takes none.
+- **Exact chunk values.** The stored classifications are `text[]` with `word` tokenization,
+  where `easy` also matches `very_easy` (and `national` `multi_national_or_continental`). A
+  value is therefore matched without the configured values that contain all its words, read
+  from the declared tokenization; with `field` tokenization values match whole. Limitation:
+  a chunk holding both values (`["easy", "very_easy"]`) is not found by the shorter one.
 
 #### Corpus overview (`features/analytics/`, `adapters/weaviate/analytics.py`)
 
@@ -313,7 +351,8 @@ libraries; median of 5 warm runs): unfiltered 1.25 s (the distributions alone 1.
 0.15–0.85 s, 5 concurrent unfiltered requests 3.7 s. With more libraries the per-library counts
 take longer, in rounds of 4; the reproducible benchmark is #494.
 
-- **Filters.** All given filters must match (AND); several libraries or languages match any
+- **Filters.** The shared `DocumentFilters` of the search criteria (see *Search criteria*
+  below). All given filters must match (AND); several libraries or languages match any
   of them (OR). One Weaviate filter is built once and applied to the total and to every
   grouped aggregate, so all counts describe the same documents.
   - `year_min`/`year_max`: whole years, inclusive, `1 ≤ min ≤ max ≤` the current year. A
@@ -338,6 +377,8 @@ take longer, in rounds of 4; the reproducible benchmark is #494.
   - Invalid filters are rejected with 422 before the store is queried. So is a filter on a
     property the store does not declare or cannot filter (e.g. `library` in an older local
     store without it): it is never answered with 0.
+  - `chunk_filters` (chunk language, classifications) are rejected with 422 for now: document
+    counts will apply them per dimension through document summaries of the chunk values (#529).
 
 - **Population.** Every object of `Documents`, as Search covers the whole public corpus;
   `Documents.public` is not used (#279). A future public-read policy must restrict the

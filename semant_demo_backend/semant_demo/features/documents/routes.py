@@ -1,10 +1,14 @@
 """HTTP routes of the Documents feature (public corpus reads); the rules live in ``service.py``."""
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.features.documents.criteria import DocumentFilters
 from semant_demo.features.documents import service
 from semant_demo.routes.dependencies import get_user_collections, get_documents
 from semant_demo.features.documents.schemas import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
@@ -31,16 +35,35 @@ async def browse_documents(collection_id: str | None = None,
                            author: str | None = None,
                            publisher: str | None = None,
                            document_type: str | None = None,
+                           year_min: int | None = None,
+                           year_max: int | None = None,
+                           title_contains: list[str] = Query(default=[]),
+                           libraries: list[str] = Query(default=[]),
+                           languages: list[str] = Query(default=[]),
                            documents: DocumentRepository = Depends(get_documents),
                            collections: UserCollectionRepository = Depends(get_user_collections),
                            current_user: User | None = Depends(current_active_optional_user)) -> DocumentBrowse:
     """
         Browses the corpus with pagination, filtering and sorting options. With ``collection_id``
         only that collection's documents are browsed, which needs read access to it.
+
+        ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the
+        shared document filters (``DocumentFilters``; repeat a list parameter for alternatives):
+        they select the same documents as the Analytics counts for them. ``title``, ``author``,
+        ``publisher`` and ``document_type`` are older substring filters. A filter on a property
+        this corpus database does not record is rejected (422).
     """
-    return await service.browse(documents, collections, current_user, collection_id,
-                                limit=limit, offset=offset, sort_by=sort_by, sort_desc=sort_desc,
-                                title=title, author=author, publisher=publisher, document_type=document_type)
+    try:
+        filters = DocumentFilters(year_min=year_min, year_max=year_max, title_contains=title_contains,
+                                  libraries=libraries, languages=languages)
+    except ValidationError as e:
+        raise RequestValidationError([{**error, "loc": ("query", *error["loc"])} for error in e.errors()]) from e
+    try:
+        return await service.browse(documents, collections, current_user, collection_id, filters=filters,
+                                    limit=limit, offset=offset, sort_by=sort_by, sort_desc=sort_desc,
+                                    title=title, author=author, publisher=publisher, document_type=document_type)
+    except UnavailableFilter as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}", response_model=DocumentDetail, response_model_exclude_none=True)

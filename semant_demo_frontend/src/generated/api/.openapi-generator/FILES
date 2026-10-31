@@ -33,6 +33,7 @@ docs/BulkUpdateSpansResponse.md
 docs/Cardinality.md
 docs/CategoryCount.md
 docs/CategoryDistribution.md
+docs/ChunkFilters.md
 docs/ChunkTagPair.md
 docs/ChunkTagSyncRequest.md
 docs/Collection.md
@@ -165,6 +166,7 @@ models/BulkUpdateSpansResponse.ts
 models/Cardinality.ts
 models/CategoryCount.ts
 models/CategoryDistribution.ts
+models/ChunkFilters.ts
 models/ChunkTagPair.ts
 models/ChunkTagSyncRequest.ts
 models/Collection.ts

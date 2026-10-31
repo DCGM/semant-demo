@@ -30,6 +30,7 @@ export * from './BulkUpdateSpansResponse';
 export * from './Cardinality';
 export * from './CategoryCount';
 export * from './CategoryDistribution';
+export * from './ChunkFilters';
 export * from './ChunkTagPair';
 export * from './ChunkTagSyncRequest';
 export * from './Collection';

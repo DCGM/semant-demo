@@ -1,12 +1,15 @@
 """Corpus documents and their chunks."""
+from collections.abc import Sequence
 from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference, Sort
 
+from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.features.annotations.schemas import AnnotationChunk
+from semant_demo.features.documents.criteria import Condition
 from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse, DocumentDetail, DocumentViewChunk
 
 
@@ -173,17 +176,25 @@ class DocumentRepository:
         author: str | None = None,
         publisher: str | None = None,
         document_type: str | None = None,
+        conditions: Sequence[Condition] = (),
     ) -> DocumentBrowse:
-        """One page of documents, optionally only those of a collection and matching filters."""
-        documents = self.client.collections.get(self.collectionNames.document_collection_name)
-        conditions = []
+        """One page of documents, optionally only those of a collection and matching filters:
+        the substring filters (``title``, ...) and the search criteria ``conditions`` (rendered
+        as Analytics renders them, so both match the same documents). Raises
+        ``criteria.UnavailableFilter`` for a condition on a property the store does not declare."""
+        name = self.collectionNames.document_collection_name
+        documents = self.client.collections.get(name)
+        parts = []
         if collection_id is not None:
-            conditions.append(Filter.by_ref("collection").by_id().equal(collection_id))
+            parts.append(Filter.by_ref("collection").by_id().equal(collection_id))
         for prop, value in (("title", title), ("author", author), ("publisher", publisher),
                             ("documentType", document_type)):
             if value:
-                conditions.append(Filter.by_property(prop).like(f"*{value}*"))
-        filters = Filter.all_of(conditions) if conditions else None
+                parts.append(Filter.by_property(prop).like(f"*{value}*"))
+        if conditions:
+            types, tokenizations = await criteria.declared(self.client, name)
+            parts.extend(criteria.parts(conditions, types, tokenizations))
+        filters = Filter.all_of(parts) if len(parts) > 1 else (parts[0] if parts else None)
         sort = Sort.by_property(sort_by, ascending=not sort_desc) if sort_by else None
 
         count_response = await documents.aggregate.over_all(filters=filters, total_count=True)

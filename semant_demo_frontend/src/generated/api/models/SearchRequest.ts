@@ -13,6 +13,20 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DocumentFilters } from './DocumentFilters';
+import {
+    DocumentFiltersFromJSON,
+    DocumentFiltersFromJSONTyped,
+    DocumentFiltersToJSON,
+    DocumentFiltersToJSONTyped,
+} from './DocumentFilters';
+import type { ChunkFilters } from './ChunkFilters';
+import {
+    ChunkFiltersFromJSON,
+    ChunkFiltersFromJSONTyped,
+    ChunkFiltersToJSON,
+    ChunkFiltersToJSONTyped,
+} from './ChunkFilters';
 import type { SearchFilterInput } from './SearchFilterInput';
 import {
     SearchFilterInputFromJSON,
@@ -126,6 +140,18 @@ export interface SearchRequest {
     searchLlmFilter?: boolean;
     /**
      * 
+     * @type {DocumentFilters}
+     * @memberof SearchRequest
+     */
+    documentFilters?: DocumentFilters | null;
+    /**
+     * 
+     * @type {ChunkFilters}
+     * @memberof SearchRequest
+     */
+    chunkFilters?: ChunkFilters | null;
+    /**
+     * 
      * @type {Array<SearchFilterInput>}
      * @memberof SearchRequest
      */
@@ -230,6 +256,8 @@ export function SearchRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         'type': json['type'] == null ? undefined : SearchTypeFromJSON(json['type']),
         'hybridSearchAlpha': json['hybrid_search_alpha'] == null ? undefined : json['hybrid_search_alpha'],
         'searchLlmFilter': json['search_llm_filter'] == null ? undefined : json['search_llm_filter'],
+        'documentFilters': json['document_filters'] == null ? undefined : DocumentFiltersFromJSON(json['document_filters']),
+        'chunkFilters': json['chunk_filters'] == null ? undefined : ChunkFiltersFromJSON(json['chunk_filters']),
         'filters': json['filters'] == null ? undefined : ((json['filters'] as Array<any>).map(SearchFilterInputFromJSON)),
         'minYear': json['min_year'] == null ? undefined : json['min_year'],
         'maxYear': json['max_year'] == null ? undefined : json['max_year'],
@@ -270,6 +298,8 @@ export function SearchRequestToJSONTyped(value?: SearchRequest | null, ignoreDis
         'type': SearchTypeToJSON(value['type']),
         'hybrid_search_alpha': value['hybridSearchAlpha'],
         'search_llm_filter': value['searchLlmFilter'],
+        'document_filters': DocumentFiltersToJSON(value['documentFilters']),
+        'chunk_filters': ChunkFiltersToJSON(value['chunkFilters']),
         'filters': value['filters'] == null ? undefined : ((value['filters'] as Array<any>).map(SearchFilterInputToJSON)),
         'min_year': value['minYear'],
         'max_year': value['maxYear'],

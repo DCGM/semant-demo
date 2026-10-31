@@ -11,7 +11,9 @@ import pytest
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.search import service
-from semant_demo.features.search.filters import InvalidSearchFilterError, generate_default_filters
+from semant_demo.features.documents.criteria import (
+    AnyOf, CategoryIn, ChunkFilters, ContainsWords, DocumentFilters, NumberRange)
+from semant_demo.features.search.filters import TASK_CLASSES, InvalidSearchFilterError, generate_default_filters
 from semant_demo.features.search.schemas import (
     ChunkQuery, FieldCondition, Op, SearchFilterInput, SearchRequest, SearchType, TagFilter, SearchResultChunk,
 )
@@ -274,6 +276,66 @@ async def test_invalid_filters_are_a_bad_request_before_retrieval(filters):
     with pytest.raises(InvalidSearchFilterError) as error:
         await service.retrieve(backends(chunks, embeddings), OWNER, request(type="hybrid", filters=filters), DEFINITIONS)
     assert isinstance(error.value, InvalidRequestError)
+    assert chunks.queries == [] and embeddings.calls == []
+
+
+# The shared search criteria filters (#526, features/documents/criteria.py).
+
+async def test_criteria_filters_become_document_and_same_chunk_predicates():
+    req = request(document_filters=DocumentFilters(year_min=1850, libraries=["mzk"], languages=["deu"]),
+                  chunk_filters=ChunkFilters(languages=["CES"], classifications={"complexity": ["easy"]}))
+
+    query = await run(req, definitions=DEFINITIONS)
+
+    assert query.conditions == ()
+    assert query.document_conditions == (NumberRange("yearIssued", 1850, None), AnyOf("library", ("mzk",)),
+                                         AnyOf("language", ("deu",)))
+    # Document language and chunk language are separate restrictions.
+    others = tuple(v for v in TASK_CLASSES["complexity"] if v != "easy")
+    assert query.chunk_conditions == (CategoryIn("language", ("ces",), others=("deu",)),
+                                      CategoryIn("complexity", ("easy",), others=others))
+
+
+async def test_the_response_echoes_the_normalized_criteria_filters():
+    req = request(document_filters=DocumentFilters(), chunk_filters=ChunkFilters(languages=["CES", "ces"]))
+
+    response = await service.retrieve(backends(), OWNER, req, DEFINITIONS)
+
+    assert response.search_request.chunk_filters == ChunkFilters(languages=["ces"])
+    assert response.search_request.document_filters == DocumentFilters()
+
+
+async def test_document_filters_alone_need_no_filter_definitions():
+    query = await run(request(document_filters=DocumentFilters(title_contains=["Kronika"])))
+
+    assert query.document_conditions == (ContainsWords("title", (("Kronika",),)),)
+    assert query.chunk_conditions == ()
+
+
+@pytest.mark.parametrize("legacy", [
+    {"filters": [SearchFilterInput(id="language", values=["ces"])]},
+    {"min_year": 1850}, {"max_year": 1900}, {"language": "ces"},
+])
+async def test_criteria_filters_and_older_filter_fields_cannot_be_mixed(legacy):
+    chunks = FakeChunks()
+
+    with pytest.raises(InvalidRequestError, match="not both"):
+        await service.retrieve(backends(chunks), OWNER,
+                               request(document_filters=DocumentFilters(), **legacy), DEFINITIONS)
+    assert chunks.queries == []
+
+
+@pytest.mark.parametrize("chunk_filters, definitions, message", [
+    (ChunkFilters(classifications={"complexity": ["trivial"]}), DEFINITIONS, "'trivial' is not a valid option"),
+    (ChunkFilters(classifications={"yearIssued": ["1900"]}), DEFINITIONS, "not a configured classification"),
+    (ChunkFilters(languages=["ces"]), None, "not available for this search"),  # nothing to validate against
+])
+async def test_invalid_chunk_filters_are_a_bad_request_before_retrieval(chunk_filters, definitions, message):
+    chunks, embeddings = FakeChunks(), FakeEmbeddings()
+
+    with pytest.raises(InvalidRequestError, match=message):
+        await service.retrieve(backends(chunks, embeddings), OWNER,
+                               request(type="hybrid", chunk_filters=chunk_filters), definitions)
     assert chunks.queries == [] and embeddings.calls == []
 
 
