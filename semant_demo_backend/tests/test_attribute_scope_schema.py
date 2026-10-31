@@ -4,6 +4,7 @@ New databases get the column from ``create_all``; an existing empty table gets i
 ``maintenance/attribute_scope_schema.py``, which is repeatable and refuses, changing nothing, a
 table that already holds attribute definitions. Startup refuses a table without the column.
 """
+import os
 import sqlite3
 import subprocess
 import sys
@@ -110,7 +111,8 @@ def test_the_command_uses_the_configured_database_and_reports_a_refusal(tmp_path
     ok, used = old_database(tmp_path / "ok.db"), old_database(tmp_path / "used.db", attributes=True)
 
     def run(db):
-        env = {"PATH": "/usr/bin:/bin", "SQL_DB_URL": f"sqlite+aiosqlite:///{db}"}
+        # The normal environment (Config imports Logfire, which needs HOME), with this database.
+        env = {**os.environ, "SQL_DB_URL": f"sqlite+aiosqlite:///{db}"}
         return subprocess.run([sys.executable, "-m", "semant_demo.maintenance.attribute_scope_schema"], cwd=backend,
                               env=env, capture_output=True, text=True, timeout=60)
 
