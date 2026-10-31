@@ -38,6 +38,8 @@ class AnnotationVectorSettings(BaseModel):
     """Named vector of the ``Annotation`` collection (a GraphQL name, see search vectors)."""
     template: str = DEFAULT_TEMPLATE
     """Embedding input; ``{left}``, ``{text}`` and ``{right}`` are replaced."""
+    max_input_chars: int | None = Field(default=None, gt=0)
+    """Maximum rendered input characters; context is shortened before the span text."""
     embedding: EmbeddingSettings
 
 
@@ -63,7 +65,74 @@ class AnnotationVector:
         return self.settings.target_vector
 
     def input_of(self, derived: DerivedText) -> str:
-        return render_vector_input(self.settings.template, derived)
+        rendered = render_vector_input(self.settings.template, derived)
+        limit = self.settings.max_input_chars
+
+        if limit is None or len(rendered) <= limit:
+            return rendered
+
+        empty = DerivedText(
+            text="",
+            left_context="",
+            right_context="",
+            start_char=derived.start_char,
+            end_char=derived.end_char,
+            start_word=derived.start_word,
+            end_word=derived.end_word,
+        )
+        template_size = len(render_vector_input(self.settings.template, empty))
+
+        available = limit - template_size
+        if available < 0:
+            raise ValueError(
+                "annotation vector template does not fit max_input_chars"
+            )
+
+        # The span itself is too long: remove all context and keep its start.
+        if len(derived.text) > available:
+            shortened = DerivedText(
+                text=derived.text[:available],
+                left_context="",
+                right_context="",
+                start_char=derived.start_char,
+                end_char=derived.end_char,
+                start_word=derived.start_word,
+                end_word=derived.end_word,
+            )
+            return render_vector_input(self.settings.template, shortened)
+
+        # Keep the whole span and use the remaining budget for context.
+        context_budget = available - len(derived.text)
+
+        left_budget = (context_budget + 1) // 2
+        right_budget = context_budget - left_budget
+
+        left = derived.left_context[-left_budget:] if left_budget else ""
+        right = derived.right_context[:right_budget]
+
+        # If one side has less context than its share, give the unused budget
+        # to the other side.
+        unused_left = left_budget - len(left)
+        unused_right = right_budget - len(right)
+
+        if unused_left:
+            right = derived.right_context[:right_budget + unused_left]
+
+        if unused_right:
+            extra_left = left_budget + unused_right
+            left = derived.left_context[-extra_left:] if extra_left else ""
+
+        shortened = DerivedText(
+            text=derived.text,
+            left_context=left,
+            right_context=right,
+            start_char=derived.start_char,
+            end_char=derived.end_char,
+            start_word=derived.start_word,
+            end_word=derived.end_word,
+        )
+
+        return render_vector_input(self.settings.template, shortened)
 
     async def embed(self, derived: DerivedText) -> list[float]:
         return await self.embedder.embed_document(self.input_of(derived))

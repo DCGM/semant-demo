@@ -238,3 +238,48 @@ test('on a phone the sources are an overlay over the chat', async ({ page }) => 
   await expect(answer(page, 'The gazette has')).toBeInViewport()
   await expect(selectedCitations(page)).toHaveText(['[S3]'])
 })
+
+test('a web search result is a source of its own, without a document to open', async ({ page }) => {
+  // #370: the web fallback's results are distinct sources that are not in the corpus.
+  const web = (n: number) => {
+    const id = crypto.randomUUID()
+    return {
+      id,
+      text: `Web snippet ${n} about Lhota.`,
+      title: `Lhota web page ${n}`,
+      start_page_id: id,
+      from_page: 0,
+      to_page: 0,
+      document: id,
+      order: 0,
+      origin: 'web',
+      document_object: { id, title: `Lhota web page ${n}`, url: `https://example.org/${n}` }
+    }
+  }
+  await useViewport(page, 'narrow')
+  await answerChat(page, [{
+    rag_answer: 'The chronicle [doc 1], one page [doc 2] and another [doc 3].',
+    sources: [chatSource('chronicle_1'), web(1), web(2)]
+  }])
+  await openChat(page)
+  await askChat(page, 'What happened in Lhota?')
+
+  await expect(answer(page, 'The chronicle')).toContainText('The chronicle [S1], one page [S2] and another [S3].')
+  // A double click on the web citation selects the source; there is no document to show.
+  await citations(page, 'S2').dblclick()
+  await expect(title(page)).toHaveText('Sources')
+  await expect(sourceSummary(page, 'S2')).toHaveAttribute('aria-expanded', 'true')
+  await expect(sourceItem(page, 'S2')).toContainText('Web snippet 1 about Lhota.')
+  await expect(sourceItem(page, 'S2')).toContainText('Web search result, not in the corpus')
+  await expect(sourceItem(page, 'S2').getByRole('button', { name: /View source/ })).toHaveCount(0)
+  // Its page opens outside semANT.
+  await expect(sourceItem(page, 'S2').getByRole('link', { name: /Open the web page of source S2/ }))
+    .toHaveAttribute('href', 'https://example.org/1')
+  await sourceSummary(page, 'S2').dblclick()
+  await expect(documentPanel(page)).toHaveCount(0)
+  await expect(selectedCitations(page)).toHaveText(['[S2]'])
+
+  // The corpus source still opens.
+  await sourceItem(page, 'S1').getByRole('button', { name: 'View source S1 in its document' }).click()
+  await expect(match(page).getByTestId('chunk-context-target-label')).toHaveText('S1')
+})

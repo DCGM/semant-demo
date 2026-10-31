@@ -19,6 +19,7 @@
 id: qwen3-embedding-0.6b-context-v1
 target_vector: contextual
 template: "{left}<<<{text}>>>{right}"
+max_input_chars: 2048
 embedding:
   provider: openai
   base_url: http://qwen-embedder:8000/v1

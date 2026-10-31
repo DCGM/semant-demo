@@ -18,7 +18,7 @@ from tests.chunk_fakes import in_range, positioned
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.core.outcomes import WriteOutcome
 from semant_demo.features.annotations import backfill, service
-from semant_demo.features.annotations.derivation import DERIVATION_VERSION
+from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText
 from semant_demo.features.annotations.enrichment import (
     AnnotationVector, AnnotationVectorSettings, Enrichment, text_current, vector_current,
 )
@@ -524,6 +524,66 @@ async def test_backfill_without_vectors_marks_the_vector_of_an_older_policy_pend
 
 # ── Configuration ─────────────────────────────────────────────────────────
 
+def _derived(text: str, left: str = "", right: str = "") -> DerivedText:
+    return DerivedText(
+        text=text,
+        left_context=left,
+        right_context=right,
+        start_char=0,
+        end_char=len(text),
+        start_word=0,
+        end_word=1,
+    )
+
+
+def _vector_input(limit: int | None) -> AnnotationVector:
+    return AnnotationVector(
+        AnnotationVectorSettings.model_validate({
+            "id": "limited",
+            "max_input_chars": limit,
+            "embedding": {
+                "provider": "embedding_service",
+            },
+        }),
+        FakeEmbedder(),
+    )
+
+def test_vector_input_under_the_budget_is_unchanged():
+    vector = _vector_input(100)
+    derived = _derived("span", "left ", " right")
+
+    assert vector.input_of(derived) == "left <<<span>>> right"
+
+
+def test_vector_input_shortens_context_before_the_span_text():
+    vector = _vector_input(17)
+
+    rendered = vector.input_of(
+        _derived(
+            "SPAN",
+            "abcdefghij",
+            "klmnopqrst",
+        )
+    )
+
+    assert rendered == "ghij<<<SPAN>>>klm"
+    assert len(rendered) == 17
+
+
+async def test_vector_embeds_over_budget_span_with_truncated_input():
+    vector = _vector_input(13)
+
+    await vector.embed(
+        _derived(
+            "ABCDEFGHIJ",
+            "left",
+            "right",
+        )
+    )
+
+    assert vector.embedder.documents == ["<<<ABCDEFG>>>"]
+
+
 def test_the_default_vector_configuration_loads_and_an_empty_one_configures_none(tmp_path):
     from pydantic import ValidationError
 
@@ -532,6 +592,7 @@ def test_the_default_vector_configuration_loads_and_an_empty_one_configures_none
 
     default = load_annotation_vector(Config(environ={}))
     assert (default.id, default.target_vector) == ("qwen3-embedding-0.6b-context-v1", "contextual")
+    assert default.settings.max_input_chars == 2048
     gemma = load_annotation_vector(Config(environ={
         "ANNOTATION_VECTOR_CONFIG": str(SCRIPT_PATH / "configs" / "annotation_vector_gemma.yaml")}))
     assert (gemma.id, gemma.target_vector) == ("bge-gemma2-context-v1", "contextual")

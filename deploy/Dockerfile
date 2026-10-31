@@ -23,8 +23,7 @@ RUN if [ -n "${COMMIT}" ]; then \
 
 # The frontend is built from the committed generated API client (src/generated/api), which
 # CI checks against a fresh generation (api-client-drift); it is not regenerated here.
-FROM node:22 AS node-build
-RUN npm install -g @quasar/cli
+FROM node:22.23.4-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd AS node-build
 COPY --from=git /tmp/repo/ /repo/
 WORKDIR /repo/semant_demo_frontend
 RUN npm ci

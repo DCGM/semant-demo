@@ -24,6 +24,7 @@ from typing import Any, TypedDict
 from pydantic import BaseModel
 
 from semant_demo.adapters.llm.usage import LlmRequestRefused
+from semant_demo.features.rag.citations import check_citations
 from semant_demo.features.rag.registry import BaseRag, register_rag_class
 from semant_demo.config import Config
 from semant_demo.features.search.schemas import SearchResponse, SearchRequest, SearchResultChunk
@@ -34,6 +35,19 @@ from semant_demo.features.search.service import Retriever
 from semant_demo.features.rag.pipelines.incremental_rag_prompts import *
 
 logger = logging.getLogger(__name__)
+
+
+def web_source(result: dict) -> SearchResultChunk:
+    """A web search result (``body``, ``title``, ``href``) as a source of one answer (#370).
+
+    Each result has ids of its own, made up for this answer: they identify it among the
+    answer's sources and name no corpus document (``origin="web"``)."""
+    source_id = uuid.uuid4()
+    title = result.get("title") or "DuckDuckGo Search"
+    return SearchResultChunk(
+        id=source_id, title=title, start_page_id=source_id, from_page=0, to_page=0, order=0,
+        text=result["body"], document=source_id, origin="web",
+        document_object=Document(id=source_id, title=title, url=result.get("href") or None))
 
 
 async def gather_or_cancel(aws) -> list:
@@ -590,6 +604,7 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     async def node_web_search (self, state: AdaptiveRagState):
         logger.debug("Extracting keywords for web search")
 
+        search_queries = [state["question"]]
         # extract keywords from question to expand search
         try:
             language = state.get("language", "ces")
@@ -607,34 +622,16 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
 
         try:
             def ddg(queries):
-                all_results = []
+                # The results of all queries, each text once (the first result with it).
+                unique_results = {}
                 with DDGS() as ddgs:
                     for q in queries:
-                        results = [r["body"] for r in ddgs.text(q, max_results = 8)]
-                        all_results.extend(list(set(results)))
+                        for r in ddgs.text(q, max_results = 8):
+                            unique_results.setdefault(r["body"], r)
+                return list(unique_results.values())
 
-                unique_results = list(dict.fromkeys(all_results))
-                return unique_results
-  
-            uuid_tmp = uuid.uuid4()
             search_result = await asyncio.to_thread(ddg, search_queries)
-            search_chunks = []
-
-            # create hypothetical document which contations web search results
-            # metavalues are dummies because they are not used anyway
-            for result_text in search_result:
-                search_chunk = SearchResultChunk(
-                    id=uuid_tmp,
-                    title="DuckDuckGo Search",
-                    start_page_id= uuid_tmp,
-                    from_page=0,
-                    to_page=0,
-                    order=0,
-                    text= result_text,
-                    document=uuid_tmp,
-                    document_object=Document(id=uuid_tmp, library="web_search", title="DuckDuckGo Search", yearIssued = 2026)
-                )
-                search_chunks.append(search_chunk)
+            search_chunks = [web_source(result) for result in search_result]
             logger.debug("Web search returned %d results", len(search_chunks))
             return {"documents" : search_chunks, "web_search_performed" : True, "feedback" : "supported"}
                 
@@ -691,6 +688,8 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             raise HTTPException(status_code=503, detail="RAG error: Service is not avalaible.")
 
         answer_id = str(uuid.uuid4())
+        # The answer cites [docN] by position in the documents it was generated from.
+        check_citations(generated_result["generation"], len(generated_result["documents"]), "incremental")
 
         # answer in required format
         return RagResponse(

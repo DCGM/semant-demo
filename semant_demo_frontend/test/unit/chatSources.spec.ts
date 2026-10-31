@@ -7,6 +7,16 @@ import type { SearchResultChunk } from 'src/generated/api'
 import ChatSourcesPanel from 'src/features/rag/ChatSourcesPanel.vue'
 import { citedChunkId, sourceRegistry, useChatSources, type MessageWithSources } from 'src/features/rag/useChatSources'
 
+/** A web search result of an answer (#370): its own ids, no corpus document. */
+const webSource = (id: string): SearchResultChunk => ({
+  ...source(id, `doc-${id}`),
+  origin: 'web',
+  fromPage: 0,
+  toPage: 0,
+  title: `Page ${id}`,
+  documentObject: { id: `doc-${id}`, title: `Page ${id}` }
+})
+
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 const source = (id: string, document = 'doc-1'): SearchResultChunk => ({
@@ -189,6 +199,25 @@ describe('useChatSources', () => {
     expect(chat.labelOf('z')).toBe('S1')
   })
 
+  it('does not open a web search result, which has no document', async () => {
+    const { messages, chat } = setup()
+    messages.value.push({ sources: [webSource('w1'), webSource('w2')] })
+    await nextTick()
+    // Distinct web results are distinct sources.
+    expect([chat.labelOf('w1'), chat.labelOf('w2')]).toEqual(['S4', 'S5'])
+    chat.openDocument('a')
+    await flush()
+
+    expect(chat.openDocument('w1')).toBe(false)
+    await flush()
+    // Nothing changed: the open corpus document stays, no request was made.
+    expect([chat.selectedId.value, chat.documentSource.value?.id]).toEqual(['a', 'a'])
+    expect(calls).toHaveLength(1)
+    // It can still be selected to read its text.
+    expect(chat.select('w1')).toBe(true)
+    expect([chat.selectedId.value, chat.documentSource.value]).toEqual(['w1', null])
+  })
+
   it('aborts its request when the page goes away', async () => {
     const { chat, scope } = setup()
     chat.openDocument('a')
@@ -232,5 +261,50 @@ describe('ChatSourcesPanel', () => {
 
     expect(wrapper.emitted('select')).toEqual([['b'], ['b']])
     expect(wrapper.emitted('open')).toEqual([['b'], ['a']])
+  })
+
+  it('shows a web search result as such, without a document to open', async () => {
+    const wrapper = mount(ChatSourcesPanel, {
+      props: { entries: sourceRegistry([{ sources: [source('a'), webSource('w')] }]), selectedId: 'w' },
+      global: { plugins: [Quasar] }
+    })
+    const items = wrapper.findAll('li')
+
+    expect(items[1].text()).toContain('Page w')
+    expect(items[1].text()).toContain('Web search')
+    expect(items[1].text()).toContain('Text of w')
+    expect(items[1].find('[data-testid="chat-source-web"]').text()).toBe('Web search result, not in the corpus')
+    expect(items[1].find('.chat-sources__view').exists()).toBe(false)
+    expect(items[0].find('.chat-sources__view').exists()).toBe(true)
+
+    await items[1].find('[role="button"]').trigger('click')
+    await items[1].find('[role="button"]').trigger('dblclick')
+    expect(wrapper.emitted('select')).toEqual([['w']])
+    expect(wrapper.emitted('open')).toBeUndefined()
+  })
+
+  it('links a web search result to its web page, only for an HTTP(S) URL', () => {
+    const withUrl = (id: string, url: string): SearchResultChunk => {
+      const web = webSource(id)
+      return { ...web, documentObject: { ...web.documentObject!, url } }
+    }
+    const wrapper = mount(ChatSourcesPanel, {
+      props: {
+        entries: sourceRegistry([{
+          sources: [withUrl('w1', 'https://example.org/a?b=1'), withUrl('w2', 'javascript:alert(1)'),
+            withUrl('w3', 'not a url'), webSource('w4')]
+        }])
+      },
+      global: { plugins: [Quasar] }
+    })
+    const items = wrapper.findAll('li')
+    const links = items.map(i => i.find('[data-testid="chat-source-web-link"]'))
+
+    expect(links[0].text()).toContain('Open web page')
+    expect(links[0].attributes()).toMatchObject({
+      href: 'https://example.org/a?b=1', target: '_blank', rel: 'noopener noreferrer'
+    })
+    expect(links.slice(1).map(l => l.exists())).toEqual([false, false, false])
+    expect(items.map(i => i.find('.chat-sources__view').exists())).toEqual([false, false, false, false])
   })
 })
