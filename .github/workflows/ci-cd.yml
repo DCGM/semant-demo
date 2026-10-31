@@ -85,7 +85,7 @@ jobs:
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, semant-ci]
     container:
-      image: node:22
+      image: node:22.23.4-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd
       options: --user 1025:1027
     env:
       HOME: /tmp
@@ -105,6 +105,11 @@ jobs:
       - name: Unit and component tests
         working-directory: semant_demo_frontend
         run: npm test
+      - name: Production build
+        working-directory: semant_demo_frontend
+        env:
+          BACKEND_URL: https://demo.semant.cz
+        run: npx quasar build && test -s dist/spa/index.html
 
   # Real-Weaviate tests (see `make test-integration`). The Weaviate service container is
   # created for this job only and has no volume; the tests additionally refuse any
