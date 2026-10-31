@@ -13,7 +13,8 @@ Check (read-only, the default)::
 Write::
 
     python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endpoint HOST:PORT \\
-        (--backup-id BACKUP | --offline-backup NOTE) [--bulk] [--concurrency 8] FILE.jsonl [...]
+        (--backup-id BACKUP | --offline-backup NOTE) [--bulk [--batch 100]] [--page N] [--concurrency 8] \\
+        FILE.jsonl [...]
 
 Input: one JSON object per line and chunk, files read in sorted path order. Required:
 ``id`` (chunk UUID), ``document`` (document UUID), ``order`` (int) and ``text`` (str, may
@@ -47,21 +48,25 @@ Writing inserts a document's chunks strictly in order, one at a time, and reads 
 before the next one; documents are written in parallel (``--concurrency``). The single-object
 insert is refused for an existing id, so nothing stored is ever replaced. ``--bulk`` (only
 into a chunk collection that is empty at the start, e.g. a new store) batch-inserts instead:
-rounds of one next chunk from each of up to ``BULK_BATCH`` documents, each round read back
-before the next. Documents are always created with the single-object insert. A batch insert
-silently replaces an object with the same id, hence the empty-collection condition; an
-interrupted bulk run is finished without ``--bulk``. A failed or
-uncertain write blocks the rest of that document only (``blocked``); running the command
-again plans it again from what is stored then. A document created by the import whose
+rounds of one next chunk from each of up to ``--batch`` documents of the page, each round
+read back before the next; a document that is finished leaves its place in the next round to
+the next document of the page. Documents are always created with the single-object insert.
+A batch insert silently replaces an object with the same id, hence the empty-collection
+condition; an interrupted bulk run is finished without ``--bulk``. A failed or uncertain
+write blocks the rest of that document only (``blocked``); running the command again plans it
+again from what is stored then. A document created by the import whose
 chunks did not all arrive is listed as ``incomplete_document`` and never deleted (#281).
 Repeating a completed import inserts nothing.
+
+Documents are planned, written and checkpointed in pages (``--page``, 100 documents). A
+larger page needs more memory and repeats more checks after an interruption.
 
 The checkpoint (JSON, replaced atomically after each page of documents) holds the
 endpoint, the resolved collections, the mode, the input files (size and SHA-256), the
 cursor, the counts and the blocked documents, which a rerun retries first. A finished
 checkpoint is refused, as is one for other input: a new run needs a new file name. Every
-write run records its backup and whether it used ``--bulk`` in the checkpoint (``runs``)
-before writing: a
+write run records its backup, its page and whether it used ``--bulk`` (with its batch) in the
+checkpoint (``runs``) before writing; a resumed run may use another page or batch. A
 ``--backup-id`` is checked (a successful ``backup-filesystem`` backup holding the chunks and
 documents collections), an ``--offline-backup`` note is recorded as given and not checked
 (an offline copy of the data directory, made with Weaviate stopped). A check takes neither.
@@ -114,11 +119,12 @@ IGNORED = frozenset({
     "vector", "vector_index"})
 """Input keys that are counted and never written."""
 DOCUMENT_PAGE = 100
+"""Documents planned, written and checkpointed together (``--page``)."""
 WINDOW = 200
 """Chunk orders read per query when comparing the stored part of a document."""
 CONCURRENCY = 8
 BULK_BATCH = DOCUMENT_PAGE
-"""Chunks per batch insert with ``--bulk``: one from each of up to this many documents."""
+"""Chunks per batch insert with ``--bulk`` (``--batch``): one from each of up to this many documents."""
 ACTIONS = ("new", "append", "replayed", "rejected")
 QUERY_TIMEOUT = 600
 
@@ -434,10 +440,11 @@ async def write(client: WeaviateAsyncClient, target: Target, plan_: Plan) -> Out
 
 
 async def write_bulk(client: WeaviateAsyncClient, target: Target, plans: dict[UUID, Plan],
-                     concurrency: int = CONCURRENCY) -> dict[UUID, Outcome]:
+                     batch: int = BULK_BATCH, concurrency: int = CONCURRENCY) -> dict[UUID, Outcome]:
     """``--bulk``: the documents first (single inserts), then the chunks in rounds of batch
-    inserts holding at most one chunk per document, each round read back before the next.
-    A chunk refused, missing or different after its round blocks the rest of its document."""
+    inserts holding at most one chunk from each of the first ``batch`` unfinished documents,
+    each round read back before the next. A chunk refused, missing or different after its
+    round blocks the rest of its document."""
     semaphore = asyncio.Semaphore(concurrency)
 
     async def create(plan_: Plan) -> Outcome:
@@ -449,7 +456,7 @@ async def write_bulk(client: WeaviateAsyncClient, target: Target, plans: dict[UU
     outcomes = dict(zip(plans, await asyncio.gather(*(create(p) for p in plans.values()))))
     pending = {d: list(p.inserts) for d, p in plans.items() if not outcomes[d].failure}
     while pending:
-        round_ = [(d, *queue[0]) for d, queue in pending.items()][:BULK_BATCH]
+        round_ = [(d, *queue[0]) for d, queue in pending.items()][:batch]
         try:
             errors = await store.insert_chunks(client, target.chunks, [
                 (chunk.id, d, _expected_properties(chunk, position)) for d, chunk, position in round_])
@@ -496,17 +503,27 @@ def _fingerprint(path: Path) -> dict[str, Any]:
 
 async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[Path], *, checkpoint: Path,
               endpoint: str, write_: bool, backup: dict[str, str] | None = None, bulk: bool = False,
-              concurrency: int = CONCURRENCY,
+              page: int | None = None, batch: int | None = None, concurrency: int = CONCURRENCY,
               progress=lambda line: print(line, file=sys.stderr, flush=True)) -> dict[str, Any]:
     """One pass over the input documents (see the module docstring); returns the summary.
     ``backup`` (``{"backup_id": ...}`` or ``{"offline_backup": ...}``) is required for a write,
     refused for a check, and recorded in the checkpoint (``runs``) before anything is written.
     ``bulk`` batch-inserts the chunks and is refused unless the chunk collection is empty at the
-    start. Raises ``LookupError`` before writing for a backup, bulk, schema or checkpoint problem."""
+    start. ``page`` defaults to ``DOCUMENT_PAGE``; ``batch``
+    (default ``BULK_BATCH``) belongs to ``bulk``. Raises ``LookupError`` before writing for a
+    backup, bulk, page, batch, schema or checkpoint problem."""
     if write_ and not backup:
         raise LookupError("A write needs a backup (--backup-id or --offline-backup, docs/DATA_MAINTENANCE.md)")
     if not write_ and (backup or bulk):
         raise LookupError("A check writes nothing and takes no backup or --bulk")
+    if batch is not None and not bulk:
+        raise LookupError("--batch belongs to --bulk")
+    if (page is not None and page < 1) or (batch is not None and batch < 1):
+        raise LookupError("--page and --batch must be positive")
+    page = page or DOCUMENT_PAGE
+    batch = batch or BULK_BATCH
+    if bulk and batch > page:
+        progress(f"--batch {batch} exceeds --page {page}: a batch holds at most one chunk from each document of a page")
     target = await preflight(client, names)
     if bulk:
         stored = await _retrying(lambda: count_chunks(client, target.chunks))
@@ -530,7 +547,8 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
         _write_json(checkpoint, state)
         _append(manifest_path(checkpoint), [{"status": "invalid_line", "reason": r} for r in data.unattributed])
     if write_:
-        state.setdefault("runs", []).append({"at": _now(), "bulk": bulk, **backup})
+        state.setdefault("runs", []).append({"at": _now(), "bulk": bulk, "page": page,
+                                              **({"batch": batch} if bulk else {}), **backup})
         _write_json(checkpoint, state)
     counts, manifest = state["counts"], manifest_path(checkpoint)
     semaphore = asyncio.Semaphore(concurrency)
@@ -585,16 +603,17 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
     started = time.monotonic()
     while not state["done"]:
         start = bisect.bisect_right(documents, state["after"]) if state["after"] else 0
-        page = documents[start:start + DOCUMENT_PAGE]
-        results = list(await asyncio.gather(*(one(UUID(d)) for d in page)))
+        current = documents[start:start + page]
+        results = list(await asyncio.gather(*(one(UUID(d)) for d in current)))
         if bulk:
             writes = {d: p for d, p, o in results if o is None and p.inserts}
-            outcomes = await write_bulk(client, target, writes, concurrency) if writes else {}
+            outcomes = (await write_bulk(client, target, writes, batch=batch, concurrency=concurrency)
+                        if writes else {})
             results = [(d, p, outcomes.get(d, o)) for d, p, o in results]
         state["blocked"] += record(results, set())
-        if page:
-            state["after"] = page[-1]
-        state["done"] = len(page) < DOCUMENT_PAGE
+        if current:
+            state["after"] = current[-1]
+        state["done"] = len(current) < page
         save()
         seconds = max(time.monotonic() - started, 1e-3)
         progress(f"documents {counts['documents']} " + " ".join(f"{a} {counts[a]}" for a in ACTIONS if counts[a])
@@ -636,6 +655,13 @@ async def check_backup(client: WeaviateAsyncClient, target: Target, backup_id: s
         raise LookupError(f"Backup {backup_id} does not hold {', '.join(sorted(missing))}")
 
 
+def _positive(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"{value} is not a positive number")
+    return number
+
+
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = p.add_mutually_exclusive_group(required=True)
@@ -650,6 +676,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--bulk", action="store_true",
                    help="with --write into an empty chunk collection only: batch-insert the chunks (faster; refused "
                         "when any chunk is stored, because a batch insert replaces an object with the same id)")
+    p.add_argument("--batch", type=_positive, metavar="N",
+                   help=f"with --bulk: chunks per batch insert, one from each of up to N documents of the page "
+                        f"(default {BULK_BATCH})")
+    p.add_argument("--page", type=_positive, metavar="N",
+                   help=f"documents planned, written and checkpointed together (default {DOCUMENT_PAGE}); "
+                        f"a larger page needs more memory and repeats more checks after an interruption")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help=f"documents in parallel (default {CONCURRENCY})")
     p.add_argument("inputs", nargs="+", type=Path, metavar="FILE.jsonl")
     return p
@@ -662,6 +694,9 @@ async def _main(argv: list[str]) -> int:
     args = _parser().parse_args(argv)
     if args.check and (args.backup_id or args.offline_backup or args.bulk):
         print("--backup-id, --offline-backup and --bulk belong to --write; a check writes nothing", file=sys.stderr)
+        return 2
+    if args.batch and not args.bulk:
+        print("--batch belongs to --bulk", file=sys.stderr)
         return 2
     backup = {"backup_id": args.backup_id} if args.backup_id else (
         {"offline_backup": args.offline_backup} if args.offline_backup else None)
@@ -685,7 +720,7 @@ async def _main(argv: list[str]) -> int:
             await check_backup(client, await preflight(client, config.collectionNames), args.backup_id)
         result = await run(client, config.collectionNames, args.inputs, checkpoint=args.write or args.check,
                            endpoint=endpoint, write_=bool(args.write), backup=backup, bulk=args.bulk,
-                           concurrency=args.concurrency)
+                           page=args.page, batch=args.batch, concurrency=args.concurrency)
         print(json.dumps(result, indent=2))
         return exit_code(result)
     except LookupError as e:

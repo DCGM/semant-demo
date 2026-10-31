@@ -313,25 +313,29 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   its document; documents are written in parallel (`--concurrency`).
 - `--bulk` is for a **new store** whose chunk collection is empty at the start (refused otherwise,
   before any write):
-  - it batch-inserts the chunks in rounds of one next chunk from each of up to 100 documents, each
-    round read back before the next;
+  - it batch-inserts the chunks in rounds of one next chunk from each of up to `--batch` (100)
+    documents of the page, each round read back before the next; a finished document leaves its
+    place to the next document of the page;
   - documents are still created with single inserts, because a batch insert could replace an
     existing document with its metadata;
   - an interrupted bulk run is finished without `--bulk`: by then the collection is no longer empty,
     so nothing already stored is ever written in a batch.
+- Documents are planned, written and checkpointed in pages of `--page` documents (100). A larger
+  page needs more memory and repeats more checks after an interruption. A resumed run may use
+  another page or batch.
 - A failed or uncertain write blocks only the rest of that document (`blocked`); running the same
   command again retries it, planned again from the store.
 - A created document whose chunks did not all arrive is listed as `incomplete_document` and never
   deleted (#281).
 - The checkpoint holds the endpoint, the resolved collections, the input files (size, SHA-256), the
-  cursor, the blocked documents and, for every write run, its backup and whether it used `--bulk`
-  (`runs`), recorded before anything is written. A finished checkpoint, or one for other input, is refused.
+  cursor, the blocked documents and, for every write run, its backup, its page and whether it used
+  `--bulk` with its batch (`runs`), recorded before anything is written. A finished checkpoint, or one for other input, is refused.
 - Backups:
   - `--backup-id` must be a successful `backup-filesystem` backup holding the chunks and documents
     collections; this is checked.
   - `--offline-backup NOTE` describes an offline copy of the data directory made with Weaviate stopped;
     it is recorded as given and not checked.
-  - `--check` takes neither, nor `--bulk`.
+  - `--check` takes neither, nor `--bulk` or `--batch`.
 - Reported documents and invalid lines go to `CHECKPOINT.manifest.jsonl`.
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
