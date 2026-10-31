@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Union
 import yaml
 
 from semant_demo.core.errors import InvalidRequestError
+from semant_demo.features.documents.criteria import LANGUAGE_PROPERTY, ChunkVocabulary
 from semant_demo.features.search.schemas import (
     FieldCondition,
     FilterType,
@@ -225,6 +226,23 @@ def generate_default_filters(
 async def generate_default_filters_async(chunks: "ChunkSearchRepository") -> SearchFiltersResponse:
     min_year, max_year, languages = await fetch_db_filter_stats(chunks)
     return generate_default_filters(min_year=min_year, max_year=max_year, languages=languages)
+
+
+def chunk_vocabulary(definitions: SearchFiltersResponse) -> ChunkVocabulary:
+    """The values ``ChunkFilters`` may select: the configured nominal filters on the chunk
+    language and on the chunk classifications (``TASK_CLASSES``), by stored property name.
+    Other configured filters (e.g. the year range) are not chunk filters."""
+    languages: list[str] = []
+    classifications: dict[str, tuple[str, ...]] = {}
+    for definition in definitions.filters:
+        if definition.type != FilterType.nominal or not definition.values:
+            continue
+        values = tuple(dict.fromkeys(value.backend_form for value in definition.values))
+        if definition.target_property == LANGUAGE_PROPERTY:
+            languages.extend(values)
+        elif definition.target_property in TASK_CLASSES:
+            classifications[definition.target_property] = values
+    return ChunkVocabulary(languages=tuple(dict.fromkeys(languages)), classifications=classifications)
 
 
 def save_search_filters_config(config_path: Union[str, Path], response: SearchFiltersResponse) -> None:

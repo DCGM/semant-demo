@@ -11,6 +11,7 @@ import pytest
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.documents import service
+from semant_demo.features.documents.criteria import ChunkFilters, ChunkFiltersUnavailable
 from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse, DocumentDetail
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
@@ -53,7 +54,7 @@ async def test_corpus_reads_are_public():
     assert await service.count_chunks(documents, DOCUMENT) == 3
     await service.browse(documents, FakeCollections(), None, limit=5)
 
-    assert documents.reads[-1] == ("browse", None, {"limit": 5})
+    assert documents.reads[-1] == ("browse", None, {"conditions": [], "limit": 5})
 
 
 @pytest.mark.parametrize("document_id", [str(uuid4()), "not-a-uuid"])
@@ -69,7 +70,7 @@ async def test_collection_reads_for_owner_and_shared_user(user):
     await service.browse(documents, FakeCollections(), user, str(COLLECTION), offset=10)
     await service.read_chunks_in_collection(documents, FakeCollections(), user, str(DOCUMENT), str(COLLECTION))
 
-    assert documents.reads == [("browse", COLLECTION, {"offset": 10}), ("chunks", DOCUMENT, COLLECTION)]
+    assert documents.reads == [("browse", COLLECTION, {"conditions": [], "offset": 10}), ("chunks", DOCUMENT, COLLECTION)]
 
 
 @pytest.mark.parametrize("user, error", [(None, AuthenticationRequired), (OTHER, NotFoundError)])
@@ -213,3 +214,23 @@ async def test_adjacent_chunks_request_is_validated(direction, limit):
         await service.read_adjacent_chunks(documents, DOCUMENT, documents.chunks[0].id, direction, limit)
 
     assert documents.reads == []
+
+
+@pytest.mark.parametrize("chunk_filters", [ChunkFilters(languages=["ces"]),
+                                           ChunkFilters(classifications={"complexity": ["easy"]})])
+async def test_browse_rejects_chunk_filters_before_reading(chunk_filters):
+    # Until #529 stores the document chunk-value summaries; never ignored or answered with 0.
+    documents = FakeDocuments()
+
+    with pytest.raises(ChunkFiltersUnavailable, match="Document browsing"):
+        await service.browse(documents, FakeCollections(), None, chunk_filters=chunk_filters)
+
+    assert documents.reads == []
+
+
+async def test_browse_with_empty_chunk_filters_is_unchanged():
+    documents = FakeDocuments()
+
+    await service.browse(documents, FakeCollections(), None, chunk_filters=ChunkFilters(), limit=5)
+
+    assert documents.reads == [("browse", None, {"conditions": [], "limit": 5})]

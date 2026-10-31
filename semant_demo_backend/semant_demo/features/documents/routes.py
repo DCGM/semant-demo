@@ -1,10 +1,14 @@
 """HTTP routes of the Documents feature (public corpus reads); the rules live in ``service.py``."""
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
+from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.features.documents.criteria import ChunkFilters, ChunkFiltersUnavailable, DocumentFilters
 from semant_demo.features.documents import service
 from semant_demo.routes.dependencies import get_user_collections, get_documents
 from semant_demo.features.documents.schemas import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
@@ -31,16 +35,57 @@ async def browse_documents(collection_id: str | None = None,
                            author: str | None = None,
                            publisher: str | None = None,
                            document_type: str | None = None,
+                           year_min: int | None = None,
+                           year_max: int | None = None,
+                           title_contains: list[str] = Query(default=[]),
+                           libraries: list[str] = Query(default=[]),
+                           languages: list[str] = Query(default=[]),
+                           chunk_languages: list[str] = Query(default=[]),
+                           chunk_classifications: list[str] = Query(default=[]),
                            documents: DocumentRepository = Depends(get_documents),
                            collections: UserCollectionRepository = Depends(get_user_collections),
                            current_user: User | None = Depends(current_active_optional_user)) -> DocumentBrowse:
     """
         Browses the corpus with pagination, filtering and sorting options. With ``collection_id``
         only that collection's documents are browsed, which needs read access to it.
+
+        ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the
+        shared document filters (``DocumentFilters``; repeat a list parameter for alternatives):
+        they select the same documents as the Analytics counts for them. ``title``, ``author``,
+        ``publisher`` and ``document_type`` are older substring filters. A filter on a property
+        this corpus database does not record is rejected (422).
+
+        ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters
+        (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as
+        ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for
+        each filter, some chunk of it has one of the values (#529). Until then any chunk filter is
+        rejected (422), never ignored; without them browsing is unchanged.
     """
-    return await service.browse(documents, collections, current_user, collection_id,
-                                limit=limit, offset=offset, sort_by=sort_by, sort_desc=sort_desc,
-                                title=title, author=author, publisher=publisher, document_type=document_type)
+    try:
+        filters = DocumentFilters(year_min=year_min, year_max=year_max, title_contains=title_contains,
+                                  libraries=libraries, languages=languages)
+    except ValidationError as e:
+        raise _query_error(e.errors()) from e
+    try:
+        chunk_filters = ChunkFilters.from_query(chunk_languages, chunk_classifications)
+    except ValidationError as e:
+        errors = [{**error, "loc": ("chunk_languages" if error["loc"][:1] == ("languages",) else "chunk_classifications",
+                                    *error["loc"][1:])} for error in e.errors()]
+        raise _query_error(errors) from e
+    except ValueError as e:
+        raise _query_error([{"type": "invalid_filter", "loc": ("chunk_classifications",), "msg": str(e),
+                             "input": chunk_classifications}]) from e
+    try:
+        return await service.browse(documents, collections, current_user, collection_id, filters=filters,
+                                    chunk_filters=chunk_filters,
+                                    limit=limit, offset=offset, sort_by=sort_by, sort_desc=sort_desc,
+                                    title=title, author=author, publisher=publisher, document_type=document_type)
+    except (UnavailableFilter, ChunkFiltersUnavailable) as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+def _query_error(errors: list[dict]) -> RequestValidationError:
+    return RequestValidationError([{**error, "loc": ("query", *error["loc"])} for error in errors])
 
 
 @exp_router.get("/api/user_collections/{collection_id}/documents/{document_id}", response_model=DocumentDetail, response_model_exclude_none=True)

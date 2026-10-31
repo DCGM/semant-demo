@@ -1,6 +1,6 @@
 # Explore — interface and query contract
 
-**Status:** Agreed design (2026-10-31), **not implemented**. Planning parent: [#346](https://github.com/DCGM/semant-demo/issues/346). The current application is described in [ARCHITECTURE.md](ARCHITECTURE.md); this file specifies the intended Explore behavior.
+**Status:** Agreed design (2026-10-31); the shared search criteria are implemented (#526, [ARCHITECTURE.md](ARCHITECTURE.md#search-criteria-featuresdocumentscriteriapy-adaptersweaviatecriteriapy)), the Explore workspace is not. Planning parent: [#346](https://github.com/DCGM/semant-demo/issues/346). The current application is described in [ARCHITECTURE.md](ARCHITECTURE.md); this file specifies the intended Explore behavior.
 
 ## Scope and terminology
 
@@ -14,7 +14,7 @@
 | Shared submitted query and filters | **Search criteria** | Backend `SearchCriteria`; frontend `searchCriteria` |
 | Optional free-text input | **Text query** | `SearchCriteria.text_query` (TypeScript `textQuery`) |
 | Bibliographic restrictions | **Document filters** | Existing `DocumentFilters` contract, shared across consumers |
-| Restrictions on stored chunks | **Passage filters** in UI | Proposed `ChunkFilters` backend model |
+| Restrictions on stored chunks | **Passage filters** in UI | `ChunkFilters` backend model (chunk language, configured classifications) |
 | Existing statistics page | **Corpus overview** | Keep `/corpus` and `CorpusOverviewPage.vue` |
 | Source reading | **Document reader** | Application-wide viewer; [#351](https://github.com/DCGM/semant-demo/issues/351) |
 
@@ -33,19 +33,25 @@
 
 ## Shared criteria and matching
 
-Introduce one typed backend `SearchCriteria` structure with an **optional text query**, `DocumentFilters` and `ChunkFilters`. Share filter definitions, normalization, validation and predicate semantics among Search, document browsing and Analytics. Keep retrieval parameters (method, limit, vector configuration) in endpoint-specific requests; no user-visible retrieval-method selector is required initially.
+One typed backend `SearchCriteria` structure (`features/documents/criteria.py`) has an **optional text query**, `DocumentFilters` and `ChunkFilters`. Share filter definitions, normalization, validation and predicate semantics among Search, document browsing and Analytics. Keep retrieval parameters (method, limit, vector configuration) in endpoint-specific requests; no user-visible retrieval-method selector is required initially.
 
 - Combine different filter dimensions with **AND**; multiple accepted values within one dimension use **OR**. Reject invalid/unavailable filters explicitly rather than treating them as zero matches.
 - **Document filters** refer to document metadata (publication year, source library, title and **document language**). **Passage language** refers to `Chunks.language`, not `Documents.language`. Do not merge these fields or their statistics.
-- When chunk-level filters are present, a document qualifies if **at least one of its chunks satisfies all chunk-level conditions on the same chunk**, as well as the document-level conditions. This is the initial rule; future ranking/aggregation strategies may change explicitly.
+- **Chunk filters** are categorical matches on the chunk language and the configured classifications (no year, no named entities); "missing"/"unknown" values cannot be selected. How they apply depends on the unit (decided on [#526](https://github.com/DCGM/semant-demo/issues/526#issuecomment-6549472480)):
+  - **Passages: same-chunk.** A passage qualifies when **the passage itself** satisfies every chunk filter, and its document every document filter.
+  - **Documents: per dimension.** A document qualifies when, **for each selected chunk filter, at least one of its chunks** has one of the selected values; different filters may be satisfied by different chunks. The document filters must hold as well. Minimum counts or proportions per dimension are deferred. Document results and document-level Analytics use this same rule.
+  - The two rules differ only with two or more chunk filters: for "Czech AND narration", a document with a Czech chunk and a separate narration chunk qualifies as a document, but neither passage does.
+  - **Accuracy limitation (accepted for now):** the existing `Chunks` classification properties are `word`-tokenized, so a value is matched by its words, excluding the configured values that contain all of them (`easy` without `very_easy`). A chunk holding both (`["easy", "very_easy"]`) is therefore not found by the shorter value. Correcting this needs a separately scoped chunk-schema migration ([#533](https://github.com/DCGM/semant-demo/issues/533)); the document summaries of #529 use `field` tokenization and are exact.
+- Document-level chunk filtering uses derived per-dimension unions of the chunks' values stored on `Documents` (**document metadata summaries**, [#529](https://github.com/DCGM/semant-demo/issues/529)). They are a snapshot recomputed periodically by an explicit, rerunnable full-database operation (it replaces the old values and records its completion); between runs they may be stale, which is accepted, and they are never synchronized at write time or during a request. Until they exist, document-level endpoints reject chunk filters explicitly (422).
 - Apply document and chunk restrictions **during retrieval or eligible-population resolution**, never merely discard nonmatching hits from an already limited top-k search and call the remainder complete.
 - The same criteria must mean the same thing in Search and Analytics even though their execution, counts and response schemas differ. Do not require a generic all-purpose database query endpoint.
 
 ## Results and ranking
 
 **Documents mode**:
-- With a text query, retrieve **document metadata matches first** (especially titles; authors/publishers when available), ahead of all documents found only through text. Rank within the metadata group by metadata relevance.
-- Rank remaining distinct documents using the existing chunk-search order (best qualifying chunk), initially without score fusion. A document appears once; retain useful matching chunk evidence for navigation.
+- With a text query, the **filters decide eligibility** and the **text query decides ranking**, independently: a document qualifies by the rules above, and its best text match need not be a chunk that satisfies the chunk filters.
+- Retrieve **document metadata matches first** (especially titles; authors/publishers when available), ahead of all documents found only through text. Rank within the metadata group by metadata relevance.
+- Rank the remaining eligible distinct documents by their **best text-matching chunk** in the existing chunk-search order, initially without score fusion; that chunk need not satisfy the document's chunk filters (see above, and #527). A document appears once; retain useful matching chunk evidence for navigation.
 - Use a separately defined, appropriately bounded document-retrieval strategy. Deduplicating a small passage top-k list is **not** exhaustive document search.
 - Without text query, browse matching document records with pagination; any default sort must be stable and clearly indicated.
 
@@ -60,6 +66,7 @@ Introduce one typed backend `SearchCriteria` structure with an **optional text q
 - State the unit, input size, retrieval method/limit and whether counts cover the full matching population or only retrieved results. A chart of 100 passages from 40 distinct documents is **not** a corpus-wide distribution.
 - Switching Results mode changes which retrieved population query-based charts describe. A chart can show a different counting unit (e.g. distinct source documents) **within that same retrieved population**, but must not silently widen it.
 - Keep missing/unknown/unavailable values distinguishable; retain exact record-level evidence for the displayed groups when practicable.
+- Document distributions over a chunk dimension (from the document metadata summaries) are **multi-valued**: a document with Czech and German chunks counts under both, so the groups overlap and do not add up to the total. Label such charts accordingly ("documents with at least one such chunk").
 
 ## Ownership, rollout and exclusions
 

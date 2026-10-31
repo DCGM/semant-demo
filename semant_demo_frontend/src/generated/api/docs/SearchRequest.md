@@ -21,6 +21,8 @@ Name | Type
 `type` | [SearchType](SearchType.md)
 `hybridSearchAlpha` | number
 `searchLlmFilter` | boolean
+`documentFilters` | [DocumentFilters](DocumentFilters.md)
+`chunkFilters` | [ChunkFilters](ChunkFilters.md)
 `filters` | [Array&lt;SearchFilterInput&gt;](SearchFilterInput.md)
 `minYear` | number
 `maxYear` | number
@@ -55,6 +57,8 @@ const example = {
   "type": null,
   "hybridSearchAlpha": null,
   "searchLlmFilter": null,
+  "documentFilters": null,
+  "chunkFilters": null,
   "filters": null,
   "minYear": null,
   "maxYear": null,

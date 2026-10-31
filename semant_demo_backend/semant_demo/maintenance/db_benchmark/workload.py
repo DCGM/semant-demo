@@ -224,7 +224,7 @@ async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, pro
 
     async def chunk_inside(**query) -> SampledChunk | None:
         """A chunk the application's filter for ``query`` matches (the same filter the search uses)."""
-        flt = search._filter(ChunkQuery(text="", mode=SearchType.text, limit=1, **query))
+        flt = await search._filter(ChunkQuery(text="", mode=SearchType.text, limit=1, **query))
         found = (await chunks.query.fetch_objects(filters=flt, limit=1, **fetch)).objects
         return _sampled_chunk(found[0], vector_name, q.terms_per_query)[0] if found else None
 

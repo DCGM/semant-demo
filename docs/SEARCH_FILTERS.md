@@ -50,6 +50,10 @@ When a user submits a search request to the POST `/api/search` endpoint, they in
 3. **Database Execution (`ChunkSearchRepository.search`)**:
    The adapter runs the `.bm25()`, `.near_vector()` or `.hybrid()` query with the combined filter, so restrictions apply during retrieval, not to the top-k hits afterwards. The query vector for vector/hybrid search is computed beforehand by the service through the injected embedding client.
 
+### The shared search criteria filters (#526)
+
+A search request may instead send `document_filters` (`DocumentFilters`) and `chunk_filters` (`ChunkFilters`), the filters shared with document browsing and Analytics ([ARCHITECTURE.md](ARCHITECTURE.md#search-criteria-featuresdocumentscriteriapy-adaptersweaviatecriteriapy)); a request with both kinds is refused (400). This configuration still defines what chunk filters may select (`chunk_vocabulary`): the values of the nominal filter on `language` are the chunk languages, and the nominal filters on a `TASK_CLASSES` property the classifications, named by `target_property`. Values are given as `backend_form`, in any case. Unlike the older nominal `filters`, these values do not match by word: with the stored `word` tokenization, the older `complexity` filter for `easy` also returns `very_easy` chunks, while `chunk_filters` excludes them. This is not fully exact on the current schema: a chunk holding both `easy` and `very_easy` is not found by `easy` (accepted for now; correction tracked in [#533](https://github.com/DCGM/semant-demo/issues/533)).
+
 ## 5. Classifications on Search Hits
 Each search hit (`SearchResultChunk`) has an optional `metadata` field with the chunk's stored classifications: property name -> list of values, e.g. `{"communicative_mode": ["narration"], "style": ["formal", "literary"]}`.
 
