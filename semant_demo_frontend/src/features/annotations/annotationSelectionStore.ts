@@ -19,7 +19,10 @@ export type SelectionEntry = readonly [id: string, version: number]
  * Each member keeps the `editVersion` it had when it was added (#460); a review sends it, so
  * an annotation someone else changed since it was selected is refused, not overwritten. Only
  * this user's own saved writes move it on (`noteVersions`); "Show changed" selects the
- * refused ones again at their current versions (`replace`).
+ * refused ones again at their current versions (`replace`). Each member also keeps its
+ * `attributeVersion` (#331, ADR 0011), which an attribute assignment sends; it is independent of
+ * `editVersion` and likewise moved on only by this user's saved assignments
+ * (`noteAttributeVersions`).
  *
  * Entering another collection starts afresh; signing out or another account clears it
  * (`app/session.ts`). Writers use `captureScope` to drop answers of a collection left meanwhile and
@@ -31,6 +34,8 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
   const ids = ref<Set<string>>(new Set())
   /** The version each member had when it was added, moved on by this user's saved writes. */
   let versions = new Map<string, number>()
+  /** The `attributeVersion` of each member, likewise. */
+  let attributeVersions = new Map<string, number>()
   /** Changes with every change of the members, so a review of them can stop (`captureMembership`). */
   let revision = 0
   /** The row whose source context is open, as the latest page that lists it shows it. */
@@ -44,6 +49,7 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
   function setIds (next: Set<string>) {
     ids.value = next
     versions = new Map([...versions].filter(([id]) => next.has(id)))
+    attributeVersions = new Map([...attributeVersions].filter(([id]) => next.has(id)))
     revision++
   }
 
@@ -62,8 +68,9 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
   }
 
   /** Adds the annotations unless the selection would exceed `MAX_SELECTION`; false then, and
-   * nothing changes. A member already selected keeps the version it was selected at. */
-  function add (entries: Iterable<SelectionEntry>): boolean {
+   * nothing changes. A member already selected keeps the versions it was selected at.
+   * `attributes`: the `attributeVersion` of the added annotations. */
+  function add (entries: Iterable<SelectionEntry>, attributes: Record<string, number> = {}): boolean {
     const next = new Set(ids.value)
     const added: SelectionEntry[] = []
     for (const [id, version] of entries) {
@@ -71,20 +78,37 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
       next.add(id)
     }
     if (next.size > MAX_SELECTION) return false
-    for (const [id, version] of added) versions.set(id, version)
+    for (const [id, version] of added) {
+      versions.set(id, version)
+      attributeVersions.set(id, attributes[id] ?? 0)
+    }
     setIds(next)
     return true
   }
 
-  /** Selects exactly these annotations at these versions. */
-  function replace (entries: Iterable<SelectionEntry>) {
+  /** Selects exactly these annotations at these versions; `attributes` gives their
+   * `attributeVersion`, otherwise a member keeps the one it had. */
+  function replace (entries: Iterable<SelectionEntry>, attributes: Record<string, number> = {}) {
     versions = new Map(entries)
+    attributeVersions = new Map([...versions.keys()].map(id => [id, attributes[id] ?? attributeVersions.get(id) ?? 0]))
     setIds(new Set(versions.keys()))
   }
 
   /** The version a review of `id` expects. */
   function versionOf (id: string): number {
     return versions.get(id) ?? 0
+  }
+
+  /** The `attributeVersion` an assignment to `id` expects. */
+  function attributeVersionOf (id: string): number {
+    return attributeVersions.get(id) ?? 0
+  }
+
+  /** This user's assignments saved these attribute versions; members keep them. */
+  function noteAttributeVersions (saved: Record<string, number>) {
+    for (const [id, version] of Object.entries(saved)) {
+      if (attributeVersions.has(id)) attributeVersions.set(id, version)
+    }
   }
 
   /** This user's writes saved these versions; members keep them (not a change of the members). */
@@ -100,8 +124,8 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
     setIds(next)
   }
 
-  function toggle (id: string, version: number, value?: boolean): boolean {
-    if (value ?? !ids.value.has(id)) return add([[id, version]])
+  function toggle (id: string, version: number, value?: boolean, attributeVersion = 0): boolean {
+    if (value ?? !ids.value.has(id)) return add([[id, version]], { [id]: attributeVersion })
     remove([id])
     return true
   }
@@ -150,6 +174,8 @@ export const useAnnotationSelectionStore = defineStore('annotationSelection', ()
     replace,
     versionOf,
     noteVersions,
+    attributeVersionOf,
+    noteAttributeVersions,
     remove,
     toggle,
     retain,

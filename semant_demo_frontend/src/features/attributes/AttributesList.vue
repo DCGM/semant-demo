@@ -236,6 +236,7 @@ function createAttribute () {
     component: AttributeDialog,
     componentProps: {
       tags: () => tags.value,
+      others: () => store.attributes,
       save: (payload: PostAttribute) => store.createAttribute(id, payload)
     }
   }).onOk((created: Attribute | null) => {
@@ -255,6 +256,7 @@ function editAttribute (attribute: Attribute) {
     componentProps: {
       attribute,
       tags: () => tags.value,
+      others: () => store.attributes.filter(a => a.id !== attribute.id),
       save: (patch: PatchAttribute) => store.updateAttribute(id, attribute.id, patch),
       valueActions
     }
