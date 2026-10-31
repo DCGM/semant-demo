@@ -93,9 +93,17 @@
 
           <div class="assign-dialog__summary text-body2" role="status" data-testid="assign-summary">
             <div>{{ summary }}</div>
-            <div class="text-caption text-grey-8 q-mt-xs">
-              Only confirmed annotations with a tag this attribute applies to ({{ scopeText }}) take values; the
-              others are reported as not changed. Annotations someone else changed meanwhile are not overwritten.
+            <div class="text-caption text-grey-8 q-mt-xs" data-testid="assign-scope-note">
+              <template v-if="removing">
+                The values are removed from every selected annotation that holds them, also from rejected
+                annotations and annotations whose tag the attribute no longer applies to, where they are kept but
+                not shown.
+              </template>
+              <template v-else>
+                Only confirmed annotations with a tag this attribute applies to ({{ scopeText }}) take values; the
+                others are reported as not changed.
+              </template>
+              Annotations someone else changed meanwhile are not overwritten.
             </div>
           </div>
         </template>
@@ -118,9 +126,9 @@ import { QBanner, QBtnToggle, QCardSection, QInput, QOptionGroup, QSelect, QSpin
 import FormDialog from 'src/shared/ui/FormDialog.vue'
 import { plural } from 'src/shared/plural'
 import { AssignMode, Cardinality, type Attribute, type Tag } from 'src/generated/api'
-import { isSpecial, orderedValues, tagScope, valueName } from './attributeForm'
+import { isSpecial, orderedValues, tagNames, valueName } from './attributeForm'
 import { quotedValues, type AssignChange } from './assignment'
-import type { AssignReport } from './attributeAssignStore'
+import { refusedWhole, type AssignReport } from './attributeAssignStore'
 
 type Mode = 'add' | 'remove' | 'replace' | 'set' | 'clear'
 type Save = (attributeId: string, change: AssignChange) => Promise<AssignReport | null>
@@ -238,13 +246,18 @@ const summary = computed(() => {
   }[mode.value]
 })
 
+// Remove and Clear are not limited to confirmed annotations of an applicable tag (ADR 0011).
+const removing = computed(() => mode.value === 'remove' || mode.value === 'clear')
+
 const scopeText = computed(() => {
   const a = attribute.value
   if (!a) return ''
-  const scope = tagScope(a, props.tags, 'ready')
-  if (scope.kind === 'all') return 'all tags'
-  if (scope.kind === 'selected' && scope.names.length) return scope.names.join(', ')
-  return 'no tag'
+  if (a.allTags) return 'all tags'
+  const ids = a.tagIds ?? []
+  if (!ids.length) return 'no tag'
+  const names = tagNames(a, props.tags)
+  // Tags not loaded (yet), or deleted (#508): counted, never shown as "no tag".
+  return names.length === ids.length ? names.join(', ') : plural(ids.length, 'selected tag')
 })
 
 async function submit () {
@@ -264,7 +277,7 @@ async function submit () {
       return
     }
     // Refused as a whole (nothing saved): stay open with the reason and the choices.
-    if (report.error && !report.saved.length && !report.conflicts.length && !report.refused.length) {
+    if (refusedWhole(report)) {
       error.value = report.error
       return
     }

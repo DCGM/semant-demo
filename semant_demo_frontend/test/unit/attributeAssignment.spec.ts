@@ -7,7 +7,9 @@ import { Cardinality, ValueKind, type AnnotationListRow, type Attribute } from '
 import {
   assignReportSummary, cannotAssign, clearChange, pickChange
 } from 'src/features/attributes/assignment'
-import { ASSIGN_BATCH, useAttributeAssignStore, type AssignReport } from 'src/features/attributes/attributeAssignStore'
+import {
+  ASSIGN_BATCH, refusedWhole, useAttributeAssignStore, type AssignReport
+} from 'src/features/attributes/attributeAssignStore'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
 import ConcordanceTable from 'src/features/annotations/concordance/ConcordanceTable.vue'
@@ -140,20 +142,23 @@ describe('attribute assign store', () => {
 
     assignCalls()[0].answer({
       outcome: 'partial',
-      succeeded: [...ids(ASSIGN_BATCH).slice(5), 'id-4'],
+      succeeded: [...ids(ASSIGN_BATCH).slice(7), 'id-4', 'id-5'],
       failed: [
         { item_id: 'id-0', step: 'edit_conflict', message: 'changed' },
         { item_id: 'id-1', step: 'check_annotation_type', message: 'not approved' },
         { item_id: 'id-2', step: 'find_annotation', message: 'gone' },
         { item_id: 'id-3', step: 'update_attributes', message: 'timeout', uncertain: true },
-        { item_id: 'id-4', step: 'record_attribute_changes', message: 'sql down' }
+        { item_id: 'id-4', step: 'record_attribute_changes', message: 'sql down' },
+        // A failed read is no missing annotation: it is retried, never dropped from the selection.
+        { item_id: 'id-6', step: 'read_annotation', message: 'WeaviateTimeoutError: storage write failed', uncertain: true }
       ],
       versions: { 'id-0': 9, 'id-5': 3 },
       values: { 'id-0': ['v2'], 'id-5': ['v1'] }
     })
     await flush()
     expect(assignCalls()[1].body).toMatchObject({ annotation_ids: ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH) })
-    assignCalls()[1].answer({ detail: 'down' }, 503)
+    // A gateway error: the part may have been applied.
+    assignCalls()[1].answer({ detail: 'bad gateway' }, 502)
     const report = await running
 
     expect(answers).toHaveLength(1)
@@ -162,7 +167,7 @@ describe('attribute assign store', () => {
     expect(report?.missing).toEqual(['id-2'])
     expect(report?.unrecorded).toEqual(['id-4'])
     expect(report?.failed.map(f => [f.id, f.uncertain])).toEqual([
-      ['id-3', true], ...ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH).map(id => [id, true])])
+      ['id-3', true], ['id-6', true], ...ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH).map(id => [id, true])])
     // Only this user's saved versions move the selection on; a conflict keeps the selected one.
     expect([selection.attributeVersionOf('id-5'), selection.attributeVersionOf('id-0')]).toEqual([3, 0])
     expect(assign.pending.size).toBe(0)
@@ -172,24 +177,49 @@ describe('attribute assign store', () => {
       refused: [...report!.refused,
         { id: 'x', step: 'check_value', message: 'Unknown and Not applicable cannot be combined with other values.' }]
     }, speaker())
-    expect(summary.title).toBe(`"Speaker": saved ${ASSIGN_BATCH - 4} of ${ASSIGN_BATCH + 5} annotations`)
+    expect(summary.title).toBe(`"Speaker": saved ${ASSIGN_BATCH - 5} of ${ASSIGN_BATCH + 5} annotations`)
     expect(summary.lines.filter(l => l.label === 'not changed')).toEqual([
       { count: 1, label: 'not changed', detail: 'Only confirmed annotations take values.' },
       // Reasons with several causes are the server's own words.
       { count: 1, label: 'not changed', detail: 'Unknown and Not applicable cannot be combined with other values.' }
     ])
     expect(summary.lines.map(l => [l.count, l.label])).toEqual([
-      [6, 'uncertain'], [1, 'not saved'], [1, 'not changed'], [1, 'not changed'], [1, 'no longer exist'],
+      [7, 'uncertain'], [1, 'not saved'], [1, 'not changed'], [1, 'not changed'], [1, 'no longer exist'],
       [1, 'saved without history'], [null, 'Saved changes are kept.']
     ])
 
     // A retry sends only the failed and uncertain items, at the versions they were sent with.
     const retrying = assign.retry('col-1', ignore)
     await flush()
-    expect(assignCalls()[2].body).toMatchObject({ annotation_ids: ['id-3', ...ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH)] })
-    assignCalls()[2].answer({ outcome: 'complete', succeeded: ['id-3', ...ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH)], failed: [] })
+    const resent = ['id-3', 'id-6', ...ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH)]
+    expect(assignCalls()[2].body).toMatchObject({ annotation_ids: resent })
+    assignCalls()[2].answer({ outcome: 'complete', succeeded: resent, failed: [] })
     const retried = await retrying
     expect([retried?.failed.length, retried?.conflicts.length]).toEqual([0, 1])
+  })
+
+  it('takes a 503 as a refusal, not as a lost answer, and shows no result for a request refused as a whole', async () => {
+    const assign = useAttributeAssignStore()
+    const refused = assign.assign('col-1', 'a1', { mode: 'add', valueIds: ['v1'] }, [['a', 0]], ignore)
+    await flush()
+    assignCalls()[0].answer({ detail: 'Attribute assignments are not enabled on this store.' }, 503)
+    const report = await refused
+    expect(report?.error).toBe('Attribute assignments are not enabled on this store.')
+    expect(report?.failed.map(f => f.uncertain)).toEqual([false])
+    expect(refusedWhole(report!)).toBe(true)
+    // The dialog says why; the selection bar shows no "saved 0 of 1" for it.
+    expect(assign.report).toBeNull()
+
+    // Refused after a first part was saved: reported, the rest not sent.
+    const partly = assign.assign('col-1', 'a1', { mode: 'add', valueIds: ['v1'] },
+      ids(ASSIGN_BATCH + 1).map(id => [id, 0] as const), ignore)
+    await flush()
+    assignCalls()[1].answer({ outcome: 'complete', succeeded: ids(ASSIGN_BATCH), failed: [] })
+    await flush()
+    assignCalls()[2].answer({ detail: 'not enabled' }, 503)
+    const second = await partly
+    expect([second?.saved.length, second?.failed.map(f => f.uncertain), refusedWhole(second!)]).toEqual([ASSIGN_BATCH, [false], false])
+    expect(assign.report).toBe(second)
   })
 
   it('sends at most one assignment per annotation at a time', async () => {
@@ -427,6 +457,16 @@ describe('assign attribute dialog', () => {
     values.vm.$emit('update:modelValue', ['v1', 'v2', 'vu'])
     await flushPromises()
     expect(wrapper.findComponent(QOptionGroup).props('modelValue')).toEqual(['vu'])
+  })
+
+  it('says that Remove and Clear also reach annotations that hide their values, and counts tags not loaded', async () => {
+    const wrapper = await openDialog(vi.fn(), [topic({ tagIds: ['tag-1', 'tag-gone'] })])
+    // A tag it cannot name is counted, never shown as "no tag".
+    expect(text('assign-scope-note')).toContain('(2 selected tags) take values')
+    wrapper.findAllComponents({ name: 'QBtnToggle' })[0]!.vm.$emit('update:modelValue', 'remove')
+    await flushPromises()
+    expect(text('assign-scope-note')).toContain('also from rejected annotations and annotations whose tag the attribute no longer applies to')
+    expect(text('assign-scope-note')).not.toContain('take values')
   })
 
   it('stays open with the reason when the assignment was refused as a whole', async () => {

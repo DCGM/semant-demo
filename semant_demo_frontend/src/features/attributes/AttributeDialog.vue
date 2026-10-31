@@ -199,7 +199,8 @@ import { QBanner, QForm, useDialogPluginComponent } from 'quasar'
 import FormDialog from 'src/shared/ui/FormDialog.vue'
 import { Cardinality, type Attribute, type PatchAttribute, type PostAttribute, type Tag } from 'src/generated/api'
 import {
-  DESCRIPTION_STYLE, KIND_LABELS, MAX_DESCRIPTION, MAX_NAME, MAX_VALUES, SPECIAL_KINDS, labelTaken, nameTaken,
+  DESCRIPTION_STYLE, KIND_LABELS, MAX_DESCRIPTION, MAX_NAME, MAX_VALUES, SPECIAL_KINDS, TAKEN_NAME, isTaken, labelTaken,
+  nameTaken,
   type SpecialKind, type ValueActions
 } from './attributeForm'
 import { AttributeWriteError } from './attributesStore'
@@ -359,7 +360,7 @@ async function submit () {
     const refusedTags = !!props.attribute && body.tagIds !== undefined && e instanceof AttributeWriteError &&
       (e.status === 409 || e.status === 503)
     if (refusedTags) tagsError.value = message
-    else if (props.attribute && body.name !== undefined && message.startsWith('An attribute with this name')) {
+    else if (props.attribute && body.name !== undefined && isTaken(e, TAKEN_NAME)) {
       nameError.value = message
     } else {
       error.value = message

@@ -276,7 +276,8 @@ async def _assign_one(store: AttributeStore, cid: UUID, attribute: Attribute, re
         try:
             found = await spans.read_assignments(cid, sid)
         except Exception as exc:
-            return _Item(sid, failure=step_failure("find_annotation", sid, exc))
+            # Not "not found": the annotation may well exist, and a retry may succeed.
+            return _Item(sid, failure=step_failure("read_annotation", sid, exc))
         if found is None:
             return _Item(sid, failure=_item_failure(
                 sid, "find_annotation", "No such annotation in this collection; it may have been deleted."))
@@ -325,8 +326,8 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
     Adds, removes or replaces the values of one attribute on up to ``MAX_ASSIGN_BATCH``
     approved annotations, each on its own: written best effort and reported per item (nothing is
     rolled back). A refused request (400/404) changed nothing; per item, ``failed`` names why an
-    annotation was not changed (``find_annotation``, ``edit_conflict``, ``check_annotation_type``,
-    ``check_applicable``, ``check_value``, ``check_cardinality``, ``update_attributes`` -
+    annotation was not changed (``find_annotation``, ``read_annotation`` - reading it failed -,
+    ``edit_conflict``, ``check_annotation_type``, ``check_applicable``, ``check_value``, ``check_cardinality``, ``update_attributes`` -
     ``uncertain`` on a timeout). Each saved change is recorded right after its write, under the same lock; when that fails the
     assignment stays and ``record_attribute_changes`` is reported for that annotation.
     """
