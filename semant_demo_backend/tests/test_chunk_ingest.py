@@ -5,7 +5,9 @@ append continues from the stored tail with the shared position calculator, a rep
 writes nothing, and anything that would change, interleave or skip stored chunks is
 rejected.
 """
+import hashlib
 import json
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -14,7 +16,7 @@ from semant_demo.adapters.weaviate.chunk_ingest import StoredChunk
 from semant_demo.adapters.weaviate.chunk_positions import OrderStats
 from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
 from semant_demo.maintenance import chunk_ingest
-from semant_demo.maintenance.chunk_ingest import InputChunk, plan, read_input
+from semant_demo.maintenance.chunk_ingest import InputChanged, InputChunk, index_input, load, plan
 
 DOC, OTHER = UUID(int=1), UUID(int=2)
 TEXTS = ["hel", "lo world", "", ", ſtará 18", "48­"]
@@ -32,6 +34,13 @@ def line(i: int, document: UUID = DOC, **extra) -> dict:
 def write_jsonl(path, records) -> list:
     path.write_text("".join((r if isinstance(r, str) else json.dumps(r)) + "\n" for r in records), encoding="utf-8")
     return [path]
+
+
+def read_input(paths):
+    """The first pass and every document's chunks read again, as the import reads them."""
+    index = index_input(paths)
+    return SimpleNamespace(documents=load(index, index.documents), invalid=index.invalid,
+                           unattributed=index.unattributed, ignored=index.ignored, lines=index.lines)
 
 
 def chunks(orders, document: UUID = DOC) -> list[InputChunk]:
@@ -105,6 +114,46 @@ def test_input_orders_must_be_consecutive(tmp_path, orders):
 def test_a_chunk_id_used_twice_rejects_both_documents(tmp_path):
     data = read_input(write_jsonl(tmp_path / "a.jsonl", [line(0), {**line(0, OTHER), "id": str(cid(0))}]))
     assert set(data.invalid) == {DOC, OTHER}
+
+
+def test_a_chunk_id_used_again_in_another_file_rejects_both_documents(tmp_path):
+    write_jsonl(tmp_path / "a.jsonl", [line(0), line(1)])
+    write_jsonl(tmp_path / "b.jsonl", [line(0, OTHER), {**line(1, OTHER), "id": str(cid(1))}])
+    data = read_input([tmp_path / "b.jsonl", tmp_path / "a.jsonl"])
+    assert set(data.invalid) == {DOC, OTHER}
+    assert data.invalid[DOC] == f"{tmp_path / 'b.jsonl'}:2: chunk {cid(1)} also at {tmp_path / 'a.jsonl'}:2"
+
+
+def test_different_ids_with_the_same_64_bit_fold_are_not_duplicates(tmp_path):
+    high, low = 0x1234, 0xABCD
+    first, second = UUID(int=(high << 64) | low), UUID(int=(low << 64) | high)
+    data = read_input(write_jsonl(tmp_path / "a.jsonl", [{**line(0), "id": str(first)},
+                                                         {**line(0, OTHER), "id": str(second)}]))
+    assert not data.invalid and [c.id for c in data.documents[DOC]] == [first]
+
+
+def test_a_document_is_read_again_from_its_lines_between_other_lines(tmp_path):
+    path = tmp_path / "a.jsonl"
+    data = read_input(write_jsonl(path, [line(0), "", line(0, OTHER), "not json", line(1), line(2), line(1, OTHER)]))
+    assert [(c.order, c.text, c.line) for c in data.documents[DOC]] == [
+        (0, TEXTS[0], f"{path}:1"), (1, TEXTS[1], f"{path}:5"), (2, TEXTS[2], f"{path}:6")]
+    assert [c.line for c in data.documents[OTHER]] == [f"{path}:3", f"{path}:7"]
+
+
+def test_the_first_pass_fingerprints_each_file(tmp_path):
+    path = write_jsonl(tmp_path / "a.jsonl", [line(0)])[0]
+    assert index_input([path]).fingerprints == [
+        {"path": str(path.resolve()), "size": path.stat().st_size,
+         "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}]
+
+
+def test_a_document_whose_lines_changed_after_the_first_pass_is_refused(tmp_path):
+    path = write_jsonl(tmp_path / "a.jsonl", [line(0), line(1, OTHER)])[0]
+    index = index_input([path])
+    path.write_text(path.read_text().replace(f'"{TEXTS[0]}"', '"HEL"'), encoding="utf-8")  # same length
+    assert [c.order for c in load(index, [OTHER])[OTHER]] == [1]  # its lines are unchanged
+    with pytest.raises(InputChanged, match="changed after the input was checked"):
+        load(index, [DOC])
 
 
 # ── Plan ─────────────────────────────────────────────────────────────────

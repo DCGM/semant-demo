@@ -419,3 +419,19 @@ async def test_a_bulk_batch_refills_from_the_next_documents_of_the_page(ingest_s
     assert code == 0 and result["counts"]["chunks_inserted"] == 8
     assert rounds == [[cid(EXISTING, 0), cid(NEW, 0)], [cid(NEW, 1), cid(OTHER, 0)],
                       [cid(NEW, 2), cid(OTHER, 1)], [cid(NEW, 3), cid(OTHER, 2)]]
+
+
+async def test_an_input_file_changed_during_the_run_stops_it_before_its_documents(ingest_store, tmp_path):
+    s = ingest_store
+    first = jsonl(tmp_path, "a.jsonl", [line(NEW, i) for i in range(2)])
+    second = jsonl(tmp_path, "b.jsonl", [line(OTHER, i) for i in range(2)])
+
+    def change(_line: str) -> None:  # after the first page (NEW) is written and checkpointed
+        second[0].write_text(second[0].read_text().replace(f'"{TEXTS[0]}"', '"HEL"'), encoding="utf-8")
+    with pytest.raises(chunk_ingest.InputChanged, match="b.jsonl changed"):
+        await run(s, tmp_path, first + second, page=1, progress=change)
+    assert [await stored_chunk(s.client, NEW, i) is not None for i in range(2)] == [True, True]
+    assert await stored_chunk(s.client, OTHER, 0) is None
+    assert json.loads((tmp_path / "run.json").read_text())["after"] == str(NEW)
+    with pytest.raises(LookupError, match="different inputs"):
+        await run(s, tmp_path, first + second)

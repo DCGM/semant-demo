@@ -62,6 +62,12 @@ Documents are planned, written and checkpointed in pages (``--page``, 100 docume
 2000 with ``--bulk``). A larger page needs more memory and repeats more checks after an
 interruption; with ``--bulk`` it keeps the batches full while the short documents finish.
 
+The input is read twice, so that the chunk texts are held for one page only. A first pass
+validates every line (including duplicate chunk ids across all files) and keeps only where
+each document's lines are, a digest of them and each file's SHA-256 for the checkpoint (about
+40 bytes per chunk at its peak). Each page then reads the lines of its documents again; if
+they differ from the first pass, the run stops with ``InputChanged`` and writes nothing more.
+
 The checkpoint (JSON, replaced atomically after each page of documents) holds the
 endpoint, the resolved collections, the mode, the input files (size and SHA-256), the
 cursor, the counts and the blocked documents, which a rerun retries first. A finished
@@ -78,22 +84,25 @@ new chunks) and ``data_tools/embedder`` (their vectors; until then they are miss
 vector and hybrid search), see ``docs/DATA_MAINTENANCE.md``.
 
 Exit code 0 when the pass is complete and nothing was rejected, invalid or blocked; 1
-otherwise; 2 when refused (endpoint, backup, schema, checkpoint). Run while nothing else
-writes chunks. The Weaviate endpoint comes from ``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` /
-``WEAVIATE_GRPC_PORT``.
+otherwise; 2 when refused (endpoint, backup, schema, checkpoint) or an input file changed.
+Run while nothing else writes chunks. The Weaviate endpoint comes from ``WEAVIATE_HOST`` /
+``WEAVIATE_REST_PORT`` / ``WEAVIATE_GRPC_PORT``.
 """
 import argparse
 import asyncio
 import bisect
 import hashlib
+import io
 import json
 import sys
 import time
+from array import array
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 from uuid import UUID
 
+import numpy as np
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.weaviate import chunk_ingest as store
@@ -147,10 +156,31 @@ class InputChunk:
     """``file:line``, for reports."""
 
 
+class InputChanged(LookupError):
+    """An input file changed after the first pass; nothing more is written."""
+
+
 @dataclass
-class Input:
-    documents: dict[UUID, list[InputChunk]] = field(default_factory=dict)
-    """Each document's chunks in input order."""
+class _Document:
+    """Where the valid input lines of one document are, and what they were."""
+    number: int
+    """The owner recorded for each of its chunk ids in the duplicate check."""
+    ranges: list[tuple[int, int, int, int]] = field(default_factory=list)
+    """``(file, start, end, first line number)``: byte ranges of consecutive valid lines."""
+    last_order: int | None = None
+    digest: bytes = b""
+    """Its lines chained through BLAKE2b; ``load`` compares it to detect a changed file."""
+
+
+@dataclass
+class Index:
+    """The first pass over the input: everything but the chunks themselves (``load`` reads them)."""
+    files: list[Path] = field(default_factory=list)
+    """The input files in reading order."""
+    fingerprints: list[dict[str, Any]] = field(default_factory=list)
+    """Each file's resolved path, size and SHA-256, from the same read as the index."""
+    documents: dict[UUID, _Document] = field(default_factory=dict)
+    """The documents with valid lines, in order of first appearance."""
     invalid: dict[UUID, str] = field(default_factory=dict)
     """Documents rejected for their input, with the first reason."""
     unattributed: list[str] = field(default_factory=list)
@@ -202,41 +232,117 @@ def parse_line(record: Any, where: str, ignored: dict[str, int]) -> tuple[InputC
     return InputChunk(UUID(record["id"]), document, record["order"], record["text"], fields, where), document, None
 
 
-def read_input(paths: Iterable[Path]) -> Input:
-    """Read and validate the input files (sorted by path); never touches the store."""
-    result, seen = Input(), {}
-    for path in sorted(paths):
-        with path.open(encoding="utf-8") as file:
+def _chain(digest: bytes, raw: bytes) -> bytes:
+    return hashlib.blake2b(digest + raw, digest_size=16).digest()
+
+
+def _fold(chunk_id: UUID) -> int:
+    return (chunk_id.int >> 64) ^ (chunk_id.int & 0xFFFF_FFFF_FFFF_FFFF)
+
+
+def index_input(paths: Iterable[Path]) -> Index:
+    """Read and validate the input files (sorted by path) once; never touches the store.
+    Keeps where each document's lines are instead of its chunks, so memory grows with the
+    number of documents and chunks (the duplicate check), not with the texts."""
+    index, folds, owners = Index(), array("Q"), array("I")
+    for number_of_file, path in enumerate(sorted(paths)):
+        index.files.append(path)
+        sha, offset = hashlib.sha256(), 0
+        with path.open("rb") as file:
             for number, raw in enumerate(file, 1):
-                if not raw.strip():
+                start, offset = offset, offset + len(raw)
+                sha.update(raw)
+                line = raw.decode("utf-8")
+                if not line.strip():
                     continue
-                result.lines += 1
+                index.lines += 1
                 where = f"{path}:{number}"
                 try:
-                    record = json.loads(raw)
+                    record = json.loads(line)
                 except json.JSONDecodeError as e:
-                    result.unattributed.append(f"{where}: not JSON ({e.msg})")
+                    index.unattributed.append(f"{where}: not JSON ({e.msg})")
                     continue
-                chunk, document, problem = parse_line(record, where, result.ignored)
+                chunk, document, problem = parse_line(record, where, index.ignored)
                 if problem:
                     if document is None:
-                        result.unattributed.append(problem)
+                        index.unattributed.append(problem)
                     else:
-                        result.invalid.setdefault(document, problem)
+                        index.invalid.setdefault(document, problem)
                     continue
-                if chunk.id in seen:
-                    first = seen[chunk.id]
-                    for doc in {first.document, chunk.document}:
-                        result.invalid.setdefault(doc, f"{where}: chunk {chunk.id} also at {first.line}")
-                    continue
-                seen[chunk.id] = chunk
-                result.documents.setdefault(chunk.document, []).append(chunk)
-    for document, chunks in result.documents.items():
-        orders = [c.order for c in chunks]
-        wrong = next((i for i in range(1, len(orders)) if orders[i] != orders[i - 1] + 1), None)
-        if wrong is not None:
-            result.invalid.setdefault(document, f"{chunks[wrong].line}: order {orders[wrong]} follows "
-                                                f"{orders[wrong - 1]}; orders must be consecutive in input order")
+                entry = index.documents.get(chunk.document)
+                if entry is None:
+                    entry = index.documents[chunk.document] = _Document(len(index.documents))
+                if entry.last_order is not None and chunk.order != entry.last_order + 1:
+                    index.invalid.setdefault(chunk.document, f"{where}: order {chunk.order} follows "
+                                                             f"{entry.last_order}; orders must be consecutive in "
+                                                             "input order")
+                entry.last_order = chunk.order
+                last = entry.ranges[-1] if entry.ranges else None
+                if last and last[0] == number_of_file and last[2] == start:
+                    entry.ranges[-1] = (number_of_file, last[1], offset, last[3])
+                else:
+                    entry.ranges.append((number_of_file, start, offset, number))
+                entry.digest = _chain(entry.digest, raw)
+                folds.append(_fold(chunk.id))
+                owners.append(entry.number)
+        index.fingerprints.append({"path": str(path.resolve()), "size": offset, "sha256": sha.hexdigest()})
+    _reject_duplicates(index, folds, owners)
+    return index
+
+
+def _reject_duplicates(index: Index, folds: array, owners: array) -> None:
+    """Reject both documents of every chunk id given on two input lines. The ids are compared
+    as 64-bit folds first; the documents of equal folds are read again and compared exactly."""
+    values = np.frombuffer(folds, dtype=np.uint64)
+    ordered = np.sort(values)
+    repeated = np.unique(ordered[1:][ordered[1:] == ordered[:-1]])
+    del ordered
+    if not len(repeated):
+        return
+    suspects = set(np.frombuffer(owners, dtype=np.uint32)[np.isin(values, repeated)].tolist())
+    names = list(index.documents)
+    files = {str(path): n for n, path in enumerate(index.files)}
+
+    def place(chunk: InputChunk) -> tuple[int, int]:
+        path, number = chunk.line.rsplit(":", 1)
+        return files[path], int(number)
+    seen: dict[UUID, InputChunk] = {}
+    loaded = load(index, [names[n] for n in sorted(suspects)])
+    for chunk in sorted((c for chunks in loaded.values() for c in chunks), key=place):
+        first = seen.setdefault(chunk.id, chunk)
+        if first is not chunk:
+            for document in {first.document, chunk.document}:
+                index.invalid.setdefault(document, f"{chunk.line}: chunk {chunk.id} also at {first.line}")
+
+
+def load(index: Index, documents: Iterable[UUID]) -> dict[UUID, list[InputChunk]]:
+    """The chunks of ``documents`` in input order, read again at the ranges of ``index``
+    (documents without valid lines are left out). ``InputChanged`` when a document's lines are
+    not the ones the first pass read."""
+    wanted = {d: index.documents[d] for d in documents if d in index.documents}
+    by_file: dict[int, list[tuple[int, int, UUID, int]]] = {}
+    for document, entry in wanted.items():
+        for n, (number_of_file, start, end, _) in enumerate(entry.ranges):
+            by_file.setdefault(number_of_file, []).append((start, end, document, n))
+    data: dict[UUID, list[bytes]] = {d: [b""] * len(entry.ranges) for d, entry in wanted.items()}
+    for number_of_file, ranges in sorted(by_file.items()):
+        with index.files[number_of_file].open("rb") as file:
+            for start, end, document, n in sorted(ranges):
+                file.seek(start)
+                data[document][n] = file.read(end - start)
+    result = {}
+    for document, entry in wanted.items():
+        lines, digest = [], b""
+        for (number_of_file, _, _, first), part in zip(entry.ranges, data[document]):
+            for number, raw in enumerate(io.BytesIO(part), first):
+                digest = _chain(digest, raw)
+                lines.append((f"{index.files[number_of_file]}:{number}", raw))
+        if digest != entry.digest:
+            changed = sorted({str(index.files[r[0]]) for r in entry.ranges})
+            raise InputChanged(f"{', '.join(changed)} changed after the input was checked (document {document}); "
+                               "nothing more is written. Restore the file, or check the new input with a new "
+                               "checkpoint")
+        result[document] = [parse_line(json.loads(raw), where, {})[0] for where, raw in lines]
     return result
 
 
@@ -496,14 +602,6 @@ def _counts() -> dict[str, int]:
             "chunks_inserted": 0, "chunks_to_insert": 0, "chunks_replayed": 0}
 
 
-def _fingerprint(path: Path) -> dict[str, Any]:
-    digest = hashlib.sha256()
-    with path.open("rb") as file:
-        for block in iter(lambda: file.read(1 << 20), b""):
-            digest.update(block)
-    return {"path": str(path.resolve()), "size": path.stat().st_size, "sha256": digest.hexdigest()}
-
-
 async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[Path], *, checkpoint: Path,
               endpoint: str, write_: bool, backup: dict[str, str] | None = None, bulk: bool = False,
               page: int | None = None, batch: int | None = None, concurrency: int = CONCURRENCY,
@@ -514,7 +612,8 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
     ``bulk`` batch-inserts the chunks and is refused unless the chunk collection is empty at the
     start. ``page`` defaults to ``DOCUMENT_PAGE`` (``BULK_PAGE`` with ``bulk``); ``batch``
     (default ``BULK_BATCH``) belongs to ``bulk``. Raises ``LookupError`` before writing for a
-    backup, bulk, page, batch, schema or checkpoint problem."""
+    backup, bulk, page, batch, schema or checkpoint problem, and ``InputChanged`` (after the
+    pages before it are checkpointed) when an input file changes during the run."""
     if write_ and not backup:
         raise LookupError("A write needs a backup (--backup-id or --offline-backup, docs/DATA_MAINTENANCE.md)")
     if not write_ and (backup or bulk):
@@ -533,9 +632,9 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
         if stored:
             raise LookupError(f"--bulk needs an empty {target.chunks} ({stored} chunks stored): a batch insert would "
                               "silently replace a chunk with the same id. Run without --bulk; nothing was written")
-    data = read_input(inputs)
+    index = index_input(inputs)
     identity = {"endpoint": endpoint, "chunks": target.chunks, "documents": target.documents,
-                "mode": "write" if write_ else "check", "inputs": [_fingerprint(p) for p in sorted(inputs)]}
+                "mode": "write" if write_ else "check", "inputs": index.fingerprints}
     if checkpoint.exists():
         state = json.loads(checkpoint.read_text(encoding="utf-8"))
         differing = sorted(key for key, value in identity.items() if state.get(key) != value)
@@ -546,9 +645,9 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
         progress(f"Resuming {checkpoint}: after {state['after']}, {len(state['blocked'])} blocked to retry")
     else:
         state = {**identity, "started": _now(), "after": None, "done": False, "blocked": [], "counts": _counts(),
-                 "lines": data.lines, "ignored_fields": data.ignored, "invalid_lines": data.unattributed}
+                 "lines": index.lines, "ignored_fields": index.ignored, "invalid_lines": index.unattributed}
         _write_json(checkpoint, state)
-        _append(manifest_path(checkpoint), [{"status": "invalid_line", "reason": r} for r in data.unattributed])
+        _append(manifest_path(checkpoint), [{"status": "invalid_line", "reason": r} for r in index.unattributed])
     if write_:
         state.setdefault("runs", []).append({"at": _now(), "bulk": bulk, "page": page,
                                               **({"batch": batch} if bulk else {}), **backup})
@@ -556,12 +655,12 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
     counts, manifest = state["counts"], manifest_path(checkpoint)
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def one(document: UUID) -> tuple[UUID, Plan, Outcome | None]:
+    async def one(document: UUID, chunks: list[InputChunk]) -> tuple[UUID, Plan, Outcome | None]:
         async with semaphore:
-            if document in data.invalid:
-                return document, _rejected(data.invalid[document], "invalid_input"), None
+            if document in index.invalid:
+                return document, _rejected(index.invalid[document], "invalid_input"), None
             try:
-                plan_ = await examine(client, target, data.documents[document])
+                plan_ = await examine(client, target, chunks)
             except Exception as e:
                 return document, Plan("failed"), Outcome(failure=f"read failed: {type(e).__name__}: {e}")
             if not write_ or not plan_.inserts or bulk:
@@ -570,6 +669,12 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
                 return document, plan_, await write(client, target, plan_)
             except Exception as e:  # a read-back failed; the next run plans the document again
                 return document, plan_, Outcome(failure=f"{type(e).__name__}: {e}")
+
+    async def each(documents_: list[str]) -> list[tuple[UUID, Plan, Outcome | None]]:
+        """Plan (and without ``bulk`` write) these documents, reading only their input lines."""
+        ids = [UUID(d) for d in documents_]
+        chunks = load(index, (d for d in ids if d not in index.invalid))
+        return list(await asyncio.gather(*(one(d, chunks.get(d, [])) for d in ids)))
 
     def record(results: list[tuple[UUID, Plan, Outcome | None]], retried: set[str]) -> list[str]:
         lines, blocked = [], []
@@ -594,26 +699,31 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
         _append(manifest, lines)
         return blocked
 
-    def save() -> None:
-        state["updated"] = _now()
-        _write_json(checkpoint, state)
-
-    documents = sorted(str(d) for d in set(data.documents) | set(data.invalid))
-    if state["blocked"]:
-        retried = set(state["blocked"])
-        state["blocked"] = record(list(await asyncio.gather(*(one(UUID(d)) for d in state["blocked"]))), retried)
-        save()
-    started = time.monotonic()
-    while not state["done"]:
-        start = bisect.bisect_right(documents, state["after"]) if state["after"] else 0
-        current = documents[start:start + page]
-        results = list(await asyncio.gather(*(one(UUID(d)) for d in current)))
+    async def process(documents_: list[str]) -> list[str]:
+        """Plan and write one page; returns its blocked documents. Its chunks are freed on return,
+        before the next page is read."""
+        results = await each(documents_)
         if bulk:
             writes = {d: p for d, p, o in results if o is None and p.inserts}
             outcomes = (await write_bulk(client, target, writes, batch=batch, concurrency=concurrency)
                         if writes else {})
             results = [(d, p, outcomes.get(d, o)) for d, p, o in results]
-        state["blocked"] += record(results, set())
+        return record(results, set())
+
+    def save() -> None:
+        state["updated"] = _now()
+        _write_json(checkpoint, state)
+
+    documents = sorted(str(d) for d in set(index.documents) | set(index.invalid))
+    if state["blocked"]:
+        retried = set(state["blocked"])
+        state["blocked"] = record(await each(state["blocked"]), retried)
+        save()
+    started = time.monotonic()
+    while not state["done"]:
+        start = bisect.bisect_right(documents, state["after"]) if state["after"] else 0
+        current = documents[start:start + page]
+        state["blocked"] += await process(current)
         if current:
             state["after"] = current[-1]
         state["done"] = len(current) < page

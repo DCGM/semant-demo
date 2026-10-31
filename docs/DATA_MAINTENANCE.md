@@ -324,6 +324,10 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   `--bulk` 2000). A larger page needs more memory and repeats more checks after an interruption;
   with `--bulk` it keeps the batches full while the short documents finish. A resumed run may use
   another page or batch.
+- The input is read twice, so the chunk texts are held for one page only: a first pass validates
+  every line (duplicate chunk ids across all files too) and keeps only where each document's lines
+  are (about 40 bytes per chunk at its peak); each page reads its documents' lines again. If an input file changes during the run, the run
+  stops (`InputChanged`, exit 2) before writing anything from the changed lines.
 - A failed or uncertain write blocks only the rest of that document (`blocked`); running the same
   command again retries it, planned again from the store.
 - A created document whose chunks did not all arrive is listed as `incomplete_document` and never
