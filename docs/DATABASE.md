@@ -534,28 +534,19 @@ afterwards; a failure of that second step is reported and leaves unreachable row
 
 ## Data Ingestion
 
-Data is loaded using `weaviate_utils/db_insert_jsonl.py`:
+New chunks are added by the append-only import
+`python -m semant_demo.maintenance.chunk_ingest` (#313) into the existing collections:
 
-```bash
-python db_insert_jsonl.py \
-    --source-dir /path/to/data \
-    --delete-old \
-    --document-collection Documents \
-    --chunk-collection Chunks \
-    --tag-collection Tag \
-    --usercollection-collection UserCollection
-```
+- **What it writes.** It inserts absent chunks: text, `order`, the `document` reference, the source
+  fields `start_page_id`, `language`, `from_page`, `to_page`, `end_paragraph`, and the positions
+  `startChar`, `startWord`, `wordOpenAtStart` computed from the stored tail. Before a new document's
+  first chunk it inserts an empty `Documents` object.
+- **What it never does.** It never changes the schema or an existing object, and writes no document
+  metadata, `yearIssued`, vectors or annotations.
+- **Afterwards.** `metadata_sync` fills the documents, `chunk_year` the chunk years and
+  `data_tools/embedder` the `Qwen3_Embedding_0_6B` vectors.
 
-Expected input directory structure:
-```
-source-dir/
-├── *.json          # one JSON per document (bibliographic metadata)
-├── *.jsonl         # one JSONL per document (one line per chunk)
-└── *_embeddings.npy  # numpy array of embeddings matching JSONL line order
-```
-
-The script:
-1. Scans JSONL files to discover attribute keys
-2. Creates Weaviate collections with appropriate data types
-3. Inserts documents, then chunks with vector embeddings
-4. Establishes `document` references from chunks to their parent documents
+The input format, the plan per document and the procedure are in
+[DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313). The former
+`weaviate_utils/db_insert_jsonl.py`, which created the schema, could drop collections and
+took precomputed vectors, was removed.
