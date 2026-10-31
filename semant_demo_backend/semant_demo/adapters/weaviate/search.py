@@ -13,6 +13,7 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import Metrics
 from weaviate.classes.query import Filter, QueryReference
 
+from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import REF_BY_TYPE
 from semant_demo.features.annotations.schemas import SpanType
@@ -29,6 +30,10 @@ DOCUMENT_FIELDS = {
     "partName", "authors", "description", "keywords", "section", "region", "id_code"
 }
 
+# Document properties whose criteria predicates (``ChunkQuery.document_conditions``) are evaluated
+# on the chunk's own copy, not through the reference (#153).
+CHUNK_COPIES = {"yearIssued"}
+
 # Document properties returned with each hit: the fields of the document model that the store's
 # document collection has (``ChunkSearchRepository._document_properties``). Weaviate 1.40 refuses
 # a query naming a property the schema lacks (1.34 ignored it), and stores differ (#312).
@@ -44,6 +49,7 @@ class ChunkSearchRepository:
         self.client = client
         self.collectionNames = collectionNames
         self._returned_document_properties: list[str] | None = None
+        self._schema: tuple[dict[str, str], dict[str, str], dict[str, str]] | None = None
 
     async def _document_properties(self) -> list[str]:
         """``DOCUMENT_PROPERTIES`` that the document collection has; read once, then cached.
@@ -57,15 +63,26 @@ class ChunkSearchRepository:
             self._returned_document_properties = [name for name in DOCUMENT_PROPERTIES if name in stored]
         return self._returned_document_properties
 
+    async def _declared(self) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+        """(document data types, chunk data types, chunk tokenizations) by property name, as
+        the store declares them; read once, then cached (a schema change needs a restart)."""
+        if self._schema is None:
+            document_types, _ = await criteria.declared(self.client, self.collectionNames.document_collection_name)
+            chunk_types, chunk_tokenizations = await criteria.declared(
+                self.client, self.collectionNames.chunks_collection_name)
+            self._schema = (document_types, chunk_types, chunk_tokenizations)
+        return self._schema
+
     async def search(self, query: ChunkQuery) -> list[SearchResultChunk]:
         """Top ``query.limit`` chunks matching every condition, best first.
 
-        Chunks without a document reference are left out.
+        Chunks without a document reference are left out. Raises ``criteria.UnavailableFilter``
+        for a criteria predicate on a property the store does not declare (or not as expected).
         """
         chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
         common = dict(
             limit=query.limit,
-            filters=self._filter(query),
+            filters=await self._filter(query),
             return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())],
         )
         if query.mode == SearchType.text:
@@ -116,17 +133,30 @@ class ChunkSearchRepository:
             languages = [top.value for top in res_lang.properties["language"].top_occurrences if top.value]
         return min_year, max_year, languages or None
 
-    def _filter(self, query: ChunkQuery):
+    async def _filter(self, query: ChunkQuery):
         filters = []
         if query.collection_id is not None:
             filters.append(Filter.by_ref(link_on=self.collectionNames.user_collection_link_name)
                            .by_id().equal(query.collection_id))
         filters.extend(_condition(c) for c in query.conditions)
+        if query.document_conditions or query.chunk_conditions:
+            filters.extend(await self._criteria_filters(query))
         if query.tags is not None:
             filters.append(_tag_filter(query.tags))
         if not filters:
             return None
         return Filter.all_of(filters) if len(filters) > 1 else filters[0]
+
+    async def _criteria_filters(self, query: ChunkQuery) -> list:
+        document_types, chunk_types, chunk_tokenizations = await self._declared()
+        copied = [c for c in query.document_conditions if c.prop in CHUNK_COPIES]
+        referenced = [c for c in query.document_conditions if c.prop not in CHUNK_COPIES]
+        return [
+            *criteria.parts(referenced, document_types, records="Documents",
+                            target=lambda prop: Filter.by_ref(link_on="document").by_property(prop)),
+            *criteria.parts(copied, chunk_types, records="Documents"),
+            *criteria.parts(query.chunk_conditions, chunk_types, chunk_tokenizations, records="Chunks"),
+        ]
 
 
 def classifications(properties: Mapping[str, Any]) -> dict[str, list[str]]:

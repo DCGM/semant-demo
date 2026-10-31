@@ -20,6 +20,13 @@ import {
     DocumentFiltersToJSON,
     DocumentFiltersToJSONTyped,
 } from './DocumentFilters';
+import type { ChunkFilters } from './ChunkFilters';
+import {
+    ChunkFiltersFromJSON,
+    ChunkFiltersFromJSONTyped,
+    ChunkFiltersToJSON,
+    ChunkFiltersToJSONTyped,
+} from './ChunkFilters';
 
 /**
  * 
@@ -33,6 +40,12 @@ export interface CorpusDistributionsRequest {
      * @memberof CorpusDistributionsRequest
      */
     filters?: DocumentFilters;
+    /**
+     * 
+     * @type {ChunkFilters}
+     * @memberof CorpusDistributionsRequest
+     */
+    chunkFilters?: ChunkFilters;
 }
 
 /**
@@ -53,6 +66,7 @@ export function CorpusDistributionsRequestFromJSONTyped(json: any, ignoreDiscrim
     return {
         
         'filters': json['filters'] == null ? undefined : DocumentFiltersFromJSON(json['filters']),
+        'chunkFilters': json['chunk_filters'] == null ? undefined : ChunkFiltersFromJSON(json['chunk_filters']),
     };
 }
 
@@ -68,6 +82,7 @@ export function CorpusDistributionsRequestToJSONTyped(value?: CorpusDistribution
     return {
         
         'filters': DocumentFiltersToJSON(value['filters']),
+        'chunk_filters': ChunkFiltersToJSON(value['chunkFilters']),
     };
 }
 

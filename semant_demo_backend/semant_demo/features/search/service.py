@@ -12,6 +12,11 @@ Access (ADR 0007): a ``user_collection_id`` needs read access to that collection
 every requested tag must belong to a collection the user can read (to that collection,
 if one is given). Without either, search covers the public corpus, also anonymously.
 Restrictions are applied inside the retrieval query, never by dropping hits afterwards.
+
+Filters: the shared search criteria (``document_filters``, ``chunk_filters``;
+``features/documents/criteria.py``) or, for existing clients, the older ``filters`` and
+``min_year``/``max_year``/``language`` fields; a request mixing them is refused. Chunk filters
+must all hold on the returned chunk (same-chunk), and document filters on its document.
 """
 import logging
 from dataclasses import dataclass
@@ -28,7 +33,10 @@ from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 from semant_demo.features.quota.service import QuotaExhausted
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
-from semant_demo.features.search.filters import InvalidSearchFilterError, parse_and_validate_search_filters
+from semant_demo.features.documents.criteria import (
+    ChunkFilters, Condition, DocumentFilters, chunk_conditions, document_conditions, validate_chunk_filters)
+from semant_demo.features.search.filters import (
+    InvalidSearchFilterError, chunk_vocabulary, parse_and_validate_search_filters)
 from semant_demo.features.search.schemas import (
     ChunkQuery, FieldCondition, Op, SearchFiltersResponse, SearchRequest, SearchResponse, SearchType, TagFilter,
 )
@@ -66,10 +74,13 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
                    filter_definitions: SearchFiltersResponse | None = None) -> SearchResponse:
     """Authorized retrieval without summaries.
 
-    ``filter_definitions`` validates ``request.filters``; without definitions or requested
-    filters, the legacy ``min_year``/``max_year``/``language`` fields apply instead.
+    ``filter_definitions`` (the configured search filters) validate ``request.chunk_filters``
+    and ``request.filters``; without definitions or requested ``filters``, the legacy
+    ``min_year``/``max_year``/``language`` fields apply instead. The response echoes the
+    request with its criteria filters normalized.
     """
     start = time()
+    request, criteria = criteria_conditions(request, filter_definitions)
     # An unknown vector is refused before any other work, also for text search.
     vector = backends.vectors.resolve(request.vector)
     collection_id = None
@@ -87,7 +98,9 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
         collection_id=collection_id,
         tags=TagFilter(tuple(tag_ids), automatic=request.automatic, positive=request.positive)
         if tag_ids and (request.automatic or request.positive) else None,
-        conditions=tuple(filter_conditions(request, filter_definitions)),
+        conditions=() if criteria is not None else tuple(filter_conditions(request, filter_definitions)),
+        document_conditions=tuple(criteria[0]) if criteria is not None else (),
+        chunk_conditions=tuple(criteria[1]) if criteria is not None else (),
         vector=await _embed(vector, request),
         target_vector=None if request.type == SearchType.text else vector.target_vector,
     )
@@ -149,6 +162,31 @@ def public_retriever(backends: SearchBackends, vector: str | None = None) -> Ret
     async def run(request: SearchRequest) -> SearchResponse:
         return await retrieve(backends, None, request.model_copy(update={"vector": vector}))
     return run
+
+
+def criteria_conditions(request: SearchRequest, filter_definitions: SearchFiltersResponse | None,
+                        ) -> tuple[SearchRequest, tuple[list[Condition], list[Condition]] | None]:
+    """The request with normalized criteria filters, and their (document, chunk) predicates;
+    ``None`` when the request uses the older filter fields. Raises ``InvalidRequestError`` for
+    a request with both kinds, and for chunk filters that are not configured (or cannot be
+    checked, without ``filter_definitions``)."""
+    if request.document_filters is None and request.chunk_filters is None:
+        return request, None
+    if request.filters or any(value is not None for value in (
+            request.min_year, request.max_year, request.min_date, request.max_date, request.language)):
+        raise InvalidRequestError("Use either document_filters and chunk_filters or the older filters, min_year, "
+                                  "max_year, min_date, max_date and language fields, not both.")
+    documents = request.document_filters or DocumentFilters()
+    chunks = request.chunk_filters or ChunkFilters()
+    chunk_predicates = []
+    if not chunks.is_empty():
+        if filter_definitions is None:
+            raise InvalidRequestError("Chunk filters are not available for this search.")
+        vocabulary = chunk_vocabulary(filter_definitions)
+        chunks = validate_chunk_filters(chunks, vocabulary)
+        chunk_predicates = chunk_conditions(chunks, vocabulary)
+    request = request.model_copy(update={"document_filters": documents, "chunk_filters": chunks})
+    return request, (document_conditions(documents), chunk_predicates)
 
 
 def filter_conditions(request: SearchRequest,

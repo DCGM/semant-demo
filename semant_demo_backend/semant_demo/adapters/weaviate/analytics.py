@@ -17,10 +17,14 @@ from typing import Literal, Sequence
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import GroupByAggregate
-from weaviate.classes.query import Filter, Metrics
+from weaviate.classes.query import Metrics
 
-from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
+from semant_demo.adapters.weaviate.criteria import UnavailableFilter, declared, where
 from semant_demo.adapters.weaviate.names import CollectionNames
+from semant_demo.features.documents.criteria import AnyOf, Condition, ContainsWords, NumberRange
+
+__all__ = ["AnyOf", "Condition", "ContainsWords", "CorpusAnalyticsRepository", "DocumentCounts", "NumberRange",
+           "Unavailable", "UnavailableFilter", "ValueCounts", "where"]
 
 ValueKind = Literal["text", "number"]
 
@@ -32,50 +36,6 @@ class Unavailable:
     """The property cannot be counted: not declared (``missing``) or not a single value of the
     expected kind (``unsupported_type``, e.g. ``text[]``, where a document has several values)."""
     reason: Literal["missing", "unsupported_type"]
-
-
-@dataclass(frozen=True)
-class NumberRange:
-    """The property's value lies from ``minimum`` to ``maximum``, both inclusive (either may be
-    open). A document without a value never matches."""
-    prop: str
-    minimum: int | None = None
-    maximum: int | None = None
-
-
-@dataclass(frozen=True)
-class ContainsWords:
-    """For at least one alternative, every word of it occurs inside some word of the property's
-    text (``like("*word*")`` per word), in any order. Case-insensitive and diacritics-sensitive
-    with ``word`` tokenization. The words must contain no ``*`` or ``?``, which ``like`` reads
-    as wildcards."""
-    prop: str
-    alternatives: tuple[tuple[str, ...], ...]
-
-
-@dataclass(frozen=True)
-class AnyOf:
-    """The property equals one of the values. ``equal`` follows the property's tokenization:
-    with ``word``, ``"ces"`` also matches ``"CES"``; with ``field``, only surrounding
-    whitespace is ignored."""
-    prop: str
-    values: tuple[str, ...]
-
-
-Condition = NumberRange | ContainsWords | AnyOf
-
-_CONDITION_KINDS: dict[type, ValueKind] = {NumberRange: "number", ContainsWords: "text", AnyOf: "text"}
-
-
-class UnavailableFilter(Exception):
-    """A condition names a property that the store does not declare or that is not a single
-    value of the expected kind; the documents cannot be filtered by it (never answered with 0)."""
-
-    def __init__(self, prop: str, reason: Literal["missing", "unsupported_type"]):
-        detail = "is not recorded" if reason == "missing" else "is not recorded as a single value"
-        super().__init__(f"Documents cannot be filtered by {prop}: this corpus database {detail}.")
-        self.prop = prop
-        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -110,9 +70,8 @@ class CorpusAnalyticsRepository:
         return self.client.collections.get(self.collection_names.document_collection_name)
 
     async def _property_types(self) -> dict[str, str]:
-        name = await resolve_collection(self.client, self.collection_names.document_collection_name)
-        config = await self.client.collections.get(name).config.get()
-        return {prop.name: prop.data_type.value for prop in config.properties}
+        types, _ = await declared(self.client, self.collection_names.document_collection_name)
+        return types
 
     async def count_documents(self, properties: dict[str, ValueKind], group_limit: int,
                               conditions: Sequence[Condition] = ()) -> DocumentCounts:
@@ -168,30 +127,6 @@ def _unavailable(data_type: str | None, kind: ValueKind) -> Literal["missing", "
     if data_type is None:
         return "missing"
     return None if data_type in _DATA_TYPES[kind] else "unsupported_type"
-
-
-def where(conditions: Sequence[Condition], types: dict[str, str]):
-    """One Weaviate filter requiring every condition (``None`` without conditions). ``types``
-    are the declared data types; a range on an ``int`` property is compared with whole
-    numbers and on a ``number`` property with floats, as Weaviate expects each."""
-    parts = []
-    for condition in conditions:
-        unavailable = _unavailable(types.get(condition.prop), _CONDITION_KINDS[type(condition)])
-        if unavailable:
-            raise UnavailableFilter(condition.prop, unavailable)
-        prop = Filter.by_property(condition.prop)
-        if isinstance(condition, NumberRange):
-            value = int if types[condition.prop] == "int" else float
-            if condition.minimum is not None:
-                parts.append(prop.greater_or_equal(value(condition.minimum)))
-            if condition.maximum is not None:
-                parts.append(prop.less_or_equal(value(condition.maximum)))
-        elif isinstance(condition, ContainsWords):
-            parts.append(Filter.any_of([Filter.all_of([prop.like(f"*{word}*") for word in words])
-                                        for words in condition.alternatives]))
-        else:
-            parts.append(Filter.any_of([prop.equal(value) for value in condition.values]))
-    return Filter.all_of(parts) if parts else None
 
 
 def _count_metric(prop: str, data_type: str):

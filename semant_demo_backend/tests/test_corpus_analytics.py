@@ -372,6 +372,29 @@ async def test_a_filter_on_a_property_the_store_lacks_is_rejected_not_zero(tmp_p
     assert response.json() == {"detail": "Documents cannot be filtered by library: this corpus database is not recorded."}
 
 
+@pytest.mark.parametrize("path", [DISTRIBUTIONS, "/api/analytics/corpus/library-years"])
+@pytest.mark.parametrize("chunk_filters", [{"languages": ["ces"]}, {"classifications": {"complexity": ["easy"]}}])
+async def test_chunk_filters_are_rejected_not_ignored(tmp_path, path, chunk_filters):
+    # Document counts by chunk values need the per-document summaries of #529.
+    analytics = FakeAnalytics(5, language=counts([("ces", 5)]))
+
+    response, = await _request(tmp_path, analytics, (path, {"filters": {}, "chunk_filters": chunk_filters}))
+
+    assert response.status_code == 422
+    assert "cannot be restricted by chunk filters" in response.json()["detail"]
+    assert analytics.calls == []
+
+
+async def test_empty_chunk_filters_are_accepted(tmp_path):
+    analytics = FakeAnalytics(5, language=counts([("ces", 5)]))
+
+    response, = await _request(tmp_path, analytics,
+                               (DISTRIBUTIONS, {"chunk_filters": {"languages": [], "classifications": {}}}))
+
+    assert response.status_code == 200
+    assert response.json()["total_documents"] == 5
+
+
 async def test_only_unfiltered_distributions_are_served_again(tmp_path):
     analytics = FakeAnalytics(4, language=counts([("ces", 4)]))
     filtered = {"filters": {"languages": ["ces"]}}

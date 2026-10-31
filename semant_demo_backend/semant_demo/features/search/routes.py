@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+
+from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.features.search.schemas import SearchFiltersResponse, SearchRequest, SearchResponse, SearchVectorsResponse
 
 from semant_demo.features.quota.principal import get_allowance_budget
@@ -33,5 +35,10 @@ async def search(req: SearchRequest, backends: SearchBackends = Depends(get_sear
                  available_filters: SearchFiltersResponse = Depends(get_search_filters),
                  budget: AllowanceBudget = Depends(get_allowance_budget)) -> SearchResponse:
     """Retrieval, plus the titles and summaries asked for. Those are skipped with a warning
-    (``quota_exhausted``) when the daily AI allowance has no room; the results are not."""
-    return await service.search(backends, summarizer, current_user, req, available_filters, budget)
+    (``quota_exhausted``) when the daily AI allowance has no room; the results are not.
+    A document or chunk filter on a property this corpus database does not record is rejected
+    (422), never answered with no results."""
+    try:
+        return await service.search(backends, summarizer, current_user, req, available_filters, budget)
+    except UnavailableFilter as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e

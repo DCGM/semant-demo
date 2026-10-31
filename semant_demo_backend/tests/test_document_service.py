@@ -53,7 +53,7 @@ async def test_corpus_reads_are_public():
     assert await service.count_chunks(documents, DOCUMENT) == 3
     await service.browse(documents, FakeCollections(), None, limit=5)
 
-    assert documents.reads[-1] == ("browse", None, {"limit": 5})
+    assert documents.reads[-1] == ("browse", None, {"conditions": [], "limit": 5})
 
 
 @pytest.mark.parametrize("document_id", [str(uuid4()), "not-a-uuid"])
@@ -69,7 +69,7 @@ async def test_collection_reads_for_owner_and_shared_user(user):
     await service.browse(documents, FakeCollections(), user, str(COLLECTION), offset=10)
     await service.read_chunks_in_collection(documents, FakeCollections(), user, str(DOCUMENT), str(COLLECTION))
 
-    assert documents.reads == [("browse", COLLECTION, {"offset": 10}), ("chunks", DOCUMENT, COLLECTION)]
+    assert documents.reads == [("browse", COLLECTION, {"conditions": [], "offset": 10}), ("chunks", DOCUMENT, COLLECTION)]
 
 
 @pytest.mark.parametrize("user, error", [(None, AuthenticationRequired), (OTHER, NotFoundError)])
