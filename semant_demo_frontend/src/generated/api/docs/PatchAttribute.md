@@ -9,6 +9,7 @@ Name | Type
 ------------ | -------------
 `name` | string
 `description` | string
+`allTags` | boolean
 `tagIds` | Array&lt;string&gt;
 `retired` | boolean
 
@@ -21,6 +22,7 @@ import type { PatchAttribute } from ''
 const example = {
   "name": null,
   "description": null,
+  "allTags": null,
   "tagIds": null,
   "retired": null,
 } satisfies PatchAttribute

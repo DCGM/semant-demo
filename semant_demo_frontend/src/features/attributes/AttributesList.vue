@@ -112,6 +112,7 @@
           <div class="attribute__field-label text-caption text-grey-8">Applies to</div>
           <div class="col" data-testid="attribute-tags">
             <span v-if="scope.kind === 'all'">All tags</span>
+            <span v-else-if="scope.kind === 'none'" class="text-grey-7">No tags</span>
             <span v-else-if="scope.kind === 'loading'" class="text-grey-7">
               <q-spinner size="14px" class="q-mr-xs" />Loading tags…
             </span>

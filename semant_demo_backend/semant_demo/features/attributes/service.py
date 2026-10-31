@@ -102,22 +102,38 @@ async def create_attribute(store: AttributeStore, user: Principal | None, collec
 async def update_attribute(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id,
                            patch: PatchAttribute) -> Attribute:
     """Renames, describes, retires or changes the tags of an attribute; ids of assigned values
-    are untouched, so no annotation is rewritten. Narrowing the applicable tags of an attribute
-    that annotations hold values of is refused (``InUseError``, 409, with the number of
-    annotations affected): those values would stop being applicable."""
+    are untouched, so no annotation is rewritten. Narrowing the applicable tags (All tags to
+    selected tags or to none, or leaving out a selected tag) of an attribute that annotations
+    hold values of is refused (``InUseError``, 409, with the number of annotations affected):
+    those values would stop being applicable. Removing the last selected tag leaves the
+    attribute with no tag, never All tags (#522)."""
     grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
-    if patch.tag_ids:
-        await access.require_tags_in_collection(store.annotations.tags, patch.tag_ids, grant.collection_id)
+    if patch.all_tags is not None or patch.tag_ids is not None:
         current = await _read(store, grant.collection_id, attribute_id)
-        if not current.tag_ids or not set(current.tag_ids) <= set(patch.tag_ids):
-            used = await _usage(store, grant, current.id, outside_tags=patch.tag_ids)
+        all_tags, tag_ids = _scope_after(current, patch)
+        if patch.tag_ids:
+            await access.require_tags_in_collection(store.annotations.tags, patch.tag_ids, grant.collection_id)
+        if not all_tags and (current.all_tags or not set(current.tag_ids) <= set(tag_ids)):
+            used = await _usage(store, grant, current.id, outside_tags=tag_ids)
             if used:
                 raise InUseError(f"{used} annotations with values of this attribute have a tag outside the new "
                                  "applicable tags; change or remove those values first.", used)
+        patch = patch.model_copy(update={"all_tags": all_tags, "tag_ids": tag_ids})
     updated = await store.definitions.update(grant.collection_id, access.parse_id(attribute_id, "Attribute"), patch)
     if updated is None:
         raise _attribute_not_found()
     return updated
+
+
+def _scope_after(current: Attribute, patch: PatchAttribute) -> tuple[bool, list[UUID]]:
+    """``(all_tags, tag_ids)`` the patch leaves the attribute with. All tags is only ever chosen
+    explicitly; an empty list of tags is no tag."""
+    all_tags = current.all_tags if patch.all_tags is None else patch.all_tags
+    if all_tags:
+        if patch.tag_ids:
+            raise InvalidRequestError("This attribute applies to all tags; send all_tags false to select tags.")
+        return True, []
+    return False, list(dict.fromkeys(current.tag_ids if patch.tag_ids is None else patch.tag_ids))
 
 
 async def _usage(store: AttributeStore, grant, attribute_id: UUID, value_id: UUID | None = None,
@@ -239,7 +255,7 @@ def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: T
     The annotation type is checked earlier (``_type_failure``)."""
     if request.mode == AssignMode.remove:
         return None
-    if attribute.tag_ids and UUID(span.tagId) not in attribute.tag_ids:
+    if not attribute.all_tags and UUID(span.tagId) not in attribute.tag_ids:
         return _item_failure(sid, "check_applicable", "This attribute does not apply to the annotation's tag.")
     retired = {v.id for v in attribute.values if v.retired}
     if any(v in retired for v in result if v not in previous):

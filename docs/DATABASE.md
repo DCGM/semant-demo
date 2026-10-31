@@ -499,7 +499,8 @@ CREATE TABLE annotation_attribute (
     name_key      VARCHAR(200) NOT NULL,      -- casefolded, trimmed; UNIQUE (collection_id, name_key)
     description   TEXT         NOT NULL,
     cardinality   VARCHAR(8)   NOT NULL,      -- single | multi (immutable)
-    tag_ids       JSON         NOT NULL,      -- tags it applies to; [] = all
+    all_tags      BOOLEAN      NOT NULL DEFAULT 0,  -- applies to every tag, tag_ids is [] (#522)
+    tag_ids       JSON         NOT NULL,      -- with all_tags 0: the tags it applies to; [] = no tag
     retired       BOOLEAN      NOT NULL,
     revision      INTEGER      NOT NULL,      -- +1 per edit of the attribute or its values
     created_by    VARCHAR(36)  NOT NULL,
@@ -524,6 +525,13 @@ CREATE TABLE annotation_attribute_change (    -- append-only
     run_id VARCHAR(36), annotation_edit_version INTEGER, attribute_revision INTEGER NOT NULL
 );
 ```
+
+`create_all` creates `all_tags` in a new database but never alters an existing table; a
+database created before #522 gets the column from
+`python -m semant_demo.maintenance.attribute_scope_schema`, which deployments run before the new
+backend starts and which refuses a table that already holds definitions
+([deploy/README](../deploy/README.md#sqlite-schema-steps-522)). Startup refuses a table without
+the column.
 
 Change records are never rewritten: they keep the attribute name and value labels and kinds of
 their time (an id without a definition then has `label` and `kind` null), not descriptions or

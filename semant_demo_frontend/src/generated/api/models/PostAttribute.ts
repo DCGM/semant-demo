@@ -54,6 +54,12 @@ export interface PostAttribute {
     cardinality?: Cardinality;
     /**
      * 
+     * @type {boolean}
+     * @memberof PostAttribute
+     */
+    allTags?: boolean;
+    /**
+     * 
      * @type {Array<string>}
      * @memberof PostAttribute
      */
@@ -89,6 +95,7 @@ export function PostAttributeFromJSONTyped(json: any, ignoreDiscriminator: boole
         'name': json['name'],
         'description': json['description'] == null ? undefined : json['description'],
         'cardinality': json['cardinality'] == null ? undefined : CardinalityFromJSON(json['cardinality']),
+        'allTags': json['all_tags'] == null ? undefined : json['all_tags'],
         'tagIds': json['tag_ids'] == null ? undefined : json['tag_ids'],
         'values': json['values'] == null ? undefined : ((json['values'] as Array<any>).map(PostAttributeValueFromJSON)),
     };
@@ -108,6 +115,7 @@ export function PostAttributeToJSONTyped(value?: PostAttribute | null, ignoreDis
         'name': value['name'],
         'description': value['description'],
         'cardinality': CardinalityToJSON(value['cardinality']),
+        'all_tags': value['allTags'],
         'tag_ids': value['tagIds'],
         'values': value['values'] == null ? undefined : ((value['values'] as Array<any>).map(PostAttributeValueToJSON)),
     };

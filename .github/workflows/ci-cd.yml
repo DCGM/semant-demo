@@ -481,6 +481,12 @@ jobs:
 
           docker compose -p semant-demo -f ./docker-compose.app.yaml down --rmi local 2>/dev/null || true
           docker compose -p semant-demo -f ./docker-compose.app.yaml build --no-cache
+          # The old app is stopped: bring the mounted SQLite file to the new schema before the new app
+          # starts (#522, deploy/README.md#sqlite-schema-steps-522). It runs in the new image against the same
+          # mount and SQL_DB_URL as the app; a refusal changed nothing and fails the deployment.
+          docker compose -p semant-demo -f ./docker-compose.app.yaml run --rm --no-deps -T -l traefik.enable=false \
+            --entrypoint python app -m semant_demo.maintenance.attribute_scope_schema \
+            || { echo "schema_refused=true" >> "$GITHUB_OUTPUT"; exit 1; }
           docker compose -p semant-demo -f ./docker-compose.app.yaml up -d
 
       - name: Health check
@@ -503,7 +509,8 @@ jobs:
           exit 1
 
       - name: Rollback
-        if: failure() && steps.health.outcome == 'failure'
+        # Also when the schema step refused: it changed nothing, so the previous version can run again.
+        if: failure() && (steps.health.outcome == 'failure' || steps.build.outputs.schema_refused == 'true')
         working-directory: ${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}
         run: |
           PREV="${{ env.PREV_BRANCH }}"
@@ -512,6 +519,8 @@ jobs:
 
           BACKEND_IMG=$(docker compose -p semant-demo -f ./docker-compose.app.yaml images app --format json 2>/dev/null \
             | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['Image'])" 2>/dev/null || true)
+          # No container after a refused schema step: the image name the Compose file builds.
+          [ -n "$BACKEND_IMG" ] || BACKEND_IMG=$(docker compose -p semant-demo -f ./docker-compose.app.yaml config --images app 2>/dev/null || true)
           [ -n "$BACKEND_IMG" ] && docker tag semant-demo-rollback "$BACKEND_IMG" || true
 
           sed -i "s|^BRANCH=.*|BRANCH=$PREV|" .env
@@ -646,6 +655,11 @@ jobs:
           cd "$DEPLOY_PATH"
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml down --rmi local 2>/dev/null || true
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml build --no-cache
+          # The old app is stopped: bring the mounted SQLite file to the new schema before the new app
+          # starts (#522, deploy/README.md#sqlite-schema-steps-522). It runs in the new image against the same
+          # mount and SQL_DB_URL as the app; a refusal changed nothing and fails the deployment.
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml run --rm --no-deps -T -l traefik.enable=false \
+            --entrypoint python app -m semant_demo.maintenance.attribute_scope_schema
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml up -d
 
       - name: Health check
@@ -817,6 +831,11 @@ jobs:
           cd "$DEPLOY_PATH"
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml down --rmi local 2>/dev/null || true
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml build --no-cache
+          # The old app is stopped: bring the mounted SQLite file to the new schema before the new app
+          # starts (#522, deploy/README.md#sqlite-schema-steps-522). It runs in the new image against the same
+          # mount and SQL_DB_URL as the app; a refusal changed nothing and fails the deployment.
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml run --rm --no-deps -T -l traefik.enable=false \
+            --entrypoint python app -m semant_demo.maintenance.attribute_scope_schema
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml up -d
 
       - name: Health check

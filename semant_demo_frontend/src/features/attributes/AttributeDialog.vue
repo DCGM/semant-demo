@@ -80,8 +80,8 @@
             :options="tagOptions"
             :error="!!tagsError"
             :error-message="tagsError ?? undefined"
+            :hint="tagIds.length ? undefined : 'No tags: no annotation can take values of this attribute.'"
             :rules="[
-              () => knownTagCount > 0 || 'Choose at least one tag, or choose All tags',
               () => sameTags || !deletedTagIds.length || 'Remove the deleted tags, or leave the tags unchanged'
             ]"
             @filter="filterTags"
@@ -222,8 +222,10 @@ const name = ref(props.attribute?.name ?? '')
 const description = ref(props.attribute?.description ?? '')
 const multiple = ref(props.attribute?.cardinality === Cardinality.multi)
 const initialTags = props.attribute?.tagIds ?? []
-// An empty list means All tags (ADR 0011), so Selected tags never sends one.
-const scope = ref<'all' | 'selected'>(initialTags.length ? 'selected' : 'all')
+// All tags is explicit (allTags, #522): Selected tags with none chosen is no tag, never All tags.
+// A new attribute starts at All tags for convenience; the dialog then sends allTags true.
+const initialAll = props.attribute ? !!props.attribute.allTags : true
+const scope = ref<'all' | 'selected'>(initialAll ? 'all' : 'selected')
 const tagIds = ref<string[]>([...initialTags])
 const drafts = ref<string[]>([''])
 const allowed = reactive<Record<SpecialKind, boolean>>({ unknown: false, not_applicable: false })
@@ -247,7 +249,6 @@ const deletedTagIds = computed(() => {
   const known = new Set(props.tags().map(tag => tag.id))
   return tagIds.value.filter(id => !known.has(id))
 })
-const knownTagCount = computed(() => tagIds.value.length - deletedTagIds.value.length)
 // With emit-value and map-options, a selected id with no option comes as the bare id.
 const isKnownTag = (opt: unknown): opt is { label: string } => typeof opt === 'object' && opt !== null
 const tagFilter = ref('')
@@ -262,6 +263,7 @@ function filterTags (value: string, update: (fn: () => void) => void) {
 const chosenTags = computed(() => scope.value === 'all' ? [] : tagIds.value)
 const sameTags = computed(() =>
   chosenTags.value.length === initialTags.length && chosenTags.value.every(id => initialTags.includes(id)))
+const sameScope = computed(() => (scope.value === 'all') === initialAll && sameTags.value)
 
 const specialDrafts = computed(() => SPECIAL_KINDS.filter(kind => allowed[kind]))
 const filledDrafts = computed(() => drafts.value.map(d => d.trim()).filter(d => d.length > 0))
@@ -269,7 +271,7 @@ const filledDrafts = computed(() => drafts.value.map(d => d.trim()).filter(d => 
 const isDirty = computed(() =>
   name.value.trim() !== (props.attribute?.name ?? '') ||
   description.value.trim() !== (props.attribute?.description ?? '') ||
-  !sameTags.value ||
+  !sameScope.value ||
   (!props.attribute && (multiple.value || filledDrafts.value.length > 0 || specialDrafts.value.length > 0))
 )
 
@@ -292,6 +294,7 @@ function payload (): PostAttribute | PatchAttribute | null {
       name: name.value.trim(),
       description: description.value.trim(),
       cardinality: multiple.value ? Cardinality.multi : Cardinality.single,
+      allTags: scope.value === 'all',
       tagIds: chosenTags.value,
       values: [
         ...filledDrafts.value.map(label => ({ label })),
@@ -302,7 +305,10 @@ function payload (): PostAttribute | PatchAttribute | null {
   const patch: PatchAttribute = {}
   if (name.value.trim() !== props.attribute.name) patch.name = name.value.trim()
   if (description.value.trim() !== (props.attribute.description ?? '')) patch.description = description.value.trim()
-  if (!sameTags.value) patch.tagIds = chosenTags.value
+  if (!sameScope.value) {
+    patch.allTags = scope.value === 'all'
+    patch.tagIds = chosenTags.value
+  }
   return Object.keys(patch).length ? patch : null
 }
 

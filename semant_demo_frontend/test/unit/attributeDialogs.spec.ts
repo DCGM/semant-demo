@@ -11,7 +11,7 @@ import { AttributeWriteError } from 'src/features/attributes/attributesStore'
 // The form dialogs of attribute definitions (#331, #506): a running save keeps the form open
 // and freezes everything that goes into its request, a refusal stays visible with what was
 // typed, Unknown / Not applicable are fixed checkboxes, the cardinality is fixed once created,
-// Selected tags never sends an empty list (All tags), and in Edit each value change saves at
+// All tags is sent explicitly and Selected tags with none chosen is no tag (#522), and in Edit each value change saves at
 // once while Save sends only the attribute's own fields.
 
 const mounted: VueWrapper[] = []
@@ -148,27 +148,35 @@ describe('Create Attribute', () => {
       name: 'Topic',
       description: '',
       cardinality: Cardinality.multi,
+      allTags: true,
       tagIds: [],
       values: [{ label: 'economy' }, { label: 'Not applicable', kind: ValueKind.notApplicable }]
     })
   })
 
-  it('does not send Selected tags without a tag, which would mean All tags', async () => {
+  it('sends Selected tags without a tag as no tag, never as All tags', async () => {
     const save = vi.fn().mockResolvedValue({ id: 'a9' })
     const wrapper = await open(AttributeDialog, { tags, save })
     await type(wrapper, 'Name', 'Mood')
     wrapper.findComponent(QOptionGroup).vm.$emit('update:modelValue', 'selected')
     await flushPromises()
+    expect(document.body.textContent).toContain('No tags: no annotation can take values of this attribute.')
     await button(wrapper, 'Create').trigger('click')
     await flushPromises()
-    expect(save).not.toHaveBeenCalled()
-    expect(document.body.textContent).toContain('Choose at least one tag, or choose All tags')
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ allTags: false, tagIds: [] }))
+  })
 
+  it('sends the selected tags with All tags off', async () => {
+    const save = vi.fn().mockResolvedValue({ id: 'a9' })
+    const wrapper = await open(AttributeDialog, { tags, save })
+    await type(wrapper, 'Name', 'Mood')
+    wrapper.findComponent(QOptionGroup).vm.$emit('update:modelValue', 'selected')
+    await flushPromises()
     wrapper.findComponent(QSelect).vm.$emit('update:modelValue', ['t2'])
     await flushPromises()
     await button(wrapper, 'Create').trigger('click')
     await flushPromises()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ tagIds: ['t2'] }))
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ allTags: false, tagIds: ['t2'] }))
   })
 
   it('freezes every field while saving and keeps them after a failure', async () => {
@@ -272,10 +280,33 @@ describe('Edit Attribute', () => {
     await flushPromises()
     await button(wrapper, 'Save').trigger('click')
     await flushPromises()
-    expect(save).toHaveBeenCalledWith({ tagIds: ['t2'] })
+    expect(save).toHaveBeenCalledWith({ allTags: false, tagIds: ['t2'] })
     const select = wrapper.findComponent(QSelect)
     expect([select.props('error'), select.props('errorMessage'), select.props('modelValue')]).toEqual([true, message, ['t2']])
     expect(text('attribute-dialog-error')).toBe('')
     expect(wrapper.emitted('ok')).toBeUndefined()
+  })
+
+  it('keeps Selected tags when the last tag is removed, and changes the scope only explicitly', async () => {
+    const save = vi.fn().mockResolvedValue(speaker())
+    const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions() })
+    wrapper.findComponent(QSelect).vm.$emit('update:modelValue', [])
+    await flushPromises()
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith({ allTags: false, tagIds: [] })
+
+    // An attribute for no tag opens as Selected tags with none; for all tags as All tags.
+    const none = await open(AttributeDialog, { attribute: speaker({ tagIds: [] }), tags, save, valueActions: valueActions() })
+    expect(none.findComponent(QOptionGroup).props('modelValue')).toBe('selected')
+    const everywhere = await open(AttributeDialog, {
+      attribute: speaker({ allTags: true, tagIds: [] }), tags, save, valueActions: valueActions()
+    })
+    expect(everywhere.findComponent(QOptionGroup).props('modelValue')).toBe('all')
+    everywhere.findComponent(QOptionGroup).vm.$emit('update:modelValue', 'selected')
+    await flushPromises()
+    await button(everywhere, 'Save').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenLastCalledWith({ allTags: false, tagIds: [] })
   })
 })
