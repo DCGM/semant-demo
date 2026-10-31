@@ -88,7 +88,7 @@ import { QForm, useDialogPluginComponent } from 'quasar'
 
 import FormDialog from 'src/shared/ui/FormDialog.vue'
 import type { AttributeValue, PatchAttributeValue, PostAttributeValue } from 'src/generated/api'
-import { DESCRIPTION_STYLE, MAX_DESCRIPTION, MAX_EXAMPLES, MAX_NAME, cleanList, labelTaken } from './attributeForm'
+import { DESCRIPTION_STYLE, MAX_DESCRIPTION, MAX_EXAMPLES, MAX_NAME, TAKEN_LABEL, cleanList, isTaken, labelTaken } from './attributeForm'
 
 type Save = (payload: PostAttributeValue | PatchAttributeValue) => Promise<unknown>
 
@@ -157,7 +157,7 @@ async function submit () {
     onDialogOK(await props.save(body))
   } catch (e) {
     const message = e instanceof Error ? e.message : 'The value could not be saved.'
-    if (message.startsWith('A value with this label')) labelError.value = message
+    if (isTaken(e, TAKEN_LABEL)) labelError.value = message
     else error.value = message
   } finally {
     saving.value = false

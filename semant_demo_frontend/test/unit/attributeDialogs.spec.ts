@@ -163,6 +163,14 @@ describe('Create Attribute', () => {
     await flushPromises()
     expect(input(wrapper, 'Name').text()).toContain('A retired attribute is already named "Topic"; restore it')
     expect(save).not.toHaveBeenCalled()
+
+    // Case is compared as the backend's casefold() does.
+    const strasse = await open(AttributeDialog, { tags, save, others: () => [speaker({ name: 'Straße' })] })
+    await type(strasse, 'Name', 'STRASSE')
+    await button(strasse, 'Create').trigger('click')
+    await flushPromises()
+    expect(input(strasse, 'Name').text()).toContain('An attribute named "Straße" already exists')
+    expect(save).not.toHaveBeenCalled()
   })
 
   it('refuses two values with one label, and a value labelled like an allowed special one', async () => {

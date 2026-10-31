@@ -59,6 +59,7 @@ class FakeSpans:
         """Stored ``attributeValues`` per (collection, span)."""
         self.writes: list = []
         self.fail: Exception | None = None
+        self.fail_read: Exception | None = None
         self.counted = 0
         self._locks: dict = {}
 
@@ -66,6 +67,8 @@ class FakeSpans:
         return self._locks.setdefault(span_id, asyncio.Lock())
 
     async def read_assignments(self, cid, span_id):
+        if self.fail_read is not None:
+            raise self.fail_read
         span = self.spans.get((cid, span_id))
         return (span.model_copy(deep=True), list(self.stored.get((cid, span_id), []))) if span else None
 
@@ -440,6 +443,20 @@ async def test_failed_and_uncertain_writes_are_reported_per_item_and_not_recorde
                                              assign(attribute, [APPROVED], AssignMode.add, [author]))
     assert [(f.step, f.uncertain) for f in failed.failed] == [("update_attributes", False)]
     assert await definitions.read_changes(COLLECTION, APPROVED) == []
+
+
+async def test_a_failed_read_is_reported_as_such_not_as_a_missing_annotation(store, spans, definitions):
+    attribute = await define(store)
+    spans.fail_read = WeaviateTimeoutError("slow")
+    result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                             assign(attribute, [APPROVED], AssignMode.add, [attribute.values[0]]))
+    assert [(f.item_id, f.step, f.uncertain) for f in result.failed] == [(str(APPROVED), "read_annotation", True)]
+    assert spans.writes == [] and await definitions.read_changes(COLLECTION, APPROVED) == []
+    # The annotation is there: once the store answers, the same request saves it.
+    spans.fail_read = None
+    again = await service.assign_attributes(store, OWNER, COLLECTION,
+                                            assign(attribute, [APPROVED], AssignMode.add, [attribute.values[0]]))
+    assert again.succeeded == [str(APPROVED)]
 
 
 async def test_saved_assignments_are_kept_when_their_records_cannot_be_written(store, spans, monkeypatch):

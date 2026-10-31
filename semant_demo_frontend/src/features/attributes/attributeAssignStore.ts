@@ -49,6 +49,11 @@ export interface AssignReport {
   error: string | null
 }
 
+/** The first request was refused as a whole: nothing was saved, looked at or possibly written. */
+export const refusedWhole = (r: AssignReport) =>
+  !!r.error && !r.saved.length && !r.conflicts.length && !r.refused.length && !r.missing.length &&
+  !r.unrecorded.length && !r.failed.some(f => f.uncertain)
+
 /**
  * Attribute assignments of the annotation workspace (#331, ADR 0011): one attribute's values
  * added, removed or replaced on one annotation (a row or the sidebar) or on the selection, sent
@@ -113,9 +118,10 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
       if (f.step === 'find_annotation') into.missing.push(id)
       else if (f.step === 'record_attribute_changes') into.unrecorded.push(id)
       else if (f.step === 'edit_conflict') into.conflicts.push([id, versions[id] ?? expected[id] ?? 0])
-      else if (f.step === 'update_attributes') {
-        into.failed.push({ id, message: f.message, uncertain: !!f.uncertain, version: expected[id] ?? 0 })
-      } else into.refused.push({ id, step: f.step, message: f.message })
+      // A rule refused it (`check_*`): retrying changes nothing. Anything else (a failed read or
+      // write) may succeed when sent again.
+      else if (f.step.startsWith('check_')) into.refused.push({ id, step: f.step, message: f.message })
+      else into.failed.push({ id, message: f.message, uncertain: !!f.uncertain, version: expected[id] ?? 0 })
     }
   }
 
@@ -161,7 +167,9 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
       } catch (e) {
         if (!applies()) return false
         const status = errorStatus(e)
-        if (status !== null && status < 500) {
+        // 503: the store cannot take assignments (`annotation_attributes add-schema` not run);
+        // answered before any write, so a refusal like a 4xx, not a lost answer.
+        if (status !== null && (status < 500 || status === 503)) {
           into.error = await apiErrorMessage(e, 'The assignment was refused.')
           into.failed.push(...failures(part, into.error ?? ''))
           into.notSent += items.length - i - part.length
@@ -200,7 +208,8 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
     running.value = true
     try {
       if (!await send(collectionId, next, targets, applies, selection.captureMembership(), onAnswer)) return null
-      report.value = next
+      // A request refused as a whole changed nothing: its dialog says why, the bar shows nothing.
+      if (!refusedWhole(next)) report.value = next
       return next
     } finally {
       if (mine === run) running.value = false
