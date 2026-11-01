@@ -272,13 +272,18 @@ only reads the schema (a missing collection, property or type is refused before 
 the schema itself is #128).
 
 ```bash
-python -m semant_demo.maintenance.chunk_ingest --check check.json chunks/*.jsonl       # read-only plan
+python -m semant_demo.maintenance.chunk_ingest --check check.json chunks/             # read-only plan
 python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endpoint HOST:PORT \
-    --backup-id BACKUP chunks/*.jsonl                                                  # or --offline-backup NOTE
+    --backup-id BACKUP chunks/                                                         # or --offline-backup NOTE
 ```
 
 **Input.** One JSON object per line and chunk; files are read in sorted path order.
 
+- Each input is a file or a directory, which stands for its `*.jsonl` files (not those of its
+  subdirectories; the other entries are counted and skipped). Instead of a list file, give a directory
+  of symlinks: it selects files from anywhere, and a large set does not hit the command-line length
+  limit. A file named twice, also through a directory or a symlink, is read once; a missing file (a
+  broken symlink too) or a directory without `*.jsonl` files is refused (exit 2).
 - Required: `id` (chunk UUID), `document` (document UUID), `order` (int) and `text` (may be empty).
 - Optional source fields, each only if `Chunks` declares it with that type: `start_page_id`, `language`
   (str), `from_page`, `to_page` (int), `end_paragraph` (bool).
