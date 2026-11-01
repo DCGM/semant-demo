@@ -337,9 +337,13 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   command again retries it, planned again from the store.
 - A created document whose chunks did not all arrive is listed as `incomplete_document` and never
   deleted (#281).
-- The checkpoint holds the endpoint, the resolved collections, the input files (size, SHA-256), the
-  cursor, the blocked documents and, for every write run, its backup, its page and whether it used
-  `--bulk` with its batch (`runs`), recorded before anything is written. A finished checkpoint, or one for other input, is refused.
+- The checkpoint holds the endpoint, the resolved collections, the number of input files and the
+  SHA-256 of their listing, the cursor, the blocked documents and, for every write run, its backup,
+  its page and whether it used `--bulk` with its batch (`runs`), recorded before anything is written.
+  The listing (each file's resolved path, size and SHA-256) is written once to
+  `CHECKPOINT.inputs.jsonl`, so the checkpoint stays small for any number of files. A finished
+  checkpoint, or one for other input, is refused; the refusal names the files that differ from the
+  listing.
 - Backups:
   - `--backup-id` must be a successful `backup-filesystem` backup holding the chunks and documents
     collections; this is checked.
