@@ -9,7 +9,7 @@
     </div>
 
     <div class="column q-mb-sm">
-      <q-checkbox
+      <q-toggle
         v-for="kind in SPECIAL_KINDS"
         :key="kind"
         dense
@@ -188,7 +188,12 @@ function openValueDialog (value: AttributeValue | undefined, save: SaveValue, do
   error.value = null
   $q.dialog({
     component: AttributeValueDialog,
-    componentProps: { attributeName: props.attribute.name, value, save }
+    componentProps: {
+      attributeName: props.attribute.name,
+      value,
+      save,
+      others: (props.attribute.values ?? []).filter(v => v.id !== value?.id)
+    }
   }).onOk((saved: Attribute | null) => {
     if (!saved) return
     emit('saved', saved)

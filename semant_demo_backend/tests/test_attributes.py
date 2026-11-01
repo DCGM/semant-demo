@@ -59,6 +59,7 @@ class FakeSpans:
         """Stored ``attributeValues`` per (collection, span)."""
         self.writes: list = []
         self.fail: Exception | None = None
+        self.fail_read: Exception | None = None
         self.counted = 0
         self._locks: dict = {}
 
@@ -66,6 +67,8 @@ class FakeSpans:
         return self._locks.setdefault(span_id, asyncio.Lock())
 
     async def read_assignments(self, cid, span_id):
+        if self.fail_read is not None:
+            raise self.fail_read
         span = self.spans.get((cid, span_id))
         return (span.model_copy(deep=True), list(self.stored.get((cid, span_id), []))) if span else None
 
@@ -440,6 +443,78 @@ async def test_failed_and_uncertain_writes_are_reported_per_item_and_not_recorde
                                              assign(attribute, [APPROVED], AssignMode.add, [author]))
     assert [(f.step, f.uncertain) for f in failed.failed] == [("update_attributes", False)]
     assert await definitions.read_changes(COLLECTION, APPROVED) == []
+
+
+def clear(attribute, annotations, versions=None):
+    return assign(attribute, annotations, AssignMode.clear, [], versions)
+
+
+def test_clear_names_no_values_and_other_modes_name_some():
+    attribute = SimpleNamespace(id=uuid4())
+    with pytest.raises(ValueError, match="value_ids must be empty"):
+        AttributeAssignRequest(attribute_id=attribute.id, annotation_ids=[APPROVED], expected_versions={APPROVED: 0},
+                               mode=AssignMode.clear, value_ids=[uuid4()])
+    # `remove` with no values stays an error, not a disguised clear.
+    with pytest.raises(ValueError, match="at least one value"):
+        AttributeAssignRequest(attribute_id=attribute.id, annotation_ids=[APPROVED], expected_versions={APPROVED: 0},
+                               mode=AssignMode.remove, value_ids=[])
+
+
+async def test_clear_removes_every_held_value_without_naming_the_vocabulary(store, spans, definitions):
+    # A single-valued attribute with more values than one request may name (50).
+    many = await define(store, name="place_name", values=[PostAttributeValue(label=f"v{i}") for i in range(60)])
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(many, [APPROVED], AssignMode.add, [many.values[57]]))
+    topic = await define(store, name="topic", cardinality="multi")
+    await service.assign_attributes(store, OWNER, COLLECTION,
+                                    assign(topic, [APPROVED], AssignMode.add, topic.values, {APPROVED: 1}))
+    assert len(values_of(spans, APPROVED, topic)) == 2
+
+    cleared = await service.assign_attributes(store, OWNER, COLLECTION, clear(many, [APPROVED], {APPROVED: 2}))
+    assert cleared.succeeded == [str(APPROVED)] and cleared.values == {APPROVED: []}
+    several = await service.assign_attributes(store, OWNER, COLLECTION, clear(topic, [APPROVED], {APPROVED: 3}))
+    assert several.succeeded == [str(APPROVED)] and values_of(spans, APPROVED, topic) == []
+    assert values_of(spans, APPROVED, many) == []
+    # Recorded as any change, previous values with their labels.
+    last = (await definitions.read_changes(COLLECTION, APPROVED))[-1]
+    assert sorted(v.label for v in last.previous) == ["Author", "Narrator"] and last.current == []
+    # Nothing held: already as asked, no write, no conflict for a stale version.
+    again = await service.assign_attributes(store, OWNER, COLLECTION, clear(topic, [APPROVED], {APPROVED: 0}))
+    assert again.succeeded == [str(APPROVED)] and again.failed == []
+
+
+async def test_clear_reaches_values_kept_on_rejected_and_inapplicable_annotations(store, spans, definitions):
+    person = await define(store, tag_ids=[PERSON])
+    author = person.values[0]
+    spans.stored[(COLLECTION, REJECTED)] = [codec.encode(person.id, author.id)]  # assigned, then rejected
+    spans.stored[(COLLECTION, PLACE_SPAN)] = [codec.encode(person.id, author.id)]  # assigned, then retagged
+    # A retired value and an id the attribute no longer defines.
+    await service.update_value(store, OWNER, COLLECTION, person.id, author.id, PatchAttributeValue(retired=True))
+    gone = uuid4()
+    spans.stored[(COLLECTION, APPROVED)] = [codec.encode(person.id, author.id), codec.encode(person.id, gone)]
+    await service.update_attribute(store, OWNER, COLLECTION, person.id, PatchAttribute(retired=True))
+
+    result = await service.assign_attributes(store, OWNER, COLLECTION, clear(person, [REJECTED, PLACE_SPAN, APPROVED]))
+    assert sorted(result.succeeded) == sorted(str(i) for i in (REJECTED, PLACE_SPAN, APPROVED)) and result.failed == []
+    for sid in (REJECTED, PLACE_SPAN, APPROVED):
+        assert values_of(spans, sid, person) == []
+    # A stale version is still a conflict: clearing never overwrites a newer decision.
+    spans.stored[(COLLECTION, APPROVED)] = [codec.encode(person.id, author.id)]
+    stale = await service.assign_attributes(store, OWNER, COLLECTION, clear(person, [APPROVED], {APPROVED: 0}))
+    assert [f.step for f in stale.failed] == ["edit_conflict"]
+
+
+async def test_a_failed_read_is_reported_as_such_not_as_a_missing_annotation(store, spans, definitions):
+    attribute = await define(store)
+    spans.fail_read = WeaviateTimeoutError("slow")
+    result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                             assign(attribute, [APPROVED], AssignMode.add, [attribute.values[0]]))
+    assert [(f.item_id, f.step, f.uncertain) for f in result.failed] == [(str(APPROVED), "read_annotation", True)]
+    assert spans.writes == [] and await definitions.read_changes(COLLECTION, APPROVED) == []
+    # The annotation is there: once the store answers, the same request saves it.
+    spans.fail_read = None
+    again = await service.assign_attributes(store, OWNER, COLLECTION,
+                                            assign(attribute, [APPROVED], AssignMode.add, [attribute.values[0]]))
+    assert again.succeeded == [str(APPROVED)]
 
 
 async def test_saved_assignments_are_kept_when_their_records_cannot_be_written(store, spans, monkeypatch):

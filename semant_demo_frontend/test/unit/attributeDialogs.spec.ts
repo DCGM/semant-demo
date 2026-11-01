@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { QBtn, QCheckbox, QDialog, QInput, QOptionGroup, QSelect, Quasar } from 'quasar'
+import { QBtn, QDialog, QInput, QOptionGroup, QSelect, QToggle, Quasar } from 'quasar'
 
 import { Cardinality, ValueKind, type Attribute } from 'src/generated/api'
 import FormDialog from 'src/shared/ui/FormDialog.vue'
@@ -10,7 +10,7 @@ import { AttributeWriteError } from 'src/features/attributes/attributesStore'
 
 // The form dialogs of attribute definitions (#331, #506): a running save keeps the form open
 // and freezes everything that goes into its request, a refusal stays visible with what was
-// typed, Unknown / Not applicable are fixed checkboxes, the cardinality is fixed once created,
+// typed, Unknown / Not applicable are fixed toggles, the cardinality is fixed once created,
 // All tags is sent explicitly and Selected tags with none chosen is no tag (#522), and in Edit each value change saves at
 // once while Save sends only the attribute's own fields.
 
@@ -41,8 +41,8 @@ const button = (wrapper: VueWrapper, label: string) =>
   wrapper.findAllComponents(QBtn).find(b => b.props('label') === label || b.attributes('aria-label') === label)!
 const input = (wrapper: VueWrapper, label: string) =>
   wrapper.findAllComponents(QInput).find(i => i.props('label') === label)!
-const checkbox = (wrapper: VueWrapper, label: string) =>
-  wrapper.findAllComponents(QCheckbox).find(c => c.props('label') === label)!
+const toggle = (wrapper: VueWrapper, label: string) =>
+  wrapper.findAllComponents(QToggle).find(c => c.props('label') === label)!
 const type = async (wrapper: VueWrapper, label: string, text: string) => {
   input(wrapper, label).vm.$emit('update:modelValue', text)
   await flushPromises()
@@ -94,6 +94,22 @@ describe('FormDialog', () => {
 })
 
 describe('AttributeValueDialog', () => {
+  it('refuses a label another value of the attribute has, at the field', async () => {
+    const save = vi.fn()
+    const wrapper = await open(AttributeValueDialog, {
+      attributeName: 'speaker', save, others: [{ id: 'v1', label: 'politician' }, { id: 'v3', label: 'old', retired: true }]
+    })
+    await type(wrapper, 'Label', 'Politician')
+    await button(wrapper, 'Add').trigger('click')
+    await flushPromises()
+    expect(save).not.toHaveBeenCalled()
+    expect(input(wrapper, 'Label').text()).toContain('Another value is already labelled "politician".')
+    await type(wrapper, 'Label', 'old')
+    await button(wrapper, 'Add').trigger('click')
+    await flushPromises()
+    expect(input(wrapper, 'Label').text()).toContain('A retired value is already labelled "old"; restore it')
+  })
+
   it('sends only the changed fields of an edited value', async () => {
     const save = vi.fn().mockResolvedValue({ id: 'a1' })
     const wrapper = await open(AttributeValueDialog, {
@@ -131,14 +147,74 @@ describe('AttributeValueDialog', () => {
 })
 
 describe('Create Attribute', () => {
+  it('shows a taken name at the Name field and does not send it', async () => {
+    const save = vi.fn()
+    const others = () => [speaker({ name: 'Role' }), speaker({ id: 'a7', name: 'Topic', retired: true })]
+    const wrapper = await open(AttributeDialog, { tags, save, others })
+    await type(wrapper, 'Name', '  role ')
+    await type(wrapper, 'Value 1', 'statesman')
+    await button(wrapper, 'Create').trigger('click')
+    await flushPromises()
+    expect(save).not.toHaveBeenCalled()
+    expect(input(wrapper, 'Name').text()).toContain('An attribute named "Role" already exists in this collection.')
+
+    await type(wrapper, 'Name', 'Topic')
+    await button(wrapper, 'Create').trigger('click')
+    await flushPromises()
+    expect(input(wrapper, 'Name').text()).toContain('A retired attribute is already named "Topic"; restore it')
+    expect(save).not.toHaveBeenCalled()
+
+    // Case is compared as the backend's casefold() does.
+    const strasse = await open(AttributeDialog, { tags, save, others: () => [speaker({ name: 'Straße' })] })
+    await type(strasse, 'Name', 'STRASSE')
+    await button(strasse, 'Create').trigger('click')
+    await flushPromises()
+    expect(input(strasse, 'Name').text()).toContain('An attribute named "Straße" already exists')
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('refuses two values with one label, and a value labelled like an allowed special one', async () => {
+    const save = vi.fn()
+    const wrapper = await open(AttributeDialog, { tags, save })
+    await type(wrapper, 'Name', 'Role')
+    await type(wrapper, 'Value 1', 'statesman')
+    await button(wrapper, 'Add value').trigger('click')
+    await type(wrapper, 'Value 2', 'Statesman')
+    await button(wrapper, 'Create').trigger('click')
+    await flushPromises()
+    expect(save).not.toHaveBeenCalled()
+    expect(input(wrapper, 'Value 2').text()).toContain('Another value is already labelled "statesman".')
+
+    await type(wrapper, 'Value 2', 'unknown')
+    toggle(wrapper, 'Allow Unknown').vm.$emit('update:modelValue', true)
+    await button(wrapper, 'Create').trigger('click')
+    await flushPromises()
+    expect(save).not.toHaveBeenCalled()
+    expect(input(wrapper, 'Value 2').text()).toContain('"Unknown" is a fixed option of the attribute; use its toggle.')
+  })
+
+  it('shows the server\'s refusal where it can be seen, keeping what was typed', async () => {
+    const save = vi.fn().mockRejectedValue(new AttributeWriteError(
+      'An attribute with this name, or a value with the same label, already exists', 400))
+    const wrapper = await open(AttributeDialog, { tags, save })
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+    await type(wrapper, 'Name', 'Role')
+    await button(wrapper, 'Create').trigger('click')
+    await flushPromises()
+    expect(text('attribute-dialog-error')).toContain('already exists')
+    expect(scrolled).toHaveBeenCalled()
+    expect(input(wrapper, 'Name').props('modelValue')).toBe('Role')
+  })
+
   it('sends the values with the fixed special ones and warns that multiple values are for good', async () => {
     const save = vi.fn().mockResolvedValue({ id: 'a9' })
     const wrapper = await open(AttributeDialog, { tags, save })
     await type(wrapper, 'Name', 'Topic')
     await type(wrapper, 'Value 1', ' economy ')
     expect(text('attribute-multiple-warning')).toBe('')
-    checkbox(wrapper, 'Allow multiple values per annotation').vm.$emit('update:modelValue', true)
-    checkbox(wrapper, 'Allow Not applicable').vm.$emit('update:modelValue', true)
+    toggle(wrapper, 'Allow multiple values per annotation').vm.$emit('update:modelValue', true)
+    toggle(wrapper, 'Allow Not applicable').vm.$emit('update:modelValue', true)
     await flushPromises()
     expect(text('attribute-multiple-warning')).toContain('cannot be reversed')
 
@@ -187,7 +263,7 @@ describe('Create Attribute', () => {
     await button(wrapper, 'Create').trigger('click')
     await flushPromises()
     expect(wrapper.findAllComponents(QInput).every(i => i.props('disable'))).toBe(true)
-    expect(wrapper.findAllComponents(QCheckbox).every(c => c.props('disable'))).toBe(true)
+    expect(wrapper.findAllComponents(QToggle).every(c => c.props('disable'))).toBe(true)
     expect(wrapper.findComponent(QOptionGroup).props('disable')).toBe(true)
     expect([button(wrapper, 'Add value').props('disable'), button(wrapper, 'Remove value 1').props('disable')]).toEqual([true, true])
 
@@ -200,10 +276,24 @@ describe('Create Attribute', () => {
 })
 
 describe('Edit Attribute', () => {
+  it('shows a rename refused as taken at the Name field', async () => {
+    const save = vi.fn().mockRejectedValue(new AttributeWriteError('An attribute with this name already exists', 400))
+    const wrapper = await open(AttributeDialog, { tags, save, attribute: speaker(), valueActions: valueActions() })
+    await type(wrapper, 'Name', 'Role')
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(input(wrapper, 'Name').props('error')).toBe(true)
+    expect(input(wrapper, 'Name').text()).toContain('An attribute with this name already exists')
+    expect(document.querySelector('[data-testid="attribute-dialog-error"]')).toBeNull()
+    // Changing the name takes the refusal away.
+    await type(wrapper, 'Name', 'Role 2')
+    expect(input(wrapper, 'Name').props('error')).not.toBe(true)
+  })
+
   it('shows the cardinality read-only and sends only the changed fields', async () => {
     const save = vi.fn().mockResolvedValue(speaker({ name: 'Speaker type', revision: 2 }))
     const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions() })
-    const cardinality = checkbox(wrapper, 'Allow multiple values per annotation')
+    const cardinality = toggle(wrapper, 'Allow multiple values per annotation')
     expect([cardinality.props('modelValue'), cardinality.props('disable')]).toEqual([false, true])
     expect(text('attribute-cardinality')).toContain('cannot be changed after the attribute is created')
     await type(wrapper, 'Name', 'Speaker type')
@@ -219,7 +309,7 @@ describe('Edit Attribute', () => {
     const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions({ setSpecialValue }) })
     expect(text('attribute-values-immediate')).toContain('saved immediately')
 
-    checkbox(wrapper, 'Allow Unknown').vm.$emit('update:modelValue', true)
+    toggle(wrapper, 'Allow Unknown').vm.$emit('update:modelValue', true)
     await flushPromises()
     expect(setSpecialValue).toHaveBeenCalledWith(speaker(), ValueKind.unknown, true)
     expect(button(wrapper, 'Save').props('disable')).toBe(true)
@@ -227,7 +317,7 @@ describe('Edit Attribute', () => {
 
     answer.resolve(speaker({ revision: 2, values: [...speaker().values!, { id: 'u1', label: 'Unknown', kind: ValueKind.unknown }] }))
     await flushPromises()
-    expect(checkbox(wrapper, 'Allow Unknown').props('modelValue')).toBe(true)
+    expect(toggle(wrapper, 'Allow Unknown').props('modelValue')).toBe(true)
     expect(button(wrapper, 'Save').props('disable')).toBe(false)
     // Only Unknown changed, and it is saved: Save has nothing to send and closes.
     await button(wrapper, 'Save').trigger('click')
@@ -266,7 +356,7 @@ describe('Edit Attribute', () => {
     await button(wrapper, 'Save').trigger('click')
     await flushPromises()
     expect([button(wrapper, 'Retire politician').props('disable'), button(wrapper, 'Add value').props('disable'),
-      checkbox(wrapper, 'Allow Unknown').props('disable')]).toEqual([true, true, true])
+      toggle(wrapper, 'Allow Unknown').props('disable')]).toEqual([true, true, true])
     answer.resolve(speaker({ name: 'Speaker type', revision: 2 }))
     await flushPromises()
     expect(wrapper.emitted('ok')).toHaveLength(1)
