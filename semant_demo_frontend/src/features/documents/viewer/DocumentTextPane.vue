@@ -9,7 +9,9 @@
       <p>
         <template v-for="chunk in group.chunks" :key="chunk.id">
           <!-- Inline content before a chunk, e.g. a page-boundary marker. -->
-          <slot name="before-chunk" :chunk="chunk" />
+          <span v-if="$slots['before-chunk']" class="text-pane-slot" data-text-pane-slot>
+            <slot name="before-chunk" :chunk="chunk" />
+          </span>
           <ChunkAnnotator
             :chunk-id="chunk.id"
             :text="chunk.text"
@@ -25,7 +27,9 @@
         </template>
       </p>
       <!-- Between paragraphs where chunks are missing from the text, e.g. load controls. -->
-      <slot v-if="group.gapAfter !== null" name="gap" :paragraph="group" />
+      <div v-if="group.gapAfter !== null" class="text-pane-slot" data-text-pane-slot>
+        <slot name="gap" :paragraph="group" />
+      </div>
     </template>
   </div>
 </template>
@@ -83,6 +87,9 @@ function pointAt (node: Node | null, offset: number): TextPoint | null {
 }
 
 function onMouseUp (e: MouseEvent) {
+  // A click on the owner's content in a slot (e.g. a load button) is not a text interaction,
+  // even while an earlier selection or caret is still in the text.
+  if ((e.target as Element | null)?.closest?.('[data-text-pane-slot]')) return
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
     emit('textClick', selection?.rangeCount ? pointAt(selection.anchorNode, selection.anchorOffset) : null, e)
@@ -94,9 +101,11 @@ function onMouseUp (e: MouseEvent) {
   if (start && end) emit('select', { start, end }, e)
 }
 
+/** `value` as the content of a double-quoted CSS string (CSS.escape is not available everywhere). */
+const cssString = (value: string) => value.replace(/["\\]/g, '\\$&').replace(/\n/g, '\\a ')
+
 const chunkElement = (chunkId: string) =>
-  Array.from(root.value?.querySelectorAll<HTMLElement>('[data-chunk-id]') ?? [])
-    .find((el) => el.dataset.chunkId === chunkId) ?? null
+  root.value?.querySelector<HTMLElement>(`[data-chunk-id="${cssString(chunkId)}"]`) ?? null
 
 function scrollToChunk (chunkId: string) {
   chunkElement(chunkId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -143,6 +152,11 @@ defineExpose({ root, scrollToChunk, scrollToRange })
    Each chunk starts on its own line instead. */
 .document-text--preserve-whitespace :deep(.chunk-annotator) {
   display: block;
+}
+
+/* Slot wrappers only mark the owner's content; they add no box of their own. */
+.text-pane-slot {
+  display: contents;
 }
 
 @media (max-width: 599px) {
