@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CollectionChunk } from 'src/generated/api'
 import {
-  assignColumns, gapSize, groupParagraphs, knownChunksInOrder, missingChunksText, resolveSelectionEndpoint,
+  assignColumns, gapSize, groupParagraphs, knownChunksInOrder, missingChunksText, rangeByChunk, resolveSelectionEndpoint,
   selectionInDisplayedChunks, selectionText, shortestMarker
 } from 'src/features/documents/viewer/readerOffsets'
 
@@ -22,6 +22,22 @@ describe('groupParagraphs', () => {
       { chunks: [e], gapAfter: null, gapBefore: null }
     ])
     expect(groupParagraphs([])).toEqual([])
+  })
+})
+
+describe('rangeByChunk', () => {
+  it('splits a range across consecutive chunks into chunk-local offsets', () => {
+    // "Hello " (6) + "world" (5) + "Again" (5)
+    expect(rangeByChunk({ chunkId: 'a', start: 4, end: 13 }, [a, b, c, e])).toEqual({
+      a: { start: 4, end: 6 }, b: { start: 0, end: 5 }, c: { start: 0, end: 2 }
+    })
+    expect(rangeByChunk({ chunkId: 'b', start: 1, end: 3 }, [a, b, c])).toEqual({ b: { start: 1, end: 3 } })
+  })
+
+  it('stops at a gap in chunk order and ignores an unknown anchor or an empty range', () => {
+    expect(rangeByChunk({ chunkId: 'c', start: 2, end: 20 }, [a, b, c, e])).toEqual({ c: { start: 2, end: 5 } })
+    expect(rangeByChunk({ chunkId: 'x', start: 0, end: 3 }, [a, b])).toEqual({})
+    expect(rangeByChunk({ chunkId: 'a', start: 2, end: 2 }, [a, b])).toEqual({})
   })
 })
 
