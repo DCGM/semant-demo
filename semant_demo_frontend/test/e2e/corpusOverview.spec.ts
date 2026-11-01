@@ -111,10 +111,14 @@ test('filters narrow every count to the matching documents until they are cleare
   await page.getByTestId('filter-title').press('Enter')
   await expect(page.getByTestId('corpus-applied-title')).toContainText('dopisy')
   await expect(page.getByTestId('corpus-total')).toHaveText('2')
-  await page.unroute(DISTRIBUTIONS, slow)
 
+  // The second chip is removed while the first removal is still being counted: the title
+  // removed first does not come back (#548).
   await page.getByRole('button', { name: 'Remove filter Title contains PRAŽ' }).click()
   await page.getByRole('button', { name: 'Remove filter Title contains dopisy' }).click()
+  await expect(page.getByTestId('corpus-applied')).toHaveCount(0)
+  await expect(page.getByTestId('corpus-total')).toHaveText('3')
+  await page.unroute(DISTRIBUTIONS, slow)
   await page.getByTestId('filter-title').fill('praz')
   await page.getByTestId('filter-title').press('Enter')
   await expect(page.getByTestId('corpus-no-match')).toContainText('No documents match these filters')
