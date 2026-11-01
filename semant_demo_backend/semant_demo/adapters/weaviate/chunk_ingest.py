@@ -98,6 +98,17 @@ async def read_order_range(client: WeaviateAsyncClient, collection: str, documen
     return sorted((_stored(o, fields) for o in response.objects), key=lambda c: c.order)
 
 
+async def read_orders(client: WeaviateAsyncClient, collection: str, document_id: UUID, first: int,
+                      last: int) -> list[int]:
+    """The orders of the document's chunks with ``first <= order <= last``, sorted: at most one
+    more than the range holds, enough to show a duplicate."""
+    response = await client.collections.get(collection).query.fetch_objects(
+        filters=Filter.all_of([Filter.by_ref("document").by_id().equal(document_id),
+                               Filter.by_property("order").contains_any(list(range(first, last + 1)))]),
+        limit=last - first + 2, return_properties=["order"])
+    return sorted(o.properties["order"] for o in response.objects)
+
+
 def _already_exists(e: UnexpectedStatusCodeError) -> bool:
     return e.status_code == 422 and "already exists" in str(e)
 
