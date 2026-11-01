@@ -703,6 +703,10 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
     # explain selection method
     # method to explain specific part of the answer based on selected text and sources used for generation
     async def explain_selection(self, request : ExplainRequest):
+        reason = self.explanation_unavailable(request)
+        if reason is not None:
+            return {"explanation": reason}
+
         full_answer = request.full_answer
         sources_raw = request.sources
         selected_text = request.selected_text
@@ -718,30 +722,40 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
             if (role == "user"):
                 history_preprocessed.pop() # remove last user message
 
+        context = self._format_weaviate_context(sources_raw)
 
-        if (full_answer and sources_raw and selected_text):
-            context = self._format_weaviate_context(sources_raw)
-            
-            # detect language
+        # detect language
+        language = "eng"
+        chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt_answer)
+        result = await chain.ainvoke({"text_string" : full_answer})
+        clean_result = re.sub(r'```json|```', '', result).strip()
+        try:
+            graded_doc = json.loads(clean_result)
+            language = graded_doc.get("language", "eng").lower()
+            logger.debug("Detected language: %s", language)
+        except Exception:
             language = "eng"
-            chain = self._create_chain(model=self.model, prompt=self.identify_language_prompt_answer)
-            result = await chain.ainvoke({"text_string" : full_answer})
-            clean_result = re.sub(r'```json|```', '', result).strip()
-            try:
-                graded_doc = json.loads(clean_result)
-                language = graded_doc.get("language", "eng").lower()
-                logger.debug("Detected language: %s", language)
-            except Exception:
-                language = "eng"
 
-            # explain selection
-            prompt = self._get_prompt_by_language("explain_selected_text", language)
+        # explain selection
+        prompt = self._get_prompt_by_language("explain_selected_text", language)
 
-            chain = self._create_chain(model=self.model, prompt=prompt)
-            result = await chain.ainvoke({
-                "full_answer" : full_answer,
-                "context_string" : context,
-                "selected_text" : selected_text,
-                "prompt_history" : history_preprocessed
-            })
+        chain = self._create_chain(model=self.model, prompt=prompt)
+        result = await chain.ainvoke({
+            "full_answer" : full_answer,
+            "context_string" : context,
+            "selected_text" : selected_text,
+            "prompt_history" : history_preprocessed
+        })
         return {"explanation" : result}
+
+    def explanation_unavailable(self, request: ExplainRequest) -> str | None:
+        if not request.selected_text.strip():
+            return "Cannot explain because no text was selected."
+
+        if not request.full_answer.strip():
+            return "Cannot explain this selection because the answer is empty."
+
+        if not request.sources:
+            return "Cannot explain this selection because no sources are available."
+
+        return None
