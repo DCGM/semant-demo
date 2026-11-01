@@ -26,7 +26,7 @@ the purpose, the safety requirements and the usual sequence. Detailed notes and 
   on the GitHub issue or PR, not in these docs.
 
 The scripts in `weaviate_utils/` are older standalone tools; several drop collections or
-delete data (for example `db_insert_jsonl.py --delete-old`, `delete_*.py`) and connect to a
+delete data (for example `delete_*.py`, `build_db/create_schema.py`) and connect to a
 hard-coded or configured endpoint. The same rules apply.
 
 ## Chunk tag audit (`chunk_tag_audit`)
@@ -64,9 +64,9 @@ Set the actual endpoint and verified backup id before running; optional `--limit
 Deleting refuses to start unless the audit finished on the same endpoint and schema, the total
 chunk count is unchanged (checked again before every batch) and `BACKUP` holds documents,
 chunks and user collections. Each document is re-checked before deletion and read back after;
-affected collections are verified at the end. A removed document is restored by importing it
-again with the same UUID (`weaviate_utils/db_insert_jsonl.py`); collection memberships are
-not restored automatically (the manifest lists them).
+affected collections are verified at the end. A removed document is restored by importing its chunks
+again with the same UUIDs ([`chunk_ingest`](#chunk-import-chunk_ingest-313)) and then its metadata
+(`metadata_sync`); collection memberships are not restored automatically (the manifest lists them).
 
 ## Kramerius metadata sync (`metadata_sync`, #257)
 
@@ -264,9 +264,8 @@ in its document (`Chunks.startChar`, `startWord`, `wordOpenAtStart`,
 [DATABASE.md](DATABASE.md#collection-chunks)) and the chunks next to it, never from the whole
 document. Chunks without positions leave every new or moved annotation on them with failed
 derived data (`derive_annotation`), so run this command on a store before deploying #463 there.
-New chunks get their positions when they are inserted (the append-only import of
-[#313](https://github.com/DCGM/semant-demo/issues/313), which needs this backfill done first:
-it continues from the stored tail).
+New chunks get their positions when they are inserted ([`chunk_ingest`](#chunk-import-chunk_ingest-313),
+which needs this backfill done first: it continues from the stored tail).
 
 ```bash
 python -m semant_demo.maintenance.chunk_positions --check check.json             # read-only
@@ -308,6 +307,121 @@ development snapshot and compare its counts with a `--check` of the target, run 
 positions only when `Chunks` declares them at startup (`bootstrap.detect_chunk_positions`).
 Record counts, reported documents and the backup id on the issue. A development store seeded
 before #463 is completed by the same command, or by `make dev-reset`.
+
+## Chunk import (`chunk_ingest`, #313)
+
+The one supported way to add text chunks: append-only, into the **existing** collections. It
+only inserts absent `Chunks` objects and, before the first chunk of a new document, an absent
+`Documents` object without properties. It never updates or deletes an existing object and
+only reads the schema (a missing collection, property or type is refused before any write;
+the schema itself is #128).
+
+```bash
+python -m semant_demo.maintenance.chunk_ingest --check check.json chunks/             # read-only plan
+python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endpoint HOST:PORT \
+    --backup-id BACKUP chunks/                                                         # or --offline-backup NOTE
+```
+
+**Input.** One JSON object per line and chunk; files are read in sorted path order.
+
+- Each input is a file or a directory, which stands for its `*.jsonl` files (not those of its
+  subdirectories; the other entries are counted and skipped). Instead of a list file, give a directory
+  of symlinks: it selects files from anywhere, and a large set does not hit the command-line length
+  limit. A file named twice, also through a directory or a symlink, is read once; a missing file (a
+  broken symlink too) or a directory without `*.jsonl` files is refused (exit 2).
+- Required: `id` (chunk UUID), `document` (document UUID), `order` (int) and `text` (may be empty).
+- Optional source fields, each only if `Chunks` declares it with that type: `start_page_id`, `language`
+  (str), `from_page`, `to_page` (int), `end_paragraph` (bool).
+- Ignored and counted (`ignored_fields`), never written:
+  - the document description of the old `db_insert_jsonl.py` format (`title`, `year`, `author`, `date`,
+    `source`, ...);
+  - precomputed vectors (`vector`, `vector_index`).
+- Anything else rejects the whole document: an unknown key, a position property, an invalid value, a
+  duplicate chunk id, or orders that are not consecutive in input order.
+
+**Plan per document**, from what is stored (never from the checkpoint alone):
+
+- `new`: no chunks stored. A missing document object is created empty, and the chunks get
+  positions from the document start; the first order may be any integer.
+- `append`: the input continues the stored chunks `s..m`; it may repeat their suffix `a..m`,
+  which must equal what is stored, including the computed positions. Chunks after `m` get
+  positions computed from the stored tail with the shared calculator
+  (`features/documents/positions.py`), so their `order` is exactly the previous one + 1.
+- `replayed`: everything is stored; nothing is written. Repeating a completed import inserts nothing.
+- `rejected` (reported, nothing of the document is written):
+  - `gap`, `before_start`;
+  - `conflict` (another text, source field, position, document or order);
+  - `nonconsecutive_store`;
+  - `positions_missing` (run `chunk_positions --write` first);
+  - `dangling_document`;
+  - `invalid_input`.
+
+**Writing.**
+
+- Each chunk is inserted on its own: Weaviate's single-object insert refuses an existing id,
+  while a batch insert would silently replace it. A chunk is read back before the next chunk of
+  its document; documents are written in parallel (`--concurrency`).
+- `--bulk` is for a **new store** whose chunk collection is empty at the start (refused otherwise,
+  before any write):
+  - it batch-inserts the chunks in rounds of one next chunk from each of up to `--batch` (800)
+    documents of the page, each round read back before the next; a finished document leaves its
+    place to the next document of the page;
+  - documents are still created with single inserts, because a batch insert could replace an
+    existing document with its metadata;
+  - an interrupted bulk run is finished without `--bulk`: by then the collection is no longer empty,
+    so nothing already stored is ever written in a batch.
+- Documents are planned, written and checkpointed in pages of `--page` documents (100, with
+  `--bulk` 2000). A larger page needs more memory and repeats more checks after an interruption;
+  with `--bulk` it keeps the batches full while the short documents finish. A resumed run may use
+  another page.
+- The input is read twice, so the chunk texts are held for one page only. A single pass would have
+  to hold them all (about 2.65 GB of memory per GB of input): nothing is written before the whole
+  input is validated (a duplicate chunk id may be in another file, a document's lines may be spread
+  over several files), and the pages go in document-id order, which the checkpoint's cursor relies
+  on, not in file order.
+  - The first pass validates every line (duplicate chunk ids across all files too) and keeps only
+    where each document's lines are (about 40 bytes per chunk at its peak).
+  - Each page reads its documents' lines again. If an input file changes during the run, the run
+    stops (`InputChanged`, exit 2) before writing anything from the changed lines.
+- A failed or uncertain write blocks only the rest of that document (`blocked`); running the same
+  command again retries it, planned again from the store.
+- A created document whose chunks did not all arrive is listed as `incomplete_document` and never
+  deleted (#281).
+- The checkpoint holds the endpoint, the resolved collections, the number of input files and the
+  SHA-256 of their listing, the cursor, the blocked documents and, for every write run, its backup,
+  its page and whether it used `--bulk` with its batch (`runs`), recorded before anything is written.
+  The listing (each file's resolved path, size and SHA-256) is written once to
+  `CHECKPOINT.inputs.jsonl`, so the checkpoint stays small for any number of files. A finished
+  checkpoint, or one for other input, is refused; the refusal names the files that differ from the
+  listing.
+- Backups:
+  - `--backup-id` must be a successful `backup-filesystem` backup holding the chunks and documents
+    collections; this is checked.
+  - `--offline-backup NOTE` describes an offline copy of the data directory made with Weaviate stopped;
+    it is recorded as given and not checked.
+  - `--check` takes neither, nor `--bulk` or `--batch`.
+- Reported documents and invalid lines go to `CHECKPOINT.manifest.jsonl`.
+- Exit 0 only when nothing was rejected, invalid or blocked.
+
+**Afterwards**, as separate commands:
+
+1. `metadata_sync` fills the new documents' metadata.
+2. `chunk_year --write` copies their year to the chunks.
+3. `data_tools/embedder` computes the `Qwen3_Embedding_0_6B` vectors; until then the new chunks
+   are missing from vector and hybrid search.
+
+The import does none of this, nor anything to existing annotations: their positions stay valid,
+and context near the former document end keeps its old right boundary.
+
+Procedure on a shared store (authorized per task):
+1. Back up.
+2. Stop other chunk writers.
+3. Run `--check` and review the plan and the manifest.
+4. Run `--write`.
+5. Run `--check` again with a new checkpoint (expect `replayed` only).
+6. Run the follow-up commands.
+
+Record the counts and the backup id on the issue.
 
 ## Annotation derived data (`annotation_enrichment`, #328)
 

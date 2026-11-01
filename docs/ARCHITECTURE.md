@@ -727,7 +727,6 @@ part of the backend package; several delete or rewrite data — check the endpoi
 
 | Script | Purpose |
 |---|---|
-| `db_insert_jsonl.py` | Create schema + bulk-insert documents and chunks from JSONL + numpy embeddings |
 | `inspect_chunks.py` | Dump chunks (pretty or JSON) |
 | `inspect_documents.py` | Dump documents (pretty or JSON) |
 | `inspect_all.py` | Inspect all collections |

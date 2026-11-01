@@ -637,7 +637,7 @@ Required automated tests should use deterministic fake providers wherever practi
 ## 7. Destructive database utilities and data maintenance
 
 Some utilities under `weaviate_utils/` drop collections or delete data (for example
-`db_insert_jsonl.py --delete-old` and schema reset/build scripts). Before using such a command:
+`delete_*.py` and schema reset/build scripts). Before using such a command:
 
 1. verify that the intended local Weaviate is running;
 2. verify the configured endpoint is `localhost` and the intended port (8080 snapshot, 8180 seeded environment);
