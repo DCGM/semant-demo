@@ -6,7 +6,9 @@ import { apiToken, deleteAddedAttributes, ensureLoggedIn, fixture, useViewport }
 // shows one attribute's values and assigns them on a row, the sidebar edits every attribute of
 // the open annotation, a selection is assigned in one batch reported per annotation (only
 // confirmed annotations of an applicable tag take values; one changed meanwhile is not
-// overwritten), and the attribute filters match exact values and "not assigned".
+// overwritten), and the attribute filters match exact values and "not assigned". A single-valued
+// attribute's picker closes once the choice is saved; values kept after a retag to a tag the
+// attribute does not apply to are greyed, marked and cleared like any others (#530 review).
 
 const chronicles = fixture.collection('chronicles')
 const base = `/api/user_collections/${chronicles.id}`
@@ -154,4 +156,66 @@ test('a selection is assigned in one batch, reported per annotation, without ove
   await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": saved 1 of 1 annotation')
   await expect(page.getByTestId('assign-report-lines')).toHaveCount(0)
   await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesmanchronicler')
+})
+
+test('a single-valued choice closes its picker once saved, in the column and in the sidebar', async ({ page, request }) => {
+  const created = await request.post(`${base}/attributes`, {
+    headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
+    data: { name: 'Place type', cardinality: 'single', all_tags: true, values: [{ label: 'town' }, { label: 'village' }] }
+  })
+  expect(created.ok()).toBe(true)
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await choose(page, 'concordance-show-attribute', 'Place type')
+
+  await cell(page, 'Brně').getByTestId('kwic-attribute-edit').click()
+  await picker(page).getByText('town', { exact: true }).click()
+  await expect(cell(page, 'Brně').getByTestId('attribute-chips')).toHaveText('town')
+  await expect(picker(page)).toHaveCount(0)
+
+  await row(page, 'Brně').click()
+  const attributes = page.getByTestId('annotation-attributes')
+  await attributes.getByTestId('annotation-attribute-edit').click()
+  await picker(page).getByText('village', { exact: true }).click()
+  await expect(attributes.getByTestId('attribute-chips')).toHaveText('village')
+  await expect(picker(page)).toHaveCount(0)
+  // The keyboard path stays the sidebar: the column cell is not a tab stop.
+  await expect(cell(page, 'Brně').getByTestId('kwic-attribute-edit')).toHaveAttribute('tabindex', '-1')
+})
+
+test('values kept after a retag are greyed and marked, and a batch Clear removes them', async ({ page, request }) => {
+  const role = await createRole(request)
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const novak = fixture.span('novak_manual').id
+  const listed = await request.get(`${base}/annotations`, { headers, params: { annotation_id: novak } })
+  const version = (await listed.json()).rows[0].attributeVersion as number
+  const assigned = await request.post(`${base}/annotations/attributes/assign`, {
+    headers,
+    data: { attribute_id: role.id, annotation_ids: [novak], expected_versions: { [novak]: version }, mode: 'add', value_ids: [role.values[0]!.id] }
+  })
+  expect((await assigned.json()).outcome).toBe('complete')
+  const retag = (tag: string) => request.patch(`/api/tag_spans/${novak}`, {
+    headers, params: { collection_id: chronicles.id }, data: { tagId: fixture.tag(tag).id }
+  })
+  expect((await retag('place')).ok()).toBe(true)
+  try {
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    await choose(page, 'concordance-show-attribute', 'Role')
+    const kept = cell(page, 'Jan Novák')
+    await expect(kept).toContainText('statesman')
+    await expect(kept.getByTestId('attribute-chips-inapplicable')).toBeVisible()
+    await expect(kept.getByTestId('kwic-attribute-edit')).toHaveCount(0)
+
+    await row(page, 'Jan Novák').getByRole('checkbox').click()
+    await page.getByTestId('assign-attribute').click()
+    await choose(page, 'assign-dialog-attribute', 'Role (several values)')
+    await dialog(page).getByRole('button', { name: 'Clear', exact: true }).click()
+    await dialog(page).getByRole('button', { name: 'Clear on 1' }).click()
+    await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": saved 1 of 1 annotation')
+    await expect(kept.getByTestId('attribute-chips-inapplicable')).toHaveCount(0)
+    await expect(kept).toContainText('–')
+  } finally {
+    expect((await retag('person')).ok()).toBe(true)
+  }
 })

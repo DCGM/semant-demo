@@ -32,12 +32,17 @@
           :aria-label="`Change ${attribute.name}`"
           data-testid="annotation-attribute-edit"
         >
-          <q-menu anchor="bottom right" self="top right">
+          <q-menu
+            anchor="bottom right"
+            self="top right"
+            :model-value="openPicker === attribute.id"
+            @update:model-value="(open: boolean) => setPicker(attribute.id, open)"
+          >
             <AttributeValuePicker
               :attribute="attribute"
               :current="held(attribute)"
               :busy="busy"
-              @change="change => emit('assign', attribute, change)"
+              @change="change => emit('assign', attribute, change, ok => picked(attribute, ok))"
             />
           </q-menu>
         </q-btn>
@@ -49,7 +54,7 @@
         :data-testid="`annotation-attribute-${attribute.id}`"
       >
         <span class="annotation-attributes__name">{{ attribute.name }}</span>
-        <AttributeValueChips :attribute="attribute" :ids="held(attribute)" />
+        <AttributeValueChips :attribute="attribute" :ids="held(attribute)" :inapplicable="!attribute.retired" />
         <span class="text-caption text-grey-7">{{ attribute.retired ? 'retired' : 'does not apply to this tag' }}</span>
         <q-btn
           v-if="row.type === SpanType.pos"
@@ -61,7 +66,7 @@
           label="Remove"
           :loading="busy"
           :aria-label="`Remove the values of ${attribute.name}`"
-          @click="emit('assign', attribute, clearChange(held(attribute)))"
+          @click="emit('assign', attribute, clearChange(), () => {})"
         />
       </div>
     </template>
@@ -69,9 +74,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { QBtn, QMenu } from 'quasar'
-import { SpanType, type AnnotationListRow, type Attribute } from 'src/generated/api'
+import { Cardinality, SpanType, type AnnotationListRow, type Attribute } from 'src/generated/api'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import { attributesOfTag } from 'src/features/attributes/attributeForm'
@@ -88,7 +93,18 @@ const props = defineProps<{
   definitionsRoute?: object | null
 }>()
 
-const emit = defineEmits<{ assign: [attribute: Attribute, change: AssignChange] }>()
+/** `done` says whether the assignment was saved. */
+const emit = defineEmits<{ assign: [attribute: Attribute, change: AssignChange, done:(ok: boolean) => void] }>()
+
+// As in the attribute column: a single-valued attribute's picker closes once a choice is saved.
+const openPicker = ref<string | null>(null)
+function setPicker (id: string, open: boolean) {
+  if (open) openPicker.value = id
+  else if (openPicker.value === id) openPicker.value = null
+}
+function picked (attribute: Attribute, ok: boolean) {
+  if (ok && attribute.cardinality === Cardinality.single) setPicker(attribute.id, false)
+}
 
 const held = (attribute: Attribute) => props.row.attributes?.[attribute.id] ?? []
 

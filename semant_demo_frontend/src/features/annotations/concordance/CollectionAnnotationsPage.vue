@@ -80,7 +80,7 @@
       @open="openContext"
       @toggle="toggleRow"
       @select-page="selectPage"
-      @assign="(row, attribute, change) => assignRow(row, attribute, change)"
+      @assign="(row, attribute, change, done) => assignRow(row, attribute, change).then(done)"
     />
 
     <div v-if="store.total > PAGE_SIZE && store.rows.length" class="collection-annotations__summary q-mt-sm">
@@ -143,7 +143,7 @@
               :error="attributesStore.error"
               :busy="assign.running || assign.pending.has(selection.focused.id)"
               :definitions-route="{ name: 'collectionAttributes', params: { collectionId } }"
-              @assign="(attribute, change) => selection.focused && assignRow(selection.focused, attribute, change)"
+              @assign="(attribute, change, done) => selection.focused && assignRow(selection.focused, attribute, change).then(done)"
             />
             <div
               v-if="focusedConflict && !selection.focusedGone"
@@ -768,12 +768,12 @@ function noteAssigned (saved: number) {
 }
 
 /** Assigns values to one annotation (a row's column or the sidebar), at the attribute version
- * it shows; at most one at a time per annotation. */
-async function assignRow (row: AnnotationListRow, attribute: Attribute, change: AssignChange) {
+ * it shows; at most one at a time per annotation. True when it was saved (its picker may close). */
+async function assignRow (row: AnnotationListRow, attribute: Attribute, change: AssignChange): Promise<boolean> {
   const id = collectionId.value
-  if (!id) return
+  if (!id) return false
   const report = await assign.assignOne(id, attribute.id, change, [row.id, row.attributeVersion ?? 0], answered(attribute.id))
-  if (!report) return
+  if (!report) return false
   noteAssigned(report.saved.length)
   if (report.missing.length) selection.remove(report.missing)
   const problem = report.conflicts.length
@@ -784,6 +784,7 @@ async function assignRow (row: AnnotationListRow, attribute: Attribute, change: 
   else if (report.unrecorded.length) $q.notify({ type: 'warning', message: 'Saved, but the change history could not be recorded.' })
   // Its values decide whether it still matches attribute filters.
   if (filtersByAttribute.value || report.missing.length) await followFocused()
+  return report.saved.includes(row.id)
 }
 
 /** Reads the page again after a selection's assignment; missing members leave the selection. */

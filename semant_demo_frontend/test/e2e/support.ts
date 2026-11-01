@@ -369,8 +369,9 @@ export async function deleteAddedTags (request: APIRequestContext, userKey: stri
   }
 }
 
-/** Deletes a collection's attribute definitions (#331), first removing their values from the
- * approved annotations that hold them (a used attribute cannot be deleted). */
+/** Deletes a collection's attribute definitions (#331), first clearing their values from the
+ * approved annotations that hold them (a used attribute cannot be deleted); `clear` also reaches
+ * values kept on a tag the attribute no longer applies to. */
 export async function deleteAddedAttributes (request: APIRequestContext, userKey: string, collectionKey: string): Promise<void> {
   const headers = { Authorization: `Bearer ${await apiToken(request, userKey)}` }
   const base = `/api/user_collections/${fixture.collection(collectionKey).id}`
@@ -390,7 +391,7 @@ export async function deleteAddedAttributes (request: APIRequestContext, userKey
           attribute_id: attribute.id,
           annotation_ids: holding.map((r) => r.id),
           expected_versions: Object.fromEntries(holding.map((r) => [r.id, r.attributeVersion])),
-          mode: 'replace',
+          mode: 'clear',
           value_ids: []
         }
       })

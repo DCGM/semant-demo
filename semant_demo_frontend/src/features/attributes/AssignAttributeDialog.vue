@@ -168,7 +168,10 @@ const attributeOptions = computed(() => props.attributes.map(a => ({
 
 const modeOptions = computed(() => single.value
   ? [{ label: 'Set', value: 'set' }, { label: 'Clear', value: 'clear' }]
-  : [{ label: 'Add', value: 'add' }, { label: 'Remove', value: 'remove' }, { label: 'Replace', value: 'replace' }])
+  : [
+      { label: 'Add', value: 'add' }, { label: 'Remove', value: 'remove' }, { label: 'Replace', value: 'replace' },
+      { label: 'Clear', value: 'clear' }
+    ])
 
 const hasSpecial = computed(() => (attribute.value?.values ?? []).some(v => isSpecial(v) && !v.retired))
 const modeHint = computed(() => ({
@@ -178,7 +181,7 @@ const modeHint = computed(() => ({
   remove: 'Removes the values from the annotations that have them.',
   replace: 'The annotations get exactly these values; their other values of this attribute are removed.',
   set: 'The annotations get this value instead of the one they have.',
-  clear: 'Removes the value of this attribute from the annotations.'
+  clear: 'Removes every value of this attribute the annotations hold, whichever they are.'
 })[mode.value])
 
 watch(attributeId, () => {
@@ -223,7 +226,9 @@ function chooseValues (next: string[]) {
 const change = computed<AssignChange | null>(() => {
   const a = attribute.value
   if (!a) return null
-  if (mode.value === 'clear') return { mode: AssignMode.remove, valueIds: (a.values ?? []).map(v => v.id) }
+  // Names no values: the backend removes whatever each annotation holds, however many values the
+  // attribute defines.
+  if (mode.value === 'clear') return { mode: AssignMode.clear, valueIds: [] }
   if (mode.value === 'set') return singleValue.value ? { mode: AssignMode.replace, valueIds: [singleValue.value] } : null
   return valueIds.value.length ? { mode: mode.value, valueIds: [...valueIds.value] } : null
 })

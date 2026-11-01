@@ -212,7 +212,13 @@ def _item_failure(annotation_id: UUID, step: str, message: str) -> StepFailure:
     return StepFailure(item_id=str(annotation_id), step=step, message=message)
 
 
+# Modes that only take values away: allowed for any annotation type and tag (ADR 0011).
+_REMOVING = (AssignMode.remove, AssignMode.clear)
+
+
 def _result_values(mode: AssignMode, previous: list[UUID], asked: list[UUID]) -> list[UUID]:
+    if mode == AssignMode.clear:
+        return []
     if mode == AssignMode.add:
         return [*previous, *[v for v in asked if v not in previous]]
     if mode == AssignMode.remove:
@@ -243,7 +249,7 @@ def _type_failure(request: AttributeAssignRequest, span: TagSpan, sid: UUID) -> 
     """Only approved annotations take values (removing is always allowed). Checked before "already
     as asked": values kept on a rejected annotation are not accepted ones, so asking for them again
     is no success."""
-    if request.mode == AssignMode.remove or span.type == SpanType.pos:
+    if request.mode in _REMOVING or span.type == SpanType.pos:
         return None
     return _item_failure(sid, "check_annotation_type",
                          "Only approved annotations take attribute values; approve it first.")
@@ -253,7 +259,7 @@ def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: T
                   result: list[UUID], sid: UUID) -> StepFailure | None:
     """Why the assignment is not allowed for this annotation, or None. Removing is always allowed.
     The annotation type is checked earlier (``_type_failure``)."""
-    if request.mode == AssignMode.remove:
+    if request.mode in _REMOVING:
         return None
     if not attribute.all_tags and UUID(span.tagId) not in attribute.tag_ids:
         return _item_failure(sid, "check_applicable", "This attribute does not apply to the annotation's tag.")
@@ -323,7 +329,7 @@ async def _assign_one(store: AttributeStore, cid: UUID, attribute: Attribute, re
 async def assign_attributes(store: AttributeStore, user: Principal | None, collection_id: Id,
                             request: AttributeAssignRequest) -> AttributeAssignResult:
     """
-    Adds, removes or replaces the values of one attribute on up to ``MAX_ASSIGN_BATCH``
+    Adds, removes, replaces or clears the values of one attribute on up to ``MAX_ASSIGN_BATCH``
     approved annotations, each on its own: written best effort and reported per item (nothing is
     rolled back). A refused request (400/404) changed nothing; per item, ``failed`` names why an
     annotation was not changed (``find_annotation``, ``read_annotation`` - reading it failed -,
@@ -344,7 +350,7 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
     known = {v.id: v for v in attribute.values}
     if any(v not in known for v in asked):
         raise NotFoundError("Value not found")
-    if request.mode != AssignMode.remove:
+    if request.mode not in _REMOVING:
         if attribute.retired:
             raise InvalidRequestError("This attribute is retired; values can only be removed.")
         if attribute.cardinality == Cardinality.single and len(asked) > 1:

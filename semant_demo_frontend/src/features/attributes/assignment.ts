@@ -28,13 +28,15 @@ export function heldValues (attribute: Attribute, ids: string[] | undefined): He
 
 export const heldName = (held: HeldValue) => held.value ? valueName(held.value) : 'Unknown value'
 
+/** Whether the attribute applies to the annotation's tag (values kept after a retag may not, #500). */
+export const applies = (attribute: Attribute, row: { tagId?: string | null }) =>
+  !!attribute.allTags || (!!row.tagId && !!attribute.tagIds?.includes(row.tagId))
+
 /** Why an annotation cannot take values of the attribute now, or null when it can. */
 export function cannotAssign (attribute: Attribute, row: { type?: SpanType | null, tagId?: string | null }): string | null {
   if (attribute.retired) return 'This attribute is retired.'
   if (row.type !== SpanType.pos) return 'Only confirmed annotations take attribute values.'
-  if (!attribute.allTags && !(row.tagId && attribute.tagIds?.includes(row.tagId))) {
-    return 'This attribute does not apply to the annotation\'s tag.'
-  }
+  if (!applies(attribute, row)) return 'This attribute does not apply to the annotation\'s tag.'
   return null
 }
 
@@ -60,8 +62,9 @@ export function pickChange (attribute: Attribute, current: string[], value: Attr
     : { mode: AssignMode.add, valueIds: [value.id] }
 }
 
-/** Removing everything the annotation holds of the attribute. */
-export const clearChange = (current: string[]): AssignChange => ({ mode: AssignMode.remove, valueIds: [...current] })
+/** Removing everything the annotation holds of the attribute, without naming the values (`clear`):
+ * also values the attribute retired or no longer defines. */
+export const clearChange = (): AssignChange => ({ mode: AssignMode.clear, valueIds: [] })
 
 /** The value names of `ids`, quoted and joined, in the attribute's order. */
 export function quotedValues (attribute: Attribute, ids: string[]): string {

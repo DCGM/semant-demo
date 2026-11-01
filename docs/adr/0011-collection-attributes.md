@@ -57,7 +57,8 @@ renames categories later without rewriting annotations or losing who decided wha
   attributes of the annotation: two people assigning different attributes of one annotation at
   once conflict. The check runs under the per-span lock (one backend process, as ADR 0010).
 - **Batches are best effort** (ADR 0002): up to 200 annotations, one attribute, mode `add` /
-  `remove` / `replace`, each annotation on its own with a reported step (`find_annotation`,
+  `remove` / `replace` / `clear` (every value of the attribute the annotation holds, without naming
+  them; like `remove` not limited by the annotation's type, tag or retirement), each annotation on its own with a reported step (`find_annotation`,
   `read_annotation` - reading it failed, so it may exist -, `edit_conflict`, `check_annotation_type`, `check_applicable`, `check_value`, `check_cardinality`,
   `update_attributes` - `uncertain` on a timeout); nothing is rolled back. Single-valued attributes
   take one value (`add` of a different one is refused, `replace` is not); Unknown and Not

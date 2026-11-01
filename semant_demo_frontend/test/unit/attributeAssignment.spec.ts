@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { QBtn, QCheckbox, QOptionGroup, QRadio, QSelect, Quasar } from 'quasar'
+import { QBtn, QCheckbox, QMenu, QOptionGroup, QRadio, QSelect, Quasar } from 'quasar'
 
 import { Cardinality, ValueKind, type AnnotationListRow, type Attribute } from 'src/generated/api'
 import {
@@ -93,8 +93,8 @@ describe('what a pick means', () => {
     expect(pickChange(topic(), ['vu'], value(topic(), 'v1'), true)).toEqual({ mode: 'replace', valueIds: ['v1'] })
   })
 
-  it('clears everything held, retired values included', () => {
-    expect(clearChange(['v1', 'v3'])).toEqual({ mode: 'remove', valueIds: ['v1', 'v3'] })
+  it('clears everything held without naming the values, retired and undefined ones included', () => {
+    expect(clearChange()).toEqual({ mode: 'clear', valueIds: [] })
   })
 
   it('says why an annotation cannot take values', () => {
@@ -347,6 +347,47 @@ describe('attribute components', () => {
     expect(cells[1]!.text()).toContain('Only confirmed annotations take attribute values.')
   })
 
+  it('greys and marks values kept on a tag the attribute no longer applies to (#500)', () => {
+    const rows = [row('r1', { attributes: { a1: ['v1'] } }), row('r2', { tagId: 'tag-2', attributes: { a1: ['v2'] } })]
+    const table = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attribute: speaker() })
+    const [valid, kept] = table.findAll('[data-testid="kwic-attribute"]')
+    expect(valid!.find('[data-testid="attribute-chips-inapplicable"]').exists()).toBe(false)
+    expect(kept!.find('[data-testid="attribute-chips-inapplicable"]').exists()).toBe(true)
+    expect(kept!.find('.attribute-chips--inapplicable').exists()).toBe(true)
+    expect(kept!.text()).toContain('journalist')
+    expect(kept!.text()).toContain('(does not apply to this tag)')
+    expect(kept!.find('[data-testid="kwic-attribute-edit"]').exists()).toBe(false)
+  })
+
+  it('closes a single-valued attribute\'s picker once the choice is saved, not before and not on a failure', async () => {
+    const rows = [row('r1', { attributes: { a1: ['v1'] } })]
+    const menu = (w: VueWrapper) => w.findComponent(QMenu)
+    const single = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attribute: speaker() })
+    menu(single).vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(menu(single).props('modelValue')).toBe(true)
+    single.findComponent(AttributeValuePicker).vm.$emit('change', { mode: 'replace', valueIds: ['v2'] })
+    const [, , , failed] = single.emitted('assign')![0] as [unknown, unknown, unknown, (ok: boolean) => void]
+    failed(false)
+    await flushPromises()
+    expect(menu(single).props('modelValue')).toBe(true)
+    single.findComponent(AttributeValuePicker).vm.$emit('change', { mode: 'replace', valueIds: ['v2'] })
+    const [, , , saved] = single.emitted('assign')![1] as [unknown, unknown, unknown, (ok: boolean) => void]
+    saved(true)
+    await flushPromises()
+    expect(menu(single).props('modelValue')).toBe(false)
+
+    // Several values: stays open for further choices.
+    const multi = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attribute: topic() })
+    menu(multi).vm.$emit('update:modelValue', true)
+    await flushPromises()
+    multi.findComponent(AttributeValuePicker).vm.$emit('change', { mode: 'add', valueIds: ['v2'] })
+    const [, , , done] = multi.emitted('assign')![0] as [unknown, unknown, unknown, (ok: boolean) => void]
+    done(true)
+    await flushPromises()
+    expect(menu(multi).props('modelValue')).toBe(true)
+  })
+
   it('picks with radio buttons for one value and checkboxes for several, and waits while saving', async () => {
     const single = mountIt(AttributeValuePicker, { attribute: speaker(), current: ['v1'] })
     // A retired value is offered only while held.
@@ -359,7 +400,7 @@ describe('attribute components', () => {
     multi.findAllComponents(QCheckbox)[0]!.vm.$emit('update:modelValue', false)
     expect(multi.emitted('change')).toEqual([[{ mode: 'remove', valueIds: ['v1'] }]])
     await multi.find('[data-testid="attribute-pick-clear"]').trigger('click')
-    expect(multi.emitted('change')![1]).toEqual([{ mode: 'remove', valueIds: ['v1', 'v3'] }])
+    expect(multi.emitted('change')![1]).toEqual([{ mode: 'clear', valueIds: [] }])
 
     const busy = mountIt(AttributeValuePicker, { attribute: topic(), current: [], busy: true })
     busy.findAllComponents(QCheckbox)[0]!.vm.$emit('update:modelValue', true)
@@ -506,6 +547,21 @@ describe('assign attribute dialog', () => {
     expect(text('assign-summary')).toContain('Remove every value of "Speaker" from 18 annotations.')
     await okButton(wrapper).trigger('click')
     await flushPromises()
-    expect(save).toHaveBeenCalledWith('a1', { mode: 'remove', valueIds: ['v1', 'v2', 'v3', 'vu'] })
+    // Names no values, however many the attribute defines (#530 review).
+    expect(save).toHaveBeenCalledWith('a1', { mode: 'clear', valueIds: [] })
+  })
+
+  it('offers Clear for a multi-valued attribute too', async () => {
+    const save = vi.fn().mockResolvedValue(null)
+    const wrapper = await openDialog(save)
+    const toggle = wrapper.findAllComponents({ name: 'QBtnToggle' })[0]!
+    expect((toggle.props('options') as { value: string }[]).map(o => o.value)).toEqual(['add', 'remove', 'replace', 'clear'])
+    toggle.vm.$emit('update:modelValue', 'clear')
+    await flushPromises()
+    expect(okButton(wrapper).props('label')).toBe('Clear on 18')
+    expect(text('assign-scope-note')).toContain('also from rejected annotations')
+    await okButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith('a2', { mode: 'clear', valueIds: [] })
   })
 })
