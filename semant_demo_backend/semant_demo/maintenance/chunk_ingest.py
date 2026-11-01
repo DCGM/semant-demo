@@ -68,11 +68,15 @@ Documents are planned, written and checkpointed in pages (``--page``, 100 docume
 2000 with ``--bulk``). A larger page needs more memory and repeats more checks after an
 interruption; with ``--bulk`` it keeps the batches full while the short documents finish.
 
-The input is read twice, so that the chunk texts are held for one page only. A first pass
-validates every line (including duplicate chunk ids across all files) and keeps only where
-each document's lines are, a digest of them and each file's SHA-256 for the checkpoint (about
-40 bytes per chunk at its peak). Each page then reads the lines of its documents again; if
-they differ from the first pass, the run stops with ``InputChanged`` and writes nothing more.
+The input is read twice, so that the chunk texts are held for one page only. A single pass
+would have to hold them all: nothing is written before the whole input is validated (a
+duplicate chunk id may be in another file, a document's lines may be spread over several
+files), and the pages go in document-id order, which the checkpoint's cursor relies on, not
+in file order. A first pass validates every line (including duplicate chunk ids across all
+files) and keeps only where each document's lines are, a digest of them and each file's
+SHA-256 for the checkpoint (about 40 bytes per chunk at its peak). Each page then reads the
+lines of its documents again; if they differ from the first pass, the run stops with
+``InputChanged`` and writes nothing more.
 
 The checkpoint (JSON, replaced atomically after each page of documents) holds the
 endpoint, the resolved collections, the mode, the number of input files and the SHA-256 of
@@ -82,7 +86,7 @@ checkpoint, to ``CHECKPOINT.inputs.jsonl``, so that the checkpoint stays small h
 files there are. A finished checkpoint is refused, as is one for other input (naming the
 files that differ from the listing): a new run needs a new file name. Every
 write run records its backup, its page and whether it used ``--bulk`` (with its batch) in the
-checkpoint (``runs``) before writing; a resumed run may use another page or batch. A
+checkpoint (``runs``) before writing; a resumed run may use another page. A
 ``--backup-id`` is checked (a successful ``backup-filesystem`` backup holding the chunks and
 documents collections), an ``--offline-backup`` note is recorded as given and not checked
 (an offline copy of the data directory, made with Weaviate stopped). A check takes neither.
