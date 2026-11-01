@@ -143,6 +143,56 @@ describe('DocumentTextPane, read-only', () => {
   })
 })
 
+describe('DocumentTextPane, owner content and lookups', () => {
+  it('a click on a slot control after a selection reports neither a selection nor a click', async () => {
+    const wrapper = mountPane({}, {
+      gap: () => h('button', { class: 'load' }, 'Load all missing'),
+      'before-chunk': ({ chunk: c }: { chunk: TextChunk }) => h('button', { class: 'marker' }, `[${c.order}]`)
+    })
+    const range = document.createRange()
+    range.setStart(textNodeOf('a'), 0)
+    range.setEnd(textNodeOf('a'), 5)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    await wrapper.find('.load').trigger('mouseup')
+    await wrapper.find('.marker').trigger('mouseup')
+    selection.collapse(textNodeOf('d'), 2)
+    await wrapper.find('.load').trigger('mouseup')
+    expect(wrapper.emitted('select')).toBeUndefined()
+    expect(wrapper.emitted('textClick')).toBeUndefined()
+
+    // The text itself still reports the caret.
+    await wrapper.find('[data-chunk-id="d"] .text-segment').trigger('mouseup')
+    expect(wrapper.emitted('textClick')![0][0]).toEqual({ chunkId: 'd', charOffset: 2 })
+  })
+
+  it('finds a chunk by its id without going through every chunk', () => {
+    const odd = [chunk('say "hi"', 0, 'quoted'), chunk('back\\slash', 1, 'escaped')]
+    const queried: string[] = []
+    const original = Element.prototype.querySelectorAll
+    const originalScroll = Element.prototype.scrollIntoView
+    const scrolled: Element[] = []
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
+    Element.prototype.querySelectorAll = function (this: Element, selector: string) {
+      queried.push(selector)
+      return original.call(this, selector)
+    } as typeof original
+    try {
+      const pane = mountPane({ chunks: odd }).vm as unknown as DocumentTextPaneApi
+      queried.length = 0
+      pane.scrollToChunk('say "hi"')
+      pane.scrollToRange({ chunkId: 'back\\slash', start: 1, end: 3 })
+      expect(scrolled.map((el) => el.textContent)).toEqual(['quoted', 'escaped'])
+      expect(queried.filter((q) => q.includes('data-chunk-id'))).toEqual([])
+    } finally {
+      Element.prototype.querySelectorAll = original
+      Element.prototype.scrollIntoView = originalScroll
+    }
+  })
+})
+
 describe('DocumentTextPane with annotations', () => {
   const span: ProjectedSpan = { id: 's1', tagId: 't', start: 0, end: 5, type: 'pos' } as ProjectedSpan
   const annotation = (overrides: Partial<TextPaneAnnotation> = {}): TextPaneAnnotation => ({
