@@ -7,6 +7,7 @@ stored tail, replays without writing and refuses anything that would change, ski
 interleave stored chunks; a failed write blocks only its document and a rerun finishes
 it. Existing objects (properties, references, vectors, update times) never change.
 """
+import hashlib
 import json
 from types import SimpleNamespace
 from uuid import UUID
@@ -421,6 +422,16 @@ async def test_a_bulk_batch_refills_from_the_next_documents_of_the_page(ingest_s
                       [cid(NEW, 2), cid(OTHER, 1)], [cid(NEW, 3), cid(OTHER, 2)]]
 
 
+async def test_the_input_listing_is_kept_beside_the_checkpoint(ingest_store, tmp_path):
+    inputs = (jsonl(tmp_path, "a.jsonl", [line(NEW, i) for i in range(2)])
+              + jsonl(tmp_path, "b.jsonl", [line(OTHER, i) for i in range(2)]))
+    await run(ingest_store, tmp_path, inputs, "check.json", write=False)
+    listing = (tmp_path / "check.json.inputs.jsonl").read_bytes()
+    assert [json.loads(raw) for raw in listing.splitlines()] == chunk_ingest.index_input(inputs).fingerprints
+    assert json.loads((tmp_path / "check.json").read_text())["inputs"] == {
+        "files": 2, "sha256": hashlib.sha256(listing).hexdigest()}
+
+
 async def test_an_input_file_changed_during_the_run_stops_it_before_its_documents(ingest_store, tmp_path):
     s = ingest_store
     first = jsonl(tmp_path, "a.jsonl", [line(NEW, i) for i in range(2)])
@@ -433,5 +444,5 @@ async def test_an_input_file_changed_during_the_run_stops_it_before_its_document
     assert [await stored_chunk(s.client, NEW, i) is not None for i in range(2)] == [True, True]
     assert await stored_chunk(s.client, OTHER, 0) is None
     assert json.loads((tmp_path / "run.json").read_text())["after"] == str(NEW)
-    with pytest.raises(LookupError, match="different inputs"):
+    with pytest.raises(LookupError, match=r"different inputs \(1 files added, removed or changed: \S*b\.jsonl\)"):
         await run(s, tmp_path, first + second)

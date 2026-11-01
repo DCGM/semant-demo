@@ -75,9 +75,12 @@ each document's lines are, a digest of them and each file's SHA-256 for the chec
 they differ from the first pass, the run stops with ``InputChanged`` and writes nothing more.
 
 The checkpoint (JSON, replaced atomically after each page of documents) holds the
-endpoint, the resolved collections, the mode, the input files (size and SHA-256), the
-cursor, the counts and the blocked documents, which a rerun retries first. A finished
-checkpoint is refused, as is one for other input: a new run needs a new file name. Every
+endpoint, the resolved collections, the mode, the number of input files and the SHA-256 of
+their listing, the cursor, the counts and the blocked documents, which a rerun retries first.
+The listing (each file's resolved path, size and SHA-256) is written once, before the
+checkpoint, to ``CHECKPOINT.inputs.jsonl``, so that the checkpoint stays small however many
+files there are. A finished checkpoint is refused, as is one for other input (naming the
+files that differ from the listing): a new run needs a new file name. Every
 write run records its backup, its page and whether it used ``--bulk`` (with its batch) in the
 checkpoint (``runs``) before writing; a resumed run may use another page or batch. A
 ``--backup-id`` is checked (a successful ``backup-filesystem`` backup holding the chunks and
@@ -639,17 +642,22 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
             raise LookupError(f"--bulk needs an empty {target.chunks} ({stored} chunks stored): a batch insert would "
                               "silently replace a chunk with the same id. Run without --bulk; nothing was written")
     index = index_input(inputs)
+    listing = "".join(json.dumps(f) + "\n" for f in index.fingerprints).encode("utf-8")
     identity = {"endpoint": endpoint, "chunks": target.chunks, "documents": target.documents,
-                "mode": "write" if write_ else "check", "inputs": index.fingerprints}
+                "mode": "write" if write_ else "check",
+                "inputs": {"files": len(index.fingerprints), "sha256": hashlib.sha256(listing).hexdigest()}}
     if checkpoint.exists():
         state = json.loads(checkpoint.read_text(encoding="utf-8"))
         differing = sorted(key for key, value in identity.items() if state.get(key) != value)
         if differing:
-            raise LookupError(f"The checkpoint {checkpoint} has a different {', '.join(differing)}; use a new checkpoint")
+            files = _differing_inputs(inputs_path(checkpoint), index.fingerprints) if "inputs" in differing else ""
+            raise LookupError(f"The checkpoint {checkpoint} has a different {', '.join(differing)}{files}; "
+                              "use a new checkpoint")
         if state["done"] and not state["blocked"]:
             raise LookupError(f"The checkpoint {checkpoint} belongs to a finished run; give a new checkpoint file name")
         progress(f"Resuming {checkpoint}: after {state['after']}, {len(state['blocked'])} blocked to retry")
     else:
+        _write_bytes(inputs_path(checkpoint), listing)  # before the checkpoint that refers to it
         state = {**identity, "started": _now(), "after": None, "done": False, "blocked": [], "counts": _counts(),
                  "lines": index.lines, "ignored_fields": index.ignored, "invalid_lines": index.unattributed}
         _write_json(checkpoint, state)
@@ -741,6 +749,31 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
     state["finished"] = _now()
     save()
     return summary(state, checkpoint)
+
+
+def inputs_path(checkpoint: Path) -> Path:
+    return checkpoint.with_name(checkpoint.name + ".inputs.jsonl")
+
+
+def _write_bytes(path: Path, data: bytes) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_bytes(data)
+    temporary.replace(path)
+
+
+def _differing_inputs(listing: Path, fingerprints: list[dict[str, Any]]) -> str:
+    """The input files added, removed or changed since the checkpoint's listing, for the refusal;
+    empty when the listing cannot be read."""
+    try:
+        before = {f["path"]: f for f in map(json.loads, listing.read_text(encoding="utf-8").splitlines())}
+    except (OSError, ValueError, TypeError, KeyError):
+        return ""
+    now = {f["path"]: f for f in fingerprints}
+    changed = sorted(path for path in before.keys() | now.keys() if before.get(path) != now.get(path))
+    if not changed:
+        return ""
+    more = f" and {len(changed) - 5} more" if len(changed) > 5 else ""
+    return f" ({len(changed)} files added, removed or changed: {', '.join(changed[:5])}{more})"
 
 
 def summary(state: dict[str, Any], checkpoint: Path) -> dict[str, Any]:
