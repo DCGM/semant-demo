@@ -223,14 +223,16 @@ const baseColumns: QTableColumn<Collection>[] = [
     label: 'Created',
     field: (row) => row.createdAt ? row.createdAt.toLocaleDateString() : '-',
     align: 'left',
-    sortable: true
+    sortable: true,
+    sort: (_a, _b, rowA, rowB) => rowA.createdAt.getTime() - rowB.createdAt.getTime()
   },
   {
     name: 'updatedAt',
     label: 'Updated',
     field: (row) => row.updatedAt ? row.updatedAt.toLocaleDateString() : '-',
     align: 'left',
-    sortable: true
+    sortable: true,
+    sort: (_a, _b, rowA, rowB) => rowA.updatedAt.getTime() - rowB.updatedAt.getTime()
   }
 ]
 
