@@ -1,5 +1,7 @@
 import type { CollectionChunk } from 'src/generated/api'
+import { knownChunksInOrder, reuseIfSameReferences } from 'src/features/annotations/spanOffsets'
 
+export { knownChunksInOrder }
 // Offset helpers of the document reader. A span or selection is anchored on its first
 // chunk; its `end` is measured across the concatenated text of the consecutive known
 // chunks (displayed and hidden ones), as in src/features/annotations/spanOffsets.ts.
@@ -74,13 +76,6 @@ export function shortestMarker<T extends { start: number, end: number, isAuto: b
     if (diff < 0 || (diff === 0 && (Number(m.isAuto) - Number(best.isAuto) || m.start - best.start) < 0)) best = m
   }
   return best
-}
-
-/** Displayed and hidden chunks without duplicates, in document order. */
-export function knownChunksInOrder (displayed: CollectionChunk[], hidden: CollectionChunk[]): CollectionChunk[] {
-  return [...displayed, ...hidden]
-    .filter((c, i, arr) => arr.findIndex((x) => x.id === c.id) === i)
-    .sort((a, b) => a.order - b.order)
 }
 
 /**
@@ -191,4 +186,24 @@ export function resolveSelectionEndpoint (node: Node, offset: number): { chunkId
   const segStart = parseInt(segmentEl.dataset.start || '0', 10)
   const charOffset = node.nodeType === Node.TEXT_NODE ? segStart + offset : segStart
   return { chunkId: chunkEl.dataset.chunkId!, charOffset }
+}
+
+/**
+ * Filter projected spans for the reader and preserve array references
+ * for chunks whose visible spans have not changed.
+ */
+export function memoizeVisibleSpansByChunkId<T> (
+  chunks: Pick<CollectionChunk, 'id'>[],
+  getSpans: (chunkId: string) => T[],
+  isVisible: (span: T) => boolean,
+  previous: Record<string, T[]>
+): Record<string, T[]> {
+  const next: Record<string, T[]> = {}
+
+  for (const chunk of chunks) {
+    const filtered = getSpans(chunk.id).filter(isVisible)
+    next[chunk.id] = reuseIfSameReferences(previous[chunk.id], filtered)
+  }
+
+  return next
 }

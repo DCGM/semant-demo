@@ -9,6 +9,7 @@ Name | Type
 `name` | string
 `description` | string
 `cardinality` | [Cardinality](Cardinality.md)
+`allTags` | boolean
 `tagIds` | Array&lt;string&gt;
 `values` | [Array&lt;PostAttributeValue&gt;](PostAttributeValue.md)
 
@@ -22,6 +23,7 @@ const example = {
   "name": null,
   "description": null,
   "cardinality": null,
+  "allTags": null,
   "tagIds": null,
   "values": null,
 } satisfies PostAttribute

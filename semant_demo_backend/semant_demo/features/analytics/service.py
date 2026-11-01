@@ -24,16 +24,13 @@ import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 
-from semant_demo.adapters.weaviate.analytics import (
-    AnyOf, Condition, ContainsWords, CorpusAnalyticsRepository, NumberRange, Unavailable, ValueCounts)
+from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository, Unavailable, ValueCounts
 from semant_demo.features.analytics.schemas import (
     CategoryCount, CategoryDistribution, CorpusDistributions, CorpusOverview, DocumentFilters, LibraryYearDistribution,
     LibraryYears, PublicationYearCounts, PublicationYearDistribution, UnavailableReason, YearBin, YearCount)
-
-YEAR_PROPERTY = "yearIssued"
-LIBRARY_PROPERTY = "library"
-LANGUAGE_PROPERTY = "language"
-TITLE_PROPERTY = "title"
+from semant_demo.features.documents.criteria import (
+    LANGUAGE_PROPERTY, LIBRARY_PROPERTY, YEAR_PROPERTY, ChunkFilters, ChunkVocabulary, Condition,
+    document_level_conditions)
 
 GROUP_LIMIT = 10_000
 """Most distinct values read per property. Valid years are whole numbers up to the current
@@ -66,11 +63,13 @@ class OverviewCache:
 
 
 async def cached_corpus_distributions(analytics: CorpusAnalyticsRepository, cache: OverviewCache,
-                                      filters: DocumentFilters) -> CorpusDistributions:
-    """Counts of the documents matching ``filters``; the unfiltered ones from the cache while
-    they are younger than its maximum age."""
-    if filters != DocumentFilters():
-        return await corpus_distributions(analytics, filters)
+                                      filters: DocumentFilters, chunk_filters: ChunkFilters | None = None,
+                                      vocabulary: ChunkVocabulary | None = None) -> CorpusDistributions:
+    """Counts of the documents matching ``filters`` and ``chunk_filters`` (per dimension, on the
+    documents' chunk-value summaries, checked against ``vocabulary``); the unfiltered ones from
+    the cache while they are younger than its maximum age."""
+    if filters != DocumentFilters() or (chunk_filters is not None and not chunk_filters.is_empty()):
+        return await corpus_distributions(analytics, filters, chunk_filters, vocabulary)
     async with cache.lock:  # one computation at a time; waiting requests then get its result
         cached = cache.distributions
         if cached is not None and datetime.now(UTC) - cached.computed_at < cache.max_age:
@@ -89,24 +88,38 @@ async def corpus_overview(analytics: CorpusAnalyticsRepository) -> CorpusOvervie
     return _overview(await corpus_distributions(analytics, DocumentFilters()))
 
 
-async def corpus_distributions(analytics: CorpusAnalyticsRepository, filters: DocumentFilters) -> CorpusDistributions:
-    """New counts of the documents matching ``filters``, computed from the store now. Raises
-    ``UnavailableFilter`` (adapter) for a filter on a property the store cannot filter by."""
+async def corpus_distributions(analytics: CorpusAnalyticsRepository, filters: DocumentFilters,
+                               chunk_filters: ChunkFilters | None = None,
+                               vocabulary: ChunkVocabulary | None = None) -> CorpusDistributions:
+    """New counts of the documents matching ``filters`` and ``chunk_filters``, computed from the
+    store now. Raises ``InvalidChunkFilterError`` for an unconfigured chunk filter and
+    ``UnavailableFilter`` (adapter) for a filter on a property the store cannot filter by
+    (e.g. chunk filters on a store without the chunk-value summaries)."""
+    chunks, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
+    return await _distributions(analytics, filters, chunks, conditions)
+
+
+async def _distributions(analytics: CorpusAnalyticsRepository, filters: DocumentFilters, chunk_filters: ChunkFilters,
+                         conditions: list[Condition]) -> CorpusDistributions:
     computed_at = datetime.now(UTC)
     counts = await analytics.count_documents(
         {YEAR_PROPERTY: "number", LIBRARY_PROPERTY: "text", LANGUAGE_PROPERTY: "text"}, group_limit=GROUP_LIMIT,
-        conditions=_conditions(filters))
+        conditions=conditions)
     total = counts.total
     return CorpusDistributions(
-        scope="searchable_corpus", unit="documents", filters=filters, total_documents=total,
+        scope="searchable_corpus", unit="documents", filters=filters, chunk_filters=chunk_filters,
+        total_documents=total,
         computed_at=computed_at, data_source="live_aggregation",
         publication_year=_years(counts.properties[YEAR_PROPERTY], total, max_year=computed_at.year),
         libraries=_categories(counts.properties[LIBRARY_PROPERTY], total, LIBRARY_PROPERTY),
         languages=_categories(counts.properties[LANGUAGE_PROPERTY], total, LANGUAGE_PROPERTY))
 
 
-async def library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters) -> LibraryYearDistribution:
-    """Documents per source library and publication year (#361, optional heatmap).
+async def library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters,
+                        chunk_filters: ChunkFilters | None = None,
+                        vocabulary: ChunkVocabulary | None = None) -> LibraryYearDistribution:
+    """Documents per source library and publication year (#361, optional heatmap), restricted as
+    ``corpus_distributions`` is.
 
     Weaviate groups by one property only, so the years are counted once per library (a filter
     on that library) and the remaining documents are the difference to the distributions, which
@@ -118,15 +131,17 @@ async def library_years(analytics: CorpusAnalyticsRepository, filters: DocumentF
     The distributions are computed now, never taken from the ``OverviewCache``: older totals
     and live per-library counts would not add up. When the corpus changes between the
     readings, everything is counted once more before ``IncompleteCounts`` is raised."""
+    chunks, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
     try:
-        return await _library_years(analytics, filters)
+        return await _library_years(analytics, filters, chunks, conditions)
     except IncompleteCounts:
-        return await _library_years(analytics, filters)
+        return await _library_years(analytics, filters, chunks, conditions)
 
 
-async def _library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters) -> LibraryYearDistribution:
-    distributions = await corpus_distributions(analytics, filters)
-    base = dict(scope="searchable_corpus", unit="documents", filters=filters,
+async def _library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters, chunk_filters: ChunkFilters,
+                         conditions: list[Condition]) -> LibraryYearDistribution:
+    distributions = await _distributions(analytics, filters, chunk_filters, conditions)
+    base = dict(scope="searchable_corpus", unit="documents", filters=filters, chunk_filters=chunk_filters,
                 total_documents=distributions.total_documents, computed_at=datetime.now(UTC))
     for prop, counted in (("library", distributions.libraries), ("publication_year", distributions.publication_year)):
         if not counted.available:
@@ -139,7 +154,7 @@ async def _library_years(analytics: CorpusAnalyticsRepository, filters: Document
     every = sorted(merged, key=lambda library: (-merged[library], library))
     listed = every[:MAX_HEATMAP_LIBRARIES]
     counts = await analytics.count_documents_per_value(
-        LIBRARY_PROPERTY, listed, {YEAR_PROPERTY: "number"}, group_limit=GROUP_LIMIT, conditions=_conditions(filters))
+        LIBRARY_PROPERTY, listed, {YEAR_PROPERTY: "number"}, group_limit=GROUP_LIMIT, conditions=conditions)
 
     rows: list[LibraryYears] = []
     rest = Counter({y.year: y.count for y in distributions.publication_year.years or []})
@@ -161,19 +176,6 @@ async def _library_years(analytics: CorpusAnalyticsRepository, filters: Document
                                  total_documents=rest_total, unknown_year_count=rest_unknown,
                                  years=[YearCount(year=y, count=n) for y, n in sorted(rest.items()) if n]))
     return LibraryYearDistribution(**base, available=True, rows=rows)
-
-
-def _conditions(filters: DocumentFilters) -> list[Condition]:
-    conditions: list[Condition] = []
-    if filters.year_min is not None or filters.year_max is not None:
-        conditions.append(NumberRange(YEAR_PROPERTY, filters.year_min, filters.year_max))
-    if filters.title_contains:
-        conditions.append(ContainsWords(TITLE_PROPERTY, filters.title_alternatives()))
-    if filters.libraries:
-        conditions.append(AnyOf(LIBRARY_PROPERTY, tuple(filters.libraries)))
-    if filters.languages:
-        conditions.append(AnyOf(LANGUAGE_PROPERTY, tuple(filters.languages)))
-    return conditions
 
 
 def _overview(distributions: CorpusDistributions) -> CorpusOverview:

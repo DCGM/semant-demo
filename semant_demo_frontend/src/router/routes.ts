@@ -62,7 +62,14 @@ const routes: RouteRecordRaw[] = [
           {
             name: 'collectionTags',
             path: 'tags',
-            component: () => import('src/features/user_collections/CollectionTagsPage.vue')
+            component: () => import('src/features/user_collections/CollectionTagsAttributesPage.vue')
+          },
+          {
+            // Attribute definitions (#331): what approved annotations are classified by; a
+            // part of the Tags & attributes tab.
+            name: 'collectionAttributes',
+            path: 'attributes',
+            component: () => import('src/features/user_collections/CollectionTagsAttributesPage.vue')
           },
           {
             name: 'collectionMembers',

@@ -95,7 +95,7 @@ describe('ResultClassifications', () => {
 
     expect(badgeTexts(wrapper)).toHaveLength(6)
     expect(wrapper.find('button').exists()).toBe(false)
-    expect(wrapper.find('.classification-line').classes()).toContain('collapsed')
+    expect(wrapper.find('.wrapping-badges__line').classes()).toContain('collapsed')
   })
 
   it('offers the badges below the first line and expands and collapses them', async () => {
@@ -103,7 +103,7 @@ describe('ResultClassifications', () => {
     const wrapper = mountClassifications({ metadata })
     await flushPromises()
     const toggle = wrapper.find('button')
-    const line = wrapper.find('.classification-line')
+    const line = wrapper.find('.wrapping-badges__line')
 
     expect(toggle.text()).toBe('+2 more')
     await toggle.trigger('click')
@@ -120,8 +120,8 @@ describe('ResultClassifications', () => {
 
     await first.find('button').trigger('click')
 
-    expect([first.find('.classification-line').classes('collapsed'),
-      second.find('.classification-line').classes('collapsed')]).toEqual([false, true])
+    expect([first.find('.wrapping-badges__line').classes('collapsed'),
+      second.find('.wrapping-badges__line').classes('collapsed')]).toEqual([false, true])
   })
 
   it('renders nothing without classifications', () => {

@@ -76,7 +76,9 @@ semant_demo_backend/semant_demo/
     documents/            routes, service, schemas (Document, DocumentChunk, DocumentViewChunk, ...):
                           public corpus reads (/api/document(s)/...) and the collection's
                           document view (GET /api/user_collections/{collection_id}/documents/{document_id});
-                          positions (the chunk position calculator and word rule, #463)
+                          positions (the chunk position calculator and word rule, #463);
+                          criteria (the shared search criteria: SearchCriteria, DocumentFilters,
+                          ChunkFilters, their validation and predicates, #526)
     annotations/          tags and spans (routes, service, offsets, schemas incl. internal AnnotationChunk),
                           derived annotation data (derivation, source, enrichment, backfill; #328, #463),
                           AI suggestions (suggestions, suggestion_routes), span chat (span_chat, span_chat_routes)
@@ -94,7 +96,8 @@ semant_demo_backend/semant_demo/
                           (status, admission, settlement), routes (GET /api/quota), schemas
   adapters/
     weaviate/             one repository per concern: user_collections, documents, tags, spans,
-                          chunk_tags, search, analytics (document aggregates); client, paging, writes (best-effort cascades),
+                          chunk_tags, search, analytics (document aggregates); criteria (Weaviate filters
+                          of the search criteria predicates); client, paging, writes (best-effort cascades),
                           names (CollectionNames: configured Weaviate collection names)
     sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback,
                           quota (QuotaLedger: daily allowance ledger), attributes (AttributeRepository: attribute
@@ -109,7 +112,8 @@ semant_demo_backend/semant_demo/
   users/                  FastAPI Users: model, manager, auth routers, schemas; routes (user search)
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks),
-                          chunk_year, db_benchmark (read-only Weaviate inventory and query benchmark, #374)
+                          chunk_year, chunk_summary_schema and chunk_summaries (documents' chunk-value
+                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374)
 ```
 
 ```mermaid
@@ -279,7 +283,51 @@ Optional HyDE (Hypothetical Document Embedding): when `is_hyde=true`, the query 
 
 **Search vectors (#217).** The chunk collection may hold several Weaviate named vectors, created and populated offline (`data_tools/embedder`, #192). `SEARCH_VECTORS_CONFIG` (default `configs/search_vectors_qwen.yaml`) lists those the application may use — an application `id`, a display `name`/`description`, the Weaviate `target_vector` and the query embedding: `embedding_service` (the project's embedding service) or `openai` (an OpenAI-compatible `/embeddings` endpoint, e.g. vLLM, with `model`, optional query/document prefixes and `dimensions`) — and names the `default` (`qwen3-embedding-0.6b`, the deployed Qwen vector; `search_vectors_gemma.yaml` configures the original `default` vector instead). It is validated at startup (an invalid file stops the app); vectors are never discovered from Weaviate. `GET /api/search/vectors` lists the ids, names and descriptions with the default (`default_vector`), no provider details. `SearchRequest.vector` selects one for vector and hybrid search; `null` uses the default, an unknown id answers 400 before any embedding or query (also for text search, which otherwise ignores the selection). `features/search/vectors.py` resolves the selection and the service embeds the query (or the HyDE document) with that vector's embedder (built per vector by `bootstrap.create_embedder`, `adapters/embeddings/`); the Weaviate adapter receives the resolved `ChunkQuery.target_vector` and passes it to every `near_vector`/`hybrid` call, so a collection with several named vectors works; it reads no configuration. `SearchResponse.vector` is the vector used (`null` for text search). The Search page offers the configured vectors in its filter panel when there is more than one and sends no selection for the default.
 
-Filters: configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, vector selection, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+Filters: the shared search criteria filters `document_filters` and `chunk_filters` (below), or, for existing clients, configured `filters` (docs/SEARCH_FILTERS.md) or the legacy `min_year`, `max_year`, `language` fields (`min_date`/`max_date` are accepted but not applied; years are matched on the chunks' copy `Chunks.yearIssued`, #153), `user_collection_id`, and tag UUIDs matched as positive and/or automatic chunk tags. A collection needs read access; every tag must belong to a collection the user can read (to `user_collection_id`, if given), otherwise 404 "Tag not found" (401 when anonymous). Without collection and tags, search covers the public corpus, also anonymously. The search feature (`features/search/service.py`) does access, normalization, vector selection, embedding and optional summaries; `adapters/weaviate/search.py` builds and runs the Weaviate query. RAG reuses `service.retrieve` without summaries.
+
+#### Search criteria (`features/documents/criteria.py`, `adapters/weaviate/criteria.py`)
+
+One definition of what Search, document browsing and Analytics filter by (#526; the planned
+Explore contract, [EXPLORATION.md](EXPLORATION.md)). `SearchCriteria` is an optional
+`text_query` with `DocumentFilters` and `ChunkFilters`; retrieval settings (method, limit,
+vector) stay in each endpoint's request, and collections, tags and annotations are not criteria.
+
+- `DocumentFilters` (`year_min`/`year_max`, `title_contains`, `libraries`, `languages`):
+  document metadata, with the rules listed under *Corpus overview* below. `languages` is
+  `Documents.language`.
+- `ChunkFilters` (`languages`, `classifications`: classification -> values): the chunk's own
+  `Chunks.language` and the configured classifications (`TASK_CLASSES`). They are validated
+  against the configured nominal search filters (`search/filters.chunk_vocabulary`, 400 for
+  an unknown classification or value; values in any case get the configured spelling). No
+  year, no named entities, no "missing" value.
+- Different filters AND, values of one filter OR. `document_conditions`/`chunk_conditions`
+  turn them into neutral predicates; `adapters/weaviate/criteria.py` renders them for the
+  queried collection, checked against the declared schema: a property the store lacks (or
+  holds as another type) is `UnavailableFilter`, 422, never 0 matches.
+- **Passages** (`POST /api/search` with `document_filters`/`chunk_filters`): the predicates are
+  part of the retrieval filter. Every chunk filter holds on the returned chunk (same-chunk);
+  document predicates go through the `document` reference, except the year, which uses the
+  chunks' copy `Chunks.yearIssued` (#153). A request with both these and the older filter
+  fields is 400. The response echoes the normalized filters.
+- **Documents** (`GET /api/documents/browse` with `year_min`, `year_max`, `title_contains`,
+  `libraries`, `languages`; Analytics `filters`): the same rendering on `Documents`, so browse
+  totals equal the Analytics counts for the same filters. Chunk filters (the Analytics
+  requests' `chunk_filters`; browse's `chunk_languages` and `chunk_classifications`, repeated
+  `<classification>:<value>` such as `complexity:easy`, `ChunkFilters.from_query`) apply per
+  dimension: for each, some chunk of the document has one of the values (#529). Both go through
+  `document_level_conditions`, which validates them against the configured vocabulary
+  (`get_chunk_vocabulary`, 400 for an unknown value) and turns each into a `CategoryIn` on the
+  document's summary `Documents.chunk_<dimension>` (`field`-tokenized, matched whole), in the
+  same filter as the document predicates. The summaries are recomputed only by
+  `maintenance/chunk_summaries.py` and may be stale between runs; a document never recomputed
+  matches no chunk filter, and a store without the properties answers 422 (`UnavailableFilter`).
+- **Chunk value matching (limitation accepted for now).** The stored classifications are
+  `text[]` with `word` tokenization, where `easy` also matches `very_easy` (and `national`
+  `multi_national_or_continental`). A value is therefore matched without the configured values
+  that contain all its words, read from the declared tokenization; with `field` tokenization
+  values match whole. This is not fully exact: a chunk holding both values
+  (`["easy", "very_easy"]`) is not found by the shorter one. The correction, `field`-tokenized
+  chunk properties, needs a separate chunk-schema migration (#533).
 
 #### Corpus overview (`features/analytics/`, `adapters/weaviate/analytics.py`)
 
@@ -313,7 +361,8 @@ libraries; median of 5 warm runs): unfiltered 1.25 s (the distributions alone 1.
 0.15–0.85 s, 5 concurrent unfiltered requests 3.7 s. With more libraries the per-library counts
 take longer, in rounds of 4; the reproducible benchmark is #494.
 
-- **Filters.** All given filters must match (AND); several libraries or languages match any
+- **Filters.** The shared `DocumentFilters` of the search criteria (see *Search criteria*
+  below). All given filters must match (AND); several libraries or languages match any
   of them (OR). One Weaviate filter is built once and applied to the total and to every
   grouped aggregate, so all counts describe the same documents.
   - `year_min`/`year_max`: whole years, inclusive, `1 ≤ min ≤ max ≤` the current year. A
@@ -338,6 +387,9 @@ take longer, in rounds of 4; the reproducible benchmark is #494.
   - Invalid filters are rejected with 422 before the store is queried. So is a filter on a
     property the store does not declare or cannot filter (e.g. `library` in an older local
     store without it): it is never answered with 0.
+  - `chunk_filters` (chunk language, classifications) apply per dimension through the
+    documents' chunk-value summaries, exactly as in document browsing (#529); the response
+    echoes them normalized. Chunk-filtered counts are always computed live, never cached.
 
 - **Population.** Every object of `Documents`, as Search covers the whole public corpus;
   `Documents.public` is not used (#279). A future public-read policy must restrict the
@@ -410,6 +462,8 @@ flowchart TD
 **xmartiAgentRag** — Agentic workflow with tool orchestration (query expansion, decomposition, retrieval quality assessment, evidence synthesis).
 
 **TestRag** — Returns a fixed answer without retrieval or model calls (route tests).
+
+**Sources and citations (#370).** An answer cites `sources[N-1]` of its own `RagResponse` by `[doc N]`; the chat page relabels them as conversation-wide `[S1]`... by chunk id. Each pipeline numbers the passages it shows the model in the order of the sources it returns. The agent numbers the chunks of all its searches once per answer (a chunk found again keeps its number) and returns all of them; its final synthesis keeps those numbers and, when the last search found nothing, uses the chunks of the earlier searches. Citations without a source are logged (`features/rag/citations.py`, counts only) and left as written, never moved to another source. A web search result is a source of its own (`origin: "web"`, ids made up for that answer), with no corpus document to open; the chat page links its HTTP(S) URL as **Open web page**.
 
 The default `RAG_CONFIGS_PATH` is `configs/rag/demo_configs/` (the configurations offered in the deployed demo). `configs/rag/configs/` holds further loadable variants of the same classes for development and `run_demo`; a test loads both sets, so every shipped configuration names an existing class and a permitted tier.
 
@@ -569,7 +623,7 @@ The last approve, reject, retag or boundary edit of at most 200 annotations can 
 
 Researchers define categorical attributes (`speaker_type`, `topic`) per collection and assign values to approved annotations (`features/attributes/`). **Definitions** (attribute: name, description, `single`/`multi`, applicable tags, retired; value: label, description, examples, kind `value`/`unknown`/`not_applicable`, retired) are SQL rows with stable UUIDs (`adapters/sql/attributes.py`; owner and shared users edit them, like tags); renaming, describing or retiring never touches an annotation. **Accepted assignments** are the array `attributeValues` on the annotation, elements `<attribute id>:<value id>` (`features/annotations/attribute_codec.py`), with an `attributeVersion` of its own. The concordance reads (`GET .../annotations?attribute=<attribute id>:<value id>&unassigned=<attribute id>`, `AnnotationIdsRequest.attribute_values`/`attribute_unassigned`) filter on the array exactly: any of an attribute's values, all attributes, and "no value of A" as the negation of the prefix `A:*`; rows and the resolved selection carry `attributes` and the versions an assignment expects (`attributeVersion`, `attribute_versions`).
 
-`POST /api/user_collections/{id}/annotations/attributes/assign` (`service.assign_attributes`, annotation-edit access) adds, removes or replaces the values of one attribute on at most 200 annotations, each on its own and reported per item (ADR 0002): `source: ai_assisted` is refused until attribute proposals exist (#338), the annotation must be approved (`pos`), the tag one the attribute applies to, retired values are not assigned again, a single-valued attribute takes one value, Unknown/Not applicable stand alone, and an annotation whose `attributeVersion` differs from the expected one is reported `edit_conflict` and not changed (an annotation already as asked counts as done, so retrying a lost answer is safe). Definition routes under `/api/user_collections/{id}/attributes` refuse to delete a used attribute or value with 409 and the number of annotations affected (retire instead), and refuse narrowing an attribute's tags the same way while annotations with a tag outside the new set hold values. Rows show `attributes` only for approved annotations and `?attribute=` matches only those (values stay stored on a rejected annotation; on a retagged one they stay visible, #500); spans (`TagSpan`) carry no values. Attribute filters answer 503 on a store without the attribute properties, and deleting or narrowing answers 503 when the usage cannot be counted. Deleting a collection deletes the collection first and its definitions and change records afterwards. At most 16 annotations of a request are written at a time. Every saved change appends a change record (`GET .../annotations/{id}/attribute-changes`: actor, time, the attribute name and the previous and new values (ids with their labels and kinds) as defined at that time, so renaming or deleting definitions later does not change the history (descriptions and examples are not kept, #502), manual or AI-assisted with the run id, the annotation's `editVersion` and the attribute's revision); a record is written right after each annotation's write, and a failed one is reported as `record_attribute_changes` for that annotation and does not undo the assignment. Without the attribute properties on the `Annotation` collection (`annotation_attributes add-schema`, detected at startup) definitions work and assignments answer 503. Tag, type and attribute changes never re-embed (ADR 0009). Not yet: the workspace UI (row and batch assignment, definition manager), value merging, AI-proposed values, attributes in the document view and in statistics.
+`POST /api/user_collections/{id}/annotations/attributes/assign` (`service.assign_attributes`, annotation-edit access) adds, removes or replaces the values of one attribute on at most 200 annotations, each on its own and reported per item (ADR 0002): `source: ai_assisted` is refused until attribute proposals exist (#338), the annotation must be approved (`pos`), the tag one the attribute applies to (all tags with `all_tags`, otherwise one of `tag_ids`; none when that list is empty, #522), retired values are not assigned again, a single-valued attribute takes one value, Unknown/Not applicable stand alone, and an annotation whose `attributeVersion` differs from the expected one is reported `edit_conflict` and not changed (an annotation already as asked counts as done, so retrying a lost answer is safe). Definition routes under `/api/user_collections/{id}/attributes` refuse to delete a used attribute or value with 409 and the number of annotations affected (retire instead), and refuse narrowing an attribute's tags the same way while annotations with a tag outside the new set hold values (All tags to selected tags or none, and selected tags to none, narrow too). Rows show `attributes` only for approved annotations and `?attribute=` matches only those (values stay stored on a rejected annotation; on a retagged one they stay visible, #500); spans (`TagSpan`) carry no values. Attribute filters answer 503 on a store without the attribute properties, and deleting or narrowing answers 503 when the usage cannot be counted. Deleting a collection deletes the collection first and its definitions and change records afterwards. At most 16 annotations of a request are written at a time. Every saved change appends a change record (`GET .../annotations/{id}/attribute-changes`: actor, time, the attribute name and the previous and new values (ids with their labels and kinds) as defined at that time, so renaming or deleting definitions later does not change the history (descriptions and examples are not kept, #502), manual or AI-assisted with the run id, the annotation's `editVersion` and the attribute's revision); a record is written right after each annotation's write, and a failed one is reported as `record_attribute_changes` for that annotation and does not undo the assignment. Without the attribute properties on the `Annotation` collection (`annotation_attributes add-schema`, detected at startup) definitions work and assignments answer 503. Tag, type and attribute changes never re-embed (ADR 0009). The definitions are edited in the Attributes part of the collection's Tags & attributes tab (frontend `features/attributes/`, #506): attribute cards show their values as a bounded line of chips, and the Edit dialog manages the values, each change saved at once through the value routes while its Save sends only the attribute's own fields. The UI retires and restores attributes and values and never deletes them (the delete routes stay for exceptional cleanup); Unknown and Not applicable are fixed checkboxes, withdrawn by retiring their value and offered again by restoring it (a new one only when the attribute never had one); All tags is the explicit `all_tags` flag (#522): the dialog sends it, Selected tags may have no tag (shown as No tags, and such an attribute takes no values), and an empty `tag_ids` never means All tags. An applicable tag that was deleted stays in `tag_ids` (#508) and is shown there as a deleted tag that must be removed before the tags are changed. The Tags part lists each tag's current attributes, read-only (editing them from the tag side is #516). Not yet: row and batch assignment and attribute filters in the workspace, value merging, AI-proposed values, attributes in the document view and in statistics.
 
 The legacy single-tenant `Span` collection (references `tag`, `text_chunk`) is read only by the operator-run migration (`maintenance/annotation_migration.py`) and kept unchanged for rollback.
 
@@ -628,6 +682,7 @@ and `router/` the routes and sign-in guard.
 | `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel, links to the original digitized document (`originalSource.ts`, `OriginalSourceLink`; used by search results, their context, RAG sources and the document view) |
 | `annotations` | tags table and dialog, span discussion, annotation/AI-suggestion/tag-navigation composables, `tagsStore`, `tagSpansStore`, span offsets; in the document view: the annotated chunk text, span gutter, selection popover, tags panel and AI Tagging panel; the collection's annotation workspace (`concordance/`, #329: KWIC table, filters, `concordanceStore`; #459: selection bar, review actions, `annotationReviewStore`; #461: sidebar boundary editor, undo) and its selection (`annotationSelectionStore`) |
 | `auth` | login/register/account dialogs, `userStore`, user search |
+| `attributes` | collection attribute definitions (#331, #506): `attributesStore` (per collection, cleared on sign-out; an answer never replaces a newer `revision`, and a list read before a write answered keeps what the write brought; `setSpecialValue` retires or restores Unknown / Not applicable), `attributeSearch` (matches first, retired matches hidden by the toggle are counted), the definition list, the attribute dialog with its values section and the value dialog, and `TagsAttributesTable` (the Tags part with each tag's attributes) |
 | `quota` | the daily AI allowance: `quotaStore`, `useQuotaScope`, header indicator and near-limit/used-up banner ([above](#daily-llm-allowances-featuresquota-adapterssqlquotapy)) |
 | `feedback` | feedback page and its schema |
 | `analytics` | corpus overview page, its filter form (`CorpusFilters`: years and titles applied by Apply/Enter, library and language at once; applied values are shown as grouped removable chips), the publication timeline (`PublicationTimeline`, `timeline.ts`: main range and outliers, zoom/pan/drag selection in the browser, bin width from the visible window, table with collapsed empty periods; only "Apply … as filter" changes the counted documents), the period × library heatmap (`LibraryHeatmap`, `libraryHeatmap.ts`: loaded when opened, periods follow the timeline's view), its request (`useCorpusOverview`: filtered counts, abort on a newer request or on leave, retry, slow notice), rows/labels/filter chips/chart specifications (`corpusOverview.ts`) |
@@ -652,7 +707,8 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 | `/collections/:cid/overview` | `user_collections/CollectionOverviewPage` | Collection summary & stats: details incl. the users it is shared with; documents, chunks, tags, approved annotations and unresolved AI suggestions (`…/annotations/counts`) |
 | `/collections/:cid/documents` | `user_collections/CollectionDocumentsPage` | Documents inside a collection |
 | `/collections/:cid/annotations` | `annotations/concordance/CollectionAnnotationsPage` | The collection's annotations as one aligned line each (KWIC, #329): server-paged, filtered and sorted; checkboxes separate from opening an annotation in its document (right sidebar); an explicit selection (rows, page, or all matches resolved to ids) with a count of selected annotations the filters hide, and single (sidebar) or batch approve/reject/retag/delete with per-item results and retry (#459); boundary editing in the sidebar and undo of the last change (#461); filters, page, selection, open annotation and scroll position kept while a document is visited (`concordanceStore`, per collection, cleared on sign-out). *Open in document* links to the document view with `?from=annotations&annotation=&chunk=&order=`: the reader loads up to that chunk (resolving `order` from the chunk when the link has none) and marks the annotation even when its tag is hidden or it is a proposal outside AI Tagging, and its back link returns to the workspace; on return the open annotation is updated from the refreshed page, or reported as gone when it left that page |
-| `/collections/:cid/tags` | `user_collections/CollectionTagsPage` | Tags scoped to the collection |
+| `/collections/:cid/tags` | `user_collections/CollectionTagsAttributesPage` | Tags scoped to the collection, with the attributes that apply to each (read-only); the Tags part of the Tags & attributes tab |
+| `/collections/:cid/attributes` | `user_collections/CollectionTagsAttributesPage` | The Attributes part of the Tags & attributes tab, attribute definitions (#331, #506): create, rename, describe, retire and restore attributes and their values, allow Unknown / Not applicable and choose All tags or selected tags (possibly none: No tags); search over names and values; a refused narrowing of the tags shows the count at the tags field, and the dialog stays open |
 | `/collections/:cid/members` | `user_collections/CollectionMembersPage` | Collection sharing / role management |
 | `/collections/:cid/documents/:did/v1` | `documents/viewer/DocumentReaderPage` | Document view (text, annotations, AI suggestions, span chat) |
 | `/collections/:cid/documents/:did/v2` | — | Redirects to the document view (the retired V2 variant) |
@@ -680,7 +736,10 @@ apply, or a checkpointed single-pass `--sync`; source library only — see
 chunks are audited, and on explicit request deleted, by
 `python -m semant_demo.maintenance.document_cleanup` (#281). The document year that the
 search filters on is copied to the chunks, and checked, by
-`python -m semant_demo.maintenance.chunk_year` (#153).
+`python -m semant_demo.maintenance.chunk_year` (#153). The documents' chunk-value summaries
+used by document-level chunk filters are declared by
+`python -m semant_demo.maintenance.chunk_summary_schema` and recomputed for the whole
+database by `python -m semant_demo.maintenance.chunk_summaries` (#529).
 
 ## Historical material
 

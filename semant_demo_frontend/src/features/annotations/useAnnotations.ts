@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { useTagSpansStore } from './tagSpansStore'
 import { SpanType, TagSpan, CollectionChunk } from 'src/generated/api'
-import { anchorAtStart, localRange, offsetBetween } from './spanOffsets'
+import { anchorAtStart, knownChunksInOrder, localRange, projectSpan, reuseIfSameReferences } from './spanOffsets'
 import { createContextGuard, errorStatus } from 'src/shared/api'
 
 // ── Types ──────────────────────────────────────────────
@@ -68,16 +68,43 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
   // All known chunks: display chunks + hidden gap chunks, sorted by document order.
   // Used for cross-chunk span projection across gaps (e.g. a span spanning a removed chunk).
-  const allKnownChunks = computed(() => {
-    const byId = new Map<string, CollectionChunk>()
-    for (const c of chunks.value) byId.set(c.id, c)
-    for (const c of hiddenChunksRef()) if (!byId.has(c.id)) byId.set(c.id, c)
-    return Array.from(byId.values()).sort((a, b) => a.order - b.order)
-  })
+  const allKnownChunks = computed(() =>
+    knownChunksInOrder(chunks.value, hiddenChunksRef())
+  )
 
-  const allKnownChunkIndexById = computed(() => {
-    const map: Record<string, number> = {}
-    allKnownChunks.value.forEach((chunk, index) => { map[chunk.id] = index })
+  interface KnownChunkPosition {
+    index: number
+    segment: number
+    offset: number
+  }
+
+  const allKnownChunkPositionById = computed(() => {
+    const map: Record<string, KnownChunkPosition> = {}
+    const known = allKnownChunks.value
+
+    let segment = 0
+    let offset = 0
+
+    for (let i = 0; i < known.length; i++) {
+      if (i > 0) {
+        const previous = known[i - 1]
+        const current = known[i]
+
+        if (current.order === previous.order + 1) {
+          offset += previous.text.length
+        } else {
+          segment++
+          offset = 0
+        }
+      }
+
+      map[known[i].id] = {
+        index: i,
+        segment,
+        offset
+      }
+    }
+
     return map
   })
 
@@ -106,10 +133,14 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
    * anywhere along the path.
    */
   const getOffsetBetweenChunks = (fromChunkId: string, toChunkId: string): number | null => {
-    const fromIndex = allKnownChunkIndexById.value[fromChunkId]
-    const toIndex = allKnownChunkIndexById.value[toChunkId]
-    if (fromIndex === undefined || toIndex === undefined) return null
-    return offsetBetween(allKnownChunks.value, fromIndex, toIndex)
+    const from = allKnownChunkPositionById.value[fromChunkId]
+    const to = allKnownChunkPositionById.value[toChunkId]
+
+    if (!from || !to) return null
+    if (to.index < from.index) return null
+    if (to.segment !== from.segment) return null
+
+    return to.offset - from.offset
   }
 
   // ── Selection projection ──
@@ -159,57 +190,133 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
   // ── Span projection ──
 
   /**
-   * All visible spans, pre-projected into every known chunk's local
-   * coordinates and keyed by chunk id. Memoized so the O(N²)-ish walk (every
-   * chunk re-checks every earlier chunk's spans) only reruns when the
-   * underlying chunks/spans change, instead of on every render.
+   * Projected span objects are cached by source-span identity and target
+   * chunk. The store replaces span objects on updates rather than mutating
+   * them in place.
    */
-  const projectedSpansByChunkId = computed(() => {
-    const map: Record<string, ProjectedSpan[]> = {}
-    const known = allKnownChunks.value
+  const projectedSpanCache = new WeakMap<TagSpan, Map<string, ProjectedSpan>>()
 
-    for (let targetIndex = 0; targetIndex < known.length; targetIndex++) {
-      const targetChunkId = known[targetIndex].id
-      const targetLength = known[targetIndex].text.length
-      const result: ProjectedSpan[] = []
+  let previousAllProjectedSpansByChunkId: Record<string, ProjectedSpan[]> = {}
+  let previousProjectedSpansByChunkId: Record<string, ProjectedSpan[]> = {}
 
-      // Check all known chunks (incl. hidden gap chunks) from the start up to and including the target
-      for (let srcIndex = 0; srcIndex <= targetIndex; srcIndex++) {
-        const srcChunk = known[srcIndex]
-        const srcSpans = spansByChunkId.value[srcChunk.id] || []
+  const cachedProjectedSpan = (
+    span: TagSpan,
+    targetChunkId: string,
+    start: number,
+    end: number
+  ): ProjectedSpan => {
+    let byChunk = projectedSpanCache.get(span)
 
-        for (const span of srcSpans) {
-          if (span.type === SpanType.neg) continue
-
-          if (srcIndex === targetIndex) {
-            // Same chunk — no projection needed
-            result.push({ ...span })
-          } else {
-            // Cross-chunk projection — only if every intermediate known chunk is consecutive
-            const offsetToTarget = offsetBetween(known, srcIndex, targetIndex)
-            if (offsetToTarget === null) continue
-
-            const range = localRange(span.start, span.end, offsetToTarget, targetLength)
-            if (!range) continue
-
-            result.push({ ...span, ...range })
-          }
-        }
-      }
-
-      map[targetChunkId] = result
+    if (!byChunk) {
+      byChunk = new Map()
+      projectedSpanCache.set(span, byChunk)
     }
 
-    return map
+    const cached = byChunk.get(targetChunkId)
+
+    if (cached && cached.start === start && cached.end === end) {
+      return cached
+    }
+
+    const projected: ProjectedSpan = {
+      ...span,
+      start,
+      end
+    }
+
+    byChunk.set(targetChunkId, projected)
+    return projected
+  }
+
+  /**
+   * Project all spans into known chunks, including declined spans needed
+   * by the gutter when an annotation is opened through a direct link.
+   *
+   * Each source span is walked once through the consecutive chunks it
+   * overlaps. Unchanged per-chunk arrays retain their identity.
+   */
+  const allProjectedSpansByChunkId = computed(() => {
+    const known = allKnownChunks.value
+    const next: Record<string, ProjectedSpan[]> = {}
+
+    // Every known chunk gets a bucket once.
+    for (const chunk of known) {
+      next[chunk.id] = []
+    }
+
+    for (let srcIndex = 0; srcIndex < known.length; srcIndex++) {
+      const srcChunk = known[srcIndex]
+      const spans = spansByChunkId.value[srcChunk.id] ?? []
+
+      for (const span of spans) {
+        // Preserve the original anchor entry and its full coordinates.
+        // This also preserves the old behavior for legacy invalid offsets.
+        next[srcChunk.id].push(
+          cachedProjectedSpan(span, srcChunk.id, span.start, span.end)
+        )
+
+        // Project into subsequent chunks only. The anchor was added above.
+        for (const part of projectSpan(known, srcIndex, span.start, span.end)) {
+          if (part.chunk === srcIndex) continue
+
+          const target = known[part.chunk]
+
+          next[target.id].push(
+            cachedProjectedSpan(span, target.id, part.start, part.end)
+          )
+        }
+      }
+    }
+
+    // Keep stable array identities for chunks whose spans did not change.
+    for (const chunk of known) {
+      next[chunk.id] = reuseIfSameReferences(
+        previousAllProjectedSpansByChunkId[chunk.id],
+        next[chunk.id]
+      )
+    }
+
+    previousAllProjectedSpansByChunkId = next
+    return next
   })
 
   /**
-   * Get all visible spans projected into a specific chunk's local
-   * coordinates. Spans from earlier chunks that overflow into this chunk are
-   * included. Negative (declined) spans are filtered out.
+   * Regular text annotations exclude declined spans.
+   * This separate memoization layer preserves stable array references
+   * for unaffected ChunkAnnotator components.
+   */
+  const projectedSpansByChunkId = computed(() => {
+    const next: Record<string, ProjectedSpan[]> = {}
+
+    for (const chunk of allKnownChunks.value) {
+      const filtered = (
+        allProjectedSpansByChunkId.value[chunk.id] ?? []
+      ).filter((span) => span.type !== SpanType.neg)
+
+      next[chunk.id] = reuseIfSameReferences(
+        previousProjectedSpansByChunkId[chunk.id],
+        filtered
+      )
+    }
+
+    previousProjectedSpansByChunkId = next
+    return next
+  })
+
+  /**
+   * Get non-declined spans projected into a chunk's local coordinates.
+   * Includes spans anchored on earlier chunks that overlap this chunk.
    */
   const getProjectedSpans = (targetChunkId: string): ProjectedSpan[] => {
     return projectedSpansByChunkId.value[targetChunkId] ?? []
+  }
+
+  /**
+   * Get all projected spans, including declined ones.
+   * The gutter decides which of these spans should be displayed.
+   */
+  const getAllProjectedSpans = (targetChunkId: string): ProjectedSpan[] => {
+    return allProjectedSpansByChunkId.value[targetChunkId] ?? []
   }
 
   // ── Selection handling ──
@@ -509,6 +616,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     // Projection
     getLocalSelection,
     getProjectedSpans,
+    getAllProjectedSpans,
 
     // CRUD
     applyToSelection,

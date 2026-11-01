@@ -1,7 +1,8 @@
 # ADR 0011 - Collection attributes and accepted assignments
 
-Status: proposed with #331 (backend in review; workspace UI follows); store rollout pending an
-operator step. Date: 2026-10-24. Decided in the collection-workspace plan (#311, #324, #331);
+Status: proposed with #331; backend merged (#495) and its schema on the deployed stores
+(2026-10-25); definitions are edited in the Attributes part of the Tags & attributes tab, the workspace assignment UI follows.
+Date: 2026-10-24. Decided in the collection-workspace plan (#311, #324, #331);
 refines ADR 0008 (annotation storage), ADR 0010 (provenance and edit versions) and ADR 0007
 (rights); the exact-match design follows the issue's Weaviate representation.
 
@@ -73,13 +74,24 @@ renames categories later without rewriting annotations or losing who decided wha
   (an id without a definition when recorded keeps no label). Descriptions and examples are not
   copied into records; interpreting a past decision by the definition of its time needs versioned
   definitions (#502). There is no undo of assignments yet.
+- **All tags is explicit** (#522). An attribute applies to all tags of the collection, also
+  tags created later (`all_tags=true`, `tag_ids=[]`), to selected tags (`all_tags=false` with
+  their ids) or to no tag (`all_tags=false`, `tag_ids=[]`). `all_tags` defaults to false, and
+  All tags is never inferred from an empty list, so removing the last selected tag (also from
+  the tag side, #516) leaves the attribute for no tag instead of making it global. All tags has no
+  per-tag exceptions; `all_tags=true` with tags is refused (422), and so is sending tags to an
+  All tags attribute without `all_tags=false` (400). An attribute for no tag takes no new values
+  (`check_applicable`) and is not retired automatically. A tag deleted later stays in `tag_ids`
+  (#508); it never turns Selected tags into All tags either.
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
-  with the number affected) but can be retired. When the usage cannot be counted (the count fails,
+  with the number affected) but can be retired. The UI offers only retiring and restoring
+  (#506); deletion stays an API operation for exceptional cleanup. When the usage cannot be counted (the count fails,
   or startup could not read the schema, so whether annotations hold values is unknown), deleting
   and narrowing are refused with 503 rather than taken as unused. Narrowing an attribute's applicable tags while
   annotations hold values of it is refused the same way (409, counting only annotations whose tag
-  would fall outside the new tags); widening is always allowed. Merging values (reassigning the affected
+  would fall outside the new tags; going from All tags to selected tags or to none, and from
+  selected tags to none, is narrowing too); widening and an unchanged scope are always allowed. Merging values (reassigning the affected
   annotations) is not implemented here.
 - **The properties are added by an operator command**
   (`annotation_attributes add-schema`), never at startup or by a request; the backend reads and

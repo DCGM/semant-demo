@@ -33,6 +33,12 @@ export interface PatchAttribute {
     description?: string | null;
     /**
      * 
+     * @type {boolean}
+     * @memberof PatchAttribute
+     */
+    allTags?: boolean | null;
+    /**
+     * 
      * @type {Array<string>}
      * @memberof PatchAttribute
      */
@@ -64,6 +70,7 @@ export function PatchAttributeFromJSONTyped(json: any, ignoreDiscriminator: bool
         
         'name': json['name'] == null ? undefined : json['name'],
         'description': json['description'] == null ? undefined : json['description'],
+        'allTags': json['all_tags'] == null ? undefined : json['all_tags'],
         'tagIds': json['tag_ids'] == null ? undefined : json['tag_ids'],
         'retired': json['retired'] == null ? undefined : json['retired'],
     };
@@ -82,6 +89,7 @@ export function PatchAttributeToJSONTyped(value?: PatchAttribute | null, ignoreD
         
         'name': value['name'],
         'description': value['description'],
+        'all_tags': value['allTags'],
         'tag_ids': value['tagIds'],
         'retired': value['retired'],
     };

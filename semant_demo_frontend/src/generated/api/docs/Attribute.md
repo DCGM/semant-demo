@@ -10,6 +10,7 @@ Name | Type
 `name` | string
 `description` | string
 `cardinality` | [Cardinality](Cardinality.md)
+`allTags` | boolean
 `tagIds` | Array&lt;string&gt;
 `retired` | boolean
 `revision` | number
@@ -26,6 +27,7 @@ const example = {
   "name": null,
   "description": null,
   "cardinality": null,
+  "allTags": null,
   "tagIds": null,
   "retired": null,
   "revision": null,

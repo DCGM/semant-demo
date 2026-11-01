@@ -118,3 +118,10 @@ def get_rag_registry(connection: HTTPConnection) -> RagRegistry:
 def get_search_filters(connection: HTTPConnection):
     from semant_demo.features.search.filters import load_search_filters_config
     return load_search_filters_config(get_config(connection).SEARCH_FILTERS_CONFIG)
+
+
+def get_chunk_vocabulary(connection: HTTPConnection):
+    """The values chunk filters may select (``ChunkVocabulary``), from the configured search
+    filters, for the document-level operations (browsing, Analytics)."""
+    from semant_demo.features.search.filters import chunk_vocabulary
+    return chunk_vocabulary(get_search_filters(connection))

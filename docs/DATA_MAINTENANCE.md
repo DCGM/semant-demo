@@ -136,6 +136,51 @@ answers year-filtered searches with an error), and again after ingesting chunks 
 document years (for example after `metadata_sync`) until ingestion keeps the copy itself
 ([#313](https://github.com/DCGM/semant-demo/issues/313)).
 
+## Document chunk-value summaries (`chunk_summary_schema`, `chunk_summaries`, #529)
+
+Document browsing and Analytics apply chunk filters (chunk language, classifications) per
+dimension: a document matches when, for each filter, some chunk of it has one of the values
+([EXPLORATION](EXPLORATION.md#shared-criteria-and-matching)). They read summaries on
+`Documents`, never the chunks: `chunk_<dimension>` (`text[]`, `field` tokenization, so values
+match whole) holds the distinct values of the document's chunks for `language` and each
+classification of `TASK_CLASSES`, and `chunk_summaries_computed_at` (`date`) when they were
+last recomputed. The summaries describe the document; they do not say that values occur
+together on one chunk.
+
+```bash
+python -m semant_demo.maintenance.chunk_summary_schema                       # read-only check
+python -m semant_demo.maintenance.chunk_summary_schema --apply --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.chunk_summaries --dry-run dry.json          # read-only
+python -m semant_demo.maintenance.chunk_summaries --write write.json --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.chunk_summaries --dry-run dry_after.json    # expect exit 0
+```
+
+- **Schema.** `chunk_summary_schema --apply` adds the missing properties to the collection
+  behind the alias (an additive schema change) and is repeatable. A property already declared
+  differently (e.g. word-tokenized) is refused before anything is added; it needs a separate,
+  reviewed migration.
+- **Recomputation.** `chunk_summaries` reads every chunk once (ids, the dimension values and the
+  document reference; no text or vectors) and keeps one bit per (dimension, value) per
+  document, so memory grows with the documents, not the chunks. It then **replaces** every
+  document's summaries, removing values that no longer occur (a document without chunks gets
+  empty ones), sets the recomputation time to the start of the chunk pass and reads each page
+  of writes back. `--dry-run` compares without writing (`never_computed`, `changed`,
+  `unchanged`). Chunks without exactly one document, and documents whose write failed, are
+  listed in the manifest. An interrupted run is simply rerun (with a new report); a rerun over
+  unchanged chunks reports every document `unchanged`. `--write` refuses a store without the
+  properties.
+- **Staleness.** There is no write-time or incremental synchronization: after ingesting,
+  deleting, editing or classifying chunks, the summaries are stale until the next run, and
+  responses carry no staleness warning (accepted on #529). A document never recomputed has no
+  summaries and matches no chunk filter; a store without the properties answers chunk filters
+  on document endpoints with 422.
+- **Timing.** On the test-owned Weaviate (local Docker, 2026-11-01;
+  `tests/integration/test_chunk_summary_benchmark.py`), 150,000 synthetic chunks of 5,000
+  documents were read at about 4,800 chunks/s and the documents written and read back at about
+  450/s. At that rate the production store (about 8.3M chunks, 300,000 documents) would need
+  roughly 30 minutes for the chunk pass and 11 for the writes; a production run needs explicit
+  authorization and a reviewed plan.
+
 ## Annotation migration (`annotation_migration`, #327)
 
 Copies the spans of the legacy single-tenant `Span` collection into the multi-tenant

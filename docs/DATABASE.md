@@ -159,6 +159,13 @@ Key fields:
 - `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
   id, not a link; source links are built from `library` and the id (above)
 - `public` — whether the document is publicly accessible
+- `chunk_language`, `chunk_<classification>` (one per `TASK_CLASSES` entry; `text[]`, `field`
+  tokenization) and `chunk_summaries_computed_at` (`date`) — the distinct chunk values of the
+  document and when they were last recomputed, for document-level chunk filters (#529).
+  Derived data: declared by `chunk_summary_schema`, written only by `chunk_summaries`
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#document-chunk-value-summaries-chunk_summary_schema-chunk_summaries-529)),
+  stale between runs; absent from stores where it was never run, including the disposable
+  dev/test schema
 
 #### Document metadata from the Kramerius mirror
 
@@ -218,7 +225,12 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   (each the previous + 1, the first any integer) and its text is the chunks' `text` concatenated
   in `order` without separators (whatever their collections). A document with a gap or a
   duplicate order violates this model: its annotations are not derived and the position
-  backfill reports it.
+  backfill reports it. Reads of neighbouring chunks (chunk context, span chat, annotation
+  sources) rely on consecutive orders and query a bounded list of exact order values
+  (`order` has no range index; sorting by `order` loads every chunk of the document, #376).
+  A short read indicates the document boundary only when this invariant holds. Gaps and
+  duplicate orders are invalid data, not repaired by neighbour reads; their results are
+  not guaranteed.
 - `startChar` (`int`), `startWord` (`int`), `wordOpenAtStart` (`boolean`) — where the chunk starts
   in its document's text (#463): the UTF-16 code units of all preceding chunks, the words that
   start in them (one continuing into this chunk included), and whether the last preceding
@@ -494,7 +506,8 @@ CREATE TABLE annotation_attribute (
     name_key      VARCHAR(200) NOT NULL,      -- casefolded, trimmed; UNIQUE (collection_id, name_key)
     description   TEXT         NOT NULL,
     cardinality   VARCHAR(8)   NOT NULL,      -- single | multi (immutable)
-    tag_ids       JSON         NOT NULL,      -- tags it applies to; [] = all
+    all_tags      BOOLEAN      NOT NULL DEFAULT 0,  -- applies to every tag, tag_ids is [] (#522)
+    tag_ids       JSON         NOT NULL,      -- with all_tags 0: the tags it applies to; [] = no tag
     retired       BOOLEAN      NOT NULL,
     revision      INTEGER      NOT NULL,      -- +1 per edit of the attribute or its values
     created_by    VARCHAR(36)  NOT NULL,
@@ -519,6 +532,13 @@ CREATE TABLE annotation_attribute_change (    -- append-only
     run_id VARCHAR(36), annotation_edit_version INTEGER, attribute_revision INTEGER NOT NULL
 );
 ```
+
+`create_all` creates `all_tags` in a new database but never alters an existing table; a
+database created before #522 gets the column from
+`python -m semant_demo.maintenance.attribute_scope_schema`, which deployments run before the new
+backend starts and which refuses a table that already holds definitions
+([deploy/README](../deploy/README.md#sqlite-schema-steps-522)). Startup refuses a table without
+the column.
 
 Change records are never rewritten: they keep the attribute name and value labels and kinds of
 their time (an id without a definition then has `label` and `kind` null), not descriptions or

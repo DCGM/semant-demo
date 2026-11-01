@@ -498,8 +498,9 @@ const selectSource = async (id: string) => {
   rightSidebar.activate(SOURCES_PANEL_ID)
 }
 
+// A source without a document (a web search result) is only selected.
 const openSourceDocument = async (id: string) => {
-  if (!chatSources.openDocument(id)) return
+  if (!chatSources.openDocument(id)) return selectSource(id)
   await nextTick() // the panel registers when a source is opened for the first time
   rightSidebar.activate(CONTEXT_PANEL_ID)
 }

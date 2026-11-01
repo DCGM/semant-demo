@@ -389,11 +389,11 @@ example().catch(console.error);
 
 ## browseDocumentsApiDocumentsBrowseGet
 
-> DocumentBrowse browseDocumentsApiDocumentsBrowseGet(collectionId, limit, offset, sortBy, sortDesc, title, author, publisher, documentType)
+> DocumentBrowse browseDocumentsApiDocumentsBrowseGet(collectionId, limit, offset, sortBy, sortDesc, title, author, publisher, documentType, yearMin, yearMax, titleContains, libraries, languages, chunkLanguages, chunkClassifications)
 
 Browse Documents
 
-Browses the corpus with pagination, filtering and sorting options. With &#x60;&#x60;collection_id&#x60;&#x60; only that collection\&#39;s documents are browsed, which needs read access to it.
+Browses the corpus with pagination, filtering and sorting options. With &#x60;&#x60;collection_id&#x60;&#x60; only that collection\&#39;s documents are browsed, which needs read access to it.  &#x60;&#x60;year_min&#x60;&#x60;, &#x60;&#x60;year_max&#x60;&#x60;, &#x60;&#x60;title_contains&#x60;&#x60;, &#x60;&#x60;libraries&#x60;&#x60; and &#x60;&#x60;languages&#x60;&#x60; are the shared document filters (&#x60;&#x60;DocumentFilters&#x60;&#x60;; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. &#x60;&#x60;title&#x60;&#x60;, &#x60;&#x60;author&#x60;&#x60;, &#x60;&#x60;publisher&#x60;&#x60; and &#x60;&#x60;document_type&#x60;&#x60; are older substring filters. A filter on a property this corpus database does not record is rejected (422).  &#x60;&#x60;chunk_languages&#x60;&#x60; and &#x60;&#x60;chunk_classifications&#x60;&#x60; are the shared chunk filters (&#x60;&#x60;ChunkFilters&#x60;&#x60;): chunk languages, and &#x60;&#x60;&lt;classification&gt;:&lt;value&gt;&#x60;&#x60; pairs such as &#x60;&#x60;complexity:easy&#x60;&#x60; (repeat a parameter for alternatives). A document matches when, for each filter, some chunk of it has one of the values; different filters may be met by different chunks. They are answered from the documents\&#39; chunk-value summaries, as last recomputed: a document never recomputed matches no chunk filter, and a corpus database without the summaries rejects chunk filters (422). An unconfigured value is rejected (400).
 
 ### Example
 
@@ -431,6 +431,20 @@ async function example() {
     publisher: publisher_example,
     // string (optional)
     documentType: documentType_example,
+    // number (optional)
+    yearMin: 56,
+    // number (optional)
+    yearMax: 56,
+    // Array<string> (optional)
+    titleContains: ...,
+    // Array<string> (optional)
+    libraries: ...,
+    // Array<string> (optional)
+    languages: ...,
+    // Array<string> (optional)
+    chunkLanguages: ...,
+    // Array<string> (optional)
+    chunkClassifications: ...,
   } satisfies BrowseDocumentsApiDocumentsBrowseGetRequest;
 
   try {
@@ -459,6 +473,13 @@ example().catch(console.error);
 | **author** | `string` |  | [Optional] [Defaults to `undefined`] |
 | **publisher** | `string` |  | [Optional] [Defaults to `undefined`] |
 | **documentType** | `string` |  | [Optional] [Defaults to `undefined`] |
+| **yearMin** | `number` |  | [Optional] [Defaults to `undefined`] |
+| **yearMax** | `number` |  | [Optional] [Defaults to `undefined`] |
+| **titleContains** | `Array<string>` |  | [Optional] |
+| **libraries** | `Array<string>` |  | [Optional] |
+| **languages** | `Array<string>` |  | [Optional] |
+| **chunkLanguages** | `Array<string>` |  | [Optional] |
+| **chunkClassifications** | `Array<string>` |  | [Optional] |
 
 ### Return type
 
@@ -561,7 +582,7 @@ example().catch(console.error);
 
 Corpus Distributions
 
-Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0.
+Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\&#39; chunk-value summaries) is rejected (422), never answered with 0.
 
 ### Example
 
@@ -629,7 +650,7 @@ No authorization required
 
 Corpus Library Years
 
-Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions.
+Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
 
 ### Example
 
@@ -4523,7 +4544,7 @@ example().catch(console.error);
 
 Search
 
-Retrieval, plus the titles and summaries asked for. Those are skipped with a warning (&#x60;&#x60;quota_exhausted&#x60;&#x60;) when the daily AI allowance has no room; the results are not.
+Retrieval, plus the titles and summaries asked for. Those are skipped with a warning (&#x60;&#x60;quota_exhausted&#x60;&#x60;) when the daily AI allowance has no room; the results are not. A document or chunk filter on a property this corpus database does not record is rejected (422), never answered with no results.
 
 ### Example
 

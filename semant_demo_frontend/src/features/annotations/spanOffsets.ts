@@ -13,6 +13,33 @@ export interface OrderedText {
   text: string
 }
 
+/** Displayed and hidden chunks without duplicates, in document order. */
+export function knownChunksInOrder<T extends { id: string, order: number }> (displayed: T[], hidden: T[]): T[] {
+  const byId = new Map<string, T>()
+
+  for (const chunk of displayed) {
+    if (!byId.has(chunk.id)) byId.set(chunk.id, chunk)
+  }
+
+  for (const chunk of hidden) {
+    if (!byId.has(chunk.id)) byId.set(chunk.id, chunk)
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.order - b.order)
+}
+
+/**
+ * Reuse the previous array when all elements have the same references.
+ * Stable array identities prevent unnecessary Vue child-component updates.
+ */
+export function reuseIfSameReferences<T> (previous: T[] | undefined, next: T[]): T[] {
+  if (!previous || previous.length !== next.length) return next
+
+  return previous.every((item, index) => item === next[index])
+    ? previous
+    : next
+}
+
 export interface ChunkPart {
   chunk: number
   start: number
@@ -43,12 +70,25 @@ export function localRange (start: number, end: number, offset: number, length: 
 /** The parts of a span anchored on `chunks[anchor]` in each chunk it covers. */
 export function projectSpan (chunks: OrderedText[], anchor: number, start: number, end: number): ChunkPart[] {
   const parts: ChunkPart[] = []
+  let offset = 0
+
   for (let i = anchor; i < chunks.length; i++) {
-    const offset = offsetBetween(chunks, anchor, i)
-    if (offset === null) break
+    if (i > anchor) {
+      const previous = chunks[i - 1]
+      const current = chunks[i]
+
+      if (current.order !== previous.order + 1) break
+
+      offset += previous.text.length
+    }
+
+    // The span already ended before this chunk starts.
+    if (offset >= end) break
+
     const range = localRange(start, end, offset, chunks[i].text.length)
     if (range) parts.push({ chunk: i, ...range })
   }
+
   return parts
 }
 

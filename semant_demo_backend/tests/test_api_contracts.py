@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from asgi_lifespan import LifespanManager
+import pytest
 from httpx import ASGITransport, AsyncClient
 
+from semant_demo.features.documents.criteria import NumberRange
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
 from semant_demo.features.summarization.schemas import SummaryRequest
 from semant_demo.main import create_app
@@ -63,7 +65,7 @@ def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
     assert set(components["DocumentChunk"]["properties"]) == stored
     assert set(components["DocumentViewChunk"]["properties"]) == stored | {"in_user_collection"}
     assert set(components["SearchResultChunk"]["properties"]) == stored | {
-        "query_title", "query_summary", "summary", "document_object", "metadata"}
+        "query_title", "query_summary", "summary", "document_object", "metadata", "origin"}
     assert set(components["CollectionChunk"]["properties"]) == {
         "id", "text", "start_page_id", "from_page", "to_page", "end_paragraph", "title", "language", "order",
         "in_collection"}
@@ -256,3 +258,72 @@ def test_search_hit_classifications_are_optional_and_round_trip(tmp_path):
     # A client that does not know the field (e.g. an older search page posting results back).
     del wire["metadata"]
     assert SearchResultChunk.model_validate(wire).metadata == {}
+
+
+class _RecordingDocuments(_Documents):
+    calls: list[dict] = []
+
+    async def browse(self, **kwargs):
+        self.calls.append(kwargs)
+        return await super().browse(**kwargs)
+
+
+async def _browse(tmp_path, params):
+    _RecordingDocuments.calls = []
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_documents] = _RecordingDocuments
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.get("/api/documents/browse", params=params)
+
+
+async def test_browse_applies_chunk_filters_per_dimension(tmp_path):
+    response = await _browse(tmp_path, [("chunk_languages", "CES"), ("chunk_classifications", "complexity:easy"),
+                                        ("chunk_classifications", "complexity:moderate"), ("year_min", "1900")])
+
+    assert response.status_code == 200, response.text
+    [call] = _RecordingDocuments.calls
+    year, language, complexity = call["conditions"]
+    assert year == NumberRange("yearIssued", 1900, None)
+    assert (language.prop, language.values) == ("chunk_language", ("ces",))  # the configured spelling
+    assert (complexity.prop, complexity.values) == ("chunk_complexity", ("easy", "moderate"))
+
+
+@pytest.mark.parametrize("params, message", [
+    ({"chunk_languages": "Czech"}, "'Czech' is not a valid option for 'languages'"),
+    ({"chunk_classifications": "emotion:calm"}, "'emotion' is not a configured classification"),
+])
+async def test_browse_rejects_unconfigured_chunk_filters(tmp_path, params, message):
+    response = await _browse(tmp_path, params)
+
+    assert response.status_code == 400, response.text
+    assert message in response.json()["detail"]
+    assert _RecordingDocuments.calls == []
+
+
+@pytest.mark.parametrize("params, field", [
+    ({"chunk_classifications": "complexity"}, "chunk_classifications"),
+    ({"chunk_classifications": ":easy"}, "chunk_classifications"),
+    ({"chunk_languages": " "}, "chunk_languages"),
+])
+async def test_browse_rejects_malformed_chunk_filters(tmp_path, params, field):
+    response = await _browse(tmp_path, params)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"][0]["loc"][:2] == ["query", field]
+    assert _RecordingDocuments.calls == []
+
+
+async def test_browse_without_chunk_filters_is_unchanged(tmp_path):
+    response = await _browse(tmp_path, {"limit": 5})
+
+    assert response.status_code == 200, response.text
+    assert len(_RecordingDocuments.calls) == 1
+
+
+def test_browse_documents_its_chunk_filter_parameters(tmp_path):
+    operation = create_app(make_test_config(tmp_path)).openapi()["paths"]["/api/documents/browse"]["get"]
+    parameters = {p["name"]: p for p in operation["parameters"]}
+
+    assert parameters["chunk_languages"]["schema"]["type"] == "array"
+    assert parameters["chunk_classifications"]["schema"]["type"] == "array"
+    assert "<classification>:<value>" in operation["description"]

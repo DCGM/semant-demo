@@ -362,6 +362,31 @@ allowance is still shown. If the health check fails, the workflow rolls back to 
 image with the new Compose file; older releases also read `SQL_DB_URL`, so they open the same
 file.
 
+### SQLite schema steps (#522)
+
+The app creates missing tables at startup but never alters an existing one, and it refuses to
+start when a table lacks a column it needs. A new column therefore comes with an explicit,
+repeatable step that every deployment runs after stopping the old app and before starting the
+new one, inside the new image and against the same mount and `SQL_DB_URL` as the app
+(`docker compose ... run --rm --no-deps app`, in the "Build and start" step of each deploy job in
+`.github/workflows/ci-cd.yml`). New instances need nothing.
+
+- `python -m semant_demo.maintenance.attribute_scope_schema` adds `annotation_attribute.all_tags`
+  (explicit All tags, #522). It does nothing without the table or when the column exists, and
+  adds the column only to an **empty** table: when attribute definitions exist it refuses,
+  changes nothing and fails the deployment, because their empty tag lists would change meaning
+  from All tags to no tag. No migration of existing definitions is provided; reassess instead.
+  A refused production deployment rolls back to the previous image, which still works with the
+  unchanged file. Persistent instances held no attribute definitions when #522 was released.
+
+To check an instance by hand (the old app stopped), run the same step:
+
+```sh
+docker compose -p <project> -f <compose file> run --rm --no-deps -T -l traefik.enable=false \
+  --entrypoint python app -m semant_demo.maintenance.attribute_scope_schema
+sudo sqlite3 -readonly "$SQL_DB_PATH/tasks.db" "PRAGMA table_info(annotation_attribute);"  # lists all_tags
+```
+
 ### SQLite backup (#399)
 
 The production `tasks.db` (`$SQL_DB_PATH/tasks.db` = `/mnt/ssd2/semant_demo_app_data/tasks.db`)
@@ -670,4 +695,4 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-The workflow validates the database directory, clones the tagged deploy files, builds and starts the containers, runs a health check, and rolls back automatically if the health check fails.
+The workflow validates the database directory, clones the tagged deploy files, builds the image, applies the [SQLite schema steps](#sqlite-schema-steps-522), starts the containers, runs a health check, and rolls back automatically if the health check fails or a schema step refuses.

@@ -23,7 +23,7 @@ test('search results show classification badges on one expandable line', async (
   await expect(letter.locator('.result-classifications').getByRole('button')).toHaveCount(0) // fits on one line
   await expect(gazette.locator('.result-classifications')).toHaveCount(0)
 
-  const line = chronicle.locator('.classification-line')
+  const line = chronicle.locator('.wrapping-badges__line')
   const clipped = () => line.evaluate((el) => el.scrollHeight > el.clientHeight)
   await expect.poll(clipped).toBe(true) // badges below the first line are hidden
   await chronicle.getByRole('button', { name: /^\+\d+ more$/ }).click()
