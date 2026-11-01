@@ -355,7 +355,9 @@ describe('attribute components', () => {
     expect(kept!.find('[data-testid="attribute-chips-inapplicable"]').exists()).toBe(true)
     expect(kept!.find('.attribute-chips--inapplicable').exists()).toBe(true)
     expect(kept!.text()).toContain('journalist')
-    expect(kept!.text()).toContain('(does not apply to this tag)')
+    // Said once, by the cell's reason, not again by the chips.
+    expect(kept!.text().match(/does not apply/g)).toHaveLength(1)
+    expect(kept!.text()).toContain('This attribute does not apply to the annotation\'s tag.')
     expect(kept!.find('[data-testid="kwic-attribute-edit"]').exists()).toBe(false)
   })
 

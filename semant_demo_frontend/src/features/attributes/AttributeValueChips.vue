@@ -28,7 +28,6 @@
       }"
       :title="chipTitle(h)"
     >{{ heldName(h) }}</span>
-    <span v-if="inapplicable && held.length" class="attribute-chips__sr">(does not apply to this tag)</span>
   </span>
 </template>
 
@@ -47,7 +46,8 @@ const props = withDefaults(defineProps<{
   /** Keep to one line, cutting off what does not fit (a KWIC row stays one line). */
   line?: boolean
   /** The attribute does not apply to the annotation's tag (any more): the values are kept but
-   * are not valid classifications (#500). */
+   * are not valid classifications (#500). Visual only: the place that shows the chips says why in
+   * text (the column cell's reason, the sidebar's note), so a screen reader hears it once. */
   inapplicable?: boolean
 }>(), {
   ids: () => [],
@@ -88,15 +88,6 @@ function chipTitle (h: HeldValue): string {
   background: transparent;
   border: 1px dashed rgba(0, 0, 0, 0.35);
   color: rgba(0, 0, 0, 0.55);
-}
-
-.attribute-chips__sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 .attribute-chips__none {
