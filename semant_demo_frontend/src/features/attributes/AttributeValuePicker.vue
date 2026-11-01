@@ -50,7 +50,7 @@
       clickable
       :disable="busy"
       data-testid="attribute-pick-clear"
-      @click="emit('change', clearChange(current))"
+      @click="emit('change', clearChange())"
     >
       <q-item-section side><q-icon name="backspace" size="xs" /></q-item-section>
       <q-item-section>Clear ({{ current.length }})</q-item-section>

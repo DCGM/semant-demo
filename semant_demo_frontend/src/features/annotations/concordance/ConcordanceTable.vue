@@ -84,12 +84,17 @@
             data-testid="kwic-attribute-edit"
           >
             <AttributeValueChips :attribute="attribute" :ids="row.attributes?.[attribute.id]" empty-label="Assign…" line />
-            <q-menu anchor="bottom left" self="top left">
+            <q-menu
+              anchor="bottom left"
+              self="top left"
+              :model-value="openPicker === row.id"
+              @update:model-value="(open: boolean) => setPicker(row.id, open)"
+            >
               <AttributeValuePicker
                 :attribute="attribute"
                 :current="row.attributes?.[attribute.id] ?? []"
                 :busy="pending.has(row.id)"
-                @change="change => emit('assign', row, attribute!, change)"
+                @change="change => emit('assign', row, attribute!, change, ok => picked(row.id, ok))"
               />
             </q-menu>
           </q-btn>
@@ -98,6 +103,7 @@
               v-if="row.attributes?.[attribute.id]?.length"
               :attribute="attribute"
               :ids="row.attributes[attribute.id]"
+              :inapplicable="!applies(attribute, row)"
               line
             />
             <span v-else class="kwic__missing" aria-hidden="true">–</span>
@@ -126,10 +132,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QCheckbox, QMenu } from 'quasar'
-import { SpanType, TextStatus, type AnnotationListRow, type Attribute, type Tag } from 'src/generated/api'
+import { Cardinality, SpanType, TextStatus, type AnnotationListRow, type Attribute, type Tag } from 'src/generated/api'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
-import { cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
+import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
 
 const props = withDefaults(defineProps<{
   rows: AnnotationListRow[]
@@ -155,8 +161,8 @@ const emit = defineEmits<{
   /** Check or uncheck one row (its checkbox, Space); separate from opening. */
   toggle: [id: string, value: boolean]
   'select-page': [value: boolean]
-  /** Assign values of the shown attribute to the row's annotation. */
-  assign: [row: AnnotationListRow, attribute: Attribute, change: AssignChange]
+  /** Assign values of the shown attribute to the row's annotation; `done` says whether it was saved. */
+  assign: [row: AnnotationListRow, attribute: Attribute, change: AssignChange, done:(ok: boolean) => void]
 }>()
 
 const helpId = `kwic-help-${Math.random().toString(36).slice(2, 8)}`
@@ -197,6 +203,18 @@ function sourceLabel (row: AnnotationListRow): string {
 function rowLabel (row: AnnotationListRow): string {
   const text = row.text ?? missingText(row)
   return `${text} (${tagName(row)}, ${statusLabel(row.type)}, ${sourceLabel(row)})`
+}
+
+// The open value picker (one at a time). Choosing one value of a single-valued attribute is a
+// complete choice: its picker closes once the assignment is saved, and stays open on a failure so
+// its message can be acted on. A multi-valued one stays open for further choices.
+const openPicker = ref<string | null>(null)
+function setPicker (id: string, open: boolean) {
+  if (open) openPicker.value = id
+  else if (openPicker.value === id) openPicker.value = null
+}
+function picked (id: string, ok: boolean) {
+  if (ok && props.attribute?.cardinality === Cardinality.single) setPicker(id, false)
 }
 
 function heldLabel (row: AnnotationListRow): string {

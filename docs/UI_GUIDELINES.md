@@ -28,8 +28,10 @@ product decisions justify another rule.
   the UI from the authoritative result. Existing dialogs that close before handing off a
   save should not be copied as a default pattern.
 - Warn before discarding meaningful unsaved changes; do not block closing an unchanged form.
-- Use a toggle switch for a setting that is on or off (such as **Allow multiple values** or
-  **Show retired**); use checkboxes to choose items of a set (rows, values, filter options).
+- By default, use a toggle switch for an independent setting that is on or off (such as
+  **Allow multiple values** or **Show retired**), and checkboxes to choose items of a set (rows,
+  values, filter options). This is a convention, not an absolute rule: a well-justified exception
+  is fine when the PR or the code documents it.
 
 ## Consequential changes
 
