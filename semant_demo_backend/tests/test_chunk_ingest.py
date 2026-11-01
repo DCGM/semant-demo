@@ -156,6 +156,37 @@ def test_a_document_whose_lines_changed_after_the_first_pass_is_refused(tmp_path
         load(index, [DOC])
 
 
+def test_a_directory_stands_for_its_jsonl_files_and_each_file_is_read_once(tmp_path):
+    chunks_ = tmp_path / "chunks"
+    (chunks_ / "deeper").mkdir(parents=True)
+    a, b = write_jsonl(chunks_ / "a.jsonl", [line(0)])[0], write_jsonl(chunks_ / "b.jsonl", [line(1)])[0]
+    write_jsonl(chunks_ / "deeper" / "c.jsonl", [line(2)])
+    (chunks_ / "notes.txt").write_text("not input")
+    (tmp_path / "link.jsonl").symlink_to(a)
+    files, skipped = chunk_ingest.input_files([chunks_, a, tmp_path / "link.jsonl"])
+    assert files == [a, b]
+    assert skipped == {chunks_: 2}  # the subdirectory and notes.txt
+
+
+def test_a_missing_file_or_a_directory_without_jsonl_files_is_refused(tmp_path):
+    absent = tmp_path / "absent.jsonl"
+    (tmp_path / "broken.jsonl").symlink_to(absent)
+    (tmp_path / "links").mkdir()
+    (tmp_path / "links" / "a.jsonl").symlink_to(absent)
+    (tmp_path / "empty").mkdir()
+    (tmp_path / "empty" / "a.json").touch()
+    for given, message in [(absent, "No such input file"), (tmp_path / "broken.jsonl", "No such input file"),
+                           (tmp_path / "links", "No such input file"), (tmp_path / "empty", "No \\*.jsonl files")]:
+        with pytest.raises(LookupError, match=message):
+            chunk_ingest.input_files([given])
+
+
+async def test_the_command_refuses_a_directory_without_jsonl_files(tmp_path, capsys):
+    assert await chunk_ingest._main(["--check", str(tmp_path / "c.json"), str(tmp_path)]) == 2
+    assert "No *.jsonl files" in capsys.readouterr().err
+    assert not (tmp_path / "c.json").exists()
+
+
 # ── Plan ─────────────────────────────────────────────────────────────────
 
 

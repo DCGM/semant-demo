@@ -8,13 +8,19 @@ deleted, and the schema is only read: it is the importer of #128's read-only con
 
 Check (read-only, the default)::
 
-    python -m semant_demo.maintenance.chunk_ingest --check check.json FILE.jsonl [...]
+    python -m semant_demo.maintenance.chunk_ingest --check check.json INPUT [...]
 
 Write::
 
     python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endpoint HOST:PORT \\
         (--backup-id BACKUP | --offline-backup NOTE) [--bulk [--batch 800]] [--page N] [--concurrency 8] \\
-        FILE.jsonl [...]
+        INPUT [...]
+
+An INPUT is a JSONL file or a directory, which stands for its ``*.jsonl`` files (not those of
+its subdirectories; other entries are counted and skipped). A file named twice, also through
+a directory or a symlink, is read once; a missing file or a directory without ``*.jsonl``
+files is refused. Instead of a list file, give a directory of symlinks: it selects files from
+anywhere, also more than the command line can hold.
 
 Input: one JSON object per line and chunk, files read in sorted path order. Required:
 ``id`` (chunk UUID), ``document`` (document UUID), ``order`` (int) and ``text`` (str, may
@@ -768,6 +774,34 @@ async def check_backup(client: WeaviateAsyncClient, target: Target, backup_id: s
         raise LookupError(f"Backup {backup_id} does not hold {', '.join(sorted(missing))}")
 
 
+def input_files(inputs: Iterable[Path]) -> tuple[list[Path], dict[Path, int]]:
+    """The files of the command line's inputs and, per directory, how many of its entries were
+    skipped. ``LookupError`` for a missing file (also a broken symlink) or a directory without
+    ``*.jsonl`` files."""
+    files, seen, skipped, missing, empty = [], set(), {}, [], []
+    for given in inputs:
+        if given.is_dir():
+            entries = sorted(given.iterdir())
+            candidates = [e for e in entries if e.suffix == ".jsonl" and not e.is_dir()]
+            skipped[given] = len(entries) - len(candidates)
+            if not candidates:
+                empty.append(str(given))
+        else:
+            candidates = [given]
+        for path in candidates:
+            if not path.is_file():
+                missing.append(str(path))
+            elif (real := path.resolve()) not in seen:
+                seen.add(real)
+                files.append(path)
+    if missing:
+        more = f" and {len(missing) - 10} more" if len(missing) > 10 else ""
+        raise LookupError(f"No such input file: {', '.join(missing[:10])}{more}")
+    if empty:
+        raise LookupError(f"No *.jsonl files in {', '.join(empty)}")
+    return files, skipped
+
+
 def _positive(value: str) -> int:
     number = int(value)
     if number < 1:
@@ -796,7 +830,9 @@ def _parser() -> argparse.ArgumentParser:
                    help=f"documents planned, written and checkpointed together (default {DOCUMENT_PAGE}, with --bulk "
                         f"{BULK_PAGE}); a larger page needs more memory and repeats more checks after an interruption")
     p.add_argument("--concurrency", type=int, default=CONCURRENCY, help=f"documents in parallel (default {CONCURRENCY})")
-    p.add_argument("inputs", nargs="+", type=Path, metavar="FILE.jsonl")
+    p.add_argument("inputs", nargs="+", type=Path, metavar="INPUT",
+                   help="a JSONL file, or a directory standing for its *.jsonl files; instead of a list file, "
+                        "give a directory of symlinks (any files, also more than the command line can hold)")
     return p
 
 
@@ -822,16 +858,20 @@ async def _main(argv: list[str]) -> int:
     if args.write and not backup:
         print("Refusing to write without --backup-id or --offline-backup (docs/DATA_MAINTENANCE.md)", file=sys.stderr)
         return 2
-    missing = [str(p) for p in args.inputs if not p.is_file()]
-    if missing:
-        print(f"No such input file: {', '.join(missing)}", file=sys.stderr)
+    try:
+        inputs, skipped = input_files(args.inputs)
+    except LookupError as e:
+        print(e, file=sys.stderr)
         return 2
+    for directory, count in skipped.items():
+        if count:
+            print(f"Skipped {count} entries of {directory} that are not *.jsonl files", file=sys.stderr)
     print(f"Weaviate endpoint: {endpoint}", file=sys.stderr)
     client = await connect_weaviate(config, query_timeout=QUERY_TIMEOUT)
     try:
         if args.write and args.backup_id:
             await check_backup(client, await preflight(client, config.collectionNames), args.backup_id)
-        result = await run(client, config.collectionNames, args.inputs, checkpoint=args.write or args.check,
+        result = await run(client, config.collectionNames, inputs, checkpoint=args.write or args.check,
                            endpoint=endpoint, write_=bool(args.write), backup=backup, bulk=args.bulk,
                            page=args.page, batch=args.batch, concurrency=args.concurrency)
         print(json.dumps(result, indent=2))
