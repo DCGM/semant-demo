@@ -244,7 +244,6 @@ test('collections table sorts Created and Updated chronologically', async ({ pag
     // Updated: descending (newest first).
     await updatedHeader.click()
     await expect(names).toHaveText([a, d, c, b])
-
   } finally {
     // Delete every collection successfully created by this test,
     // even if one of the sorting assertions fails.
