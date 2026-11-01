@@ -146,6 +146,9 @@ async def test_an_admitted_guest_operation_is_charged(ai, route):
 
     assert response.status_code == 200, response.text
     calls = len(ai.provider.paths)
+    if route == "explain":
+        assert calls == 2
+        assert response.json()["explanation"]
     assert calls >= 1  # an explanation detects the answer's language first
     assert ai.rows("SELECT status FROM llm_quota_operation") == [("settled",)]
     assert ai.rows("SELECT count(*) FROM llm_quota_call") == [(calls,)]
@@ -419,3 +422,40 @@ async def test_a_suggestion_request_naming_an_unknown_configuration_is_400(ai, m
 
     assert response.status_code == 400
     assert provider.calls == []
+
+
+@pytest.mark.parametrize("quota_exhausted", [False, True],
+                         ids=["available-quota", "exhausted-quota"])
+@pytest.mark.parametrize(("field", "empty", "expected"), [
+    ("sources", [], "Cannot explain this selection because no sources are available."),
+    ("selected_text", "", "Cannot explain because no text was selected."),
+    ("full_answer", "", "Cannot explain this selection because the answer is empty."),
+])
+async def test_empty_adaptive_explanation_succeeds_without_using_daily_allowance(
+        ai, quota_exhausted, field, empty, expected):
+
+    principal = await ai.guest()
+    if quota_exhausted:
+        await ai.exhaust(principal)
+
+    status_before = await ai.status()
+    operations_before = ai.rows(
+        "SELECT feature, status FROM llm_quota_operation"
+    )
+    calls_before = ai.rows("SELECT count(*) FROM llm_quota_call")
+
+    path, request = GUEST_ROUTES["explain"]
+    response = await ai.client.post(path, json={**request, field: empty})
+
+    assert (response.status_code, response.json()) == (
+        200, {"explanation": expected}
+    )
+    assert ai.provider.paths == []
+    assert ai.rows(
+        "SELECT feature, status FROM llm_quota_operation"
+    ) == operations_before
+    assert ai.rows("SELECT count(*) FROM llm_quota_call") == calls_before
+
+    status_after = await ai.status()
+    for amount in ("used_usd", "charged_usd", "reserved_usd"):
+        assert status_after[amount] == status_before[amount]

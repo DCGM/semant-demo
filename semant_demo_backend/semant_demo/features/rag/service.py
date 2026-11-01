@@ -74,6 +74,11 @@ async def explain(registry: RagRegistry, request: ExplainRequest, history_limit:
     """
     pipeline = _pipeline(registry, request.rag_id, " used for explaining")
     logger.info("RAG explain request", extra={"rag.id": request.rag_id})
+
+    reason = pipeline.explanation_unavailable(request)
+    if reason is not None:
+        return {"explanation": reason}
+
     async with _operation(pipeline, budget):
         return await pipeline.explain_selection(
             request=request.model_copy(update={"history": _recent(request.history, history_limit)}))
