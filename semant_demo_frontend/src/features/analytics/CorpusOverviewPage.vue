@@ -52,7 +52,7 @@
               <q-chip
                 removable dense color="blue-1" text-color="dark" :label="chip.label"
                 :remove-aria-label="`Remove filter ${group.label} ${chip.label}`"
-                @remove="load(withoutFilter(overview.filters, group.key, chip.value))"
+                @remove="load(withoutFilter(filters, group.key, chip.value))"
               />
             </template>
           </div>
@@ -181,9 +181,13 @@ const timelineView = shallowRef<{ window: YearWindow, width: number } | null>(nu
 /** The heatmap is counted only once asked for; it then stays shown for other filters. */
 const showHeatmap = ref(false)
 
-/** Restricts the counted documents to a period of the timeline, keeping the other filters. */
+/**
+ * Restricts the counted documents to a period of the timeline, keeping the other filters. Like
+ * a removed chip, built on the filters requested last, not on the counted ones shown: a change
+ * made while counting must not undo the previous one (#548).
+ */
 function applyPeriod (period: YearWindow) {
-  if (overview.value) void load({ ...overview.value.filters, yearMin: period.start, yearMax: period.end })
+  void load({ ...filters.value, yearMin: period.start, yearMax: period.end })
 }
 
 interface CategoryDimension {

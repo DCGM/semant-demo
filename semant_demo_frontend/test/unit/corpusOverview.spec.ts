@@ -437,7 +437,7 @@ describe('CorpusOverviewPage', () => {
     await wrapper.get('[data-testid="filter-title"]').setValue('  Pražský: věstník ')
     await submit(wrapper)
 
-    expect(requests[1].body).toEqual({ filters: { year_min: 1900, year_max: 1920, title_contains: ['Pražský: věstník'] } })
+    expect(requests[1].body).toEqual({ filters: { year_min: 1900, year_max: 1920, title_contains: ['Pražský: věstník'], libraries: [], languages: [] } })
     expect(input(wrapper, 'filter-title').value).toBe('')
     expect(input(wrapper, 'filter-year-min').value).toBe('1900')
     expect(wrapper.text()).toContain('Counting the matching documents')
@@ -460,7 +460,7 @@ describe('CorpusOverviewPage', () => {
     await wrapper.get('[data-testid="filter-title"]').setValue('brna')
     await submit(wrapper)
 
-    expect(requests[2].body).toEqual({ filters: { title_contains: ['brno', 'brna'] } })
+    expect(requests[2].body).toEqual({ filters: { title_contains: ['brno', 'brna'], libraries: [], languages: [] } })
     await answer(overviewBody({ filters: { ...NO_FILTERS, title_contains: ['brna', 'brno'] }, total_documents: 5 }))
     expect(applied(wrapper, 'title')).toEqual(['brna', 'brno'])
     expect(wrapper.get('[data-testid="corpus-applied-title"]').text()).toContain('or')
@@ -468,6 +468,58 @@ describe('CorpusOverviewPage', () => {
     await wrapper.get('[data-testid="corpus-applied-title"] .q-chip .q-chip__icon--remove').trigger('click')
     await flush()
     expect(requests[3].body).toEqual({ filters: { title_contains: ['brno'], libraries: [], languages: [] } })
+  })
+
+  const removeChip = async (wrapper: Page, key: string, index: number) => {
+    await wrapper.get(`[data-testid="corpus-applied-${key}"]`).findAll('.q-chip .q-chip__icon--remove')[index]!.trigger('click')
+    await flush()
+  }
+
+  it('removes chips one after another while the first removal is still being counted', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('[data-testid="filter-title"]').setValue('brno')
+    await submit(wrapper)
+    await wrapper.get('[data-testid="filter-title"]').setValue('praha')
+    await submit(wrapper)
+    await answer(overviewBody({ filters: { ...NO_FILTERS, title_contains: ['brno', 'praha'] }, total_documents: 5 }))
+
+    await removeChip(wrapper, 'title', 0)
+    expect(requests[3].body).toEqual({ filters: { title_contains: ['praha'], libraries: [], languages: [] } })
+    // The chips still show the counted filters; the second removal is built on the requested ones,
+    // so the title removed first does not come back.
+    await removeChip(wrapper, 'title', 1)
+    expect(requests[4].body).toEqual({ filters: { title_contains: [], libraries: [], languages: [] } })
+  })
+
+  it('removes a title from its chip as the server echoed it, also when typed otherwise', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('[data-testid="filter-title"]').setValue('Dopisy, z Prahy')
+    await submit(wrapper)
+    expect(requests[1].body).toEqual({ filters: { title_contains: ['Dopisy, z Prahy'], libraries: [], languages: [] } })
+    await answer(overviewBody({ filters: { ...NO_FILTERS, title_contains: ['Dopisy Prahy'] }, total_documents: 1 }))
+    expect(applied(wrapper, 'title')).toEqual(['Dopisy Prahy'])
+
+    await removeChip(wrapper, 'title', 0)
+    expect(requests[2].body).toEqual({ filters: { title_contains: [], libraries: [], languages: [] } })
+  })
+
+  it('keeps typed years that are not applied when an answer arrives', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('[data-testid="filter-title"]').setValue('brno')
+    await submit(wrapper)
+    await wrapper.get('[data-testid="filter-year-min"]').setValue('1900')
+    await answer(overviewBody({ filters: { ...NO_FILTERS, title_contains: ['brno'] }, total_documents: 3 }))
+    expect(input(wrapper, 'filter-year-min').value).toBe('1900')
+
+    // Clearing every filter still empties them, from the chips and from the form.
+    await wrapper.get('[data-testid="corpus-clear-all"]').trigger('click')
+    await flush()
+    expect(input(wrapper, 'filter-year-min').value).toBe('')
+    await answer(overviewBody())
+    await wrapper.get('[data-testid="filter-year-max"]').setValue('1910')
+    await wrapper.get('[data-testid="filter-clear"]').trigger('click')
+    await flush()
+    expect(input(wrapper, 'filter-year-max').value).toBe('')
   })
 
   it('applies a library as soon as it is chosen or unchosen, keeping what is typed', async () => {
@@ -478,7 +530,7 @@ describe('CorpusOverviewPage', () => {
     // The select keeps no value of its own; a click reports the option clicked.
     libraries.vm.$emit('update:model-value', ['mzk'])
     await flush()
-    expect(requests[1].body).toEqual({ filters: { libraries: ['mzk'] } })
+    expect(requests[1].body).toEqual({ filters: { title_contains: [], libraries: ['mzk'], languages: [] } })
     await answer(overviewBody({ libraries: LIBRARIES, filters: { ...NO_FILTERS, libraries: ['mzk'] }, total_documents: 6 }))
     expect(applied(wrapper, 'libraries')).toEqual(['Moravian Library (mzk)'])
     expect(libraries.props('modelValue')).toEqual([])
@@ -486,11 +538,11 @@ describe('CorpusOverviewPage', () => {
 
     libraries.vm.$emit('update:model-value', ['nkp'])
     await flush()
-    expect(requests[2].body).toEqual({ filters: { libraries: ['mzk', 'nkp'] } })
+    expect(requests[2].body).toEqual({ filters: { title_contains: [], libraries: ['mzk', 'nkp'], languages: [] } })
     // Unchosen: built on the filters requested last (mzk and nkp).
     libraries.vm.$emit('update:model-value', ['mzk'])
     await flush()
-    expect(requests[3].body).toEqual({ filters: { libraries: ['nkp'] } })
+    expect(requests[3].body).toEqual({ filters: { title_contains: [], libraries: ['nkp'], languages: [] } })
   })
 
   it('clears every filter with Clear all', async () => {
@@ -557,6 +609,16 @@ describe('CorpusOverviewPage', () => {
     await wrapper.get('[data-testid="filter-title"]').setValue('brno')
     await submit(wrapper)
     await answer(overviewBody({ filters: { ...NO_FILTERS, title_contains: ['brno'] } }))
+
+    await wrapper.get('[data-testid="timeline-apply-period"]').trigger('click')
+    await flush()
+    expect(requests[2].body).toEqual({ filters: { year_min: 1900, year_max: 1919, title_contains: ['brno'], libraries: [], languages: [] } })
+  })
+
+  it('applies the period shown in the timeline keeping a title still being counted', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('[data-testid="filter-title"]').setValue('brno')
+    await submit(wrapper)
 
     await wrapper.get('[data-testid="timeline-apply-period"]').trigger('click')
     await flush()

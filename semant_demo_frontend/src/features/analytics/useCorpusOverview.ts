@@ -7,8 +7,9 @@ import { isUnfiltered } from './corpusOverview'
 export const SLOW_AFTER_MS = 4000
 
 /**
- * The document counts of the page using it, for the filters last requested (`filters`).
- * `load(filters)` aborts an earlier request, whose late answer is ignored; `retry()` loads
+ * The document counts of the page using it, for the filters last requested (`filters`; once
+ * answered, as the server normalized them, so that they hold the values the counts and their
+ * filter chips show and every change can be built on them, #548). `load(filters)` aborts an earlier request, whose late answer is ignored; `retry()` loads
  * the same filters again; leaving the page aborts the request in flight. A failure keeps no
  * stale counts: the page shows the error instead of old numbers. `corpus` keeps the latest
  * unfiltered counts, which the filter choices and the corpus total are taken from.
@@ -49,6 +50,7 @@ export function useCorpusOverview () {
         { corpusDistributionsRequest: { filters: requested } }, { signal: current.signal })
       if (controller !== current) return
       distributions.value = result
+      filters.value = result.filters
       if (isUnfiltered(result.filters)) corpus.value = result
     } catch (e) {
       if (controller !== current || isAbortError(e)) return
