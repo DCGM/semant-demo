@@ -695,7 +695,15 @@ collection and tags) around the reader page `DocumentReaderPage`. The reader com
 (`useChunkWindow`: collection chunks, previews and hidden gap chunks), chunk membership
 (`useChunkMembership`), gutter measurement (`useReaderGutters`), the offset helpers
 (`readerOffsets.ts`, on top of `annotations/spanOffsets.ts`), and the annotation components
-`ChunkAnnotator`, `AnnotationGutter` and `AnnotationPopover`. The panels and the reader share
+`ChunkAnnotator`, `AnnotationGutter` and `AnnotationPopover`. The text itself is
+`DocumentTextPane` (#539): the given chunks in paragraphs with their stored text and
+whitespace unchanged, slots at gaps and before each chunk, an optional highlighted active
+passage, `scrollToChunk`/`scrollToRange`, and `select`/`textClick` events in canonical
+`(chunkId, UTF-16 offset)` positions. It uses no store and makes no request; without its
+`annotation` prop it is read-only (native selection and copying, no spans or handles), so a
+document view outside a collection can reuse it. The reader passes the annotation display,
+turns its selections into annotation selections and owns everything collection-specific.
+The panels and the reader share
 the annotation, tag navigation and AI suggestion state through their composables.
 Components use stores directly (`storeToRefs` for state); composables exist where they add
 behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
