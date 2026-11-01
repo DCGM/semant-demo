@@ -206,7 +206,7 @@ def test_an_existing_empty_document_gets_its_chunks_without_being_created():
 
 
 def test_an_append_continues_from_the_stored_tail():
-    result = plan(chunks([3, 4]), OrderStats(3, 0, 2), {}, stored([2]), document_exists=True)
+    result = plan(chunks([3, 4]), OrderStats(3, 0, 2), {}, stored([2]), document_exists=True, head=[0, 1])
     everything = list(chunk_positions(TEXTS[i] for i in range(5)))
     assert result.action == "append" and result.replayed == 0
     assert [(c.order, p) for c, p in result.inserts] == [(3, everything[3]), (4, everything[4])]
@@ -234,6 +234,46 @@ def test_gaps_inserts_before_the_stored_chunks_and_nonconsecutive_stores_are_rej
     assert result.action == "rejected" and result.reason.startswith(reason) and not result.inserts
 
 
+def hidden_gaps(n: int, missing_orders=None):
+    """Heads (the sorted stored orders before a tail at ``n - 1``) in which one duplicate hides
+    one gap, so that the count and range still say ``0..n - 1``: every such head, or those
+    missing one of ``missing_orders``."""
+    for missing in missing_orders or range(1, n - 1):
+        for duplicate in range(n - 1):
+            if duplicate != missing:
+                yield sorted([o for o in range(n - 1) if o != missing] + [duplicate])
+
+
+LONG = 2 * chunk_ingest.WINDOW + 51
+"""A document whose head ``examine`` reads in three windows."""
+
+
+@pytest.mark.parametrize("n", [*range(3, 11), LONG])
+def test_a_duplicate_hiding_a_gap_before_the_tail_is_rejected(n):
+    """Stored orders such as [0, 1, 1, 3] have the count and range of 0..3; an append at 4
+    reads only the tail, so the orders before it are checked too. Every head of up to ten
+    stored chunks (even and odd counts); in a long document, gaps at the window edges."""
+    window = chunk_ingest.WINDOW
+    edges = [1, window - 1, window, window + 1, 2 * window, n - 2] if n == LONG else None
+    tail, append = stored([n - 1]), chunks([n])
+    heads = list(hidden_gaps(n, edges))
+    assert heads
+    for head in heads:
+        result = plan(append, OrderStats(n, 0, n - 1), {}, tail, document_exists=True, head=head)
+        assert result.action == "rejected" and result.reason.startswith("nonconsecutive_store"), head
+        assert not result.inserts
+    result = plan(append, OrderStats(n, 0, n - 1), {}, tail, document_exists=True, head=list(range(n - 1)))
+    assert result.action == "append" and [c.order for c, _ in result.inserts] == [n]
+
+
+@pytest.mark.parametrize("head", [[0, 1], [0, 1, 2, 2], [1, 2, 3]])
+def test_a_head_other_than_the_orders_before_the_tail_is_rejected(head):
+    """A head that misses an order, holds one more or starts elsewhere (a store that changed
+    between the reads) is rejected as well."""
+    result = plan(chunks([4]), OrderStats(4, 0, 3), {}, stored([3]), document_exists=True, head=head)
+    assert result.action == "rejected" and result.reason.startswith("nonconsecutive_store") and not result.inserts
+
+
 def test_a_changed_text_of_a_stored_chunk_is_a_conflict():
     result = plan(chunks(range(3)), OrderStats(2, 0, 1), {}, stored(range(2), text="other"), document_exists=True)
     assert result.action == "rejected" and "stores another text" in result.reason
@@ -253,7 +293,8 @@ def test_a_stored_position_other_than_the_computed_one_is_a_conflict():
 
 
 def test_a_tail_without_positions_is_refused():
-    result = plan(chunks([2]), OrderStats(2, 0, 1), {}, stored([1], positions=False), document_exists=True)
+    result = plan(chunks([2]), OrderStats(2, 0, 1), {}, stored([1], positions=False), document_exists=True,
+                  head=[0])
     assert result.action == "rejected" and result.reason.startswith("positions_missing")
 
 

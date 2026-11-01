@@ -351,7 +351,7 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
 - `rejected` (reported, nothing of the document is written):
   - `gap`, `before_start`;
   - `conflict` (another text, source field, position, document or order);
-  - `nonconsecutive_store`;
+  - `nonconsecutive_store` (every stored order is checked: a duplicate cannot hide a gap);
   - `positions_missing` (run `chunk_positions --write` first);
   - `dangling_document`;
   - `invalid_input`.

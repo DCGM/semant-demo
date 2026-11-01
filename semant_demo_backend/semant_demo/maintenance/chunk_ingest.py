@@ -45,10 +45,11 @@ Each document is planned from what is stored, never from the checkpoint alone:
 * ``replayed``: everything is stored already; nothing is written.
 * ``rejected``: reported, nothing of the document is written: a gap or an insert before the
   stored chunks (``gap``, ``before_start``), a difference from what is stored
-  (``conflict``), stored orders that are not consecutive (``nonconsecutive_store``), a stored
-  tail without positions (``positions_missing``: run ``chunk_positions --write`` first),
-  chunks stored for a document object that does not exist (``dangling_document``) or
-  invalid input (``invalid_input``).
+  (``conflict``), stored orders that are not consecutive (``nonconsecutive_store``, checked
+  over every stored order, so that a duplicate cannot hide a gap), a stored tail without
+  positions (``positions_missing``: run ``chunk_positions --write`` first), chunks stored for
+  a document object that does not exist (``dangling_document``) or invalid input
+  (``invalid_input``).
 
 Writing inserts a document's chunks strictly in order, one at a time, and reads each back
 before the next one; documents are written in parallel (``--concurrency``). The single-object
@@ -399,11 +400,13 @@ def matches(stored: store.StoredChunk, chunk: InputChunk, position: ChunkPositio
 
 
 def plan(chunks: list[InputChunk], stats: OrderStats, by_id: dict[UUID, store.StoredChunk],
-         stored: list[store.StoredChunk], document_exists: bool) -> Plan:
+         stored: list[store.StoredChunk], document_exists: bool, head: list[int] = ()) -> Plan:
     """The plan of a document from its input chunks (valid, consecutive orders ``a..b``), its
     stored order statistics ``s..m``, the stored chunks with the input ids (``by_id``), its
-    stored chunks with orders ``max(a, s)..m`` or the tail ``m..m`` (``stored``, in order) and
-    whether the document object exists. Pure: the caller reads, this decides."""
+    stored chunks with orders ``max(a, s)..m`` or the tail ``m..m`` (``stored``, in order), the
+    stored orders before them (``head``, sorted) and whether the document object exists. Every
+    stored order is checked, because a duplicate can hide a gap from the count. Pure: the
+    caller reads, this decides."""
     a, b = chunks[0].order, chunks[-1].order
     for chunk in chunks:
         other = by_id.get(chunk.id)
@@ -427,6 +430,9 @@ def plan(chunks: list[InputChunk], stats: OrderStats, by_id: dict[UUID, store.St
     expected_orders = list(range(min(a, m), m + 1))
     if [c.order for c in stored] != expected_orders:
         return _rejected(f"stored orders {min(a, m)}..{m} are not consecutive", "nonconsecutive_store")
+    if list(head) != list(range(s, min(a, m))):
+        return _rejected(f"stored orders {s}..{min(a, m) - 1} are not consecutive (a duplicate hides a gap)",
+                         "nonconsecutive_store")
     if stored[0].position is None:
         return _rejected(f"chunk {stored[0].id} (order {stored[0].order}) stores no position; run "
                          "chunk_positions --write first", "positions_missing")
@@ -493,14 +499,17 @@ async def examine(client: WeaviateAsyncClient, target: Target, chunks: list[Inpu
         part = ids[start:start + WINDOW]
         by_id |= await _retrying(lambda: store.read_chunks(client, target.chunks, part, target.fields))
     exists = bool(await _retrying(lambda: store.existing_documents(client, target.documents, [document])))
-    stored = []
+    stored, head = [], []
     if stats.count and stats.count == stats.last - stats.first + 1 and stats.first <= chunks[0].order <= stats.last + 1:
         first = min(chunks[0].order, stats.last)
+        for low in range(stats.first, first, WINDOW):
+            high = min(low + WINDOW - 1, first - 1)
+            head += await _retrying(lambda: store.read_orders(client, target.chunks, document, low, high))
         for low in range(first, stats.last + 1, WINDOW):
             high = min(low + WINDOW - 1, stats.last)
             stored += await _retrying(lambda: store.read_order_range(client, target.chunks, document, low, high,
                                                                      target.fields))
-    return plan(chunks, stats, by_id, stored, exists)
+    return plan(chunks, stats, by_id, stored, exists, head)
 
 
 @dataclass

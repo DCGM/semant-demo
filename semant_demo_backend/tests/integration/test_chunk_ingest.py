@@ -109,16 +109,23 @@ async def run(s, tmp_path, inputs, checkpoint="run.json", write=True, bulk=False
 
 
 async def snapshot(client) -> dict:
-    """Every object of the test collections with properties, references, vectors and update time."""
+    """Every object of the test collections with properties, references, vectors and update time
+    (paged by id, so that also a store with a low ``QUERY_MAXIMUM_RESULTS`` is read whole)."""
     objects = {}
     for name in (DOCS, CHUNKS):
-        response = await client.collections.get(name).query.fetch_objects(
-            limit=1000, include_vector=True, return_metadata=MetadataQuery(last_update_time=True),
-            return_references=[QueryReference(link_on="document", return_properties=[]),
-                               QueryReference(link_on="positiveTag", return_properties=[])] if name == CHUNKS else None)
-        for o in response.objects:
-            refs = {k: sorted(t.uuid for t in v.objects) for k, v in (o.references or {}).items()}
-            objects[o.uuid] = (o.properties, refs, o.vector, o.metadata.last_update_time)
+        after = None
+        while True:
+            response = await client.collections.get(name).query.fetch_objects(
+                limit=100, after=after, include_vector=True, return_metadata=MetadataQuery(last_update_time=True),
+                return_references=[QueryReference(link_on="document", return_properties=[]),
+                                   QueryReference(link_on="positiveTag", return_properties=[])]
+                if name == CHUNKS else None)
+            for o in response.objects:
+                refs = {k: sorted(t.uuid for t in v.objects) for k, v in (o.references or {}).items()}
+                objects[o.uuid] = (o.properties, refs, o.vector, o.metadata.last_update_time)
+            if len(response.objects) < 100:
+                break
+            after = response.objects[-1].uuid
     return objects
 
 
@@ -200,6 +207,64 @@ async def test_input_that_would_change_skip_or_interleave_is_rejected_without_wr
     assert code == 1 and result["counts"]["rejected"] == 1
     assert [m["reason"].split(":")[0] for m in manifest(tmp_path)] == [reason]
     assert await snapshot(s.client) == before
+
+
+async def test_an_append_after_a_duplicate_hiding_a_gap_is_rejected_without_writing(ingest_store, tmp_path):
+    """Stored orders 0, 1, 1, 2, 4 have the count and range of 0..4; the append at 5 reads only
+    the tail, so the orders before it are checked too. Nothing stored is repaired."""
+    s = ingest_store
+    positions = list(chunk_positions(TEXTS[:5]))
+    extra = [(cid(EXISTING, 101), 1), (cid(EXISTING, 4), 4)]
+    result = await s.client.collections.get(CHUNKS).data.insert_many([
+        DataObject(uuid=chunk_id, references={"document": EXISTING},
+                   properties={"text": TEXTS[i], "order": i, "language": "ces", "startChar": positions[i].start_char,
+                               "startWord": positions[i].start_word,
+                               "wordOpenAtStart": positions[i].word_open_at_start})
+        for chunk_id, i in extra])
+    assert not result.errors
+    before = await snapshot(s.client)
+    result, code = await run(s, tmp_path, jsonl(tmp_path, "append.jsonl", [line(EXISTING, 5)]))
+    assert code == 1 and result["counts"]["rejected"] == 1 and result["counts"]["chunks_inserted"] == 0
+    assert [m["reason"].split(":")[0] for m in manifest(tmp_path)] == ["nonconsecutive_store"]
+    assert await snapshot(s.client) == before
+
+
+LONG = 2 * chunk_ingest.WINDOW + 51
+"""A document whose stored orders ``examine`` reads in three windows."""
+
+
+@pytest.mark.parametrize("missing, duplicate", [
+    (None, None), (1, 0), (chunk_ingest.WINDOW, chunk_ingest.WINDOW - 1), (LONG - 2, 3)])
+async def test_a_long_document_is_appended_only_after_every_stored_order(ingest_store, tmp_path, missing, duplicate):
+    """Orders 0..LONG - 1 of a long document are stored, or one of them is missing and another
+    stored twice (in the first window, at the edge of the second, just before the tail). The
+    append at LONG is inserted only in the first case."""
+    s = ingest_store
+    texts = [f"slovo{i} " for i in range(LONG + 1)]
+    positions = list(chunk_positions(texts))
+    orders = [(cid(OTHER, i), i) for i in range(LONG) if i != missing]
+    if duplicate is not None:
+        orders.append((UUID(int=10 ** 6 + duplicate), duplicate))
+    await s.client.collections.get(DOCS).data.insert(uuid=OTHER, properties={})
+    result = await s.client.collections.get(CHUNKS).data.insert_many([
+        DataObject(uuid=chunk_id, references={"document": OTHER},
+                   properties={"text": texts[i], "order": i, "language": "ces", "startChar": positions[i].start_char,
+                               "startWord": positions[i].start_word,
+                               "wordOpenAtStart": positions[i].word_open_at_start})
+        for chunk_id, i in orders])
+    assert not result.errors
+    before = await snapshot(s.client)
+    append = {"id": str(cid(OTHER, LONG)), "document": str(OTHER), "order": LONG, "text": texts[LONG],
+              "language": "ces"}
+    result, code = await run(s, tmp_path, jsonl(tmp_path, "append.jsonl", [append]))
+    if missing is None:
+        assert code == 0 and result["counts"]["append"] == 1 and result["counts"]["chunks_inserted"] == 1
+        chunk = await stored_chunk(s.client, OTHER, LONG)
+        assert chunk.order == LONG and chunk.position == positions[LONG]
+    else:
+        assert code == 1 and result["counts"]["rejected"] == 1 and result["counts"]["chunks_inserted"] == 0
+        assert [m["reason"].split(":")[0] for m in manifest(tmp_path)] == ["nonconsecutive_store"]
+        assert await snapshot(s.client) == before
 
 
 async def test_a_failed_write_blocks_only_its_document_and_a_rerun_finishes_it(ingest_store, tmp_path, monkeypatch):
