@@ -27,6 +27,13 @@ import {
     LibraryYearsToJSON,
     LibraryYearsToJSONTyped,
 } from './LibraryYears';
+import type { ChunkFilters } from './ChunkFilters';
+import {
+    ChunkFiltersFromJSON,
+    ChunkFiltersFromJSONTyped,
+    ChunkFiltersToJSON,
+    ChunkFiltersToJSONTyped,
+} from './ChunkFilters';
 
 /**
  * The documents matching ``filters`` per source library and publication year: a document is
@@ -54,6 +61,12 @@ export interface LibraryYearDistribution {
      * @memberof LibraryYearDistribution
      */
     filters: DocumentFilters;
+    /**
+     * 
+     * @type {ChunkFilters}
+     * @memberof LibraryYearDistribution
+     */
+    chunkFilters?: ChunkFilters;
     /**
      * 
      * @type {number}
@@ -154,6 +167,7 @@ export function LibraryYearDistributionFromJSONTyped(json: any, ignoreDiscrimina
         'scope': json['scope'],
         'unit': json['unit'],
         'filters': DocumentFiltersFromJSON(json['filters']),
+        'chunkFilters': json['chunk_filters'] == null ? undefined : ChunkFiltersFromJSON(json['chunk_filters']),
         'totalDocuments': json['total_documents'],
         'computedAt': (new Date(json['computed_at'])),
         'available': json['available'],
@@ -177,6 +191,7 @@ export function LibraryYearDistributionToJSONTyped(value?: LibraryYearDistributi
         'scope': value['scope'],
         'unit': value['unit'],
         'filters': DocumentFiltersToJSON(value['filters']),
+        'chunk_filters': ChunkFiltersToJSON(value['chunkFilters']),
         'total_documents': value['totalDocuments'],
         'computed_at': value['computedAt'].toISOString(),
         'available': value['available'],

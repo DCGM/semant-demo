@@ -15,7 +15,7 @@ from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.documents.criteria import (
-    ChunkFilters, DocumentFilters, document_conditions, reject_chunk_filters)
+    ChunkFilters, ChunkVocabulary, DocumentFilters, document_level_conditions)
 from semant_demo.features.documents.schemas import DocumentChunk, AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 
 Id = str | UUID
@@ -103,19 +103,20 @@ async def read_adjacent_chunks(documents: DocumentRepository, document_id: Id, c
 
 async def browse(documents: DocumentRepository, collections: UserCollectionRepository, user: Principal | None,
                  collection_id: Id | None = None, filters: DocumentFilters | None = None,
-                 chunk_filters: ChunkFilters | None = None, **options) -> DocumentBrowse:
+                 chunk_filters: ChunkFilters | None = None, vocabulary: ChunkVocabulary | None = None,
+                 **options) -> DocumentBrowse:
     """
     One page of corpus documents (public), or of one collection's documents, which needs
-    read access to it. ``filters`` are the shared document filters (the same documents as
-    Analytics counts for them); ``options`` are the repository's paging, sorting and
-    substring filter options. Raises ``ChunkFiltersUnavailable`` for any ``chunk_filters``
-    before reading anything (document browsing cannot apply them before #529).
+    read access to it. ``filters`` and ``chunk_filters`` are the shared search criteria (the
+    same documents as Analytics counts for them); chunk filters apply per dimension to the
+    documents' chunk-value summaries and are checked against ``vocabulary`` before anything is
+    read (``InvalidChunkFilterError``). ``options`` are the repository's paging, sorting and
+    substring filter options.
     """
-    reject_chunk_filters(chunk_filters, "Document browsing")
+    _, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
     scope = None
     if collection_id is not None:
         scope = (await access.require_collection_read(collections, user, collection_id)).collection_id
-    conditions = document_conditions(filters) if filters is not None else []
     return await documents.browse(collection_id=scope, conditions=conditions, **options)
 
 

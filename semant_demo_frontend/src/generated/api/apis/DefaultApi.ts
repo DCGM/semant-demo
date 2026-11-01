@@ -739,7 +739,7 @@ export interface DefaultApiInterface {
     browseDocumentsApiDocumentsBrowseGetRequestOpts(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document matches when, for each filter, some chunk of it has one of the values; different filters may be met by different chunks. They are answered from the documents\' chunk-value summaries, as last recomputed: a document never recomputed matches no chunk filter, and a corpus database without the summaries rejects chunk filters (422). An unconfigured value is rejected (400).
      * @summary Browse Documents
      * @param {string} [collectionId] 
      * @param {number} [limit] 
@@ -764,7 +764,7 @@ export interface DefaultApiInterface {
     browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>>;
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document matches when, for each filter, some chunk of it has one of the values; different filters may be met by different chunks. They are answered from the documents\' chunk-value summaries, as last recomputed: a document never recomputed matches no chunk filter, and a corpus database without the summaries rejects chunk filters (422). An unconfigured value is rejected (400).
      * Browse Documents
      */
     browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse>;
@@ -802,7 +802,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0, and so are chunk filters (``chunk_filters``), which document counts cannot apply yet.
+     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * @summary Corpus Distributions
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -812,7 +812,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0, and so are chunk filters (``chunk_filters``), which document counts cannot apply yet.
+     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions>;
@@ -826,7 +826,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Unavailable filters and chunk filters are rejected (422).
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
      * @summary Corpus Library Years
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -836,7 +836,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Unavailable filters and chunk filters are rejected (422).
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution>;
@@ -2943,7 +2943,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document matches when, for each filter, some chunk of it has one of the values; different filters may be met by different chunks. They are answered from the documents\' chunk-value summaries, as last recomputed: a document never recomputed matches no chunk filter, and a corpus database without the summaries rejects chunk filters (422). An unconfigured value is rejected (400).
      * Browse Documents
      */
     async browseDocumentsApiDocumentsBrowseGetRaw(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentBrowse>> {
@@ -2954,7 +2954,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document will match when, for each filter, some chunk of it has one of the values (#529). Until then any chunk filter is rejected (422), never ignored; without them browsing is unchanged.
+     * Browses the corpus with pagination, filtering and sorting options. With ``collection_id`` only that collection\'s documents are browsed, which needs read access to it.  ``year_min``, ``year_max``, ``title_contains``, ``libraries`` and ``languages`` are the shared document filters (``DocumentFilters``; repeat a list parameter for alternatives): they select the same documents as the Analytics counts for them. ``title``, ``author``, ``publisher`` and ``document_type`` are older substring filters. A filter on a property this corpus database does not record is rejected (422).  ``chunk_languages`` and ``chunk_classifications`` are the shared chunk filters (``ChunkFilters``): chunk languages, and ``<classification>:<value>`` pairs such as ``complexity:easy`` (repeat a parameter for alternatives). A document matches when, for each filter, some chunk of it has one of the values; different filters may be met by different chunks. They are answered from the documents\' chunk-value summaries, as last recomputed: a document never recomputed matches no chunk filter, and a corpus database without the summaries rejects chunk filters (422). An unconfigured value is rejected (400).
      * Browse Documents
      */
     async browseDocumentsApiDocumentsBrowseGet(requestParameters: BrowseDocumentsApiDocumentsBrowseGetRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentBrowse> {
@@ -3046,7 +3046,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0, and so are chunk filters (``chunk_filters``), which document counts cannot apply yet.
+     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>> {
@@ -3057,7 +3057,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters: the matching total and the matching documents per publication year, source library and document language. Without filters, a recent result may be served again. A filter on a property this corpus database does not record is rejected (422), never answered with 0, and so are chunk filters (``chunk_filters``), which document counts cannot apply yet.
+     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions> {
@@ -3095,7 +3095,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Unavailable filters and chunk filters are rejected (422).
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>> {
@@ -3106,7 +3106,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Unavailable filters and chunk filters are rejected (422).
+     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution> {

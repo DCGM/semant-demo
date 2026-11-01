@@ -10,9 +10,9 @@ from weaviate.classes.query import Filter
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter, parts, where, word_supersets
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.documents.criteria import (
-    AnyOf, CategoryIn, ChunkFilters, ChunkFiltersUnavailable, ChunkVocabulary, ContainsWords, DocumentFilters,
-    InvalidChunkFilterError, NumberRange, SearchCriteria, chunk_conditions, document_conditions,
-    reject_chunk_filters, validate_chunk_filters)
+    AnyOf, CategoryIn, ChunkFilters, ChunkVocabulary, ContainsWords, DocumentFilters, InvalidChunkFilterError,
+    NumberRange, SearchCriteria, chunk_conditions, document_chunk_conditions, document_conditions,
+    document_level_conditions, validate_chunk_filters)
 from semant_demo.features.search.filters import TASK_CLASSES, chunk_vocabulary, generate_default_filters
 
 VOCABULARY = ChunkVocabulary(languages=("ces", "deu"), classifications={
@@ -103,13 +103,6 @@ def test_the_vocabulary_is_the_configured_chunk_language_and_classification_filt
     assert vocabulary.classifications["complexity"] == tuple(TASK_CLASSES["complexity"])
 
 
-def test_document_level_operations_reject_chunk_filters():
-    reject_chunk_filters(None, "Document counts")
-    reject_chunk_filters(ChunkFilters(), "Document counts")
-    with pytest.raises(ChunkFiltersUnavailable, match="Document counts cannot be restricted by chunk filters"):
-        reject_chunk_filters(ChunkFilters(languages=["ces"]), "Document counts")
-
-
 ##############
 # Predicates #
 ##############
@@ -135,6 +128,37 @@ def test_chunk_filters_become_exact_category_predicates_with_the_other_values():
         CategoryIn("language", ("ces",), others=("deu",)),
         CategoryIn("complexity", ("easy", "moderate"), others=("very_easy",)),
     ]
+
+
+def test_document_level_chunk_filters_are_predicates_on_the_document_summaries_per_dimension():
+    filters = validate_chunk_filters(
+        ChunkFilters(languages=["ces"], classifications={"complexity": ["easy"], "style": ["formal"]}), VOCABULARY)
+
+    # One predicate per dimension, each on its own summary: different chunks may meet them (#529).
+    assert document_chunk_conditions(filters, VOCABULARY) == [
+        CategoryIn("chunk_language", ("ces",), others=("deu",)),
+        CategoryIn("chunk_complexity", ("easy",), others=("very_easy", "moderate")),
+        CategoryIn("chunk_style", ("formal",), others=("informal",)),
+    ]
+
+
+def test_document_level_conditions_combine_document_and_chunk_filters():
+    chunks, conditions = document_level_conditions(
+        DocumentFilters(libraries=["mzk"]), ChunkFilters(classifications={"complexity": ["EASY"]}), VOCABULARY)
+
+    assert chunks == ChunkFilters(classifications={"complexity": ["easy"]})  # the configured spelling
+    assert conditions == [AnyOf("library", ("mzk",)),
+                          CategoryIn("chunk_complexity", ("easy",), others=("very_easy", "moderate"))]
+    assert document_level_conditions(None, None, None) == (ChunkFilters(), [])
+    assert document_level_conditions(DocumentFilters(year_min=1900), ChunkFilters(), None) == \
+        (ChunkFilters(), [NumberRange("yearIssued", 1900, None)])
+
+
+def test_document_level_chunk_filters_need_the_configured_vocabulary():
+    with pytest.raises(InvalidChunkFilterError, match="'casual' is not a valid option for 'style'"):
+        document_level_conditions(None, ChunkFilters(classifications={"style": ["casual"]}), VOCABULARY)
+    with pytest.raises(InvalidRequestError, match="Chunk filters are not available"):
+        document_level_conditions(None, ChunkFilters(languages=["ces"]), None)
 
 
 ##################
@@ -201,3 +225,17 @@ def test_a_chunk_predicate_on_a_property_the_store_cannot_filter_is_refused(cond
         where([condition], CHUNK_TYPES, records="Chunks")
     assert (refused.value.prop, refused.value.reason) == (condition.prop, reason)
     assert str(refused.value).startswith(f"Chunks cannot be filtered by {condition.prop}")
+
+
+def test_document_summaries_are_matched_whole_with_their_field_tokenization():
+    types = {"chunk_complexity": "text[]"}
+    f = where([CategoryIn("chunk_complexity", ("easy",), others=("very_easy",))], types, {"chunk_complexity": "field"})
+
+    assert _leaves(f) == [("chunk_complexity", "ContainsAny", ["easy"])]
+
+
+def test_chunk_filters_on_a_store_without_document_summaries_are_refused():
+    with pytest.raises(UnavailableFilter) as refused:
+        where([CategoryIn("chunk_complexity", ("easy",))], {"title": "text"})
+    assert str(refused.value) == ("Documents cannot be filtered by chunk values (chunk_complexity): this corpus "
+                                  "database has no chunk-value summaries of its documents.")

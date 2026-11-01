@@ -1,7 +1,8 @@
 """Weaviate filters for the search-criteria predicates (``features/documents/criteria.py``).
 
 One rendering serves every collection that is filtered by the criteria: ``Documents``
-(Analytics counts and document browsing) and ``Chunks`` (Search). For chunks, document
+(Analytics counts and document browsing, including chunk filters on the documents' ``field``-
+tokenized chunk-value summaries, #529) and ``Chunks`` (Search). For chunks, document
 predicates go through the ``document`` reference, which ``target`` names; the caller decides.
 
 A predicate is checked against the property as the store declares it; one the store cannot
@@ -24,7 +25,8 @@ from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter
 
 from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
-from semant_demo.features.documents.criteria import AnyOf, CategoryIn, Condition, ContainsWords, NumberRange
+from semant_demo.features.documents.criteria import (
+    SUMMARY_PREFIX, AnyOf, CategoryIn, Condition, ContainsWords, NumberRange)
 
 DataTypes = Mapping[str, str]
 """Declared data type per property name (``"text"``, ``"text[]"``, ``"int"``, ``"number"``, ...)."""
@@ -49,8 +51,13 @@ class UnavailableFilter(Exception):
     value of the expected kind; the records cannot be filtered by it (never answered with 0)."""
 
     def __init__(self, prop: str, reason: Literal["missing", "unsupported_type"], records: str = "Documents"):
-        detail = "is not recorded" if reason == "missing" else "is not recorded as a single value"
-        super().__init__(f"{records} cannot be filtered by {prop}: this corpus database {detail}.")
+        if records == "Documents" and prop.startswith(SUMMARY_PREFIX) and reason == "missing":
+            message = (f"Documents cannot be filtered by chunk values ({prop}): this corpus database has no "
+                       "chunk-value summaries of its documents.")
+        else:
+            detail = "is not recorded" if reason == "missing" else "is not recorded as a single value"
+            message = f"{records} cannot be filtered by {prop}: this corpus database {detail}."
+        super().__init__(message)
         self.prop = prop
         self.reason = reason
 

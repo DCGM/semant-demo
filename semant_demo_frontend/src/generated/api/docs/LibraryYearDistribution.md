@@ -10,6 +10,7 @@ Name | Type
 `scope` | string
 `unit` | string
 `filters` | [DocumentFilters](DocumentFilters.md)
+`chunkFilters` | [ChunkFilters](ChunkFilters.md)
 `totalDocuments` | number
 `computedAt` | Date
 `available` | boolean
@@ -27,6 +28,7 @@ const example = {
   "scope": null,
   "unit": null,
   "filters": null,
+  "chunkFilters": null,
   "totalDocuments": null,
   "computedAt": null,
   "available": null,
