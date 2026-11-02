@@ -208,6 +208,15 @@ async def delete_value(store: AttributeStore, user: Principal | None, collection
 # Assignments #
 ##############
 
+def applies(attribute: Attribute, tag_id: Id) -> bool:
+    """Whether the attribute applies to annotations of the tag: All tags, or the tag is selected
+    (Selected with no tag applies to none, #522). Derived from the annotation's current tag, never
+    stored (#500): values of an attribute that does not apply (after a retag) stay on the
+    annotation and still match their filter; they cannot be assigned again but can be removed.
+    Statistics count only applicable values by default (#334)."""
+    return attribute.all_tags or UUID(str(tag_id)) in attribute.tag_ids
+
+
 def _item_failure(annotation_id: UUID, step: str, message: str) -> StepFailure:
     return StepFailure(item_id=str(annotation_id), step=step, message=message)
 
@@ -257,14 +266,19 @@ def _type_failure(request: AttributeAssignRequest, span: TagSpan, sid: UUID) -> 
 
 def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: TagSpan, previous: list[UUID],
                   result: list[UUID], sid: UUID) -> StepFailure | None:
-    """Why the assignment is not allowed for this annotation, or None. Removing is always allowed.
-    The annotation type is checked earlier (``_type_failure``)."""
+    """Why the assignment is not allowed for this annotation, or None. Removing is always allowed,
+    also as a ``replace`` that only leaves values out, so values of an attribute that no longer
+    applies to the annotation's tag can be cleared (#500); only values the request adds are checked
+    against the tag and retirement. The annotation type is checked earlier (``_type_failure``)."""
     if request.mode in _REMOVING:
         return None
-    if not attribute.all_tags and UUID(span.tagId) not in attribute.tag_ids:
+    added = [v for v in result if v not in previous]
+    if not added:
+        return None
+    if not applies(attribute, span.tagId):
         return _item_failure(sid, "check_applicable", "This attribute does not apply to the annotation's tag.")
     retired = {v.id for v in attribute.values if v.retired}
-    if any(v in retired for v in result if v not in previous):
+    if any(v in retired for v in added):
         return _item_failure(sid, "check_value", "A retired value cannot be assigned again.")
     if attribute.cardinality == Cardinality.single and len(result) > 1:
         return _item_failure(sid, "check_cardinality",

@@ -95,6 +95,20 @@ renames categories later without rewriting annotations or losing who decided wha
   would fall outside the new tags; going from All tags to selected tags or to none, and from
   selected tags to none, is narrowing too); widening and an unchanged scope are always allowed. Merging values (reassigning the affected
   annotations) is not implemented here.
+- **Values that no longer apply are kept** (#500, decided by the product owner). An attribute
+  applies to an annotation when it applies to All tags or its selected tags include the
+  annotation's current tag; this is derived on every read, never stored. A retag (review
+  `retag`, `PATCH /api/tag_spans/{id}`, `bulk_update`) leaves `attributeValues` as they are, so an
+  approved annotation can hold *inapplicable* values. They still match `?attribute=` and count as
+  usage (they block deleting their value or attribute and narrowing the tags away from them);
+  the workspace greys and marks them, apart from the applicable ones and removable only. A value
+  of an attribute that does not apply is not assigned (`check_applicable`); removing it is allowed
+  (`remove`, `clear`, or a `replace` that only leaves values out), with a change record as any
+  removal. Retagging back makes them applicable again. Statistics
+  and analytical exports (#334) count only applicable values by default and may report
+  inapplicable ones separately. Removing the values on retag (with the user's consent) was
+  rejected as destructive; hiding them would let them block deletion invisibly. A bulk cleanup
+  may follow if it proves useful.
 - **The properties are added by an operator command**
   (`annotation_attributes add-schema`), never at startup or by a request; the backend reads and
   writes them only when the collection holds them (`bootstrap.detect_attributes`). Without them
@@ -117,9 +131,9 @@ examples, so what a value meant when it was assigned is known only as far as its
 Collection deletion crosses two stores: the collection (Weaviate) first, then its definitions and
 change records (SQL), so a failed collection deletion never costs a surviving collection its
 definitions or history; rows a failed second step leaves behind belong to a collection that no
-longer exists and are unreachable (cleaning them is a follow-up, `docs/TODO.md`). Retagging an annotation to a tag an
-attribute does not apply to keeps its values and, unlike a rejection, still shows them in rows and
-filters: the state narrowing refuses to create. How to handle it is open (#500). The document view does not show attributes yet.
+longer exists and are unreachable (cleaning them is a follow-up, `docs/TODO.md`). A retag can
+create inapplicable values, the state narrowing refuses to create; they stay until someone
+removes them (#500). The document view does not show attributes yet.
 
 ## Verification
 
@@ -128,5 +142,5 @@ definitions, per-collection ids, assignment modes and rules, conflicts and retri
 failed/uncertain writes, change records, access, collection deletion order), the filters in the
 concordance service (`tests/test_annotation_concordance.py`), and real Weaviate 1.40.1
 (`tests/integration/test_annotation_attributes.py`: exact filters with similar ids, several values,
-empty arrays and missing properties, use counts, the API end to end, store without the
-properties).
+empty arrays and missing properties, use counts, the API end to end, values kept through every
+retag path (#500), store without the properties).

@@ -5,9 +5,9 @@ The stored assignments are exact whole elements ``<attribute id>:<value id>`` of
 annotations that never had the property without accidental hits, and "no value of attribute A"
 is the explicit negation of A's fixed-length prefix. Through the API: definitions per collection,
 assignment with ``attributeVersion`` conflicts, eligibility (approved annotations only), tag
-applicability, cross-collection ids, value retirement, deletion of used definitions, and a
-collection without the attribute properties (which must not get them from Weaviate's
-auto-schema) refusing assignments.
+applicability (values kept through every retag path, #500), cross-collection ids, value
+retirement, deletion of used definitions, and a collection without the attribute properties
+(which must not get them from Weaviate's auto-schema) refusing assignments.
 """
 from uuid import UUID
 
@@ -258,6 +258,82 @@ async def test_tags_can_limit_an_attribute_and_retired_or_used_definitions_are_k
                         expected_versions={brno: 1}, mode="remove", value_ids=[city])
     assert (await api_client.post(url, headers=owner, json=body)).json()["succeeded"] == [brno]
     assert (await api_client.delete(base, headers=owner)).status_code == 204
+
+
+async def test_values_kept_through_every_retag_path_match_their_filter_and_can_only_be_removed(api_client, login, ids):
+    """#500: a retag never removes values. Away from the attribute's tag they still match their
+    filter, are not assigned again and can be removed (also by a replace that only leaves values
+    out); back on it they apply again."""
+    owner = await login("owner")
+    collection, novak = ids.col["chronicles"], ids.span["novak_manual"]
+    person, place = ids.tag["person"], ids.tag["place"]
+    speaker = await _define(api_client, owner, collection, name="speaker_type", cardinality="multi",
+                            tag_ids=[person], values=[{"label": "politician"}, {"label": "priest"}])
+    politician, priest = (v["id"] for v in speaker["values"])
+    url, body = _assign(collection, attribute_id=speaker["id"], annotation_ids=[novak],
+                        expected_versions={novak: 0}, mode="add", value_ids=[politician])
+    assert (await api_client.post(url, headers=owner, json=body)).json()["succeeded"] == [novak]
+    held = f"{speaker['id']}:{politician}"
+
+    async def edit_version():
+        return (await _rows(api_client, owner, collection))[novak]["editVersion"]
+
+    async def assert_kept(tag):
+        row = (await _rows(api_client, owner, collection))[novak]
+        assert (row["tagId"], row["attributes"], row["attributeVersion"]) == (tag, {speaker["id"]: [politician]}, 1)
+        assert novak in await _rows(api_client, owner, collection, attribute=held)
+
+    async def add_priest():
+        url, body = _assign(collection, attribute_id=speaker["id"], annotation_ids=[novak],
+                            expected_versions={novak: 1}, mode="add", value_ids=[priest])
+        return (await api_client.post(url, headers=owner, json=body)).json()
+
+    async def retag_to(tag, path):
+        version = await edit_version()
+        if path == "patch":
+            answer = await api_client.patch(f"/api/tag_spans/{novak}", headers=owner, json={"tagId": tag},
+                                            params={"collection_id": collection, "expected_version": version})
+            assert answer.status_code == 200, answer.text
+        elif path == "bulk":
+            answer = await api_client.post("/api/tag_spans/bulk_update", headers=owner, json={
+                "collection_id": collection, "span_ids": [novak], "update": {"tagId": tag},
+                "expected_versions": {novak: version}})
+            assert answer.json()["outcome"] == "complete", answer.text
+        else:
+            answer = await api_client.post(f"/api/user_collections/{collection}/annotations/review", headers=owner,
+                                           json={"action": "retag", "tag_id": tag, "annotation_ids": [novak],
+                                                 "expected_versions": {novak: version}})
+            assert answer.json()["succeeded"] == [novak], answer.text
+
+    # Single span, bulk update and review: away from the attribute's tag, back, and away again.
+    await retag_to(place, "patch")
+    await assert_kept(place)
+    assert [f["step"] for f in (await add_priest())["failed"]] == ["check_applicable"]
+    await retag_to(person, "bulk")
+    await assert_kept(person)
+    await retag_to(place, "review")
+    await assert_kept(place)
+    assert [f["step"] for f in (await add_priest())["failed"]] == ["check_applicable"]
+
+    # Removing is allowed: by remove, and by a replace that only leaves values out.
+    url, body = _assign(collection, attribute_id=speaker["id"], annotation_ids=[novak],
+                        expected_versions={novak: 1}, mode="remove", value_ids=[politician])
+    assert (await api_client.post(url, headers=owner, json=body)).json()["succeeded"] == [novak]
+    assert (await _rows(api_client, owner, collection))[novak]["attributes"] == {}
+    await retag_to(person, "bulk")
+    url, body = _assign(collection, attribute_id=speaker["id"], annotation_ids=[novak],
+                        expected_versions={novak: 2}, mode="add", value_ids=[politician])
+    assert (await api_client.post(url, headers=owner, json=body)).json()["succeeded"] == [novak]
+    await retag_to(place, "review")
+    url, body = _assign(collection, attribute_id=speaker["id"], annotation_ids=[novak],
+                        expected_versions={novak: 3}, mode="replace", value_ids=[])
+    cleared = (await api_client.post(url, headers=owner, json=body)).json()
+    assert cleared["succeeded"] == [novak], cleared
+    assert (await _rows(api_client, owner, collection))[novak]["attributes"] == {}
+    changes = (await api_client.get(f"/api/user_collections/{collection}/annotations/{novak}/attribute-changes",
+                                    headers=owner)).json()
+    assert [([v["id"] for v in c["previous"]], [v["id"] for v in c["current"]]) for c in changes] == [
+        ([], [politician]), ([politician], []), ([], [politician]), ([politician], [])]
 
 
 async def test_a_collection_without_the_attribute_properties_refuses_assignments_and_gets_them_added(
