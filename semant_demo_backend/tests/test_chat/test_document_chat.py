@@ -130,6 +130,29 @@ async def test_the_oldest_history_turns_are_dropped_to_fit_and_history_starts_wi
     assert [m["content"] for m in llm.calls[-1][1:-1]] == ["nová otázka", "nová odpověď"]
 
 
+async def test_history_never_cuts_a_document_that_fits():
+    # Passages take most of the ~8000 characters; the long history gets only the room left.
+    chunks = [chunk(i, text="slovo " * 200) for i in range(5)]  # ~1200 characters each
+    history = [ChatTurn(role="user", text="otázka " * 300), ChatTurn(role="assistant", text="odpověď " * 300),
+               ChatTurn(role="user", text="nová otázka"), ChatTurn(role="assistant", text="nová odpověď")]
+    llm = FakeLlm(max_input_tokens=2000)
+
+    prepared, events = await run(llm, chunks, request=ask(history=history))
+
+    assert len(prepared.chunks) == 5 and events[-1].coverage == "all"
+    assert [m["content"] for m in llm.calls[-1][1:-1]] == ["nová otázka", "nová odpověď"]
+
+
+async def test_turns_left_empty_by_removed_citations_are_not_sent():
+    history = [ChatTurn(role="user", text="[doc1]"), ChatTurn(role="assistant", text=" [doc1] ", chunk_ids=[uuid4()]),
+               ChatTurn(role="user", text="Kdo?"), ChatTurn(role="assistant", text="Kronikář.")]
+    llm = FakeLlm()
+
+    await run(llm, [chunk(0)], request=ask(history=history))
+
+    assert [m["content"] for m in llm.calls[-1][1:-1]] == ["Kdo?", "Kronikář."]
+
+
 async def test_a_question_with_a_first_chunk_above_the_limit_is_refused_before_streaming():
     llm = FakeLlm(max_input_tokens=100)
 

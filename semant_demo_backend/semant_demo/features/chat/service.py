@@ -41,9 +41,6 @@ logger = logging.getLogger(__name__)
 FEATURE = "context_chat"
 CITATION = re.compile(r"\[doc([1-9][0-9]*)]")
 """A ``[docN]`` citation, as the frontend's ``tokenizeCitations`` reads it."""
-HISTORY_SHARE = 0.25
-"""At most this share of the input limit is kept for the history before chunks are left
-out; the question and the chunks come first."""
 INPUT_MARGIN_CHARS = 200
 """Left free below the input limit, which the gateway estimates from the same characters."""
 FAILED_MESSAGE = "The assistant could not answer."
@@ -148,20 +145,19 @@ class PreparedChat:
 def fit_request(title: str | None, chunks: Sequence[DocumentViewChunk], request: ContextChatRequest,
                 max_input_tokens: int) -> PreparedChat:
     """The model input for ``request`` about ``chunks`` (in document order) within
-    ``max_input_tokens``: the question first, then as many leading chunks as fit next to
-    the history (at most ``HISTORY_SHARE`` of the limit kept for it), then the newest
-    history turns that still fit. Raises ``LlmInputTooLarge`` when not even the question
-    and the first chunk fit."""
+    ``max_input_tokens`` (ADR 0012): the question and as many leading chunks as fit come
+    first; the history gets the room left, its newest turns first. Turns left empty by
+    removing their citations are not sent. Raises ``LlmInputTooLarge`` when not even the
+    question and the first chunk fit."""
     limit = max_input_tokens * CHARS_PER_TOKEN - INPUT_MARGIN_CHARS
     # Everything but the passages, with the longest form of the partial-coverage note.
     fixed = len(SYSTEM_PROMPT) + len(_question_message(title, "", len(chunks), len(chunks) + 1, request.question))
-    history_reserve = min(sum(len(turn.text) for turn in request.history), int(HISTORY_SHARE * limit))
 
     used: list[DocumentViewChunk] = []
     passages_size = 0
     for chunk in chunks:
         size = len(_passage(len(used) + 1, chunk))
-        if fixed + passages_size + size + history_reserve > limit:
+        if fixed + passages_size + size > limit:
             break
         used.append(chunk)
         passages_size += size
@@ -174,6 +170,8 @@ def fit_request(title: str | None, chunks: Sequence[DocumentViewChunk], request:
     history: list[dict[str, str]] = []
     for turn in reversed(request.history):
         text = rewrite_citations(turn.text, turn.chunk_ids if turn.role == "assistant" else [], numbering)
+        if not text.strip():
+            continue
         if len(text) > room:
             break
         history.insert(0, {"role": turn.role, "content": text})

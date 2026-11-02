@@ -80,6 +80,8 @@ interface HistoryTurn {
 
 /** Earlier turns a request carries (`MAX_HISTORY_TURNS` of the backend). */
 export const MAX_HISTORY_TURNS = 40
+/** Longest question the backend takes (`MAX_QUESTION_CHARS`, `features/chat/schemas.py`). */
+export const MAX_QUESTION_CHARS = 4000
 const CITATION = /\[doc([1-9][0-9]*)]/g
 const FAILED = 'The assistant could not answer.'
 const INTERRUPTED = 'The answer was interrupted.'
