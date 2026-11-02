@@ -670,6 +670,11 @@ each feature owns its pages, components, Pinia stores, composables and repositor
 over the generated client. `app/` is the application shell (main layout, right sidebar, session
 scope, about and not-found pages), `shared/` holds code without a feature owner (`api/`,
 `ui/` buttons and error display, notifications, write outcomes, pagination, color picker,
+`searchHistory/`: recent searches kept in the browser for a search input (#558; list,
+storage and validation in `history.ts`, the input's dropdown state and keys in
+`useSearchHistory`, the list in `SearchHistoryDropdown`; one `localStorage` key per
+signed-in user and one for signed-out use, never merged, kept after sign-out, at most 50
+entries of which 10 are shown, stored entries validated when read and shown as plain text),
 `visualization/VegaChart.vue`: draws a Vega-Lite or Vega specification with vega-embed,
 loaded on demand, fitted to its container width and disposed of on unmount; each redraw is
 made in a detached element and only the newest is shown, so overlapping redraws cannot
@@ -678,7 +683,7 @@ and `router/` the routes and sign-in guard.
 
 | Feature | Contents |
 |---|---|
-| `search` | search page, result cards, classifications, summary panel, request/summary state |
+| `search` | search page, result cards, classifications, summary panel, request/summary state, filter labels (`searchFilters.ts`), what the recent-search history keeps of a search and how it is restored (`searchHistoryCriteria.ts`: query type, search vector, collection id and filters, not generated titles/summaries; criteria no longer available are left out and named) |
 | `rag` | RAG chat page, the conversation's sources panel and its source registry/selection (`useChatSources`) |
 | `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
 | `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel, links to the original digitized document (`originalSource.ts`, `OriginalSourceLink`; used by search results, their context, RAG sources and the document view) |
@@ -710,7 +715,7 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 
 | Route | Page | Description |
 |---|---|---|
-| `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
+| `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context; recent searches under the query field (opened by a click, Tab or typing, not by the page's autofocus) |
 | `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations (`[S1]`...); the conversation's sources and one of them in its document in the right sidebar |
 | `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication year (zoomable timeline), library and language, with tables and unknown/unavailable values, filtered by year, title, library and language (no sign-in) |
 | `/collections` | `user_collections/UserCollectionsPage` | List user collections: tiles (size slider, 5 snapped sizes) or table (sortable, resizable columns via `shared/useResizableColumns`); My / Shared with me / All by `isSharedWithMe`; view, filter, tile size and column widths remembered in the browser (#479) |

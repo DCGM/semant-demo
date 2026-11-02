@@ -47,7 +47,7 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
   await page.goto(`${secondOrigin(baseURL!)}/#/search`)
   await closePhoneNavigation(page)
   await expect(indicator(page)).toHaveAccessibleName('AI allowance: 100% left today')
-  await page.getByRole('textbox').first().fill('Lhota')
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Lhota')
   await page.keyboard.press('Enter')
   await expect(page.locator('#result-1')).toBeVisible()
 
