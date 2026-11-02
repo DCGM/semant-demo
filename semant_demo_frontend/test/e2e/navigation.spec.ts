@@ -151,21 +151,42 @@ test('on a phone, back arrows navigate and leave the overlay navigation closed',
 })
 
 // #265: the About page describes the project from the README, also at phone width.
-test('About shows the project, its partners and a link to the README', async ({ page }) => {
+const about = (page: Page) => page.locator('.about-content')
+
+test('About shows the project, its partners and links to the app and the README', async ({ page }) => {
   await page.goto('/')
   await drawerItem(page, 'About').click()
   await expect(page).toHaveURL(/#\/about$/)
 
-  const about = page.locator('.about-content')
-  await expect(about.getByRole('heading', { name: 'About semANT demo' })).toBeVisible()
-  for (const text of ['Document search', 'Chat Assistant', 'Collections', 'Annotations', 'DH23P03OVV060',
-    'Brno University of Technology', 'Moravian Library', 'Masaryk University']) {
-    await expect(about.getByText(text, { exact: true }).first()).toBeVisible()
+  await expect(about(page).getByRole('heading', { name: 'About semANT demo' })).toBeVisible()
+  for (const text of ['DH23P03OVV060', 'Brno University of Technology', 'Moravian Library', 'Masaryk University']) {
+    await expect(about(page).getByText(text, { exact: true })).toBeVisible()
   }
-  await expect(about.getByRole('link', { name: 'project README on GitHub' }))
+  await expect(about(page).getByRole('link', { name: 'project README on GitHub' }))
     .toHaveAttribute('href', 'https://github.com/DCGM/semant-demo#readme')
+  for (const [name, path] of [['Document search', '/search'], ['Chat Assistant', '/rag'], ['Corpus overview', '/corpus']]) {
+    await expect(about(page).getByRole('link', { name, exact: true })).toHaveAttribute('href', `#${path}`)
+  }
 
+  // Signed out: Collections is not a link, and Collections and Annotations say they need signing in.
+  await expect(about(page).getByRole('link', { name: 'Collections', exact: true })).toHaveCount(0)
+  await expect(about(page).getByText('(for signed-in users only)')).toHaveCount(2)
+
+  await about(page).getByRole('link', { name: 'Corpus overview', exact: true }).click()
+  await expect(page).toHaveURL(/#\/corpus$/)
+})
+
+test('About links to Collections for a signed-in user', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await drawerItem(page, 'About').click()
+  await expect(about(page).getByText('(for signed-in users only)')).toHaveCount(0)
+  await about(page).getByRole('link', { name: 'Collections', exact: true }).click()
+  await expect(page).toHaveURL(/#\/collections$/)
+})
+
+test('About does not scroll sideways at phone width', async ({ page }) => {
   await useViewport(page, 'phone')
-  await expect(about.getByRole('heading', { name: 'About semANT demo' })).toBeVisible()
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.goto('/#/about')
+  await expect(about(page).getByRole('heading', { name: 'About semANT demo' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0)
 })

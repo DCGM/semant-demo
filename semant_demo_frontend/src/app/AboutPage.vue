@@ -1,5 +1,5 @@
 <template>
-  <q-page class="about-page q-pa-md">
+  <q-page class="q-pa-md">
     <article class="about-content">
       <header class="row items-center no-wrap q-mb-md">
         <img :src="semantLogo" alt="semANT logo" class="about-logo q-mr-md" />
@@ -21,7 +21,7 @@
       <ul class="about-features">
         <li>
           <strong><router-link :to="{ name: 'search' }">Document search</router-link></strong>:
-          find passages by words or by meaning, filter by metadata and tags, and get short summaries
+          find passages by words or by meaning, filter by collection and metadata, and get short summaries
           of the results.
         </li>
         <li>
@@ -29,12 +29,19 @@
           ask questions and get answers drawn from the corpus, with citations of their sources.
         </li>
         <li>
-          <strong>Collections</strong>: gather documents into your own collections and share them
-          with other users (requires an account).
+          <strong>
+            <router-link v-if="userStore.isLoggedIn" :to="{ name: 'collections' }">Collections</router-link>
+            <template v-else>Collections</template>
+          </strong>:
+          gather documents into your own collections and share them with other users<span
+            v-if="!userStore.isLoggedIn"
+          > (for signed-in users only)</span>.
         </li>
         <li>
-          <strong>Annotations</strong>: tag passages in a document by hand or review the tags the
-          AI suggests, with its reasons.
+          <strong>Annotations</strong>: tag passages in the documents of a collection by hand or
+          review the tags the AI suggests, with its reasons<span
+            v-if="!userStore.isLoggedIn"
+          > (for signed-in users only)</span>.
         </li>
         <li>
           <strong><router-link :to="{ name: 'corpus' }">Corpus overview</router-link></strong>:
@@ -61,6 +68,9 @@
 
 <script setup lang="ts">
 import semantLogo from 'src/assets/semant-logo.png'
+import { useUserStore } from 'src/features/auth/userStore'
+
+const userStore = useUserStore()
 
 const readmeUrl = 'https://github.com/DCGM/semant-demo#readme'
 </script>
