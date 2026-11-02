@@ -96,8 +96,13 @@
             <div class="text-caption text-grey-8 q-mt-xs" data-testid="assign-scope-note">
               <template v-if="removing">
                 The values are removed from every selected annotation that holds them, also from rejected
-                annotations and annotations whose tag the attribute no longer applies to, where they are kept but
-                not shown.
+                annotations, where they are kept but not shown, and from annotations whose tag the attribute no
+                longer applies to.
+              </template>
+              <template v-else-if="mode === 'replace'">
+                Only confirmed annotations with a tag this attribute applies to ({{ scopeText }}) take values.
+                Confirmed annotations of other tags take no new values: if every chosen value is one they already
+                hold, they lose the others; otherwise they are reported as not changed.
               </template>
               <template v-else>
                 Only confirmed annotations with a tag this attribute applies to ({{ scopeText }}) take values; the

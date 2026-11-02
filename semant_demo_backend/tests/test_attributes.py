@@ -826,6 +826,47 @@ async def test_an_attribute_for_no_tag_takes_no_new_values(store, spans):
     assert values_of(spans, APPROVED, none) == []
 
 
+async def test_values_of_an_attribute_that_no_longer_applies_can_be_removed_but_not_added(store, spans):
+    attribute = await define(store, name="topic", cardinality="multi", tag_ids=[PERSON],
+                             values=[PostAttributeValue(label=x) for x in "abc"])
+    a, b, c = attribute.values
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [a, b]))
+    # A retag to a tag the attribute does not apply to keeps the values (#500).
+    spans.spans[(COLLECTION, APPROVED)].tagId = str(PLACE)
+    assert not service.applies(attribute, PLACE) and service.applies(attribute, PERSON)
+
+    # Anything that adds a value is refused; asking again for what is held is no write.
+    for mode, values in ((AssignMode.add, [c]), (AssignMode.replace, [a, c]), (AssignMode.replace, [c])):
+        result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                                 assign(attribute, [APPROVED], mode, values, {APPROVED: 1}))
+        assert [(f.item_id, f.step) for f in result.failed] == [(str(APPROVED), "check_applicable")]
+    held = await service.assign_attributes(store, OWNER, COLLECTION,
+                                           assign(attribute, [APPROVED], AssignMode.add, [a], {APPROVED: 1}))
+    assert held.succeeded == [str(APPROVED)] and len(spans.writes) == 1
+
+    # Leaving values out is a removal: a replace by a subset, a replace by nothing, and remove.
+    steps = ((AssignMode.replace, [b], {str(b.id)}), (AssignMode.replace, [], set()))
+    for version, (mode, values, left) in enumerate(steps, start=1):
+        result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                                 assign(attribute, [APPROVED], mode, values, {APPROVED: version}))
+        assert result.succeeded == [str(APPROVED)], result.failed
+        assert set(values_of(spans, APPROVED, attribute)) == left
+    refused = await service.assign_attributes(store, OWNER, COLLECTION,
+                                              assign(attribute, [APPROVED], AssignMode.add, [c], {APPROVED: 3}))
+    assert [f.step for f in refused.failed] == ["check_applicable"]  # still refused after the removals
+    spans.spans[(COLLECTION, APPROVED)].tagId = str(PERSON)  # back on the attribute's tag
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [c],
+                                                                    {APPROVED: 3}))
+    spans.spans[(COLLECTION, APPROVED)].tagId = str(PLACE)
+    removed = await service.assign_attributes(store, OWNER, COLLECTION,
+                                              assign(attribute, [APPROVED], AssignMode.remove, [c], {APPROVED: 4}))
+    assert removed.succeeded == [str(APPROVED)] and values_of(spans, APPROVED, attribute) == []
+
+    changes = await service.read_attribute_changes(store, OWNER, COLLECTION, APPROVED)
+    assert [({v.id for v in ch.previous}, {v.id for v in ch.current}) for ch in changes] == [
+        (set(), {a.id, b.id}), ({a.id, b.id}, {b.id}), ({b.id}, set()), (set(), {c.id}), ({c.id}, set())]
+
+
 async def test_ai_assisted_assignments_name_a_run_but_are_not_accepted_before_runs_exist(store, definitions):
     attribute = await define(store)
     run = uuid4()
