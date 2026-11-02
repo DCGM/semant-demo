@@ -2,7 +2,7 @@
   <q-page class="q-pa-md">
     <article class="about-content">
       <header class="row items-center no-wrap q-mb-md">
-        <img :src="semantLogo" alt="semANT logo" class="about-logo q-mr-md" />
+        <img :src="semantLogo" alt="" class="about-logo q-mr-md" />
         <div>
           <h1 class="text-h5 q-my-none">About semANT demo</h1>
           <div class="text-subtitle2 text-grey-7">
@@ -21,8 +21,8 @@
       <ul class="about-features">
         <li>
           <strong><router-link :to="{ name: 'search' }">Document search</router-link></strong>:
-          find passages by words or by meaning, filter by collection and metadata, and get short summaries
-          of the results.
+          find passages by words or by meaning, filter them by metadata and, when signed in, by your
+          collections, and get short summaries of the results.
         </li>
         <li>
           <strong><router-link :to="{ name: 'rag' }">Chat Assistant</router-link></strong>:
@@ -30,18 +30,14 @@
         </li>
         <li>
           <strong>
-            <router-link v-if="userStore.isLoggedIn" :to="{ name: 'collections' }">Collections</router-link>
+            <router-link v-if="signedIn" :to="{ name: 'collections' }">Collections</router-link>
             <template v-else>Collections</template>
           </strong>:
-          gather documents into your own collections and share them with other users<span
-            v-if="!userStore.isLoggedIn"
-          > (for signed-in users only)</span>.
+          gather documents into your own collections and share them with other users{{ signInNote }}.
         </li>
         <li>
           <strong>Annotations</strong>: tag passages in the documents of a collection by hand or
-          review the tags the AI suggests, with its reasons<span
-            v-if="!userStore.isLoggedIn"
-          > (for signed-in users only)</span>.
+          review the tags the AI suggests, with its reasons{{ signInNote }}.
         </li>
         <li>
           <strong><router-link :to="{ name: 'corpus' }">Corpus overview</router-link></strong>:
@@ -62,15 +58,20 @@
         Technical details, documentation and source code are in the
         <a :href="readmeUrl" target="_blank" rel="noopener noreferrer">project README on GitHub</a>.
       </p>
+      <p class="text-caption text-grey-7">Built with FastAPI · Weaviate · Vue 3 · Quasar</p>
     </article>
   </q-page>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import semantLogo from 'src/assets/semant-logo.png'
 import { useUserStore } from 'src/features/auth/userStore'
 
 const userStore = useUserStore()
+// A stored session still being verified counts as signed in, as in the navigation (MainLayout).
+const signedIn = computed(() => userStore.isLoggedIn || userStore.awaitingVerification)
+const signInNote = computed(() => signedIn.value ? '' : ' (for signed-in users only)')
 
 const readmeUrl = 'https://github.com/DCGM/semant-demo#readme'
 </script>

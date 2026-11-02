@@ -179,6 +179,7 @@ test('About shows the project, its partners and links to the app and the README'
 test('About links to Collections for a signed-in user', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await drawerItem(page, 'About').click()
+  await expect(about(page).getByRole('heading', { name: 'About semANT demo' })).toBeVisible()
   await expect(about(page).getByText('(for signed-in users only)')).toHaveCount(0)
   await about(page).getByRole('link', { name: 'Collections', exact: true }).click()
   await expect(page).toHaveURL(/#\/collections$/)
