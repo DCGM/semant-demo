@@ -200,7 +200,7 @@ import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
 import useTagSpans from 'src/features/annotations/useTagSpans'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import useDocumentSummary from 'src/features/documents/useDocumentSummary'
+import { requestedCitation } from 'src/features/documents/readerCitation'
 import useChunks from '../useChunks'
 import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
@@ -243,7 +243,6 @@ const tagNav = useTagNavigation()
 const tagSpans = useTagSpans()
 const aiAssist = useAiAssistance()
 const topicerModel = useTopicerModelStore()
-const documentSummary = useDocumentSummary()
 const rightSidebar = useRightSidebarStore()
 const aiPanelActive = computed(() => aiAssist.aiPanelActive.value)
 const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.value)
@@ -414,15 +413,15 @@ watch(highlightedAutoSpanId, (spanId) => {
   }
 })
 
-// A clicked citation in the document summary panel (a sibling of this route inside
+// A clicked citation in the document Summary or Chat panel (siblings of this route inside
 // DocumentViewLayout) scrolls the reader to the cited chunk, loading it into the displayed
-// window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — the summary
-// covers the whole document, but the reader only displays a bounded window by default. This
+// window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — a citation can
+// point anywhere in the document, but the reader only displays a bounded window by default. This
 // is otherwise an orthogonal, read-only navigation action: it must not touch
 // annotations/tagEditing state (no selection clearing, no popover changes, no span
 // highlight changes) or navigate, only scroll/load — so tag-editing state in progress is left
 // exactly as it was.
-watch(() => documentSummary.requestedCitation.value, async (citation) => {
+watch(requestedCitation, async (citation) => {
   if (!citation) return
   if (!chunkWindow.findChunk(citation.chunkId) && citation.order != null) {
     // A citation always refers to a chunk that exists (it came from the document's own

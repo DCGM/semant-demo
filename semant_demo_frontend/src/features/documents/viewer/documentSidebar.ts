@@ -3,5 +3,6 @@ export const DOCUMENT_SIDEBAR_PANELS = {
   tags: 'document-tags',
   ai: 'document-ai',
   summary: 'document-summary',
+  chat: 'document-chat',
   metadata: 'document-metadata'
 } as const

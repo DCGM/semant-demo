@@ -10,6 +10,7 @@ All URIs are relative to *http://localhost*
 | [**assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost**](DefaultApi.md#assignattributevaluesapiusercollectionscollectionidannotationsattributesassignpost) | **POST** /api/user_collections/{collection_id}/annotations/attributes/assign | Assign Attribute Values |
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
+| [**chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost**](DefaultApi.md#chataboutdocumentapiusercollectionscollectioniddocumentsdocumentidchatpost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/chat | Chat About Document |
 | [**corpusDistributionsApiAnalyticsCorpusDistributionsPost**](DefaultApi.md#corpusdistributionsapianalyticscorpusdistributionspost) | **POST** /api/analytics/corpus/distributions | Corpus Distributions |
 | [**corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost**](DefaultApi.md#corpuslibraryyearsapianalyticscorpuslibraryyearspost) | **POST** /api/analytics/corpus/library-years | Corpus Library Years |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
@@ -571,6 +572,86 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost
+
+> chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost(collectionId, documentId, contextChatRequest)
+
+Chat About Document
+
+Streams an answer to &#x60;&#x60;question&#x60;&#x60; about the document, from its chunks in the collection only (#248). The client sends the earlier turns (&#x60;&#x60;history&#x60;&#x60;) and never source text.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    documentId: documentId_example,
+    // ContextChatRequest
+    contextChatRequest: ...,
+  } satisfies ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest;
+
+  try {
+    const data = await api.chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **contextChatRequest** | [ContextChatRequest](ContextChatRequest.md) |  | |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
+| **413** | The question and the document\&#39;s first passage do not fit the input limit. |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
