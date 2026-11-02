@@ -9,7 +9,7 @@
 
 | Feature | Description |
 |---|---|
-| **Search** | Hybrid (BM25 + vector), text or vector search over document chunks; collection and metadata filters; optional per-result titles/summaries and an overall summary |
+| **Search** | Hybrid (BM25 + vector), text or vector search over document chunks; collection and metadata filters (the API also filters by tags); optional per-result titles/summaries and an overall summary |
 | **Question & RAG chat** | A question answered from the retrieved results, and multi-turn RAG chat with source citations (configurable pipelines, see [ARCHITECTURE](docs/ARCHITECTURE.md#rag-system)) |
 | **User collections** | Documents and chunks grouped into collections, shared with other users (shared users annotate, owners manage membership) |
 | **Annotations** | Tags and character-level spans (manual `pos`/`neg`, AI-suggested `auto` with reason and confidence) in a document view |
