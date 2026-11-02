@@ -228,8 +228,7 @@ test('on a phone the sources are an overlay over the chat', async ({ page }) => 
   // The list fits the phone without horizontal scrolling.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 
-  // No double click on a phone: View document in the selected source opens it (#518).
-  await sourceItem(page, 'S3').getByRole('button', { name: 'View source S3 in its document' }).click()
+  await sourceSummary(page, 'S3').dblclick()
   await expect(match(page)).toBeInViewport()
   await expect(match(page).getByTestId('chunk-context-target-label')).toHaveText('S3')
 

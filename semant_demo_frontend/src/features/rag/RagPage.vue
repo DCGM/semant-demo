@@ -523,9 +523,10 @@ const citedSourceId = (event: Event): string | null => {
   return target.dataset.sourceId
 }
 
-// One click on a citation selects its source, a double click opens it in its document. On a
-// phone the first tap opens the Sources overlay over the chat, so there is no double tap: the
-// selected source's View document opens it (#518).
+// One click on a citation selects its source, a double click opens it in its document. While
+// the sidebar is an overlay (below 1024 px), the first click opens the Sources overlay over the
+// chat, so the double click does not reach the citation; that is accepted (maintainer, #518):
+// the selected source's View document, or a double click in the list, opens it.
 const singleSourceClicks = (event: Event) => {
   const id = citedSourceId(event)
   if (id) selectSource(id)
