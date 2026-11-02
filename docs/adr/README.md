@@ -20,6 +20,7 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | [0009 - Derived annotation data](0009-derived-annotation-data.md) | Proposed with #328: annotation text, context, absolute document positions (#463) and a revision-guarded contextual vector; store rollout pending. |
 | [0010 - Annotation provenance and edit versions](0010-annotation-provenance-and-edit-versions.md) | Proposed with #460: current-state provenance on annotations and `editVersion` conflicts for single and batch writes; store rollout pending. |
 | [0011 - Collection attributes](0011-collection-attributes.md) | Proposed with #331: SQL definitions, exact `attributeValues` assignments on approved annotations, `attributeVersion` conflicts and change records; workspace UI follows; store rollout pending. |
+| [0012 - Contextual chat](0012-contextual-chat.md) | Proposed with #243 (document chat prototype first): Search, collection and document chat in the right sidebar; in-memory history per scope, scoped server routes that load sources by ID, tool-based collection chat. |
 
 ## Confirmed decisions
 
