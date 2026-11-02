@@ -149,3 +149,23 @@ test('on a phone, back arrows navigate and leave the overlay navigation closed',
   await page.getByRole('button', { name: 'Show navigation' }).click()
   await expect(drawer(page)).toBeVisible()
 })
+
+// #265: the About page describes the project from the README, also at phone width.
+test('About shows the project, its partners and a link to the README', async ({ page }) => {
+  await page.goto('/')
+  await drawerItem(page, 'About').click()
+  await expect(page).toHaveURL(/#\/about$/)
+
+  const about = page.locator('.about-content')
+  await expect(about.getByRole('heading', { name: 'About semANT demo' })).toBeVisible()
+  for (const text of ['Document search', 'Chat Assistant', 'Collections', 'Annotations', 'DH23P03OVV060',
+    'Brno University of Technology', 'Moravian Library', 'Masaryk University']) {
+    await expect(about.getByText(text, { exact: true }).first()).toBeVisible()
+  }
+  await expect(about.getByRole('link', { name: 'project README on GitHub' }))
+    .toHaveAttribute('href', 'https://github.com/DCGM/semant-demo#readme')
+
+  await useViewport(page, 'phone')
+  await expect(about.getByRole('heading', { name: 'About semANT demo' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
