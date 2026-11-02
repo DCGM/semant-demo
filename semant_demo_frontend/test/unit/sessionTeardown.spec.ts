@@ -352,7 +352,7 @@ describe('MainLayout session teardown', () => {
     const wrapper = mount(MainLayout, {
       global: {
         plugins: [[Quasar, { plugins: { Notify } }], pinia, router],
-        stubs: { RightSidebar: true, LoginDialog: true, RegisterDialog: true, UserInfoDialog: true, AboutAppDialog: true }
+        stubs: { RightSidebar: true, LoginDialog: true, RegisterDialog: true, UserInfoDialog: true }
       }
     })
     await flushPromises()
