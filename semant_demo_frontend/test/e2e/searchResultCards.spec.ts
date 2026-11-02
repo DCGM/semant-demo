@@ -139,7 +139,7 @@ test('Escape clears the selection on all pages, but not inside a field or menu',
   await expect(toolbar(page)).toContainText('2 item(s) selected')
 
   // In the search field Escape belongs to the field.
-  await page.getByRole('textbox').first().focus()
+  await page.getByRole('combobox', { name: 'Search query' }).focus()
   await page.keyboard.press('Escape')
   await expect(toolbar(page)).toContainText('2 item(s) selected')
 

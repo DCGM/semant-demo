@@ -6,14 +6,28 @@
         <q-form @submit.prevent="onSearch">
           <q-card-section>
             <div class="row q-col-gutter-sm items-center">
-              <div class="col">
+              <div class="col relative-position">
+                <!-- Recent searches (#558) open under the input when it is focused by the user,
+                     clicked or typed into; not on the page's own autofocus. -->
                 <q-input
                   v-model="searchForm.query"
                   dense
                   outlined
                   required
                   autofocus
-                  @keydown.enter.prevent="onSearch"
+                  autocomplete="off"
+                  aria-label="Search query"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  :aria-expanded="history.shown.value"
+                  :aria-controls="history.shown.value ? HISTORY_LIST_ID : undefined"
+                  :aria-activedescendant="activeHistoryOptionId"
+                  data-testid="search-query"
+                  @keydown="onQueryKeydown"
+                  @focus="onQueryFocus"
+                  @click="history.show"
+                  @blur="history.close"
+                  @update:model-value="history.show"
                 >
                   <template v-slot:prepend>
                     <q-btn
@@ -28,6 +42,16 @@
                     />
                   </template>
                 </q-input>
+                <SearchHistoryDropdown
+                  v-if="history.shown.value"
+                  :items="historyItems"
+                  :active-index="history.activeIndex.value"
+                  :list-id="HISTORY_LIST_ID"
+                  @choose="chooseHistory"
+                  @remove="removeHistory"
+                  @highlight="history.activeIndex.value = $event"
+                  @clear="history.clear"
+                />
               </div>
 
               <div class="col-auto">
@@ -300,6 +324,11 @@ import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import SearchResultCard from './SearchResultCard.vue'
 import { escapeClearsSelection } from './resultLayout'
+import { formatFilterLabel, intervalBounds, nominalLabel } from './searchFilters'
+import { criteriaOfRequest, describeCriteria, restoreSearch, searchHistoryCriteria, type SearchHistoryCriteria, type SearchOptions } from './searchHistoryCriteria'
+import SearchHistoryDropdown from 'src/shared/searchHistory/SearchHistoryDropdown.vue'
+import { useSearchHistory } from 'src/shared/searchHistory/useSearchHistory'
+import { entryKey, type HistoryAudience, type HistoryEntry, type SearchHistoryItem } from 'src/shared/searchHistory/history'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
@@ -344,18 +373,10 @@ const selectedVector = computed<string | null>({
 })
 
 // Dynamic Filter Data State
-type IntervalValue = { min: number, max: number }
 const loadingFilters = ref(false)
 const availableSearchFilters = ref<SearchFilter[]>([])
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const filterValues = ref<Record<string, any>>({})
-
-function formatFilterLabel (id: string): string {
-  return id
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
 
 function getFilterIcon (id: string): string {
   if (id === 'language') return 'language'
@@ -371,13 +392,6 @@ function getNominalOptions (filter: SearchFilter) {
     label: v.userForm,
     value: v.backendForm
   }))
-}
-
-/** Range of an interval filter (the generated client types its numeric bounds loosely). */
-function intervalBounds (filter: SearchFilter): IntervalValue {
-  const min = filter.minValue != null ? Math.floor(Number(filter.minValue)) : 1800
-  const max = filter.maxValue != null ? Math.ceil(Number(filter.maxValue)) : 2026
-  return { min, max }
 }
 
 // Results State: the current search context (results as retrieved)
@@ -520,6 +534,99 @@ const targetCollectionOptions = computed(() =>
 )
 const canAddToCollections = computed(() => userStore.isLoggedIn && targetCollectionOptions.value.length > 0)
 
+// Recent searches (#558), kept in this browser: one history per signed-in user and one for
+// signed-out use, none while a stored session is not verified yet.
+const HISTORY_LIST_ID = 'search-history-list'
+const historyAudience = computed<HistoryAudience | null>(() => {
+  if (userStore.isLoggedIn && userStore.getUserId) return { kind: 'user', userId: String(userStore.getUserId) }
+  return userStore.awaitingVerification ? null : { kind: 'anonymous' }
+})
+const queryText = computed(() => searchForm.value.query ?? '')
+const history = useSearchHistory(searchHistoryCriteria, historyAudience, queryText, (entry) => { void runFromHistory(entry) })
+
+const searchOptions = computed<SearchOptions>(() => ({
+  filters: availableSearchFilters.value,
+  vectors: availableVectors.value,
+  collections: userStore.isLoggedIn ? collectionOptions.value.map(o => ({ id: o.value, name: o.label })) : []
+}))
+
+const historyItems = computed<SearchHistoryItem[]>(() => history.suggestions.value.map(entry => ({
+  key: entryKey(entry, searchHistoryCriteria),
+  query: entry.query,
+  detail: describeCriteria(entry.criteria, searchOptions.value)
+})))
+
+const activeHistoryOptionId = computed(() => (
+  history.shown.value && history.activeIndex.value >= 0 ? `${HISTORY_LIST_ID}-option-${history.activeIndex.value}` : undefined
+))
+
+// The input's own autofocus does not open the list; a focus that follows the user's pointer
+// or key press (click, Tab) does.
+let userInteracted = false
+const markInteraction = () => { userInteracted = true }
+
+function onQueryFocus () {
+  if (userInteracted) history.show()
+}
+
+function onQueryKeydown (event: KeyboardEvent) {
+  if (history.onKeydown(event)) return
+  if (event.key === 'Enter' && !event.isComposing) {
+    event.preventDefault()
+    void onSearch()
+  }
+}
+
+function chooseHistory (index: number) {
+  const entry = history.suggestions.value[index]
+  if (entry) history.choose(entry)
+}
+
+function removeHistory (index: number) {
+  const entry = history.suggestions.value[index]
+  if (entry) history.remove(entry)
+}
+
+/** Resolves once `loading` is false. */
+function whenLoaded (loading: () => boolean): Promise<void> {
+  if (!loading()) return Promise.resolve()
+  return new Promise(resolve => {
+    const stop = watch(loading, (busy) => {
+      if (busy) return
+      stop()
+      resolve()
+    })
+  })
+}
+
+let searchOptionsReady: Promise<unknown> = Promise.resolve()
+
+/**
+ * Runs a search from the history: its query and criteria replace the form's (generated
+ * titles and summaries stay as currently chosen); criteria no longer available are left out
+ * and named. Waits for the offered filters, search vectors and collections first.
+ */
+async function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
+  const inSession = captureSession()
+  searchForm.value.query = entry.query
+  await searchOptionsReady
+  await whenLoaded(() => loadingFilters.value || collectionsLoading.value)
+  if (!inSession()) return
+  const restored = restoreSearch(entry.criteria, searchOptions.value)
+  searchForm.value.type = restored.type
+  searchForm.value.vector = restored.vector
+  searchForm.value.userCollectionId = restored.collectionId
+  filterValues.value = restored.filterValues
+  if (restored.dropped.length) {
+    Notify.create({
+      message: `Left out of this search because they are no longer available: ${restored.dropped.join(', ')}`,
+      position: 'top',
+      color: 'warning'
+    })
+  }
+  await onSearch()
+}
+
 type ActiveFilterBadge = {
   key: string
   type: 'collection' | 'vector' | 'dynamic'
@@ -574,8 +681,7 @@ const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
       }
     } else if (filter.type === 'nominal' && Array.isArray(val) && val.length > 0) {
       val.forEach((selectedBackendVal: string) => {
-        const nominalObj = filter.values?.find(v => v.backendForm === selectedBackendVal || v.userForm === selectedBackendVal)
-        const displayLabel = nominalObj ? nominalObj.userForm : selectedBackendVal
+        const displayLabel = nominalLabel(filter, selectedBackendVal)
         badges.push({
           key: `nominal:${filter.id}:${selectedBackendVal}`,
           type: 'dynamic',
@@ -699,6 +805,8 @@ async function onSearch () {
     maxYear: null,
     language: null
   }
+  history.close()
+  history.record(request.query, criteriaOfRequest(request))
 
   try {
     const context = await searchRequest.search(request)
@@ -790,12 +898,17 @@ async function addSelectedDocumentsToCollection () {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
-  await Promise.all([fetchAvailableFilters(), fetchSearchVectors()])
+  window.addEventListener('pointerdown', markInteraction, { capture: true })
+  window.addEventListener('keydown', markInteraction, { capture: true })
+  searchOptionsReady = Promise.all([fetchAvailableFilters(), fetchSearchVectors()])
+  await searchOptionsReady
   await loadCollections()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('pointerdown', markInteraction, { capture: true })
+  window.removeEventListener('keydown', markInteraction, { capture: true })
   searchRequest.cancel()
   if (clearHighlightTimer !== null) {
     window.clearTimeout(clearHighlightTimer)

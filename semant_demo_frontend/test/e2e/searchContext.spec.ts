@@ -49,7 +49,7 @@ test('double-clicking a result shows it highlighted in its document', async ({ p
 
   // A new search closes the old result's context.
   await page.getByRole('listitem', { name: 'Document' }).click()
-  await page.getByRole('textbox').first().fill('Brno')
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Brno')
   await page.keyboard.press('Enter')
   await expect(page.locator('#result-1')).toBeVisible()
   await expect(panel(page)).toHaveCount(0)
