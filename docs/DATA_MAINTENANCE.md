@@ -385,6 +385,11 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
     stops (`InputChanged`, exit 2) before writing anything from the changed lines.
 - A failed or uncertain write blocks only the rest of that document (`blocked`); running the same
   command again retries it, planned again from the store.
+- A document may hold any number of chunks: the store is read in windows of 200 orders or ids (the
+  count and the least and greatest order by an aggregation), so a query asks for at most 400
+  objects. A server whose
+  [`QUERY_MAXIMUM_RESULTS`](https://docs.weaviate.io/deploy/configuration/env-vars#QUERY_MAXIMUM_RESULTS)
+  (default 10,000) is lower refuses the read, and the document is `blocked` with nothing written.
 - A created document whose chunks did not all arrive is listed as `incomplete_document` and never
   deleted (#281).
 - The checkpoint holds the endpoint, the resolved collections, the number of input files and the
