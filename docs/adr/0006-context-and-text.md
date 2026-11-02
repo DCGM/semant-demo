@@ -31,6 +31,8 @@ token. Loading state and caches must also be scoped to the user and active conte
 
 Chat operates on **the retrieved results, or an explicitly selected subset of those
 results**. It does not mean the whole matching query/filter scope.
+[ADR 0012](0012-contextual-chat.md) (proposed) applies this to the sidebar chats without
+changing it: which set a question uses, and what a selection change does.
 
 Represent the chosen result set explicitly, using existing hit/chunk identifiers and
 ranges where applicable. Resolve and re-authorize those sources on use. Do not rerun

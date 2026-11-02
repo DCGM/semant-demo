@@ -86,7 +86,8 @@ async def assign_attribute_values(collection_id: str, body: AttributeAssignReque
                                   store: AttributeStore = Depends(get_attribute_store),
                                   current_user: User = Depends(current_active_user)) -> AttributeAssignResult:
     """
-    Adds, removes or replaces the values of one attribute on up to 200 approved annotations,
+    Adds, removes, replaces or clears (``clear``: every value held, without naming them) the values
+    of one attribute on up to 200 approved annotations (removing and clearing: any annotation),
     each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the
     changed annotations (or those already as asked), ``failed`` the ones not changed or
     uncertain, with ``edit_conflict`` for an annotation whose attributes were written since;

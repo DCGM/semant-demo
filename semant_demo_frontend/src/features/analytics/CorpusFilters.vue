@@ -86,8 +86,10 @@ const yearMax = ref<string | null>(null)
 const title = ref<string | null>(null)
 
 // The year fields show the applied range again whenever it changes (Apply, a removed chip,
-// a period applied from the timeline, Clear all).
-watch(() => [props.applied.yearMin, props.applied.yearMax], ([min, max]) => {
+// a period applied from the timeline) and when every filter is cleared; not when the filters
+// are only replaced by the same ones, as by an answer's normalized filters, so years typed
+// meanwhile stay (#548).
+watch([() => props.applied.yearMin, () => props.applied.yearMax, () => isUnfiltered(props.applied)], ([min, max]) => {
   yearMin.value = min != null ? String(min) : null
   yearMax.value = max != null ? String(max) : null
 }, { immediate: true })
@@ -154,6 +156,8 @@ function toggle (key: ListKey, clicked: string[]) {
 
 function clear () {
   title.value = null
+  yearMin.value = null
+  yearMax.value = null
   emit('apply', {})
 }
 </script>

@@ -5,6 +5,7 @@
     </p>
     <div
       class="kwic__grid"
+      :class="{ 'kwic__grid--attribute': !!attribute }"
       role="grid"
       aria-label="Annotations in context"
       :aria-rowcount="rows.length + 1"
@@ -26,6 +27,9 @@
         <div class="kwic__cell kwic__left" role="columnheader">Left context</div>
         <div class="kwic__cell kwic__key" role="columnheader">Annotation</div>
         <div class="kwic__cell kwic__right" role="columnheader">Right context</div>
+        <div v-if="attribute" class="kwic__cell kwic__attribute" role="columnheader" :title="attribute.name">
+          {{ attribute.name }}
+        </div>
         <div class="kwic__cell kwic__meta" role="columnheader">Tag · status</div>
         <div class="kwic__cell kwic__source" role="columnheader">Source</div>
       </div>
@@ -67,6 +71,45 @@
           <span v-else class="kwic__missing">{{ missingText(row) }}</span>
         </div>
         <div class="kwic__cell kwic__right" role="gridcell">{{ row.rightContext ?? '' }}</div>
+        <div v-if="attribute" class="kwic__cell kwic__attribute" role="gridcell" data-testid="kwic-attribute" @click.stop>
+          <q-btn
+            v-if="!cannotAssign(attribute, row)"
+            flat
+            dense
+            no-caps
+            tabindex="-1"
+            class="kwic__attribute-button"
+            :loading="pending.has(row.id)"
+            :aria-label="`${attribute.name} of ${rowLabel(row)}: ${heldLabel(row)}. Change`"
+            data-testid="kwic-attribute-edit"
+          >
+            <AttributeValueChips :attribute="attribute" :ids="row.attributes?.[attribute.id]" empty-label="Assign…" line />
+            <q-menu
+              anchor="bottom left"
+              self="top left"
+              :model-value="openPicker === row.id"
+              @update:model-value="(open: boolean) => setPicker(row.id, open)"
+            >
+              <AttributeValuePicker
+                :attribute="attribute"
+                :current="row.attributes?.[attribute.id] ?? []"
+                :busy="pending.has(row.id)"
+                @change="change => emit('assign', row, attribute!, change, ok => picked(row.id, ok))"
+              />
+            </q-menu>
+          </q-btn>
+          <span v-else :title="cannotAssign(attribute, row) ?? undefined">
+            <AttributeValueChips
+              v-if="row.attributes?.[attribute.id]?.length"
+              :attribute="attribute"
+              :ids="row.attributes[attribute.id]"
+              :inapplicable="!applies(attribute, row)"
+              line
+            />
+            <span v-else class="kwic__missing" aria-hidden="true">–</span>
+            <span class="sr-only">{{ cannotAssign(attribute, row) }}</span>
+          </span>
+        </div>
         <div class="kwic__cell kwic__meta" role="gridcell">
           <span class="kwic__tag" :title="tagName(row)">
             <span class="kwic__tag-dot" :style="{ backgroundColor: tagColor(row) }" aria-hidden="true" />
@@ -88,8 +131,11 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { QCheckbox } from 'quasar'
-import { SpanType, TextStatus, type AnnotationListRow, type Tag } from 'src/generated/api'
+import { QBtn, QCheckbox, QMenu } from 'quasar'
+import { Cardinality, SpanType, TextStatus, type AnnotationListRow, type Attribute, type Tag } from 'src/generated/api'
+import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
+import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
+import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
 
 const props = withDefaults(defineProps<{
   rows: AnnotationListRow[]
@@ -98,9 +144,15 @@ const props = withDefaults(defineProps<{
   /** The row whose source context is open. */
   focusedId?: string | null
   loading?: boolean
+  /** The attribute whose values are shown in a column of their own and assigned there (#331). */
+  attribute?: Attribute | null
+  /** Annotations with an assignment under way. */
+  pending?: Set<string>
 }>(), {
   focusedId: null,
-  loading: false
+  loading: false,
+  attribute: null,
+  pending: () => new Set()
 })
 
 const emit = defineEmits<{
@@ -109,6 +161,8 @@ const emit = defineEmits<{
   /** Check or uncheck one row (its checkbox, Space); separate from opening. */
   toggle: [id: string, value: boolean]
   'select-page': [value: boolean]
+  /** Assign values of the shown attribute to the row's annotation; `done` says whether it was saved. */
+  assign: [row: AnnotationListRow, attribute: Attribute, change: AssignChange, done:(ok: boolean) => void]
 }>()
 
 const helpId = `kwic-help-${Math.random().toString(36).slice(2, 8)}`
@@ -149,6 +203,24 @@ function sourceLabel (row: AnnotationListRow): string {
 function rowLabel (row: AnnotationListRow): string {
   const text = row.text ?? missingText(row)
   return `${text} (${tagName(row)}, ${statusLabel(row.type)}, ${sourceLabel(row)})`
+}
+
+// The open value picker (one at a time). Choosing one value of a single-valued attribute is a
+// complete choice: its picker closes once the assignment is saved, and stays open on a failure so
+// its message can be acted on. A multi-valued one stays open for further choices.
+const openPicker = ref<string | null>(null)
+function setPicker (id: string, open: boolean) {
+  if (open) openPicker.value = id
+  else if (openPicker.value === id) openPicker.value = null
+}
+function picked (id: string, ok: boolean) {
+  if (ok && props.attribute?.cardinality === Cardinality.single) setPicker(id, false)
+}
+
+function heldLabel (row: AnnotationListRow): string {
+  const attribute = props.attribute
+  const held = attribute ? heldValues(attribute, row.attributes?.[attribute.id]) : []
+  return held.length ? held.map(heldName).join(', ') : 'not assigned'
 }
 
 // Keyboard: one row is in the tab order; the arrow keys move it.
@@ -230,6 +302,22 @@ defineExpose({ reveal })
   /* check | left context | annotation | right context | tag · status | source */
   grid-template-columns: 2rem minmax(0, 1fr) fit-content(24%) minmax(0, 1fr) fit-content(9rem) fit-content(13rem);
   font-size: 0.9rem;
+}
+
+/* With an attribute column after the right context. */
+.kwic__grid--attribute {
+  grid-template-columns: 2rem minmax(0, 1fr) fit-content(24%) minmax(0, 1fr) fit-content(14rem) fit-content(9rem) fit-content(13rem);
+}
+
+.kwic__attribute {
+  font-size: 0.78rem;
+}
+
+.kwic__attribute-button {
+  max-width: 100%;
+  min-height: 0;
+  padding: 0 2px;
+  font-weight: 400;
 }
 
 .kwic__row {
@@ -384,6 +472,9 @@ defineExpose({ reveal })
   .kwic__grid {
     grid-template-columns: 2rem minmax(0, 1fr) fit-content(28%) minmax(0, 1fr) 0 fit-content(9rem);
   }
+  .kwic__grid--attribute {
+    grid-template-columns: 2rem minmax(0, 1fr) fit-content(24%) minmax(0, 1fr) fit-content(10rem) 0 fit-content(9rem);
+  }
   /* Zero width, still read by assistive technology. */
   .kwic__meta {
     padding: 0;
@@ -394,6 +485,9 @@ defineExpose({ reveal })
   .kwic__grid {
     grid-template-columns: 2rem minmax(0, 1fr) fit-content(40%) minmax(0, 1fr) 0 0;
     font-size: 0.85rem;
+  }
+  .kwic__grid--attribute {
+    grid-template-columns: 2rem minmax(0, 1fr) fit-content(30%) minmax(0, 1fr) fit-content(7rem) 0 0;
   }
   .kwic__source {
     padding: 0;

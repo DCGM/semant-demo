@@ -1,7 +1,8 @@
 # ADR 0011 - Collection attributes and accepted assignments
 
 Status: proposed with #331; backend merged (#495) and its schema on the deployed stores
-(2026-10-25); definitions are edited in the Attributes part of the Tags & attributes tab, the workspace assignment UI follows.
+(2026-10-25); definitions are edited in the Attributes part of the Tags & attributes tab, values are assigned and
+filtered by in the annotation workspace.
 Date: 2026-10-24. Decided in the collection-workspace plan (#311, #324, #331);
 refines ADR 0008 (annotation storage), ADR 0010 (provenance and edit versions) and ADR 0007
 (rights); the exact-match design follows the issue's Weaviate representation.
@@ -56,8 +57,9 @@ renames categories later without rewriting annotations or losing who decided wha
   attributes of the annotation: two people assigning different attributes of one annotation at
   once conflict. The check runs under the per-span lock (one backend process, as ADR 0010).
 - **Batches are best effort** (ADR 0002): up to 200 annotations, one attribute, mode `add` /
-  `remove` / `replace`, each annotation on its own with a reported step (`find_annotation`,
-  `edit_conflict`, `check_annotation_type`, `check_applicable`, `check_value`, `check_cardinality`,
+  `remove` / `replace` / `clear` (every value of the attribute the annotation holds, without naming
+  them; like `remove` not limited by the annotation's type, tag or retirement), each annotation on its own with a reported step (`find_annotation`,
+  `read_annotation` - reading it failed, so it may exist -, `edit_conflict`, `check_annotation_type`, `check_applicable`, `check_value`, `check_cardinality`,
   `update_attributes` - `uncertain` on a timeout); nothing is rolled back. Single-valued attributes
   take one value (`add` of a different one is refused, `replace` is not); Unknown and Not
   applicable are explicit values, at most one each per attribute, never combined with other

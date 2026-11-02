@@ -6,8 +6,20 @@ export { knownChunksInOrder }
 // chunk; its `end` is measured across the concatenated text of the consecutive known
 // chunks (displayed and hidden ones), as in src/features/annotations/spanOffsets.ts.
 
-export interface ChunkParagraph {
-  chunks: CollectionChunk[]
+/** What the text pane needs of a chunk: its canonical text and its place in the document. */
+export type TextChunk = Pick<CollectionChunk, 'id' | 'order' | 'text' | 'endParagraph'>
+
+/**
+ * A position in the canonical text: a UTF-16 offset into one chunk's stored text, as
+ * annotation offsets are.
+ */
+export interface TextPoint {
+  chunkId: string
+  charOffset: number
+}
+
+export interface ChunkParagraph<T extends TextChunk = CollectionChunk> {
+  chunks: T[]
   /** Order of the last chunk before a gap in chunk order, when the paragraph ends at one. */
   gapAfter: number | null
   /** Order of the first chunk after that gap. */
@@ -25,9 +37,9 @@ export interface ChunkRange {
  * Groups the displayed chunks into paragraphs. A paragraph ends at a chunk marked
  * `endParagraph` and at a gap in chunk order, so the gap controls go between paragraphs.
  */
-export function groupParagraphs (chunks: CollectionChunk[]): ChunkParagraph[] {
-  const paragraphs: ChunkParagraph[] = []
-  let currentGroup: CollectionChunk[] = []
+export function groupParagraphs<T extends TextChunk> (chunks: T[]): ChunkParagraph<T>[] {
+  const paragraphs: ChunkParagraph<T>[] = []
+  let currentGroup: T[] = []
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]
@@ -54,7 +66,7 @@ export function groupParagraphs (chunks: CollectionChunk[]): ChunkParagraph[] {
 }
 
 /** The number of chunks missing in the gap a paragraph ends at; 0 when it ends at none. */
-export function gapSize (paragraph: ChunkParagraph): number {
+export function gapSize (paragraph: ChunkParagraph<TextChunk>): number {
   if (paragraph.gapAfter === null || paragraph.gapBefore === null) return 0
   return paragraph.gapBefore - paragraph.gapAfter - 1
 }
@@ -62,6 +74,30 @@ export function gapSize (paragraph: ChunkParagraph): number {
 /** The text of the divider at a gap of `count` missing chunks. */
 export function missingChunksText (count: number): string {
   return count === 1 ? '1 chunk not shown' : `${count} chunks not shown`
+}
+
+/**
+ * Splits a range anchored on a chunk into the part of it in each chunk it covers: `end`
+ * continues into the following chunks of `chunks` while their orders are consecutive.
+ * Chunks it does not cover, or that are not in `chunks`, get no entry.
+ */
+export function rangeByChunk (
+  range: ChunkRange, chunks: TextChunk[]
+): Record<string, { start: number, end: number }> {
+  const result: Record<string, { start: number, end: number }> = {}
+  const startIdx = chunks.findIndex((c) => c.id === range.chunkId)
+  if (startIdx === -1) return result
+  let offset = 0 // where the current chunk starts, measured from the start of the anchor chunk
+  for (let i = startIdx; i < chunks.length; i++) {
+    if (i > startIdx && chunks[i].order !== chunks[i - 1].order + 1) break
+    const len = (chunks[i].text ?? '').length
+    const start = Math.max(0, range.start - offset)
+    const end = Math.min(len, range.end - offset)
+    if (end > start) result[chunks[i].id] = { start, end }
+    offset += len
+    if (offset >= range.end) break
+  }
+  return result
 }
 
 /**
@@ -165,7 +201,7 @@ export function assignColumns<T extends { top: number, height: number, column: n
  * Resolves a DOM selection endpoint to its chunk and character offset, using the
  * `data-start` of the enclosing text segment and the `data-chunk-id` of its chunk.
  */
-export function resolveSelectionEndpoint (node: Node, offset: number): { chunkId: string, charOffset: number } | null {
+export function resolveSelectionEndpoint (node: Node, offset: number): TextPoint | null {
   let segmentEl: HTMLElement | null = null
   let current: Node | null = node
   while (current) {

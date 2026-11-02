@@ -487,3 +487,41 @@ async def test_search_summaries_run_as_one_capped_operation_through_the_gateway(
     assert [r.query_title is not None for r in response.results] == [True] * 10 + [False] * 2
     [record] = [r for r in caplog.records if r.getMessage() == "LLM operation finished"]
     assert (record.__dict__["llm.operation.calls"], record.__dict__["llm.operation.max_calls"]) == (21, 21)
+
+@pytest.mark.parametrize(("fields", "expected"), [
+    ({"sources": []}, "Cannot explain this selection because no sources are available."),
+    ({"selected_text": ""}, "Cannot explain because no text was selected."),
+    ({"full_answer": ""}, "Cannot explain this selection because the answer is empty."),
+    ({"selected_text": "   "}, "Cannot explain because no text was selected."),
+    ({"full_answer": "   "}, "Cannot explain this selection because the answer is empty."),
+])
+async def test_adaptive_explanation_without_inputs_uses_no_llm_operation(
+        tmp_path, llm, metrics, monkeypatch, fields, expected):
+
+    pipeline = load_rag(
+        tmp_path, llm, "IncrementalAdaptiveRagGenerator",
+        tier="medium", web_search_enabled=False
+    )
+    registry = RagRegistry(instances={"r": pipeline})
+
+    request = ExplainRequest(**{
+        "rag_id": "r",
+        "selected_text": "Novák",
+        "full_answer": "Novák [doc1]",
+        "sources": [hit(PASSAGES[0])],
+        **fields,
+    })
+
+    assert await pipeline.explain_selection(request) == {
+        "explanation": expected
+    }
+
+    def unexpected_operation(*args, **kwargs):
+        pytest.fail("An empty adaptive explanation must not reserve an LLM operation")
+
+    monkeypatch.setattr(llm, "operation", unexpected_operation)
+
+    assert await rag_service.explain(registry, request) == {
+        "explanation": expected
+    }
+    assert metrics.calls == []

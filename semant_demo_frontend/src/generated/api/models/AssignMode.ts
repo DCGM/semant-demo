@@ -20,7 +20,8 @@
 export const AssignMode = {
     add: 'add',
     remove: 'remove',
-    replace: 'replace'
+    replace: 'replace',
+    clear: 'clear'
 } as const;
 export type AssignMode = typeof AssignMode[keyof typeof AssignMode];
 

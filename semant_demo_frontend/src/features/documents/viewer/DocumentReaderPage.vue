@@ -61,25 +61,22 @@
             />
           </div>
 
-          <div class="document-text" :class="{ 'document-text--preserve-whitespace': preserveWhitespace }" ref="documentTextRef" @pointerdown="onDocumentPointerDown" @mouseup="handleDocumentMouseUp($event)" @pointermove="onDocumentPointerMove" @pointerleave="onDocumentPointerLeave">
-            <template v-for="(group, gIndex) in paragraphs" :key="gIndex">
-              <p>
-                <ChunkAnnotator
-                  v-for="chunk in group.chunks"
-                  :key="chunk.id"
-                  :chunk-id="chunk.id"
-                  :text="chunk.text"
-                  :spans="getVisibleSpans(chunk.id)"
-                  :selection="annotations.getLocalSelection(chunk.id)"
-                  :available-tags="tags"
-                  :highlight-span-id="hoveredSpanId || navHighlightedSpanId || highlightedAutoSpanId"
-                  :focus-tag-id="tagNav.focusedTagId.value"
-                  :class="{ 'chunk-preview': !chunk.inCollection, 'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId === chunk.id, 'chunk-gutter-hovered': gutterHoveredChunkId === chunk.id }"
-                  @boundary-drag="onBoundaryDrag"
-                />
-              </p>
-              <!-- Divider at a gap between non-consecutive chunks -->
-              <div v-if="group.gapAfter !== null" class="gap-row">
+          <DocumentTextPane
+            ref="textPane"
+            :chunks="displayChunks"
+            :preserve-whitespace="preserveWhitespace"
+            :annotation="textAnnotation"
+            :chunk-class="chunkClass"
+            @pointerdown="onDocumentPointerDown"
+            @pointermove="onDocumentPointerMove"
+            @pointerleave="onDocumentPointerLeave"
+            @select="onTextSelect"
+            @text-click="onTextClick"
+            @boundary-drag="onBoundaryDrag"
+          >
+            <!-- Divider at a gap between non-consecutive chunks -->
+            <template #gap="{ paragraph: group }">
+              <div class="gap-row">
                 <span class="gap-label">
                   <q-icon name="warning_amber" size="16px" />
                   {{ missingChunksText(gapSize(group)) }}
@@ -91,7 +88,7 @@
                   class="gap-btn"
                   label="Load next"
                   title="Load the chunk just after this gap"
-                  @click="chunkWindow.loadGap(group.gapAfter)"
+                  @click="chunkWindow.loadGap(group.gapAfter!)"
                 />
                 <q-btn
                   flat dense no-caps
@@ -100,7 +97,7 @@
                   class="gap-btn gap-btn--all"
                   label="Load all missing"
                   title="Load all chunks in this gap"
-                  @click="chunkWindow.loadGapAll(group.gapAfter, group.gapBefore!)"
+                  @click="chunkWindow.loadGapAll(group.gapAfter!, group.gapBefore!)"
                 />
                 <q-btn
                   flat dense no-caps
@@ -113,7 +110,7 @@
                 />
               </div>
             </template>
-          </div>
+          </DocumentTextPane>
 
           <!-- Expand next — right below the text -->
           <div v-if="chunkWindow.hasNext.value" class="expand-row expand-row--bottom expand-row--col">
@@ -185,7 +182,7 @@ import { computed, ref, shallowRef, nextTick, onMounted, onBeforeUnmount, watch 
 import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
-import { SpanType } from 'src/generated/api'
+import { SpanType, type CollectionChunk } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError } from 'src/shared/api'
 import { errorNotification } from 'src/shared/notification'
 import { overlayOpen } from 'src/shared/overlays'
@@ -193,7 +190,6 @@ import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import AnnotationGutter from 'src/features/annotations/AnnotationGutter.vue'
 import type { SpanMarker } from 'src/features/annotations/AnnotationGutterTypes'
 import AnnotationPopover from 'src/features/annotations/AnnotationPopover.vue'
-import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance, { resolveAutoSpanFailure } from 'src/features/annotations/useAiAssistance'
 import { useTopicerModelStore } from 'src/features/annotations/topicerModelStore'
@@ -209,10 +205,12 @@ import useChunks from '../useChunks'
 import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
+import DocumentTextPane from './DocumentTextPane.vue'
+import type { DocumentTextPaneApi, TextPaneAnnotation, TextSelection } from './documentTextPane'
 import ReaderToolbar from './ReaderToolbar.vue'
 import { getLastUsedTagId, setLastUsedTagId } from 'src/features/annotations/lastUsedTag'
 import {
-  gapSize, groupParagraphs, missingChunksText, resolveSelectionEndpoint, selectionInDisplayedChunks, selectionText,
+  gapSize, missingChunksText, selectionInDisplayedChunks, selectionText,
   shortestMarker, memoizeVisibleSpansByChunkId
 } from './readerOffsets'
 import { useChunkMembership } from './useChunkMembership'
@@ -220,9 +218,10 @@ import { useChunkWindow } from './useChunkWindow'
 import { useChunksRepository } from '../useChunksRepository'
 import { useReaderGutters } from './useReaderGutters'
 
-// The document reader: the text of the displayed chunks with their annotations, the
-// chunk and span gutters, and annotation editing through the selection popover. The
-// enclosing DocumentViewLayout loads the document, collection and tags.
+// The collection's document reader: the text of the displayed chunks (DocumentTextPane)
+// with their annotations, the chunk and span gutters, chunk membership, and annotation
+// editing through the selection popover. The enclosing DocumentViewLayout loads the
+// document, collection and tags.
 const props = defineProps<{
   collectionId: string
   documentId: string
@@ -249,7 +248,8 @@ const rightSidebar = useRightSidebarStore()
 const aiPanelActive = computed(() => aiAssist.aiPanelActive.value)
 const highlightedAutoSpanId = computed(() => aiAssist.highlightedAutoSpanId.value)
 
-const documentTextRef = ref<HTMLElement | null>(null)
+const textPane = ref<DocumentTextPaneApi | null>(null)
+const documentTextRef = computed(() => textPane.value?.root ?? null)
 const totalDocumentChunks = ref<number | null>(null)
 // Hidden on every visit; the toolbar toggle shows it.
 const chunkGutterVisible = ref(false)
@@ -263,7 +263,6 @@ const chunkWindow = useChunkWindow(() => props.collectionId, () => props.documen
 const { displayChunks, hiddenPreviewChunks } = chunkWindow
 const membership = useChunkMembership(() => props.collectionId, chunkWindow, () => relayout())
 const annotations = useAnnotations(() => displayChunks.value, () => hiddenPreviewChunks.value)
-const paragraphs = computed(() => groupParagraphs(displayChunks.value))
 
 // The annotation a workspace link points to (#329); shown whatever its tag or type.
 const linkedSpanId = ref<string | null>(null)
@@ -359,25 +358,30 @@ function getVisibleSpans(chunkId: string): ProjectedSpan[] {
   return visibleSpansByChunkId.value[chunkId] ?? []
 }
 
+// What the text pane shows of the annotations.
+const textAnnotation = computed<TextPaneAnnotation>(() => ({
+  tags: tags.value,
+  spansFor: getVisibleSpans,
+  selectionFor: (chunkId) => annotations.getLocalSelection(chunkId),
+  highlightSpanId: hoveredSpanId.value || navHighlightedSpanId.value || highlightedAutoSpanId.value,
+  focusTagId: tagNav.focusedTagId.value
+}))
+
+const chunkClass = (chunk: CollectionChunk) => ({
+  'chunk-preview': !chunk.inCollection,
+  'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId.value === chunk.id,
+  'chunk-gutter-hovered': gutterHoveredChunkId.value === chunk.id
+})
+
 // ── Scrolling the text to a span ──
 function scrollToSpan(chunkId: string, start: number, end: number) {
-  const chunkEl = documentTextRef.value?.querySelector<HTMLElement>(`[data-chunk-id="${chunkId}"]`)
-  if (!chunkEl) return
-  for (const seg of Array.from(chunkEl.querySelectorAll<HTMLElement>('.text-segment'))) {
-    const s = parseInt(seg.dataset.start || '0')
-    if (s >= start && s < end) {
-      seg.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      return
-    }
-  }
+  textPane.value?.scrollToRange({ chunkId, start, end })
 }
 
 // A document-summary citation (#249) is whole-chunk granularity, with no offset within the
-// chunk to find a text segment for, so this scrolls to the chunk itself rather than reusing
-// scrollToSpan's per-segment lookup.
+// chunk to find a text segment for, so this scrolls to the chunk itself.
 function scrollToChunk(chunkId: string) {
-  documentTextRef.value?.querySelector<HTMLElement>(`[data-chunk-id="${chunkId}"]`)
-    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  textPane.value?.scrollToChunk(chunkId)
 }
 
 // ── Per-tag navigation (shared with the tags panel via composable) ──
@@ -610,20 +614,14 @@ function openSpanAtClick(e: MouseEvent) {
   schedulePendingClick(() => onMarkerClick(marker, e))
 }
 
-const handleDocumentMouseUp = (e: MouseEvent) => {
-  const domSelection = window.getSelection()
-  if (!domSelection || domSelection.isCollapsed) {
-    openSpanAtClick(e)
-    pointerDown = null
-    return
-  }
+function onTextClick(_point: unknown, e: MouseEvent) {
+  openSpanAtClick(e)
   pointerDown = null
+}
 
-  const range = domSelection.getRangeAt(0)
-  const startPoint = resolveSelectionEndpoint(range.startContainer, range.startOffset)
-  const endPoint = resolveSelectionEndpoint(range.endContainer, range.endOffset)
-
-  if (!startPoint || !endPoint) return
+// A text selection becomes the annotation selection; the browser's own selection is cleared.
+const onTextSelect = ({ start: startPoint, end: endPoint }: TextSelection, e: MouseEvent) => {
+  pointerDown = null
 
   const previousSelection = annotations.selection.value
   let shortened = false
@@ -642,7 +640,7 @@ const handleDocumentMouseUp = (e: MouseEvent) => {
   const newSelection = annotations.selection.value !== previousSelection ? annotations.selection.value : null
 
   popoverRef.value?.moveTo(e)
-  domSelection.removeAllRanges()
+  window.getSelection()?.removeAllRanges()
   // A new selection is unrelated to an AI suggestion highlighted by selecting it earlier.
   if (highlightFromSelection && aiAssist.highlightedAutoSpanId.value === highlightFromSelection) {
     aiAssist.highlightedAutoSpanId.value = null
@@ -964,32 +962,6 @@ onBeforeUnmount(() => {
   padding-left: 10px;
 }
 
-.document-text {
-  max-width: none;
-  margin: 0;
-  font-size: 1.08rem;
-  line-height: 2;
-  color: rgba(15, 23, 42, 0.95);
-}
-
-.document-text p {
-  margin: 0 0 18px;
-}
-
-/* When the toolbar toggle is on, render text exactly as stored (preserve
-   consecutive spaces and line breaks inside each chunk). Wrapping is still
-   allowed so long lines don't overflow the column. */
-.document-text--preserve-whitespace :deep(.text-segment) {
-  white-space: pre-wrap;
-}
-
-/* A chunk's text has no line break at its end, so inline chunks would continue the
-   previous chunk's last line, making each chunk's first line about twice as long.
-   Each chunk starts on its own line instead. */
-.document-text--preserve-whitespace :deep(.chunk-annotator) {
-  display: block;
-}
-
 /* Dim non-collection preview chunks slightly */
 :deep(.chunk-preview) {
   opacity: 0.6;
@@ -1111,11 +1083,6 @@ onBeforeUnmount(() => {
 
   .paper-card.has-gutter .paper-body {
     padding-left: 8px;
-  }
-
-  .document-text {
-    font-size: 1rem;
-    line-height: 1.9;
   }
 }
 </style>

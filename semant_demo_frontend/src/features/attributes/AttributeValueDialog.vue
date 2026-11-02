@@ -23,7 +23,9 @@
           outlined
           label="Label"
           :disable="saving"
-          :rules="[(v: string) => !!v.trim() || 'Label is required']"
+          :rules="[(v: string) => !!v.trim() || 'Label is required', (v: string) => labelTaken(v, props.others ?? []) ?? true]"
+          :error="labelError ? true : undefined"
+          :error-message="labelError ?? undefined"
           lazy-rules
           counter
           :maxlength="MAX_NAME"
@@ -81,12 +83,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { QForm, useDialogPluginComponent } from 'quasar'
 
 import FormDialog from 'src/shared/ui/FormDialog.vue'
 import type { AttributeValue, PatchAttributeValue, PostAttributeValue } from 'src/generated/api'
-import { DESCRIPTION_STYLE, MAX_DESCRIPTION, MAX_EXAMPLES, MAX_NAME, cleanList } from './attributeForm'
+import { DESCRIPTION_STYLE, MAX_DESCRIPTION, MAX_EXAMPLES, MAX_NAME, TAKEN_LABEL, cleanList, isTaken, labelTaken } from './attributeForm'
 
 type Save = (payload: PostAttributeValue | PatchAttributeValue) => Promise<unknown>
 
@@ -98,6 +100,8 @@ const props = defineProps<{
   value?: AttributeValue
   /** Saves the form; the dialog stays open, showing the message, when it throws. */
   save: Save
+  /** The attribute's other values, whose labels this one cannot take. */
+  others?: AttributeValue[]
 }>()
 
 defineEmits([...useDialogPluginComponent.emits])
@@ -110,6 +114,9 @@ const initialExamples = props.value?.examples ?? []
 const examples = ref<string[]>(initialExamples.length ? [...initialExamples] : [''])
 const saving = ref(false)
 const error = ref<string | null>(null)
+// A label the server refused as taken (added by another person meanwhile), shown at the field.
+const labelError = ref<string | null>(null)
+watch(label, () => { labelError.value = null })
 
 const sameExamples = computed(() =>
   JSON.stringify(cleanList(examples.value)) === JSON.stringify(cleanList(initialExamples)))
@@ -139,6 +146,7 @@ function payload (): PostAttributeValue | PatchAttributeValue | null {
 async function submit () {
   if (saving.value) return
   error.value = null
+  labelError.value = null
   const body = payload()
   if (!body) {
     onDialogOK(null)
@@ -148,7 +156,9 @@ async function submit () {
   try {
     onDialogOK(await props.save(body))
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'The value could not be saved.'
+    const message = e instanceof Error ? e.message : 'The value could not be saved.'
+    if (isTaken(e, TAKEN_LABEL)) labelError.value = message
+    else error.value = message
   } finally {
     saving.value = false
   }

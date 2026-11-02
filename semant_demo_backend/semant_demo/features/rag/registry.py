@@ -39,6 +39,10 @@ class BaseRag:
    async def explain_selection(self, request : ExplainRequest):
        return {"explanation" : "This functionality is not supported by this RAG, try another."}
 
+   def explanation_unavailable(self, request: ExplainRequest) -> str | None:
+       """Optional no-op explanation; called before admitting a metered operation."""
+       return None
+
 #dict of rag implementations avalaible in application    
 RAG_IMPLEMENTATIONS: Dict[str, Type[BaseRag]] = {}
 

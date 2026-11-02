@@ -117,6 +117,10 @@ class AssignMode(str, Enum):
     remove = "remove"
     replace = "replace"
     """The annotation's values of the attribute become exactly ``value_ids`` (none: cleared)."""
+    clear = "clear"
+    """Remove every value of the attribute the annotation holds, without naming them (``value_ids``
+    empty): like ``remove``, also on a non-approved annotation, a tag the attribute no longer
+    applies to and a retired attribute, and for values no longer defined."""
 
 
 class AssignSource(str, Enum):
@@ -140,7 +144,9 @@ class AttributeAssignRequest(BaseModel):
     def check_request(self) -> "AttributeAssignRequest":
         if any(i not in self.expected_versions for i in self.annotation_ids):
             raise ValueError("expected_versions must give the version of every annotation")
-        if not self.value_ids and self.mode != AssignMode.replace:
+        if self.mode == AssignMode.clear and self.value_ids:
+            raise ValueError("clear removes every value; value_ids must be empty")
+        if not self.value_ids and self.mode not in (AssignMode.replace, AssignMode.clear):
             raise ValueError("Choose at least one value")
         if (self.run_id is not None) != (self.source == AssignSource.ai_assisted):
             raise ValueError("run_id is required for ai_assisted assignments and not allowed otherwise")

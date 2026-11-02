@@ -699,7 +699,7 @@ export interface DefaultApiInterface {
     assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequestOpts(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * Adds, removes, replaces or clears (``clear``: every value held, without naming them) the values of one attribute on up to 200 approved annotations (removing and clearing: any annotation), each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
      * @summary Assign Attribute Values
      * @param {string} collectionId 
      * @param {AttributeAssignRequest} attributeAssignRequest 
@@ -710,7 +710,7 @@ export interface DefaultApiInterface {
     assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRaw(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AttributeAssignResult>>;
 
     /**
-     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * Adds, removes, replaces or clears (``clear``: every value held, without naming them) the values of one attribute on up to 200 approved annotations (removing and clearing: any annotation), each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
      * Assign Attribute Values
      */
     assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AttributeAssignResult>;
@@ -2835,7 +2835,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * Adds, removes, replaces or clears (``clear``: every value held, without naming them) the values of one attribute on up to 200 approved annotations (removing and clearing: any annotation), each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
      * Assign Attribute Values
      */
     async assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRaw(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AttributeAssignResult>> {
@@ -2846,7 +2846,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
+     * Adds, removes, replaces or clears (``clear``: every value held, without naming them) the values of one attribute on up to 200 approved annotations (removing and clearing: any annotation), each expected at its ``attributeVersion``. Best effort and per item: ``succeeded`` lists the changed annotations (or those already as asked), ``failed`` the ones not changed or uncertain, with ``edit_conflict`` for an annotation whose attributes were written since; ``versions`` and ``values`` give the current state. Nothing is rolled back.
      * Assign Attribute Values
      */
     async assignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPost(requestParameters: AssignAttributeValuesApiUserCollectionsCollectionIdAnnotationsAttributesAssignPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AttributeAssignResult> {

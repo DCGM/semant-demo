@@ -17,6 +17,8 @@ const chips = (page: Page, attribute: string) => card(page, attribute).getByTest
 const chip = (page: Page, attribute: string, label: string) =>
   card(page, attribute).getByTestId('attribute-value').filter({ has: page.getByText(label, { exact: true }) })
 const dialog = (page: Page) => page.getByRole('dialog')
+/** The Name field of the dialog, with its messages. */
+const nameField = (page: Page) => dialog(page).locator('.q-field').filter({ has: page.getByRole('textbox', { name: 'Name', exact: true }) })
 const valueRow = (page: Page, label: string) =>
   dialog(page).getByTestId('attribute-dialog-value-row').filter({ has: page.getByText(label, { exact: true }) })
 
@@ -104,9 +106,9 @@ test('the owner defines an attribute and manages its values in Edit, each saved 
   await page.getByTestId('attribute-create').click()
   await dialog(page).getByLabel('Name').fill('Speaker type')
   await dialog(page).getByLabel('Description').fill('Who says the quoted words.')
-  await dialog(page).getByRole('checkbox', { name: 'Allow multiple values per annotation' }).click()
+  await dialog(page).getByRole('switch', { name: 'Allow multiple values per annotation' }).click()
   await expect(page.getByTestId('attribute-multiple-warning')).toContainText('cannot be reversed')
-  await dialog(page).getByRole('checkbox', { name: 'Allow multiple values per annotation' }).click()
+  await dialog(page).getByRole('switch', { name: 'Allow multiple values per annotation' }).click()
   await dialog(page).getByRole('radio', { name: 'Selected tags' }).click()
   // Selected tags with none chosen is allowed and means no tag, never All tags (#522).
   await expect(dialog(page)).toContainText('No tags: no annotation can take values of this attribute.')
@@ -116,7 +118,7 @@ test('the owner defines an attribute and manages its values in Edit, each saved 
   await dialog(page).getByLabel('Value 1', { exact: true }).fill('politician')
   await dialog(page).getByRole('button', { name: 'Add value', exact: true }).click()
   await dialog(page).getByLabel('Value 2', { exact: true }).fill('journalist')
-  await dialog(page).getByRole('checkbox', { name: 'Allow Unknown' }).click()
+  await dialog(page).getByRole('switch', { name: 'Allow Unknown' }).click()
   await dialog(page).getByRole('button', { name: 'Create' }).click()
 
   await expect(card(page, 'Speaker type').getByTestId('attribute-cardinality')).toHaveText('One value per annotation')
@@ -134,19 +136,19 @@ test('the owner defines an attribute and manages its values in Edit, each saved 
   await page.getByTestId('attribute-create').click()
   await dialog(page).getByLabel('Name').fill('speaker TYPE')
   await dialog(page).getByRole('button', { name: 'Create' }).click()
-  await expect(page.getByTestId('attribute-dialog-error')).toContainText('already exists')
+  await expect(nameField(page)).toContainText('An attribute named "Speaker type" already exists')
   await expect(dialog(page).getByLabel('Name')).toHaveValue('speaker TYPE')
   await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'Yes' }).click()
 
   const unknownId = (await listed(request, 'Speaker type')).values.find(v => v.kind === 'unknown')!.id
   await page.getByRole('button', { name: 'Edit Speaker type' }).click()
-  await expect(dialog(page).getByRole('checkbox', { name: 'Allow multiple values per annotation' })).toBeDisabled()
+  await expect(dialog(page).getByRole('switch', { name: 'Allow multiple values per annotation' })).toBeDisabled()
   await expect(page.getByTestId('attribute-values-immediate')).toContainText('saved immediately')
   // Value changes are saved at once, behind the dialog.
-  await dialog(page).getByRole('checkbox', { name: 'Allow Not applicable' }).click()
+  await dialog(page).getByRole('switch', { name: 'Allow Not applicable' }).click()
   await expect(chips(page, 'Speaker type')).toHaveText(['politician', 'journalist', 'Unknown', 'Not applicable'])
-  await dialog(page).getByRole('checkbox', { name: 'Allow Unknown' }).click()
+  await dialog(page).getByRole('switch', { name: 'Allow Unknown' }).click()
   await expect(chip(page, 'Speaker type', 'Unknown')).toContainText('Retired')
   await valueRow(page, 'journalist').getByRole('button', { name: 'Retire journalist' }).click()
   await expect(valueRow(page, 'journalist')).toContainText('Retired')
@@ -169,8 +171,8 @@ test('the owner defines an attribute and manages its values in Edit, each saved 
 
   // Offering Unknown again restores the same value; nothing creates a second one.
   await page.getByRole('button', { name: 'Edit Speaker type' }).click()
-  await dialog(page).getByRole('checkbox', { name: 'Allow Unknown' }).click()
-  await expect(dialog(page).getByRole('checkbox', { name: 'Allow Unknown' })).toBeChecked()
+  await dialog(page).getByRole('switch', { name: 'Allow Unknown' }).click()
+  await expect(dialog(page).getByRole('switch', { name: 'Allow Unknown' })).toBeChecked()
   await dialog(page).getByRole('button', { name: 'Save' }).click()
   const unknowns = (await listed(request, 'Speaker type')).values.filter(v => v.kind === 'unknown')
   expect(unknowns.map(v => [v.id, v.retired])).toEqual([[unknownId, false]])
@@ -328,4 +330,25 @@ test('tags that are loading, failed or deleted are never shown as something else
   await page.goto(`/#/collections/${chronicles.id}/tags`)
   const row = (name: string) => page.locator('tbody tr').filter({ has: page.getByText(name, { exact: true }) })
   await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['Speaker'])
+})
+
+test('a taken name is shown at the Name field, which gets the focus however the form is scrolled', async ({ page, request }) => {
+  await createAttribute(request, { name: 'Role', cardinality: 'single', all_tags: true, values: [{ label: 'statesman' }] })
+  await useViewport(page, 'phone')
+  await openAttributes(page)
+  await page.getByTestId('attribute-create').click()
+  await dialog(page).getByLabel('Name').fill(' role')
+  // Down to the values, far from the name on a phone.
+  await dialog(page).getByRole('textbox', { name: 'Value 1', exact: true }).fill('chronicler')
+  await dialog(page).getByRole('button', { name: 'Create' }).click()
+  const name = nameField(page)
+  await expect(name).toContainText('An attribute named "Role" already exists in this collection.')
+  await expect(dialog(page).getByLabel('Name')).toBeFocused()
+  await expect(dialog(page).getByLabel('Name')).toBeInViewport()
+  await expect(dialog(page)).toBeVisible()
+
+  await dialog(page).getByLabel('Name').fill('Role 2')
+  await dialog(page).getByRole('button', { name: 'Create' }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  await expect(card(page, 'Role 2')).toBeVisible()
 })

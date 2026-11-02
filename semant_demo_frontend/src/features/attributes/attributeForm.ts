@@ -92,6 +92,44 @@ export function attributesOfTag (attributes: Attribute[], tagId: string): { attr
   ]
 }
 
+/** How the backend compares attribute names and value labels: unique ignoring case and
+ * surrounding spaces (ADR 0011). Python's `casefold()` there; upper then lower case comes
+ * close to it ("Straße" and "STRASSE" are one name). */
+export const nameKey = (text: string) => text.trim().toUpperCase().toLowerCase()
+
+/** Why `name` cannot name a new or renamed attribute, or null: another attribute of the
+ * collection, retired ones included, has it. */
+export function nameTaken (name: string, others: Pick<Attribute, 'name' | 'retired'>[]): string | null {
+  const key = nameKey(name)
+  const other = key ? others.find(a => nameKey(a.name) === key) : undefined
+  if (!other) return null
+  return other.retired
+    ? `A retired attribute is already named "${other.name}"; restore it, or choose another name.`
+    : `An attribute named "${other.name}" already exists in this collection.`
+}
+
+/** Why `label` cannot label a value of the attribute, or null: another of its values, retired
+ * ones included, has it. */
+export function labelTaken (label: string, others: Pick<AttributeValue, 'label' | 'kind' | 'retired'>[]): string | null {
+  const key = nameKey(label)
+  const other = key ? others.find(v => nameKey(v.label) === key) : undefined
+  if (!other) return null
+  if (isSpecial(other)) return `"${valueName(other)}" is a fixed option of the attribute; use its toggle.`
+  return other.retired
+    ? `A retired value is already labelled "${other.label}"; restore it, or choose another label.`
+    : `Another value is already labelled "${other.label}".`
+}
+
+/** The start of the backend's refusal (400) of a taken name or label
+ * (`adapters/sql/attributes.py`, `_commit`); a rename or a new value names only one of them. */
+export const TAKEN_NAME = 'An attribute with this name'
+export const TAKEN_LABEL = 'A value with this label'
+
+/** Whether a failed write is the backend's refusal of a taken name or label (`prefix`). */
+export function isTaken (e: unknown, prefix: string): boolean {
+  return e instanceof Error && 'status' in e && (e as { status: unknown }).status === 400 && e.message.startsWith(prefix)
+}
+
 /** Text entries trimmed, without empty ones. */
 export function cleanList (items: string[]): string[] {
   return items.map(item => item.trim()).filter(item => item.length > 0)

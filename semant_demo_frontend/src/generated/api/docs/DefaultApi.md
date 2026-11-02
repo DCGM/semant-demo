@@ -318,7 +318,7 @@ example().catch(console.error);
 
 Assign Attribute Values
 
-Adds, removes or replaces the values of one attribute on up to 200 approved annotations, each expected at its &#x60;&#x60;attributeVersion&#x60;&#x60;. Best effort and per item: &#x60;&#x60;succeeded&#x60;&#x60; lists the changed annotations (or those already as asked), &#x60;&#x60;failed&#x60;&#x60; the ones not changed or uncertain, with &#x60;&#x60;edit_conflict&#x60;&#x60; for an annotation whose attributes were written since; &#x60;&#x60;versions&#x60;&#x60; and &#x60;&#x60;values&#x60;&#x60; give the current state. Nothing is rolled back.
+Adds, removes, replaces or clears (&#x60;&#x60;clear&#x60;&#x60;: every value held, without naming them) the values of one attribute on up to 200 approved annotations (removing and clearing: any annotation), each expected at its &#x60;&#x60;attributeVersion&#x60;&#x60;. Best effort and per item: &#x60;&#x60;succeeded&#x60;&#x60; lists the changed annotations (or those already as asked), &#x60;&#x60;failed&#x60;&#x60; the ones not changed or uncertain, with &#x60;&#x60;edit_conflict&#x60;&#x60; for an annotation whose attributes were written since; &#x60;&#x60;versions&#x60;&#x60; and &#x60;&#x60;values&#x60;&#x60; give the current state. Nothing is rolled back.
 
 ### Example
 

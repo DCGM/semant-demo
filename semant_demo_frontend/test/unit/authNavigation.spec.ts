@@ -205,8 +205,7 @@ describe('MainLayout navigation', () => {
           RightSidebar: true,
           LoginDialog: true,
           RegisterDialog: true,
-          UserInfoDialog: true,
-          AboutAppDialog: true
+          UserInfoDialog: true
         }
       }
     })
@@ -405,7 +404,7 @@ describe('late /users/me answers', () => {
     const wrapper = mount(MainLayout, {
       global: {
         plugins: [[Quasar, { plugins: { Notify } }], pinia, router],
-        stubs: { RightSidebar: true, LoginDialog: true, RegisterDialog: true, UserInfoDialog: true, AboutAppDialog: true }
+        stubs: { RightSidebar: true, LoginDialog: true, RegisterDialog: true, UserInfoDialog: true }
       }
     })
     await flushPromises() // the layout restores the stored session

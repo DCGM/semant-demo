@@ -605,6 +605,34 @@ test('the owner adds a preview chunk to the collection and removes it with the b
   await expect(chunkText(page, 'chronicle_2')).toHaveCount(0)
 })
 
+test('a gap between the collection\'s chunks is shown and filled with the stored text', async ({ page, request }) => {
+  // In "newspapers" the document then has chunks 0 and 2: chunk 1 is missing between them.
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const added = await request.post(
+    `/api/user_collections/${fixture.collection('newspapers').id}/chunks/${fixture.chunk('chronicle_1').id}`, { headers }
+  )
+  expect(added.ok()).toBe(true)
+  try {
+    await ensureLoggedIn(page, 'owner')
+    await openDocument(page, 'newspapers', 'chronicle')
+    const gap = page.locator('.gap-row')
+    await expect(gap).toContainText('1 chunk not shown')
+    await expect(chunkText(page, 'chronicle_2')).toHaveCount(0)
+
+    await gap.getByRole('button', { name: 'Load all missing' }).click()
+    await expect(gap).toHaveCount(0)
+    await expect(chunkText(page, 'chronicle_2')).toHaveClass(/chunk-preview/)
+    for (const key of ['chronicle_1', 'chronicle_2', 'chronicle_3']) {
+      expect(await chunkText(page, key).textContent()).toBe(fixture.chunk(key).text)
+    }
+    // The original whitespace is kept, each chunk on its own line.
+    await expect(chunkText(page, 'chronicle_2').locator('.text-segment').first()).toHaveCSS('white-space', 'pre-wrap')
+    await expect(chunkText(page, 'chronicle_2')).toHaveCSS('display', 'block')
+  } finally {
+    await removeChunk(request, 'owner', 'newspapers', 'chronicle_1')
+  }
+})
+
 test('on a narrow window the text, gutters and side panel stay usable', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await page.setViewportSize({ width: 900, height: 800 })

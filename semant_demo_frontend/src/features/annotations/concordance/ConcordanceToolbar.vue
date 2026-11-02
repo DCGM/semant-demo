@@ -83,6 +83,39 @@
       @update:model-value="value => emit('change', { documentIds: value ?? [] })"
     />
 
+    <q-select
+      v-if="attributes.length"
+      :model-value="attributeFilter"
+      :options="filteredAttributeOptions"
+      multiple
+      emit-value
+      map-options
+      use-input
+      clearable
+      dense
+      outlined
+      options-dense
+      input-debounce="0"
+      label="Attributes"
+      class="concordance-toolbar__attributes"
+      :display-value="attributesLabel"
+      data-testid="concordance-attributes"
+      @filter="filterAttributes"
+      @update:model-value="setAttributeFilter"
+    >
+      <template #option="{ itemProps, opt, selected, toggleOption }">
+        <q-item v-bind="itemProps">
+          <q-item-section side>
+            <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label :class="{ 'text-italic': opt.unassigned }">{{ opt.label }}</q-item-label>
+          </q-item-section>
+        </q-item>
+      </template>
+      <q-tooltip>Values of one attribute match any of them; different attributes must all match</q-tooltip>
+    </q-select>
+
     <div class="concordance-toolbar__years" role="group" aria-label="Publication years">
       <q-input
         :model-value="filters.yearFrom ?? ''"
@@ -122,6 +155,24 @@
       @update:model-value="value => emit('change', { sort: value })"
     />
 
+    <q-select
+      v-if="attributes.length"
+      :model-value="shownAttributeId"
+      :options="shownAttributeOptions"
+      emit-value
+      map-options
+      clearable
+      dense
+      outlined
+      options-dense
+      label="Show attribute"
+      class="concordance-toolbar__show-attribute"
+      data-testid="concordance-show-attribute"
+      @update:model-value="value => emit('show-attribute', value ?? null)"
+    >
+      <q-tooltip>Shows the attribute's values in a column of their own, where they can be assigned</q-tooltip>
+    </q-select>
+
     <q-btn
       flat
       dense
@@ -138,7 +189,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { QBtn, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QSelect, QTooltip } from 'quasar'
-import { AnnotationSort, SpanType, type AnnotatedDocument, type Tag } from 'src/generated/api'
+import { AnnotationSort, SpanType, type AnnotatedDocument, type Attribute, type Tag } from 'src/generated/api'
+import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { defaultFilters, type ConcordanceFilters } from './concordanceStore'
 
 const props = defineProps<{
@@ -146,12 +198,19 @@ const props = defineProps<{
   tags: Tag[]
   documents: AnnotatedDocument[]
   documentsError?: string | null
+  /** The collection's attribute definitions (#331), retired ones included. */
+  attributes?: Attribute[]
+  /** The attribute shown in a column of its own. */
+  shownAttributeId?: string | null
 }>()
 
 const emit = defineEmits<{
   change: [change: Partial<ConcordanceFilters>]
   reset: []
+  'show-attribute': [attributeId: string | null]
 }>()
+
+const attributes = computed(() => props.attributes ?? [])
 
 const tagOptions = computed(() => props.tags.map(t => ({ label: t.name, value: t.id, color: t.color })))
 
@@ -198,6 +257,45 @@ const sourcesLabel = computed(() => {
   return count ? `${count} selected` : ''
 })
 
+// Attribute filter options: `v:<attribute id>:<value id>` for a value, `u:<attribute id>` for
+// "not assigned"; one select edits both filter lists.
+const attributeOptions = computed(() => attributes.value.flatMap(a => {
+  const name = a.retired ? `${a.name} (retired)` : a.name
+  return [
+    ...orderedValues(a).map(v => ({
+      label: `${name}: ${valueName(v)}${v.retired ? ' (retired)' : ''}`, value: `v:${a.id}:${v.id}`, unassigned: false
+    })),
+    { label: `${name}: not assigned`, value: `u:${a.id}`, unassigned: true }
+  ]
+}))
+const attributeNeedle = ref('')
+const filteredAttributeOptions = computed(() => {
+  const needle = attributeNeedle.value.toLocaleLowerCase()
+  return needle ? attributeOptions.value.filter(o => o.label.toLocaleLowerCase().includes(needle)) : attributeOptions.value
+})
+function filterAttributes (value: string, update: (fn: () => void) => void) {
+  update(() => { attributeNeedle.value = value })
+}
+const attributeFilter = computed(() => [
+  ...props.filters.attributeValues.map(v => `v:${v}`),
+  ...props.filters.attributeUnassigned.map(a => `u:${a}`)
+])
+function setAttributeFilter (value: string[] | null) {
+  const list = value ?? []
+  emit('change', {
+    attributeValues: list.filter(v => v.startsWith('v:')).map(v => v.slice(2)),
+    attributeUnassigned: list.filter(v => v.startsWith('u:')).map(v => v.slice(2))
+  })
+}
+const attributesLabel = computed(() => {
+  const count = attributeFilter.value.length
+  return count ? `${count} selected` : ''
+})
+
+const shownAttributeOptions = computed(() => attributes.value.map(a => ({
+  label: a.retired ? `${a.name} (retired)` : a.name, value: a.id
+})))
+
 const filtersChanged = computed(() => JSON.stringify(props.filters) !== JSON.stringify(defaultFilters()))
 </script>
 
@@ -222,6 +320,15 @@ const filtersChanged = computed(() => JSON.stringify(props.filters) !== JSON.str
 .concordance-toolbar__sources {
   flex: 1 1 180px;
   max-width: 280px;
+}
+
+.concordance-toolbar__attributes {
+  flex: 1 1 180px;
+  max-width: 280px;
+}
+
+.concordance-toolbar__show-attribute {
+  width: 180px;
 }
 
 .concordance-toolbar__status {

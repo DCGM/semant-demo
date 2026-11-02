@@ -200,7 +200,8 @@ the response of one search, as retrieved, with an `id` that changes with every n
 them, or exactly the selected ones. It never reruns the query or adds unselected results,
 and an empty selection is reported, not widened. Hits keep their source references (chunk
 id, document id, page ids); their text is display text, not the canonical text annotation
-offsets refer to. Future search-result chat takes the same input.
+offsets refer to. Search chat takes the same input; the scope, history and API rules of the
+Search, collection and document chats are in [ADR 0012](adr/0012-contextual-chat.md).
 
 Requests belong to their context: when the page's context changes (a new search) or a new
 request supersedes an old one, the old request is aborted and its late answer is dropped

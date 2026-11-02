@@ -58,11 +58,6 @@
                   <q-item-section>Log Out</q-item-section>
                 </q-item>
               </template>
-              <q-separator />
-              <q-item clickable v-close-popup @click="showAbout = true">
-                <q-item-section avatar><q-icon name="info" /></q-item-section>
-                <q-item-section>About</q-item-section>
-              </q-item>
             </q-list>
           </q-menu>
         </q-btn>
@@ -212,7 +207,6 @@
     <LoginDialog v-model="showLogin" />
     <RegisterDialog v-model="showRegister" />
     <UserInfoDialog v-model="showUserInfo" />
-    <AboutAppDialog v-model="showAbout" />
   </q-layout>
 </template>
 
@@ -227,7 +221,6 @@ import RightSidebar from 'src/app/sidebar/RightSidebar.vue'
 import LoginDialog from 'src/features/auth/LoginDialog.vue'
 import RegisterDialog from 'src/features/auth/RegisterDialog.vue'
 import UserInfoDialog from 'src/features/auth/UserInfoDialog.vue'
-import AboutAppDialog from './AboutAppDialog.vue'
 import QuotaIndicator from 'src/features/quota/QuotaIndicator.vue'
 import QuotaBanner from 'src/features/quota/QuotaBanner.vue'
 import { errorStatus } from 'src/shared/api'
@@ -242,7 +235,6 @@ const leftDrawerOpen = ref(true)
 const showLogin = ref(false)
 const showRegister = ref(false)
 const showUserInfo = ref(false)
-const showAbout = ref(false)
 // Signing out replaces the menu's items at once, before v-close-popup can close it.
 const userMenuOpen = ref(false)
 

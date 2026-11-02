@@ -9,6 +9,7 @@
         'is-selected': segment.isSelected,
         'is-auto': segment.isAuto,
         'is-highlighted': segment.isHighlighted,
+        'is-active-passage': segment.isActivePassage,
         'has-deep-stack': segment.hasDeepStack
       }"
       :style="segment.style"
@@ -44,6 +45,8 @@ interface TextSegment {
   isSelected: boolean
   isAuto: boolean
   isHighlighted: boolean
+  /** In the passage focused from outside the text (`activeRange`). */
+  isActivePassage: boolean
   /** The underlines reach the next line of text, so the line gets extra space below. */
   hasDeepStack: boolean
   isSelectionStart: boolean
@@ -69,6 +72,8 @@ const props = defineProps<{
   highlightSpanId?: string | null
   /** The tag focused in the tags panel: its spans are tinted, the other tags' lines fade. */
   focusTagId?: string | null
+  /** The part of this chunk in the passage focused from outside the text, e.g. a citation. */
+  activeRange?: { start: number, end: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -115,6 +120,12 @@ const renderedSegments = computed((): TextSegment[] => {
     boundaries.add(Math.min(text.length, props.selection.end))
   }
 
+  const active = props.activeRange
+  if (active) {
+    boundaries.add(Math.max(0, active.start))
+    boundaries.add(Math.min(text.length, active.end))
+  }
+
   const sorted = Array.from(boundaries).sort((a, b) => a - b)
   const segments: TextSegment[] = []
 
@@ -146,6 +157,7 @@ const renderedSegments = computed((): TextSegment[] => {
       isSelected,
       isAuto,
       isHighlighted,
+      isActivePassage: !!active && active.start <= start && active.end >= end,
       hasDeepStack: '--stack-height' in style,
       isSelectionStart: isSelected && start === props.selection?.start && (props.selection?.showStartHandle ?? true),
       isSelectionEnd: isSelected && end === props.selection?.end && (props.selection?.showEndHandle ?? true),
@@ -383,6 +395,11 @@ const hexToRgba = (hex: string, alpha: number): string => {
   width: 0;
   height: calc(0.9em + var(--stack-height));
   vertical-align: text-top;
+}
+
+/* A tag's or the selection's background (inline style) takes precedence. */
+.text-segment.is-active-passage {
+  background-color: rgba(250, 204, 21, 0.3);
 }
 
 .text-segment.is-highlighted {
