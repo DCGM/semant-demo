@@ -28,7 +28,7 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | --- | --- | --- |
 | Q1 | Shared users may edit annotations, not collection membership. | Separate annotation and membership checks and denial tests. |
 | Q2 | Search uses chunk tag attributes. Unsupported entries without backing annotations are inconsistencies to remove. Document view/export/concordances select manual, automatic, or both. | Preserve search representation; fix consistency defects and review cleanup separately. Do not impose approved-only search defaults or a legacy compatibility layer. |
-| Q3 | Search chat uses retrieved results or an explicitly selected subset. | Explicit source set; no silent query rerun or scope expansion. |
+| Q3 | Search chat uses retrieved results or an explicitly selected subset. | Explicit source set; no silent query rerun or scope expansion. Applied to the sidebar chats by ADR 0012 (proposed). |
 | Q4 | Real-time means local Document-view annotation, including immediate streamed AI suggestions. | Scope-safe UI updates; no cross-user synchronization requirement. |
 | Q5 | Line-level text-image correspondence is planned, possibly by frontend chunk-to-ALTO mapping; polygons may be added later. | Preserve text/source anchors; geometry stays optional and mapping is future feature work. |
 
