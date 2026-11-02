@@ -51,7 +51,7 @@
                   @choose="chooseHistory"
                   @remove="removeHistory"
                   @highlight="history.activeIndex.value = $event"
-                  @clear="history.clear"
+                  @clear="clearHistory"
                 />
               </div>
 
@@ -589,6 +589,18 @@ function onQueryKeydown (event: KeyboardEvent) {
 function chooseHistory (index: number) {
   const entry = history.suggestions.value[index]
   if (entry) history.choose(entry)
+}
+
+/**
+ * Clears the history, but not while a search is running: that search is saved when its
+ * results arrive, so it would reappear in the history just cleared.
+ */
+function clearHistory () {
+  if (loading.value) {
+    Notify.create({ message: 'A search is running. The history cannot be cleared until it finishes.', position: 'top', color: 'warning' })
+    return
+  }
+  history.clear()
 }
 
 function removeHistory (index: number) {

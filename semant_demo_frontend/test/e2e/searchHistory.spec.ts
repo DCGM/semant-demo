@@ -21,6 +21,16 @@ async function openSearchPage (page: Page) {
   await closePhoneNavigation(page)
 }
 
+/**
+ * Opens the list once the search options are loaded (an entry picked before then is not
+ * run; a test of that holds the options itself).
+ */
+async function openHistory (page: Page) {
+  await input(page).click()
+  await expect(dropdown(page)).toBeVisible()
+  await expect(page.getByTestId('search-history-note')).toHaveCount(0)
+}
+
 test('recent searches open on click, narrow while typing and run again', async ({ page }) => {
   await search(page, 'Lhota')
   await search(page, 'Brno')
@@ -29,7 +39,7 @@ test('recent searches open on click, narrow while typing and run again', async (
   await openSearchPage(page)
   await expect(input(page)).toBeFocused()
   await expect(dropdown(page)).toHaveCount(0)
-  await input(page).click()
+  await openHistory(page)
   await expect(entries(page)).toHaveText([/Brno/, /Lhota/])
   await expect(input(page)).toHaveAttribute('aria-expanded', 'true')
 
@@ -59,9 +69,10 @@ test('recent searches open on click, narrow while typing and run again', async (
   // A click on an entry runs it.
   await input(page).click()
   await expect(entries(page)).toHaveText([/Lhota/, /Brno/])
-  const clicked = nextSearch(page)
+  const clicked = page.waitForResponse((r) => r.url().endsWith('/api/search') && r.request().method() === 'POST')
   await entries(page).filter({ hasText: 'Brno' }).click()
-  expect((await clicked).postDataJSON().query).toBe('Brno')
+  expect((await clicked).request().postDataJSON().query).toBe('Brno')
+  await expect(page.locator('#result-1')).toBeVisible() // saved once its results arrived
 
   // Remove one entry, then clear the history.
   await input(page).fill('')
@@ -87,7 +98,7 @@ test('a search from the history runs with its criteria', async ({ page }) => {
 
   // A fresh page uses the default vector; the history entry restores the chosen one.
   await openSearchPage(page)
-  await input(page).click()
+  await openHistory(page)
   await expect(entries(page).first()).toContainText('Lhota')
   await expect(entries(page).first()).toContainText('Embedding: Fake small')
   const rerun = nextSearch(page)
@@ -127,7 +138,7 @@ test('recent searches are usable at phone width', async ({ page }) => {
   await useViewport(page, 'phone')
   await search(page, 'Lhota')
   await openSearchPage(page)
-  await input(page).click()
+  await openHistory(page)
   await expect(entries(page).first()).toBeInViewport({ ratio: 1 })
   const box = await dropdown(page).boundingBox()
   expect(box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0)).toBe(true)
@@ -198,4 +209,32 @@ test('an entry is not run when the search options could not be loaded', async ({
   await entries(page).first().click()
   await expect(page.getByText('This search cannot be restored because the search options could not be loaded.')).toBeVisible()
   expect(searches()).toBe(0)
+})
+
+test('the history cannot be cleared while a search is running', async ({ page }) => {
+  await search(page, 'Lhota')
+
+  // Hold the next search's answer.
+  let release: () => void = () => undefined
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/search', async (route) => { await held; await route.continue() })
+  await input(page).fill('Brno')
+  await input(page).press('Enter')
+  await input(page).fill('')
+  await expect(entries(page)).toHaveText([/Lhota/])
+  await page.getByTestId('search-history-clear').click()
+  await expect(page.getByText('A search is running. The history cannot be cleared until it finishes.')).toBeVisible()
+  await expect(entries(page)).toHaveText([/Lhota/])
+
+  // Once it finished, it is saved and the history can be cleared.
+  release()
+  await expect(page.locator('#result-1')).toBeVisible()
+  await page.unroute('**/api/search')
+  await input(page).click()
+  await expect(entries(page)).toHaveText([/Brno/, /Lhota/])
+  await page.getByTestId('search-history-clear').click()
+  await expect(dropdown(page)).toHaveCount(0)
+  await openSearchPage(page)
+  await input(page).click()
+  await expect(dropdown(page)).toHaveCount(0)
 })
