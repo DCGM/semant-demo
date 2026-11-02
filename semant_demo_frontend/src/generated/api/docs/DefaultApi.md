@@ -1664,7 +1664,7 @@ example().catch(console.error);
 
 Delete Tag
 
-Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+Deletes the tag with its annotations, then removes it from the collection attributes that list it (an attribute that loses its last tag applies to no tag, never to all tags). If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues. When only the last step (&#x60;&#x60;remove_from_attributes&#x60;&#x60;) fails, the tag is deleted and stays listed on those attributes.
 
 ### Example
 

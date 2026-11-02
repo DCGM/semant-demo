@@ -5,4 +5,6 @@ export interface ConfirmDeleteOptions {
   okLabel?: string
   /** What else would be deleted along, as text (e.g. "3 approved annotations"); empty when nothing. */
   alsoDeletes: () => Promise<string>
+  /** What else changes along without being deleted, as one plain sentence; nothing when empty. */
+  alsoChanges?: string
 }

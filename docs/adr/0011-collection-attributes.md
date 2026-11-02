@@ -83,8 +83,10 @@ renames categories later without rewriting annotations or losing who decided wha
   the tag side, #516) leaves the attribute for no tag instead of making it global. All tags has no
   per-tag exceptions; `all_tags=true` with tags is refused (422), and so is sending tags to an
   All tags attribute without `all_tags=false` (400). An attribute for no tag takes no new values
-  (`check_applicable`) and is not retired automatically. A tag deleted later stays in `tag_ids`
-  (#508); it never turns Selected tags into All tags either.
+  (`check_applicable`) and is not retired automatically. Deleting a tag removes its id from
+  `tag_ids` as the last step of the deletion (#508; the tag is deleted permanently, so the id
+  carried no information); `all_tags` is never changed, so this never turns Selected tags into
+  All tags. An id left over when that step fails is shown as a deleted tag.
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
   with the number affected) but can be retired. The UI offers only retiring and restoring

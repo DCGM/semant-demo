@@ -307,6 +307,23 @@ async def test_deleting_a_collection_removes_its_definitions(api_client, login, 
         await engine.dispose()
 
 
+
+async def test_deleting_a_tag_removes_it_from_the_attributes_that_list_it(api_client, login, ids):
+    owner = await login("owner")
+    collection, person, place = ids.col["chronicles"], ids.tag["person"], ids.tag["place"]
+    role = await _define(api_client, owner, collection, name="role", tag_ids=[person, place])
+    speaker = await _define(api_client, owner, collection, name="speaker_type", tag_ids=[person])
+    certainty = await _define(api_client, owner, collection, name="certainty")
+
+    assert (await api_client.delete(f"/api/tags/{person}", headers=owner)).status_code == 204
+
+    listed = await api_client.get(f"/api/user_collections/{collection}/attributes", headers=owner)
+    by_id = {a["id"]: a for a in listed.json()}
+    assert (by_id[role["id"]]["all_tags"], by_id[role["id"]]["tag_ids"]) == (False, [place])
+    # Its last tag deleted, an attribute applies to no tag, never to all tags (#522, #508).
+    assert (by_id[speaker["id"]]["all_tags"], by_id[speaker["id"]]["tag_ids"]) == (False, [])
+    assert by_id[certainty["id"]] == certainty
+
 async def test_values_kept_on_a_rejected_annotation_are_hidden_and_assignments_do_not_re_embed(api_client, login, ids):
     owner = await login("owner")
     collection, brno = ids.col["chronicles"], ids.span["brno_manual"]

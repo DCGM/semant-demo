@@ -430,6 +430,21 @@ describe('bulk tag deletion', () => {
     expect(notif.error).toHaveBeenCalledWith('Deleted 1 of 2 tags. The others could not be deleted.')
   })
 
+  it('says whether a single deletion was confirmed, so a failed one can reload the list (#508)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const tags = await loadTags()
+
+    const failing = tags.deleteTag('t1')
+    fail('deleteTag:t1', new Error('storage failed'))
+    expect(await failing).toBe(false)
+    expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't2', 't3'])
+
+    const deleting = tags.deleteTag('t2')
+    answer('deleteTag:t2', undefined)
+    expect(await deleting).toBe(true)
+    expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't3'])
+  })
+
   it('does not bring back a deleted tag from a reload answered with older data', async () => {
     const tags = await loadTags()
     const deleting = tags.deleteManyTags(['t2'])

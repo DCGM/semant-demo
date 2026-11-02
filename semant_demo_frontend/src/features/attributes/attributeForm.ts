@@ -64,9 +64,9 @@ export function tagNames (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): st
 export type TagsState = 'loading' | 'failed' | 'ready'
 
 /** What is known about the tags an attribute applies to. All tags is explicit (`allTags`); with
- * selected tags, an empty list is no tag at all (#522). Ids of deleted tags (their ids stay on the
- * attribute, #508) are counted, not named; while the tags are unknown, the selected ones cannot
- * be named. */
+ * selected tags, an empty list is no tag at all (#522). Ids of deleted tags (deleting a tag removes
+ * its id, #508, but one may be left over, e.g. when that last step failed) are counted, not named;
+ * while the tags are unknown, the selected ones cannot be named. */
 export type TagScope =
   | { kind: 'all' }
   | { kind: 'none' }
@@ -90,6 +90,27 @@ export function attributesOfTag (attributes: Attribute[], tagId: string): { attr
     ...current.filter(a => !a.allTags && a.tagIds?.includes(tagId)).map(attribute => ({ attribute, allTags: false })),
     ...current.filter(a => a.allTags).map(attribute => ({ attribute, allTags: true }))
   ]
+}
+
+const listFormat = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' })
+
+/** What deleting the tags does to the attributes that are not retired, as one sentence for the
+ * delete confirmation (#508): the deleted tags are removed from the attributes that select them,
+ * and an attribute left with no tag of the collection (`tags`) applies to no tag, never to all
+ * tags. Empty when no attribute selects any of them. */
+export function tagDeletionNotice (attributes: Attribute[], tags: Tag[], deletedIds: string[]): string {
+  const deleted = new Set(deletedIds)
+  const live = new Set(tags.map(tag => tag.id).filter(id => !deleted.has(id)))
+  const affected = attributes.filter(a => !a.retired && !a.allTags && (a.tagIds ?? []).some(id => deleted.has(id)))
+  if (!affected.length) return ''
+  const emptied = affected.filter(a => !(a.tagIds ?? []).some(id => live.has(id)))
+  const what = deletedIds.length === 1 ? 'The tag is' : 'The tags are'
+  let notice = `${what} also removed from the ${affected.length === 1 ? 'attribute' : 'attributes'} ` +
+    `${listFormat.format(affected.map(a => a.name))}.`
+  if (emptied.length) {
+    notice += ` ${listFormat.format(emptied.map(a => a.name))} will then apply to no tags.`
+  }
+  return notice
 }
 
 /** How the backend compares attribute names and value labels: unique ignoring case and

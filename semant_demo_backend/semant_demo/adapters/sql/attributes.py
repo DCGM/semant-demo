@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, delete, select,
+    JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, delete, select, update,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -117,6 +117,10 @@ def _new_value(attribute_id: str, value: PostAttributeValue, position: int) -> A
     return AttributeValueRow(id=str(uuid4()), attribute_id=attribute_id, label=value.label.strip(),
                              label_key=_key(value.label), description=value.description,
                              examples=list(value.examples), kind=value.kind.value, retired=False, position=position)
+
+
+_REMOVE_TAG_ATTEMPTS = 5
+"""Reads of the attributes ``remove_tag`` makes before giving up on concurrent changes."""
 
 
 class AttributeRepository:
@@ -259,6 +263,32 @@ class AttributeRepository:
                 actor_id=UUID(r.actor_id), at=_utc(r.at), source=AssignSource(r.source),
                 run_id=UUID(r.run_id) if r.run_id else None, annotation_edit_version=r.annotation_edit_version,
                 attribute_revision=r.attribute_revision) for r in result.scalars()]
+
+    async def remove_tag(self, collection_id: UUID, tag_id: UUID) -> list[str]:
+        """Removes a deleted tag's id from the ``tag_ids`` of the collection's attributes (retired
+        ones too), raising their revision, and returns the names of those changed (#508).
+        ``all_tags`` is never changed: an attribute that loses its last tag applies to no tag.
+        Each row is written only if its revision is still the one read, and read again otherwise,
+        so a concurrent removal of another tag is not overwritten. Repeating it is safe."""
+        tag = str(tag_id)
+        changed: list[str] = []
+        async with self.session_maker() as session:
+            for _ in range(_REMOVE_TAG_ATTEMPTS):
+                rows = [r for r in (await session.execute(
+                    select(AttributeRow.id, AttributeRow.name, AttributeRow.tag_ids, AttributeRow.revision)
+                    .where(AttributeRow.collection_id == str(collection_id)))).all()
+                    if tag in (r.tag_ids or [])]
+                if not rows:
+                    return list(dict.fromkeys(changed))
+                for row in rows:
+                    result = await session.execute(
+                        update(AttributeRow)
+                        .where(AttributeRow.id == row.id, AttributeRow.revision == row.revision)
+                        .values(tag_ids=[t for t in row.tag_ids if t != tag], revision=row.revision + 1))
+                    if result.rowcount:
+                        changed.append(row.name)
+                await session.commit()
+        raise RuntimeError(f"Attributes listing tag {tag} kept changing; the tag was not removed from all of them")
 
     async def delete_collection(self, collection_id: UUID) -> None:
         """Removes the collection's definitions and change records (repeating it is safe)."""

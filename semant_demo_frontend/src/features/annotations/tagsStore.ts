@@ -125,7 +125,8 @@ export const useTagsStore = defineStore('tags', () => {
     }
   }
 
-  const deleteTag = async (tagUuid: string) => {
+  /** Deletes one tag; resolves to whether the server confirmed it (failures are reported here). */
+  const deleteTag = async (tagUuid: string): Promise<boolean> => {
     const notif = ongoingNotification('Deleting tag...')
     const inScope = scope.capture()
     const inSession = captureSession()
@@ -135,18 +136,20 @@ export const useTagsStore = defineStore('tags', () => {
       await tagsRepository.delete(tagUuid)
       if (!inSession()) {
         notif.dismiss()
-        return
+        return true
       }
       if (inScope()) forgetDeleted([tagUuid])
       notif.success('Tag deleted')
+      return true
     } catch (err) {
       if (!inSession()) {
         notif.dismiss()
-        return
+        return false
       }
       error.value = 'Failed to delete tag'
       console.error('Error deleting tag:', err)
       notif.error(await incompleteWriteMessage(err, 'Failed to delete tag'))
+      return false
     } finally {
       if (inSession()) loading.value = false
     }

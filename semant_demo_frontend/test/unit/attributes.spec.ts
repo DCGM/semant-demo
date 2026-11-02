@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { Cardinality, ResponseError, ValueKind, type Attribute, type AttributeValue } from 'src/generated/api'
 import { endSession } from 'src/shared/api'
 import { AttributeWriteError, useAttributesStore } from 'src/features/attributes/attributesStore'
-import { attributesOfTag, orderedValues, tagNames, tagScope, valueName } from 'src/features/attributes/attributeForm'
+import { attributesOfTag, orderedValues, tagDeletionNotice, tagNames, tagScope, valueName } from 'src/features/attributes/attributeForm'
 import { matchParts, searchAttributes } from 'src/features/attributes/attributeSearch'
 
 // Attribute definitions of a collection (#331): answers of a collection, a reload or a
@@ -235,6 +235,29 @@ describe('attribute form helpers', () => {
     ]
     expect(attributesOfTag(attributes, 't1').map(({ attribute, allTags }) => [attribute.name, allTags]))
       .toEqual([['Speaker', false], ['Mood', true]])
+  })
+
+  it('says which attributes deleting tags changes, and which then apply to no tags (#508)', () => {
+    const attributes = [
+      attribute('a1', 'Certainty', 1, { allTags: true, tagIds: [] }),
+      attribute('a2', 'Role', 1, { tagIds: ['t1', 't2'] }),
+      attribute('a3', 'Speaker type', 1, { tagIds: ['t1'] }),
+      attribute('a4', 'Stance', 1, { tagIds: ['t1'], retired: true }),
+      // Its other id belongs to a tag deleted earlier: no tag of the collection is left.
+      attribute('a5', 'Mood', 1, { tagIds: ['t1', 'gone'] }),
+      attribute('a6', 'Place kind', 1, { tagIds: ['t2'] })
+    ]
+    expect(tagDeletionNotice(attributes, tags, ['t1'])).toBe(
+      'The tag is also removed from the attributes Role, Speaker type, and Mood. ' +
+      'Speaker type and Mood will then apply to no tags.')
+    expect(tagDeletionNotice(attributes, tags, ['t2'])).toBe(
+      'The tag is also removed from the attributes Role and Place kind. Place kind will then apply to no tags.')
+    expect(tagDeletionNotice([attributes[1]], tags, ['t2'])).toBe('The tag is also removed from the attribute Role.')
+    expect(tagDeletionNotice(attributes, tags, ['t1', 't2'])).toBe(
+      'The tags are also removed from the attributes Role, Speaker type, Mood, and Place kind. ' +
+      'Role, Speaker type, Mood, and Place kind will then apply to no tags.')
+    // All tags and retired attributes are not mentioned; nothing to say without a selecting attribute.
+    expect(tagDeletionNotice([attributes[0], attributes[3]], tags, ['t1'])).toBe('')
   })
 })
 

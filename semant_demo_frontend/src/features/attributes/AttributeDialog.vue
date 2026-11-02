@@ -272,7 +272,8 @@ function keepSaved (attribute: Attribute) {
 }
 
 const allTagOptions = computed(() => props.tags().map(tag => ({ label: tag.name, value: tag.id })))
-// Applicable ids of tags deleted since (#508): shown as such, and they cannot be sent again.
+// Ids of deleted tags left over on the attribute (deletion removes them, #508, unless that step
+// failed): shown as such, and they cannot be sent again.
 const deletedTagIds = computed(() => {
   const known = new Set(props.tags().map(tag => tag.id))
   return tagIds.value.filter(id => !known.has(id))
