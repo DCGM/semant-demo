@@ -387,9 +387,11 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   command again retries it, planned again from the store.
 - A document may hold any number of chunks: the store is read in windows of 200 orders or ids (the
   count and the least and greatest order by an aggregation), so a query asks for at most 400
-  objects. A server whose
+  objects; with `--bulk`, the read-back of a round asks for up to `--batch` (800). A server whose
   [`QUERY_MAXIMUM_RESULTS`](https://docs.weaviate.io/deploy/configuration/env-vars#QUERY_MAXIMUM_RESULTS)
-  (default 10,000) is lower refuses the read, and the document is `blocked` with nothing written.
+  (default 10,000) is lower refuses such a read, and the document is `blocked`: before its writes
+  with nothing written, or with `--bulk` after its round was inserted. A rerun plans it again from
+  the store.
 - A created document whose chunks did not all arrive is listed as `incomplete_document` and never
   deleted (#281).
 - The checkpoint holds the endpoint, the resolved collections, the number of input files and the
