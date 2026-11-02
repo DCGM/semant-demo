@@ -305,22 +305,22 @@ async def test_values_kept_through_every_retag_path_match_their_filter_and_can_o
                                                  "expected_versions": {novak: version}})
             assert answer.json()["succeeded"] == [novak], answer.text
 
-    # Single span, bulk update and review: away from the attribute's tag, back, and away again.
-    await retag_to(place, "patch")
-    await assert_kept(place)
-    assert [f["step"] for f in (await add_priest())["failed"]] == ["check_applicable"]
-    await retag_to(person, "bulk")
-    await assert_kept(person)
-    await retag_to(place, "review")
-    await assert_kept(place)
-    assert [f["step"] for f in (await add_priest())["failed"]] == ["check_applicable"]
+    # Away from the attribute's tag by every path (single span, review, bulk update), back in
+    # between: the values are kept and still filtered, and adding is refused each time.
+    for away, back in (("patch", "review"), ("review", "bulk"), ("bulk", None)):
+        await retag_to(place, away)
+        await assert_kept(place)
+        assert [f["step"] for f in (await add_priest())["failed"]] == ["check_applicable"], away
+        if back:
+            await retag_to(person, back)
+            await assert_kept(person)
 
     # Removing is allowed: by remove, and by a replace that only leaves values out.
     url, body = _assign(collection, attribute_id=speaker["id"], annotation_ids=[novak],
                         expected_versions={novak: 1}, mode="remove", value_ids=[politician])
     assert (await api_client.post(url, headers=owner, json=body)).json()["succeeded"] == [novak]
     assert (await _rows(api_client, owner, collection))[novak]["attributes"] == {}
-    await retag_to(person, "bulk")
+    await retag_to(person, "patch")
     url, body = _assign(collection, attribute_id=speaker["id"], annotation_ids=[novak],
                         expected_versions={novak: 2}, mode="add", value_ids=[politician])
     assert (await api_client.post(url, headers=owner, json=body)).json()["succeeded"] == [novak]

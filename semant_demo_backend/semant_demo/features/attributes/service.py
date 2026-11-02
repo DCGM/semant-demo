@@ -212,8 +212,7 @@ def applies(attribute: Attribute, tag_id: Id) -> bool:
     """Whether the attribute applies to annotations of the tag: All tags, or the tag is selected
     (Selected with no tag applies to none, #522). Derived from the annotation's current tag, never
     stored (#500): values of an attribute that does not apply (after a retag) stay on the
-    annotation and still match their filter; they cannot be assigned again but can be removed.
-    Statistics count only applicable values by default (#334)."""
+    annotation and still match their filter; they cannot be assigned again but can be removed."""
     return attribute.all_tags or UUID(str(tag_id)) in attribute.tag_ids
 
 
@@ -271,7 +270,7 @@ def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: T
     that no longer applies to the annotation's tag can be cleared that way too (#500). Only values
     the request adds are checked against the tag and retirement. The annotation type is checked
     earlier (``_type_failure``); a retired attribute refuses every ``replace`` before this
-    (``assign_attributes``), so there only ``remove`` and ``clear`` remove."""
+    (``assign_attributes``), so there only ``remove`` and ``clear`` remove (#566)."""
     if request.mode in _REMOVING:
         return None
     added = [v for v in result if v not in previous]
