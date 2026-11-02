@@ -1,8 +1,8 @@
 import { computed, ref, shallowRef, watch, type Ref } from 'vue'
 import {
   matchingEntries,
-  normalizeQuery,
   readHistory,
+  savedQuery,
   withEntry,
   withoutEntry,
   writeHistory,
@@ -18,9 +18,13 @@ import {
  * verified yet), when nothing is shown or recorded. Changes read the stored list again
  * before writing, so a search made in another tab meanwhile is kept.
  *
+ * The stored list is read when the list opens (and when the audience changes), not on
+ * every keystroke: typing only narrows what was read.
+ *
  * Keyboard (`onKeydown` on the input): ArrowDown/ArrowUp open the list and move the
  * highlight, Enter on a highlighted entry picks it (the caller's own Enter handling runs
- * otherwise), Escape closes the list, Shift+Delete removes the highlighted entry.
+ * otherwise), Escape closes the list, Shift+Delete removes the highlighted entry. Keys are
+ * left to the input when no entry is listed.
  */
 export function useSearchHistory<C> (
   criteria: HistoryCriteria<C>,
@@ -51,7 +55,9 @@ export function useSearchHistory<C> (
   // Typing changes what is listed; the highlight starts over.
   watch(text, () => { activeIndex.value = -1 })
 
+  /** Opens the list, reading the stored history when it was closed. */
   function show () {
+    if (open.value) return
     reload()
     open.value = true
   }
@@ -69,11 +75,17 @@ export function useSearchHistory<C> (
     entries.value = next
   }
 
-  /** Adds a submitted search as the newest entry; a blank query is not recorded. */
-  function record (query: string, searchCriteria: C) {
-    const normalized = normalizeQuery(query)
-    if (!normalized) return
-    update(current => withEntry(current, { query: normalized, criteria: searchCriteria, savedAt: Date.now() }, criteria))
+  /**
+   * Adds a search that ran as the newest entry. `tooLong`: the query is longer than
+   * MAX_QUERY_LENGTH and not saved (the caller tells the user); `skipped`: a blank query or
+   * no known audience.
+   */
+  function record (query: string, searchCriteria: C): 'saved' | 'tooLong' | 'skipped' {
+    const saved = savedQuery(query)
+    if (saved === null) return query.trim() ? 'tooLong' : 'skipped'
+    if (!audience.value) return 'skipped'
+    update(current => withEntry(current, { query: saved, criteria: searchCriteria, savedAt: Date.now() }, criteria))
+    return 'saved'
   }
 
   function remove (entry: HistoryEntry<C>) {
@@ -91,10 +103,11 @@ export function useSearchHistory<C> (
   }
 
   function move (step: number) {
-    const count = suggestions.value.length
+    const opening = !open.value
+    show()
+    const count = suggestions.value.length // after a closed list was read again
     if (!count) return
-    if (!open.value) {
-      show()
+    if (opening) {
       activeIndex.value = step > 0 ? 0 : count - 1
       return
     }
@@ -106,9 +119,9 @@ export function useSearchHistory<C> (
   function onKeydown (event: KeyboardEvent): boolean {
     if (event.isComposing) return false
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      if (!suggestions.value.length && !open.value) return false
-      event.preventDefault()
       move(event.key === 'ArrowDown' ? 1 : -1)
+      if (!shown.value) return false // nothing listed: the caret moves as usual
+      event.preventDefault()
       return true
     }
     if (!shown.value) return false

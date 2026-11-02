@@ -135,3 +135,67 @@ test('recent searches are usable at phone width', async ({ page }) => {
   await entries(page).first().click()
   expect((await rerun).postDataJSON().query).toBe('Lhota')
 })
+
+/** Counts the search requests the page sends from now on. */
+function countSearches (page: Page): () => number {
+  let count = 0
+  page.on('request', (r) => { if (r.url().endsWith('/api/search') && r.method() === 'POST') count++ })
+  return () => count
+}
+
+test('only searches that ran are saved; a too long query runs but is not saved', async ({ page }) => {
+  await search(page, 'Lhota')
+
+  // A failed search is not remembered.
+  await page.route('**/api/search', (route) => route.fulfill({ status: 500, body: 'failure' }))
+  await input(page).fill('Brno')
+  await input(page).press('Enter')
+  await expect(page.getByText('Search failed')).toBeVisible()
+  await page.unroute('**/api/search')
+
+  // Longer than 1000 characters: the search runs, the user is told it was not saved.
+  const longQuery = 'Lhota '.repeat(200).trim()
+  await input(page).fill(longQuery)
+  const answer = page.waitForResponse((r) => r.url().endsWith('/api/search') && r.request().method() === 'POST')
+  await input(page).press('Enter')
+  expect((await answer).status()).toBe(200)
+  await expect(page.getByText('Not added to recent searches: the query is longer than 1,000 characters.')).toBeVisible()
+
+  await openSearchPage(page)
+  await input(page).click()
+  await expect(entries(page)).toHaveText([/Lhota/])
+})
+
+test('an entry runs only once the search options are loaded', async ({ page }) => {
+  await search(page, 'Lhota')
+
+  // Hold the filters answer: the list says why picking an entry does not run it yet.
+  let release: () => void = () => undefined
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/search/filters', async (route) => { await held; await route.continue() })
+  await openSearchPage(page)
+  const searches = countSearches(page)
+  await input(page).click()
+  await expect(page.getByTestId('search-history-note')).toContainText('Loading search options')
+  await entries(page).first().click()
+  await expect(page.getByText('Search options are still loading. Try again in a moment.')).toBeVisible()
+  expect(searches()).toBe(0)
+
+  release()
+  await input(page).click()
+  await expect(page.getByTestId('search-history-note')).toHaveCount(0)
+  const rerun = nextSearch(page)
+  await entries(page).first().click()
+  expect((await rerun).postDataJSON().query).toBe('Lhota')
+})
+
+test('an entry is not run when the search options could not be loaded', async ({ page }) => {
+  await search(page, 'Lhota')
+  await page.route('**/api/search/filters', (route) => route.fulfill({ status: 500, body: 'failure' }))
+  await openSearchPage(page)
+  const searches = countSearches(page)
+  await input(page).click()
+  await entries(page).first().click()
+  await expect(page.getByText('This search cannot be restored because the search options could not be loaded.')).toBeVisible()
+  expect(searches()).toBe(0)
+})

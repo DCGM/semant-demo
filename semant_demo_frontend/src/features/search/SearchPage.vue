@@ -47,6 +47,7 @@
                   :items="historyItems"
                   :active-index="history.activeIndex.value"
                   :list-id="HISTORY_LIST_ID"
+                  :note="historyNote"
                   @choose="chooseHistory"
                   @remove="removeHistory"
                   @highlight="history.activeIndex.value = $event"
@@ -328,7 +329,7 @@ import { formatFilterLabel, intervalBounds, nominalLabel } from './searchFilters
 import { criteriaOfRequest, describeCriteria, restoreSearch, searchHistoryCriteria, type SearchHistoryCriteria, type SearchOptions } from './searchHistoryCriteria'
 import SearchHistoryDropdown from 'src/shared/searchHistory/SearchHistoryDropdown.vue'
 import { useSearchHistory } from 'src/shared/searchHistory/useSearchHistory'
-import { entryKey, type HistoryAudience, type HistoryEntry, type SearchHistoryItem } from 'src/shared/searchHistory/history'
+import { entryKey, MAX_QUERY_LENGTH, type HistoryAudience, type HistoryEntry, type SearchHistoryItem } from 'src/shared/searchHistory/history'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
@@ -498,9 +499,17 @@ const { collections, loading: collectionsLoading } = storeToRefs(collectionsStor
 const { fetchCollections } = collectionsStore
 const documentsStore = useDocumentsStore()
 
+// Whether the user's collections were loaded for the search history (the store's own
+// loading/error flags are shared with other requests).
+const collectionsLoad = ref<{ userId: string, status: 'loading' | 'ready' | 'failed' } | null>(null)
+
 async function loadCollections () {
-  if (!userStore.isLoggedIn) return
+  const userId = userStore.getUserId
+  if (!userStore.isLoggedIn || !userId) return
+  collectionsLoad.value = { userId: String(userId), status: 'loading' }
   await fetchCollections()
+  if (collectionsLoad.value?.userId !== String(userId) || userStore.getUserId !== userId) return
+  collectionsLoad.value = { userId: String(userId), status: collectionsStore.error ? 'failed' : 'ready' }
 }
 
 watch(
@@ -542,7 +551,7 @@ const historyAudience = computed<HistoryAudience | null>(() => {
   return userStore.awaitingVerification ? null : { kind: 'anonymous' }
 })
 const queryText = computed(() => searchForm.value.query ?? '')
-const history = useSearchHistory(searchHistoryCriteria, historyAudience, queryText, (entry) => { void runFromHistory(entry) })
+const history = useSearchHistory(searchHistoryCriteria, historyAudience, queryText, (entry) => runFromHistory(entry))
 
 const searchOptions = computed<SearchOptions>(() => ({
   filters: availableSearchFilters.value,
@@ -587,32 +596,53 @@ function removeHistory (index: number) {
   if (entry) history.remove(entry)
 }
 
-/** Resolves once `loading` is false. */
-function whenLoaded (loading: () => boolean): Promise<void> {
-  if (!loading()) return Promise.resolve()
-  return new Promise(resolve => {
-    const stop = watch(loading, (busy) => {
-      if (busy) return
-      stop()
-      resolve()
-    })
-  })
-}
-
-let searchOptionsReady: Promise<unknown> = Promise.resolve()
+type LoadStatus = 'loading' | 'ready' | 'failed'
+const filtersStatus = ref<LoadStatus>('loading')
+const vectorsStatus = ref<LoadStatus>('loading')
 
 /**
- * Runs a search from the history: its query and criteria replace the form's (generated
- * titles and summaries stay as currently chosen); criteria no longer available are left out
- * and named. Waits for the offered filters, search vectors and collections first.
+ * Whether the lists a history entry is restored against are loaded: the offered filters,
+ * the search vectors and, when signed in, the user's collections. A list that failed to
+ * load makes an entry that uses it impossible to restore.
  */
-async function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
-  const inSession = captureSession()
-  searchForm.value.query = entry.query
-  await searchOptionsReady
-  await whenLoaded(() => loadingFilters.value || collectionsLoading.value)
-  if (!inSession()) return
+function optionsStatus (criteria?: SearchHistoryCriteria): LoadStatus {
+  const needed: LoadStatus[] = [filtersStatus.value]
+  if (!criteria || criteria.vector) needed.push(vectorsStatus.value)
+  if (!criteria || criteria.collectionId) {
+    const userId = userStore.getUserId
+    if (userStore.isLoggedIn && userId) {
+      const load = collectionsLoad.value
+      needed.push(load?.userId === String(userId) ? load.status : 'loading')
+    }
+  }
+  if (needed.includes('failed')) return 'failed'
+  return needed.includes('loading') ? 'loading' : 'ready'
+}
+
+const historyNote = computed(() => (optionsStatus() === 'loading' ? 'Loading search options… a search can be run from here once they are loaded.' : null))
+
+/**
+ * Runs a search from the history once the page's search options are loaded: its query and
+ * criteria replace the form's (generated titles and summaries stay as currently chosen);
+ * criteria no longer available are left out and named. Before that nothing runs, so a pick
+ * never mixes with a later one or runs after the page is left.
+ */
+function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
+  const status = optionsStatus(entry.criteria)
+  if (status === 'loading') {
+    Notify.create({ message: 'Search options are still loading. Try again in a moment.', position: 'top', color: 'info' })
+    return
+  }
+  if (status === 'failed') {
+    Notify.create({
+      message: 'This search cannot be restored because the search options could not be loaded. Reload the page to try again.',
+      position: 'top',
+      color: 'warning'
+    })
+    return
+  }
   const restored = restoreSearch(entry.criteria, searchOptions.value)
+  searchForm.value.query = entry.query
   searchForm.value.type = restored.type
   searchForm.value.vector = restored.vector
   searchForm.value.userCollectionId = restored.collectionId
@@ -624,7 +654,7 @@ async function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
       color: 'warning'
     })
   }
-  await onSearch()
+  void onSearch()
 }
 
 type ActiveFilterBadge = {
@@ -736,6 +766,7 @@ function clearAllFilters () {
 
 async function fetchAvailableFilters () {
   loadingFilters.value = true
+  filtersStatus.value = 'loading'
   try {
     const data = await api.getAvailableSearchFiltersApiSearchFiltersGet()
     availableSearchFilters.value = data.filters || []
@@ -750,7 +781,9 @@ async function fetchAvailableFilters () {
       }
     })
     filterValues.value = valuesMap
+    filtersStatus.value = 'ready'
   } catch (e) {
+    filtersStatus.value = 'failed'
     console.error('Failed to fetch available search filters:', e)
     Notify.create({ message: 'Failed to load search filters', position: 'top', color: 'warning' })
   } finally {
@@ -763,7 +796,9 @@ async function fetchSearchVectors () {
     const data = await api.getAvailableSearchVectorsApiSearchVectorsGet()
     availableVectors.value = data.vectors
     defaultVector.value = data.defaultVector
+    vectorsStatus.value = 'ready'
   } catch (e) {
+    vectorsStatus.value = 'failed'
     // Without the list there is no choice to offer; searches use the server's default.
     console.error('Failed to fetch search vectors:', e)
   }
@@ -806,11 +841,18 @@ async function onSearch () {
     language: null
   }
   history.close()
-  history.record(request.query, criteriaOfRequest(request))
 
   try {
     const context = await searchRequest.search(request)
     if (!context) return // replaced by a newer search
+    // Only a search that ran is remembered (with no results too); a failed one is not.
+    if (history.record(request.query, criteriaOfRequest(request)) === 'tooLong') {
+      Notify.create({
+        message: `Not added to recent searches: the query is longer than ${MAX_QUERY_LENGTH.toLocaleString('en')} characters.`,
+        position: 'top',
+        color: 'info'
+      })
+    }
     if (context.response.results.length === 0) {
       Notify.create({ message: 'No results found', position: 'top', color: 'info' })
     }
@@ -900,8 +942,7 @@ onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pointerdown', markInteraction, { capture: true })
   window.addEventListener('keydown', markInteraction, { capture: true })
-  searchOptionsReady = Promise.all([fetchAvailableFilters(), fetchSearchVectors()])
-  await searchOptionsReady
+  await Promise.all([fetchAvailableFilters(), fetchSearchVectors()])
   await loadCollections()
 })
 
