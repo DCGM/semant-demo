@@ -25,7 +25,7 @@ for the 2026 refactor, in the [archive](archive/README.md).
 - [#259](https://github.com/DCGM/semant-demo/issues/259) — Kramerius metadata import: unresolved libraries and mirror rows without MODS (no author/publisher).
 - [#281](https://github.com/DCGM/semant-demo/issues/281) — documents without text chunks: audit and gated removal ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#documents-without-chunks-document_cleanup-281)).
 - [#279](https://github.com/DCGM/semant-demo/issues/279) — corpus document public-access policy.
-- [#313](https://github.com/DCGM/semant-demo/issues/313) — chunk ingestion does not fill `Chunks.yearIssued`, which the year filter uses; until it does, run `chunk_year --write` after ingesting chunks or changing document years ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)). Ingestion also does not add the `Qwen3_Embedding_0_6B` vector: run the embedder (`data_tools/embedder`) afterwards, or new chunks are missing from vector and hybrid search.
+- [#313](https://github.com/DCGM/semant-demo/issues/313) — the chunk import (`chunk_ingest`) writes no document metadata, `Chunks.yearIssued` or vectors: after importing, run `metadata_sync`, then `chunk_year --write` and the embedder (`data_tools/embedder`), or the new chunks are missing from year filters and from vector and hybrid search ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313)).
 - When deploying against an existing Weaviate store, compare property types (especially document metadata) and review the chunk tag audit; never silently rewrite or reset shared data.
 
 ## Deployment, security and tests
