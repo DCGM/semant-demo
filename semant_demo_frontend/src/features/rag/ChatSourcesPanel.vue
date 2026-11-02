@@ -11,8 +11,8 @@
         :aria-label="`Source ${entry.label}`"
         :data-source-id="entry.id"
       >
-        <!-- One click selects (and expands) the source, a double click opens its document
-             (a web search result has none). -->
+        <!-- One click selects (and expands) the source, a double click or View document opens
+             its document (a web search result has none); on a phone, View document (#518). -->
         <div
           class="chat-sources__summary"
           role="button"
