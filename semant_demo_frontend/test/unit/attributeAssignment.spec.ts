@@ -508,8 +508,12 @@ describe('assign attribute dialog', () => {
     expect(text('assign-scope-note')).toContain('(2 selected tags) take values')
     wrapper.findAllComponents({ name: 'QBtnToggle' })[0]!.vm.$emit('update:modelValue', 'remove')
     await flushPromises()
-    expect(text('assign-scope-note')).toContain('also from rejected annotations and annotations whose tag the attribute no longer applies to')
+    expect(text('assign-scope-note')).toMatch(/also from rejected\s+annotations, where they are kept but not shown, and from annotations whose tag the attribute no\s+longer applies to/)
     expect(text('assign-scope-note')).not.toContain('take values')
+    // Replace only takes values away on a tag the attribute no longer applies to (#500).
+    wrapper.findAllComponents({ name: 'QBtnToggle' })[0]!.vm.$emit('update:modelValue', 'replace')
+    await flushPromises()
+    expect(text('assign-scope-note')).toMatch(/\(2 selected tags\) take values\.\s+Confirmed annotations of other tags take none but lose the values not chosen/)
   })
 
   it('stays open with the reason when the assignment was refused as a whole', async () => {
