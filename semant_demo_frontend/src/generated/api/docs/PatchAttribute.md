@@ -11,6 +11,8 @@ Name | Type
 `description` | string
 `allTags` | boolean
 `tagIds` | Array&lt;string&gt;
+`addTagIds` | Array&lt;string&gt;
+`removeTagIds` | Array&lt;string&gt;
 `retired` | boolean
 
 ## Example
@@ -24,6 +26,8 @@ const example = {
   "description": null,
   "allTags": null,
   "tagIds": null,
+  "addTagIds": null,
+  "removeTagIds": null,
   "retired": null,
 } satisfies PatchAttribute
 

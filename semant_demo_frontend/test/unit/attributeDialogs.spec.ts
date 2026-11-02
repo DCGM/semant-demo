@@ -370,7 +370,8 @@ describe('Edit Attribute', () => {
     await flushPromises()
     await button(wrapper, 'Save').trigger('click')
     await flushPromises()
-    expect(save).toHaveBeenCalledWith({ allTags: false, tagIds: ['t2'] })
+    // Only the tags changed in the dialog, so tags changed meanwhile from Edit Tag are kept (#516).
+    expect(save).toHaveBeenCalledWith({ addTagIds: ['t2'], removeTagIds: ['t1'] })
     const select = wrapper.findComponent(QSelect)
     expect([select.props('error'), select.props('errorMessage'), select.props('modelValue')]).toEqual([true, message, ['t2']])
     expect(text('attribute-dialog-error')).toBe('')
@@ -384,7 +385,7 @@ describe('Edit Attribute', () => {
     await flushPromises()
     await button(wrapper, 'Save').trigger('click')
     await flushPromises()
-    expect(save).toHaveBeenCalledWith({ allTags: false, tagIds: [] })
+    expect(save).toHaveBeenCalledWith({ removeTagIds: ['t1'] })
 
     // An attribute for no tag opens as Selected tags with none; for all tags as All tags.
     const none = await open(AttributeDialog, { attribute: speaker({ tagIds: [] }), tags, save, valueActions: valueActions() })

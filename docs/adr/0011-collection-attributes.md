@@ -85,6 +85,15 @@ renames categories later without rewriting annotations or losing who decided wha
   All tags attribute without `all_tags=false` (400). An attribute for no tag takes no new values
   (`check_applicable`) and is not retired automatically. A tag deleted later stays in `tag_ids`
   (#508); it never turns Selected tags into All tags either.
+- **Tags are changed without overwriting other changes** (#516). Create/Edit Tag switches a
+  Selected tags attribute for its tag only (`add_tag_ids` / `remove_tag_ids`, never on an All
+  tags attribute, whose scope is changed only in Edit Attribute), and Edit Attribute sends only the
+  tags it added or removed while the attribute stays on Selected tags. Every change of an
+  attribute's tags is written only on the `revision` it was computed from (a conditional update):
+  when someone else changed the attribute in between, the change and its narrowing check are
+  computed again, and after three such races it is refused (409, nothing changed). The tag and the
+  attributes it applies to are separate writes (ADR 0002): a tag saved before an attribute change
+  fails stays saved, and the dialog shows and retries the failed changes.
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
   with the number affected) but can be retired. The UI offers only retiring and restoring

@@ -16,9 +16,9 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from weaviate.exceptions import WeaviateTimeoutError
 
-from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.adapters.sql.attributes import AttributeRepository, StaleRevision
 from semant_demo.adapters.sql.base import Base
-from semant_demo.core.errors import InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
+from semant_demo.core.errors import EditConflictError, InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations import attribute_codec as codec
@@ -693,6 +693,93 @@ async def test_tags_cannot_be_narrowed_while_annotations_hold_values_but_can_be_
     assert (emptied.all_tags, emptied.tag_ids) == (False, [])
     assert [(a.all_tags, a.tag_ids) for a in await service.list_attributes(store, OWNER, COLLECTION)
             if a.id == unused.id] == [(False, [])]
+
+
+async def test_tags_added_or_removed_by_id_keep_the_other_selected_tags(store, spans):
+    """From Create/Edit Tag (#516): only the named tags change, whatever the others are now."""
+    attribute = await define(store, tag_ids=[PERSON])
+    added = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(add_tag_ids=[PLACE]))
+    assert (added.all_tags, added.tag_ids) == (False, [PERSON, PLACE])
+    # Already as asked: nothing is written, the revision stays.
+    again = await service.update_attribute(store, SHARED, COLLECTION, attribute.id, PatchAttribute(add_tag_ids=[PLACE]))
+    assert (again.tag_ids, again.revision) == ([PERSON, PLACE], added.revision)
+    removed = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                             PatchAttribute(remove_tag_ids=[PERSON]))
+    assert removed.tag_ids == [PLACE]
+    # The last one leaves no tag, never All tags (#522).
+    emptied = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                             PatchAttribute(remove_tag_ids=[PLACE]))
+    assert (emptied.all_tags, emptied.tag_ids) == (False, [])
+    with pytest.raises(ResourceNotFound):
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(add_tag_ids=[SECOND_TAG]))
+
+
+async def test_an_all_tags_attribute_changes_its_scope_only_explicitly(store):
+    free = await define(store)
+    for patch in (PatchAttribute(add_tag_ids=[PERSON]), PatchAttribute(remove_tag_ids=[PERSON])):
+        with pytest.raises(InvalidRequestError):
+            await service.update_attribute(store, OWNER, COLLECTION, free.id, patch)
+    assert (await service.list_attributes(store, OWNER, COLLECTION))[0].all_tags
+    for fields in ({"tag_ids": [PERSON], "add_tag_ids": [PLACE]}, {"all_tags": True, "remove_tag_ids": [PLACE]},
+                   {"add_tag_ids": [PLACE], "remove_tag_ids": [PLACE]}):
+        with pytest.raises(ValueError):
+            PatchAttribute(**fields)
+
+
+async def test_removing_a_tag_annotations_hold_values_for_is_refused(store, spans):
+    attribute = await define(store, tag_ids=[PERSON, PLACE])
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add,
+                                                                    attribute.values[:1]))
+    with pytest.raises(InUseError) as used:
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PERSON]))
+    assert used.value.affected == 1
+    kept = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PLACE]))
+    assert kept.tag_ids == [PERSON]
+
+
+async def test_a_change_of_the_tags_never_writes_over_one_made_in_between(store, definitions, monkeypatch):
+    """Two editors change different tags of one attribute at once: both changes are kept, and a
+    full list computed from an outdated attribute is computed again rather than written over it."""
+    attribute = await define(store, tag_ids=[])
+    read = definitions.read
+    interleaved = []
+
+    async def read_then_someone_else_writes(cid, aid):
+        current = await read(cid, aid)
+        if not interleaved:
+            interleaved.append(True)
+            await definitions.update(cid, aid, PatchAttribute(tag_ids=[*current.tag_ids, PLACE]))
+        return current
+
+    monkeypatch.setattr(definitions, "read", read_then_someone_else_writes)
+    updated = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(add_tag_ids=[PERSON]))
+    assert set(updated.tag_ids) == {PERSON, PLACE}
+
+    async def always_outdated(cid, aid):
+        current = await read(cid, aid)
+        await definitions.update(cid, aid, PatchAttribute(description=f"edit {current.revision}"))
+        return current
+
+    monkeypatch.setattr(definitions, "read", always_outdated)
+    with pytest.raises(EditConflictError):
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PLACE]))
+    monkeypatch.setattr(definitions, "read", read)
+    assert set((await read(COLLECTION, attribute.id)).tag_ids) == {PERSON, PLACE}
+
+
+async def test_the_repository_writes_only_on_the_expected_revision(definitions):
+    attribute = await definitions.create(COLLECTION, attribute_body(tag_ids=[PERSON]), OWNER.id)
+    with pytest.raises(StaleRevision):
+        await definitions.update(COLLECTION, attribute.id, PatchAttribute(tag_ids=[]),
+                                 expected_revision=attribute.revision - 1)
+    assert (await definitions.read(COLLECTION, attribute.id)).tag_ids == [PERSON]
+    renamed = await definitions.update(COLLECTION, attribute.id, PatchAttribute(name=" Voice "),
+                                       expected_revision=attribute.revision)
+    assert (renamed.name, renamed.revision, renamed.tag_ids) == ("Voice", attribute.revision + 1, [PERSON])
+    other = await definitions.create(COLLECTION, attribute_body(name="other", tag_ids=[PERSON]), OWNER.id)
+    with pytest.raises(InvalidRequestError):
+        await definitions.update(COLLECTION, other.id, PatchAttribute(name="voice"))
+    assert await definitions.update(SECOND_COLLECTION, attribute.id, PatchAttribute(name="x")) is None
 
 
 async def test_all_tags_selected_tags_and_no_tags_are_distinct(store, definitions):

@@ -99,15 +99,33 @@ class PatchAttribute(BaseModel):
     not sent, the tags selected now (none for an All tags attribute)."""
     tag_ids: list[UUID] | None = Field(default=None, max_length=500)
     """The selected tags; an All tags attribute takes them only with ``all_tags`` false."""
+    add_tag_ids: list[UUID] | None = Field(default=None, max_length=500)
+    """Tags to add to the selected tags as they are when the change is written, so a change of
+    other tags made meanwhile is kept (#516). Only for a Selected tags attribute; not with
+    ``tag_ids``."""
+    remove_tag_ids: list[UUID] | None = Field(default=None, max_length=500)
+    """Tags to take out of the selected tags, like ``add_tag_ids``; the last one leaves no tag."""
     retired: bool | None = None
 
     @model_validator(mode="after")
     def check_any(self) -> "PatchAttribute":
-        if all(v is None for v in (self.name, self.description, self.all_tags, self.tag_ids, self.retired)):
+        if all(v is None for v in (self.name, self.description, self.all_tags, self.tag_ids, self.add_tag_ids,
+                                   self.remove_tag_ids, self.retired)):
             raise ValueError("Send at least one field to change")
         if self.all_tags and self.tag_ids:
             raise ValueError(ALL_TAGS_WITH_TAG_IDS)
+        if self.changes_tags_by_id:
+            if self.tag_ids is not None:
+                raise ValueError("Send either tag_ids or add_tag_ids/remove_tag_ids, not both")
+            if self.all_tags:
+                raise ValueError(ALL_TAGS_WITH_TAG_IDS)
+            if set(self.add_tag_ids or []) & set(self.remove_tag_ids or []):
+                raise ValueError("A tag cannot be both added and removed")
         return self
+
+    @property
+    def changes_tags_by_id(self) -> bool:
+        return self.add_tag_ids is not None or self.remove_tag_ids is not None
 
 
 class AssignMode(str, Enum):
