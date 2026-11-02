@@ -31,7 +31,7 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.chat.schemas import ChatDeltaEvent, ChatEndEvent, ChatErrorEvent, ChatEvent, ChatSource, \
-    ChatSourcesEvent, ContextChatRequest
+    ChatSourcesEvent, ChatTurn, ContextChatRequest
 from semant_demo.features.documents import service as documents_service
 from semant_demo.features.documents.schemas import DocumentViewChunk
 from semant_demo.features.user_collections.access import Principal
@@ -115,8 +115,11 @@ class PreparedChat:
 
     async def events(self, llm: StreamingLlm, operation: OperationScope) -> AsyncIterator[ChatEvent]:
         """The answer's events; ``operation`` (already admitted) is entered here and settled
-        when the stream ends, also when the client disconnects."""
+        when the stream ends, also when the client disconnects during it (one that never
+        starts the stream leaves the reservation charged, #563). The sources of the text
+        already streamed come before an error too, so a partial answer keeps its citations."""
         answer: list[str] = []
+        error: ChatErrorEvent | None = None
         try:
             async with operation:
                 async for delta in llm.stream(FEATURE, self.messages):
@@ -124,30 +127,38 @@ class PreparedChat:
                     yield ChatDeltaEvent(text=delta)
         except LlmInputTooLarge as e:
             logger.warning("Context chat input too large")
-            yield ChatErrorEvent(code="too_large", message=str(e))
-            return
+            error = ChatErrorEvent(code="too_large", message=str(e))
         except LlmOperationLimitExceeded as e:
             logger.warning("Context chat call refused")
-            yield ChatErrorEvent(code="refused", message=str(e))
-            return
+            error = ChatErrorEvent(code="refused", message=str(e))
         except Exception as e:
             # Content-free: a provider error may quote the request. A server refusal (e.g. a
             # provider without credentials) has a safe message.
             logger.error("Context chat stream failed: %s", type(e).__name__)
-            yield ChatErrorEvent(code="failed",
-                                 message=str(e) if isinstance(e, LlmRequestRefused) else FAILED_MESSAGE)
+            error = ChatErrorEvent(code="failed",
+                                   message=str(e) if isinstance(e, LlmRequestRefused) else FAILED_MESSAGE)
+        if answer or error is None:
+            yield ChatSourcesEvent(sources=cited_sources("".join(answer), self.chunks))
+        if error is not None:
+            yield error
             return
-        yield ChatSourcesEvent(sources=cited_sources("".join(answer), self.chunks))
         used, total = len(self.chunks), self.total_chunks
         yield ChatEndEvent(coverage="all" if used == total else "part", used_chunks=used, total_chunks=total)
+
+
+def _exchanges(history: Sequence[ChatTurn]) -> list[tuple[ChatTurn, ChatTurn]]:
+    """The history's questions with their answers; a turn without its partner is left out,
+    so the model always gets questions and answers in turn."""
+    return [(turn, following) for turn, following in zip(history, history[1:])
+            if turn.role == "user" and following.role == "assistant"]
 
 
 def fit_request(title: str | None, chunks: Sequence[DocumentViewChunk], request: ContextChatRequest,
                 max_input_tokens: int) -> PreparedChat:
     """The model input for ``request`` about ``chunks`` (in document order) within
     ``max_input_tokens`` (ADR 0012): the question and as many leading chunks as fit come
-    first; the history gets the room left, its newest turns first. Turns left empty by
-    removing their citations are not sent. Raises ``LlmInputTooLarge`` when not even the
+    first; the history gets the room left, as whole question/answer exchanges, newest
+    first. An exchange with a turn left empty by removing its citations is not sent. Raises ``LlmInputTooLarge`` when not even the
     question and the first chunk fit."""
     limit = max_input_tokens * CHARS_PER_TOKEN - INPUT_MARGIN_CHARS
     # Everything but the passages, with the longest form of the partial-coverage note.
@@ -168,17 +179,15 @@ def fit_request(title: str | None, chunks: Sequence[DocumentViewChunk], request:
     numbering = {chunk.id: number for number, chunk in enumerate(used, start=1)}
     room = limit - fixed - passages_size
     history: list[dict[str, str]] = []
-    for turn in reversed(request.history):
-        text = rewrite_citations(turn.text, turn.chunk_ids if turn.role == "assistant" else [], numbering)
-        if not text.strip():
+    for question, answer in reversed(_exchanges(request.history)):
+        texts = (rewrite_citations(question.text, [], numbering),
+                 rewrite_citations(answer.text, answer.chunk_ids, numbering))
+        if not all(text.strip() for text in texts):
             continue
-        if len(text) > room:
+        if sum(len(text) for text in texts) > room:
             break
-        history.insert(0, {"role": turn.role, "content": text})
-        room -= len(text)
-    # The kept history starts with a question.
-    while history and history[0]["role"] != "user":
-        history.pop(0)
+        history[:0] = [{"role": "user", "content": texts[0]}, {"role": "assistant", "content": texts[1]}]
+        room -= sum(len(text) for text in texts)
 
     passages = "".join(_passage(number, chunk) for number, chunk in enumerate(used, start=1))
     question = _question_message(title, passages, len(used), len(chunks), request.question)

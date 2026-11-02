@@ -5,7 +5,8 @@ answer about a document of the collection as NDJSON (``schemas.ChatEvent``). Acc
 checked and the input fitted before the stream starts, then the answer is admitted as
 one AI operation against the caller's daily allowance: a denial is 401/404, an input that
 cannot fit 413 and a refusal 429, all before the stream. The operation is settled when the
-stream ends, also when the client disconnects.
+stream ends, also when the client disconnects during it; a client that leaves before the
+stream starts leaves the reservation charged (#563).
 """
 from collections.abc import AsyncIterator
 

@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { aiErrorMessage, createContextGuard, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
 import { tokenizeCitations, type TextToken } from 'src/shared/citationTokens'
+import { ContextChatRequestToJSON, type ChatTurn } from 'src/generated/api'
 
 /**
  * Contextual chat in the right sidebar (ADR 0012). One composable for every scope; the
@@ -72,12 +73,6 @@ type ChatEvent =
   | { event: 'end', coverage: 'all' | 'part', used_chunks: number, total_chunks: number }
   | { event: 'error', code: string, message: string }
 
-interface HistoryTurn {
-  role: 'user' | 'assistant'
-  text: string
-  chunk_ids: string[]
-}
-
 /** Earlier turns a request carries (`MAX_HISTORY_TURNS` of the backend). */
 export const MAX_HISTORY_TURNS = 40
 /** Longest question the backend takes (`MAX_QUESTION_CHARS`, `features/chat/schemas.py`). */
@@ -111,14 +106,14 @@ export function chatTokens (message: ChatMessage): ChatToken[] {
  * `[docK]` citing its K-th source, citations without a source removed. Failed answers
  * and their questions are left out.
  */
-export function historyTurns (messages: ChatMessage[]): HistoryTurn[] {
-  const turns: HistoryTurn[] = []
+export function historyTurns (messages: ChatMessage[]): ChatTurn[] {
+  const turns: ChatTurn[] = []
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i]
     if (message.role === 'user') {
       const answer = messages[i + 1]
       if (answer?.role === 'assistant' && answer.text && answer.status !== 'error') {
-        turns.push({ role: 'user', text: message.text, chunk_ids: [] })
+        turns.push({ role: 'user', text: message.text, chunkIds: [] })
       }
       continue
     }
@@ -128,7 +123,7 @@ export function historyTurns (messages: ChatMessage[]): HistoryTurn[] {
       const k = index.get(Number(n))
       return k ? `[doc${k}]` : ''
     })
-    turns.push({ role: 'assistant', text, chunk_ids: message.sources.map(source => source.chunkId) })
+    turns.push({ role: 'assistant', text, chunkIds: message.sources.map(source => source.chunkId) })
   }
   return turns.slice(-MAX_HISTORY_TURNS)
 }
@@ -186,7 +181,8 @@ export function useScopedChat (scope: () => ChatScope | null) {
     streaming.value = true
 
     try {
-      await postNdjson(chatPath(current), { question, history }, {
+      // The generated request model, so a schema change breaks the type check here.
+      await postNdjson(chatPath(current), ContextChatRequestToJSON({ question, history }), {
         signal: controller.signal,
         onValue: (value) => {
           if (!isCurrent() || reply.status !== 'streaming') return
