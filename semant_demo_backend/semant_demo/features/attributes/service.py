@@ -266,10 +266,12 @@ def _type_failure(request: AttributeAssignRequest, span: TagSpan, sid: UUID) -> 
 
 def _rule_failure(attribute: Attribute, request: AttributeAssignRequest, span: TagSpan, previous: list[UUID],
                   result: list[UUID], sid: UUID) -> StepFailure | None:
-    """Why the assignment is not allowed for this annotation, or None. Removing is always allowed,
-    also as a ``replace`` that only leaves values out, so values of an attribute that no longer
-    applies to the annotation's tag can be cleared (#500); only values the request adds are checked
-    against the tag and retirement. The annotation type is checked earlier (``_type_failure``)."""
+    """Why the assignment is not allowed for this annotation, or None. Removing is always allowed;
+    a ``replace`` that only leaves values out counts as removing here, so values of an attribute
+    that no longer applies to the annotation's tag can be cleared that way too (#500). Only values
+    the request adds are checked against the tag and retirement. The annotation type is checked
+    earlier (``_type_failure``); a retired attribute refuses every ``replace`` before this
+    (``assign_attributes``), so there only ``remove`` and ``clear`` remove."""
     if request.mode in _REMOVING:
         return None
     added = [v for v in result if v not in previous]

@@ -764,8 +764,9 @@ async def test_values_of_an_attribute_that_no_longer_applies_can_be_removed_but_
                                                  assign(attribute, [APPROVED], mode, values, {APPROVED: version}))
         assert result.succeeded == [str(APPROVED)], result.failed
         assert set(values_of(spans, APPROVED, attribute)) == left
-    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [c],
-                                                                    {APPROVED: 3}))  # still refused
+    refused = await service.assign_attributes(store, OWNER, COLLECTION,
+                                              assign(attribute, [APPROVED], AssignMode.add, [c], {APPROVED: 3}))
+    assert [f.step for f in refused.failed] == ["check_applicable"]  # still refused after the removals
     spans.spans[(COLLECTION, APPROVED)].tagId = str(PERSON)  # back on the attribute's tag
     await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [c],
                                                                     {APPROVED: 3}))

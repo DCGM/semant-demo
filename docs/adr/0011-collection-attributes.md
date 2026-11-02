@@ -103,9 +103,9 @@ renames categories later without rewriting annotations or losing who decided wha
   usage (they block deleting their value or attribute and narrowing the tags away from them);
   the workspace greys and marks them, apart from the applicable ones and removable only. A value
   of an attribute that does not apply is not assigned (`check_applicable`); removing it is allowed
-  (`remove`, `clear`, or a `replace` that only leaves values out), with a change record as any
-  removal. Retagging back makes them applicable again. Statistics
-  and analytical exports (#334) count only applicable values by default and may report
+  (`remove`, `clear`, or, unless the attribute is retired, a `replace` that only leaves values
+  out), with a change record as any removal. Retagging back makes them applicable again.
+  Statistics and analytical exports (#334) count only applicable values by default and may report
   inapplicable ones separately. Removing the values on retag (with the user's consent) was
   rejected as destructive; hiding them would let them block deletion invisibly. A bulk cleanup
   may follow if it proves useful.

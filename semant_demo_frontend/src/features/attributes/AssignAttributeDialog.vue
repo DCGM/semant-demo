@@ -101,8 +101,8 @@
               </template>
               <template v-else-if="mode === 'replace'">
                 Only confirmed annotations with a tag this attribute applies to ({{ scopeText }}) take values.
-                Confirmed annotations of other tags take none but lose the values not chosen; the others are
-                reported as not changed.
+                Confirmed annotations of other tags take no new values: if every chosen value is one they already
+                hold, they lose the others; otherwise they are reported as not changed.
               </template>
               <template v-else>
                 Only confirmed annotations with a tag this attribute applies to ({{ scopeText }}) take values; the

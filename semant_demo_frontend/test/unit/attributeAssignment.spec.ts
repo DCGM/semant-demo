@@ -513,7 +513,7 @@ describe('assign attribute dialog', () => {
     // Replace only takes values away on a tag the attribute no longer applies to (#500).
     wrapper.findAllComponents({ name: 'QBtnToggle' })[0]!.vm.$emit('update:modelValue', 'replace')
     await flushPromises()
-    expect(text('assign-scope-note')).toMatch(/\(2 selected tags\) take values\.\s+Confirmed annotations of other tags take none but lose the values not chosen/)
+    expect(text('assign-scope-note')).toMatch(/\(2 selected tags\) take values\.\s+Confirmed annotations of other tags take no new values: if every chosen value is one they already\s+hold, they lose the others; otherwise they are reported as not changed\./)
   })
 
   it('stays open with the reason when the assignment was refused as a whole', async () => {
