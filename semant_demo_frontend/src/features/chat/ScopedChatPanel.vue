@@ -59,7 +59,7 @@
         label="Ask about this document"
         :input-style="{ maxHeight: '8em' }"
         data-testid="chat-input"
-        @keydown.enter.exact.prevent="send"
+        @keydown.enter.exact="onEnter"
       />
       <q-btn
         v-if="streaming"
@@ -87,7 +87,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
-import { chatTokens, type ChatMessage, type ChatSource } from './useScopedChat'
+import { chatTokens, MAX_QUESTION_CHARS, type ChatMessage, type ChatSource } from './useScopedChat'
 
 // Props-in/events-out only (docs/RIGHT_SIDEBAR.md section 3): the page owns
 // useScopedChat() and its scope and passes the conversation here.
@@ -105,7 +105,6 @@ const emit = defineEmits<{
   'new-conversation': []
 }>()
 
-const MAX_QUESTION_CHARS = 4000
 const draft = ref('')
 const listRef = ref<HTMLElement | null>(null)
 
@@ -116,14 +115,28 @@ function send () {
   draft.value = ''
 }
 
-// Keep the newest text in view while an answer streams.
+// Enter sends, Shift+Enter is a new line; Enter that confirms an IME composition only
+// confirms it.
+function onEnter (event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  send()
+}
+
+const NEAR_BOTTOM_PX = 40
+
+// A new question scrolls to the end; a streaming answer is followed only while the list is
+// at its end, so the user can scroll up and read earlier messages. (Runs before the DOM
+// update, so the position measured is the one the user left.)
 watch(() => {
   const last = props.messages[props.messages.length - 1]
-  return `${props.messages.length}:${last?.text.length ?? 0}:${last?.status ?? ''}`
-}, async () => {
-  await nextTick()
+  return [props.messages.length, last?.text.length ?? 0, last?.status ?? ''] as const
+}, async ([count], [previousCount]) => {
   const list = listRef.value
-  if (list) list.scrollTop = list.scrollHeight
+  if (!list) return
+  const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight <= NEAR_BOTTOM_PX
+  await nextTick()
+  if (count !== previousCount || atEnd) list.scrollTop = list.scrollHeight
 })
 </script>
 
