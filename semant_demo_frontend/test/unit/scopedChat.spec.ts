@@ -50,10 +50,10 @@ describe('historyTurns', () => {
     ]
 
     expect(historyTurns(messages)).toEqual([
-      { role: 'user', text: 'Who?', chunk_ids: [] },
-      { role: 'assistant', text: 'X [doc1] and [doc2], not .', chunk_ids: ['c7', 'c2'] },
-      { role: 'user', text: 'Stopped?', chunk_ids: [] },
-      { role: 'assistant', text: 'Partial ', chunk_ids: [] }
+      { role: 'user', text: 'Who?', chunkIds: [] },
+      { role: 'assistant', text: 'X [doc1] and [doc2], not .', chunkIds: ['c7', 'c2'] },
+      { role: 'user', text: 'Stopped?', chunkIds: [] },
+      { role: 'assistant', text: 'Partial ', chunkIds: [] }
     ])
   })
 
@@ -134,7 +134,8 @@ describe('useScopedChat', () => {
 
     const failing = chat.ask('Q1')
     await flush()
-    streams[0].push({ event: 'delta', text: 'Part' })
+    streams[0].push({ event: 'delta', text: 'Part [doc1]' })
+    streams[0].push({ event: 'sources', sources: [wireSource(1, 'c1')] }) // a partial answer keeps its citations
     streams[0].push({ event: 'error', code: 'failed', message: 'The assistant could not answer.' })
     streams[0].close()
     await failing
@@ -147,6 +148,7 @@ describe('useScopedChat', () => {
     expect(chat.messages.value.map(m => [m.status, m.error])).toEqual([
       ['done', undefined], ['error', 'The assistant could not answer.'],
       ['done', undefined], ['interrupted', 'The answer was interrupted.']])
+    expect(chat.messages.value[1].sources.map(s => s.chunkId)).toEqual(['c1'])
   })
 
   it('stops an answer and keeps what arrived', async () => {

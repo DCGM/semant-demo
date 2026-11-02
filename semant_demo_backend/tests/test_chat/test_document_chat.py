@@ -143,8 +143,10 @@ async def test_history_never_cuts_a_document_that_fits():
     assert [m["content"] for m in llm.calls[-1][1:-1]] == ["nová otázka", "nová odpověď"]
 
 
-async def test_turns_left_empty_by_removed_citations_are_not_sent():
-    history = [ChatTurn(role="user", text="[doc1]"), ChatTurn(role="assistant", text=" [doc1] ", chunk_ids=[uuid4()]),
+async def test_an_exchange_with_a_turn_left_empty_by_removed_citations_is_not_sent():
+    # The question of an answer left empty goes too, so questions and answers still alternate.
+    history = [ChatTurn(role="user", text="Kde?"), ChatTurn(role="assistant", text=" [doc1] ", chunk_ids=[uuid4()]),
+               ChatTurn(role="user", text="[doc1]"), ChatTurn(role="assistant", text="Nevím."),
                ChatTurn(role="user", text="Kdo?"), ChatTurn(role="assistant", text="Kronikář.")]
     llm = FakeLlm()
 
@@ -174,9 +176,21 @@ async def test_stream_errors_end_with_a_safe_error_event(error, code, message, c
 
     _, events = await run(llm, [chunk(0)])
 
-    assert [e.event for e in events] == ["delta", "error"]
+    assert [e.event for e in events] == ["delta", "sources", "error"]
     assert (events[-1].code, events[-1].message) == (code, message)
     assert "Kdo psal" not in caplog.text
+
+
+async def test_a_partial_answer_keeps_its_citations_and_a_failure_before_any_text_has_no_sources():
+    first, second = chunk(0), chunk(1)
+    cut = FakeLlm(deltas=["Kronikář [doc2] psal"], error=RuntimeError("provider failed"))
+    nothing = FakeLlm(deltas=[], error=RuntimeError("provider failed"))
+
+    _, partial = await run(cut, [first, second])
+    _, empty = await run(nothing, [first, second])
+
+    assert [(s.citation, s.chunk_id) for s in partial[1].sources] == [(2, second.id)]
+    assert [e.event for e in empty] == ["error"]
 
 
 async def test_the_operation_is_entered_and_left_around_the_stream():

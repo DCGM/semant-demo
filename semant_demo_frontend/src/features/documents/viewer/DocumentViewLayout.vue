@@ -77,7 +77,9 @@
       :busy="documentChat.streaming.value"
       fill
     >
+      <!-- keyed: another document gets a fresh panel, so a typed question is not asked about it -->
       <ScopedChatPanel
+        :key="`${collectionId}:${documentId}`"
         :messages="documentChat.messages.value"
         :streaming="documentChat.streaming.value"
         scope-label="Asking about this document's passages in the collection"

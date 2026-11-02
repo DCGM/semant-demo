@@ -64,18 +64,21 @@ test('a follow-up sends the earlier turns with their cited chunk ids, never sour
   await expect(answers(page)).toHaveCount(0)
 })
 
-test('switching documents starts an empty conversation', async ({ page }) => {
+test('switching documents starts an empty conversation and clears the typed question', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'Chat').click()
   await ask(page, 'O čem je dokument?')
   await expect(answers(page)).toHaveCount(1)
+  // A question typed but not sent is not carried over to the other document.
+  await page.getByLabel('Ask about this document').fill('Nedokončená otázka')
 
   await openDocument(page, 'chronicles', 'letters')
   await sidebarPanelButton(page, 'Chat').click()
 
   await expect(page.getByTestId('chat-question')).toHaveCount(0)
   await expect(answers(page)).toHaveCount(0)
+  await expect(page.getByLabel('Ask about this document')).toHaveValue('')
 })
 
 test('a user without collection read access cannot chat about its document', async ({ request }) => {
