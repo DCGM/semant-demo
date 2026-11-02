@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import type { DocumentSummaryCitation, DocumentSummaryResponse, SummaryLength } from 'src/generated/api'
 import { aiErrorMessage, createContextGuard, isAbortError, reportAiOperation, useApi } from 'src/shared/api'
 import { tokenizeCitations } from 'src/shared/citationTokens'
+import { citeInReader, requestedCitation } from './readerCitation'
 import { SUMMARY_LENGTH_DEFAULT } from 'src/shared/summaryLength'
 
 const SUMMARY_FAILED_FALLBACK = 'Failed to summarize the document.'
@@ -24,28 +25,15 @@ export function parseDocumentSummaryTokens (text: string, citations: DocumentSum
   })
 }
 
-export interface RequestedCitation {
-  chunkId: string
-  /** The cited chunk's position in the document, when known; lets the reader load it into
-   * the displayed window on demand (useChunkWindow.loadUntil) if it isn't shown yet. */
-  order: number | null
-  /** Bumped on every request, so clicking the same citation again still re-triggers the scroll. */
-  token: number
-}
-
 // Module-scope singleton, the same cross-component pattern `useAiAssistance` uses
-// (`highlightedAutoSpanId`): the summary panel lives inside `DocumentViewLayout`, but
-// `DocumentReaderPage` is a sibling route with no prop/event path from the panel. Setting
-// `requestedCitation` from the panel's `cite` event makes the reader page scroll to it.
+// (`highlightedAutoSpanId`). A citation click goes to the reader through `readerCitation`.
 const summarizing = ref(false)
 // The six DocumentSummaryResponse fields are always set and reset together, so one slot
 // carries all of them rather than one ref each (#358 review).
 const result = ref<DocumentSummaryResponse | null>(null)
 const error = ref<string | null>(null)
-const requestedCitation = ref<RequestedCitation | null>(null)
 // The chosen length level (#360); kept across documents, like the user's other panel choices.
 const length = ref<SummaryLength>(SUMMARY_LENGTH_DEFAULT)
-let citationToken = 0
 let abort: AbortController | null = null
 const guard = createContextGuard()
 
@@ -118,7 +106,7 @@ export function useDocumentSummary () {
   /** Called from the summary panel's `cite` event; the reader page watches this to scroll
    * (loading the chunk into its window first if it isn't displayed yet). */
   function cite (chunkId: string, order: number | null) {
-    requestedCitation.value = { chunkId, order, token: ++citationToken }
+    citeInReader(chunkId, order)
   }
 
   return {

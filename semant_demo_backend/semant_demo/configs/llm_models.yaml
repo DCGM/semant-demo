@@ -87,6 +87,18 @@ features:
       max_input_tokens: 48000
       max_calls: 1
       reserve_usd: 0.01
+  context_chat:
+    # Sidebar chat about a page's scope (ADR 0012); document chat (#248) sends the
+    # document's chunks in the collection whole, or its first ones when they do not fit.
+    default: small
+    allowed: [small]
+    limits:
+      max_output_tokens: 1536
+      max_input_tokens: 48000
+      # One answer per question; the tool rounds of collection chat come later (at most 5).
+      max_calls: 1
+      # About one call of the full input and output at the small tier's list prices.
+      reserve_usd: 0.01
   question:
     default: small
     allowed: [small]

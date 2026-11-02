@@ -286,13 +286,43 @@ async def test_document_summary_admits_after_authorization(ai):
         == [("document_summary",), ("test",)]
 
 
+async def test_document_chat_streams_an_answer_admitted_after_authorization_and_settled(ai):
+    account, headers = await ai.account()
+    collections, chunks = summary_stores(account.id)
+    ai.app.dependency_overrides[get_user_collections] = lambda: collections
+    ai.app.dependency_overrides[get_documents] = lambda: chunks
+    base = f"/api/user_collections/{documents.COLLECTION}/documents"
+    path, body = f"{base}/{documents.DOCUMENT}/chat", {"question": "Kdo psal kroniku?", "history": []}
+
+    answered = await ai.client.post(path, json=body, headers=headers)
+    anonymous = await ai.client.post(path, json=body)
+    other = await ai.client.post(f"{base}/{documents.OUTSIDE_DOCUMENT}/chat", json=body, headers=headers)
+    await ai.exhaust(account)
+    refused = await ai.client.post(path, json=body, headers=headers)
+
+    assert answered.status_code == 200, answered.text
+    events = [json.loads(line) for line in answered.text.splitlines()]
+    # The fake provider names the passages of the last user message and cites the last one.
+    assert "".join(e["text"] for e in events if e["event"] == "delta") == "Fake summary of 2 passage(s); last [doc2]."
+    assert events[-2]["event"] == "sources"
+    assert [(s["citation"], s["chunk_id"]) for s in events[-2]["sources"]] == [(2, str(chunks._chunks[1].id))]
+    assert events[-1] == {"event": "end", "coverage": "all", "used_chunks": 2, "total_chunks": 2}
+    assert (anonymous.status_code, other.status_code) == (401, 404)
+    assert_refused(refused, "account")
+    assert len(ai.provider.paths) == 1
+    # The answer and the exhausting operation; the denied requests reserved nothing.
+    assert ai.rows("SELECT feature FROM llm_quota_operation ORDER BY started_at") == [("context_chat",), ("test",)]
+    assert ai.rows("SELECT status FROM llm_quota_operation WHERE feature = 'context_chat'") == [("settled",)]
+
+
 def test_ai_routes_declare_the_429_and_search_does_not(tmp_path):
     paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
 
     for path in ("/api/rag", "/api/rag/explain", "/api/question", "/api/summarize/{summary_type}",
                  "/api/ai/discuss_span", "/api/ai/suggest_spans/thorough", "/api/ai/suggest_spans/optimized",
                  "/api/ai/suggest_spans/selection",
-                 "/api/user_collections/{collection_id}/documents/{document_id}/summary"):
+                 "/api/user_collections/{collection_id}/documents/{document_id}/summary",
+                 "/api/user_collections/{collection_id}/documents/{document_id}/chat"):
         refused = paths[path]["post"]["responses"]["429"]
         assert refused["content"]["application/json"]["schema"]["$ref"].endswith("/QuotaExhaustedResponse")
         assert "Retry-After" in refused["headers"]
