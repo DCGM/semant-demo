@@ -4,7 +4,6 @@
        buttons cancel their own mousedown too: QBtn otherwise moves the focus into itself on
        mouseup, which would blur the input and close the list. -->
   <q-card
-    v-if="items.length"
     class="search-history"
     bordered
     flat
@@ -12,6 +11,7 @@
     @mousedown.prevent
   >
     <div class="search-history__header text-caption text-grey-7">Recent searches</div>
+    <div v-if="note" class="search-history__note text-caption text-grey-8" role="status" data-testid="search-history-note">{{ note }}</div>
     <ul :id="listId" role="listbox" aria-label="Recent searches" class="search-history__list">
       <li
         v-for="(item, index) in items"
@@ -73,6 +73,8 @@ const props = defineProps<{
   activeIndex: number
   /** Id of the listbox, referenced by the input's `aria-controls`. */
   listId: string
+  /** A line above the entries, e.g. why picking one does not run it yet. */
+  note?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -107,6 +109,10 @@ function optionId (index: number): string {
 
 .search-history__header {
   padding: 6px 12px 2px;
+}
+
+.search-history__note {
+  padding: 0 12px 4px;
 }
 
 .search-history__list {

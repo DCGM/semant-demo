@@ -15,7 +15,7 @@ import { readStored, removeStored, writeStored } from 'src/shared/browserStorage
 export const HISTORY_LIMIT = 50
 /** Entries shown at once. */
 export const DISPLAY_LIMIT = 10
-/** Longer queries are stored shortened. */
+/** Longer queries are not saved (a shortened one would run another search). */
 export const MAX_QUERY_LENGTH = 1000
 
 const STORAGE_PREFIX = 'semant.searchHistory.'
@@ -53,14 +53,23 @@ export function storageKey (namespace: string, audience: HistoryAudience): strin
   return `${STORAGE_PREFIX}${namespace}.${owner}`
 }
 
-/** Query text as stored and compared: trimmed, whitespace collapsed, at most {@link MAX_QUERY_LENGTH} characters. */
-export function normalizeQuery (query: string): string {
-  return query.trim().replace(/\s+/g, ' ').slice(0, MAX_QUERY_LENGTH)
+/**
+ * The query as saved: as typed, without surrounding whitespace, so running it again sends
+ * the same text. Null when it is blank or longer than {@link MAX_QUERY_LENGTH}.
+ */
+export function savedQuery (query: string): string | null {
+  const trimmed = query.trim()
+  return trimmed && trimmed.length <= MAX_QUERY_LENGTH ? trimmed : null
 }
 
-/** Identity of an entry: equal for the same query and criteria. */
+/** The query as compared (for the same search and for matching typed text): whitespace collapsed. */
+function comparedQuery (query: string): string {
+  return query.trim().replace(/\s+/g, ' ')
+}
+
+/** Identity of an entry: equal for the same query (up to whitespace) and criteria. */
 export function entryKey<C> (entry: { query: string, criteria: C }, criteria: HistoryCriteria<C>): string {
-  return JSON.stringify([entry.query, criteria.key(entry.criteria)])
+  return JSON.stringify([comparedQuery(entry.query), criteria.key(entry.criteria)])
 }
 
 /** The valid entries of a stored value, newest first, at most {@link HISTORY_LIMIT}. */
@@ -89,13 +98,13 @@ export function parseHistory<C> (stored: string | null, criteria: HistoryCriteri
 function parseEntry<C> (raw: unknown, criteria: HistoryCriteria<C>): HistoryEntry<C> | null {
   if (!isRecord(raw)) return null
   const { query, savedAt } = raw
-  if (typeof query !== 'string' || query.length > MAX_QUERY_LENGTH) return null
-  const normalized = normalizeQuery(query)
-  if (!normalized) return null
+  if (typeof query !== 'string') return null
+  const saved = savedQuery(query)
+  if (saved === null) return null
   if (typeof savedAt !== 'number' || !Number.isFinite(savedAt)) return null
   const parsed = criteria.parse(raw.criteria)
   if (parsed === null) return null
-  return { query: normalized, criteria: parsed, savedAt }
+  return { query: saved, criteria: parsed, savedAt }
 }
 
 export function serializeHistory<C> (entries: HistoryEntry<C>[]): string {
@@ -121,8 +130,8 @@ export function withoutEntry<C> (entries: HistoryEntry<C>[], entry: HistoryEntry
  * Matching covers all stored entries, not only the ones shown without text.
  */
 export function matchingEntries<C> (entries: HistoryEntry<C>[], text: string, limit = DISPLAY_LIMIT): HistoryEntry<C>[] {
-  const needle = normalizeQuery(text).toLocaleLowerCase()
-  const matches = needle ? entries.filter(e => e.query.toLocaleLowerCase().includes(needle)) : entries
+  const needle = comparedQuery(text).toLocaleLowerCase()
+  const matches = needle ? entries.filter(e => comparedQuery(e.query).toLocaleLowerCase().includes(needle)) : entries
   return matches.slice(0, limit)
 }
 

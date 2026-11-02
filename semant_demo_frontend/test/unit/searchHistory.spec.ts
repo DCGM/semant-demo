@@ -159,13 +159,62 @@ describe('useSearchHistory', () => {
 
   const key = (k: string, init: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { key: k, cancelable: true, ...init })
 
-  it('records submitted searches with a normalized query, shortened when very long, and not blank ones', () => {
+  it('saves the query as typed without surrounding whitespace; not a blank or too long one', () => {
     const { history } = setup()
-    history.record('  old   gazette ', 'cs')
-    history.record('   ', 'cs')
-    history.record('x'.repeat(MAX_QUERY_LENGTH + 50), '')
-    expect(readHistory(ALICE, tagCriteria).map(e => [e.query.length > 20 ? e.query.length : e.query, e.criteria]))
-      .toEqual([[MAX_QUERY_LENGTH, ''], ['old gazette', 'cs']])
+    expect(history.record('  old   gazette\n1848 ', 'cs')).toBe('saved')
+    expect(history.record('   ', 'cs')).toBe('skipped')
+    expect(history.record('x'.repeat(MAX_QUERY_LENGTH + 1), '')).toBe('tooLong')
+    expect(history.record('y'.repeat(MAX_QUERY_LENGTH), '')).toBe('saved')
+    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['y'.repeat(MAX_QUERY_LENGTH), 'old   gazette\n1848'])
+  })
+
+  it('treats queries differing only in whitespace as the same search', () => {
+    const { history } = setup()
+    history.record('old gazette', 'cs')
+    history.record(' old   gazette ', 'cs')
+    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['old   gazette'])
+  })
+
+  it('reads the stored history when the list opens, not on every keystroke', async () => {
+    const { history, text } = setup()
+    history.record('a', '')
+    history.show()
+    const getItem = vi.spyOn(Storage.prototype, 'getItem')
+    text.value = 'a'
+    history.show()
+    await nextTick()
+    expect(getItem).not.toHaveBeenCalled()
+    history.close()
+    history.show()
+    expect(getItem).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the arrow keys to the input when nothing is listed', async () => {
+    const { history, text } = setup()
+    history.record('gazette', '')
+    history.show()
+    text.value = 'no such search'
+    await nextTick()
+    const up = key('ArrowUp')
+    expect(history.onKeydown(up)).toBe(false)
+    expect(up.defaultPrevented).toBe(false)
+  })
+
+  it('highlights within the history read when ArrowUp opens the list', () => {
+    const { history } = setup()
+    history.record('a', '')
+    history.record('b', '')
+    history.record('c', '')
+    history.onKeydown(key('Escape'))
+    // Another tab removed two searches meanwhile.
+    writeHistory(ALICE, tagCriteria, readHistory(ALICE, tagCriteria).slice(0, 1))
+    history.onKeydown(key('ArrowUp'))
+    expect([history.suggestions.value.length, history.activeIndex.value]).toEqual([1, 0])
+  })
+
+  it('records nothing without a known audience', () => {
+    const { history } = setup(null)
+    expect(history.record('a', '')).toBe('skipped')
   })
 
   it('keeps a search recorded in another tab meanwhile', () => {
