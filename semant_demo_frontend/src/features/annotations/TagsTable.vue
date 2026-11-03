@@ -179,6 +179,11 @@ defineSlots<{
   attributes?(props: { tag: Tag }): unknown
 }>()
 
+const emit = defineEmits<{
+  /** Deleting these tags has finished, whether or not every deletion succeeded. */
+  deleted: [tagIds: string[]]
+}>()
+
 const slots = useSlots()
 const route = useRoute()
 const confirmDelete = useConfirmDelete()
@@ -221,7 +226,9 @@ const handleDelete = async (tag: Tag) => {
     message: `Delete the tag "${tag.name}"?`,
     alsoDeletes: annotationsOfTags(collectionId.value, [tag.id])
   }).onOk(async () => {
-    await deleteTag(tag.id)
+    // Unless the deletion completed, the list is reloaded to show the backend's state.
+    if (await deleteTag(tag.id) !== 'deleted') await fetchTagsByCollection(collectionId.value)
+    emit('deleted', [tag.id])
   })
 }
 
@@ -241,8 +248,9 @@ const handleBulkDelete = () => {
     // Resolves after every deletion has finished; only acknowledged ones are removed and
     // failures are reported by the store. Reload afterwards (not before all deletions are
     // done) so the list shows the backend's state.
-    const { failed } = await deleteManyTags(ids)
-    if (failed.length) await fetchTagsByCollection(collectionId.value)
+    const { failed, attributesKept } = await deleteManyTags(ids)
+    if (failed.length || attributesKept.length) await fetchTagsByCollection(collectionId.value)
+    emit('deleted', ids)
   })
 }
 

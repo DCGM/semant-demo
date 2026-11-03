@@ -1005,3 +1005,77 @@ async def test_a_failed_definition_cleanup_after_the_collection_is_gone_is_repor
     assert error.value.completed == {"delete_collection": 1}
     with pytest.raises(AccessDenied):  # a shared user may not delete the collection or its definitions
         await collection_service.delete_collection(collections, SHARED, COLLECTION, definitions)
+
+
+# ── Removing a deleted tag from the attributes (#508) ──────────────────────
+
+async def test_a_deleted_tag_is_removed_from_selected_attributes_only(store, definitions):
+    both = await define(store, name="role", tag_ids=[PERSON, PLACE])
+    last = await define(store, name="speaker_type", tag_ids=[PERSON])
+    retired = await define(store, name="old", tag_ids=[PERSON, PLACE])
+    await service.update_attribute(store, OWNER, COLLECTION, str(retired.id), PatchAttribute(retired=True))
+    everywhere = await define(store, name="certainty")
+    unrelated = await define(store, name="place_kind", tag_ids=[PLACE])
+    elsewhere = await definitions.create(SECOND_COLLECTION, attribute_body(name="other", tag_ids=[PERSON]), OWNER.id)
+    before = {a.id: a for a in await definitions.read_all(COLLECTION)}
+
+    changed = await definitions.remove_tag(COLLECTION, PERSON)
+
+    after = {a.id: a for a in await definitions.read_all(COLLECTION)}
+    assert sorted(changed) == ["old", "role", "speaker_type"]
+    assert (after[both.id].all_tags, after[both.id].tag_ids) == (False, [PLACE])
+    # The last tag gone: the attribute applies to no tag, never to all tags (#522).
+    assert (after[last.id].all_tags, after[last.id].tag_ids) == (False, [])
+    assert after[retired.id].tag_ids == [PLACE] and after[retired.id].retired
+    for attribute in (both, last, retired):
+        assert after[attribute.id].revision == before[attribute.id].revision + 1
+    for attribute in (everywhere, unrelated):
+        assert after[attribute.id] == before[attribute.id]
+    assert (await definitions.read_all(SECOND_COLLECTION))[0].tag_ids == elsewhere.tag_ids == [PERSON]
+
+    assert await definitions.remove_tag(COLLECTION, PERSON) == []  # safe to repeat
+    assert {a.id: a for a in await definitions.read_all(COLLECTION)} == after
+
+
+async def test_removals_of_two_deleted_tags_at_once_both_take_effect(store, definitions):
+    # Several tags deleted together are deleted by separate, concurrent requests.
+    role = await define(store, name="role", tag_ids=[PERSON, PLACE])
+
+    for _ in range(10):
+        await asyncio.gather(definitions.remove_tag(COLLECTION, PERSON), definitions.remove_tag(COLLECTION, PLACE))
+        assert (await definitions.read_all(COLLECTION))[0].tag_ids == []
+        await service.update_attribute(store, OWNER, COLLECTION, str(role.id), PatchAttribute(tag_ids=[PERSON, PLACE]))
+
+
+async def test_a_concurrent_change_of_the_attribute_is_not_overwritten(store, definitions, monkeypatch):
+    # Another write lands between reading the attribute and removing the tag: the removal reads
+    # the attribute again instead of writing back the list it read first.
+    role = await define(store, name="role", tag_ids=[PERSON, PLACE])
+    original = definitions.session_maker
+    interfered = False
+
+    class Session:
+        def __init__(self):
+            self.inner = original()
+
+        async def __aenter__(self):
+            self.session = await self.inner.__aenter__()
+            real_execute = self.session.execute
+
+            async def execute(statement, *args, **kwargs):
+                nonlocal interfered
+                if not interfered and getattr(statement, "is_dml", False):
+                    interfered = True
+                    await definitions.update(COLLECTION, role.id, PatchAttribute(tag_ids=[PERSON, PLACE, SECOND_TAG]))
+                return await real_execute(statement, *args, **kwargs)
+            self.session.execute = execute
+            return self.session
+
+        async def __aexit__(self, *exc):
+            return await self.inner.__aexit__(*exc)
+
+    monkeypatch.setattr(definitions, "session_maker", Session)
+    assert await definitions.remove_tag(COLLECTION, PLACE) == ["role"]
+    monkeypatch.setattr(definitions, "session_maker", original)
+
+    assert interfered and (await definitions.read_all(COLLECTION))[0].tag_ids == [PERSON, SECOND_TAG]

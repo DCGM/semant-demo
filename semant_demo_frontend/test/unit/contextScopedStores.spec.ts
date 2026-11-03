@@ -408,10 +408,19 @@ describe('bulk tag deletion', () => {
   async function loadTags () {
     const tags = useTagsStore()
     const loading = tags.fetchTagsByCollection('A')
-    answer('tags:A', [{ id: 't1' }, { id: 't2' }, { id: 't3' }])
+    answer('tags:A', [{ id: 't1', name: 'Person' }, { id: 't2', name: 'Place' }, { id: 't3', name: 'Event' }])
     await loading
     return tags
   }
+  // Only removing the deleted tag from the attributes failed: the tag is gone (#508).
+  const attributesKept = () => ({
+    response: new Response(JSON.stringify({
+      detail: 'The tag was deleted, but removing it from the attributes that list it stopped.',
+      step: 'remove_from_attributes',
+      completed: { delete_tag: 1 }
+    }), { status: 500 })
+  })
+  const { warningNotification } = notificationModule as unknown as { warningNotification: ReturnType<typeof vi.fn> }
 
   it('waits for every deletion and removes only the acknowledged ones', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -425,9 +434,63 @@ describe('bulk tag deletion', () => {
     expect(tags.tags.map((t) => t.id)).toEqual(['t3']) // both hidden while pending
 
     answer('deleteTag:t2', undefined) // succeeds later
-    expect(await deleting).toEqual({ deleted: ['t2'], failed: ['t1'] })
+    expect(await deleting).toEqual({ deleted: ['t2'], attributesKept: [], failed: ['t1'] })
     expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't3'])
-    expect(notif.error).toHaveBeenCalledWith('Deleted 1 of 2 tags. The others could not be deleted.')
+    expect(notif.error).toHaveBeenCalledWith('Deleted 1 of 2 tags; not deleted: Person.')
+  })
+
+  it('says how a single deletion ended, so an incomplete one can reload the list (#508)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const tags = await loadTags()
+
+    const failing = tags.deleteTag('t1')
+    fail('deleteTag:t1', new Error('storage failed'))
+    expect(await failing).toBe('failed')
+    expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't2', 't3'])
+
+    const deleting = tags.deleteTag('t2')
+    answer('deleteTag:t2', undefined)
+    expect(await deleting).toBe('deleted')
+    expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't3'])
+  })
+
+  it('counts a tag whose ids stayed on attributes as deleted and names it (#508)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const tags = await loadTags()
+
+    const single = tags.deleteTag('t3')
+    fail('deleteTag:t3', attributesKept())
+    expect(await single).toBe('attributesKept')
+    expect(tags.tags.map((t) => t.id)).toEqual(['t1', 't2'])
+    expect(warningNotification).toHaveBeenLastCalledWith(
+      'Tag Event was deleted, but the attributes that applied to it still list it as a deleted tag. ' +
+      'Remove it there when you edit the attribute.')
+    expect(notif.error).not.toHaveBeenCalled()
+
+    const bulk = tags.deleteManyTags(['t1', 't2'])
+    fail('deleteTag:t1', attributesKept())
+    answer('deleteTag:t2', undefined)
+    expect(await bulk).toEqual({ deleted: ['t1', 't2'], attributesKept: ['t1'], failed: [] })
+    expect(tags.tags).toEqual([])
+    expect(warningNotification).toHaveBeenLastCalledWith(expect.stringMatching(/^Tag Person was deleted, but/))
+    expect(notif.error).not.toHaveBeenCalled()
+  })
+
+  it('reports not deleted tags apart from deleted ones whose ids stayed on attributes (#508)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const tags = await loadTags()
+    const deleting = tags.deleteManyTags(['t1', 't2', 't3'])
+
+    fail('deleteTag:t1', attributesKept())
+    fail('deleteTag:t2', new Error('storage failed'))
+    answer('deleteTag:t3', undefined)
+
+    expect(await deleting).toEqual({ deleted: ['t1', 't3'], attributesKept: ['t1'], failed: ['t2'] })
+    expect(tags.tags.map((t) => t.id)).toEqual(['t2'])
+    expect(notif.error).toHaveBeenCalledWith(
+      'Deleted 2 of 3 tags; not deleted: Place. ' +
+      'Tag Person was deleted, but the attributes that applied to it still list it as a deleted tag. ' +
+      'Remove it there when you edit the attribute.')
   })
 
   it('does not bring back a deleted tag from a reload answered with older data', async () => {

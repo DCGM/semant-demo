@@ -46,7 +46,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import NamedTuple, Protocol
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -224,14 +224,38 @@ async def update_tag(store: AnnotationStore, user: Principal | None, tag_id: Id,
     return await store.tags.update(access.parse_id(tag_id, "Tag"), patch)
 
 
-async def delete_tag(store: AnnotationStore, user: Principal | None, tag_id: Id) -> None:
+class TagReferences(Protocol):
+    """Definitions outside this feature that list tags by id (the collection's attributes,
+    ``adapters/sql/attributes.py``), so that deleting a tag can remove it from them."""
+
+    async def remove_tag(self, collection_id: UUID, tag_id: UUID) -> list[str]: ...
+
+
+async def delete_tag(store: AnnotationStore, user: Principal | None, tag_id: Id,
+                     references: TagReferences) -> None:
     """
-    Deletes the tag with its spans and chunk tag references. A failed step raises
-    ``IncompleteWriteError`` naming it and the completed steps; deleting again continues.
+    Deletes the tag with its spans and chunk tag references, then removes its id from the
+    attributes that list it (#508; ``all_tags`` is never changed, so an attribute that loses
+    its last tag applies to no tag). A failed step raises ``IncompleteWriteError`` naming it
+    and the completed steps. Deleting again continues a failed cascade; the removal goes last
+    so that a tag that still exists is never taken off its attributes. When only the removal
+    fails, the tag is gone and its id stays listed, shown as a deleted tag that can be removed
+    from the attribute by hand.
     """
     collection_id = await access.collection_of_tags(store.tags, [tag_id])
     grant = await access.require_tag_definition_edit(store.collections, user, collection_id)
-    await store.tags.delete(access.parse_id(tag_id, "Tag"), await use_tenant(store, grant))
+    tag = access.parse_id(tag_id, "Tag")
+    await store.tags.delete(tag, await use_tenant(store, grant))
+    try:
+        await references.remove_tag(grant.collection_id, tag)
+    except Exception as exc:
+        logger.warning("Removing deleted tag %s from the attributes of collection %s failed: %s",
+                       tag, grant.collection_id, type(exc).__name__)
+        raise IncompleteWriteError(
+            f"The tag was deleted, but removing it from the attributes that list it stopped at step "
+            f"remove_from_attributes ({type(exc).__name__}). Those attributes show it as a deleted tag; "
+            "remove it there when editing their tags.",
+            step="remove_from_attributes", completed={"delete_tag": 1}) from exc
 
 
 #########

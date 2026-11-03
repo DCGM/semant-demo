@@ -1,7 +1,7 @@
 <template>
   <!-- The collection's tags with the attributes that apply to each (#506): those that name the
        tag, then those for all tags. Create/Edit Tag changes them from the tag side (#516). -->
-  <TagsTable>
+  <TagsTable @deleted="refresh">
     <template #attributes="{ tag }">
       <span v-if="error" class="text-grey-7" data-testid="tag-attributes-error">Attributes unavailable</span>
       <span v-else-if="loading && !loaded" class="text-grey-7">Loading…</span>
@@ -55,6 +55,10 @@ async function load () {
   await store.load(collectionId.value)
   loaded.value = true
 }
+
+// Deleting a tag removes it from the attributes that select it (#508): reload them afterwards,
+// without showing the cells as loading again.
+const refresh = () => collectionId.value ? store.load(collectionId.value) : undefined
 
 onMounted(load)
 watch(collectionId, load)

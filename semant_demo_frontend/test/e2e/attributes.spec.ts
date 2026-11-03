@@ -292,6 +292,14 @@ test('tags that are loading, failed or deleted are never shown as something else
   await createAttribute(request, { name: 'Mood', cardinality: 'single', tag_ids: [tagId], values: [{ label: 'calm' }] })
   await createAttribute(request, { name: 'Speaker', tag_ids: [fixture.tag('person').id], values: [{ label: 'politician' }] })
   expect((await request.delete(`/api/tags/${tagId}`, { headers })).ok()).toBe(true)
+  // Deleting a tag removes it from the attributes (#508); an id can still be left over (e.g. when
+  // that last step failed), which the first list answer stands in for here.
+  expect(await listed(request, 'Mood')).toMatchObject({ all_tags: false, tag_ids: [] })
+  await page.route(`**${base}/attributes`, async route => {
+    const answer = await route.fetch()
+    const body = (await answer.json() as Listed[]).map(a => a.name === 'Mood' ? { ...a, tag_ids: [tagId] } : a)
+    await route.fulfill({ response: answer, json: body })
+  }, { times: 1 })
   await useViewport(page, 'wide')
 
   // While the tags fail to load, no attribute is said to apply to deleted tags only.
@@ -330,6 +338,43 @@ test('tags that are loading, failed or deleted are never shown as something else
   await page.goto(`/#/collections/${chronicles.id}/tags`)
   const row = (name: string) => page.locator('tbody tr').filter({ has: page.getByText(name, { exact: true }) })
   await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['Speaker'])
+})
+
+test('deleting a tag removes it from the attributes that select it', async ({ page, request }) => {
+  const headers = await headersOf(request)
+  const newTag = async (name: string, shorthand: string) => {
+    const created = await request.post('/api/tags', {
+      headers,
+      params: { collection_id: chronicles.id },
+      data: { name, shorthand, color: '#888888', pictogram: 'mic', definition: `${name}.` }
+    })
+    expect(created.ok()).toBe(true)
+    return (await created.json() as { id: string }).id
+  }
+  const interview = await newTag('Interview', 'INT')
+  const letter = await newTag('Letter', 'LET')
+  await createAttribute(request, { name: 'Role', cardinality: 'single', tag_ids: [interview, letter], values: [{ label: 'host' }] })
+  await createAttribute(request, { name: 'Speaker type', cardinality: 'single', tag_ids: [interview], values: [{ label: 'guest' }] })
+  await createAttribute(request, { name: 'Certainty', cardinality: 'single', all_tags: true, values: [{ label: 'sure' }] })
+  await useViewport(page, 'wide')
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${chronicles.id}/tags`)
+  const row = (name: string) => page.locator('tbody tr').filter({ has: page.getByText(name, { exact: true }) })
+  await expect(row('Interview').getByTestId('tag-attribute')).toHaveText(['Role', 'Speaker type', 'CertaintyAll tags'])
+
+  await row('Interview').getByRole('button', { name: 'Remove tag from collection' }).click()
+  await dialog(page).getByRole('button', { name: 'Delete' }).click()
+  await expect(row('Interview')).toHaveCount(0)
+
+  // Role keeps its other tag; Speaker type applies to no tag, never to all tags; Certainty is unchanged.
+  await expect(row('Letter').getByTestId('tag-attribute')).toHaveText(['Role', 'CertaintyAll tags'])
+  expect(await listed(request, 'Role')).toMatchObject({ all_tags: false, tag_ids: [letter] })
+  expect(await listed(request, 'Speaker type')).toMatchObject({ all_tags: false, tag_ids: [] })
+  expect(await listed(request, 'Certainty')).toMatchObject({ all_tags: true, tag_ids: [] })
+  await openAttributes(page)
+  await expect(card(page, 'Role').getByTestId('attribute-tags')).toHaveText('Letter')
+  await expect(card(page, 'Speaker type').getByTestId('attribute-tags')).toHaveText('No tags')
+  await expect(card(page, 'Certainty').getByTestId('attribute-tags')).toHaveText('All tags')
 })
 
 test('a taken name is shown at the Name field, which gets the focus however the form is scrolled', async ({ page, request }) => {

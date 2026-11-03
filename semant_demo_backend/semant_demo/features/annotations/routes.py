@@ -10,7 +10,8 @@ from semant_demo.features.annotations.schemas import (
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
 from semant_demo.features.annotations.service import AnnotationStore
-from semant_demo.routes.dependencies import get_annotation_store
+from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.routes.dependencies import get_annotation_store, get_attribute_definitions
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
@@ -52,13 +53,16 @@ async def get_tag(tag_uuid: str,
 @tag_router.delete("/api/tags/{tag_uuid}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tag(tag_uuid: str,
                      store: AnnotationStore = Depends(get_annotation_store),
+                     attributes: AttributeRepository = Depends(get_attribute_definitions),
                      current_user: User = Depends(current_active_user)) -> None:
     """
-    Deletes the tag with its annotations. If a step fails, the request fails (500) with
-    the completed steps in the body; completed deletions are kept and deleting again
-    continues.
+    Deletes the tag with its annotations, then removes it from the collection attributes that
+    list it (an attribute that loses its last tag applies to no tag, never to all tags). If a
+    step fails, the request fails (500) with the completed steps in the body; completed
+    deletions are kept and deleting again continues. When only the last step
+    (``remove_from_attributes``) fails, the tag is deleted and stays listed on those attributes.
     """
-    await service.delete_tag(store, current_user, tag_uuid)
+    await service.delete_tag(store, current_user, tag_uuid, attributes)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

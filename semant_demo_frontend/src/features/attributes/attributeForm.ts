@@ -64,9 +64,9 @@ export function tagNames (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): st
 export type TagsState = 'loading' | 'failed' | 'ready'
 
 /** What is known about the tags an attribute applies to. All tags is explicit (`allTags`); with
- * selected tags, an empty list is no tag at all (#522). Ids of deleted tags (their ids stay on the
- * attribute, #508) are counted, not named; while the tags are unknown, the selected ones cannot
- * be named. */
+ * selected tags, an empty list is no tag at all (#522). Ids of deleted tags (deleting a tag removes
+ * its id, #508, but one may be left over, e.g. when that last step failed) are counted, not named;
+ * while the tags are unknown, the selected ones cannot be named. */
 export type TagScope =
   | { kind: 'all' }
   | { kind: 'none' }

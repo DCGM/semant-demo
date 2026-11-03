@@ -1207,7 +1207,7 @@ export interface DefaultApiInterface {
     deleteTagApiTagsTagUuidDeleteRequestOpts(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes the tag with its annotations, then removes it from the collection attributes that list it (an attribute that loses its last tag applies to no tag, never to all tags). If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues. When only the last step (``remove_from_attributes``) fails, the tag is deleted and stays listed on those attributes.
      * @summary Delete Tag
      * @param {string} tagUuid 
      * @param {*} [options] Override http request option.
@@ -1217,7 +1217,7 @@ export interface DefaultApiInterface {
     deleteTagApiTagsTagUuidDeleteRaw(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes the tag with its annotations, then removes it from the collection attributes that list it (an attribute that loses its last tag applies to no tag, never to all tags). If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues. When only the last step (``remove_from_attributes``) fails, the tag is deleted and stays listed on those attributes.
      * Delete Tag
      */
     deleteTagApiTagsTagUuidDelete(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -4022,7 +4022,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes the tag with its annotations, then removes it from the collection attributes that list it (an attribute that loses its last tag applies to no tag, never to all tags). If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues. When only the last step (``remove_from_attributes``) fails, the tag is deleted and stays listed on those attributes.
      * Delete Tag
      */
     async deleteTagApiTagsTagUuidDeleteRaw(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4033,7 +4033,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes the tag with its annotations. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes the tag with its annotations, then removes it from the collection attributes that list it (an attribute that loses its last tag applies to no tag, never to all tags). If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues. When only the last step (``remove_from_attributes``) fails, the tag is deleted and stays listed on those attributes.
      * Delete Tag
      */
     async deleteTagApiTagsTagUuidDelete(requestParameters: DeleteTagApiTagsTagUuidDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
