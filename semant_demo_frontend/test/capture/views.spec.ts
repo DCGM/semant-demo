@@ -40,11 +40,51 @@ test('search results', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-results')
 })
 
+test('recent searches', async ({ page }, testInfo) => {
+  // #558: the dropdown under the query field, on an empty page and over results.
+  await ensureLoggedIn(page, 'owner')
+  await search(page, 'Brno')
+  const input = page.getByRole('combobox', { name: 'Search query' })
+  await input.fill('Lhota')
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  await page.getByTestId('search-vector-select').click()
+  await page.getByRole('option', { name: /Fake small/ }).click()
+  await expect(page.locator('.q-menu')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  await input.press('Enter')
+  await expect(page.locator('#result-1')).toBeVisible()
+  await search(page, 'Kronika obce Lhota a jejích obyvatel v dlouhém dotazu, který se nevejde na jeden řádek')
+
+  await page.reload() // an empty page without the sign-in notification
+  await closePhoneNavigation(page)
+  await input.click()
+  await expect(page.getByTestId('search-history-entry')).toHaveCount(3)
+  await save(page, testInfo, 'search-history') // no results yet, so no right sidebar
+
+  await search(page, 'Brno')
+  await input.fill('lho')
+  await expect(page.getByTestId('search-history-entry')).toHaveCount(2)
+  await input.press('ArrowDown')
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'search-history-filtered')
+
+  // A history saved by a newer version of the application: the list asks for a reload.
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(k => k.startsWith('semant.searchHistory.search.')) as string
+    localStorage.setItem(key, JSON.stringify({ ...JSON.parse(localStorage.getItem(key) ?? '{}'), criteriaVersion: 99 }))
+  })
+  await page.reload()
+  await closePhoneNavigation(page)
+  await input.click()
+  await expect(page.getByTestId('search-history-reload')).toBeVisible()
+  await save(page, testInfo, 'search-history-newer-version')
+})
+
 test('search vector selection', async ({ page }, testInfo) => {
   // The browser-test profile configures two search vectors (#217).
   await page.goto('/#/search')
   await closePhoneNavigation(page)
-  await page.getByRole('textbox').first().fill('Lhota')
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Lhota')
   await page.getByRole('button', { name: 'Search filters' }).click()
   const select = page.getByTestId('search-vector-select')
   await select.click()
@@ -53,7 +93,7 @@ test('search vector selection', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-vector-options')
   await page.getByRole('option', { name: /Fake small/ }).click()
   await expect(page.locator('.q-menu')).toHaveCount(0)
-  await page.getByRole('textbox').first().press('Enter')
+  await page.getByRole('combobox', { name: 'Search query' }).press('Enter')
   await expect(page.locator('#result-1')).toBeVisible()
   await expect(page.locator('.active-filter-chip', { hasText: 'Embedding: Fake small' })).toBeVisible()
   await save(page, testInfo, 'search-vector-selected')

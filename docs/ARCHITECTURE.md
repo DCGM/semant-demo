@@ -115,7 +115,10 @@ semant_demo_backend/semant_demo/
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks),
                           chunk_year, chunk_summary_schema and chunk_summaries (documents' chunk-value
-                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374)
+                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
+                          page_order (read-only export of documents' ordered page lists from the Kramerius mirror, #571),
+                          page_layout (offline PAGE XML -> page layout files and chunk-start anchors, #540;
+                          [PAGE_LAYOUT.md](PAGE_LAYOUT.md))
 ```
 
 ```mermaid
@@ -676,6 +679,17 @@ each feature owns its pages, components, Pinia stores, composables and repositor
 over the generated client. `app/` is the application shell (main layout, right sidebar, session
 scope, about and not-found pages), `shared/` holds code without a feature owner (`api/`,
 `ui/` buttons and error display, notifications, write outcomes, pagination, color picker,
+`searchHistory/`: recent searches kept in the browser for a search input (#558; list,
+storage and validation in `history.ts`, the input's dropdown state and keys in
+`useSearchHistory`, the list in `SearchHistoryDropdown`; one `localStorage` key per
+signed-in user and one for signed-out use, never merged, kept after sign-out, at most 50
+entries of which 10 are shown, the query saved as typed and not saved over 1000 characters,
+stored entries validated when read and shown as plain text; the module never reads the
+criteria: a search input's `HistoryCriteria` validates them and compares them by key; the
+stored list names its own format (`version`) and its criteria's (`criteriaVersion`, the
+input's), and every write stores the current ones; older criteria are converted or left out
+by the input; a list of a newer format is neither read nor written over, and the dropdown asks
+the user to reload the page or, when that does not help (e.g. after a rollback), to clear it),
 `visualization/VegaChart.vue`: draws a Vega-Lite or Vega specification with vega-embed,
 loaded on demand, fitted to its container width and disposed of on unmount; each redraw is
 made in a detached element and only the newest is shown, so overlapping redraws cannot
@@ -684,7 +698,7 @@ and `router/` the routes and sign-in guard.
 
 | Feature | Contents |
 |---|---|
-| `search` | search page, result cards, classifications, summary panel, request/summary state |
+| `search` | search page, result cards, classifications, summary panel, request/summary state, filter labels (`searchFilters.ts`), what the recent-search history keeps of a search and how it is restored (`searchHistoryCriteria.ts`: a snapshot of the `SearchRequest` fields that decide the results — `type`, `vector`, `userCollectionId` and `filters` as `SearchFilterInput` — not generated titles/summaries, criteria format `SEARCH_CRITERIA_VERSION`; criteria no longer available are left out and named). The page saves a search once its results arrive (a failed one is not saved) and runs an entry only once the filters, search vectors and the user's collections are loaded; while loading, or when one failed, it says so and runs nothing. Clear history is refused with a warning while a search runs (that search would be saved into the cleared history) |
 | `rag` | RAG chat page, the conversation's sources panel and its source registry/selection (`useChatSources`) |
 | `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
 | `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel, links to the original digitized document (`originalSource.ts`, `OriginalSourceLink`; used by search results, their context, RAG sources and the document view) |
@@ -716,7 +730,7 @@ behavior (AI runs, span discussion, annotation editing, chunk loading, dialogs).
 
 | Route | Page | Description |
 |---|---|---|
-| `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context |
+| `/search` | `search/SearchPage` | Main search interface with filters, results, summaries, a result in its document context; recent searches under the query field (opened by a click, Tab or typing, not by the page's autofocus) |
 | `/rag` | `rag/RagPage` | Multi-turn RAG chat with source citations (`[S1]`...); the conversation's sources and one of them in its document in the right sidebar |
 | `/corpus` | `analytics/CorpusOverviewPage` | Corpus overview: documents by publication year (zoomable timeline), library and language, with tables and unknown/unavailable values, filtered by year, title, library and language (no sign-in) |
 | `/collections` | `user_collections/UserCollectionsPage` | List user collections: tiles (size slider, 5 snapped sizes) or table (sortable, resizable columns via `shared/useResizableColumns`); My / Shared with me / All by `isSharedWithMe`; view, filter, tile size and column widths remembered in the browser (#479) |

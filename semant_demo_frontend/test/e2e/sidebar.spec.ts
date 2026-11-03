@@ -10,7 +10,7 @@ test('search summary in the sidebar works on the selected results only', async (
   const sidebarToggle = page.getByRole('button', { name: 'Toggle sidebar' })
   await expect(sidebarToggle).toHaveCount(0) // no panel before there are results
 
-  await page.getByRole('textbox').first().fill('Lhota')
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Lhota')
   await page.keyboard.press('Enter')
   await expect(page.locator('#result-2')).toBeVisible()
   await expect(sidebarToggle).toBeVisible()
@@ -26,7 +26,7 @@ test('search summary in the sidebar works on the selected results only', async (
   await expect(page.locator('#result-2')).toHaveClass(/citation-target-highlight/)
 
   // A new search is a new context: the old summary does not stay next to its results.
-  await page.getByRole('textbox').first().fill('Brno')
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Brno')
   await page.keyboard.press('Enter')
   await expect(summary).toHaveCount(0)
 })
