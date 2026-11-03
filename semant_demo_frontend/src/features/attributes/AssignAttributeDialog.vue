@@ -266,7 +266,7 @@ const scopeText = computed(() => {
   const ids = a.tagIds ?? []
   if (!ids.length) return 'no tag'
   const names = tagNames(a, props.tags)
-  // Tags not loaded (yet), or deleted (#508): counted, never shown as "no tag".
+  // Tags not loaded (yet), or deleted ones left over (#508): counted, never shown as "no tag".
   return names.length === ids.length ? names.join(', ') : plural(ids.length, 'selected tag')
 })
 

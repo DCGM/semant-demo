@@ -165,9 +165,9 @@ import { computed, onMounted, ref, useSlots } from 'vue'
 import { QTableColumn } from 'quasar'
 import { useRoute } from 'vue-router'
 
-import useTagsDialog from './useTagsDialog'
+import { useTagEditing } from './useTagEditing'
 import { useTagsStore } from './tagsStore'
-import { PostTag, Tag, PatchTag } from 'src/generated/api'
+import { Tag } from 'src/generated/api'
 import CreateButton from 'src/shared/ui/CreateButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
@@ -179,13 +179,18 @@ defineSlots<{
   attributes?(props: { tag: Tag }): unknown
 }>()
 
+const emit = defineEmits<{
+  /** Deleting these tags has finished, whether or not every deletion succeeded. */
+  deleted: [tagIds: string[]]
+}>()
+
 const slots = useSlots()
 const route = useRoute()
 const confirmDelete = useConfirmDelete()
 const tagsStore = useTagsStore()
 const { tags, loading } = storeToRefs(tagsStore)
-const { fetchTagsByCollection, createTag, deleteTag, deleteManyTags, updateTag } = tagsStore
-const { openTagsDialog } = useTagsDialog()
+const { fetchTagsByCollection, deleteTag, deleteManyTags } = tagsStore
+const tagEditing = useTagEditing(() => collectionId.value)
 const filter = ref<string>('')
 const selected = ref<Tag[]>([])
 const initialPagination = {
@@ -213,13 +218,7 @@ const collectionId = computed<string>(() => {
   return value
 })
 
-const handleCreate = () => {
-  openTagsDialog({
-    dialogType: 'CREATE'
-  }).onOk(async (tagData: PostTag) => {
-    await createTag(collectionId.value, tagData)
-  })
-}
+const handleCreate = () => tagEditing.createTag()
 
 const handleDelete = async (tag: Tag) => {
   confirmDelete({
@@ -227,18 +226,13 @@ const handleDelete = async (tag: Tag) => {
     message: `Delete the tag "${tag.name}"?`,
     alsoDeletes: annotationsOfTags(collectionId.value, [tag.id])
   }).onOk(async () => {
-    await deleteTag(tag.id)
+    // Unless the deletion completed, the list is reloaded to show the backend's state.
+    if (await deleteTag(tag.id) !== 'deleted') await fetchTagsByCollection(collectionId.value)
+    emit('deleted', [tag.id])
   })
 }
 
-const handleEdit = (tag: Tag) => {
-  openTagsDialog({
-    dialogType: 'EDIT',
-    tag
-  }).onOk(async (updatedData: PatchTag) => {
-    await updateTag(tag.id, updatedData)
-  })
-}
+const handleEdit = (tag: Tag) => tagEditing.editTag(tag)
 
 const handleBulkDelete = () => {
   if (selected.value.length === 0) return
@@ -254,8 +248,9 @@ const handleBulkDelete = () => {
     // Resolves after every deletion has finished; only acknowledged ones are removed and
     // failures are reported by the store. Reload afterwards (not before all deletions are
     // done) so the list shows the backend's state.
-    const { failed } = await deleteManyTags(ids)
-    if (failed.length) await fetchTagsByCollection(collectionId.value)
+    const { failed, attributesKept } = await deleteManyTags(ids)
+    if (failed.length || attributesKept.length) await fetchTagsByCollection(collectionId.value)
+    emit('deleted', ids)
   })
 }
 

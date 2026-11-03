@@ -91,6 +91,14 @@ class FakeTags(Recorder):
         await self._write("delete_tag", tag_id, cid)
 
 
+class FakeTagReferences(Recorder):
+    """The attributes listing tags (#508): records each removal of a deleted tag."""
+
+    async def remove_tag(self, cid, tag_id):
+        await self._write("remove_tag_from_attributes", cid, tag_id)
+        return []
+
+
 class FakeSpans(Recorder):
     def __init__(self, writes):
         super().__init__(writes)
@@ -239,7 +247,7 @@ NEW_TAG = PostTag(name="Osoba", shorthand="OS", color="#000", pictogram="p", def
 WRITES = [
     lambda s, u: service.create_tag(s, u, COLLECTION, NEW_TAG),
     lambda s, u: service.update_tag(s, u, TAG, PatchTag(name="x")),
-    lambda s, u: service.delete_tag(s, u, TAG),
+    lambda s, u: service.delete_tag(s, u, TAG, FakeTagReferences(s.tags.writes)),
     lambda s, u: service.create_span(s, u, post_span()),
     lambda s, u: service.update_span(s, u, COLLECTION, SPAN_A, PatchSpan(type=SpanType.pos)),
     lambda s, u: service.bulk_update_spans(s, u, COLLECTION, [SPAN_A, SPAN_B], PatchSpan(type=SpanType.neg)),
@@ -370,6 +378,37 @@ async def test_timed_out_cleanup_makes_the_failure_uncertain(store):
 
     assert (raised.value.step, raised.value.uncertain) == ("delete_unlinked_tag", True)
 
+
+
+# ── Tag deletion (#508) ───────────────────────────────────────────────────
+
+async def test_deleted_tag_is_removed_from_attributes_after_the_tag_is_gone(store, writes):
+    await service.delete_tag(store, OWNER, TAG, FakeTagReferences(writes))
+
+    assert writes == [("delete_tag", TAG, COLLECTION), ("remove_tag_from_attributes", COLLECTION, TAG)]
+
+
+async def test_a_failed_tag_cascade_leaves_the_attributes_alone(store, writes):
+    # The tag still exists after a failed cascade, so its attributes must keep listing it.
+    store.tags.fail["delete_tag"] = IncompleteWriteError("stopped", step="delete_span")
+
+    with pytest.raises(IncompleteWriteError) as raised:
+        await service.delete_tag(store, OWNER, TAG, FakeTagReferences(writes))
+
+    assert raised.value.step == "delete_span"
+    assert [w[0] for w in writes] == ["delete_tag"]
+
+
+async def test_a_failed_removal_from_attributes_reports_the_deleted_tag(store, writes):
+    references = FakeTagReferences(writes)
+    references.fail["remove_tag_from_attributes"] = RuntimeError("sql down")
+
+    with pytest.raises(IncompleteWriteError) as raised:
+        await service.delete_tag(store, OWNER, TAG, references)
+
+    assert (raised.value.step, raised.value.completed, raised.value.uncertain) == (
+        "remove_from_attributes", {"delete_tag": 1}, False)
+    assert "The tag was deleted" in raised.value.detail and "deleted tag" in raised.value.detail
 
 # ── Span creation ─────────────────────────────────────────────────────────
 

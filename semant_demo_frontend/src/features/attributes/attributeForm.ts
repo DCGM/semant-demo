@@ -64,9 +64,9 @@ export function tagNames (attribute: Pick<Attribute, 'tagIds'>, tags: Tag[]): st
 export type TagsState = 'loading' | 'failed' | 'ready'
 
 /** What is known about the tags an attribute applies to. All tags is explicit (`allTags`); with
- * selected tags, an empty list is no tag at all (#522). Ids of deleted tags (their ids stay on the
- * attribute, #508) are counted, not named; while the tags are unknown, the selected ones cannot
- * be named. */
+ * selected tags, an empty list is no tag at all (#522). Ids of deleted tags (deleting a tag removes
+ * its id, #508, but one may be left over, e.g. when that last step failed) are counted, not named;
+ * while the tags are unknown, the selected ones cannot be named. */
 export type TagScope =
   | { kind: 'all' }
   | { kind: 'none' }
@@ -133,4 +133,23 @@ export function isTaken (e: unknown, prefix: string): boolean {
 /** Text entries trimmed, without empty ones. */
 export function cleanList (items: string[]): string[] {
   return items.map(item => item.trim()).filter(item => item.length > 0)
+}
+
+/** Whether the attribute applies to the tag now; before a tag exists (`null`), only an All tags
+ * attribute does. */
+export const appliesToTag = (attribute: Pick<Attribute, 'allTags' | 'tagIds'>, tagId: string | null) =>
+  !!attribute.allTags || (!!tagId && !!attribute.tagIds?.includes(tagId))
+
+/** A change of one Selected tags attribute that Create/Edit Tag writes (#516): add the tag or
+ * take it out. */
+export type TagApplicabilityChange = { attribute: Attribute, add: boolean }
+
+/** The changes that make the current, Selected tags attributes apply to the tag as `wanted`
+ * says, against how they apply now. All tags and retired attributes are never changed from the
+ * tag side; an attribute not in `wanted` is left as it is. */
+export function tagApplicabilityChanges (attributes: Attribute[], tagId: string | null,
+  wanted: Record<string, boolean>): TagApplicabilityChange[] {
+  return attributes
+    .filter(a => !a.retired && !a.allTags && a.id in wanted && wanted[a.id] !== appliesToTag(a, tagId))
+    .map(attribute => ({ attribute, add: !!wanted[attribute.id] }))
 }

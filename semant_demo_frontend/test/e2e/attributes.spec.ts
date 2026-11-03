@@ -7,7 +7,7 @@ import { apiToken, deleteAddedAttributes, deleteAddedTags, ensureLoggedIn, fixtu
 // each saved at once, Unknown / Not applicable are fixed and only retired / restored, the UI
 // offers Retire / Restore and never Delete, search highlights matches and says what Show
 // retired hides, narrowing the tags of a used attribute is refused with the count, and the
-// Tags part shows each tag's attributes.
+// Tags part shows each tag's attributes, which Create/Edit Tag switches for its tag (#516).
 
 const chronicles = fixture.collection('chronicles')
 const base = `/api/user_collections/${chronicles.id}`
@@ -292,6 +292,14 @@ test('tags that are loading, failed or deleted are never shown as something else
   await createAttribute(request, { name: 'Mood', cardinality: 'single', tag_ids: [tagId], values: [{ label: 'calm' }] })
   await createAttribute(request, { name: 'Speaker', tag_ids: [fixture.tag('person').id], values: [{ label: 'politician' }] })
   expect((await request.delete(`/api/tags/${tagId}`, { headers })).ok()).toBe(true)
+  // Deleting a tag removes it from the attributes (#508); an id can still be left over (e.g. when
+  // that last step failed), which the first list answer stands in for here.
+  expect(await listed(request, 'Mood')).toMatchObject({ all_tags: false, tag_ids: [] })
+  await page.route(`**${base}/attributes`, async route => {
+    const answer = await route.fetch()
+    const body = (await answer.json() as Listed[]).map(a => a.name === 'Mood' ? { ...a, tag_ids: [tagId] } : a)
+    await route.fulfill({ response: answer, json: body })
+  }, { times: 1 })
   await useViewport(page, 'wide')
 
   // While the tags fail to load, no attribute is said to apply to deleted tags only.
@@ -332,6 +340,43 @@ test('tags that are loading, failed or deleted are never shown as something else
   await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['Speaker'])
 })
 
+test('deleting a tag removes it from the attributes that select it', async ({ page, request }) => {
+  const headers = await headersOf(request)
+  const newTag = async (name: string, shorthand: string) => {
+    const created = await request.post('/api/tags', {
+      headers,
+      params: { collection_id: chronicles.id },
+      data: { name, shorthand, color: '#888888', pictogram: 'mic', definition: `${name}.` }
+    })
+    expect(created.ok()).toBe(true)
+    return (await created.json() as { id: string }).id
+  }
+  const interview = await newTag('Interview', 'INT')
+  const letter = await newTag('Letter', 'LET')
+  await createAttribute(request, { name: 'Role', cardinality: 'single', tag_ids: [interview, letter], values: [{ label: 'host' }] })
+  await createAttribute(request, { name: 'Speaker type', cardinality: 'single', tag_ids: [interview], values: [{ label: 'guest' }] })
+  await createAttribute(request, { name: 'Certainty', cardinality: 'single', all_tags: true, values: [{ label: 'sure' }] })
+  await useViewport(page, 'wide')
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${chronicles.id}/tags`)
+  const row = (name: string) => page.locator('tbody tr').filter({ has: page.getByText(name, { exact: true }) })
+  await expect(row('Interview').getByTestId('tag-attribute')).toHaveText(['Role', 'Speaker type', 'CertaintyAll tags'])
+
+  await row('Interview').getByRole('button', { name: 'Remove tag from collection' }).click()
+  await dialog(page).getByRole('button', { name: 'Delete' }).click()
+  await expect(row('Interview')).toHaveCount(0)
+
+  // Role keeps its other tag; Speaker type applies to no tag, never to all tags; Certainty is unchanged.
+  await expect(row('Letter').getByTestId('tag-attribute')).toHaveText(['Role', 'CertaintyAll tags'])
+  expect(await listed(request, 'Role')).toMatchObject({ all_tags: false, tag_ids: [letter] })
+  expect(await listed(request, 'Speaker type')).toMatchObject({ all_tags: false, tag_ids: [] })
+  expect(await listed(request, 'Certainty')).toMatchObject({ all_tags: true, tag_ids: [] })
+  await openAttributes(page)
+  await expect(card(page, 'Role').getByTestId('attribute-tags')).toHaveText('Letter')
+  await expect(card(page, 'Speaker type').getByTestId('attribute-tags')).toHaveText('No tags')
+  await expect(card(page, 'Certainty').getByTestId('attribute-tags')).toHaveText('All tags')
+})
+
 test('a taken name is shown at the Name field, which gets the focus however the form is scrolled', async ({ page, request }) => {
   await createAttribute(request, { name: 'Role', cardinality: 'single', all_tags: true, values: [{ label: 'statesman' }] })
   await useViewport(page, 'phone')
@@ -352,3 +397,39 @@ test('a taken name is shown at the Name field, which gets the focus however the 
   await expect(dialog(page)).toHaveCount(0)
   await expect(card(page, 'Role 2')).toBeVisible()
 })
+
+for (const viewport of ['wide', 'phone'] as const) {
+  test(`Create and Edit Tag switch Selected tags attributes for the tag only (${viewport})`, async ({ page, request }) => {
+    // #516: All tags attributes are on and locked; removing the last tag leaves no tag.
+    await createAttribute(request, { name: 'Mood', tag_ids: [fixture.tag('person').id], values: [{ label: 'calm' }] })
+    await createAttribute(request, { name: 'Tone', tag_ids: [], values: [{ label: 'formal' }] })
+    await createAttribute(request, { name: 'Topic', all_tags: true, values: [{ label: 'elections' }] })
+    await useViewport(page, viewport)
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${chronicles.id}/tags`)
+    const row = (tag: string) => page.locator('tbody tr').filter({ has: page.getByText(tag, { exact: true }) })
+    const attributeToggle = (name: string) =>
+      dialog(page).getByTestId('tag-applicable-attribute').filter({ hasText: name }).getByRole('switch')
+
+    await page.getByRole('button', { name: 'Create' }).first().click()
+    await dialog(page).getByLabel('Tag Name').fill('Speaker')
+    await dialog(page).getByLabel('Tag Shorthand').fill('SPK')
+    await expect(attributeToggle('Topic')).toHaveAttribute('aria-checked', 'true')
+    await expect(attributeToggle('Topic')).toHaveAttribute('aria-disabled', 'true')
+    await expect(attributeToggle('Mood')).toHaveAttribute('aria-checked', 'false')
+    await attributeToggle('Tone').click()
+    await dialog(page).getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog(page)).toHaveCount(0)
+    await expect(row('Speaker').getByTestId('tag-attribute')).toHaveText(['Tone', 'TopicAll tags'])
+    expect((await listed(request, 'Tone')).tag_ids).toHaveLength(1)
+
+    await row(fixture.tag('person').name).getByRole('button', { name: 'Edit tag' }).click()
+    await expect(attributeToggle('Mood')).toHaveAttribute('aria-checked', 'true')
+    await attributeToggle('Mood').click()
+    await dialog(page).getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(dialog(page)).toHaveCount(0)
+    await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['TopicAll tags'])
+    const mood = await listed(request, 'Mood')
+    expect([mood.all_tags, mood.tag_ids]).toEqual([false, []])
+  })
+}

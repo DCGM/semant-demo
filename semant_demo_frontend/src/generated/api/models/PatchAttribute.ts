@@ -45,6 +45,18 @@ export interface PatchAttribute {
     tagIds?: Array<string> | null;
     /**
      * 
+     * @type {Array<string>}
+     * @memberof PatchAttribute
+     */
+    addTagIds?: Array<string> | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof PatchAttribute
+     */
+    removeTagIds?: Array<string> | null;
+    /**
+     * 
      * @type {boolean}
      * @memberof PatchAttribute
      */
@@ -72,6 +84,8 @@ export function PatchAttributeFromJSONTyped(json: any, ignoreDiscriminator: bool
         'description': json['description'] == null ? undefined : json['description'],
         'allTags': json['all_tags'] == null ? undefined : json['all_tags'],
         'tagIds': json['tag_ids'] == null ? undefined : json['tag_ids'],
+        'addTagIds': json['add_tag_ids'] == null ? undefined : json['add_tag_ids'],
+        'removeTagIds': json['remove_tag_ids'] == null ? undefined : json['remove_tag_ids'],
         'retired': json['retired'] == null ? undefined : json['retired'],
     };
 }
@@ -91,6 +105,8 @@ export function PatchAttributeToJSONTyped(value?: PatchAttribute | null, ignoreD
         'description': value['description'],
         'all_tags': value['allTags'],
         'tag_ids': value['tagIds'],
+        'add_tag_ids': value['addTagIds'],
+        'remove_tag_ids': value['removeTagIds'],
         'retired': value['retired'],
     };
 }
