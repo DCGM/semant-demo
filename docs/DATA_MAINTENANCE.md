@@ -105,6 +105,20 @@ command only reads the mirror and never prints the password.
 Known metadata limitations, including mirror rows without MODS metadata, are tracked
 on [#259](https://github.com/DCGM/semant-demo/issues/259).
 
+## Page layout files and anchors (`page_layout`, #540)
+
+Converts PERO PAGE XML (`<document>.page_xml.zip` or `<document>/` folders) into one layout
+file per page and a `layoutStart` anchor per chunk; the format and the matching rules are in
+[PAGE_LAYOUT.md](PAGE_LAYOUT.md). It reads and writes only files: no database or network
+access, and it writes nothing to any store. Give it the page lists from the `page_order`
+export (#571) with `--page-order`; without them it uses the file names' order, which is
+wrong for many documents, and says so. `--chunks` takes the chunks to anchor (stored
+chunks, exported by #542); without it the regenerated chunks are anchored, which checks the
+converter against itself. The chunking parameters (`--line-confidence`, `--min-chunk-chars`,
+`--max-chunk-chars`) default to the legacy 0.6/768/1152 and are recorded in every output.
+The output directory must be empty unless `--overwrite`. The exit code is 1 when any
+document failed or any non-empty chunk lacks an exact anchor; read `report.json`.
+
 ## Document year on chunks (`chunk_year`, #153)
 
 The search filters years on `Chunks.yearIssued`, a copy of the referenced document's

@@ -115,7 +115,9 @@ semant_demo_backend/semant_demo/
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks),
                           chunk_year, chunk_summary_schema and chunk_summaries (documents' chunk-value
-                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374)
+                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
+                          page_layout (offline PAGE XML -> page layout files and chunk-start anchors, #540;
+                          [PAGE_LAYOUT.md](PAGE_LAYOUT.md))
 ```
 
 ```mermaid
