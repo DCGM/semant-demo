@@ -67,7 +67,7 @@ build() {
   echo "e2e-dev: building the frontend into semant_demo_frontend/$DIST (BACKEND_URL :$PORT)" >&2
   local stamp
   stamp="$(frontend_stamp)"
-  (cd "$FRONTEND" && QUASAR_DIST_DIR="$DIST" BACKEND_URL="http://127.0.0.1:${PORT}" npx quasar build >"$STATE/build.log" 2>&1) \
+  (cd "$FRONTEND" && QUASAR_DIST_DIR="$DIST" SEMANT_PREVIEW_ROUTES=1 BACKEND_URL="http://127.0.0.1:${PORT}" npx quasar build >"$STATE/build.log" 2>&1) \
     || { tail -n 40 "$STATE/build.log" >&2; die "frontend build failed (full log: .e2e-dev/build.log)"; }
   # The fingerprint from before the build: an edit during the build counts as stale.
   echo "$stamp" >"$STATE/frontend.stamp"

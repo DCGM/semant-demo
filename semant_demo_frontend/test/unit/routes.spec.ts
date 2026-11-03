@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { createMemoryHistory, createRouter, type RouteComponent, type RouteRecordRaw } from 'vue-router'
 
 import routes from 'src/router/routes'
+import { previewRoutes } from 'src/router/previewRoutes'
 
 function makeRouter () {
   return createRouter({ history: createMemoryHistory(), routes })
@@ -69,4 +70,16 @@ describe('routes', () => {
       expect(module.default).toBeTruthy()
     }
   })
+})
+
+describe('preview routes', () => {
+  it('exist only in builds that ask for them, and load their page', async () => {
+    expect(previewRoutes(false)).toEqual([])
+    // This test build does not set SEMANT_PREVIEW_ROUTES: no preview page in the routes.
+    expect(routes[0].children?.some(r => String(r.path).startsWith('/preview'))).toBe(false)
+    const [scan] = previewRoutes(true)
+    expect(scan.path).toBe('/preview/scan/:documentId')
+    const module = await (scan.component as () => Promise<{ default?: unknown }>)()
+    expect(module.default).toBeTruthy()
+  }, 60_000)
 })

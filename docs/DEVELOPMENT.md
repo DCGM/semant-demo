@@ -41,6 +41,16 @@ annotations with their derived text, positions and vectors (#328), chunk tag ref
 search classifications. Search for e.g. `Jan Novák`; open *Kroniky a dopisy* to see the
 annotated Document view. This small corpus is for checking workflows, not search quality.
 
+**Page scans.** The backend also serves synthetic page scans and layout files
+(`tests/page_fixtures.py`, #543) from `.dev-data/page_assets`: *Kronika obce Lhota* has
+covers, text pages with straight, skewed and curved lines, a blank page, a skipped page number,
+a page without layout and one without a scan; *Pražský věstník* has 120 pages; *Dopisy z
+Prahy* has none (text only). They are drawn images, regenerated when the corpus or the
+generator changes, never seeded into the stores. Until the document workspace (#545) uses
+the scan viewer, it has a preview page in the dev server and the browser-test builds
+(`SEMANT_PREVIEW_ROUTES=1`), e.g.
+`http://localhost:9000/#/preview/scan/5e3a0000-0000-4000-8000-00000000d001`.
+
 **More documents.** For the corpus overview (`/corpus`) three documents are too few:
 `make dev-add-documents` adds 2,000 synthetic documents with bibliographic metadata only
 (`tests/synthetic_documents.py`): years 1600–2000, mostly 1850–1940; the libraries `mzk`,
@@ -223,7 +233,8 @@ They never use the development container, `.dev-data/` or `local_data/`:
   missing or unowned store is an error, never a skip.
 - `make test-e2e` builds the frontend into `semant_demo_frontend/dist/e2e` and starts
   `python -m tests.e2e_server` (from `semant_demo_backend`): the same seeded corpus, a
-  temporary SQLite database with the corpus users, the built frontend on the same origin,
+  temporary SQLite database with the corpus users, the synthetic page scans of
+  `tests/page_fixtures.py` in a temporary `PAGE_ASSETS_DIR`, the built frontend on the same origin,
   and fake embedding/Topicer providers on the next port. The port after that
   (`http://127.0.0.1:8767`, the profile's `ALLOWED_ORIGIN`) serves the same build again, so
   `test/e2e/quota.spec.ts` checks the guest cookie across origins, as in local development

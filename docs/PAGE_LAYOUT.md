@@ -163,3 +163,39 @@ one place where a future access rule, #279, applies):
 Clients use only the URLs of the manifest, so the storage can change behind them.
 `layoutStart` is returned on `DocumentChunk` (document view, passage reads, Search hits,
 page chunks) and `CollectionChunk`; chunks without it are text-only.
+
+## Scan viewer (#543)
+
+`DocumentImagePane` (`semant_demo_frontend/src/features/documents/scan/`) is the scan half of
+the document workspace: one whole page at a time, its OCR lines as an overlay, page
+navigation and a thumbnail strip. It reads the manifest and, for the current page only, the
+layout file (at most 24 parsed layouts are kept; a page left before its layout arrives cancels
+the request and never shows its lines). It knows nothing of the text: line clicks and
+keyboard focus are reported as `{pageId, lineId, offset?}` (the source ids of the page file;
+`offset` is the UTF-16 start of the word clicked, estimated from `wordStarts`), and highlights
+and focus requests come in the same terms. The correspondence with chunks and annotations
+is #544.
+
+- **Geometry** (`pageLayout.ts`): a line is the band from `heights[0]` above to `heights[1]`
+  below its baseline, perpendicular to each baseline segment, so skewed and curved lines are
+  followed. A line without heights takes the page's median. Word starts are used only when
+  their number equals the words of the text by the #463 rule (`\p{L}\p{M}\p{N}\p{Cf}` runs);
+  otherwise the line is used as a whole. A highlight of a text range covers whole
+  (approximate) words, never character positions.
+- **One coordinate system** (`viewport.ts`): the scan and the overlay are drawn in scan
+  pixels inside one element moved by one transform, so they stay aligned under zoom, pan, fit,
+  resize and page changes. A fitted page is fitted again on resize; a zoomed one keeps the
+  point at the viewer's center.
+- **Smart focus** moves the page only when the target is not fully inside the viewer with a
+  24 px margin, by the least distance, and zooms in only when a line is shown under 10 px high
+  (to about 22 px, no further than the line still fits across); it never zooms out.
+- **Keys** while the pane has focus: Up/Down previous/next line, PageUp/PageDown previous/next
+  page, +/− zoom, 0 fit. Tab and Shift+Tab move focus as usual; keys typed into a field
+  (the page field) and modified keys are left alone.
+- **Missing parts**: a document without a manifest is text only; a page without a scan says so;
+  a scan without a layout (or a layout that fails to load, with Retry) is shown without lines.
+
+Until #545 places it in the document view, the pane has a preview page,
+`/#/preview/scan/<document id>?page=<page id>`, built only with `SEMANT_PREVIEW_ROUTES=1`
+(the dev server and the browser-test builds). The browser-test profile and the local
+development backend serve synthetic page fixtures (`tests/page_fixtures.py`).

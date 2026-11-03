@@ -7,6 +7,8 @@ test-owned Weaviate. It
 
 * resets the test store and seeds the fixture corpus (ownership verified first);
 * creates a temporary SQLite database with the corpus users;
+* writes synthetic page scans and layouts of fixture documents (``tests.page_fixtures``)
+  into a temporary page asset store;
 * serves the built frontend from the same origin as the API, and the same build again on
   ``port + 2``, the origin allowed for credentialed cross-origin requests: a browser test
   checks the guest cookie there across origins (local development: frontend :9000, API
@@ -65,6 +67,8 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
         "FEEDBACK_LOG_PATH": str(work_dir / "feedback.log.jsonl"),
         "FEEDBACK_WEBHOOK_URL": "",
         "PRODUCTION": "false",
+        # Synthetic scans and layouts of fixture documents (tests/page_fixtures.py, #543).
+        "PAGE_ASSETS_DIR": str(work_dir / "page_assets"),
     }
 
 
@@ -89,6 +93,8 @@ async def prepare_stores(config, endpoint: StoreEndpoint) -> None:
         await seed_users(engine, corpus)
     finally:
         await engine.dispose()
+    from tests.page_fixtures import write_page_fixtures
+    await asyncio.to_thread(write_page_fixtures, Path(config.PAGE_ASSETS_DIR), corpus)
 
 
 async def serve(port: int, static_dir: Path) -> None:

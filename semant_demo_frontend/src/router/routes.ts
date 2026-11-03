@@ -1,4 +1,5 @@
 import { RouteRecordRaw } from 'vue-router'
+import { previewRoutes } from './previewRoutes'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -116,7 +117,8 @@ const routes: RouteRecordRaw[] = [
         name: 'feedback',
         path: '/feedback',
         component: () => import('src/features/feedback/FeedbackPage.vue')
-      }
+      },
+      ...previewRoutes(process.env.SEMANT_PREVIEW_ROUTES === '1')
     ]
   },
   // Always leave this as last one,

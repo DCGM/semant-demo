@@ -10,7 +10,7 @@
 
 const { configure } = require('quasar/wrappers')
 
-module.exports = configure(function (/* ctx */) {
+module.exports = configure(function (ctx) {
   return {
     eslint: {
       // fix: true,
@@ -72,7 +72,10 @@ module.exports = configure(function (/* ctx */) {
       // analyze: true,
       env: {
         BACKEND_DEV_SERVER: process.env.BACKEND_DEV_SERVER ? process.env.BACKEND_DEV_SERVER : 'http://localhost:8000',
-        BACKEND_URL: process.env.BACKEND_URL ? process.env.BACKEND_URL : 'http://localhost:8000'
+        BACKEND_URL: process.env.BACKEND_URL ? process.env.BACKEND_URL : 'http://localhost:8000',
+        // Preview routes of components not yet part of a product view (src/router/previewRoutes.ts):
+        // in the dev server and the browser-test build, never in a deployment unless set.
+        SEMANT_PREVIEW_ROUTES: process.env.SEMANT_PREVIEW_ROUTES ?? (ctx.dev ? '1' : '')
       }
       // rawDefine: {}
       // ignorePublicFolder: true,

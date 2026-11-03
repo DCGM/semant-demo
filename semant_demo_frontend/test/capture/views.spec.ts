@@ -686,3 +686,23 @@ test('ai allowance used up', async ({ page }, testInfo) => {
   await expect(page.locator('.message-bubble').last()).toContainText('Today\'s AI allowance has no room')
   await save(page, testInfo, 'ai-allowance-used-up')
 })
+
+test('scan viewer', async ({ page }, testInfo) => {
+  // The scan viewer preview (#543) with a selected line, a highlighted page in the strip and
+  // a zoomed page; the synthetic page fixtures of the profile.
+  const chronicle = fixture.document('chronicle')
+  await page.goto(`/#/preview/scan/${chronicle.id}?page=5e3a0000-0000-4000-8000-0000000d1f01`)
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('scan-overlay')).toBeAttached()
+  await page.getByTestId('scan-viewport').focus()
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown')
+  await expect(page.locator('polygon.scan-line--active')).toHaveCount(1)
+  await save(page, testInfo, 'scan-viewer')
+  await page.keyboard.press('+')
+  await page.keyboard.press('+')
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[data-testid="scan-stage"]')
+    return !!el && el.getAnimations().length === 0
+  })
+  await save(page, testInfo, 'scan-viewer-zoomed')
+})
