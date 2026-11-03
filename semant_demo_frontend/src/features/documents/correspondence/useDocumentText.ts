@@ -13,8 +13,18 @@ export type PositionedChunk = DocumentChunk & { order: number }
 const WINDOW_BEFORE = 2
 const WINDOW_AFTER = 4
 const EXTEND = 5
+/** Chunks per page read (the API's maximum), and further reads for a page with more. */
+const PAGE_LIMIT = 50
+const PAGE_FOLLOW_READS = 3
 /** Pages tried from the start for the first text of a document opened without a target. */
 const START_PAGES = 8
+
+/** A page's chunks; `complete` false when more of them may exist than were read. */
+export interface PageRead {
+  chunks: PositionedChunk[]
+  complete: boolean
+  failed: boolean
+}
 
 const positioned = (chunks: DocumentChunk[]): PositionedChunk[] =>
   chunks.filter((c): c is PositionedChunk => typeof c.order === 'number')
@@ -28,7 +38,7 @@ export function useDocumentText (documentId: () => string) {
   const error = ref<string | null>(null)
   /** Incremented when the document changes: an older read is not merged. */
   let generation = 0
-  const pageReads = new Map<number, Promise<PositionedChunk[]>>()
+  const pageReads = new Map<number, Promise<PageRead>>()
 
   function reset () {
     generation++
@@ -80,18 +90,38 @@ export function useDocumentText (documentId: () => string) {
   /**
    * The chunks whose page range includes page `order` (the manifest position), read once per
    * page and merged; their stored page ranges are coarse (one chunk too many, never too few).
+   * A page with more chunks than one read returns is continued with `/adjacent`, at most
+   * `PAGE_FOLLOW_READS` times; `complete` is false when chunks of the page may remain unread.
    */
-  function pageChunks (order: number): Promise<PositionedChunk[]> {
+  function pageChunks (order: number): Promise<PageRead> {
     let pending = pageReads.get(order)
     if (!pending) {
       const mine = generation
-      pending = read(() => api.readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet({ documentId: documentId(), page: order }),
-        'The text of this page could not be loaded.').then((result) => {
-        const found = result ? positioned(result.chunks) : []
+      const covers = (c: PositionedChunk) => c.fromPage <= order && order <= c.toPage
+      pending = (async (): Promise<PageRead> => {
+        const first = await read(() => api.readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet({
+          documentId: documentId(), page: order, limit: PAGE_LIMIT
+        }), 'The text of this page could not be loaded.')
+        if (!first) return { chunks: [], complete: false, failed: true }
+        const found = positioned(first.chunks)
+        let complete = !first.hasMore
+        for (let i = 0; !complete && i < PAGE_FOLLOW_READS && found.length; i++) {
+          const more = await read(() => api.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet({
+            documentId: documentId(), chunkId: found[found.length - 1].id, direction: 'after', limit: PAGE_LIMIT
+          }), 'The text of this page could not be loaded.')
+          if (!more) break
+          const next = positioned(more.chunks)
+          found.push(...next.filter(covers))
+          // Chunks are in document order: one starting after the page, or the end of the
+          // document, ends the page's chunks.
+          complete = next.length < PAGE_LIMIT || next.some(c => c.fromPage > order)
+        }
         if (mine === generation) merge(found)
+        return { chunks: found, complete, failed: false }
+      })().then((result) => {
         // A failed read is tried again next time.
-        if (!result && pageReads.get(order) === pending) pageReads.delete(order)
-        return found
+        if (result.failed && pageReads.get(order) === pending) pageReads.delete(order)
+        return result
       })
       pageReads.set(order, pending)
     }
@@ -103,7 +133,7 @@ export function useDocumentText (documentId: () => string) {
     const mine = generation
     for (let order = 0; order < START_PAGES; order++) {
       if (mine !== generation) return []
-      const found = await pageChunks(order)
+      const found = (await pageChunks(order)).chunks
       if (found.length || error.value) return found
     }
     return []
