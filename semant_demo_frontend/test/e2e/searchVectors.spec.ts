@@ -11,13 +11,13 @@ const QUERY = fixture.chunk('gazette_1').text
 async function openFilters (page: Page) {
   await page.goto('/#/search')
   await closePhoneNavigation(page)
-  await page.getByRole('textbox').first().fill(QUERY)
+  await page.getByRole('combobox', { name: 'Search query' }).fill(QUERY)
   await page.getByRole('button', { name: 'Search filters' }).click()
 }
 
 async function runSearch (page: Page): Promise<{ request: Request, body: { vector: string | null, results: { id: string }[] } }> {
   const answer = page.waitForResponse((r) => r.url().endsWith('/api/search') && r.request().method() === 'POST')
-  await page.getByRole('textbox').first().press('Enter')
+  await page.getByRole('combobox', { name: 'Search query' }).press('Enter')
   const response = await answer
   expect(response.status()).toBe(200)
   await expect(page.locator('#result-1')).toBeVisible()

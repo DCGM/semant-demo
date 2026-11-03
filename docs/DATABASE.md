@@ -536,8 +536,9 @@ CREATE TABLE annotation_attribute_change (    -- append-only
 `create_all` creates `all_tags` in a new database but never alters an existing table; a
 database created before #522 gets the column from
 `python -m semant_demo.maintenance.attribute_scope_schema`, which deployments run before the new
-backend starts and which refuses a table that already holds definitions
-([deploy/README](../deploy/README.md#sqlite-schema-steps-522)). Startup refuses a table without
+backend starts. It sets `all_tags` on existing definitions with an empty or null tag list, which
+meant All tags before #522, and refuses a tag list the backend could not read (#574,
+[deploy/README](../deploy/README.md#sqlite-schema-steps-522)). Startup refuses a table without
 the column.
 
 Change records are never rewritten: they keep the attribute name and value labels and kinds of

@@ -6,7 +6,6 @@
 
       <q-card-section class="q-pt-none">
         <p>{{ props.message }} This cannot be undone.</p>
-        <p v-if="props.alsoChanges" data-testid="confirm-delete-also-changes">{{ props.alsoChanges }}</p>
 
         <div v-if="state === 'checking'" class="row items-center q-gutter-sm text-grey-7">
           <q-spinner size="18px" />

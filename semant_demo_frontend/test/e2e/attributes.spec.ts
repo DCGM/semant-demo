@@ -340,7 +340,7 @@ test('tags that are loading, failed or deleted are never shown as something else
   await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['Speaker'])
 })
 
-test('deleting a tag removes it from the attributes that select it, and the confirmation says so', async ({ page, request }) => {
+test('deleting a tag removes it from the attributes that select it', async ({ page, request }) => {
   const headers = await headersOf(request)
   const newTag = async (name: string, shorthand: string) => {
     const created = await request.post('/api/tags', {
@@ -363,8 +363,6 @@ test('deleting a tag removes it from the attributes that select it, and the conf
   await expect(row('Interview').getByTestId('tag-attribute')).toHaveText(['Role', 'Speaker type', 'CertaintyAll tags'])
 
   await row('Interview').getByRole('button', { name: 'Remove tag from collection' }).click()
-  await expect(dialog(page).getByTestId('confirm-delete-also-changes')).toHaveText(
-    'The tag is also removed from the attributes Role and Speaker type. Speaker type will then apply to no tags.')
   await dialog(page).getByRole('button', { name: 'Delete' }).click()
   await expect(row('Interview')).toHaveCount(0)
 

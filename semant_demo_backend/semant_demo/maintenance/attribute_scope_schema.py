@@ -8,10 +8,11 @@ one and is safe to repeat:
 
 - no database file or no ``annotation_attribute`` table: nothing to do (startup creates it);
 - the column exists: nothing to do;
-- the column is missing and the table is empty: adds it (``NOT NULL DEFAULT 0``);
-- the column is missing and attribute definitions exist: refuses and changes nothing. Their
-  empty ``tag_ids`` would silently change meaning from All tags to no tag, and no migration of
-  existing definitions is provided; reassess instead.
+- the column is missing: adds it (``NOT NULL DEFAULT 0``) and keeps what existing definitions
+  meant before #522 (#574). That code read ``tag_ids or []``, so an empty or null ``tag_ids``
+  meant All tags and gets ``all_tags = 1``; a list of tag ids stays Selected tags (``0``);
+- a definition whose ``tag_ids`` is not JSON, or not empty and not a list of tag ids (UUID
+  strings): refuses and changes nothing, because the backend could not read it.
 
 No other table is read or changed. Stop the backend that uses the file first; the check and the
 change run in one write transaction. Deployment runs it in the new image against the mounted
@@ -23,9 +24,11 @@ file (``.github/workflows/ci-cd.yml``, ``deploy/README.md``)::
 Exit status 0: the schema is current; 1: refused; 2: not a SQLite file database.
 """
 import argparse
+import json
 import sqlite3
 import sys
 from pathlib import Path
+from uuid import UUID
 
 TABLE = "annotation_attribute"
 COLUMN = "all_tags"
@@ -33,7 +36,7 @@ ADD_COLUMN = f"ALTER TABLE {TABLE} ADD COLUMN {COLUMN} BOOLEAN NOT NULL DEFAULT 
 
 
 class SchemaUpdateRefused(Exception):
-    """Attribute definitions exist in a table without the column; nothing was changed."""
+    """A definition's tag list is unreadable, so its meaning is unknown; nothing was changed."""
 
 
 def update(path: Path) -> str:
@@ -48,19 +51,41 @@ def update(path: Path) -> str:
                 return f"no {TABLE} table; the backend creates it"
             if any(row[1] == COLUMN for row in conn.execute(f"PRAGMA table_info({TABLE})")):
                 return f"{TABLE}.{COLUMN} already exists"
-            rows = conn.execute(f"SELECT count(*) FROM {TABLE}").fetchone()[0]
-            if rows:
-                raise SchemaUpdateRefused(
-                    f"{TABLE} has {rows} attribute definitions but no {COLUMN} column; nothing was changed. "
-                    "Their empty tag lists would change meaning from All tags to no tag (#522).")
+            rows = conn.execute(f"SELECT id, tag_ids FROM {TABLE}").fetchall()
+            all_tags = [row_id for row_id, tag_ids in rows if not _has_tags(row_id, tag_ids)]
             conn.execute(ADD_COLUMN)
+            # One statement and one parameter for any number of definitions.
+            conn.execute(f"UPDATE {TABLE} SET {COLUMN} = 1 WHERE id IN (SELECT value FROM json_each(?))",
+                         (json.dumps(all_tags),))
             conn.execute("COMMIT")
-            return f"added {TABLE}.{COLUMN}"
+            if not rows:
+                return f"added {TABLE}.{COLUMN}"
+            n, total = len(all_tags), len(rows)
+            return (f"added {TABLE}.{COLUMN}; of {total} attribute definition{'' if total == 1 else 's'}, "
+                    f"{n} with no tags now appl{'ies' if n == 1 else 'y'} to All tags, as before #522")
         finally:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
     finally:
         conn.close()
+
+
+def _has_tags(row_id: str, tag_ids) -> bool:
+    """Whether a pre-#522 definition applied to selected tags (else All tags); refuses what that code
+    could not read (``[UUID(t) for t in tag_ids or []]``)."""
+    try:
+        value = json.loads(tag_ids) if tag_ids is not None else None
+        if not value:
+            return False
+        if isinstance(value, list):
+            for tag_id in value:
+                UUID(tag_id)
+            return True
+    except (TypeError, ValueError, AttributeError):
+        pass
+    raise SchemaUpdateRefused(
+        f"{TABLE} {row_id} has tag_ids {tag_ids!r}, not a list of tag ids; nothing was changed. "
+        "Which tags it applies to is unknown (#574).")
 
 
 def sqlite_path(url: str) -> Path | None:

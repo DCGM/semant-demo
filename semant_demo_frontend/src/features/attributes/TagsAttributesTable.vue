@@ -1,7 +1,7 @@
 <template>
   <!-- The collection's tags with the attributes that apply to each, read-only (#506): those that
        name the tag, then those for all tags. Changing them from the tag side is #516. -->
-  <TagsTable :delete-notice="deleteNotice" @deleted="refresh">
+  <TagsTable @deleted="refresh">
     <template #attributes="{ tag }">
       <span v-if="error" class="text-grey-7" data-testid="tag-attributes-error">Attributes unavailable</span>
       <span v-else-if="loading && !loaded" class="text-grey-7">Loading…</span>
@@ -36,8 +36,7 @@ import { useRoute } from 'vue-router'
 import TagsTable from 'src/features/annotations/TagsTable.vue'
 import WrappingBadges from 'src/shared/ui/WrappingBadges.vue'
 import { useAttributesStore } from './attributesStore'
-import { useTagsStore } from 'src/features/annotations/tagsStore'
-import { attributesOfTag, tagDeletionNotice } from './attributeForm'
+import { attributesOfTag } from './attributeForm'
 
 const route = useRoute()
 const store = useAttributesStore()
@@ -57,12 +56,8 @@ async function load () {
   loaded.value = true
 }
 
-// Deleting a tag removes it from the attributes that select them (#508); say so only when they are known.
-const tagsStore = useTagsStore()
-const deleteNotice = (tagIds: string[]) =>
-  loaded.value && !error.value ? tagDeletionNotice(attributes.value, tagsStore.tags, tagIds) : ''
-
-// After a tag deletion, without showing the cells as loading again.
+// Deleting a tag removes it from the attributes that select it (#508): reload them afterwards,
+// without showing the cells as loading again.
 const refresh = () => collectionId.value ? store.load(collectionId.value) : undefined
 
 onMounted(load)

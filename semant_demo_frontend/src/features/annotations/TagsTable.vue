@@ -179,12 +179,6 @@ defineSlots<{
   attributes?(props: { tag: Tag }): unknown
 }>()
 
-const props = defineProps<{
-  /** What deleting these tags changes elsewhere, for the delete confirmation (e.g. the attributes
-   * that select them, #508); empty when nothing. */
-  deleteNotice?(tagIds: string[]): string
-}>()
-
 const emit = defineEmits<{
   /** Deleting these tags has finished, whether or not every deletion succeeded. */
   deleted: [tagIds: string[]]
@@ -236,12 +230,10 @@ const handleDelete = async (tag: Tag) => {
   confirmDelete({
     title: 'Delete Tag',
     message: `Delete the tag "${tag.name}"?`,
-    alsoDeletes: annotationsOfTags(collectionId.value, [tag.id]),
-    alsoChanges: props.deleteNotice?.([tag.id])
+    alsoDeletes: annotationsOfTags(collectionId.value, [tag.id])
   }).onOk(async () => {
-    // A failed deletion may still have deleted the tag (e.g. only its last step failed), so the
-    // list is reloaded to show the backend's state.
-    if (!await deleteTag(tag.id)) await fetchTagsByCollection(collectionId.value)
+    // Unless the deletion completed, the list is reloaded to show the backend's state.
+    if (await deleteTag(tag.id) !== 'deleted') await fetchTagsByCollection(collectionId.value)
     emit('deleted', [tag.id])
   })
 }
@@ -263,15 +255,14 @@ const handleBulkDelete = () => {
     title: 'Delete Selected Tags',
     message: `Delete ${plural(count, 'selected tag')}?`,
     okLabel: 'Delete selected',
-    alsoDeletes: annotationsOfTags(collectionId.value, ids),
-    alsoChanges: props.deleteNotice?.(ids)
+    alsoDeletes: annotationsOfTags(collectionId.value, ids)
   }).onOk(async () => {
     selected.value = []
     // Resolves after every deletion has finished; only acknowledged ones are removed and
     // failures are reported by the store. Reload afterwards (not before all deletions are
     // done) so the list shows the backend's state.
-    const { failed } = await deleteManyTags(ids)
-    if (failed.length) await fetchTagsByCollection(collectionId.value)
+    const { failed, attributesKept } = await deleteManyTags(ids)
+    if (failed.length || attributesKept.length) await fetchTagsByCollection(collectionId.value)
     emit('deleted', ids)
   })
 }

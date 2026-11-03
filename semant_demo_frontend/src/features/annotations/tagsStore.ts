@@ -3,15 +3,33 @@ import { computed, ref } from 'vue'
 
 import { Tag, PostTag, PatchTag } from 'src/generated/api'
 import { useTagsRepository } from './useTagsRepository'
-import { ongoingNotification } from 'src/shared/notification'
-import { incompleteWriteMessage } from 'src/shared/writeOutcome'
+import { ongoingNotification, warningNotification } from 'src/shared/notification'
+import { incompleteWriteMessage, incompleteWriteStep } from 'src/shared/writeOutcome'
 import { captureSession, createContextGuard, createScope } from 'src/shared/api'
 
-/** Outcome of a bulk deletion: only `deleted` were acknowledged by the backend. */
+/** Outcome of a bulk deletion. `deleted`: the tags the backend deleted, among them
+ * `attributesKept`: deleted, but their ids could not be removed from the attributes that list
+ * them (#508). `failed`: not deleted, or not known to be. */
 export interface DeleteManyResult {
   deleted: string[]
+  attributesKept: string[]
   failed: string[]
 }
+
+/** How deleting one tag ended. */
+export type TagDeletion = 'deleted' | 'attributesKept' | 'failed'
+
+/** The last step of a tag deletion (#508): when only it fails, the tag is deleted and its id
+ * stays on the attributes that list it, shown there as a deleted tag. Deleting the tag again
+ * cannot repair that: the tag is gone. */
+const ATTRIBUTE_CLEANUP_STEP = 'remove_from_attributes'
+
+const tagDeletedAnyway = async (err: unknown) => await incompleteWriteStep(err) === ATTRIBUTE_CLEANUP_STEP
+
+const attributesKeptMessage = (names: string[]) =>
+  `${names.length === 1 ? `Tag ${names[0]} was` : `Tags ${names.join(', ')} were`} deleted, but ` +
+  `the attributes that applied to ${names.length === 1 ? 'it still list it' : 'them still list them'} ` +
+  'as a deleted tag. Remove it there when you edit the attribute.'
 
 /**
  * Tag definitions of one collection. Loading another collection's tags first drops the
@@ -125,8 +143,9 @@ export const useTagsStore = defineStore('tags', () => {
     }
   }
 
-  /** Deletes one tag; resolves to whether the server confirmed it (failures are reported here). */
-  const deleteTag = async (tagUuid: string): Promise<boolean> => {
+  /** Deletes one tag and reports the outcome; resolves to it: `attributesKept` when the tag was
+   * deleted but its id could not be removed from the attributes that list it (#508). */
+  const deleteTag = async (tagUuid: string): Promise<TagDeletion> => {
     const notif = ongoingNotification('Deleting tag...')
     const inScope = scope.capture()
     const inSession = captureSession()
@@ -136,20 +155,28 @@ export const useTagsStore = defineStore('tags', () => {
       await tagsRepository.delete(tagUuid)
       if (!inSession()) {
         notif.dismiss()
-        return true
+        return 'deleted'
       }
       if (inScope()) forgetDeleted([tagUuid])
       notif.success('Tag deleted')
-      return true
+      return 'deleted'
     } catch (err) {
       if (!inSession()) {
         notif.dismiss()
-        return false
+        return 'failed'
+      }
+      if (await tagDeletedAnyway(err)) {
+        console.error('Error removing the deleted tag from attributes:', err)
+        const name = tags.value.find((tag) => tag.id === tagUuid)?.name ?? tagUuid
+        if (inScope()) forgetDeleted([tagUuid])
+        notif.dismiss()
+        warningNotification(attributesKeptMessage([name]))
+        return 'attributesKept'
       }
       error.value = 'Failed to delete tag'
       console.error('Error deleting tag:', err)
       notif.error(await incompleteWriteMessage(err, 'Failed to delete tag'))
-      return false
+      return 'failed'
     } finally {
       if (inSession()) loading.value = false
     }
@@ -157,35 +184,51 @@ export const useTagsStore = defineStore('tags', () => {
 
   /**
    * Deletes the tags one by one (best effort). The selected tags are hidden while their
-   * deletions run; afterwards only the acknowledged deletions are applied, failed tags stay
-   * visible and are reported. Resolves when every deletion has finished.
+   * deletions run; afterwards only the deletions the backend reports are applied, failed tags
+   * stay visible, and both those and the deleted tags whose ids stayed on attributes (#508) are
+   * reported by name. Resolves when every deletion has finished.
    */
   const deleteManyTags = async (tagUuids: string[]): Promise<DeleteManyResult> => {
-    if (tagUuids.length === 0) return { deleted: [], failed: [] }
+    if (tagUuids.length === 0) return { deleted: [], attributesKept: [], failed: [] }
     const notif = ongoingNotification(`Deleting ${tagUuids.length} tags...`)
     const inScope = scope.capture()
     const inSession = captureSession()
+    const nameOf = new Map(tags.value.map((tag) => [tag.id, tag.name]))
+    const names = (ids: string[]) => ids.map((id) => nameOf.get(id) ?? id)
     tagUuids.forEach((id) => pendingDeleteIds.value.add(id))
     error.value = null
     try {
       const results = await Promise.allSettled(tagUuids.map((id) => tagsRepository.delete(id)))
-      const deleted = tagUuids.filter((_, i) => results[i].status === 'fulfilled')
-      const failed = tagUuids.filter((_, i) => results[i].status === 'rejected')
+      const keptOnAttributes = await Promise.all(
+        results.map((r) => r.status === 'rejected' ? tagDeletedAnyway(r.reason) : Promise.resolve(false)))
+      const deleted = tagUuids.filter((_, i) => results[i].status === 'fulfilled' || keptOnAttributes[i])
+      const attributesKept = tagUuids.filter((_, i) => keptOnAttributes[i])
+      const failed = tagUuids.filter((id) => !deleted.includes(id))
       if (!inSession()) {
         notif.dismiss()
-        return { deleted, failed }
+        return { deleted, attributesKept, failed }
       }
       if (inScope()) forgetDeleted(deleted)
-      if (!failed.length) {
+      if (!failed.length && !attributesKept.length) {
         notif.success(`${deleted.length} tag${deleted.length === 1 ? '' : 's'} deleted`)
+      } else if (!failed.length) {
+        console.error('Error removing deleted tags from attributes:', results)
+        notif.dismiss()
+        warningNotification(attributesKeptMessage(names(attributesKept)))
       } else {
-        const failures = results.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []))
+        const failures = failed.map((id) => results[tagUuids.indexOf(id)]).flatMap((r) => (r.status === 'rejected' ? [r.reason] : []))
         error.value = 'Failed to delete some tags'
         console.error('Error deleting tags:', failures)
-        const detail = await incompleteWriteMessage(failures[0], 'The others could not be deleted.')
-        notif.error(`Deleted ${deleted.length} of ${tagUuids.length} tags. ${detail}`)
+        // The backend's message for the first failure, when it says where a deletion stopped.
+        const detail = await incompleteWriteMessage(failures[0], '')
+        const message = [
+          `Deleted ${deleted.length} of ${tagUuids.length} tags; not deleted: ${names(failed).join(', ')}.`,
+          detail,
+          attributesKept.length ? attributesKeptMessage(names(attributesKept)) : ''
+        ]
+        notif.error(message.filter(Boolean).join(' '))
       }
-      return { deleted, failed }
+      return { deleted, attributesKept, failed }
     } finally {
       tagUuids.forEach((id) => pendingDeleteIds.value.delete(id))
     }

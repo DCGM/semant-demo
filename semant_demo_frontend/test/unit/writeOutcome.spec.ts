@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SpanType, WriteOutcome } from 'src/generated/api'
-import { IncompleteWriteError, describeIncomplete, incompleteWriteMessage, requireComplete, spanWriteWarning, spanOf } from 'src/shared/writeOutcome'
+import { IncompleteWriteError, describeIncomplete, incompleteWriteMessage, incompleteWriteStep, requireComplete, spanWriteWarning, spanOf } from 'src/shared/writeOutcome'
 
 describe('write outcomes', () => {
   it('passes complete results through', () => {
@@ -70,11 +70,16 @@ describe('write outcomes', () => {
     const body = { detail: 'Deleting the tag stopped at step delete_span.', step: 'delete_span', completed: {}, uncertain: false }
     const stopped = { response: new Response(JSON.stringify(body), { status: 500 }) }
     expect(await incompleteWriteMessage(stopped, 'Failed')).toBe(body.detail)
+    expect(await incompleteWriteStep(stopped)).toBe('delete_span')
+    expect(await incompleteWriteMessage(stopped, 'Failed')).toBe(body.detail) // the body stays readable
   })
 
   it('falls back for other errors', async () => {
     expect(await incompleteWriteMessage(new Error('network'), 'Failed')).toBe('Failed')
     expect(await incompleteWriteMessage({ response: new Response('Internal Server Error', { status: 500 }) }, 'Failed')).toBe('Failed')
     expect(await incompleteWriteMessage({ response: new Response('{"detail": "x"}', { status: 404 }) }, 'Failed')).toBe('Failed')
+    expect(await incompleteWriteStep(new Error('network'))).toBeNull()
+    expect(await incompleteWriteStep({ response: new Response('Internal Server Error', { status: 500 }) })).toBeNull()
+    expect(await incompleteWriteStep({ response: new Response('{"detail": "x", "step": "s"}', { status: 404 }) })).toBeNull()
   })
 })

@@ -67,6 +67,8 @@ Make source-page/ALTO access an explicit viewer input or adapter, respecting sou
 rules. Add a proxy, alignment service, or OCR pipeline only when a concrete viewer need justifies it.
 Matching may normalize strings internally, but must map back to canonical text offsets.
 Uncertain, ambiguous, or unavailable matches must be visible rather than presented as exact.
+The page layout files and chunk-start anchors from PERO PAGE XML that this mapping uses
+(#351) are described in [PAGE_LAYOUT.md](../PAGE_LAYOUT.md).
 
 Later, chunks, tag annotations, or NER occurrences may carry **optional lists of polygons**.
 Geometry is derived location information, not a replacement for stable IDs and text ranges.

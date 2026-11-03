@@ -72,3 +72,16 @@ export async function incompleteWriteMessage (err: unknown, fallback: string): P
     return fallback
   }
 }
+
+/** The step at which a write stopped part way (a 500 with `detail` and `step`), or null for any
+ * other error. */
+export async function incompleteWriteStep (err: unknown): Promise<string | null> {
+  const response = (err as { response?: Response } | null)?.response
+  if (!response || response.status !== 500) return null
+  try {
+    const body = await response.clone().json() as { detail?: unknown, step?: unknown }
+    return typeof body.detail === 'string' && typeof body.step === 'string' ? body.step : null
+  } catch {
+    return null
+  }
+}
