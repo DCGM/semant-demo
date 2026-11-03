@@ -115,7 +115,8 @@ semant_demo_backend/semant_demo/
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks),
                           chunk_year, chunk_summary_schema and chunk_summaries (documents' chunk-value
-                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374)
+                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
+                          page_order (read-only export of documents' ordered page lists from the Kramerius mirror, #571)
 ```
 
 ```mermaid
