@@ -3,14 +3,14 @@
 The mirror is an external PostgreSQL database maintained by the ``librarymetadata``
 project, not an application table: its table is declared on its own ``MetaData`` so the
 application's ``create_tables`` never creates it, and nothing here writes. Only the
-columns used for document metadata are declared.
+columns used for document metadata and page lists (#571) are declared.
 """
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, MetaData, String, Table, Uuid, select
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, MetaData, String, Table, Uuid, select
 from sqlalchemy.engine import Connection
 
 from semant_demo.maintenance.kramerius_mapping import SourceRecord
@@ -29,6 +29,11 @@ META_RECORDS = Table(
     Column("start_date", DateTime),
     Column("end_date", DateTime),
     Column("metadata_json", JSON),
+    Column("order", Integer),
+    Column("number", String),
+    Column("page_type", String(30)),
+    Column("image_path", String),
+    Column("page_xml_path", String),
 )
 
 
@@ -169,3 +174,38 @@ def read_page_chains(connection: Connection, pages_by_document: dict[UUID, set[U
         load(node["parent_id"] for *_, node in waiting)
         active = waiting
     return chains
+
+
+PAGE_RECORD_TYPE = "page"
+
+
+@dataclass(frozen=True)
+class PageRow:
+    """One mirror row of a document's page: ``record_type`` ``page`` with ``parent_id`` equal
+    to the document. ``label`` is the printed page label (``number``); the paths are stored
+    as they are, including the mirror's ``not_found`` marker."""
+    page_id: UUID
+    library: str
+    order: int | None
+    label: str | None
+    page_type: str | None
+    image_path: str | None
+    page_xml_path: str | None
+
+
+def read_document_pages(connection: Connection, document_ids: Sequence[UUID]) -> dict[UUID, list[PageRow]]:
+    """The page rows of each document, of every library, in batches by ``parent_id`` (indexed).
+    Documents without page rows are absent. Rows are returned in no particular order."""
+    columns = (META_RECORDS.c.id, META_RECORDS.c.library, META_RECORDS.c.parent_id, META_RECORDS.c.order,
+               META_RECORDS.c.number, META_RECORDS.c.page_type, META_RECORDS.c.image_path,
+               META_RECORDS.c.page_xml_path)
+    ids = list(dict.fromkeys(document_ids))
+    found: dict[UUID, list[PageRow]] = {}
+    for start in range(0, len(ids), _ID_BATCH):
+        query = select(*columns).where(META_RECORDS.c.parent_id.in_(ids[start:start + _ID_BATCH]),
+                                       META_RECORDS.c.record_type == PAGE_RECORD_TYPE)
+        for row in connection.execute(query).mappings():
+            found.setdefault(row["parent_id"], []).append(PageRow(
+                page_id=row["id"], library=row["library"], order=row["order"], label=row["number"],
+                page_type=row["page_type"], image_path=row["image_path"], page_xml_path=row["page_xml_path"]))
+    return found
