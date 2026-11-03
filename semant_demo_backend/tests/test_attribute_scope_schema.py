@@ -1,9 +1,9 @@
 """The one-time ``annotation_attribute.all_tags`` schema step (#522) and the startup check.
 
-New databases get the column from ``create_all``; an existing empty table gets it from
+New databases get the column from ``create_all``; an existing table gets it from
 ``maintenance/attribute_scope_schema.py``, which is repeatable, gives existing definitions with no
-tags All tags as they had before #522 (#574) and refuses, changing nothing, a tag list it cannot
-read. Startup refuses a table without the column.
+tags All tags as they had before #522 (#574) and refuses, changing nothing, a tag list the backend
+could not read. Startup refuses a table without the column.
 """
 import os
 import sqlite3
@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from semant_demo.adapters.sql.tables import OutdatedSchemaError, create_tables
 from semant_demo.maintenance import attribute_scope_schema as schema
 from tests.test_deploy_commit import DEPLOY_JOBS, REPO_ROOT, _job, _step
+
+T1, T2 = "5e3a0000-0000-4000-8000-0000000a0001", "5e3a0000-0000-4000-8000-0000000a0002"
 
 # annotation_attribute as created before #522.
 OLD_TABLE = """CREATE TABLE annotation_attribute (
@@ -106,19 +108,21 @@ def all_tags_by_id(path):
 
 
 async def test_existing_definitions_keep_what_they_meant_before_522(tmp_path):
-    # Before #522 an empty tag list meant All tags; definitions with tags were Selected tags (#574).
-    db = old_database(tmp_path / "used.db", attributes=[("all", "[]"), ("some", '["t1", "t2"]'), ("all2", "[]")])
+    # Before #522 an empty tag list meant All tags (read as ``tag_ids or []``, so null too);
+    # definitions with tags were Selected tags (#574).
+    db = old_database(tmp_path / "used.db", attributes=[
+        ("all", "[]"), ("some", f'["{T1}", "{T2}"]'), ("null", "null"), ("empty", '""')])
 
-    assert schema.update(db) == ("added annotation_attribute.all_tags; of 3 attribute definitions, "
-                                 "2 with no tags now apply to All tags, as before #522")
-    assert all_tags_by_id(db) == {"all": 1, "some": 0, "all2": 1}
+    assert schema.update(db) == ("added annotation_attribute.all_tags; of 4 attribute definitions, "
+                                 "3 with no tags now apply to All tags, as before #522")
+    assert all_tags_by_id(db) == {"all": 1, "some": 0, "null": 1, "empty": 1}
     after = dump(db)
     assert schema.update(db) == "annotation_attribute.all_tags already exists"
     assert dump(db) == after
     await start(db)
 
 
-@pytest.mark.parametrize("tag_ids", ["not json", '{"t1": true}', "null"])
+@pytest.mark.parametrize("tag_ids", ["not json", '{"t1": true}', '"t1"', "[1]", '["not-a-uuid"]', f'["{T1}", null]'])
 def test_a_tag_list_that_cannot_be_read_is_refused_and_nothing_changes(tmp_path, tag_ids):
     db = old_database(tmp_path / "odd.db", attributes=[("fine", "[]"), ("odd", tag_ids)])
     before = dump(db)
@@ -142,7 +146,7 @@ def test_the_command_uses_the_configured_database_and_reports_a_refusal(tmp_path
 
     added = run(ok)
     assert added.returncode == 0, added.stderr
-    assert f"{ok}: added annotation_attribute.all_tags; of 1 attribute definitions, 1 with no tags" in added.stdout
+    assert f"{ok}: added annotation_attribute.all_tags; of 1 attribute definition, 1 with no tags now applies" in added.stdout
     refused = run(odd)
     assert refused.returncode == 1
     assert "REFUSED" in refused.stderr and "all_tags" not in columns(odd)

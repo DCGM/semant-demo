@@ -374,12 +374,18 @@ new one, inside the new image and against the same mount and `SQL_DB_URL` as the
 - `python -m semant_demo.maintenance.attribute_scope_schema` adds `annotation_attribute.all_tags`
   (explicit All tags, #522). It does nothing without the table or when the column exists. When it
   adds the column it keeps what existing definitions meant before #522 (#574): one with an empty
-  tag list meant All tags and gets `all_tags = 1`; one with tags stays Selected tags. It prints how
-  many definitions it set to All tags. It refuses, changes nothing and fails the deployment only
-  when a definition's tag list is not a JSON list, because what it applies to is unknown. A
-  refused production deployment rolls back to the previous image, which still works with the
-  unchanged file. test-main held 5 definitions when #522 was released, so until #574 every
-  test-main deploy was refused.
+  or null tag list meant All tags and gets `all_tags = 1`; one with tags stays Selected tags. It
+  prints how many definitions it set to All tags. It refuses, changes nothing and fails the
+  deployment only when a definition's tag list is something the backend could not read (not
+  JSON, or not a list of tag ids). A refused production deployment rolls back to the previous
+  image, which still works with the unchanged file. test-main held 5 definitions when #522 was
+  released, so until #574 every test-main deploy was refused.
+- **After a rollback past #522** (a failed health check once the step has added the column), the
+  old image ignores `all_tags`: definitions it creates get `all_tags = 0`, which the new image
+  reads as no tag (the old one meant All tags), and one it edits may keep `all_tags = 1` beside
+  selected tags. The step does not run again, because the column exists. Before the next deploy,
+  check with `SELECT id, all_tags, tag_ids FROM annotation_attribute WHERE (all_tags = 0 AND
+  tag_ids = '[]') OR (all_tags = 1 AND tag_ids != '[]');` and fix those rows by hand.
 
 To check an instance by hand (the old app stopped), run the same step:
 
