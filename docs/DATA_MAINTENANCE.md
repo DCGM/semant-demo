@@ -117,9 +117,19 @@ export takes the library whose page rows have real paths (neither empty nor the 
 `not_found` marker), preferring real PAGE XML paths. Supplied PAGE XML file names
 (`--page-xml-dir`) and, with `--check-start-pages`, the chunks' `start_page_id` values
 (read from the configured Weaviate) must belong to that library; otherwise the document is
-reported as a conflict and no pages are exported. Undecidable documents are `ambiguous`.
-Null or duplicate orders and missing images or PAGE XML are reported, never fixed. The exit
-code is 1 when any document was not exported.
+reported as a conflict and no pages are exported. The start-page check reads every chunk of
+the document (keyset paging on `order`, 1,000 chunks per query); when that read fails or is
+incomplete (a chunk without `order`, 1,000 or more chunks sharing one `order`, a chunk count
+that changed during the read), the document is `start_pages_unchecked`, also without pages,
+never a passing check. Undecidable documents are `ambiguous`. Null or duplicate orders and
+missing images or PAGE XML are reported, never fixed. The exit code is 1 when any document
+was not exported.
+
+Memory does not grow with the corpus: page rows are read 100 documents per query, each JSON
+line is written when its document is done (in input order, duplicates removed), and the
+summary is kept as running counts. Only the document id list is held. With `--output` the
+lines are written to `<output>.partial` and renamed when the run completes, so an interrupted
+run leaves no complete-looking file.
 
 Prerequisites are those of `metadata_sync` (the PostgreSQL driver and
 `KRAMERIUS_METADATA_DSN`). The mirror is read in a read-only transaction; paths are reported
