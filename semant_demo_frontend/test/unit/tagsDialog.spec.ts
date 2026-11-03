@@ -10,7 +10,8 @@ import TagsDialog from 'src/features/annotations/TagsDialog.vue'
 // for this tag only (adding or removing just this tag, also the last one), an All tags one is on
 // and locked, retired ones are not offered. The dialog saves the tag, then each switched
 // attribute, and closes only when all are saved; a failed attribute change keeps the saved tag
-// (Create becomes Edit), shows the message at that attribute and is the only one Save sends again.
+// (Create becomes Edit), shows the message at that attribute and is the only one Save sends again;
+// closing it then is no confirmation.
 
 const listed = vi.fn<[string], Promise<Attribute[]>>()
 const updated = vi.fn<[string, string, PatchAttribute], Promise<Attribute>>()
@@ -156,11 +157,15 @@ describe('TagsDialog applicable attributes', () => {
     expect(updated.mock.calls).toEqual([['c1', 'a2', { addTagIds: ['t9'] }]])
     expect(wrapper.emitted('ok')).toBeUndefined()
 
-    // Giving up on that change: closing still reports the tag that was created.
+    // Giving up on that change is a dismissal, not a confirmation (the reader would tag the
+    // selected text on `ok`): the created tag stays, and the attributes are read again.
+    listed.mockClear()
     await switchTo(wrapper, 'mood', false)
     await button(wrapper, 'Cancel').trigger('click')
     await transition()
-    expect(wrapper.emitted('ok')).toEqual([[created]])
+    expect(wrapper.emitted('ok')).toBeUndefined()
+    expect(wrapper.emitted('hide')).toHaveLength(1)
+    expect(listed).toHaveBeenCalledWith('c1')
   })
 
   it('stays open with what was entered when the tag cannot be saved, and changes no attribute', async () => {

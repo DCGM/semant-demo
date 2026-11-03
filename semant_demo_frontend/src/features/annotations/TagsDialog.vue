@@ -208,10 +208,13 @@ import { TagsDialogProps } from './TagsDialogTypes'
 // The dialog saves on its own and closes only when everything is saved (#516): first the tag,
 // then one change per attribute whose applicability to it was switched. They are separate
 // writes: a tag saved before an attribute change fails stays saved (Create becomes Edit), the
-// failed changes are shown at their attributes and Save tries them again. Closing it then still
-// hands the saved tag to the caller.
+// failed changes are shown at their attributes and Save tries them again. Only a save of
+// everything confirms the dialog (`ok`, on which the caller may go on, e.g. tag the selected
+// text); closing it before that is a dismissal even when the tag was saved, and the caller learns
+// of that tag from its `save`. After a failed attribute change, closing reloads the attributes, as
+// they may have been changed by someone else.
 const props = defineProps<TagsDialogProps>()
-const emit = defineEmits([...useDialogPluginComponent.emits])
+defineEmits([...useDialogPluginComponent.emits])
 const { dialogRef, onDialogHide, onDialogOK } =
   useDialogPluginComponent()
 
@@ -240,9 +243,8 @@ const tagExamples = ref<string[]>(
 
 // The tag as saved: the one edited, or the one this dialog created.
 const savedTag = ref<Tag | null>(props.tag ?? null)
-// Whether this dialog saved the tag, so closing it reports the tag even after a failure.
-let savedHere = false
-let reported = false
+let confirmed = false
+let attributeChangeFailed = false
 const saving = ref(false)
 const formError = ref<string | null>(null)
 const attributeErrors = ref<Record<string, string>>({})
@@ -337,7 +339,6 @@ const handleSubmit = async () => {
     if (tagSaved) {
       try {
         savedTag.value = await props.save(payload, savedTag.value)
-        savedHere = true
       } catch (e) {
         formError.value = await apiErrorMessage(e, 'The tag could not be saved.')
         return
@@ -360,10 +361,11 @@ const handleSubmit = async () => {
     })
     const failed = Object.keys(errors).length
     if (!failed) {
-      reported = true
+      confirmed = true
       onDialogOK(tag)
       return
     }
+    attributeChangeFailed = true
     attributeErrors.value = errors
     const what = plural(failed, 'attribute change')
     const were = failed === 1 ? 'was' : 'were'
@@ -376,7 +378,7 @@ const handleSubmit = async () => {
 }
 
 const onHide = () => {
-  if (savedHere && !reported && savedTag.value) emit('ok', savedTag.value)
+  if (!confirmed && attributeChangeFailed) void loadAttributes()
   onDialogHide()
 }
 

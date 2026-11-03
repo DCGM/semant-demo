@@ -767,6 +767,39 @@ async def test_a_change_of_the_tags_never_writes_over_one_made_in_between(store,
     assert set((await read(COLLECTION, attribute.id)).tag_ids) == {PERSON, PLACE}
 
 
+async def test_a_rename_with_a_change_in_between_is_retried_and_a_persistent_race_is_a_conflict(
+        store, definitions, monkeypatch):
+    """A change of only the name, description or retired flag races like a change of the tags:
+    written over a change made in between it would be a 500 (StaleRevision); it is read again and
+    written, keeping that change, and after repeated races refused with a 409, nothing changed."""
+    attribute = await define(store, tag_ids=[PERSON])
+    read = definitions.read
+    interleaved = []
+
+    async def read_then_someone_else_writes(cid, aid):
+        current = await read(cid, aid)
+        if not interleaved:
+            interleaved.append(True)
+            await definitions.update(cid, aid, PatchAttribute(tag_ids=[*current.tag_ids, PLACE]))
+        return current
+
+    monkeypatch.setattr(definitions, "read", read_then_someone_else_writes)
+    updated = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                             PatchAttribute(name="voice", description="who speaks"))
+    assert (updated.name, updated.description, set(updated.tag_ids)) == ("voice", "who speaks", {PERSON, PLACE})
+
+    async def always_outdated(cid, aid):
+        current = await read(cid, aid)
+        await definitions.update(cid, aid, PatchAttribute(description=f"edit {current.revision}"))
+        return current
+
+    monkeypatch.setattr(definitions, "read", always_outdated)
+    with pytest.raises(EditConflictError):
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(retired=True))
+    monkeypatch.setattr(definitions, "read", read)
+    assert (await read(COLLECTION, attribute.id)).retired is False
+
+
 async def test_the_repository_writes_only_on_the_expected_revision(definitions):
     attribute = await definitions.create(COLLECTION, attribute_body(tag_ids=[PERSON]), OWNER.id)
     with pytest.raises(StaleRevision):

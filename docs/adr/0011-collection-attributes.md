@@ -89,11 +89,14 @@ renames categories later without rewriting annotations or losing who decided wha
   Selected tags attribute for its tag only (`add_tag_ids` / `remove_tag_ids`, never on an All
   tags attribute, whose scope is changed only in Edit Attribute), and Edit Attribute sends only the
   tags it added or removed while the attribute stays on Selected tags. Every change of an
-  attribute's tags is written only on the `revision` it was computed from (a conditional update):
+  attribute (its tags, and also only its name, description or retired flag) is written only on
+  the `revision` it was computed from (a conditional update):
   when someone else changed the attribute in between, the change and its narrowing check are
   computed again, and after three such races it is refused (409, nothing changed). The tag and the
   attributes it applies to are separate writes (ADR 0002): a tag saved before an attribute change
-  fails stays saved, and the dialog shows and retries the failed changes.
+  fails stays saved, and the dialog shows and retries the failed changes; closing it before all
+  are saved keeps that tag but does not confirm the dialog, so nothing goes on with the tag (the
+  document reader does not tag the selected text with it).
 - **Rename and retire, never rewrite.** Labels, descriptions and applicable tags change without
   touching annotations. A value or attribute that annotations still hold cannot be deleted (409
   with the number affected) but can be retired. The UI offers only retiring and restoring

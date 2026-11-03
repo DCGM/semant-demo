@@ -114,17 +114,13 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
 
     ``add_tag_ids``/``remove_tag_ids`` change only those tags of the tags selected when the
     change is written (#516); an attribute for all tags takes neither (400), its scope is
-    changed with ``all_tags``. A change of the tags is written only on the revision it was
-    computed from: when someone else changed the attribute in between, it is computed again
-    (and checked again), and after ``SCOPE_ATTEMPTS`` such races it is refused
-    (``EditConflictError``, 409) rather than written over another change."""
+    changed with ``all_tags``. Every change is written only on the revision it was computed
+    from (one that leaves the tags alone keeps them as read): when someone else changed the
+    attribute in between, it is computed again (and checked again), and after
+    ``SCOPE_ATTEMPTS`` such races it is refused (``EditConflictError``, 409) rather than written
+    over another change."""
     grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
     aid = access.parse_id(attribute_id, "Attribute")
-    if patch.all_tags is None and patch.tag_ids is None and not patch.changes_tags_by_id:
-        updated = await store.definitions.update(grant.collection_id, aid, patch)
-        if updated is None:
-            raise _attribute_not_found()
-        return updated
     named = [*(patch.tag_ids or []), *(patch.add_tag_ids or [])]
     if named:
         await access.require_tags_in_collection(store.annotations.tags, named, grant.collection_id)
