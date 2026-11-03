@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { QBtn, QInput, QToggle, Quasar } from 'quasar'
+import { Dialog, QBtn, QInput, QToggle, Quasar } from 'quasar'
 
 import { Cardinality, ResponseError, type Attribute, type PatchAttribute, type Tag } from 'src/generated/api'
 import TagsDialog from 'src/features/annotations/TagsDialog.vue'
@@ -44,7 +44,7 @@ const refused = (status: number, detail: string) => new ResponseError(
 
 const mounted: VueWrapper[] = []
 async function open (props: Record<string, unknown>) {
-  const wrapper = mount(TagsDialog as never, { props: { collectionId: 'c1', ...props } as never, global: { plugins: [Quasar] }, attachTo: document.body })
+  const wrapper = mount(TagsDialog as never, { props: { collectionId: 'c1', ...props } as never, global: { plugins: [[Quasar, { plugins: { Dialog } }]] }, attachTo: document.body })
   mounted.push(wrapper)
   ;(wrapper.vm as unknown as { show: () => void }).show()
   await flushPromises()
@@ -178,8 +178,15 @@ describe('TagsDialog applicable attributes', () => {
     expect(text('tag-dialog-error')).toEqual(['A tag with this name already exists'])
     expect(updated).not.toHaveBeenCalled()
     expect([input(wrapper, 'Tag Name').props('modelValue'), toggle(wrapper, 'mood')!.props('modelValue')]).toEqual(['Person', true])
+    // Giving up: Cancel asks before discarding what was entered, then closes without confirming.
     await button(wrapper, 'Cancel').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('You have unsaved changes')
+    expect(wrapper.emitted('hide')).toBeUndefined()
+    const yes = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Yes')!
+    yes.click()
     await transition()
+    expect(wrapper.emitted('hide')).toHaveLength(1)
     expect(wrapper.emitted('ok')).toBeUndefined()
   })
 
