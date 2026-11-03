@@ -7,6 +7,12 @@ content differs, a scan is copied only when the stored copy is missing or has an
 than the source (copies are atomic, so a stored file is always complete), and a thumbnail is
 made only when missing or older than its scan. The manifest and the anchor plan are written
 last and describe what exists then.
+
+A page without a ``pageXmlPath`` in the export has no OCR and gets an empty layout. A named
+archive that cannot be read (missing, e.g. an unmounted share, or damaged) is different: the
+layouts and anchors made without it would be wrong, so the document is ``page_xml_unavailable``
+and nothing of it is written; its earlier layouts, manifest and anchor plan stay as they were,
+so a later ``anchors --write`` does not clear verified anchors.
 """
 import hashlib
 import io
@@ -101,21 +107,28 @@ def _real(path: str | None) -> Path | None:
     return Path(path) if path else None
 
 
-def _load_page_xml(entry: dict, issues: Issues) -> dict[UUID, bytes]:
+PAGE_XML_UNAVAILABLE = "page_xml_unavailable"
+
+
+def _load_page_xml(entry: dict, issues: Issues) -> dict[UUID, bytes] | None:
+    """The PAGE XML of the pages by page id; None when a named archive could not be read."""
     xml: dict[UUID, bytes] = {}
+    complete = True
     for archive in sorted({p["pageXmlPath"] for p in entry["pages"] if p.get("pageXmlPath")}):
         try:
             pages, unrecognized = read_page_xml_zip(Path(archive))
         except FileNotFoundError:
             issues.add("missing_page_xml_zip", archive)
+            complete = False
             continue
         except (OSError, zipfile.BadZipFile):
             issues.add("unreadable_page_xml_zip", archive)
+            complete = False
             continue
         for name in unrecognized:
             issues.add("unrecognized_page_xml_file", name)
         xml.update(pages)
-    return xml
+    return xml if complete else None
 
 
 def _stored_chunks(chunks: list[AnchoredChunk], issues: Issues) -> list[StoredChunk] | None:
@@ -215,6 +228,10 @@ def import_document(store: PageAssetStore, entry: dict, chunks: list[AnchoredChu
     page_ids = [UUID(p["pageId"]) for p in pages]
 
     xml = _load_page_xml(entry, issues)
+    if xml is None:
+        return {"documentId": str(document_id), "status": PAGE_XML_UNAVAILABLE, "pages": len(pages),
+                "chunks": len(chunks), "assets": {}, "anchors": {}, "pageMetadata": {},
+                "warnings": issues.as_json(), "conversionWarnings": []}
     stored = _stored_chunks(chunks, issues)
     result = convert_document(document_id, page_ids, xml, params, stored if stored is not None else [],
                               max_edit_ratio)

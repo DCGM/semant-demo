@@ -125,6 +125,17 @@ never a passing check. Undecidable documents are `ambiguous`. Null or duplicate 
 missing images or PAGE XML are reported, never fixed. The exit code is 1 when any document
 was not exported.
 
+The mirror's `page_xml_path` is often null although the archive exists (12 of the 14 example
+documents in `./data`). With `--source-root DIR` (e.g.
+`/mnt/matylda0/ihradis/digiknihovna_public`), pages of an exported document without a stored
+path are looked up in `DIR/<library>/<document>.page_xml.zip`, for the chosen library only.
+Every file name in that archive must be a page of the library; otherwise the document is
+`page_xml_conflict` without pages. The pages it contains get it as `pageXmlPath`
+(`page_xml_from_source_root`); a missing or unreadable archive is reported
+(`source_page_xml_missing`, `source_page_xml_unreadable`) and nothing is guessed. Stored paths
+are never replaced. This is the only place where archive paths are resolved; `page_import`
+uses the exported paths as they are.
+
 Memory does not grow with the corpus: page rows are read 100 documents per query, each JSON
 line is written when its document is done (in input order, duplicates removed), and the
 summary is kept as running counts. Only the document id list is held. With `--output` the
@@ -132,8 +143,8 @@ lines are written to `<output>.partial` and renamed when the run completes, so a
 run leaves no complete-looking file.
 
 Prerequisites are those of `metadata_sync` (the PostgreSQL driver and
-`KRAMERIUS_METADATA_DSN`). The mirror is read in a read-only transaction; paths are reported
-as stored, not checked on disk.
+`KRAMERIUS_METADATA_DSN`). The mirror is read in a read-only transaction; stored paths are
+reported as stored, not checked on disk.
 
 ## Page layout files and anchors (`page_layout`, #540)
 
@@ -161,7 +172,8 @@ text, ids, order, positions, vectors, page fields or annotations. It also never 
 re-embeds or runs OCR. Two separate steps:
 
 ```bash
-python -m semant_demo.maintenance.page_order --document-ids ids.txt --check-start-pages --output pages.jsonl
+python -m semant_demo.maintenance.page_order --document-ids ids.txt --check-start-pages \
+    --source-root /mnt/matylda0/ihradis/digiknihovna_public --output pages.jsonl
 python -m semant_demo.maintenance.page_import assets --page-order pages.jsonl --assets-dir DIR --report assets.json
 python -m semant_demo.maintenance.page_import anchors --check check.json --assets-dir DIR          # read-only
 python -m semant_demo.maintenance.page_import anchors --write write.json --assets-dir DIR --confirm-endpoint HOST:PORT
@@ -169,7 +181,12 @@ python -m semant_demo.maintenance.page_import anchors --check check_after.json -
 ```
 
 - **Inputs.** The `page_order` export names each page's scan (`imagePath`) and PAGE XML zip
-  (`pageXmlPath`); the files are read from there, so run on a machine where they are mounted.
+  (`pageXmlPath`, resolved by `page_order --source-root` where the mirror lacks it); the files
+  are read from there, so run on a machine where they are mounted. A page without
+  `pageXmlPath` has no OCR and gets an empty layout. A named archive that cannot be read
+  (missing, e.g. an unmounted share, or damaged) makes the document `page_xml_unavailable`:
+  nothing of it is written, so its earlier layouts, manifest and anchor plan stay and a later
+  `anchors --write` does not clear verified anchors. Rerun when the source is back.
   A document that was not exported (ambiguous, conflicting) is reported as `not_exported`.
   The chunking parameters default to the legacy 0.6/768/1152; they are recorded in the
   manifest and every plan line.

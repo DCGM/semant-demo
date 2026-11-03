@@ -10,7 +10,7 @@ from semant_demo.adapters.sql.kramerius_metadata import META_RECORDS, PageRow, r
 from semant_demo.maintenance import page_order
 from semant_demo.maintenance.page_order import (
     StartPageCheck, choose_library, connect_read_only, export, export_document, page_xml_names, real_path,
-    summary)
+    resolve_source_page_xml, source_archive, summary)
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d001")
 OTHER = UUID("5e3a0000-0000-4000-8000-00000000d002")
@@ -164,6 +164,59 @@ def test_page_xml_names_from_a_zip_or_a_folder(tmp_path):
     assert page_xml_names(tmp_path, UUID(int=9)) is None
 
 
+# --- PAGE XML under --source-root ---------------------------------------------------------
+
+def source_zip(root, pages, library="nlk"):
+    archive = source_archive(root, library, DOC)
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive, "w") as zf:
+        for page in pages:
+            zf.writestr(f"{page}.xml", "<x/>")
+    return archive
+
+
+def test_source_root_fills_in_page_xml_paths_the_mirror_lacks(tmp_path):
+    archive = source_zip(tmp_path, NLK[1:])
+    rows = [row(NLK[0], "nlk", 0, IMAGE, "/mnt/x/nlk/stored.page_xml.zip")] + [
+        row(p, "nlk", i, IMAGE, page_order.NOT_FOUND if i == 1 else None) for i, p in enumerate(NLK) if i]
+    rows += [row(p, "nkp", i, IMAGE) for i, p in enumerate(NKP)]  # another library is never consulted
+
+    entry = resolve_source_page_xml(export_document(DOC, rows), tmp_path)
+
+    assert entry["status"] == "exported" and entry["library"] == "nlk"
+    assert [p["pageXmlPath"] for p in entry["pages"]] == ["/mnt/x/nlk/stored.page_xml.zip", *[str(archive)] * 3]
+    assert all(p["hasPageXml"] for p in entry["pages"])
+    assert codes(entry) == {"page_xml_from_source_root"}
+
+
+def test_source_root_archive_with_pages_of_another_library_is_a_conflict(tmp_path):
+    source_zip(tmp_path, [NLK[0], NKP[0]])
+    entry = resolve_source_page_xml(export_document(DOC, [row(p, "nlk", i, IMAGE) for i, p in enumerate(NLK)]),
+                                    tmp_path)
+    assert entry["status"] == "page_xml_conflict" and entry["pages"] == []
+    assert next(w for w in entry["warnings"] if w["code"] == "source_page_xml_not_in_library")["sample"] == [
+        str(NKP[0])]
+
+
+def test_missing_or_unreadable_source_root_archives_are_reported(tmp_path):
+    rows = [row(p, "nlk", i, IMAGE) for i, p in enumerate(NLK)]
+    entry = resolve_source_page_xml(export_document(DOC, rows), tmp_path)
+    assert entry["status"] == "exported" and not any(p["pageXmlPath"] for p in entry["pages"])
+    assert codes(entry) == {"missing_page_xml", "source_page_xml_missing"}
+
+    source_archive(tmp_path, "nlk", DOC).parent.mkdir(parents=True)
+    source_archive(tmp_path, "nlk", DOC).write_bytes(b"not a zip")
+    entry = resolve_source_page_xml(export_document(DOC, rows), tmp_path)
+    assert entry["status"] == "exported" and codes(entry) == {"missing_page_xml", "source_page_xml_unreadable"}
+
+
+def test_source_root_is_not_read_when_every_page_has_a_stored_path(tmp_path):
+    source_zip(tmp_path, [NKP[0]])  # would conflict if it were read
+    entry = resolve_source_page_xml(export_document(DOC, [row(p, "nlk", i, IMAGE, ZIP) for i, p in enumerate(NLK)]),
+                                    tmp_path)
+    assert entry["status"] == "exported" and codes(entry) == set()
+
+
 # --- mirror reads ------------------------------------------------------------------------
 
 @pytest.fixture
@@ -303,6 +356,7 @@ async def test_cli_refuses_without_ids_or_source(no_weaviate, tmp_path):
     assert await page_order._main([]) == 2
     assert await page_order._main([str(DOC)]) == 2                                  # no DSN
     assert await page_order._main([str(DOC), "--page-xml-dir", str(tmp_path / "missing")]) == 2
+    assert await page_order._main([str(DOC), "--source-root", str(tmp_path / "missing")]) == 2
     bad = tmp_path / "ids.txt"
     bad.write_text("not-a-uuid\n")
     assert await page_order._main(["--document-ids", str(bad)]) == 2
@@ -325,6 +379,11 @@ async def test_cli_writes_json_lines(no_weaviate, monkeypatch, tmp_path):
     assert entry["library"] == "nlk" and len(entry["pages"]) == 4
 
     assert not output.with_name("pages.jsonl.partial").exists()
+
+    archive = source_zip(tmp_path / "sources", NLK[:2])
+    assert await page_order._main([str(DOC), "--output", str(output), "--source-root", str(tmp_path / "sources")]) == 0
+    [entry] = [json.loads(line) for line in output.read_text().splitlines()]
+    assert [p["pageXmlPath"] for p in entry["pages"] if p["pageXmlPath"]] == [str(archive)] * 2
 
     assert await page_order._main([str(UUID(int=1)), "--output", str(output)]) == 1   # no_pages
 

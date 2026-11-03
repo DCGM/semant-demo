@@ -158,19 +158,62 @@ async def test_an_interrupted_run_is_completed_by_running_again(tmp_path, monkey
     assert [p.image for p in store.read_manifest(DOC).pages] == [True, True, False]
 
 
-async def test_corrupt_scans_and_missing_page_xml_are_reported(tmp_path):
+async def test_corrupt_and_missing_scans_are_reported(tmp_path):
     sources = Sources(tmp_path / "src")
     sources.images[1].write_bytes(b"GIF89a not a jpeg")
-    sources.zip.unlink()
     store = PageAssetStore(tmp_path / "assets")
 
     _, line = await assets(store, sources, stored_chunks(), tmp_path)
 
-    codes = {w["code"] for w in line["warnings"]}
-    assert {"corrupt_image", "missing_page_xml_zip", "missing_image"} <= codes
-    assert line["anchors"]["exact"] == 0 and line["anchors"]["reasons"]
+    assert line["status"] == "imported"
+    assert {"corrupt_image", "missing_image"} <= {w["code"] for w in line["warnings"]}
     assert [p.image for p in store.read_manifest(DOC).pages] == [True, False, False]
     assert store.asset_file(DOC, PAGES[1], "image") is None
+
+
+async def test_pages_without_a_page_xml_path_get_empty_layouts(tmp_path):
+    sources = Sources(tmp_path / "src")
+    for page in sources.export["pages"]:
+        page["pageXmlPath"] = None
+    store = PageAssetStore(tmp_path / "assets")
+
+    _, line = await assets(store, sources, stored_chunks(), tmp_path)
+
+    assert line["status"] == "no_regions" and line["anchors"]["exact"] == 0 and line["anchors"]["reasons"]
+    assert all(f["regions"] == [] for f in page_files(store).values())
+
+
+@pytest.mark.parametrize("outage", ["hidden", "corrupt"])
+async def test_an_unreadable_page_xml_archive_keeps_the_earlier_import(tmp_path, outage):
+    """A mount outage or a damaged archive must not replace valid layouts and anchor plans
+    with empty ones (which a later ``anchors --write`` would turn into cleared anchors)."""
+    store, sources, chunks = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src"), stored_chunks()
+    await assets(store, sources, chunks, tmp_path)
+    plan, files, manifest = plan_path(store, DOC).read_bytes(), page_files(store), store.read_manifest(DOC)
+    before = mtimes(store)
+    original = sources.zip.read_bytes()
+    if outage == "hidden":
+        sources.zip.rename(sources.zip.with_suffix(".away"))
+    else:
+        sources.zip.write_bytes(original[: len(original) // 2])
+
+    summary, line = await assets(store, sources, chunks, tmp_path, "outage.json")
+
+    assert line["status"] == "page_xml_unavailable" and run.assets_exit_code(summary) == 1
+    code = "missing_page_xml_zip" if outage == "hidden" else "unreadable_page_xml_zip"
+    assert code in {w["code"] for w in line["warnings"]}
+    assert mtimes(store) == before
+    assert plan_path(store, DOC).read_bytes() == plan and page_files(store) == files
+    assert store.read_manifest(DOC) == manifest
+
+    if outage == "hidden":
+        sources.zip.with_suffix(".away").rename(sources.zip)
+    else:
+        sources.zip.write_bytes(original)
+    summary, line = await assets(store, sources, chunks, tmp_path, "restored.json")
+
+    assert line["status"] == "imported" and run.assets_exit_code(summary) == 0
+    assert line["anchors"]["exact"] == len(chunks) and plan_path(store, DOC).read_bytes() == plan
 
 
 async def test_edited_and_unusable_stored_chunks(tmp_path):
