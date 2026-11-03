@@ -1,17 +1,22 @@
-"""HTTP routes of the Documents feature (public corpus reads); the rules live in ``service.py``."""
+"""HTTP routes of the Documents feature (public corpus reads); the rules live in ``service.py`` and ``pages.py``."""
+import asyncio
+import hashlib
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
+from semant_demo.adapters.filesystem.page_assets import MEDIA_TYPES, AssetKind, PageAssetStore
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.features.documents.criteria import ChunkFilters, ChunkVocabulary, DocumentFilters
-from semant_demo.features.documents import service
-from semant_demo.routes.dependencies import get_chunk_vocabulary, get_user_collections, get_documents
-from semant_demo.features.documents.schemas import AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
+from semant_demo.features.documents import pages, service
+from semant_demo.routes.dependencies import get_chunk_vocabulary, get_page_assets, get_user_collections, get_documents
+from semant_demo.features.documents.schemas import (
+    AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail, DocumentPages, PageChunks)
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
 
@@ -153,3 +158,63 @@ async def read_document_adjacent_chunks(
     without reading the document metadata or chunk count again.
     """
     return await service.read_adjacent_chunks(documents, document_id, chunk_id, direction, limit)
+
+
+@exp_router.get("/api/documents/{document_id}/chunks/by_page", response_model=PageChunks,
+                response_model_exclude_none=True)
+async def read_document_page_chunks(
+    document_id: str,
+    page: int = Query(ge=0),
+    limit: int = Query(default=20, ge=1, le=pages.MAX_PAGE_CHUNKS),
+    documents: DocumentRepository = Depends(get_documents),
+) -> PageChunks:
+    """
+    Returns, in document order, up to ``limit`` chunks whose page range (``from_page``..
+    ``to_page``) includes page ``page`` (the page's ``order`` in the page manifest), and
+    whether more do (public corpus data). Used to open a page directly.
+    """
+    return await pages.read_page_chunks(documents, document_id, page, limit)
+
+
+@exp_router.get("/api/documents/{document_id}/pages", response_model=DocumentPages,
+                response_model_exclude_none=True)
+async def read_document_pages(document_id: str, response: Response,
+                              documents: DocumentRepository = Depends(get_documents),
+                              assets: PageAssetStore = Depends(get_page_assets)) -> DocumentPages:
+    """
+    Returns the document's pages in order, each with the URLs of its available image,
+    layout file and thumbnail (public corpus data). ``available`` is false, with no pages,
+    for a document without imported pages (a text-only document).
+    """
+    response.headers["Cache-Control"] = "no-cache"
+    return await pages.read_pages(documents, assets, document_id)
+
+
+ASSET_CACHE_CONTROL = {"image": "public, max-age=86400", "thumbnail": "public, max-age=86400", "layout": "no-cache"}
+"""Scans and thumbnails do not change; a layout file is replaced when a document is
+re-imported with other parameters, together with its chunks' anchors, so it is revalidated."""
+
+
+@exp_router.get(
+    "/api/documents/{document_id}/pages/{page_id}/{kind}",
+    response_class=FileResponse,
+    responses={200: {"content": {"image/jpeg": {}, "application/json": {}},
+                     "description": "The page scan or thumbnail (JPEG) or the page layout file (JSON)."},
+               304: {"description": "Not modified (``If-None-Match``)."},
+               404: {"description": "Unknown document, or the asset is not available."}},
+)
+async def read_document_page_asset(document_id: str, page_id: str, kind: AssetKind, request: Request,
+                                   documents: DocumentRepository = Depends(get_documents),
+                                   assets: PageAssetStore = Depends(get_page_assets)) -> Response:
+    """
+    Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail``
+    (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``,
+    docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+    """
+    path = await pages.read_page_asset(documents, assets, document_id, page_id, kind)
+    stat = await asyncio.to_thread(path.stat)
+    etag = '"' + hashlib.sha256(f"{stat.st_mtime_ns}-{stat.st_size}".encode()).hexdigest()[:32] + '"'
+    headers = {"Cache-Control": ASSET_CACHE_CONTROL[kind], "ETag": etag}
+    if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
+        return Response(status_code=304, headers=headers)
+    return FileResponse(path, media_type=MEDIA_TYPES[kind], headers=headers, stat_result=stat)

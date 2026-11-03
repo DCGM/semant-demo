@@ -56,6 +56,7 @@ erDiagram
         int startChar "UTF-16 units before it in the document (#463)"
         int startWord "words started before it (#463)"
         bool wordOpenAtStart "preceding text ends inside a word (#463)"
+        object layoutStart "optional start on the page scans (#541)"
         text_array ner_P "Person"
         text_array ner_T "Temporal"
         text_array ner_A "Address"
@@ -244,6 +245,13 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   [#313](https://github.com/DCGM/semant-demo/issues/313), which continues from the stored
   tail). Annotation positions are derived from them; they are part of the canonical schema
   of [#128](https://github.com/DCGM/semant-demo/issues/128).
+- `layoutStart` (`object`: `pageId` text, `lineId` text, `offset` int, `match` text; optional,
+  not indexed) — the line of the page layout file where the chunk's first character is, and its
+  UTF-16 offset in that line ([PAGE_LAYOUT](PAGE_LAYOUT.md#layoutstart), #541). `match` is
+  `exact` or `approximate`. Written and cleared as a whole by the existing-corpus import (#542),
+  which also declares the property additively (`adapters/weaviate/layout_anchors.py`); stores
+  without it, and chunks without a value, are text-only. It never changes `text`, `order` or the
+  positions above. Reads parse it and leave out an invalid value (logged).
 
 #### References from Chunks
 

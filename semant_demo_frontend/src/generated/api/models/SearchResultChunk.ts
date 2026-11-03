@@ -20,6 +20,13 @@ import {
     DocumentToJSON,
     DocumentToJSONTyped,
 } from './Document';
+import type { LayoutStart } from './LayoutStart';
+import {
+    LayoutStartFromJSON,
+    LayoutStartFromJSONTyped,
+    LayoutStartToJSON,
+    LayoutStartToJSONTyped,
+} from './LayoutStart';
 
 /**
  * A search hit: the chunk, its document and optional generated summaries. ``text`` is
@@ -97,6 +104,12 @@ export interface SearchResultChunk {
      * @memberof SearchResultChunk
      */
     order: number | null;
+    /**
+     * 
+     * @type {LayoutStart}
+     * @memberof SearchResultChunk
+     */
+    layoutStart?: LayoutStart | null;
     /**
      * 
      * @type {Array<string>}
@@ -223,6 +236,7 @@ export function SearchResultChunkFromJSONTyped(json: any, ignoreDiscriminator: b
         'endParagraph': json['end_paragraph'] == null ? undefined : json['end_paragraph'],
         'language': json['language'] == null ? undefined : json['language'],
         'order': json['order'],
+        'layoutStart': json['layoutStart'] == null ? undefined : LayoutStartFromJSON(json['layoutStart']),
         'nerP': json['ner_P'] == null ? undefined : json['ner_P'],
         'nerT': json['ner_T'] == null ? undefined : json['ner_T'],
         'nerA': json['ner_A'] == null ? undefined : json['ner_A'],
@@ -260,6 +274,7 @@ export function SearchResultChunkToJSONTyped(value?: SearchResultChunk | null, i
         'end_paragraph': value['endParagraph'],
         'language': value['language'],
         'order': value['order'],
+        'layoutStart': LayoutStartToJSON(value['layoutStart']),
         'ner_P': value['nerP'],
         'ner_T': value['nerT'],
         'ner_A': value['nerA'],
