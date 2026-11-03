@@ -86,8 +86,8 @@ import {
   type PageLayout, type Point, type Rect, type ScanLine
 } from './pageLayout'
 import {
-  clampTransform, fitTransform, keepCenter, scaleLimits, smartFocus, toScan, zoomAt, ZOOM_STEP,
-  type Size, type Transform
+  clampTransform, fitTransform, pinchTransform, keepCenter, scaleLimits, smartFocus, toScan, zoomAt, ZOOM_STEP,
+  type Size, type PinchStart, type Transform
 } from './viewport'
 
 // One whole page scan with its OCR line overlay. The image and the overlay are drawn in
@@ -263,7 +263,7 @@ watch(() => props.size, () => { if (fitted.value) fit() })
 const pointers = new Map<number, Point>()
 let pressStart: Point | null = null
 let moved = false
-let pinch: { distance: number, transform: Transform } | null = null
+let pinch: PinchStart | null = null
 const CLICK_SLOP = 5
 
 function local (e: { clientX: number, clientY: number }): Point {
@@ -289,7 +289,7 @@ function onPointerDown (e: PointerEvent) {
     moved = false
   } else if (pointers.size === 2) {
     const [a, b] = [...pointers.values()]
-    pinch = { distance: Math.hypot(a[0] - b[0], a[1] - b[1]), transform: transform.value }
+    pinch = { transform: transform.value, mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], distance: Math.hypot(a[0] - b[0], a[1] - b[1]) }
     moved = true
   }
 }
@@ -306,7 +306,7 @@ function onPointerMove (e: PointerEvent) {
     const [a, b] = [...pointers.values()]
     const distance = Math.hypot(a[0] - b[0], a[1] - b[1])
     const mid: Point = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-    if (pinch.distance > 0) setTransform(zoomAt(pinch.transform, distance / pinch.distance, mid, limits()))
+    setTransform(pinchTransform(pinch, mid, distance, limits()))
     return
   }
   if (!moved && pressStart && Math.hypot(p[0] - pressStart[0], p[1] - pressStart[1]) > CLICK_SLOP) {

@@ -144,6 +144,40 @@ test('a clicked line reports its source ids and the approximate word start', asy
   await expect(target).toHaveClass(/scan-line--active/)
 })
 
+test('a two-finger pinch keeps the scan under the fingers while they also move', async ({ page }) => {
+  await useViewport(page, 'narrow')
+  await openScan(page, chronicle.id, PAGE_1)
+  await settled(page)
+  // Real touch input (Chromium turns it into pointer events), not synthetic events.
+  const cdp = await page.context().newCDPSession(page)
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', points: Array<[number, number]>) => cdp.send('Input.dispatchTouchEvent', {
+    type, touchPoints: points.map(([x, y], id) => ({ x, y, id }))
+  })
+  const target = await centerOf(line(page, 'r002-l002'))
+  const before = (await image(page).boundingBox())!
+  // The scan point under the starting midpoint, as a fraction of the image.
+  const u = (target.x - before.x) / before.width
+  const v = (target.y - before.y) / before.height
+
+  await touch('touchStart', [[target.x - 30, target.y], [target.x + 30, target.y]])
+  // Spread to twice the distance while the midpoint moves by (+40, +50).
+  for (let i = 1; i <= 5; i++) {
+    const spread = 30 + 6 * i
+    const mx = target.x + 8 * i
+    const my = target.y + 10 * i
+    await touch('touchMove', [[mx - spread, my], [mx + spread, my]])
+  }
+  await touch('touchEnd', [])
+  await settled(page)
+
+  const after = (await image(page).boundingBox())!
+  expect(after.width / before.width).toBeCloseTo(2, 1)
+  // The same scan point is now under the fingers' final midpoint.
+  expect(Math.abs(after.x + u * after.width - (target.x + 40))).toBeLessThan(2)
+  expect(Math.abs(after.y + v * after.height - (target.y + 50))).toBeLessThan(2)
+  await expectAligned(page, PAGE_1, 'r002-l002')
+})
+
 test('keyboard line steps and focus requests move the page only when the line is not visible enough', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openScan(page, chronicle.id, PAGE_1)

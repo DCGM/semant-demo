@@ -270,9 +270,28 @@ function rectDistance (p: Point, r: Rect): number {
   return Math.hypot(dx, dy)
 }
 
+function segmentDistance (p: Point, a: Point, b: Point): number {
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  const length2 = dx * dx + dy * dy
+  const t = length2 > 0 ? Math.min(1, Math.max(0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2)) : 0
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
+}
+
+/** Distance from `p` (outside the polygon) to the polygon's outline. */
+function polygonDistance (p: Point, polygon: readonly Point[]): number {
+  let best = Infinity
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    best = Math.min(best, segmentDistance(p, polygon[j], polygon[i]))
+  }
+  return best
+}
+
 /**
  * The line at `p` (scan pixels): one whose band contains it (the smallest when bands
- * overlap), else the nearest within `tolerance` pixels; null otherwise.
+ * overlap), else the one whose band is nearest within `tolerance` pixels; null otherwise.
+ * The distance is to the band itself, so a slanted or curved line is not hit across the
+ * empty corners of its bounding rectangle.
  */
 export function lineAt (lines: readonly ScanLine[], p: Point, tolerance = 0): ScanLine | null {
   let hit: ScanLine | null = null
@@ -284,7 +303,9 @@ export function lineAt (lines: readonly ScanLine[], p: Point, tolerance = 0): Sc
   if (hit || tolerance <= 0) return hit
   let best = tolerance
   for (const line of lines) {
-    const d = rectDistance(p, line.bounds)
+    // The bounding rectangle is never farther than the band: a cheap first filter.
+    if (rectDistance(p, line.bounds) > best) continue
+    const d = polygonDistance(p, line.polygon)
     if (d <= best) {
       best = d
       hit = line

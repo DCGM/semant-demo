@@ -60,6 +60,25 @@ export function zoomAt (t: Transform, factor: number, anchor: Point, limits: Sca
   return { scale, x: anchor[0] - (anchor[0] - t.x) * k, y: anchor[1] - (anchor[1] - t.y) * k }
 }
 
+/** Where a two-finger gesture started: the transform, the fingers' midpoint and spread. */
+export interface PinchStart {
+  transform: Transform
+  mid: Point
+  distance: number
+}
+
+/**
+ * The transform during a pinch: scaled by how far the fingers spread since `start`, with
+ * the scan point first under their midpoint kept under the current midpoint, so the page
+ * follows the fingers when they also move together.
+ */
+export function pinchTransform (start: PinchStart, mid: Point, distance: number, limits: ScaleLimits): Transform {
+  const factor = start.distance > 0 ? distance / start.distance : 1
+  const scale = Math.min(limits.max, Math.max(limits.min, start.transform.scale * factor))
+  const [ax, ay] = toScan(start.transform, start.mid)
+  return { scale, x: mid[0] - ax * scale, y: mid[1] - ay * scale }
+}
+
 export const toScan = (t: Transform, p: Point): Point => [(p[0] - t.x) / t.scale, (p[1] - t.y) / t.scale]
 export const toViewer = (t: Transform, p: Point): Point => [p[0] * t.scale + t.x, p[1] * t.scale + t.y]
 

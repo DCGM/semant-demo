@@ -6,7 +6,7 @@ import {
   rangeDistances, wordOffsets
 } from 'src/features/documents/scan/pageLayout'
 import {
-  FIT_PADDING, KEEP_VISIBLE, clampTransform, fitTransform, keepCenter, scaleLimits, smartFocus, toScan, toViewer, zoomAt
+  FIT_PADDING, KEEP_VISIBLE, clampTransform, fitTransform, keepCenter, pinchTransform, scaleLimits, smartFocus, toScan, toViewer, zoomAt
 } from 'src/features/documents/scan/viewport'
 import { createLayoutCache } from 'src/features/documents/scan/pageAssets'
 import { adjacentLine, findPage, pageName } from 'src/features/documents/scan/pageNavigation'
@@ -152,6 +152,17 @@ describe('lineAt', () => {
     expect(lineAt(lines, [150, 175], 12)?.id).toBe('r004-l003')
     expect(lineAt(lines, [1000, 1000], 12)).toBeNull()
   })
+
+  it('measures the tolerance to the band, not to its bounding rectangle', () => {
+    // A slanted line: the bounding rectangle reaches (110, 230), the band is ~45 px away.
+    const slanted = parsePageLayout(file({
+      regions: [{ id: 'r1', lines: [{ id: 'slanted', text: 'Slanted', baseline: [[100, 300], [400, 240]], heights: [20, 10] }] }]
+    }), PAGE).lines
+    expect(lineAt(slanted, [110, 230], 12)).toBeNull()
+    // Just above the band's upper edge near the left end it is still a hit.
+    expect(lineAt(slanted, [110, 274], 12)?.id).toBe('slanted')
+    expect(lineAt(slanted, [110, 260], 12)).toBeNull()
+  })
 })
 
 describe('viewport', () => {
@@ -177,6 +188,21 @@ describe('viewport', () => {
     expect(toScan(zoomed, anchor)[1]).toBeCloseTo(toScan(t, anchor)[1])
     expect(zoomAt(t, 1000, anchor, limits).scale).toBe(limits.max)
     expect(zoomAt(t, 0.001, anchor, limits).scale).toBe(limits.min)
+  })
+
+  it('pinches about the scan point first under the fingers, following their midpoint', () => {
+    const t = fitTransform(image, viewer)
+    const limits = scaleLimits(image, viewer)
+    const start = { transform: t, mid: [200, 250] as const, distance: 100 }
+    const anchor = toScan(t, start.mid)
+    // Fingers spread to twice the distance while their midpoint moves by (+60, -40).
+    const moved = pinchTransform(start, [260, 210], 200, limits)
+    expect(moved.scale).toBeCloseTo(t.scale * 2)
+    expect(toScan(moved, [260, 210])[0]).toBeCloseTo(anchor[0])
+    expect(toScan(moved, [260, 210])[1]).toBeCloseTo(anchor[1])
+    // A pure two-finger drag pans without zooming; the limits still hold.
+    expect(pinchTransform(start, [230, 250], 100, limits)).toEqual({ scale: t.scale, x: t.x + 30, y: t.y })
+    expect(pinchTransform(start, start.mid, 1e6, limits).scale).toBe(limits.max)
   })
 
   it('keeps part of the page in view when panned far away', () => {
