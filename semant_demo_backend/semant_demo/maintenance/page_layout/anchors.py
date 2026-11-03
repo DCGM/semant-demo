@@ -1,21 +1,25 @@
 """Chunk-start anchors: where each chunk's first character is in the page layout.
 
 The serialized document text is the regenerated chunks concatenated without separators (as
-in #463). Chunks are matched to it in ``order``, never before the previous anchor:
+in #463). Chunks are matched to it in ``order``, never before the previous anchor.
 
-``exact``        the chunk text equals the regenerated chunk with the same index (``order``
-                 minus the first order), or occurs at the cursor (the end of the previous
-                 match) or uniquely near it;
-``approximate``  within a window around the cursor the chunk text aligns with at most
-                 ``max_edit_ratio`` of its length differing (``difflib`` matching blocks:
-                 the larger length minus the matched characters); a warning, and the
-                 frontend highlights whole lines. Refused when the text occurs exactly
-                 elsewhere (near-duplicate text, e.g. after a page-order error);
+A chunk is *contiguous* when it directly follows the last anchored chunk (``order`` one
+more), or is order 0 with nothing anchored yet. Only then is the place after the previous
+match (the cursor) evidence of where it belongs:
+
+``exact``        contiguous: the chunk text occurs at the cursor, or exactly once near it;
+                 otherwise (a gap: chunks missing or unanchored before it): the text occurs
+                 exactly once after the previous anchor. Identical text elsewhere with no
+                 such evidence gives no anchor (``ambiguous``): a stored ``order`` is never
+                 taken as an index into the regenerated chunks;
+``approximate``  the chunk aligns within at most ``max_edit_ratio`` of its length in
+                 Levenshtein distance (unit insertions, deletions, substitutions) to the
+                 text there, near the cursor when contiguous, else near pieces of the chunk
+                 that occur only once ahead; the frontend highlights whole lines. Refused
+                 when the text occurs exactly elsewhere (near-duplicate text, e.g. after a
+                 page-order error);
 none             not found, too different, ambiguous, backwards, or an empty chunk; a
                  reason code.
-
-After a miss (e.g. a chunk missing from the stored list) the cursor is resynchronized on
-pieces of the chunk that occur only once ahead.
 
 ``layoutStart`` is ``{pageId, lineId, offset, match}``, ``offset`` in UTF-16 units from
 the start of the line's transcription. ``replay`` is the walk the frontend does from an
@@ -25,11 +29,13 @@ anchor: the line from ``offset``, then each following line of the page files, pr
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from math import floor
 from typing import Any
 from uuid import UUID
 
 from semant_demo.features.annotations.offsets import code_point_offset, utf16_offset
 from semant_demo.features.documents.positions import text_length
+from semant_demo.maintenance.page_layout.edit_distance import best_match
 from semant_demo.maintenance.page_layout.serialize import Contribution, Serialization
 
 MAX_EDIT_RATIO = 0.05
@@ -86,10 +92,11 @@ class ChunkMatch:
     anchor: Anchor | None
     reason: str | None = None
     """For no anchor: ``empty_chunk``, ``not_found``, ``start_not_found``, ``too_different``,
-    ``ambiguous``, ``backwards``, ``no_line``, ``duplicate_line_id``. For an anchor found away
-    from the expected place: ``shifted`` or ``resynced``; for an approximate one: ``edited``
-    or ``replay_mismatch``."""
+    ``ambiguous``, ``backwards``, ``no_line``, ``duplicate_line_id``, ``missing_line_id``. For
+    an anchor found away from the expected place: ``shifted`` or ``resynced``; for an
+    approximate one: ``edited`` or ``replay_mismatch``."""
     differences: int | None = None
+    """The Levenshtein distance of an approximate match (0 for exact)."""
     position: int | None = None
     """Where the chunk starts in the serialized text."""
     end: int | None = None
@@ -119,46 +126,49 @@ def match_chunks(stream: Stream, chunks: Sequence[tuple[int, str]],
     """One match per ``(order, text)`` chunk, sorted by order, and document warning codes."""
     matches: list[ChunkMatch] = []
     warnings: list[str] = []
-    cursor, previous, misses = 0, -1, 0
-    base = chunks[0][0] if chunks else 0
+    cursor, previous, misses, last_order = 0, -1, 0, None
     for order, text in chunks:
         if not text:
             matches.append(ChunkMatch(None, "empty_chunk"))
             continue
-        result = _by_order(stream, order - base, text, previous, cursor)
-        if result is None:
+        contiguous = order == 0 if last_order is None else order == last_order + 1
+        if contiguous:
             result = _guarded(stream, text, _match_at(stream, text, cursor, previous, max_edit_ratio), previous)
-        if result.anchor is None and result.reason in ("not_found", "too_different", "start_not_found"):
-            for resynced in _resync_cursors(stream.text, text, max(previous + 1, 0)):
-                retry = _guarded(stream, text, _match_at(stream, text, resynced, previous, max_edit_ratio), previous)
-                if retry.anchor is not None:
-                    result = ChunkMatch(retry.anchor, "resynced" if retry.reason is None else retry.reason,
-                                        retry.differences, retry.position, retry.end)
-                    break
+            if result.anchor is None and result.reason in ("not_found", "too_different", "start_not_found"):
+                result = _match_after_gap(stream, text, previous, max_edit_ratio, result)
+        else:
+            result = _match_after_gap(stream, text, previous, max_edit_ratio, ChunkMatch(None, "not_found"))
         cursor = result.end if result.anchor is not None else cursor + len(text)
         if result.anchor is None:
             misses += 1
             if misses == CONSECUTIVE_MISSES and "consecutive_misses" not in warnings:
                 warnings.append("consecutive_misses")
         else:
-            misses = 0
-            previous = result.position
+            misses, previous, last_order = 0, result.position, order
         matches.append(result)
     return matches, warnings
 
 
-def _by_order(stream: Stream, index: int, text: str, previous: int, cursor: int) -> ChunkMatch | None:
-    """Exact when the regenerated chunk with this index has the same text."""
-    if not 0 <= index < len(stream.chunk_starts):
-        return None
-    start = stream.chunk_starts[index]
-    end = stream.chunk_starts[index + 1] if index + 1 < len(stream.chunk_starts) else len(stream.text)
-    if start <= previous or stream.text[start:end] != text:
-        return None
-    anchor, position = _anchor_at(stream, start, end, "exact")
-    if anchor is None or position != start:
-        return None
-    return ChunkMatch(anchor, None if start == cursor else "shifted", 0, start, end)
+def _match_after_gap(stream: Stream, text: str, previous: int, max_edit_ratio: float,
+                     failed: ChunkMatch) -> ChunkMatch:
+    """A match without the cursor as evidence: the text's only exact occurrence after the
+    previous anchor, else an approximate match near a piece of the chunk that occurs only once
+    ahead; ``failed`` when neither exists."""
+    full = stream.text
+    index = full.find(text, previous + 1)
+    if index != -1:
+        if full.find(text, index + 1) != -1:
+            return ChunkMatch(None, "ambiguous")
+        anchor, position = _anchor_at(stream, index, index + len(text), "exact")
+        if anchor is None or position != index:
+            return ChunkMatch(None, "no_line")
+        return ChunkMatch(anchor, "resynced", 0, index, index + len(text))
+    for resynced in _resync_cursors(full, text, max(previous + 1, 0)):
+        retry = _guarded(stream, text, _approximate(stream, text, resynced, previous, max_edit_ratio), previous)
+        if retry.anchor is not None:
+            return ChunkMatch(retry.anchor, "resynced" if retry.reason is None else retry.reason,
+                              retry.differences, retry.position, retry.end)
+    return failed
 
 
 def _guarded(stream: Stream, text: str, result: ChunkMatch, previous: int) -> ChunkMatch:
@@ -219,7 +229,6 @@ def _approximate(stream: Stream, text: str, cursor: int, previous: int, max_edit
     blocks = [b for b in SequenceMatcher(None, text, window, autojunk=False).get_matching_blocks() if b.size]
     if not blocks:
         return ChunkMatch(None, "not_found")
-    matched = sum(b.size for b in blocks)
     # position the chunk by its first and last solid blocks: short blocks match by accident
     solid = [b for b in blocks if b.size >= _SOLID] or blocks
     first, last = solid[0], solid[-1]
@@ -229,9 +238,15 @@ def _approximate(stream: Stream, text: str, cursor: int, previous: int, max_edit
         return ChunkMatch(None, "start_not_found")
     start = low + first.b - first.a
     end = min(len(full), max(start, low + last.b + last.size + len(text) - last.a - last.size))
-    differences = max(len(text), end - start) - matched
-    if differences > max_edit_ratio * len(text):
+    # difflib only positions the chunk; the metric is the Levenshtein distance of the whole
+    # chunk to the best-aligned text around that estimate
+    limit = floor(max_edit_ratio * len(text))
+    slack = limit + _SOLID
+    region_start, region_end = max(0, start - slack), min(len(full), end + slack)
+    differences, aligned_start, aligned_end = best_match(text, full[region_start:region_end], near=end - region_start)
+    if differences > limit:
         return ChunkMatch(None, "too_different", differences)
+    start, end = region_start + aligned_start, region_start + aligned_end
     prefix = text[:_PREFIX]
     if len(prefix) >= 8 and _occurrences(full, prefix, low, high) > 1:
         return ChunkMatch(None, "ambiguous", differences)

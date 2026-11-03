@@ -115,8 +115,12 @@ export (#571) with `--page-order`; without them it uses the file names' order, w
 wrong for many documents, and says so. `--chunks` takes the chunks to anchor (stored
 chunks, exported by #542); without it the regenerated chunks are anchored, which checks the
 converter against itself. The chunking parameters (`--line-confidence`, `--min-chunk-chars`,
-`--max-chunk-chars`) default to the legacy 0.6/768/1152 and are recorded in every output.
-The output directory must be empty unless `--overwrite`. The exit code is 1 when any
+`--max-chunk-chars`) default to the legacy 0.6/768/1152 and are recorded in every output,
+including each anchor line, so an import can check that anchors and page files belong
+together. The output directory must be empty unless `--overwrite`; then each converted
+document's page folder is replaced as a whole (no page files of an earlier page list stay),
+other documents' folders are kept, and `chunks.jsonl`, `anchors.jsonl` and `report.json`
+cover only this run's documents. The exit code is 1 when any
 document failed or any non-empty chunk lacks an exact anchor; read `report.json`.
 
 ## Document year on chunks (`chunk_year`, #153)

@@ -10,6 +10,7 @@ from semant_demo.features.documents.positions import text_length
 from semant_demo.maintenance.page_layout.__main__ import main
 from semant_demo.maintenance.page_layout.anchors import build_stream, match_chunks, replay
 from semant_demo.maintenance.page_layout.convert import StoredChunk, convert_document, read_chunks, read_page_xml
+from semant_demo.maintenance.page_layout.edit_distance import best_match, levenshtein
 from semant_demo.maintenance.page_layout.geometry import line_heights, word_starts
 from semant_demo.maintenance.page_layout.parse import NAMESPACE, PageXmlError, parse_heights, parse_page_xml
 from semant_demo.maintenance.page_layout.serialize import Params, serialize
@@ -244,6 +245,14 @@ def test_parser_reports_and_drops():
         parse_page_xml(b"not xml", PAGES[0])
 
 
+def test_chunk_starting_on_a_line_without_id_has_no_anchor():
+    nameless = line("x", "Text řádky bez identifikátoru").replace(' id="x"', "")
+    result = convert([[("r1", [nameless, line("b", "a další řádek za ním")])]], Params(0.6, 400, 800))
+    assert result.anchors[0]["layoutStart"] is None and result.anchors[0]["reason"] == "missing_line_id"
+    assert "line_without_id" in {w["code"] for w in result.warnings}
+    assert "unanchored_missing_line_id" in {w["code"] for w in result.warnings}
+
+
 def test_chunk_starting_on_a_duplicated_line_id_has_no_anchor():
     result = convert([[("r1", [line("dup", "Text první řádky"), line("dup", "Text druhé řádky")])]],
                      Params(0.6, 400, 800))
@@ -345,6 +354,79 @@ def test_repeated_text_never_gives_a_wrong_exact_anchor():
             assert anchor["layoutStart"]["lineId"] == f"r{anchor['order']}-l0"
 
 
+def test_a_missing_first_chunk_never_shifts_identical_text_to_another_page():
+    """Review of #573: with order 0 missing, stored order 1 used to be compared with
+    regenerated chunk 0; identical text there passed as exact, on the wrong page."""
+    same = "Stejný text na každé stránce, slovo za slovem."
+    regions = [[para("r1", same)], [para("r1", same)], [para("r1", "Jiný text poslední stránky, jen jednou.")]]
+    params = Params(0.6, 30, 60)
+    clean = convert(regions, params)
+    assert [a["layoutStart"]["pageId"] for a in clean.anchors] == [str(p) for p in PAGES[:3]]
+    stored = [StoredChunk(f"c{i}", i, c["text"]) for i, c in enumerate(clean.chunks) if i != 0]
+    result = convert(regions, params, stored)
+    first, last = result.anchors
+    assert first["layoutStart"] is None and first["reason"] == "ambiguous"
+    assert last["layoutStart"]["pageId"] == str(PAGES[2]) and last["layoutStart"]["match"] == "exact"
+    # identical text after a gap in the middle is not placed by ordinal either
+    stored = [StoredChunk(f"c{i}", i, c["text"]) for i, c in enumerate(clean.chunks) if i != 1]
+    for anchor in convert(regions, params, stored).anchors:
+        if anchor["layoutStart"]:
+            assert anchor["layoutStart"]["pageId"] == str(PAGES[anchor["order"]])
+
+
+def swap(text, every):
+    chars = list(text)
+    for i in range(5, len(chars) - 1, every):
+        chars[i], chars[i + 1] = chars[i + 1], chars[i]
+    return "".join(chars)
+
+
+def test_the_threshold_is_levenshtein_distance_not_unmatched_characters():
+    """Review of #573: a transposition costs 2 edits but only 1 unmatched character in
+    difflib's matching blocks, so 3 % swaps used to pass a 5 % limit."""
+    from difflib import SequenceMatcher
+    params = Params(0.6, 150, 250)
+    clean = convert(LONG, params)
+    original = clean.chunks[1]["text"]
+    swapped = swap(original, 33)
+    unmatched = len(original) - sum(b.size for b in SequenceMatcher(None, swapped, original, autojunk=False)
+                                    .get_matching_blocks())
+    assert unmatched <= 0.05 * len(original) < levenshtein(swapped, original)
+    stored = [StoredChunk(f"id{i}", i, c["text"]) for i, c in enumerate(clean.chunks)]
+    stored[1] = StoredChunk("id1", 1, swapped)
+    stored[3] = StoredChunk("id3", 3, edit(clean.chunks[3]["text"], 0.03))
+    result = convert(LONG, params, stored)
+    assert result.anchors[1]["layoutStart"] is None and result.anchors[1]["reason"] == "too_different"
+    assert result.anchors[1]["differences"] == levenshtein(swapped, original)
+    approximate = result.anchors[3]
+    assert approximate["layoutStart"]["match"] == "approximate"
+    assert approximate["differences"] == levenshtein(stored[3].text, clean.chunks[3]["text"])
+    assert approximate["layoutStart"] == {**clean.anchors[3]["layoutStart"], "match": "approximate"}
+
+
+def _dp(a, b):
+    previous = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        current = [i]
+        for j, y in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (x != y)))
+        previous = current
+    return previous[-1]
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_bit_parallel_edit_distance_agrees_with_dynamic_programming(seed):
+    rng = random.Random(seed)
+    for _ in range(300):
+        a = "".join(rng.choice("ab č\n") for _ in range(rng.randint(1, 80)))
+        b = "".join(rng.choice("ab č\n") for _ in range(rng.randint(1, 90)))
+        assert levenshtein(a, b) == _dp(a, b)
+        distance, start, end = best_match(a, b)
+        assert _dp(a, b[start:end]) == distance
+        if len(b) < 25:   # the best of all substrings
+            assert distance == min(_dp(a, b[i:j]) for i in range(len(b) + 1) for j in range(i, len(b) + 1))
+
+
 def test_reordered_pages_give_no_wrong_anchors():
     regions = [[para("r1", f"Strana {p}: " + "text " * 20)] for p in range(4)]
     params = Params(0.6, 60, 200)
@@ -429,6 +511,8 @@ def test_cli_writes_pages_chunks_anchors_and_report(tmp_path):
     assert chunk["text"] == "Text první strany\n\nText druhé strany v pořadí"          # the exported order
     [anchor] = [json.loads(l) for l in (out / "anchors.jsonl").read_text().splitlines()]
     assert anchor["layoutStart"]["pageId"] == str(PAGES[1])
+    assert anchor["params"] == {"lineConfidence": 0.6, "minChunkChars": 400, "maxChunkChars": 800}
+    assert anchor["maxEditRatio"] == 0.05
     report = json.loads((out / "report.json").read_text())
     assert report["params"]["minChunkChars"] == 400 and report["documents"][0]["pageOrderFrom"] == "page_order"
 
@@ -445,3 +529,24 @@ def test_cli_refuses_invalid_arguments(tmp_path):
     assert main(["--page-xml-dir", str(tmp_path / "missing"), "--output", str(tmp_path / "o")]) == 2
     assert main(["--page-xml-dir", str(tmp_path), "--output", str(tmp_path / "o"),
                  "--min-chunk-chars", "90", "--max-chunk-chars", "50"]) == 2
+
+
+def test_overwrite_replaces_a_documents_page_set_and_keeps_other_documents(tmp_path):
+    source, out = tmp_path / "xml", tmp_path / "out"
+    source.mkdir()
+    write_document(source, [[para("r1", "Text první strany")], [para("r1", "Text druhé strany")],
+                            [para("r1", "Text třetí strany")]])
+    assert main(["--page-xml-dir", str(source), "--output", str(out)]) == 0
+    other = out / "pages" / str(UUID(int=7))
+    other.mkdir()
+    (other / "kept.json").write_text("{}")
+
+    order = tmp_path / "pages.jsonl"   # the page list shrank to two pages
+    order.write_text(json.dumps({"documentId": str(DOC), "status": "exported",
+                                 "pages": [{"pageId": str(PAGES[0])}, {"pageId": str(PAGES[2])}]}) + "\n")
+    assert main(["--page-xml-dir", str(source), "--output", str(out), "--page-order", str(order),
+                 "--overwrite"]) == 0
+    folder = out / "pages" / str(DOC)
+    assert sorted(p.name for p in folder.iterdir()) == sorted([f"{PAGES[0]}.json", f"{PAGES[2]}.json"])
+    assert sorted(p.name for p in (out / "pages").iterdir()) == sorted([str(DOC), str(UUID(int=7))])
+    assert (other / "kept.json").exists()

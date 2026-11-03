@@ -15,13 +15,16 @@ names' order, with a ``file_name_order`` warning (often wrong). ``--chunks`` giv
 chunks to anchor (JSON lines ``id``, ``document``, ``order``, ``text``); without it, the
 regenerated chunks are anchored, which checks the converter against itself.
 
-Output in ``OUT`` (refused when it is not empty, unless ``--overwrite``):
+Output in ``OUT`` (refused when it is not empty, unless ``--overwrite``; then each converted
+document's page folder is replaced as a whole, other documents' folders are kept, and the
+JSON lines files and the report cover this run only):
 
 - ``pages/<document>/<page>.json``: one versioned page file per page (``docs/PAGE_LAYOUT.md``);
 - ``chunks.jsonl``: the regenerated chunks (``documentId``, ``order``, ``text``,
   ``legacyStartPageId``);
 - ``anchors.jsonl``: per chunk ``layoutStart`` (``{pageId, lineId, offset, match}`` or null),
-  ``reason`` and ``differences``;
+  ``reason``, ``differences`` (Levenshtein distance) and the ``params`` and
+  ``maxEditRatio`` it was made with (they must match the page files');
 - ``report.json``: parameters, totals and per-document status, counts and warnings.
 
 The exit code is 0 when every document converted and every non-empty chunk has an exact
@@ -29,6 +32,7 @@ anchor, 1 otherwise, 2 for invalid arguments.
 """
 import argparse
 import json
+import shutil
 import sys
 from collections import Counter
 from pathlib import Path
@@ -120,11 +124,7 @@ def _convert(args, document_id, orders, stored, params, chunks_file, anchors_fil
     targets = stored.get(document_id, []) if stored is not None else None
     result = convert_document(document_id, page_ids, xml, params, targets, args.max_edit_ratio)
 
-    folder = args.output / "pages" / str(document_id)
-    folder.mkdir(parents=True, exist_ok=True)
-    for page_id, data in result.pages.items():
-        (folder / f"{page_id}.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")),
-                                                encoding="utf-8")
+    _write_pages(args.output / "pages", document_id, result.pages)
     for chunk in result.chunks:
         chunks_file.write(json.dumps({"documentId": str(document_id), **chunk}, ensure_ascii=False) + "\n")
     for anchor in result.anchors:
@@ -133,6 +133,25 @@ def _convert(args, document_id, orders, stored, params, chunks_file, anchors_fil
             "pageOrderFrom": order_from, "pages": len(result.pages), "chunks": len(result.chunks),
             "emptyChunks": sum(1 for a in result.anchors if a["reason"] == "empty_chunk"),
             "anchors": result.counts(), "warnings": extra + result.warnings}
+
+
+def _write_pages(root: Path, document_id: UUID, pages: dict) -> None:
+    """Replace the document's page folder with exactly these pages: written to a new folder,
+    swapped in, the old one removed. Other documents' folders are not touched."""
+    final = root / str(document_id)
+    fresh, old = root / f".{document_id}.new", root / f".{document_id}.old"
+    for leftover in (fresh, old):
+        if leftover.exists():
+            shutil.rmtree(leftover)
+    fresh.mkdir(parents=True)
+    for page_id, data in pages.items():
+        (fresh / f"{page_id}.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+                                               encoding="utf-8")
+    if final.exists():
+        final.rename(old)
+    fresh.rename(final)
+    if old.exists():
+        shutil.rmtree(old)
 
 
 if __name__ == "__main__":

@@ -113,7 +113,8 @@ def convert_document(document_id: UUID, page_ids: Sequence[UUID], xml: Mapping[U
             warnings.add("approximate_anchor", target.id or target.order)
         anchors.append({"documentId": str(document_id), "chunkId": target.id, "order": target.order,
                         "layoutStart": match.anchor.as_json() if match.anchor else None,
-                        "reason": match.reason, "differences": match.differences})
+                        "reason": match.reason, "differences": match.differences,
+                        "params": params.as_json(), "maxEditRatio": max_edit_ratio})
     if failure:
         warnings.add(failure)
     return DocumentResult(document_id, LEGACY_FAILURE if failure else CONVERTED, failure, pages, chunks, anchors,
@@ -122,11 +123,13 @@ def convert_document(document_id: UUID, page_ids: Sequence[UUID], xml: Mapping[U
 
 def _checked(match: ChunkMatch, target: StoredChunk, duplicates: set[tuple[UUID, str]],
              files: Mapping[str, dict], order: list[str]) -> ChunkMatch:
-    """No anchor on a duplicated line id; an exact anchor whose replay differs from the chunk
-    text becomes approximate."""
+    """No anchor on a line without an id or with a duplicated one (the viewer could not find
+    the line); an exact anchor whose replay differs from the chunk text becomes approximate."""
     anchor = match.anchor
     if anchor is None:
         return match
+    if not anchor.line_id:
+        return ChunkMatch(None, "missing_line_id", match.differences, match.position, match.end)
     if (anchor.page_id, anchor.line_id or "") in duplicates:
         return ChunkMatch(None, "duplicate_line_id", match.differences, match.position, match.end)
     if anchor.match == "exact":

@@ -38,8 +38,9 @@ The first line of a page of the example document `0004077e…` (abridged to one 
   estimated distance along the baseline from its first point, proportional to the
   character position. Word positions are **approximate**; consumers may fall back to
   whole lines.
-- Line ids are unique within a page in all PERO output seen so far; a duplicate is reported,
-  and no chunk is anchored to it.
+- Line ids are unique within a page in all PERO output seen so far; a duplicate or a missing
+  id is reported, and no chunk is anchored to such a line (`duplicate_line_id`,
+  `missing_line_id`).
 
 ## Serialization (the legacy chunking)
 
@@ -69,7 +70,8 @@ whole contract the frontend needs to walk the page files.
 ## `layoutStart`
 
 `layoutStart = {pageId, lineId, offset, match}` gives the line holding a chunk's first
-character. `offset` is in **UTF-16 code units** from the start of that line's transcription,
+character. Each line of `anchors.jsonl` also carries the `params` and `maxEditRatio` it was
+made with; an anchor is valid only with page files of the same `params`. `offset` is in **UTF-16 code units** from the start of that line's transcription,
 like all text offsets. Starting there and walking forward through the page files with the
 separators above reproduces the chunk text for `UTF16Length(chunk.text)` units. Don't
 re-trim: JavaScript `trim()` and Python `strip()` remove different characters.
@@ -78,21 +80,28 @@ re-trim: JavaScript `trim()` and Python `strip()` remove different characters.
 
 - `exact`: the chunk text equals the regenerated text there. Every exact anchor is checked
   by replaying it. The frontend may map characters exactly.
-- `approximate`: the chunk text differs from the regenerated text by at most
-  `--max-edit-ratio` (default 5 %) of its length, measured with `difflib` matching blocks,
-  and its first characters are found. The frontend should highlight whole lines and not
-  claim character precision.
+- `approximate`: the Levenshtein distance (unit insertions, deletions and substitutions; a
+  transposition counts 2) between the chunk text and the best-aligned regenerated text is
+  at most `--max-edit-ratio` (default 5 %) of the chunk's length, and its first characters
+  are found. `differences` is that distance. The frontend should highlight whole lines and
+  not claim character precision.
 
 A chunk has no anchor (`layoutStart` null, with a `reason`) when it is empty, not found,
-too different, ambiguous (the same text occurs more than once, or an approximate match
-competes with an exact occurrence elsewhere), or would be placed before the previous
-anchor. A chunk without an anchor stays fully usable as text.
+too different, ambiguous (the same text occurs more than once with nothing to tell the
+copies apart, or an approximate match competes with an exact occurrence elsewhere), starts
+on a line without a usable id, or would be placed before the previous anchor. A chunk
+without an anchor stays fully usable as text.
 
-Chunks are matched in `order`: first to the regenerated chunk with the same index, then at
-the cursor after the previous match, then approximately in a window around it. After a
-miss (for example a chunk missing from the stored list) matching resynchronizes on pieces
-of the chunk that occur only once ahead. On the 13 example documents (525 pages, 2,314
+Chunks are matched in `order`, never before the previous anchor. Position is evidence only
+for a *contiguous* chunk, one whose `order` directly follows the last anchored chunk (or
+order 0 at the start): it is matched at the cursor after that match, or uniquely near it,
+then approximately in a window around it. After a gap (stored chunks missing, including the
+first ones, or an unanchored chunk) the text must occur exactly once after the previous
+anchor, or match approximately near pieces of it that occur only once ahead. A stored
+`order` is never used as an index into the regenerated chunks: identical text (for example
+repeated pages) after a gap gets no anchor rather than one on the wrong copy. On the 13 example documents (525 pages, 2,314
 chunks), all regenerated chunks anchor exactly. With perturbed copies (2 % edits,
 collapsed whitespace, 20 % insertions, a missing chunk every ten) and with a wrong page
-order, every anchor produced pointed to the right line and offset; heavily edited or
+order, every anchor produced pointed to the right line and offset (1,396 exact and 458
+approximate of 2,088 perturbed; 1,299 and 321 with a wrong page order); heavily edited or
 misordered chunks got none.

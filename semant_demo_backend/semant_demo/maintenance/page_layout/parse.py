@@ -49,7 +49,7 @@ class Page:
     regions: tuple[Region, ...]
     warnings: tuple[tuple[str, str], ...] = field(default=())
     """``(code, detail)``: ``image_filename_mismatch``, ``page_namespace``, ``nested_region``,
-    ``duplicate_line_id``, ``line_without_baseline``, ``invalid_points``."""
+    ``duplicate_line_id``, ``line_without_id``, ``line_without_baseline``, ``invalid_points``."""
 
 
 def parse_points(text: str | None) -> tuple[Point, ...]:
@@ -141,7 +141,9 @@ def parse_page_xml(data: bytes, page_id: UUID) -> Page:
                     conf = float(equiv.get("conf")) if equiv.get("conf") is not None else None
                 except ValueError:
                     conf = None
-            lines.append(Line(id=line.get("id"), text=text, conf=conf, baseline=baseline,
+            if not line.get("id"):
+                warnings.append(("line_without_id", region.get("id") or ""))
+            lines.append(Line(id=line.get("id") or None, text=text, conf=conf, baseline=baseline,
                               heights=parse_heights(line.get("custom")), polygon=polygon))
         regions.append(Region(id=region.get("id"), lines=tuple(lines)))
 
