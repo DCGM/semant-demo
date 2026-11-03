@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { LayoutStart } from './LayoutStart';
+import {
+    LayoutStartFromJSON,
+    LayoutStartFromJSONTyped,
+    LayoutStartToJSON,
+    LayoutStartToJSONTyped,
+} from './LayoutStart';
+
 /**
  * A chunk listed for a collection (``in_collection``), without its document or entities.
  * @export
@@ -79,6 +87,12 @@ export interface CollectionChunk {
      * @memberof CollectionChunk
      */
     inCollection?: boolean;
+    /**
+     * 
+     * @type {LayoutStart}
+     * @memberof CollectionChunk
+     */
+    layoutStart?: LayoutStart | null;
 }
 
 /**
@@ -114,6 +128,7 @@ export function CollectionChunkFromJSONTyped(json: any, ignoreDiscriminator: boo
         'language': json['language'] == null ? undefined : json['language'],
         'order': json['order'],
         'inCollection': json['in_collection'] == null ? undefined : json['in_collection'],
+        'layoutStart': json['layoutStart'] == null ? undefined : LayoutStartFromJSON(json['layoutStart']),
     };
 }
 
@@ -138,6 +153,7 @@ export function CollectionChunkToJSONTyped(value?: CollectionChunk | null, ignor
         'language': value['language'],
         'order': value['order'],
         'in_collection': value['inCollection'],
+        'layoutStart': LayoutStartToJSON(value['layoutStart']),
     };
 }
 

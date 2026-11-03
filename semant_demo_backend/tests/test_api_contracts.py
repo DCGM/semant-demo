@@ -55,11 +55,12 @@ def test_every_document_read_uses_the_document_component(tmp_path):
 
 
 def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
-    """#284: each chunk read has its own owner-named component; renaming kept the wire fields."""
+    """#284: each chunk read has its own owner-named component; renaming kept the wire fields.
+    #541 added the optional ``layoutStart`` to the corpus and collection chunks."""
     schema = create_app(make_test_config(tmp_path)).openapi()
     components = schema["components"]["schemas"]
     stored = {"id", "text", "start_page_id", "from_page", "to_page", "document", "title", "end_paragraph",
-              "language", "order", "ner_P", "ner_T", "ner_A", "ner_G", "ner_I", "ner_M", "ner_O"}
+              "language", "order", "layoutStart", "ner_P", "ner_T", "ner_A", "ner_G", "ner_I", "ner_M", "ner_O"}
 
     assert {"TextChunk", "Chunk", "TextChunkWithDocument", "DocumentDetailTextChunkWithUserCollectionInfo"}.isdisjoint(components)
     assert set(components["DocumentChunk"]["properties"]) == stored
@@ -68,7 +69,7 @@ def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
         "query_title", "query_summary", "summary", "document_object", "metadata", "origin"}
     assert set(components["CollectionChunk"]["properties"]) == {
         "id", "text", "start_page_id", "from_page", "to_page", "end_paragraph", "title", "language", "order",
-        "in_collection"}
+        "in_collection", "layoutStart"}
     assert _ref(components["DocumentDetail"]["properties"]["chunks"]["items"]) == "DocumentViewChunk"
     assert _ref(components["DocumentChunkWindow"]["properties"]["chunks"]["items"]) == "DocumentChunk"
     assert _ref(components["SearchResponse"]["properties"]["results"]["items"]) == "SearchResultChunk"

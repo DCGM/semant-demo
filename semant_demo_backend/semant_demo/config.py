@@ -41,6 +41,8 @@ class Config:
         self.PRODUCTION = env.get("PRODUCTION", str(False)).lower() in TRUE_VALUES
         self.PORT = int(env.get("PORT", 8000))
         self.STATIC_PATH = env.get("STATIC_PATH", "./static")
+        # Page scans, layout files and thumbnails (#541); empty: no document has pages.
+        self.PAGE_ASSETS_DIR = env.get("PAGE_ASSETS_DIR", "")
         self.ALLOWED_ORIGIN = env.get("ALLOWED_ORIGIN", "http://localhost:9000")
         self.LOG_LEVEL = env.get("LOG_LEVEL", "INFO").upper()
 

@@ -335,8 +335,17 @@ function payload (): PostAttribute | PatchAttribute | null {
   if (name.value.trim() !== props.attribute.name) patch.name = name.value.trim()
   if (description.value.trim() !== (props.attribute.description ?? '')) patch.description = description.value.trim()
   if (!sameScope.value) {
-    patch.allTags = scope.value === 'all'
-    patch.tagIds = chosenTags.value
+    if (scope.value === 'selected' && !initialAll) {
+      // Only the tags changed here, so a tag added or removed meanwhile (also from Edit Tag,
+      // #516) is kept.
+      const added = chosenTags.value.filter(id => !initialTags.includes(id))
+      const removed = initialTags.filter(id => !chosenTags.value.includes(id))
+      if (added.length) patch.addTagIds = added
+      if (removed.length) patch.removeTagIds = removed
+    } else {
+      patch.allTags = scope.value === 'all'
+      patch.tagIds = chosenTags.value
+    }
   }
   return Object.keys(patch).length ? patch : null
 }
@@ -358,7 +367,8 @@ async function submit () {
     const message = e instanceof Error ? e.message : 'The attribute could not be saved.'
     // Only a change of the tags is refused for annotations that hold values (409), or when
     // their number cannot be counted (503).
-    const refusedTags = !!props.attribute && body.tagIds !== undefined && e instanceof AttributeWriteError &&
+    const changedTags = 'tagIds' in body || 'addTagIds' in body || 'removeTagIds' in body
+    const refusedTags = !!props.attribute && changedTags && e instanceof AttributeWriteError &&
       (e.status === 409 || e.status === 503)
     if (refusedTags) tagsError.value = message
     else if (props.attribute && body.name !== undefined && isTaken(e, TAKEN_NAME)) {

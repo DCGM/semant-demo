@@ -4,8 +4,8 @@ The paired text/scan viewer (#351) maps canonical chunk text to OCR lines on the
 the frontend. It needs two things: one compact layout file per page and, per chunk, the
 line where the chunk's first character is (`layoutStart`). Both are produced offline from
 PERO PAGE XML by `python -m semant_demo.maintenance.page_layout` (#540); the application
-never parses PAGE XML. Storage, serving and the `Chunks` field are #541; the import of the
-existing corpus is #542; the frontend mapping is #544. The operator command is described in
+never parses PAGE XML. Storage, serving and the `Chunks` field are #541
+([below](#page-asset-store-and-reads-541)); the import of the existing corpus is #542; the frontend mapping is #544. The operator command is described in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#page-layout-files-and-anchors-page_layout-540).
 
 ## Page file (`semant.page-layout`, version 1)
@@ -105,3 +105,61 @@ collapsed whitespace, 20 % insertions, a missing chunk every ten) and with a wro
 order, every anchor produced pointed to the right line and offset (1,396 exact and 458
 approximate of 2,088 perturbed; 1,299 and 321 with a wrong page order); heavily edited or
 misordered chunks got none.
+
+## Page asset store and reads (#541)
+
+The application serves the page files, the scans and thumbnails from one directory,
+`PAGE_ASSETS_DIR` (empty: no document has pages). It only reads it; the existing-corpus
+import (#542, [DATA_MAINTENANCE](DATA_MAINTENANCE.md#page-scans-layouts-and-anchors-for-the-existing-corpus-page_import-542))
+writes it, together with an anchor plan (`anchors.jsonl`, never served) per document. Every path is derived from UUIDs, never from client text
+(`adapters/filesystem/page_assets.py`):
+
+```text
+<root>/<first two hex digits of the document id>/<document id>/manifest.json
+<root>/<..>/<document id>/<page id>.jpg          the scan, the original JPEG
+<root>/<..>/<document id>/<page id>.json         the page file above
+<root>/<..>/<document id>/<page id>.thumb.jpg    the thumbnail
+```
+
+A file whose real location is outside the root (a symbolic link leaving it) or that is not a
+regular file counts as absent. Files are replaced atomically (written next to the target,
+then renamed); there is no transaction across files and no backup: the assets can be
+regenerated.
+
+The **manifest** (`semant.page-manifest`, version 1) lists every page of the document's page
+list (`page_order`, #571) in order, covers, blanks and pages without assets included:
+
+```json
+{"schema": "semant.page-manifest", "version": 1, "documentId": "<uuid>", "library": "nlk",
+ "params": {"lineConfidence": 0.6, "minChunkChars": 768, "maxChunkChars": 1152},
+ "pages": [{"pageId": "<uuid>", "order": 0, "label": "[1]", "pageType": "FrontCover",
+            "width": 1378, "height": 2000, "image": true, "layout": true, "thumbnail": true}]}
+```
+
+`order` is the page's index in the list (0, 1, ...), the page number of the chunks'
+`from_page`/`to_page`. `params` are those of the page files, so they match the chunks'
+anchors. `image`/`layout`/`thumbnail` say which assets are stored. A manifest that does not
+parse, has duplicate pages, orders other than 0, 1, ... or another document's id is
+treated as absent (and logged).
+
+**Reads** (public, like the document text; each first checks that the document exists, the
+one place where a future access rule, #279, applies):
+
+- `GET /api/documents/{document_id}/pages`: `DocumentPages`, the pages with the URL of each
+  available asset (`image_url`, `layout_url`, `thumbnail_url`). Without a manifest,
+  `available` is false and `pages` empty: a text-only document. `Cache-Control: no-cache`.
+- `GET /api/documents/{document_id}/pages/{page_id}/{image|layout|thumbnail}`: the file
+  (`image/jpeg` or `application/json`), 404 when absent. Scans and thumbnails are cached for
+  a day; layout files are revalidated (`no-cache`), since a re-import with other parameters
+  replaces them together with the anchors. All carry an `ETag` and answer `If-None-Match`
+  with 304.
+- `GET /api/documents/{document_id}/chunks/by_page?page=N&limit=20` (at most 50):
+  `PageChunks`, the chunks whose `from_page`..`to_page` includes page `N`, in document
+  order, with `has_more`. It opens a page directly without reading earlier pages. The page
+  ranges are the stored, coarse ones: in a sample of the corpus a chunk starting at the top
+  of a page often names the previous page as `from_page`/`start_page_id`, so the result can
+  include one chunk too many, never one too few. `layoutStart` is the exact start.
+
+Clients use only the URLs of the manifest, so the storage can change behind them.
+`layoutStart` is returned on `DocumentChunk` (document view, passage reads, Search hits,
+page chunks) and `CollectionChunk`; chunks without it are text-only.

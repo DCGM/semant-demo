@@ -7,7 +7,7 @@ import { apiToken, deleteAddedAttributes, deleteAddedTags, ensureLoggedIn, fixtu
 // each saved at once, Unknown / Not applicable are fixed and only retired / restored, the UI
 // offers Retire / Restore and never Delete, search highlights matches and says what Show
 // retired hides, narrowing the tags of a used attribute is refused with the count, and the
-// Tags part shows each tag's attributes.
+// Tags part shows each tag's attributes, which Create/Edit Tag switches for its tag (#516).
 
 const chronicles = fixture.collection('chronicles')
 const base = `/api/user_collections/${chronicles.id}`
@@ -397,3 +397,39 @@ test('a taken name is shown at the Name field, which gets the focus however the 
   await expect(dialog(page)).toHaveCount(0)
   await expect(card(page, 'Role 2')).toBeVisible()
 })
+
+for (const viewport of ['wide', 'phone'] as const) {
+  test(`Create and Edit Tag switch Selected tags attributes for the tag only (${viewport})`, async ({ page, request }) => {
+    // #516: All tags attributes are on and locked; removing the last tag leaves no tag.
+    await createAttribute(request, { name: 'Mood', tag_ids: [fixture.tag('person').id], values: [{ label: 'calm' }] })
+    await createAttribute(request, { name: 'Tone', tag_ids: [], values: [{ label: 'formal' }] })
+    await createAttribute(request, { name: 'Topic', all_tags: true, values: [{ label: 'elections' }] })
+    await useViewport(page, viewport)
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${chronicles.id}/tags`)
+    const row = (tag: string) => page.locator('tbody tr').filter({ has: page.getByText(tag, { exact: true }) })
+    const attributeToggle = (name: string) =>
+      dialog(page).getByTestId('tag-applicable-attribute').filter({ hasText: name }).getByRole('switch')
+
+    await page.getByRole('button', { name: 'Create' }).first().click()
+    await dialog(page).getByLabel('Tag Name').fill('Speaker')
+    await dialog(page).getByLabel('Tag Shorthand').fill('SPK')
+    await expect(attributeToggle('Topic')).toHaveAttribute('aria-checked', 'true')
+    await expect(attributeToggle('Topic')).toHaveAttribute('aria-disabled', 'true')
+    await expect(attributeToggle('Mood')).toHaveAttribute('aria-checked', 'false')
+    await attributeToggle('Tone').click()
+    await dialog(page).getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog(page)).toHaveCount(0)
+    await expect(row('Speaker').getByTestId('tag-attribute')).toHaveText(['Tone', 'TopicAll tags'])
+    expect((await listed(request, 'Tone')).tag_ids).toHaveLength(1)
+
+    await row(fixture.tag('person').name).getByRole('button', { name: 'Edit tag' }).click()
+    await expect(attributeToggle('Mood')).toHaveAttribute('aria-checked', 'true')
+    await attributeToggle('Mood').click()
+    await dialog(page).getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(dialog(page)).toHaveCount(0)
+    await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['TopicAll tags'])
+    const mood = await listed(request, 'Mood')
+    expect([mood.all_tags, mood.tag_ids]).toEqual([false, []])
+  })
+}

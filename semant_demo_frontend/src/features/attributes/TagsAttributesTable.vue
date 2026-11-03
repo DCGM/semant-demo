@@ -1,6 +1,6 @@
 <template>
-  <!-- The collection's tags with the attributes that apply to each, read-only (#506): those that
-       name the tag, then those for all tags. Changing them from the tag side is #516. -->
+  <!-- The collection's tags with the attributes that apply to each (#506): those that name the
+       tag, then those for all tags. Create/Edit Tag changes them from the tag side (#516). -->
   <TagsTable @deleted="refresh">
     <template #attributes="{ tag }">
       <span v-if="error" class="text-grey-7" data-testid="tag-attributes-error">Attributes unavailable</span>
