@@ -132,8 +132,8 @@ export async function logOut (page: Page): Promise<void> {
 export async function search (page: Page, query: string): Promise<void> {
   await page.goto('/#/search')
   await closePhoneNavigation(page)
-  // The query field is the only textbox in the search form (it has no label).
-  await page.getByRole('textbox').first().fill(query)
+  // The query field is a combobox: it offers the recent searches (#558).
+  await page.getByRole('combobox', { name: 'Search query' }).fill(query)
   await page.keyboard.press('Enter')
   await expect(page.locator('#result-1'), `no results for "${query}"`).toBeVisible()
 }

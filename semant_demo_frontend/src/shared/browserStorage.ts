@@ -18,3 +18,11 @@ export function writeStored (key: string, value: string): void {
     // Storage unavailable — the choice just won't persist.
   }
 }
+
+export function removeStored (key: string): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // Storage unavailable — there is nothing to remove.
+  }
+}
