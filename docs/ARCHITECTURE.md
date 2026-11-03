@@ -682,7 +682,12 @@ storage and validation in `history.ts`, the input's dropdown state and keys in
 `useSearchHistory`, the list in `SearchHistoryDropdown`; one `localStorage` key per
 signed-in user and one for signed-out use, never merged, kept after sign-out, at most 50
 entries of which 10 are shown, the query saved as typed and not saved over 1000 characters,
-stored entries validated when read and shown as plain text),
+stored entries validated when read and shown as plain text; the module never reads the
+criteria: a search input's `HistoryCriteria` validates them and compares them by key; the
+stored list names its own format (`version`) and its criteria's (`criteriaVersion`, the
+input's), and every write stores the current ones; older criteria are converted or left out
+by the input; a list of a newer format is neither read nor written over, and the dropdown asks
+the user to reload the page),
 `visualization/VegaChart.vue`: draws a Vega-Lite or Vega specification with vega-embed,
 loaded on demand, fitted to its container width and disposed of on unmount; each redraw is
 made in a detached element and only the newest is shown, so overlapping redraws cannot
@@ -691,7 +696,7 @@ and `router/` the routes and sign-in guard.
 
 | Feature | Contents |
 |---|---|
-| `search` | search page, result cards, classifications, summary panel, request/summary state, filter labels (`searchFilters.ts`), what the recent-search history keeps of a search and how it is restored (`searchHistoryCriteria.ts`: query type, search vector, collection id and filters, not generated titles/summaries; criteria no longer available are left out and named). The page saves a search once its results arrive (a failed one is not saved) and runs an entry only once the filters, search vectors and the user's collections are loaded; while loading, or when one failed, it says so and runs nothing. Clear history is refused with a warning while a search runs (that search would be saved into the cleared history) |
+| `search` | search page, result cards, classifications, summary panel, request/summary state, filter labels (`searchFilters.ts`), what the recent-search history keeps of a search and how it is restored (`searchHistoryCriteria.ts`: a snapshot of the `SearchRequest` fields that decide the results — `type`, `vector`, `userCollectionId` and `filters` as `SearchFilterInput` — not generated titles/summaries, criteria format `SEARCH_CRITERIA_VERSION`; criteria no longer available are left out and named). The page saves a search once its results arrive (a failed one is not saved) and runs an entry only once the filters, search vectors and the user's collections are loaded; while loading, or when one failed, it says so and runs nothing. Clear history is refused with a warning while a search runs (that search would be saved into the cleared history) |
 | `rag` | RAG chat page, the conversation's sources panel and its source registry/selection (`useChatSources`) |
 | `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
 | `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel, links to the original digitized document (`originalSource.ts`, `OriginalSourceLink`; used by search results, their context, RAG sources and the document view) |

@@ -11,6 +11,7 @@ import {
   matchingEntries,
   parseHistory,
   readHistory,
+  serializeHistory,
   storageKey,
   withEntry,
   writeHistory,
@@ -24,6 +25,7 @@ import {
   criteriaOfRequest,
   describeCriteria,
   restoreSearch,
+  SEARCH_CRITERIA_VERSION,
   searchHistoryCriteria,
   type SearchHistoryCriteria,
   type SearchOptions
@@ -36,12 +38,22 @@ const ANONYMOUS: HistoryAudience = { kind: 'anonymous' }
 const ALICE: HistoryAudience = { kind: 'user', userId: 'alice' }
 const BOB: HistoryAudience = { kind: 'user', userId: 'bob' }
 
-/** Criteria of the generic tests: a single tag compared as is. */
+/**
+ * Criteria of the generic tests: a single tag compared as is, in format 2. Format 1 stored
+ * a tag number, converted to `tag-<n>`; a format 1 tag that is not a number is left out.
+ */
 const tagCriteria: HistoryCriteria<string> = {
   namespace: 'test',
-  parse: (raw) => (typeof raw === 'string' ? raw : null),
+  version: 2,
+  parse: (raw, version) => {
+    if (version === 1) return typeof raw === 'number' ? `tag-${raw}` : null
+    return typeof raw === 'string' ? raw : null
+  },
   key: (c) => c
 }
+
+/** Stores `list` as an audience's whole history. */
+const save = (audience: HistoryAudience, list: HistoryEntry<string>[]) => writeHistory(audience, tagCriteria, list)
 
 const entry = (query: string, savedAt: number, criteria = ''): HistoryEntry<string> => ({ query, criteria, savedAt })
 
@@ -90,12 +102,12 @@ describe('history list', () => {
 
 describe('stored history', () => {
   it('keeps a separate history per signed-in user and for signed-out use', () => {
-    writeHistory(ALICE, tagCriteria, [entry('alice search', 1)])
-    writeHistory(BOB, tagCriteria, [entry('bob search', 1)])
-    writeHistory(ANONYMOUS, tagCriteria, [entry('guest search', 1)])
-    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['alice search'])
-    expect(readHistory(BOB, tagCriteria).map(e => e.query)).toEqual(['bob search'])
-    expect(readHistory(ANONYMOUS, tagCriteria).map(e => e.query)).toEqual(['guest search'])
+    save(ALICE, [entry('alice search', 1)])
+    save(BOB, [entry('bob search', 1)])
+    save(ANONYMOUS, [entry('guest search', 1)])
+    expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query)).toEqual(['alice search'])
+    expect(readHistory(BOB, tagCriteria).entries.map(e => e.query)).toEqual(['bob search'])
+    expect(readHistory(ANONYMOUS, tagCriteria).entries.map(e => e.query)).toEqual(['guest search'])
     expect(Object.keys(localStorage).sort()).toEqual([
       'semant.searchHistory.test.anonymous',
       'semant.searchHistory.test.user.alice',
@@ -104,20 +116,31 @@ describe('stored history', () => {
   })
 
   it('removes the key when the history becomes empty', () => {
-    writeHistory(ALICE, tagCriteria, [entry('a', 1)])
-    writeHistory(ALICE, tagCriteria, [])
+    save(ALICE, [entry('a', 1)])
+    save(ALICE, [])
     expect(localStorage.getItem(storageKey('test', ALICE))).toBeNull()
   })
 
   it('ignores a malformed stored value', () => {
-    for (const value of ['not json', '[]', 'null', stored({ version: 2, entries: [] }), stored({ version: 1, entries: 'x' })]) {
-      expect(parseHistory(value, tagCriteria)).toEqual([])
+    const malformed = [
+      'not json',
+      '[]',
+      'null',
+      stored({ version: 1, criteriaVersion: 2, entries: 'x' }),
+      stored({ version: 1, entries: [] }),
+      stored({ version: 1, criteriaVersion: 1.5, entries: [] }),
+      stored({ version: 0, criteriaVersion: 2, entries: [] }),
+      stored({ version: '2', criteriaVersion: 2, entries: [] })
+    ]
+    for (const value of malformed) {
+      expect(parseHistory(value, tagCriteria)).toEqual({ entries: [], newerFormat: false })
     }
   })
 
   it('leaves out malformed entries and keeps the valid ones, newest first', () => {
     const value = stored({
       version: 1,
+      criteriaVersion: 2,
       entries: [
         { query: 'old', criteria: '', savedAt: 1 },
         { query: 'new', criteria: '', savedAt: 5 },
@@ -131,20 +154,70 @@ describe('stored history', () => {
         '<img src=x onerror=alert(1)>'
       ]
     })
-    expect(parseHistory(value, tagCriteria).map(e => e.query)).toEqual(['new', 'old'])
+    expect(parseHistory(value, tagCriteria).entries.map(e => e.query)).toEqual(['new', 'old'])
   })
 
   it('keeps no more than 50 stored entries', () => {
-    expect(parseHistory(stored({ version: 1, entries: entries(80) }), tagCriteria)).toHaveLength(HISTORY_LIMIT)
+    expect(parseHistory(serializeHistory(entries(80), tagCriteria), tagCriteria).entries).toHaveLength(HISTORY_LIMIT)
+  })
+
+  it('stores the format of the list and of the criteria apart', () => {
+    save(ALICE, [entry('a', 1, 'cs')])
+    expect(JSON.parse(localStorage.getItem(storageKey('test', ALICE)) ?? '')).toEqual({
+      version: 1,
+      criteriaVersion: 2,
+      entries: [{ query: 'a', savedAt: 1, criteria: 'cs' }]
+    })
+  })
+
+  it('reads an older criteria format through the search input, which converts it or leaves it out', () => {
+    const value = stored({
+      version: 1,
+      criteriaVersion: 1,
+      entries: [
+        { query: 'converted', criteria: 7, savedAt: 2 },
+        { query: 'not convertible', criteria: 'cs', savedAt: 3 }
+      ]
+    })
+    expect(parseHistory(value, tagCriteria)).toEqual({ entries: [entry('converted', 2, 'tag-7')], newerFormat: false })
+  })
+
+  it('neither reads nor writes over a history of a newer format', () => {
+    for (const newer of [{ version: 2, criteriaVersion: 2 }, { version: 1, criteriaVersion: 3 }]) {
+      const value = stored({ ...newer, entries: [{ query: 'from a newer version', criteria: 'cs', savedAt: 5 }] })
+      localStorage.setItem(storageKey('test', ALICE), value)
+      expect(readHistory(ALICE, tagCriteria)).toEqual({ entries: [], newerFormat: true })
+
+      const history = useSearchHistory(tagCriteria, ref<HistoryAudience | null>(ALICE), ref(''), () => undefined)
+      history.show()
+      expect(history.newerFormat.value).toBe(true)
+      expect(history.shown.value).toBe(true) // the list asks for a reload
+      expect(history.record('added', 'de')).toBe('skipped')
+      history.clear()
+      expect(localStorage.getItem(storageKey('test', ALICE))).toBe(value)
+    }
+  })
+
+  it('notices a newer format written by another tab when changing the history', () => {
+    save(ALICE, [entry('a', 1)])
+    const history = useSearchHistory(tagCriteria, ref<HistoryAudience | null>(ALICE), ref(''), () => undefined)
+    history.show()
+    expect(history.entries.value).toHaveLength(1)
+    const value = stored({ version: 1, criteriaVersion: 3, entries: [] })
+    localStorage.setItem(storageKey('test', ALICE), value)
+    expect(history.record('b', '')).toBe('skipped')
+    expect(history.entries.value).toEqual([])
+    expect(history.newerFormat.value).toBe(true)
+    expect(localStorage.getItem(storageKey('test', ALICE))).toBe(value)
   })
 
   it('works without storage: nothing is read and nothing is remembered', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked') })
-    expect(readHistory(ALICE, tagCriteria)).toEqual([])
-    expect(() => writeHistory(ALICE, tagCriteria, [entry('a', 1)])).not.toThrow()
-    expect(() => writeHistory(ALICE, tagCriteria, [])).not.toThrow()
+    expect(readHistory(ALICE, tagCriteria)).toEqual({ entries: [], newerFormat: false })
+    expect(() => save(ALICE, [entry('a', 1)])).not.toThrow()
+    expect(() => save(ALICE, [])).not.toThrow()
   })
 })
 
@@ -165,14 +238,14 @@ describe('useSearchHistory', () => {
     expect(history.record('   ', 'cs')).toBe('skipped')
     expect(history.record('x'.repeat(MAX_QUERY_LENGTH + 1), '')).toBe('tooLong')
     expect(history.record('y'.repeat(MAX_QUERY_LENGTH), '')).toBe('saved')
-    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['y'.repeat(MAX_QUERY_LENGTH), 'old   gazette\n1848'])
+    expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query)).toEqual(['y'.repeat(MAX_QUERY_LENGTH), 'old   gazette\n1848'])
   })
 
   it('treats queries differing only in whitespace as the same search', () => {
     const { history } = setup()
     history.record('old gazette', 'cs')
     history.record(' old   gazette ', 'cs')
-    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['old   gazette'])
+    expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query)).toEqual(['old   gazette'])
   })
 
   it('reads the stored history when the list opens, not on every keystroke', async () => {
@@ -207,7 +280,7 @@ describe('useSearchHistory', () => {
     history.record('c', '')
     history.onKeydown(key('Escape'))
     // Another tab removed two searches meanwhile.
-    writeHistory(ALICE, tagCriteria, readHistory(ALICE, tagCriteria).slice(0, 1))
+    save(ALICE, readHistory(ALICE, tagCriteria).entries.slice(0, 1))
     history.onKeydown(key('ArrowUp'))
     expect([history.suggestions.value.length, history.activeIndex.value]).toEqual([1, 0])
   })
@@ -220,14 +293,14 @@ describe('useSearchHistory', () => {
   it('keeps a search recorded in another tab meanwhile', () => {
     const { history } = setup()
     history.record('first', '')
-    writeHistory(ALICE, tagCriteria, [entry('other tab', Date.now() + 1000), ...readHistory(ALICE, tagCriteria)])
+    save(ALICE, [entry('other tab', Date.now() + 1000), ...readHistory(ALICE, tagCriteria).entries])
     history.record('second', '')
-    expect(readHistory(ALICE, tagCriteria).map(e => e.query).sort()).toEqual(['first', 'other tab', 'second'])
+    expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query).sort()).toEqual(['first', 'other tab', 'second'])
   })
 
   it('follows the audience and records nothing while it is unknown', async () => {
-    writeHistory(ALICE, tagCriteria, [entry('alice search', 1)])
-    writeHistory(ANONYMOUS, tagCriteria, [entry('guest search', 1)])
+    save(ALICE, [entry('alice search', 1)])
+    save(ANONYMOUS, [entry('guest search', 1)])
     const { who, history } = setup(ANONYMOUS)
     expect(history.entries.value.map(e => e.query)).toEqual(['guest search'])
 
@@ -239,18 +312,18 @@ describe('useSearchHistory', () => {
     who.value = ANONYMOUS
     await nextTick()
     expect(history.entries.value.map(e => e.query)).toEqual(['guest search'])
-    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['alice search'])
+    expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query)).toEqual(['alice search'])
 
     who.value = null
     await nextTick()
     expect(history.entries.value).toEqual([])
     history.record('unverified', '')
-    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['alice search'])
-    expect(readHistory(ANONYMOUS, tagCriteria).map(e => e.query)).toEqual(['guest search'])
+    expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query)).toEqual(['alice search'])
+    expect(readHistory(ANONYMOUS, tagCriteria).entries.map(e => e.query)).toEqual(['guest search'])
   })
 
   it('fills a list opened while the session was being verified once it is', async () => {
-    writeHistory(ALICE, tagCriteria, [entry('alice search', 1)])
+    save(ALICE, [entry('alice search', 1)])
     const { who, history } = setup(null)
     history.show()
     expect(history.shown.value).toBe(false)
@@ -270,7 +343,7 @@ describe('useSearchHistory', () => {
     history.record('a', '')
     history.record('b', '')
     history.remove(history.entries.value[0])
-    expect(readHistory(ALICE, tagCriteria).map(e => e.query)).toEqual(['a'])
+    expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query)).toEqual(['a'])
     history.clear()
     expect(history.entries.value).toEqual([])
     expect(localStorage.getItem(storageKey('test', ALICE))).toBeNull()
@@ -349,6 +422,17 @@ describe('SearchHistoryDropdown', () => {
     })
   }
 
+  it('asks for a reload instead of listing a history of a newer format', () => {
+    const wrapper = mount(SearchHistoryDropdown, {
+      props: { items: [], activeIndex: -1, listId: 'history', newerFormat: true, note: 'Loading search options' },
+      global: { plugins: [[Quasar, {}]] }
+    })
+    expect(wrapper.get('[data-testid="search-history-reload"]').text()).toContain('Reload the page')
+    expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="search-history-clear"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="search-history-note"]').exists()).toBe(false)
+  })
+
   it('lists entries as plain text with their criteria and marks the highlighted one', () => {
     const wrapper = mountDropdown(1)
     const options = wrapper.findAll('[role="option"]')
@@ -413,8 +497,8 @@ describe('Search page criteria', () => {
   const criteria = (overrides: Partial<SearchHistoryCriteria> = {}): SearchHistoryCriteria => ({
     type: SearchType.hybrid,
     vector: 'fake-small',
-    collectionId: 'c1',
-    filters: [{ id: 'year', min: 1900, max: 1950 }, { id: 'language', values: ['deu', 'ces'] }],
+    userCollectionId: 'c1',
+    filters: [{ id: 'year', minValue: 1900, maxValue: 1950 }, { id: 'language', values: ['deu', 'ces'] }],
     ...overrides
   })
 
@@ -435,33 +519,36 @@ describe('Search page criteria', () => {
     expect(fromRequest).toEqual({
       type: SearchType.hybrid,
       vector: 'fake-small',
-      collectionId: 'c1',
-      filters: [{ id: 'language', values: ['ces', 'deu'] }, { id: 'year', min: 1900, max: 1950 }]
+      userCollectionId: 'c1',
+      filters: [{ id: 'language', values: ['ces', 'deu'] }, { id: 'year', minValue: 1900, maxValue: 1950 }]
     })
-    expect(Object.keys(fromRequest).sort()).toEqual(['collectionId', 'filters', 'type', 'vector'])
+    expect(Object.keys(fromRequest).sort()).toEqual(['filters', 'type', 'userCollectionId', 'vector'])
   })
 
   it('treats the same filters in another order as the same search', () => {
-    const reordered = criteria({ filters: [{ id: 'language', values: ['ces', 'deu'] }, { id: 'year', min: 1900, max: 1950 }] })
+    const reordered = criteria({ filters: [{ id: 'language', values: ['ces', 'deu'] }, { id: 'year', minValue: 1900, maxValue: 1950 }] })
     expect(searchHistoryCriteria.key(reordered)).toBe(searchHistoryCriteria.key(criteria()))
     expect(searchHistoryCriteria.key(criteria({ vector: null }))).not.toBe(searchHistoryCriteria.key(criteria()))
   })
 
   it('validates stored criteria', () => {
-    expect(searchHistoryCriteria.parse(JSON.parse(JSON.stringify(criteria())))).toEqual(criteria())
+    const parse = (raw: unknown) => searchHistoryCriteria.parse(raw, SEARCH_CRITERIA_VERSION)
+    expect(parse(JSON.parse(JSON.stringify(criteria())))).toEqual(criteria())
     const invalid = [
       null,
       'hybrid',
       { ...criteria(), type: 'magic' },
       { ...criteria(), vector: 3 },
-      { ...criteria(), collectionId: '' },
+      { ...criteria(), userCollectionId: '' },
+      { ...criteria(), userCollectionId: undefined },
       { ...criteria(), filters: 'year' },
-      { ...criteria(), filters: [{ id: 'year', min: 1950, max: 1900 }] },
+      { ...criteria(), filters: [{ id: 'year', minValue: 1950, maxValue: 1900 }] },
+      { ...criteria(), filters: [{ id: 'year', minValue: '1900', maxValue: 1950 }] },
       { ...criteria(), filters: [{ id: 'language', values: [1] }] },
       { ...criteria(), filters: [{ id: 'language', values: [] }] },
       { ...criteria(), filters: [{ id: 'language', values: ['ces'] }, { id: 'language', values: ['deu'] }] }
     ]
-    for (const raw of invalid) expect(searchHistoryCriteria.parse(raw)).toBeNull()
+    for (const raw of invalid) expect(parse(raw)).toBeNull()
   })
 
   it('restores available criteria and resets the other filters', () => {
@@ -469,7 +556,7 @@ describe('Search page criteria', () => {
     expect(restored).toEqual({
       type: SearchType.hybrid,
       vector: 'fake-small',
-      collectionId: 'c1',
+      userCollectionId: 'c1',
       filterValues: { language: ['deu'], year: { min: 1800, max: 2000 } },
       dropped: []
     })
@@ -478,28 +565,28 @@ describe('Search page criteria', () => {
   it('leaves out and names criteria that are no longer available', () => {
     const restored = restoreSearch(criteria({
       vector: 'retired-model',
-      collectionId: 'lost-access',
+      userCollectionId: 'lost-access',
       filters: [
         { id: 'language', values: ['ces', 'xxx'] },
-        { id: 'year', min: 2100, max: 2200 },
+        { id: 'year', minValue: 2100, maxValue: 2200 },
         { id: 'removed_filter', values: ['a'] }
       ]
     }), options)
-    expect(restored.collectionId).toBeNull()
+    expect(restored.userCollectionId).toBeNull()
     expect(restored.vector).toBeNull()
     expect(restored.filterValues).toEqual({ language: ['ces'], year: { min: 1800, max: 2000 } })
     expect(restored.dropped).toEqual(['Collection', 'Embedding: retired-model', 'Language: xxx', 'Year: 2100-2200', 'Removed Filter'])
   })
 
   it('limits a stored range to the current bounds', () => {
-    const restored = restoreSearch(criteria({ filters: [{ id: 'year', min: 1700, max: 1850 }] }), options)
+    const restored = restoreSearch(criteria({ filters: [{ id: 'year', minValue: 1700, maxValue: 1850 }] }), options)
     expect(restored.filterValues.year).toEqual({ min: 1800, max: 1850 })
     expect(restored.dropped).toEqual([])
   })
 
   it('describes criteria with current names', () => {
     expect(describeCriteria(criteria(), options)).toBe('My letters · Embedding: Fake small · Year: 1900-1950 · Language: German, Czech')
-    expect(describeCriteria(criteria({ collectionId: 'gone', vector: null, filters: [] }), options)).toBe('Unavailable collection')
-    expect(describeCriteria(criteria({ collectionId: null, vector: null, filters: [] }), options)).toBe('')
+    expect(describeCriteria(criteria({ userCollectionId: 'gone', vector: null, filters: [] }), options)).toBe('Unavailable collection')
+    expect(describeCriteria(criteria({ userCollectionId: null, vector: null, filters: [] }), options)).toBe('')
   })
 })

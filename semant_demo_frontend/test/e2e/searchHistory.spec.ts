@@ -238,3 +238,24 @@ test('the history cannot be cleared while a search is running', async ({ page })
   await input(page).click()
   await expect(dropdown(page)).toHaveCount(0)
 })
+
+test('a history saved by a newer version asks for a reload and is not written over', async ({ page }) => {
+  await search(page, 'Lhota')
+  // Pretend a newer version of the application wrote this browser's history meanwhile.
+  const newer = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(k => k.startsWith('semant.searchHistory.search.')) as string
+    const value = JSON.stringify({ ...JSON.parse(localStorage.getItem(key) ?? '{}'), criteriaVersion: 99 })
+    localStorage.setItem(key, value)
+    return { key, value }
+  })
+
+  await input(page).fill('')
+  await expect(page.getByTestId('search-history-reload')).toContainText('Reload the page to see them.')
+  await expect(entries(page)).toHaveCount(0)
+  await input(page).fill('Brno')
+  const answer = page.waitForResponse((r) => r.url().endsWith('/api/search') && r.request().method() === 'POST')
+  await input(page).press('Enter')
+  expect((await answer).status()).toBe(200)
+  await expect(page.locator('#result-1')).toBeVisible()
+  expect(await page.evaluate((key) => localStorage.getItem(key), newer.key)).toBe(newer.value)
+})
