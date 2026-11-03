@@ -57,6 +57,9 @@ All URIs are relative to *http://localhost*
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet**](DefaultApi.md#readdocumentadjacentchunksapidocumentsdocumentidchunkschunkidadjacentget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/adjacent | Read Document Adjacent Chunks |
 | [**readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet**](DefaultApi.md#readdocumentchunkwindowapidocumentsdocumentidchunkschunkidwindowget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/window | Read Document Chunk Window |
+| [**readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet**](DefaultApi.md#readdocumentpageassetapidocumentsdocumentidpagespageidkindget) | **GET** /api/documents/{document_id}/pages/{page_id}/{kind} | Read Document Page Asset |
+| [**readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet**](DefaultApi.md#readdocumentpagechunksapidocumentsdocumentidchunksbypageget) | **GET** /api/documents/{document_id}/chunks/by_page | Read Document Page Chunks |
+| [**readDocumentPagesApiDocumentsDocumentIdPagesGet**](DefaultApi.md#readdocumentpagesapidocumentsdocumentidpagesget) | **GET** /api/documents/{document_id}/pages | Read Document Pages |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionscollectionidchunkschunkiddelete) | **DELETE** /api/user_collections/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
@@ -3941,6 +3944,224 @@ example().catch(console.error);
 ### Return type
 
 [**DocumentChunkWindow**](DocumentChunkWindow.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet
+
+> readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(documentId, pageId, kind)
+
+Read Document Page Asset
+
+Returns one asset of a page (public corpus data): &#x60;&#x60;image&#x60;&#x60; (the scan) or &#x60;&#x60;thumbnail&#x60;&#x60; (&#x60;&#x60;image/jpeg&#x60;&#x60;), or &#x60;&#x60;layout&#x60;&#x60; (the page layout file, &#x60;&#x60;application/json&#x60;&#x60;, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers &#x60;&#x60;If-None-Match&#x60;&#x60; with 304.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+    // string
+    pageId: pageId_example,
+    // 'image' | 'layout' | 'thumbnail'
+    kind: kind_example,
+  } satisfies ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest;
+
+  try {
+    const data = await api.readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **pageId** | `string` |  | [Defaults to `undefined`] |
+| **kind** | `image`, `layout`, `thumbnail` |  | [Defaults to `undefined`] [Enum: image, layout, thumbnail] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `image/jpeg`, `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | The page scan or thumbnail (JPEG) or the page layout file (JSON). |  -  |
+| **304** | Not modified (&#x60;&#x60;If-None-Match&#x60;&#x60;). |  -  |
+| **404** | Unknown document, or the asset is not available. |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet
+
+> PageChunks readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(documentId, page, limit)
+
+Read Document Page Chunks
+
+Returns, in document order, up to &#x60;&#x60;limit&#x60;&#x60; chunks whose page range (&#x60;&#x60;from_page&#x60;&#x60;.. &#x60;&#x60;to_page&#x60;&#x60;) includes page &#x60;&#x60;page&#x60;&#x60; (the page\&#39;s &#x60;&#x60;order&#x60;&#x60; in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+    // number
+    page: 56,
+    // number (optional)
+    limit: 56,
+  } satisfies ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest;
+
+  try {
+    const data = await api.readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+| **page** | `number` |  | [Defaults to `undefined`] |
+| **limit** | `number` |  | [Optional] [Defaults to `20`] |
+
+### Return type
+
+[**PageChunks**](PageChunks.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## readDocumentPagesApiDocumentsDocumentIdPagesGet
+
+> DocumentPages readDocumentPagesApiDocumentsDocumentIdPagesGet(documentId)
+
+Read Document Pages
+
+Returns the document\&#39;s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). &#x60;&#x60;available&#x60;&#x60; is false, with no pages, for a document without imported pages (a text-only document).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    documentId: documentId_example,
+  } satisfies ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest;
+
+  try {
+    const data = await api.readDocumentPagesApiDocumentsDocumentIdPagesGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**DocumentPages**](DocumentPages.md)
 
 ### Authorization
 

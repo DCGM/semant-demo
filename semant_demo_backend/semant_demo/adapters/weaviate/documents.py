@@ -1,6 +1,9 @@
 """Corpus documents and their chunks."""
+import logging
 from collections.abc import Sequence
 from uuid import UUID
+
+from pydantic import ValidationError
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference, Sort
@@ -10,7 +13,27 @@ from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.features.annotations.schemas import AnnotationChunk
 from semant_demo.features.documents.criteria import Condition
-from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse, DocumentDetail, DocumentViewChunk
+from semant_demo.features.documents.schemas import (
+    DocumentChunk, Document, DocumentBrowse, DocumentDetail, DocumentViewChunk, LayoutStart)
+
+logger = logging.getLogger(__name__)
+
+LAYOUT_START = "layoutStart"
+"""The ``Chunks`` object property of a chunk's start on the page scans (#541)."""
+
+
+def chunk_properties(props: dict) -> dict:
+    """A chunk's stored properties for a chunk projection: ``layoutStart`` is parsed, and an
+    anchor that does not parse is left out (logged), so one bad value never fails a read."""
+    value = props.get(LAYOUT_START)
+    if value is None:
+        return props
+    try:
+        anchor = LayoutStart.model_validate(value)
+    except ValidationError:
+        logger.warning("Ignoring an invalid stored chunk layoutStart")
+        anchor = None
+    return {**props, LAYOUT_START: anchor}
 
 
 def _document_id(obj) -> UUID | None:
@@ -19,7 +42,7 @@ def _document_id(obj) -> UUID | None:
 
 
 def _to_text_chunk(obj, document_id: UUID) -> DocumentChunk:
-    return DocumentChunk(**{**obj.properties, "id": obj.uuid, "document": document_id})
+    return DocumentChunk(**{**chunk_properties(obj.properties), "id": obj.uuid, "document": document_id})
 
 
 POSITION_PROPERTIES = {"startChar": "start_char", "startWord": "start_word", "wordOpenAtStart": "word_open_at_start"}
@@ -86,11 +109,28 @@ class DocumentRepository:
             refs = chunk_obj.references.get(link) if chunk_obj.references else None
             chunks.append(DocumentViewChunk(
                 id=chunk_obj.uuid,
-                **chunk_obj.properties,
+                **chunk_properties(chunk_obj.properties),
                 document=document_response.uuid,
                 in_user_collection=collection_id in {ref.uuid for ref in (refs.objects if refs else [])},
             ))
         return DocumentDetail(document=document, chunks=chunks)
+
+    async def exists(self, document_id: UUID) -> bool:
+        """Whether the document exists (reads no properties)."""
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        return await documents.query.fetch_object_by_id(document_id, return_properties=[]) is not None
+
+    async def read_chunks_covering_page(self, document_id: UUID, page: int, limit: int) -> list[DocumentChunk]:
+        """Up to ``limit`` chunks of the document whose ``from_page``..``to_page`` includes
+        ``page``, in ``order``."""
+        response = await self._chunks().query.fetch_objects(
+            filters=Filter.by_ref("document").by_id().equal(document_id)
+            & Filter.by_property("from_page").less_or_equal(page)
+            & Filter.by_property("to_page").greater_or_equal(page),
+            sort=Sort.by_property("order", ascending=True),
+            limit=limit,
+        )
+        return [_to_text_chunk(o, document_id) for o in response.objects]
 
     async def read_chunk_text(self, chunk_id: UUID) -> AnnotationChunk | None:
         """The chunk's document, order, text and position, or None if it does not exist."""

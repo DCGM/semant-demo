@@ -175,6 +175,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `ALLOWED_ORIGIN` | `http://localhost:9000` | CORS origin of the frontend |
 | `PORT` | `8000` | Listen port of `run.py` and of the Docker image's uvicorn |
 | `STATIC_PATH` | `./static` | Built frontend served by the backend when the directory exists |
+| `PAGE_ASSETS_DIR` | (empty) | Page asset store: page scans, layout files, thumbnails and page manifests ([PAGE_LAYOUT](PAGE_LAYOUT.md#page-asset-store-and-reads-541)). Empty: every document is text-only. Read-only for the application; the import (#542) writes it |
 | `LOG_LEVEL` | `INFO` | Python and OTLP log level |
 | `LLM_MODELS_CONFIG` | `configs/llm_models.yaml` | Server-side model, reasoning profile, temperature support, price estimate (or `local_rate` of a self-hosted tier), permitted feature tiers and per-feature limits ([ARCHITECTURE.md](ARCHITECTURE.md#llm-gateway-adaptersllm)). Shipped tiers use OpenRouter; see [the October 2026 review](LLM_MODEL_SELECTION_2026-10.md). |
 | `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `120` / `1` | Timeout and SDK retries of one LLM provider request (Ollama does not retry) |

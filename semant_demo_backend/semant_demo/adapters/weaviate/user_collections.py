@@ -11,6 +11,7 @@ from uuid import UUID
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.query import Filter, QueryReference, Sort
 
+from semant_demo.adapters.weaviate.documents import LAYOUT_START, chunk_properties
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import delete_collection_cascade, step_failure
@@ -56,6 +57,7 @@ def to_chunk(obj, in_collection: bool) -> CollectionChunk:
         from_page=props["from_page"],
         to_page=props["to_page"],
         in_collection=in_collection,
+        layoutStart=chunk_properties(props).get(LAYOUT_START),
     )
 
 

@@ -7,9 +7,10 @@ interchangeable: :class:`DocumentChunk` and :class:`DocumentViewChunk` here,
 ``features/annotations/schemas.AnnotationChunk``.
 """
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Document(BaseModel):
@@ -52,6 +53,18 @@ class Document(BaseModel):
     seriesNumber: str | None = None
 
 
+class LayoutStart(BaseModel):
+    """Where a chunk's first character is on the page scans (#540, docs/PAGE_LAYOUT.md):
+    the line ``lineId`` of the page layout file of ``pageId``, ``offset`` UTF-16 code units
+    into that line's text. ``exact``: walking the layout lines from there reproduces the chunk
+    text, so characters map exactly; ``approximate``: the text differs slightly (at most the
+    import's edit ratio), so only whole lines may be highlighted."""
+    pageId: UUID
+    lineId: str
+    offset: int = Field(ge=0)
+    match: Literal["exact", "approximate"]
+
+
 class DocumentChunk(BaseModel):
     """A chunk with its stored properties. ``text`` is the canonical stored text that span
     offsets refer to; the search hit (``SearchResultChunk``) extends it with display text."""
@@ -65,6 +78,9 @@ class DocumentChunk(BaseModel):
     end_paragraph: bool = True
     language: str | None = None
     order: int | None
+    layoutStart: LayoutStart | None = None
+    """The chunk's start on the page scans; absent when the document has no imported
+    layout or the chunk could not be verified against it (text-only fallback)."""
 
     ner_P: list[str] | None = None  # Person entities
     ner_T: list[str] | None = None  # Temporal entities
@@ -128,5 +144,38 @@ class AdjacentChunks(BaseModel):
     document metadata or chunk count again. ``has_more`` tells whether the document
     continues beyond them in that direction.
     """
+    chunks: list[DocumentChunk]
+    has_more: bool
+
+
+class DocumentPage(BaseModel):
+    """One page of a document's page list. ``order`` is its index in the list, the page
+    number used by the chunks' ``from_page``/``to_page``. Each URL is present only when that
+    asset is available; a page may have none (a cover, a blank or a page not imported)."""
+    page_id: UUID
+    order: int
+    label: str | None = None
+    """The printed page label, e.g. ``[627]``."""
+    page_type: str | None = None
+    width: int | None = None
+    height: int | None = None
+    """The scan's size in pixels, when known."""
+    image_url: str | None = None
+    layout_url: str | None = None
+    thumbnail_url: str | None = None
+
+
+class DocumentPages(BaseModel):
+    """A document's page manifest (public). ``available`` is false, with no pages, when the
+    document has no imported pages: it is then a text-only document."""
+    document_id: UUID
+    available: bool
+    pages: list[DocumentPage]
+
+
+class PageChunks(BaseModel):
+    """The chunks whose page range (``from_page``..``to_page``) includes page ``page``, in
+    document order, at most the requested number; ``has_more`` tells whether more do."""
+    page: int
     chunks: list[DocumentChunk]
     has_more: bool
