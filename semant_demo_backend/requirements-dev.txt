@@ -5,3 +5,5 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 asgi-lifespan==2.1.0
 ruff==0.14.0
+# Maintenance: page thumbnails of the existing-corpus page import (#542); not needed at runtime.
+pillow==12.0.0

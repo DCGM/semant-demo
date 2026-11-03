@@ -17,6 +17,7 @@ Name | Type
 `endParagraph` | boolean
 `language` | string
 `order` | number
+`layoutStart` | [LayoutStart](LayoutStart.md)
 `nerP` | Array&lt;string&gt;
 `nerT` | Array&lt;string&gt;
 `nerA` | Array&lt;string&gt;
@@ -48,6 +49,7 @@ const example = {
   "endParagraph": null,
   "language": null,
   "order": null,
+  "layoutStart": null,
   "nerP": null,
   "nerT": null,
   "nerA": null,

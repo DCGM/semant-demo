@@ -51,12 +51,14 @@ import type {
   DocumentBrowse,
   DocumentChunkWindow,
   DocumentDetail,
+  DocumentPages,
   DocumentStats,
   DocumentSummaryResponse,
   ExplainRequest,
   FeedbackRequest,
   HTTPValidationError,
   LibraryYearDistribution,
+  PageChunks,
   PatchAttribute,
   PatchAttributeValue,
   PatchCollection,
@@ -165,6 +167,8 @@ import {
     DocumentChunkWindowToJSON,
     DocumentDetailFromJSON,
     DocumentDetailToJSON,
+    DocumentPagesFromJSON,
+    DocumentPagesToJSON,
     DocumentStatsFromJSON,
     DocumentStatsToJSON,
     DocumentSummaryResponseFromJSON,
@@ -177,6 +181,8 @@ import {
     HTTPValidationErrorToJSON,
     LibraryYearDistributionFromJSON,
     LibraryYearDistributionToJSON,
+    PageChunksFromJSON,
+    PageChunksToJSON,
     PatchAttributeFromJSON,
     PatchAttributeToJSON,
     PatchAttributeValueFromJSON,
@@ -485,6 +491,22 @@ export interface ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindo
     chunkId: string;
     before?: number;
     after?: number;
+}
+
+export interface ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest {
+    documentId: string;
+    pageId: string;
+    kind: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetKindEnum;
+}
+
+export interface ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest {
+    documentId: string;
+    page: number;
+    limit?: number;
+}
+
+export interface ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest {
+    documentId: string;
 }
 
 export interface ReadTagSpansApiTagSpansGetRequest {
@@ -1986,6 +2008,86 @@ export interface DefaultApiInterface {
      * Read Document Chunk Window
      */
     readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentChunkWindow>;
+
+    /**
+     * Creates request options for readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet without sending the request
+     * @param {string} documentId 
+     * @param {string} pageId 
+     * @param {'image' | 'layout' | 'thumbnail'} kind 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequestOpts(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * @summary Read Document Page Asset
+     * @param {string} documentId 
+     * @param {string} pageId 
+     * @param {'image' | 'layout' | 'thumbnail'} kind 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRaw(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Read Document Page Asset
+     */
+    readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet without sending the request
+     * @param {string} documentId 
+     * @param {number} page 
+     * @param {number} [limit] 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequestOpts(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * @summary Read Document Page Chunks
+     * @param {string} documentId 
+     * @param {number} page 
+     * @param {number} [limit] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRaw(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PageChunks>>;
+
+    /**
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Read Document Page Chunks
+     */
+    readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PageChunks>;
+
+    /**
+     * Creates request options for readDocumentPagesApiDocumentsDocumentIdPagesGet without sending the request
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentPagesApiDocumentsDocumentIdPagesGetRequestOpts(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * @summary Read Document Pages
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentPages>>;
+
+    /**
+     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Read Document Pages
+     */
+    readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages>;
 
     /**
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
@@ -5654,6 +5756,177 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet without sending the request
+     */
+    async readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequestOpts(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet().'
+            );
+        }
+
+        if (requestParameters['pageId'] == null) {
+            throw new runtime.RequiredError(
+                'pageId',
+                'Required parameter "pageId" was null or undefined when calling readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet().'
+            );
+        }
+
+        if (requestParameters['kind'] == null) {
+            throw new runtime.RequiredError(
+                'kind',
+                'Required parameter "kind" was null or undefined when calling readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/documents/{document_id}/pages/{page_id}/{kind}`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+        urlPath = urlPath.replace(`{${"page_id"}}`, encodeURIComponent(String(requestParameters['pageId'])));
+        urlPath = urlPath.replace(`{${"kind"}}`, encodeURIComponent(String(requestParameters['kind'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Read Document Page Asset
+     */
+    async readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRaw(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Read Document Page Asset
+     */
+    async readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet without sending the request
+     */
+    async readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequestOpts(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet().'
+            );
+        }
+
+        if (requestParameters['page'] == null) {
+            throw new runtime.RequiredError(
+                'page',
+                'Required parameter "page" was null or undefined when calling readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['page'] != null) {
+            queryParameters['page'] = requestParameters['page'];
+        }
+
+        if (requestParameters['limit'] != null) {
+            queryParameters['limit'] = requestParameters['limit'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/documents/{document_id}/chunks/by_page`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Read Document Page Chunks
+     */
+    async readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRaw(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PageChunks>> {
+        const requestOptions = await this.readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PageChunksFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Read Document Page Chunks
+     */
+    async readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PageChunks> {
+        const response = await this.readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for readDocumentPagesApiDocumentsDocumentIdPagesGet without sending the request
+     */
+    async readDocumentPagesApiDocumentsDocumentIdPagesGetRequestOpts(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling readDocumentPagesApiDocumentsDocumentIdPagesGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/documents/{document_id}/pages`;
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Read Document Pages
+     */
+    async readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentPages>> {
+        const requestOptions = await this.readDocumentPagesApiDocumentsDocumentIdPagesGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentPagesFromJSON(jsonValue));
+    }
+
+    /**
+     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Read Document Pages
+     */
+    async readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages> {
+        const response = await this.readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
      */
     async readTagSpansApiTagSpansGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansGetRequest): Promise<runtime.RequestOpts> {
@@ -7180,3 +7453,12 @@ export const ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjace
     after: 'after'
 } as const;
 export type ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum = typeof ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum[keyof typeof ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum];
+/**
+ * @export
+ */
+export const ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetKindEnum = {
+    image: 'image',
+    layout: 'layout',
+    thumbnail: 'thumbnail'
+} as const;
+export type ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetKindEnum = typeof ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetKindEnum[keyof typeof ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetKindEnum];

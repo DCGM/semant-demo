@@ -23,11 +23,20 @@ also without pages. A document whose library cannot be decided is ``ambiguous``;
 without page rows is ``no_pages``. Null or duplicate orders, pages without an image or PAGE XML and unrecognized
 file names are reported in ``warnings``, never fixed.
 
+The mirror's ``page_xml_path`` is often null although the archive exists. With
+``--source-root`` the pages of an exported document that have no stored PAGE XML path are
+looked up in ``<source-root>/<library>/<document>.page_xml.zip`` (the layout of the stored
+paths), for the chosen library only. Its file names must all be pages of that library;
+otherwise the document is ``page_xml_conflict`` without pages. Pages it contains get that
+archive as ``pageXmlPath`` (``page_xml_from_source_root``); a missing or unreadable archive
+is reported (``source_page_xml_missing``, ``source_page_xml_unreadable``), never guessed.
+Stored paths are kept as they are.
+
 Usage (from ``semant_demo_backend/``)::
 
     KRAMERIUS_METADATA_DSN=postgresql+psycopg://librarymetadata_all@127.0.0.1:5888/librarymetadata_all \\
     python -m semant_demo.maintenance.page_order --document-ids ids.txt --output pages.jsonl \\
-        [--page-xml-dir DIR] [--check-start-pages]
+        [--page-xml-dir DIR] [--source-root DIR] [--check-start-pages]
 
 ``ids.txt`` has one document UUID per line (``#`` comments allowed); ids may also be given
 as arguments. ``--page-xml-dir`` holds ``<document>.page_xml.zip`` files or ``<document>/``
@@ -40,7 +49,7 @@ The mirror is read in a read-only transaction, ``DOCUMENT_BATCH`` documents per 
 each JSON line is written as soon as its document is done, so memory does not grow with the
 number of pages or the output size (only the list of document ids is kept). With
 ``--output`` the lines go to ``<output>.partial``, renamed to ``<output>`` when the run
-completes. Paths are reported as stored, not checked on disk. Counts per status go to stderr. The exit code is 0 when every document was exported,
+completes. Stored paths are reported as stored, not checked on disk. Counts per status go to stderr. The exit code is 0 when every document was exported,
 1 when any was not, 2 for invalid arguments.
 """
 import argparse
@@ -232,12 +241,20 @@ def page_xml_names(directory: Path, document_id: UUID) -> tuple[set[UUID], list[
     when the directory has neither. Only names are read, never file contents."""
     archive, folder = directory / f"{document_id}.page_xml.zip", directory / str(document_id)
     if archive.is_file():
-        with zipfile.ZipFile(archive) as zf:
-            names = [Path(info.filename).name for info in zf.infolist() if not info.is_dir()]
-    elif folder.is_dir():
-        names = [path.name for path in folder.iterdir() if path.is_file()]
-    else:
-        return None
+        return archive_page_names(archive)
+    if folder.is_dir():
+        return _page_names([path.name for path in folder.iterdir() if path.is_file()])
+    return None
+
+
+def archive_page_names(archive: Path) -> tuple[set[UUID], list[str]]:
+    """The page ids named in a ``.page_xml.zip`` and its other file names (names only).
+    Raises ``OSError`` or ``zipfile.BadZipFile`` for an unreadable archive."""
+    with zipfile.ZipFile(archive) as zf:
+        return _page_names([Path(info.filename).name for info in zf.infolist() if not info.is_dir()])
+
+
+def _page_names(names: list[str]) -> tuple[set[UUID], list[str]]:
     pages, unrecognized = set(), []
     for name in names:
         stem, dot, suffix = name.rpartition(".")
@@ -250,13 +267,57 @@ def page_xml_names(directory: Path, document_id: UUID) -> tuple[set[UUID], list[
     return pages, unrecognized
 
 
+def source_archive(source_root: Path, library: str, document_id: UUID) -> Path:
+    """Where the stored paths keep a document's PAGE XML: ``<root>/<library>/<document>.page_xml.zip``."""
+    return source_root / library / f"{document_id}.page_xml.zip"
+
+
+def resolve_source_page_xml(entry: dict[str, Any], source_root: Path, *,
+                            page_xml_dir_given: bool = False) -> dict[str, Any]:
+    """Fill in ``pageXmlPath`` of an exported entry's pages without a stored one from the
+    library's archive under ``source_root``, after checking that every page it names belongs
+    to the entry's library (otherwise ``page_xml_conflict``, without pages). Stored paths are
+    never replaced; a missing or unreadable archive is only reported. ``hasPageXml`` follows
+    the resolved path unless ``--page-xml-dir`` decided it."""
+    pages = entry["pages"]
+    unresolved = [page for page in pages if page["pageXmlPath"] is None]
+    if entry["status"] != EXPORTED or not unresolved:
+        return entry
+    warnings = entry["warnings"]
+    archive = source_archive(source_root, entry["library"], UUID(entry["documentId"]))
+    try:
+        names, _ = archive_page_names(archive)
+    except FileNotFoundError:
+        warnings.append({"code": "source_page_xml_missing", "count": len(unresolved), "sample": [str(archive)]})
+        return entry
+    except (OSError, zipfile.BadZipFile) as e:
+        warnings.append({"code": "source_page_xml_unreadable", "count": len(unresolved),
+                         "sample": [f"{archive}: {type(e).__name__}"]})
+        return entry
+    if foreign := names - {UUID(page["pageId"]) for page in pages}:
+        entry["status"], entry["pages"] = "page_xml_conflict", []
+        warnings.append(_warning("source_page_xml_not_in_library", foreign))
+        return entry
+    resolved = [page for page in unresolved if UUID(page["pageId"]) in names]
+    for page in resolved:
+        page["pageXmlPath"] = str(archive)
+        if not page_xml_dir_given:
+            page["hasPageXml"] = True
+    if resolved:
+        warnings.append(_warning("page_xml_from_source_root", [page["pageId"] for page in resolved]))
+        entry["warnings"] = [w for w in warnings if w["code"] != "missing_page_xml"]
+        if missing := [page["pageId"] for page in pages if not page["hasPageXml"]]:
+            entry["warnings"].append(_warning("missing_page_xml", missing))
+    return entry
+
+
 def read_document_ids(path: Path) -> list[UUID]:
     lines = path.read_text(encoding="utf-8").splitlines()
     return [UUID(line.strip()) for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
 
 async def export(source, document_ids: Iterable[UUID], *, page_xml_dir: Path | None = None,
-                 check_start_pages: StartPageChecker | None = None,
+                 source_root: Path | None = None, check_start_pages: StartPageChecker | None = None,
                  batch_size: int = DOCUMENT_BATCH) -> AsyncIterator[dict[str, Any]]:
     """The export entries of the documents, in the given order (duplicates removed), one at a
     time: page rows are read ``batch_size`` documents at a time and nothing is kept after an
@@ -268,15 +329,15 @@ async def export(source, document_ids: Iterable[UUID], *, page_xml_dir: Path | N
             seen.add(document_id)
             pending.append(document_id)
         if len(pending) == batch_size:
-            async for entry in _export_batch(source, pending, page_xml_dir, check_start_pages):
+            async for entry in _export_batch(source, pending, page_xml_dir, source_root, check_start_pages):
                 yield entry
             pending = []
     if pending:
-        async for entry in _export_batch(source, pending, page_xml_dir, check_start_pages):
+        async for entry in _export_batch(source, pending, page_xml_dir, source_root, check_start_pages):
             yield entry
 
 
-async def _export_batch(source, document_ids: list[UUID], page_xml_dir: Path | None,
+async def _export_batch(source, document_ids: list[UUID], page_xml_dir: Path | None, source_root: Path | None,
                         check_start_pages: StartPageChecker | None) -> AsyncIterator[dict[str, Any]]:
     rows = read_document_pages(source, document_ids)
     for document_id in document_ids:
@@ -285,6 +346,8 @@ async def _export_batch(source, document_ids: list[UUID], page_xml_dir: Path | N
                                 xml_pages=xml[0] if xml else None, xml_unrecognized=xml[1] if xml else ())
         if page_xml_dir and xml is None:
             entry["warnings"].append({"code": "no_page_xml_files", "count": 0, "sample": []})
+        if source_root is not None:
+            resolve_source_page_xml(entry, source_root, page_xml_dir_given=page_xml_dir is not None)
         if check_start_pages is not None and entry["status"] == EXPORTED:
             page_ids = {UUID(page["pageId"]) for page in entry["pages"]}
             apply_start_page_check(entry, await check_start_pages(document_id, page_ids))
@@ -354,6 +417,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--output", type=Path, help="write the JSON lines here (default: stdout)")
     p.add_argument("--page-xml-dir", type=Path,
                    help="directory of <document>.page_xml.zip files or <document>/ folders; confirms the library")
+    p.add_argument("--source-root", type=Path,
+                   help="root of <library>/<document>.page_xml.zip; fills in PAGE XML paths the mirror lacks")
     p.add_argument("--check-start-pages", action="store_true",
                    help="also check the chunks' start_page_id values (reads the configured Weaviate)")
     return p
@@ -373,6 +438,9 @@ async def _main(argv: list[str]) -> int:
         return 2
     if args.page_xml_dir and not args.page_xml_dir.is_dir():
         print(f"Not a directory: {args.page_xml_dir}", file=sys.stderr)
+        return 2
+    if args.source_root and not args.source_root.is_dir():
+        print(f"Not a directory: {args.source_root}", file=sys.stderr)
         return 2
     dsn = os.environ.get(DSN_VARIABLE)
     if not dsn:
@@ -397,7 +465,7 @@ async def _main(argv: list[str]) -> int:
         with connect_read_only(engine) as source, \
                 (open(target, "w", encoding="utf-8") if target else _stdout()) as out:
             async for entry in export(source, document_ids, page_xml_dir=args.page_xml_dir,
-                                      check_start_pages=checker):
+                                      source_root=args.source_root, check_start_pages=checker):
                 out.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 result.add(entry)
         if target:

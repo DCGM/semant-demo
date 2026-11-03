@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from starlette.requests import HTTPConnection
 
+from semant_demo.adapters.filesystem.page_assets import PageAssetStore
 from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.users import UserLookup
@@ -52,6 +53,10 @@ def _weaviate(connection: HTTPConnection) -> WeaviateRepositories:
     if weaviate is None:
         raise HTTPException(status_code=503, detail="Application is not started.")
     return weaviate
+
+def get_page_assets(connection: HTTPConnection) -> PageAssetStore:
+    """The page asset store (``PAGE_ASSETS_DIR``; none configured: no document has pages)."""
+    return PageAssetStore(get_config(connection).PAGE_ASSETS_DIR or None)
 
 async def get_documents(connection: HTTPConnection) -> DocumentRepository:
     return _weaviate(connection).documents

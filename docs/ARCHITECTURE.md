@@ -78,7 +78,9 @@ semant_demo_backend/semant_demo/
                           document view (GET /api/user_collections/{collection_id}/documents/{document_id});
                           positions (the chunk position calculator and word rule, #463);
                           criteria (the shared search criteria: SearchCriteria, DocumentFilters,
-                          ChunkFilters, their validation and predicates, #526)
+                          ChunkFilters, their validation and predicates, #526);
+                          pages (page manifest, page assets and the chunks of a page, #541;
+                          [PAGE_LAYOUT.md](PAGE_LAYOUT.md#page-asset-store-and-reads-541))
     annotations/          tags and spans (routes, service, offsets, schemas incl. internal AnnotationChunk),
                           derived annotation data (derivation, source, enrichment, backfill; #328, #463),
                           AI suggestions (suggestions, suggestion_routes), span chat (span_chat, span_chat_routes)
@@ -98,9 +100,12 @@ semant_demo_backend/semant_demo/
                           (status, admission, settlement), routes (GET /api/quota), schemas
   adapters/
     weaviate/             one repository per concern: user_collections, documents, tags, spans,
-                          chunk_tags, search, analytics (document aggregates); criteria (Weaviate filters
+                          chunk_tags, search, analytics (document aggregates); layout_anchors (the
+                          Chunks.layoutStart declaration, #541); criteria (Weaviate filters
                           of the search criteria predicates); client, paging, writes (best-effort cascades),
                           names (CollectionNames: configured Weaviate collection names)
+    filesystem/           page_assets (PageAssetStore: page scans, layout files, thumbnails and
+                          manifests under PAGE_ASSETS_DIR, #541)
     sql/                  base (declarative Base), tables (create_tables), users (UserLookup), feedback,
                           quota (QuotaLedger: daily allowance ledger), attributes (AttributeRepository: attribute
                           definitions and assignment change records, #331)
@@ -118,7 +123,8 @@ semant_demo_backend/semant_demo/
                           summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
                           page_order (read-only export of documents' ordered page lists from the Kramerius mirror, #571),
                           page_layout (offline PAGE XML -> page layout files and chunk-start anchors, #540;
-                          [PAGE_LAYOUT.md](PAGE_LAYOUT.md))
+                          [PAGE_LAYOUT.md](PAGE_LAYOUT.md)),
+                          page_import (existing-corpus page assets and chunk anchors, #542)
 ```
 
 ```mermaid
@@ -147,7 +153,7 @@ A `Config` class that reads settings once, at construction, from the process env
 
 - **Weaviate connection** — host, REST port, gRPC port
 - **LLM providers** — `OPENAI_API_KEY` / `OPENAI_API_URL` (any OpenAI-compatible endpoint, OpenRouter by default), `OLLAMA_URLS` (only the first is used), `GOOGLE_API_KEY`, and `LLM_MODELS_CONFIG`, the tier catalog (see *LLM gateway* below). There are no per-feature model settings.
-- **Application** — port, CORS origin, static file path, `LOG_LEVEL`
+- **Application** — port, CORS origin, static file path, `LOG_LEVEL`, `PAGE_ASSETS_DIR` (page asset store, #541)
 - **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
 - **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments keep it in a mounted host directory together with its rollback journal, so it is kept)
 - **Auth** — `JWT_SECRET` (override in production with a long random string); tokens are valid for 7 days (`users/auth.py`)

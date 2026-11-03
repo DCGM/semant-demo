@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { LayoutStart } from './LayoutStart';
+import {
+    LayoutStartFromJSON,
+    LayoutStartFromJSONTyped,
+    LayoutStartToJSON,
+    LayoutStartToJSONTyped,
+} from './LayoutStart';
+
 /**
  * A chunk with its stored properties. ``text`` is the canonical stored text that span
  * offsets refer to; the search hit (``SearchResultChunk``) extends it with display text.
@@ -80,6 +88,12 @@ export interface DocumentChunk {
      * @memberof DocumentChunk
      */
     order: number | null;
+    /**
+     * 
+     * @type {LayoutStart}
+     * @memberof DocumentChunk
+     */
+    layoutStart?: LayoutStart | null;
     /**
      * 
      * @type {Array<string>}
@@ -158,6 +172,7 @@ export function DocumentChunkFromJSONTyped(json: any, ignoreDiscriminator: boole
         'endParagraph': json['end_paragraph'] == null ? undefined : json['end_paragraph'],
         'language': json['language'] == null ? undefined : json['language'],
         'order': json['order'],
+        'layoutStart': json['layoutStart'] == null ? undefined : LayoutStartFromJSON(json['layoutStart']),
         'nerP': json['ner_P'] == null ? undefined : json['ner_P'],
         'nerT': json['ner_T'] == null ? undefined : json['ner_T'],
         'nerA': json['ner_A'] == null ? undefined : json['ner_A'],
@@ -189,6 +204,7 @@ export function DocumentChunkToJSONTyped(value?: DocumentChunk | null, ignoreDis
         'end_paragraph': value['endParagraph'],
         'language': value['language'],
         'order': value['order'],
+        'layoutStart': LayoutStartToJSON(value['layoutStart']),
         'ner_P': value['nerP'],
         'ner_T': value['nerT'],
         'ner_A': value['nerA'],
