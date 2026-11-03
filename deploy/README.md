@@ -372,12 +372,14 @@ new one, inside the new image and against the same mount and `SQL_DB_URL` as the
 `.github/workflows/ci-cd.yml`). New instances need nothing.
 
 - `python -m semant_demo.maintenance.attribute_scope_schema` adds `annotation_attribute.all_tags`
-  (explicit All tags, #522). It does nothing without the table or when the column exists, and
-  adds the column only to an **empty** table: when attribute definitions exist it refuses,
-  changes nothing and fails the deployment, because their empty tag lists would change meaning
-  from All tags to no tag. No migration of existing definitions is provided; reassess instead.
-  A refused production deployment rolls back to the previous image, which still works with the
-  unchanged file. Persistent instances held no attribute definitions when #522 was released.
+  (explicit All tags, #522). It does nothing without the table or when the column exists. When it
+  adds the column it keeps what existing definitions meant before #522 (#574): one with an empty
+  tag list meant All tags and gets `all_tags = 1`; one with tags stays Selected tags. It prints how
+  many definitions it set to All tags. It refuses, changes nothing and fails the deployment only
+  when a definition's tag list is not a JSON list, because what it applies to is unknown. A
+  refused production deployment rolls back to the previous image, which still works with the
+  unchanged file. test-main held 5 definitions when #522 was released, so until #574 every
+  test-main deploy was refused.
 
 To check an instance by hand (the old app stopped), run the same step:
 

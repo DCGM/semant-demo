@@ -8,10 +8,11 @@ one and is safe to repeat:
 
 - no database file or no ``annotation_attribute`` table: nothing to do (startup creates it);
 - the column exists: nothing to do;
-- the column is missing and the table is empty: adds it (``NOT NULL DEFAULT 0``);
-- the column is missing and attribute definitions exist: refuses and changes nothing. Their
-  empty ``tag_ids`` would silently change meaning from All tags to no tag, and no migration of
-  existing definitions is provided; reassess instead.
+- the column is missing: adds it (``NOT NULL DEFAULT 0``) and keeps what existing definitions
+  meant before #522 (#574): an empty ``tag_ids`` meant All tags, so those get ``all_tags = 1``;
+  definitions with tags stay Selected tags (``0``);
+- a definition whose ``tag_ids`` is not a JSON list: refuses and changes nothing, because what it
+  meant is unknown.
 
 No other table is read or changed. Stop the backend that uses the file first; the check and the
 change run in one write transaction. Deployment runs it in the new image against the mounted
@@ -23,6 +24,7 @@ file (``.github/workflows/ci-cd.yml``, ``deploy/README.md``)::
 Exit status 0: the schema is current; 1: refused; 2: not a SQLite file database.
 """
 import argparse
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -33,7 +35,7 @@ ADD_COLUMN = f"ALTER TABLE {TABLE} ADD COLUMN {COLUMN} BOOLEAN NOT NULL DEFAULT 
 
 
 class SchemaUpdateRefused(Exception):
-    """Attribute definitions exist in a table without the column; nothing was changed."""
+    """A definition's tag list is unreadable, so its meaning is unknown; nothing was changed."""
 
 
 def update(path: Path) -> str:
@@ -48,19 +50,33 @@ def update(path: Path) -> str:
                 return f"no {TABLE} table; the backend creates it"
             if any(row[1] == COLUMN for row in conn.execute(f"PRAGMA table_info({TABLE})")):
                 return f"{TABLE}.{COLUMN} already exists"
+            all_tags = [row_id for row_id, tag_ids in conn.execute(f"SELECT id, tag_ids FROM {TABLE}")
+                        if not _tag_list(row_id, tag_ids)]
             rows = conn.execute(f"SELECT count(*) FROM {TABLE}").fetchone()[0]
-            if rows:
-                raise SchemaUpdateRefused(
-                    f"{TABLE} has {rows} attribute definitions but no {COLUMN} column; nothing was changed. "
-                    "Their empty tag lists would change meaning from All tags to no tag (#522).")
             conn.execute(ADD_COLUMN)
+            conn.executemany(f"UPDATE {TABLE} SET {COLUMN} = 1 WHERE id = ?", [(row_id,) for row_id in all_tags])
             conn.execute("COMMIT")
-            return f"added {TABLE}.{COLUMN}"
+            if not rows:
+                return f"added {TABLE}.{COLUMN}"
+            return (f"added {TABLE}.{COLUMN}; of {rows} attribute definitions, {len(all_tags)} with no tags "
+                    "now apply to All tags, as before #522")
         finally:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
     finally:
         conn.close()
+
+
+def _tag_list(row_id: str, tag_ids) -> list:
+    try:
+        value = json.loads(tag_ids) if isinstance(tag_ids, (str, bytes)) else None
+    except ValueError:
+        value = None
+    if not isinstance(value, list):
+        raise SchemaUpdateRefused(
+            f"{TABLE} {row_id} has tag_ids {tag_ids!r}, not a JSON list; nothing was changed. "
+            "Which tags it applies to is unknown (#574).")
+    return value
 
 
 def sqlite_path(url: str) -> Path | None:
