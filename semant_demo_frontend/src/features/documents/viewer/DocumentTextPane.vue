@@ -67,7 +67,10 @@ const props = withDefaults(defineProps<{
   /** Per chunk: its part on the page shown next to the text and where pages begin in it. */
   pageMarks?: Record<string, ChunkPageMarks> | null
   chunkClass?: ChunkClass<T>
+  /** The top of the scroller covered by fixed or sticky content (a header): `revealRange` reveals below it. */
+  revealInset?: number
 }>(), {
+  revealInset: 0,
   preserveWhitespace: true,
   annotation: null,
   activeRange: null,
@@ -164,7 +167,7 @@ function revealRange ({ chunkId, start }: Pick<ChunkRange, 'chunkId' | 'start'>,
   if (!rect || !container) return false
   const page = container === document.scrollingElement
   const view = page ? { top: 0, bottom: window.innerHeight } : container.getBoundingClientRect()
-  const delta = revealDelta({ top: rect.top, bottom: rect.bottom }, { top: view.top, bottom: view.bottom }, margin)
+  const delta = revealDelta({ top: rect.top, bottom: rect.bottom }, { top: view.top + props.revealInset, bottom: view.bottom }, margin)
   if (delta === 0) return false
   container.scrollBy({ top: delta, behavior: 'smooth' })
   return true

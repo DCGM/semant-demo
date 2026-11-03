@@ -46,15 +46,16 @@ annotated Document view. This small corpus is for checking workflows, not search
 covers, text pages with straight, skewed and curved lines, a blank page, a skipped page number,
 a page without layout and one without a scan; *Pražský věstník* has 120 pages; *Dopisy z
 Prahy* has none (text only). They are drawn images, regenerated when the corpus or the
-generator changes, never seeded into the stores. Until the document workspace (#545) uses
-the scan viewer, it has a preview page in the dev server and the browser-test builds
-(`SEMANT_PREVIEW_ROUTES=1`), e.g.
+generator changes, never seeded into the stores. They are shown in the document views
+(#545), e.g. the public one at
+`http://localhost:9000/#/documents/5e3a0000-0000-4000-8000-00000000d001`; the scan viewer
+alone has a preview page in the dev server and the browser-test builds
+(`SEMANT_PREVIEW_ROUTES=1`),
 `http://localhost:9000/#/preview/scan/5e3a0000-0000-4000-8000-00000000d001`. The fixture
 chunks also get `layoutStart` anchors on these pages when the stores are seeded (#544): exact
 on page 1 of *Pražský věstník*, approximate on *Kronika obce Lhota* (one chunk continues onto
-the next page); the text and scan side by side are at
-`http://localhost:9000/#/preview/text-scan/5e3a0000-0000-4000-8000-00000000d001`. A store
-seeded before #544 has no anchors: `make dev-reset CONFIRM=yes` reseeds it.
+the next page). A store seeded before #544 has no anchors: `make dev-reset CONFIRM=yes`
+reseeds it.
 
 **More documents.** For the corpus overview (`/corpus`) three documents are too few:
 `make dev-add-documents` adds 2,000 synthetic documents with bibliographic metadata only

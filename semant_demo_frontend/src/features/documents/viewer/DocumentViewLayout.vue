@@ -94,6 +94,15 @@
     </RightSidebarPanel>
 
     <q-page-container>
+      <!-- No access to the collection (or it is gone): the corpus document is still public. -->
+      <q-banner v-if="collectionUnavailable" class="bg-amber-1 text-grey-9 q-ma-md" rounded role="alert" data-testid="collection-unavailable">
+        <template #avatar><q-icon name="lock" color="amber-9" /></template>
+        This collection cannot be opened: it does not exist or is not shared with you. Its
+        annotations are not shown.
+        <template #action>
+          <q-btn flat no-caps color="primary" label="Open the public document" :to="documentLink(documentId)" />
+        </template>
+      </q-banner>
       <router-view />
     </q-page-container>
   </q-layout>
@@ -122,6 +131,7 @@ import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
 import useScopedChat from 'src/features/chat/useScopedChat'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import BackLink from 'src/shared/ui/BackLink.vue'
+import { documentLink } from 'src/features/documents/workspace/documentLink'
 
 // The document view: header, the tags, AI tagging and document tools as panels of the
 // app's right sidebar, and the reader (child route). It loads the document, collection and tags and
@@ -152,6 +162,8 @@ const documentChat = useScopedChat(() => ({
   kind: 'document', collectionId: props.collectionId, documentId: props.documentId
 }))
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
+/** The collection could not be read (no access, or it does not exist). */
+const collectionUnavailable = ref(false)
 
 function onSummarizeDocument() {
   void documentSummary.summarize(props.collectionId, props.documentId)
@@ -263,7 +275,10 @@ watch(
     aiAssist.reset()
     tagSpans.clearAll()
     documentSummary.reset() // a stale/in-flight summary of the previous collection is dropped
+    collectionUnavailable.value = false
     await fetchCollection(collectionId)
+    if (collectionId !== props.collectionId) return
+    collectionUnavailable.value = activeCollection.value?.id !== collectionId
     await fetchTagsByCollection(collectionId)
   },
   { immediate: true }

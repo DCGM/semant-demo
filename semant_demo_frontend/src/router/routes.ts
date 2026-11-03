@@ -9,12 +9,16 @@ const routes: RouteRecordRaw[] = [
     component: () => import('src/app/MainLayout.vue'),
     children: [
       {
+        // Kept alive (router/keptPages.ts): a document opened from a result returns to them.
         name: 'search',
+        meta: { keepAlive: true },
         path: '/search',
         component: () => import('src/features/search/SearchPage.vue')
       },
       {
+        // Kept alive like search: the conversation is there after a cited document.
         name: 'rag',
+        meta: { keepAlive: true },
         path: '/rag',
         component: () => import('src/features/rag/RagPage.vue')
       },
@@ -29,6 +33,14 @@ const routes: RouteRecordRaw[] = [
         name: 'sessionPending',
         path: '/session-pending',
         component: () => import('src/features/auth/SessionPendingPage.vue')
+      },
+      {
+        // The public document view (#545): a corpus document's text and scans, read-only, no
+        // sign-in needed. `?page=`, `?chunk=&start=&end=`, `?view=`, `?from=search|chat`.
+        name: 'document',
+        path: '/documents/:documentId',
+        component: () => import('src/features/documents/workspace/PublicDocumentPage.vue'),
+        props: true
       },
       {
         name: 'collections',

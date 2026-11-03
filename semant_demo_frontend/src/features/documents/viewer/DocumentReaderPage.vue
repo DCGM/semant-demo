@@ -1,5 +1,34 @@
 <template>
   <q-page class="q-px-lg doc-page">
+    <!-- One row of fixed height for a document with scans: a notice must not move the text. -->
+    <div v-if="workspace.hasScan.value" class="reader-view-row">
+      <div class="reader-sync-notice text-caption text-grey-8 ellipsis" :title="scanSync.sync.notice.value">
+        <span v-if="scanSync.sync.notice.value" aria-live="polite" data-testid="sync-notice">{{ scanSync.sync.notice.value }}</span>
+      </div>
+      <WorkspaceModeToggle
+        :model-value="workspace.shown.value"
+        :narrow="workspace.narrow.value"
+        @update:model-value="chooseMode"
+      />
+    </div>
+    <!-- The text (toolbar, gutters, annotated text) and, for a document with scans, the page scan
+         beside it (#545); the scan stays in view below the document header while the text scrolls. -->
+    <DocumentWorkspace
+      ref="workspacePane"
+      v-model:narrow="workspace.narrow.value"
+      :document-id="documentId"
+      :mode="workspace.shown.value"
+      :page-id="scanPageId"
+      :highlights="scanSync.sync.scanHighlights.value"
+      :layout-cache="scanSync.layouts.value"
+      :sticky-top="96"
+      view-height="var(--document-layout-height, 100vh)"
+      @update:page-id="onScanPageId"
+      @page-change="onScanPage"
+      @loaded="onScanLoaded"
+      @line-select="scanSync.sync.showLineInText"
+      @line-focus="scanSync.sync.showLineInText"
+    >
     <ReaderToolbar
       v-model:chunk-gutter-visible="chunkGutterVisible"
       v-model:preserve-whitespace="preserveWhitespace"
@@ -67,6 +96,10 @@
             :preserve-whitespace="preserveWhitespace"
             :annotation="textAnnotation"
             :chunk-class="chunkClass"
+            :active-range="scanSync.sync.textFocus.value?.range ?? null"
+            :active-approximate="!!scanSync.sync.textFocus.value?.approximate"
+            :page-marks="scanSync.sync.pageMarks.value"
+            :reveal-inset="READER_COVERED_TOP"
             @pointerdown="onDocumentPointerDown"
             @pointermove="onDocumentPointerMove"
             @pointerleave="onDocumentPointerLeave"
@@ -173,16 +206,17 @@
         @clear="membership.clearChunkSelection"
       />
     </div>
+    </DocumentWorkspace>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { computed, ref, shallowRef, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
-import { SpanType, type CollectionChunk } from 'src/generated/api'
+import { SpanType, type CollectionChunk, type DocumentPage } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError } from 'src/shared/api'
 import { errorNotification } from 'src/shared/notification'
 import { overlayOpen } from 'src/shared/overlays'
@@ -207,6 +241,7 @@ import ChunkSelectionBar from './ChunkSelectionBar.vue'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import DocumentTextPane from './DocumentTextPane.vue'
 import type { DocumentTextPaneApi, TextPaneAnnotation, TextSelection } from './documentTextPane'
+import type { TextPoint } from './readerOffsets'
 import ReaderToolbar from './ReaderToolbar.vue'
 import { getLastUsedTagId, setLastUsedTagId } from 'src/features/annotations/lastUsedTag'
 import {
@@ -217,6 +252,12 @@ import { useChunkMembership } from './useChunkMembership'
 import { useChunkWindow } from './useChunkWindow'
 import { useChunksRepository } from '../useChunksRepository'
 import { useReaderGutters } from './useReaderGutters'
+import { useReaderScanSync } from './useReaderScanSync'
+import { selectionRange } from '../correspondence/layoutMap'
+import DocumentWorkspace from '../workspace/DocumentWorkspace.vue'
+import { useWorkspaceMode } from '../workspace/useWorkspaceMode'
+import { parseMode, withMode, type WorkspaceMode } from '../workspace/workspaceMode'
+import WorkspaceModeToggle from '../workspace/WorkspaceModeToggle.vue'
 
 // The collection's document reader: the text of the displayed chunks (DocumentTextPane)
 // with their annotations, the chunk and span gutters, chunk membership, and annotation
@@ -430,6 +471,7 @@ watch(requestedCitation, async (citation) => {
     await chunkWindow.loadUntil(citation.order)
   }
   scrollToChunk(citation.chunkId)
+  if (chunkWindow.findChunk(citation.chunkId)) showOnScan(citation.chunkId, 0, 0)
 })
 
 // A link from the annotation workspace (#329): `?annotation=&chunk=&order=` brings that
@@ -468,6 +510,87 @@ async function showLinkedAnnotation() {
   relayout()
   navHighlightedSpanId.value = annotation
   scrollToSpan(chunk, span.start, span.end)
+  showOnScan(chunk, span.start, span.end)
+}
+
+// ── The page scan beside the text (#545) ──
+const router = useRouter()
+const workspacePane = ref<InstanceType<typeof DocumentWorkspace> | null>(null)
+const workspace = useWorkspaceMode(parseMode(route.query.view))
+const scanSync = useReaderScanSync({
+  documentId: () => props.documentId,
+  chunkWindow,
+  loadSpans: (chunkIds) => tagSpans.loadSpansForChunksInCollection(chunkIds, props.collectionId),
+  focusScan: (request) => workspacePane.value?.focus(request) ?? Promise.resolve(false),
+  revealText: (at) => { textPane.value?.revealRange(at) }
+})
+/** The top of the reader's scroller under the document header, the sticky toolbar and the gutter's scrollbar. */
+const READER_COVERED_TOP = 158
+const scanPageId = computed(() => typeof route.query.page === 'string' ? route.query.page : null)
+/** The page the link opened (`?page=`): its text is shown once the reader's text is loaded. */
+const linkedPageId = scanPageId.value
+let textReady: () => void = () => undefined
+const textLoaded = new Promise<void>(resolve => { textReady = resolve })
+let scanReady: () => void = () => undefined
+const scanLoaded = new Promise<void>(resolve => { scanReady = resolve })
+let firstScanPage = true
+
+function chooseMode (mode: WorkspaceMode) {
+  workspace.chosen.value = mode
+  void router.replace({ query: withMode(route.query, mode) })
+}
+
+function onScanPageId (id: string) {
+  if (id !== scanPageId.value) void router.replace({ query: { ...route.query, page: id } })
+}
+
+function onScanLoaded (info: { available: boolean, pages: DocumentPage[] }) {
+  workspace.hasScan.value = info.available
+  scanSync.pages.value = info.pages
+  scanReady()
+}
+
+/**
+ * A page shown in the scan: the text goes to it when the reader opened it there. The first
+ * page shown is followed only when the link named it, and only once the text is loaded.
+ */
+async function onScanPage (page: DocumentPage, index: number) {
+  if (!firstScanPage) {
+    void scanSync.sync.onScanPage(page, index)
+    return
+  }
+  firstScanPage = false
+  await textLoaded
+  void scanSync.sync.onScanPage(page, index, { follow: linkedPageId === page.pageId })
+}
+
+/** Text to scan once the manifest is known: the lines of a range (a linked annotation, a citation). */
+function showOnScan (chunkId: string, start: number, end: number) {
+  void scanLoaded.then(() => scanSync.sync.showTextOnScan({ chunkId, start, end }))
+}
+
+// The text shown again after the scan alone: the passage focused from the scan comes into view.
+watch(workspace.shown, async (mode, before) => {
+  const at = scanSync.sync.textFocus.value?.range
+  if (before !== 'scan' || mode === 'scan' || !at) return
+  await nextTick()
+  textPane.value?.revealRange(at)
+})
+
+/** A link to a chunk without an annotation (`?chunk=&order=`): the chunk in view and on the scan. */
+let linkedChunkShown: string | null = null
+async function showLinkedChunk () {
+  const { annotation, chunk, order } = route.query
+  if (typeof annotation === 'string' || typeof chunk !== 'string' || linkedChunkShown === chunk) return
+  linkedChunkShown = chunk
+  if (!chunkWindow.findChunk(chunk)) {
+    const chunkOrder = await linkedChunkOrder(chunk, order)
+    if (chunkOrder != null) await chunkWindow.loadUntil(chunkOrder)
+  }
+  if (!chunkWindow.findChunk(chunk)) return
+  await nextTick()
+  scrollToChunk(chunk)
+  showOnScan(chunk, 0, 0)
 }
 
 // ── Annotation editing ──
@@ -613,14 +736,19 @@ function openSpanAtClick(e: MouseEvent) {
   schedulePendingClick(() => onMarkerClick(marker, e))
 }
 
-function onTextClick(_point: unknown, e: MouseEvent) {
+function onTextClick(point: TextPoint | null, e: MouseEvent) {
   openSpanAtClick(e)
   pointerDown = null
+  // The line clicked, on the scan (#545).
+  if (point) void scanSync.sync.showTextOnScan({ chunkId: point.chunkId, start: point.charOffset, end: point.charOffset })
 }
 
 // A text selection becomes the annotation selection; the browser's own selection is cleared.
 const onTextSelect = ({ start: startPoint, end: endPoint }: TextSelection, e: MouseEvent) => {
   pointerDown = null
+  // The selected lines, on the scan (#545).
+  const scanRange = selectionRange(startPoint, endPoint, displayChunks.value)
+  if (scanRange) void scanSync.sync.showTextOnScan(scanRange)
 
   const previousSelection = annotations.selection.value
   let shortened = false
@@ -821,7 +949,9 @@ watch(
       relayout()
       await chunkWindow.checkNeighbours()
       await showLinkedAnnotation()
+      await showLinkedChunk()
     }
+    textReady()
   }
 )
 
@@ -887,6 +1017,7 @@ onMounted(async () => {
     loadChunksInCollectionDocument(props.collectionId, props.documentId)
   ])
 
+  if (!chunks.value.length) textReady()
   void countDocumentChunks(props.documentId).then(n => { totalDocumentChunks.value = n })
 
   await nextTick()
@@ -903,6 +1034,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   spanRequests.enter()
+  scanSync.sync.cancel()
   resizeObserver?.disconnect()
   if (pendingClick) clearTimeout(pendingClick.timer)
   document.removeEventListener('mousedown', onClickOutside)
@@ -915,6 +1047,19 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.reader-view-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  margin-top: 8px;
+}
+
+.reader-sync-notice {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .doc-page {
   min-height: 100%;
   background: #eef2f7;
