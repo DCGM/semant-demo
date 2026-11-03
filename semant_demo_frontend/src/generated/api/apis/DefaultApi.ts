@@ -37,6 +37,7 @@ import type {
   CollectionChunk,
   CollectionPerson,
   CollectionStats,
+  ContextChatRequest,
   CorpusDistributions,
   CorpusDistributionsRequest,
   CorpusOverview,
@@ -136,6 +137,8 @@ import {
     CollectionPersonToJSON,
     CollectionStatsFromJSON,
     CollectionStatsToJSON,
+    ContextChatRequestFromJSON,
+    ContextChatRequestToJSON,
     CorpusDistributionsFromJSON,
     CorpusDistributionsToJSON,
     CorpusDistributionsRequestFromJSON,
@@ -286,6 +289,12 @@ export interface BrowseDocumentsApiDocumentsBrowseGetRequest {
 
 export interface BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest {
     bulkUpdateSpansRequest: BulkUpdateSpansRequest;
+}
+
+export interface ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest {
+    collectionId: string;
+    documentId: string;
+    contextChatRequest: ContextChatRequest;
 }
 
 export interface CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest {
@@ -792,6 +801,34 @@ export interface DefaultApiInterface {
      * Bulk Update Tag Spans
      */
     bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
+
+    /**
+     * Creates request options for chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {ContextChatRequest} contextChatRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequestOpts(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Streams an answer to ``question`` about the document, from its chunks in the collection only (#248). The client sends the earlier turns (``history``) and never source text.
+     * @summary Chat About Document
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {ContextChatRequest} contextChatRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRaw(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Streams an answer to ``question`` about the document, from its chunks in the collection only (#248). The client sends the earlier turns (``history``) and never source text.
+     * Chat About Document
+     */
+    chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
@@ -3014,6 +3051,75 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse> {
         const response = await this.bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Creates request options for chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost without sending the request
+     */
+    async chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequestOpts(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost().'
+            );
+        }
+
+        if (requestParameters['contextChatRequest'] == null) {
+            throw new runtime.RequiredError(
+                'contextChatRequest',
+                'Required parameter "contextChatRequest" was null or undefined when calling chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/documents/{document_id}/chat`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"document_id"}}`, encodeURIComponent(String(requestParameters['documentId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: ContextChatRequestToJSON(requestParameters['contextChatRequest']),
+        };
+    }
+
+    /**
+     * Streams an answer to ``question`` about the document, from its chunks in the collection only (#248). The client sends the earlier turns (``history``) and never source text.
+     * Chat About Document
+     */
+    async chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRaw(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Streams an answer to ``question`` about the document, from its chunks in the collection only (#248). The client sends the earlier turns (``history``) and never source text.
+     * Chat About Document
+     */
+    async chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRaw(requestParameters, initOverrides);
     }
 
     /**

@@ -68,6 +68,27 @@
         @cite="documentSummary.cite"
       />
     </RightSidebarPanel>
+    <!-- fill: the conversation scrolls; the question input stays in view -->
+    <RightSidebarPanel
+      :id="DOCUMENT_SIDEBAR_PANELS.chat"
+      label="Chat"
+      icon="forum"
+      :order="1.75"
+      :busy="documentChat.streaming.value"
+      fill
+    >
+      <!-- keyed: another document gets a fresh panel, so a typed question is not asked about it -->
+      <ScopedChatPanel
+        :key="`${collectionId}:${documentId}`"
+        :messages="documentChat.messages.value"
+        :streaming="documentChat.streaming.value"
+        scope-label="Asking about this document's passages in the collection"
+        @ask="documentChat.ask"
+        @stop="documentChat.stop"
+        @new-conversation="documentChat.reset"
+        @cite="(source) => citeInReader(source.chunkId, source.order)"
+      />
+    </RightSidebarPanel>
     <RightSidebarPanel :id="DOCUMENT_SIDEBAR_PANELS.metadata" label="Document" icon="description" :order="2">
       <DocumentMetadataPanel v-if="documentData" :document="documentData" />
     </RightSidebarPanel>
@@ -96,6 +117,9 @@ import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import useTagSpans from 'src/features/annotations/useTagSpans'
 import DocumentSummaryPanel from 'src/features/documents/DocumentSummaryPanel.vue'
 import useDocumentSummary from 'src/features/documents/useDocumentSummary'
+import { citeInReader } from 'src/features/documents/readerCitation'
+import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
+import useScopedChat from 'src/features/chat/useScopedChat'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import BackLink from 'src/shared/ui/BackLink.vue'
 
@@ -122,6 +146,11 @@ const { fetchTagsByCollection } = useTagsStore()
 const aiAssist = useAiAssistance()
 const tagSpans = useTagSpans()
 const documentSummary = useDocumentSummary()
+// Document chat (#248): one in-memory conversation per document; it starts empty on
+// another document or collection and is dropped when the view unmounts.
+const documentChat = useScopedChat(() => ({
+  kind: 'document', collectionId: props.collectionId, documentId: props.documentId
+}))
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
 
 function onSummarizeDocument() {

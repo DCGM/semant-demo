@@ -33,6 +33,7 @@ docs/BulkUpdateSpansResponse.md
 docs/Cardinality.md
 docs/CategoryCount.md
 docs/CategoryDistribution.md
+docs/ChatTurn.md
 docs/ChunkFilters.md
 docs/ChunkTagPair.md
 docs/ChunkTagSyncRequest.md
@@ -40,6 +41,7 @@ docs/Collection.md
 docs/CollectionChunk.md
 docs/CollectionPerson.md
 docs/CollectionStats.md
+docs/ContextChatRequest.md
 docs/CorpusDistributions.md
 docs/CorpusDistributionsRequest.md
 docs/CorpusOverview.md
@@ -166,6 +168,7 @@ models/BulkUpdateSpansResponse.ts
 models/Cardinality.ts
 models/CategoryCount.ts
 models/CategoryDistribution.ts
+models/ChatTurn.ts
 models/ChunkFilters.ts
 models/ChunkTagPair.ts
 models/ChunkTagSyncRequest.ts
@@ -173,6 +176,7 @@ models/Collection.ts
 models/CollectionChunk.ts
 models/CollectionPerson.ts
 models/CollectionStats.ts
+models/ContextChatRequest.ts
 models/CorpusDistributions.ts
 models/CorpusDistributionsRequest.ts
 models/CorpusOverview.ts

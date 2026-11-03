@@ -285,7 +285,7 @@ Every backend-owned model call goes through the LLM gateway (`adapters/llm/`, se
 
 Each finished call writes one structured log, `LLM call finished` (`INFO`; `WARNING` when it failed or was cancelled), with:
 
-- `llm.feature` (`search_summary`, `document_summary`, `question`, `span_chat`, `rag`), `llm.tier`, `llm.provider`, `llm.model`;
+- `llm.feature` (`search_summary`, `document_summary`, `context_chat`, `question`, `span_chat`, `rag`), `llm.tier`, `llm.provider`, `llm.model`;
 - `llm.outcome`: `success`, `error` or `cancelled` (a stream its client abandoned), plus `error.type` (the exception class only);
 - `llm.usage_source`: `provider` when the provider reported the tokens, `estimated` when it did not (or the call failed or was abandoned) and they were estimated from the text length (about 4 characters per token);
 - `llm.input_tokens`, `llm.output_tokens`, `llm.total_tokens`, `llm.cost_usd` (absent when unknown), `llm.duration_ms`;
