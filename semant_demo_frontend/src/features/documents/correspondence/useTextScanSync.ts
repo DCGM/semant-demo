@@ -8,7 +8,7 @@ import type { ChunkPageMarks } from '../viewer/documentTextPane'
 import { rangeByChunk, type ChunkRange } from '../viewer/readerOffsets'
 import {
   linesForRange, mapChunk, pageBreaks, rangeOnPage, textForLine,
-  type ChunkLayoutMap, type LineTarget, type MappableChunk, type NoMapReason
+  type ChunkLayoutMap, type LineTarget, type MappableChunk, type NoMapReason, type TextHit
 } from './layoutMap'
 
 // Bidirectional synchronization of the text and scan panes (#544). Only explicit interactions
@@ -41,8 +41,11 @@ export interface TextScanSyncOptions<T extends SyncChunk> {
   layouts: () => LayoutCache
   /** The chunks the text shows, in document order. */
   chunks: Ref<T[]>
-  /** Reads (and adds to `chunks`) the chunks whose page range includes page `order`. */
-  pageChunks: (order: number) => Promise<T[]>
+  /**
+   * Reads (and adds to `chunks`) the chunks whose page range includes page `order`;
+   * `complete` false when the page has more than could be read.
+   */
+  pageChunks: (order: number) => Promise<{ chunks: T[], complete: boolean }>
   /** The scan viewer's focus request (it opens the page and focuses the lines smartly). */
   focusScan: (request: FocusRequest) => Promise<boolean>
   /** Brings a place in the text into view smartly, once the chunk is shown. */
@@ -55,6 +58,7 @@ export const NOTICES = {
   partial: 'Only part of this text was found on the page scans.',
   noScanPlace: 'No place on the page scans is known for this text.',
   lineNotInText: 'This line was not found in the document text.',
+  lineLookupIncomplete: 'This line was not found in the passages read for this page; the page has more than could be searched.',
   pageWithoutText: 'No document text is known on this page.',
   coarsePage: 'The text of this page has no line positions: it is shown from the passage that covers the page.',
   layoutFailed: 'The text lines of a page could not be loaded.'
@@ -191,17 +195,22 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     }
   }
 
-  /** The chunks that may hold page `index`'s text: those shown, then those read for the page. */
-  async function * candidates (index: number, signal: AbortSignal): AsyncGenerator<T> {
+  const covering = (index: number) => (c: T) => c.fromPage <= index && index <= c.toPage
+
+  /**
+   * The chunks that may hold page `index`'s text: those shown first, then those read for the
+   * page. `lookup.complete` turns false when the page has more chunks than could be read.
+   */
+  async function * candidates (index: number, signal: AbortSignal, lookup: { complete: boolean }): AsyncGenerator<T> {
     const tried = new Set<string>()
-    const covers = (c: T) => c.fromPage <= index && index <= c.toPage
-    for (const c of o.chunks.value.filter(covers)) {
+    for (const c of o.chunks.value.filter(covering(index))) {
       tried.add(c.id)
       yield c
     }
     const read = await o.pageChunks(index)
     if (signal.aborted) return
-    for (const c of read.filter(covers)) {
+    lookup.complete = read.complete
+    for (const c of read.chunks.filter(covering(index))) {
       if (!tried.has(c.id)) yield c
     }
   }
@@ -211,24 +220,38 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     const signal = begin()
     const index = pageIndex.value.get(target.pageId)
     if (index === undefined) return
+    const show = async (hit: TextHit) => {
+      textFocus.value = { range: { chunkId: hit.chunkId, start: hit.start, end: hit.end }, approximate: hit.precision !== 'exact' }
+      scanHighlights.value = []
+      notice.value = hit.precision === 'exact' ? '' : NOTICES.approximateLine
+      await nextTick()
+      if (!signal.aborted) o.revealText({ chunkId: hit.chunkId, start: hit.point })
+    }
     try {
-      for await (const chunk of candidates(index, signal)) {
+      const lookup = { complete: true }
+      // A line shared by two chunks belongs, for a click, to the chunk holding the word
+      // clicked; the first chunk with any of the line is kept in case none holds it.
+      let fallback: TextHit | null = null
+      for await (const chunk of candidates(index, signal, lookup)) {
         if (!chunk.layoutStart) continue
         const map = await mapOf(chunk, signal)
         if (signal.aborted) return
         if (typeof map === 'string') continue
         const hit = textForLine(map, target.pageId, target.lineId, target.offset)
         if (!hit) continue
-        textFocus.value = { range: { chunkId: hit.chunkId, start: hit.start, end: hit.end }, approximate: hit.precision !== 'exact' }
-        scanHighlights.value = []
-        notice.value = hit.precision === 'exact' ? '' : NOTICES.approximateLine
-        await nextTick()
-        if (!signal.aborted) o.revealText({ chunkId: hit.chunkId, start: hit.point })
-        return
+        if (hit.holdsOffset !== false) {
+          await show(hit)
+          return
+        }
+        fallback ??= hit
       }
       if (signal.aborted) return
+      if (fallback) {
+        await show(fallback)
+        return
+      }
       textFocus.value = null
-      notice.value = NOTICES.lineNotInText
+      notice.value = lookup.complete ? NOTICES.lineNotInText : NOTICES.lineLookupIncomplete
     } catch (e) {
       failed(signal, e)
     }
@@ -237,7 +260,8 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   /**
    * The scan viewer shows another page. With `follow` (the reader navigated in the scan
    * viewer) the text goes to the page's first text, unless the change is ours (a focus request
-   * from the text).
+   * from the text). The first text is found among all the page's chunks in document order,
+   * not only among those shown (a deep link may have shown a later passage of the page).
    */
   async function onScanPage (page: DocumentPage, index: number, { follow = true } = {}): Promise<void> {
     currentPageId.value = page.pageId
@@ -245,9 +269,12 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     if (!follow || ownPage === page.pageId) return
     const signal = begin()
     try {
-      let coarse: T | null = null
-      for await (const chunk of candidates(index, signal)) {
-        coarse ??= chunk.fromPage === index ? chunk : null
+      const read = await o.pageChunks(index)
+      if (signal.aborted) return
+      const byId = new Map<string, T>()
+      for (const c of [...o.chunks.value, ...read.chunks].filter(covering(index))) byId.set(c.id, c)
+      const ordered = [...byId.values()].sort((a, b) => a.order - b.order)
+      for (const chunk of ordered) {
         if (!chunk.layoutStart) continue
         const map = await mapOf(chunk, signal)
         if (signal.aborted) return
@@ -259,14 +286,12 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
         if (!signal.aborted) o.revealText({ chunkId: chunk.id, start: on.start })
         return
       }
-      if (signal.aborted) return
       // No line positions for this page: its stored page range is all there is.
-      coarse ??= o.chunks.value.find(c => c.fromPage <= index && index <= c.toPage) ?? null
+      const coarse = ordered.find(c => c.fromPage === index) ?? ordered[0] ?? null
       notice.value = coarse ? NOTICES.coarsePage : NOTICES.pageWithoutText
       if (coarse) {
-        const target = coarse
         await nextTick()
-        if (!signal.aborted) o.revealText({ chunkId: target.id, start: 0 })
+        if (!signal.aborted) o.revealText({ chunkId: coarse.id, start: 0 })
       }
     } catch (e) {
       failed(signal, e)

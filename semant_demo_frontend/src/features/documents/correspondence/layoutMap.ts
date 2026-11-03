@@ -197,6 +197,11 @@ export interface TextHit {
   /** The point clicked: the offset in the line mapped exactly, else the line's start. */
   point: number
   precision: Precision
+  /**
+   * Whether `offset` lies in this chunk's part of the line: a line can be shared by two
+   * chunks, and a click belongs to the one holding the word clicked. Null without an offset.
+   */
+  holdsOffset: boolean | null
 }
 
 /**
@@ -215,7 +220,8 @@ export function textForLine (map: ChunkLayoutMap, pageId: string, lineId: string
     point = piece.start + Math.max(0, Math.min(offset, piece.lineEnd) - piece.lineStart)
     point = Math.min(point, piece.end)
   }
-  return { chunkId: map.chunkId, start: first.start, end: last.end, point, precision: map.precision }
+  const holdsOffset = offset === undefined ? null : pieces.some(p => offset >= p.lineStart && offset < p.lineEnd)
+  return { chunkId: map.chunkId, start: first.start, end: last.end, point, precision: map.precision, holdsOffset }
 }
 
 /** The part of a chunk's text on a page, `[start, end)`; null when none is. */
