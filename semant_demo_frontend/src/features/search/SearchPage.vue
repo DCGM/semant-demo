@@ -301,6 +301,7 @@
         :loading="chunkContext.loading"
         :extending="chunkContext.extending"
         :error="chunkContext.error"
+        :open-link="chunkContext.target ? documentLink(chunkContext.target.documentId, { chunkId: chunkContext.target.chunkId, from: 'search' }) : null"
         return-label="Focus on result"
         @extend="chunkContext.extend"
         @reload="chunkContext.load"
@@ -334,6 +335,8 @@ import { entryKey, MAX_QUERY_LENGTH, type HistoryAudience, type HistoryEntry, ty
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
+import { whileShown } from 'src/shared/whileShown'
+import { documentLink } from 'src/features/documents/workspace/documentLink'
 import { useChunkContext } from 'src/features/documents/useChunkContext'
 
 const api = useApi().default
@@ -951,18 +954,23 @@ async function addSelectedDocumentsToCollection () {
   Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })
 }
 
-onMounted(async () => {
+// Kept alive while a document opened from a result is shown: the listeners only while shown.
+whileShown(() => {
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pointerdown', markInteraction, { capture: true })
   window.addEventListener('keydown', markInteraction, { capture: true })
+}, () => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('pointerdown', markInteraction, { capture: true })
+  window.removeEventListener('keydown', markInteraction, { capture: true })
+})
+
+onMounted(async () => {
   await Promise.all([fetchAvailableFilters(), fetchSearchVectors()])
   await loadCollections()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('pointerdown', markInteraction, { capture: true })
-  window.removeEventListener('keydown', markInteraction, { capture: true })
   searchRequest.cancel()
   if (clearHighlightTimer !== null) {
     window.clearTimeout(clearHighlightTimer)

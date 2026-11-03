@@ -1,6 +1,6 @@
 <template>
   <!-- Teleport targets the element itself, not a selector, as the page may mount before the layout is in the document. -->
-  <Teleport v-if="sidebar.targetEl" :to="sidebar.targetEl">
+  <Teleport v-if="sidebar.targetEl && shown" :to="sidebar.targetEl">
     <!-- v-show keeps the state of inactive panels -->
     <div
       v-show="sidebar.activePanelId === id"
@@ -14,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, toRef } from 'vue'
+import { onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, toRef } from 'vue'
 import { useRightSidebarStore } from './rightSidebarStore'
 
 /**
@@ -25,6 +25,10 @@ import { useRightSidebarStore } from './rightSidebarStore'
  *
  * `fill` gives the content exactly the height of the sidebar instead of letting the
  * sidebar scroll it, for a tool that scrolls parts of itself.
+ *
+ * On a page kept alive while another one is shown (MainLayout, #545), the panel is removed
+ * while the page is hidden and added again, as the active one if it was, when it returns.
+ * Its content is rendered anew then: a tool's state belongs to its page's composables.
  */
 const props = withDefaults(defineProps<{
   id: string
@@ -37,8 +41,12 @@ const props = withDefaults(defineProps<{
 
 const sidebar = useRightSidebarStore()
 let unregister: (() => void) | null = null
+/** False while the page is kept alive but hidden. */
+const shown = ref(true)
+let wasActive = false
 
-onMounted(() => {
+function add () {
+  if (unregister) return
   // The id stays the one the panel was registered with; the rest follows the props.
   unregister = sidebar.register(reactive({
     id: props.id,
@@ -47,12 +55,30 @@ onMounted(() => {
     order: toRef(props, 'order'),
     busy: toRef(props, 'busy')
   }))
-})
+}
 
-onBeforeUnmount(() => {
+function remove () {
   unregister?.()
   unregister = null
+}
+
+onMounted(add)
+
+onActivated(() => {
+  add()
+  shown.value = true
+  if (wasActive) sidebar.activePanelId = props.id
 })
+
+onDeactivated(() => {
+  wasActive = sidebar.activePanelId === props.id
+  shown.value = false
+  // Removed once every panel of the page has noted whether it was the active one: removing
+  // the active panel makes another one active.
+  void Promise.resolve().then(() => { if (!shown.value) remove() })
+})
+
+onBeforeUnmount(remove)
 </script>
 
 <style scoped>

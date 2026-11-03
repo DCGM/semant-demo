@@ -10,17 +10,11 @@ export function previewRoutes (enabled: boolean): RouteRecordRaw[] {
   if (!enabled) return []
   return [
     {
-      // The scan viewer (#543) on its own, until the paired document workspace (#545).
+      // The scan viewer (#543) on its own, with its last line event shown: the harness of its
+      // browser tests. In the application it is a part of the document workspace (#545).
       name: 'previewScanViewer',
       path: '/preview/scan/:documentId',
       component: () => import('src/features/documents/scan/ScanPreviewPage.vue'),
-      props: true
-    },
-    {
-      // The text and scan panes with their correspondence (#544), until #545.
-      name: 'previewTextScan',
-      path: '/preview/text-scan/:documentId',
-      component: () => import('src/features/documents/correspondence/TextScanPreviewPage.vue'),
       props: true
     }
   ]

@@ -83,3 +83,43 @@ describe('useChunkWindow.loadUntil', () => {
     expect(ids).toEqual(['chunk-0', 'chunk-1', 'chunk-2', 'chunk-3', 'chunk-4', 'chunk-5'])
   })
 })
+
+describe('useChunkWindow.showRange', () => {
+  it('reads only the orders asked for and leaves a gap to the text shown (#545)', async () => {
+    rangeCalls = []
+    const chunkWindow = useChunkWindow(() => 'c1', () => 'd1', () => undefined)
+    chunkWindow.show([chunk(0), chunk(1)])
+
+    const shown = chunkWindow.showRange(40, 41)
+    await flushPromises()
+    expect(rangeCalls.map(c => [c.orderGt, c.orderLt])).toEqual([[39, 42]])
+    rangeCalls[0].resolve([chunk(40), chunk(41)])
+    const result = await shown
+
+    expect(result.shown.map(c => c.order)).toEqual([40, 41])
+    expect(result.fresh.map(c => c.order)).toEqual([40, 41])
+    expect(chunkWindow.displayChunks.value.map(c => c.order)).toEqual([0, 1, 40, 41])
+
+    // Shown already: nothing is read again.
+    const again = await chunkWindow.showRange(41, 41)
+    expect(again).toEqual({ shown: [chunk(41)], fresh: [] })
+    expect(rangeCalls).toHaveLength(1)
+  })
+
+  it('waits for a load still under way, so no chunk is shown twice', async () => {
+    rangeCalls = []
+    const chunkWindow = useChunkWindow(() => 'c1', () => 'd1', () => undefined)
+    chunkWindow.show([chunk(0)])
+    const loading = chunkWindow.loadUntil(3)
+    const showing = chunkWindow.showRange(2, 4)
+    await flushPromises()
+    expect(rangeCalls).toHaveLength(1)
+    rangeCalls[0].resolve([chunk(1), chunk(2), chunk(3)])
+    await loading
+    await flushPromises()
+    expect(rangeCalls.map(c => [c.orderGt, c.orderLt])).toEqual([[0, 4], [1, 5]])
+    rangeCalls[1].resolve([chunk(2), chunk(3), chunk(4)])
+    expect((await showing).fresh.map(c => c.order)).toEqual([4])
+    expect(chunkWindow.displayChunks.value.map(c => c.order)).toEqual([0, 1, 2, 3, 4])
+  })
+})

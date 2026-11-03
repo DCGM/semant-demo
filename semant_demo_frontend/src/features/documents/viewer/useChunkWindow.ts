@@ -278,6 +278,37 @@ export function useChunkWindow (
     }
   }
 
+  /**
+   * Shows the chunks with orders `from`..`to` (a page of the scan, #545), wherever they are:
+   * only these are read, so a page far from the shown text leaves a gap before or after it
+   * (shown with its own load buttons) instead of loading everything in between. Returns the
+   * chunks of the range shown and those newly shown. Serialized with `loadUntil`.
+   */
+  function showRange (from: number, to: number): Promise<{ shown: CollectionChunk[], fresh: CollectionChunk[] }> {
+    const run = pendingLoadUntil.catch(() => undefined).then(() => showRangeNow(from, to))
+    pendingLoadUntil = run.then(() => undefined)
+    return run
+  }
+
+  async function showRangeNow (from: number, to: number): Promise<{ shown: CollectionChunk[], fresh: CollectionChunk[] }> {
+    const inRange = () => displayChunks.value.filter(c => c.order >= from && c.order <= to)
+    const shownOrders = new Set(inRange().map(c => c.order))
+    let complete = true
+    for (let order = from; order <= to; order++) if (!shownOrders.has(order)) { complete = false; break }
+    if (complete) return { shown: inRange(), fresh: [] }
+    const chunks = await repository.getChunksInRange(collectionId(), documentId(), from - 1, to + 1)
+    const known = new Set(displayChunks.value.map(c => c.id))
+    const fresh = chunks.filter(c => !known.has(c.id))
+    if (fresh.length) {
+      const ids = new Set(fresh.map(c => c.id))
+      hiddenPreviewChunks.value = hiddenPreviewChunks.value.filter(c => !ids.has(c.id))
+      displayChunks.value = [...displayChunks.value, ...fresh].sort((a, b) => a.order - b.order)
+      await relayoutAfterRender()
+      await checkNeighbours()
+    }
+    return { shown: inRange(), fresh }
+  }
+
   /** Stops showing a chunk; a preview chunk is kept hidden for offset math. */
   function hideChunk (chunkId: string) {
     const chunk = findChunk(chunkId)
@@ -327,6 +358,7 @@ export function useChunkWindow (
     loadGapAll,
     loadAllChunks,
     loadUntil,
+    showRange,
     hideChunk,
     hideAllPreviews,
     setInCollection

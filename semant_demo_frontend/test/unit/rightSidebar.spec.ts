@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue'
 
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
@@ -166,5 +166,49 @@ describe('RightSidebarPanel', () => {
 
     const panels = Array.from(target.querySelectorAll<HTMLElement>('[data-sidebar-panel]'))
     expect(panels.map((p) => p.classList.contains('sidebar-panel--fill'))).toEqual([true, false])
+  })
+
+  it('leaves the sidebar while its page is kept alive but hidden, and returns as it was (#545)', async () => {
+    const target = mountShell()
+    const sidebar = useRightSidebarStore()
+    const Search = defineComponent({
+      name: 'SearchLike',
+      setup: () => () => h('div', [
+        h(RightSidebarPanel, { id: 'summary', label: 'Summary', icon: 'star', order: 0 }, { default: () => h(Tool, { context: 'summary' }) }),
+        h(RightSidebarPanel, { id: 'context', label: 'Context', icon: 'star', order: 1 }, { default: () => h(Tool, { context: 'context' }) })
+      ])
+    })
+    const Document = defineComponent({
+      name: 'DocumentLike',
+      setup: () => () => h(RightSidebarPanel, { id: 'metadata', label: 'Document', icon: 'star' }, { default: () => h(Tool, { context: 'metadata' }) })
+    })
+    const shownPage = ref<'search' | 'document'>('search')
+    // As MainLayout: the kept page in KeepAlive, the other one beside it.
+    const Layout = defineComponent({
+      setup: () => () => [
+        h(KeepAlive, null, [shownPage.value === 'search' ? h(Search, { key: 'search' }) : null]),
+        shownPage.value === 'document' ? h(Document) : null
+      ]
+    })
+    mount(Layout, { global: { plugins: [[Quasar, {}]] } })
+    await nextTick()
+    sidebar.activate('context')
+    await nextTick()
+    expect(target.textContent).toContain('tool for context')
+
+    shownPage.value = 'document'
+    await nextTick()
+    await nextTick()
+    expect(sidebar.sortedPanels.map((p) => p.id)).toEqual(['metadata'])
+    expect(sidebar.activePanelId).toBe('metadata')
+    expect(target.textContent).toBe('tool for metadata')
+
+    shownPage.value = 'search'
+    await nextTick()
+    await nextTick()
+    expect(sidebar.sortedPanels.map((p) => p.id)).toEqual(['summary', 'context'])
+    expect(sidebar.activePanelId).toBe('context')
+    expect(target.textContent).toContain('tool for context')
+    expect(target.textContent).not.toContain('metadata')
   })
 })

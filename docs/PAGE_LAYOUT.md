@@ -196,10 +196,11 @@ is #544 ([below](#textscan-correspondence-544)).
 - **Missing parts**: a document without a manifest is text only; a page without a scan says so;
   a scan without a layout (or a layout that fails to load, with Retry) is shown without lines.
 
-Until #545 places it in the document view, the pane has a preview page,
-`/#/preview/scan/<document id>?page=<page id>`, built only with `SEMANT_PREVIEW_ROUTES=1`
-(the dev server and the browser-test builds). The browser-test profile and the local
-development backend serve synthetic page fixtures (`tests/page_fixtures.py`).
+In the application the pane is a part of the document workspace (#545, below). On its own it
+has a preview page, `/#/preview/scan/<document id>?page=<page id>`, the harness of its browser
+tests, built only with `SEMANT_PREVIEW_ROUTES=1` (the dev server and the browser-test builds).
+The browser-test profile and the local development backend serve synthetic page fixtures
+(`tests/page_fixtures.py`).
 
 ## Text/scan correspondence (#544)
 
@@ -240,9 +241,40 @@ no per-line text ranges, no matching service.
   opened page (`/by_page`), extended with `/adjacent` on request; never all earlier pages or the
   whole document.
 
-Until #545 places both panes in the document workspace, they have a preview page,
-`/#/preview/text-scan/<document id>?page=<page id>` or `?chunk=<chunk id>&start=&end=`
-(UTF-16 offsets in the chunk), in the same builds as the scan preview. The browser-test
-profile and the local development backend store anchors for the fixture chunks
-(`fixture_anchors` in `tests/page_fixtures.py`; verified against `replay` by
+The browser-test profile and the local development backend store anchors for the fixture
+chunks (`fixture_anchors` in `tests/page_fixtures.py`; verified against `replay` by
 `tests/test_page_fixtures.py`).
+
+## Document workspace (#545)
+
+`semant_demo_frontend/src/features/documents/workspace/` puts the text and the scan viewer
+side by side in the application, in two places that share the components and the
+correspondence but not their text:
+
+- **The public document view**, `/#/documents/<document id>` (`PublicDocumentPage`, no sign-in):
+  the bounded public text (`useDocumentText`), read-only, no collection and no annotation read,
+  the document's metadata in the general right sidebar (*Document*). `?page=<page id>` opens a
+  page and its text, `?chunk=<chunk id>&start=&end=` a passage (UTF-16 offsets in the chunk) and
+  its lines, `?view=split|text|scan` the view, `?from=search|chat` the back link. Search
+  results and chat sources open it from their context panel (*Open document*), which stays the
+  light, in-page view of a passage.
+- **The collection's document view**, `/#/collections/<cid>/documents/<did>/v1`: the reader with
+  its annotations, gutters and tools unchanged, the scan beside it (`useReaderScanSync`). A page
+  opened in the scan is found in the reader's text by reading that page's chunks
+  (`pageChunks.ts`: `/chunks/by_page`, continued with `/adjacent`) and showing only their orders
+  in the reader (`useChunkWindow.showRange`, with their annotations), leaving a gap to the text
+  shown rather than loading everything in between. Clicks and selections in the text, an
+  annotation link (`?annotation=`), a chunk link (`?chunk=&order=`), a page link (`?page=`) and
+  summary or chat citations show their lines on the scan; the annotation popover works as
+  before. A collection the user cannot read says so and links to the public view.
+- **Layout** (`DocumentWorkspace`): the text scrolls with its scroller (the page, or the document
+  view's layout) and the scan sticks beside it below the header, so the two scroll
+  independently. A document without scans is text only, without a choice of views; otherwise
+  *Text and scan*, *Text* or *Scan* (`WorkspaceModeToggle`), and only one of them when the
+  workspace is under 720 px wide. The scan viewer stays mounted while hidden, so it keeps its
+  page; showing the text again reveals the passage last focused from the scan.
+- **Return.** Search and Chat are kept alive while another page is shown (`router/keptPages.ts`,
+  `meta.keepAlive`; their sidebar panels leave and return with them and their window listeners
+  pause, `shared/whileShown.ts`), so the back link or browser back finds the results, the
+  opened result or source and the scroll position as they were. The state is in memory: after
+  a reload of the document the back link leads to an empty search or conversation.

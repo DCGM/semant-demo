@@ -1,0 +1,320 @@
+<template>
+  <q-page class="public-document q-px-lg q-pb-md">
+    <header class="public-document__header row items-end no-wrap q-py-sm">
+      <div class="col" style="min-width: 0">
+        <BackLink v-if="back" :to="back.to" :label="back.label" :aria-label="back.ariaLabel" />
+        <div class="text-caption text-grey-6">Document</div>
+        <h1 class="public-document__title text-h5 text-weight-medium ellipsis" data-testid="document-title">
+          {{ documentData ? (documentData.title || 'Untitled document') : (documentError ? 'Document not available' : '…') }}
+        </h1>
+        <div v-if="documentData" class="text-body2 text-grey-7 ellipsis">
+          <span v-if="documentData.subtitle">{{ documentData.subtitle }} · </span>
+          <span>{{ byline }}</span>
+          <OriginalSourceLink :document="documentData" :page-id="sync.currentPageId.value" class="q-ml-sm" />
+        </div>
+      </div>
+      <WorkspaceModeToggle
+        v-if="workspace.hasScan.value"
+        :model-value="workspace.shown.value"
+        :narrow="workspace.narrow.value"
+        class="q-ml-md"
+        @update:model-value="chooseMode"
+      />
+    </header>
+
+    <div v-if="documentError" class="text-negative q-my-md" role="alert" data-testid="document-error">{{ documentError }}</div>
+    <!-- One line, always there: a new notice must not move the text or resize the scan. -->
+    <div class="public-document__notice text-caption text-grey-8 ellipsis" :title="sync.notice.value">
+      <span v-if="sync.notice.value" aria-live="polite" data-testid="sync-notice">{{ sync.notice.value }}</span>
+    </div>
+
+    <DocumentWorkspace
+      v-if="!documentError"
+      ref="workspacePane"
+      v-model:narrow="workspace.narrow.value"
+      :document-id="documentId"
+      :mode="workspace.shown.value"
+      :page-id="pageId"
+      :document-title="documentData?.title ?? ''"
+      :highlights="sync.scanHighlights.value"
+      :layout-cache="layouts"
+      :sticky-top="STICKY_TOP"
+      @update:page-id="onPageId"
+      @page-change="onScanPage"
+      @loaded="onLoaded"
+      @line-select="sync.showLineInText"
+      @line-focus="sync.showLineInText"
+    >
+      <section
+        class="public-document__text"
+        aria-label="Document text"
+        data-testid="text-scroll"
+        @wheel.passive="sync.cancel()"
+        @touchstart.passive="sync.cancel()"
+      >
+        <div v-if="text.error.value" class="text-negative q-mb-md" role="alert">{{ text.error.value }}</div>
+        <q-btn
+          v-if="firstOrder > 0"
+          flat dense no-caps color="primary" icon="expand_less" label="Earlier text"
+          class="q-mb-sm" :loading="text.loading.value" data-testid="text-earlier"
+          @click="text.extend('before')"
+        />
+        <DocumentTextPane
+          ref="textPane"
+          :chunks="text.chunks.value"
+          :active-range="activeRange"
+          :active-approximate="!!sync.textFocus.value?.approximate"
+          :page-marks="sync.pageMarks.value"
+          :reveal-inset="STICKY_TOP"
+          @text-click="onTextClick"
+          @select="onTextSelect"
+        >
+          <template #gap="{ paragraph }">
+            <div class="public-document__gap text-grey-7">
+              {{ missingChunksText(gapSize(paragraph)) }}
+              <q-btn
+                flat dense no-caps size="sm" color="primary" label="Show"
+                :loading="text.loading.value" @click="text.fillGap(paragraph.gapAfter!)"
+              />
+            </div>
+          </template>
+        </DocumentTextPane>
+        <div v-if="!text.chunks.value.length" class="text-grey-7" data-testid="text-empty" aria-live="polite">
+          <template v-if="text.loading.value"><q-spinner size="1.2em" class="q-mr-sm" />Loading the text…</template>
+          <template v-else>No text is shown yet.</template>
+        </div>
+        <q-btn
+          v-if="text.chunks.value.length && text.hasAfter.value"
+          flat dense no-caps color="primary" icon="expand_more" label="More text"
+          class="q-mt-sm" :loading="text.loading.value" data-testid="text-later"
+          @click="text.extend('after')"
+        />
+      </section>
+    </DocumentWorkspace>
+
+    <!-- The general right sidebar; the public view is read-only and has no collection tools. -->
+    <RightSidebarPanel :id="DOCUMENT_SIDEBAR_PANELS.metadata" label="Document" icon="description" :order="2">
+      <DocumentMetadataPanel v-if="documentData" :document="documentData" />
+      <div v-else class="text-caption text-grey-7">{{ documentError || 'Loading the document…' }}</div>
+    </RightSidebarPanel>
+  </q-page>
+</template>
+
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { Document, DocumentPage } from 'src/generated/api'
+import { errorStatus } from 'src/shared/api'
+import BackLink from 'src/shared/ui/BackLink.vue'
+import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
+import { useDocumentsRepository } from 'src/features/documents/useDocumentsRepository'
+import DocumentMetadataPanel from '../DocumentMetadataPanel.vue'
+import OriginalSourceLink from '../OriginalSourceLink.vue'
+import { createLayoutCache } from '../scan/pageAssets'
+import { selectionRange } from '../correspondence/layoutMap'
+import { useDocumentText } from '../correspondence/useDocumentText'
+import { useTextScanSync } from '../correspondence/useTextScanSync'
+import { DOCUMENT_SIDEBAR_PANELS } from '../viewer/documentSidebar'
+import DocumentTextPane from '../viewer/DocumentTextPane.vue'
+import type { DocumentTextPaneApi, TextSelection } from '../viewer/documentTextPane'
+import { gapSize, missingChunksText, type ChunkRange, type TextPoint } from '../viewer/readerOffsets'
+import DocumentWorkspace from './DocumentWorkspace.vue'
+import { returnLink } from './documentLink'
+import { useWorkspaceMode } from './useWorkspaceMode'
+import { parseMode, withMode, type WorkspaceMode } from './workspaceMode'
+import WorkspaceModeToggle from './WorkspaceModeToggle.vue'
+
+// The public document view (#545, `/documents/:documentId`): the document's canonical text
+// and its page scans in the paired workspace, with the text/scan correspondence (#544) and the
+// document's metadata in the general right sidebar. Read-only and without a collection: no
+// annotation is read and no editing state exists. Deep links: `?page=<page id>` opens a page
+// and its text, `?chunk=<chunk id>&start=&end=` a passage (UTF-16 offsets in the chunk) and its
+// lines, `?view=split|text|scan` the view, `?from=search|chat` the back link.
+
+/** Below the application header (MainLayout), with a small gap. */
+const STICKY_TOP = 58
+
+const props = defineProps<{ documentId: string }>()
+
+const route = useRoute()
+const router = useRouter()
+const documentData = shallowRef<Document | null>(null)
+const documentError = ref('')
+const textPane = ref<DocumentTextPaneApi | null>(null)
+const workspacePane = ref<InstanceType<typeof DocumentWorkspace> | null>(null)
+const pages = shallowRef<DocumentPage[]>([])
+const layouts = shallowRef(createLayoutCache())
+/** A passage opened by a deep link, until another interaction. */
+const linkedRange = shallowRef<ChunkRange | null>(null)
+/** The deep link has been handled: from then on, page changes in the scan viewer are followed. */
+let following = false
+let manifestReady: () => void = () => undefined
+let manifest: Promise<void> = Promise.resolve()
+
+const workspace = useWorkspaceMode(parseMode(route.query.view))
+const text = useDocumentText(() => props.documentId)
+const sync = useTextScanSync({
+  pages,
+  layouts: () => layouts.value,
+  chunks: text.chunks,
+  pageChunks: text.pageChunks,
+  focusScan: (request) => workspacePane.value?.focus(request) ?? Promise.resolve(false),
+  revealText: (at) => { textPane.value?.revealRange(at) }
+})
+
+const back = computed(() => returnLink(route.query.from))
+const pageId = computed(() => typeof route.query.page === 'string' ? route.query.page : null)
+const firstOrder = computed(() => text.chunks.value[0]?.order ?? 0)
+const activeRange = computed(() => sync.textFocus.value?.range ?? linkedRange.value)
+const byline = computed(() => {
+  const d = documentData.value
+  if (!d) return ''
+  return [d.author?.join(', '), d.yearIssued].filter(Boolean).join(', ') || 'Author and year unknown'
+})
+
+const queryNumber = (name: string) => {
+  const v = route.query[name]
+  return typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : null
+}
+
+function chooseMode (mode: WorkspaceMode) {
+  workspace.chosen.value = mode
+  void router.replace({ query: withMode(route.query, mode) })
+}
+
+// The text shown again: the passage last focused from the scan comes into view.
+watch(workspace.shown, async (mode, before) => {
+  const at = sync.textFocus.value?.range ?? linkedRange.value
+  if (before !== 'scan' || mode === 'scan' || !at) return
+  await nextTick()
+  textPane.value?.revealRange(at)
+})
+
+function onPageId (id: string) {
+  if (id !== pageId.value) void router.replace({ query: { ...route.query, page: id } })
+}
+
+function onLoaded (info: { available: boolean, pages: DocumentPage[] }) {
+  workspace.hasScan.value = info.available
+  pages.value = info.pages
+  manifestReady()
+}
+
+function onScanPage (page: DocumentPage, index: number) {
+  if (following && !sync.isOwnPageChange(page.pageId)) linkedRange.value = null
+  void sync.onScanPage(page, index, { follow: following })
+}
+
+function onTextClick (point: TextPoint | null) {
+  if (!point) return
+  linkedRange.value = null
+  void sync.showTextOnScan({ chunkId: point.chunkId, start: point.charOffset, end: point.charOffset }, { markLine: true })
+}
+
+function onTextSelect ({ start, end }: TextSelection) {
+  const range = selectionRange(start, end, text.chunks.value)
+  if (!range) return
+  linkedRange.value = null
+  void sync.showTextOnScan(range)
+}
+
+/** Keys that scroll the page cancel a focus still on its way, like the wheel (not in the scan viewer or a field). */
+function onKeydown (e: KeyboardEvent) {
+  if (!['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '].includes(e.key)) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest?.('[data-testid="workspace-scan"], input, textarea, [contenteditable]')) return
+  sync.cancel()
+}
+
+async function open (documentId: string) {
+  following = false
+  linkedRange.value = null
+  text.reset()
+  layouts.value = createLayoutCache()
+  manifest = new Promise(resolve => { manifestReady = resolve })
+  const chunkId = typeof route.query.chunk === 'string' ? route.query.chunk : null
+  if (chunkId) {
+    const chunk = await text.openChunk(chunkId)
+    await manifest
+    if (documentId !== props.documentId) return
+    following = true
+    if (!chunk) return
+    const length = chunk.text.length
+    const start = Math.min(queryNumber('start') ?? 0, length)
+    const end = Math.min(length, Math.max(start, queryNumber('end') ?? start))
+    if (end > start) linkedRange.value = { chunkId, start, end }
+    await nextTick()
+    textPane.value?.revealRange({ chunkId, start })
+    await sync.showTextOnScan({ chunkId, start, end }, { markLine: end === start })
+    return
+  }
+  await manifest
+  if (documentId !== props.documentId) return
+  following = true
+  const shown = workspacePane.value?.currentPage()
+  const index = shown ? pages.value.findIndex(p => p.pageId === shown.pageId) : -1
+  if (pageId.value && shown && index >= 0) await sync.onScanPage(shown, index)
+  if (!text.chunks.value.length && documentId === props.documentId) await text.openStart()
+}
+
+async function loadDocument (id: string) {
+  documentData.value = null
+  documentError.value = ''
+  try {
+    const doc = await useDocumentsRepository().getById(id)
+    if (id === props.documentId) documentData.value = doc
+  } catch (e) {
+    if (id !== props.documentId) return
+    documentError.value = errorStatus(e) === 404
+      ? 'This document is not in the corpus.'
+      : 'The document could not be loaded.'
+  }
+}
+
+watch(() => props.documentId, (id) => {
+  void loadDocument(id)
+  void open(id)
+}, { immediate: true })
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  sync.cancel()
+})
+</script>
+
+<style scoped>
+.public-document {
+  background: #f8fafc;
+}
+
+.public-document__title {
+  margin: 0;
+  line-height: 1.3;
+}
+
+.public-document__notice {
+  height: 20px;
+  margin-bottom: 4px;
+}
+
+.public-document__text {
+  position: relative;
+  min-height: 200px;
+  padding: 24px 28px;
+  background: #fff;
+  border: 1px solid #d5dce6;
+  border-radius: 12px;
+}
+
+.public-document__gap {
+  margin: 0 0 18px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 599px) {
+  .public-document__text {
+    padding: 16px;
+  }
+}
+</style>

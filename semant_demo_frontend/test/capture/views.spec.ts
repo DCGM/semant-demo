@@ -706,3 +706,52 @@ test('scan viewer', async ({ page }, testInfo) => {
   })
   await save(page, testInfo, 'scan-viewer-zoomed')
 })
+
+test('public document', async ({ page }, testInfo) => {
+  // The public document view (#545): a deep-linked word of the gazette, exact on its scan, the
+  // metadata in the sidebar; on a phone the text, then the scan.
+  const gazette = fixture.document('gazette')
+  const passage = fixture.chunk('gazette_1')
+  const word = passage.text.indexOf('hostila')
+  await page.goto(`/#/documents/${gazette.id}?chunk=${passage.id}&start=${word}&end=${word + 7}&from=search`)
+  await page.reload() // a fresh page: the phone's navigation drawer starts as an overlay
+  await closePhoneNavigation(page)
+  await expect(page.locator('.is-active-passage')).toHaveText('hostila')
+  if (testInfo.project.name !== 'phone') {
+    await expect(page.locator('polygon.scan-highlight')).toHaveCount(1)
+    await page.getByRole('listitem', { name: 'Document' }).click()
+    await expectRightSidebarIn(page)
+  }
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'public-document')
+  if (testInfo.project.name === 'phone') {
+    await page.getByTestId('workspace-mode').getByRole('button', { name: 'Scan', exact: true }).click()
+    await expect(page.locator('polygon.scan-highlight')).toHaveCount(1)
+    await save(page, testInfo, 'public-document-scan')
+  }
+})
+
+test('collection document with its scan', async ({ page }, testInfo) => {
+  // The collection's document view (#545): annotations and tools as before, the scan beside the
+  // text, a scan line's text marked.
+  await ensureLoggedIn(page, 'owner')
+  await page.reload()
+  const collection = fixture.collection('chronicles')
+  const chronicle = fixture.document('chronicle')
+  await page.goto(`/#/collections/${collection.id}/documents/${chronicle.id}/v1?page=5e3a0000-0000-4000-8000-0000000d1f01`)
+  await closePhoneNavigation(page)
+  await expect(page.locator('.chunk-annotator').first()).toBeVisible()
+  // With both sidebars open (narrow) and on a phone the workspace has room for one view only.
+  if (testInfo.project.name === 'wide') {
+    const line = (await page.locator('polygon.scan-line[data-line-id="r002-l002"]').boundingBox())!
+    await page.mouse.click(line.x + line.width / 2, line.y + line.height / 2)
+    await expect(page.locator('.is-active-passage').first()).toBeVisible()
+  }
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'collection-document-scan')
+  if (testInfo.project.name === 'narrow') {
+    await page.getByTestId('workspace-mode').getByRole('button', { name: 'Scan', exact: true }).click()
+    await expect(page.getByTestId('scan-overlay')).toBeAttached()
+    await save(page, testInfo, 'collection-document-scan-only')
+  }
+})
