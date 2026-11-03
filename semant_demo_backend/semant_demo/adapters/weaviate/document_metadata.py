@@ -3,13 +3,13 @@
 Never creates, drops or alters a collection; ``add_text_property`` only adds a property,
 on explicit request.
 """
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import DataType, Property, Tokenization
-from weaviate.classes.query import Filter
+from weaviate.classes.query import Filter, Sort
 from weaviate.exceptions import WeaviateUnsupportedFeatureError
 
 from semant_demo.adapters.weaviate.names import CollectionNames
@@ -74,3 +74,48 @@ async def read_start_pages(client: WeaviateAsyncClient, names: CollectionNames,
         filters=Filter.by_ref("document").by_id().equal(document_id),
         limit=limit + 1, return_properties=["start_page_id"])
     return [obj.properties.get("start_page_id") for obj in response.objects[:limit]], len(response.objects) > limit
+
+
+START_PAGE_BATCH = 1000
+
+
+class IncompleteRead(RuntimeError):
+    """Not every chunk of the document could be read."""
+
+
+async def iter_start_pages(client: WeaviateAsyncClient, names: CollectionNames, document_id: UUID,
+                           page_size: int = START_PAGE_BATCH) -> AsyncIterator[list[Any]]:
+    """The ``start_page_id`` values (as stored) of every chunk of the document, in batches of
+    at most ``page_size``. Reads no text or vectors.
+
+    Keyset paging on ``order`` (``order >= last``, sorted by ``order``; the chunks already
+    returned at ``last`` are skipped), so the read has no offset limit and stays stable. Raises
+    ``IncompleteRead`` when a chunk has no ``order``, when more than ``page_size - 1`` chunks
+    share one ``order``, or when the number of chunks read differs from the document's chunk
+    count (e.g. written during the read): a partial read is never a complete one."""
+    if page_size < 2:
+        raise ValueError("page_size must be at least 2")
+    chunks = client.collections.get(names.chunks_collection_name)
+    by_document = Filter.by_ref("document").by_id().equal(document_id)
+    total = (await chunks.aggregate.over_all(filters=by_document, total_count=True)).total_count
+    read, last, seen = 0, None, set()
+    while True:
+        filters = by_document if last is None else by_document & Filter.by_property("order").greater_or_equal(last)
+        response = await chunks.query.fetch_objects(filters=filters, limit=page_size, sort=Sort.by_property("order"),
+                                                    return_properties=["order", "start_page_id"])
+        objects = response.objects
+        if any(not isinstance(o.properties.get("order"), int) for o in objects):
+            raise IncompleteRead(f"a chunk of {document_id} has no order")
+        fresh = [o for o in objects if not (o.properties["order"] == last and o.uuid in seen)]
+        if len(objects) == page_size and all(o.properties["order"] == objects[0].properties["order"] for o in objects):
+            raise IncompleteRead(f"{page_size} or more chunks of {document_id} share order {objects[0].properties['order']}")
+        if fresh:
+            read += len(fresh)
+            yield [o.properties.get("start_page_id") for o in fresh]
+        if len(objects) < page_size:
+            break
+        top = objects[-1].properties["order"]
+        seen = {o.uuid for o in objects if o.properties["order"] == top} | (seen if top == last else set())
+        last = top
+    if read != total:
+        raise IncompleteRead(f"read {read} of {total} chunks of {document_id}")

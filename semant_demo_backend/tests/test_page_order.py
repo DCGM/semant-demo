@@ -9,7 +9,8 @@ from sqlalchemy import create_engine, insert
 from semant_demo.adapters.sql.kramerius_metadata import META_RECORDS, PageRow, read_document_pages
 from semant_demo.maintenance import page_order
 from semant_demo.maintenance.page_order import (
-    choose_library, connect_read_only, export, export_document, page_xml_names, real_path, summary)
+    StartPageCheck, choose_library, connect_read_only, export, export_document, page_xml_names, real_path,
+    summary)
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d001")
 OTHER = UUID("5e3a0000-0000-4000-8000-00000000d002")
@@ -96,10 +97,18 @@ def test_start_pages_of_another_library_are_a_conflict():
 
 
 def test_matching_start_pages_pass_and_invalid_values_are_reported():
-    entry = export_document(DOC, mirrored(), start_pages=[str(NLK[0]), NLK[2], None, "page-7"],
-                            start_pages_truncated=True)
-    assert entry["status"] == "exported"
-    assert {"invalid_start_page_ids", "start_pages_truncated"} <= codes(entry)
+    entry = export_document(DOC, mirrored(), start_pages=[str(NLK[0]), NLK[2], None, "page-7"])
+    assert entry["status"] == "exported" and len(entry["pages"]) == 4
+    invalid = next(w for w in entry["warnings"] if w["code"] == "invalid_start_page_ids")
+    assert invalid == {"code": "invalid_start_page_ids", "count": 2, "sample": ["None", "page-7"]}
+
+
+def test_start_page_samples_stay_bounded():
+    check = StartPageCheck(set(NLK))
+    check.add([UUID(int=0x5000 + i) for i in range(10_000)] + [f"bad-{i}" for i in range(10_000)])
+    assert check.chunks == 20_000 and check.foreign.count == check.invalid.count == 10_000
+    assert len(check.foreign.values) == len(check.invalid.values) == page_order.SAMPLE
+    assert sorted(check.foreign.values) == [str(UUID(int=0x5000 + i)) for i in range(page_order.SAMPLE)]
 
 
 # --- pages -------------------------------------------------------------------------------
@@ -195,15 +204,85 @@ def test_read_document_pages_reads_only_page_rows_of_the_documents(source):
     assert (first.order, first.label, first.page_type, first.image_path) == (3, "3", "NormalPage", IMAGE)
 
 
-def test_export_keeps_the_given_document_order(source, tmp_path):
+async def collect(entries):
+    return [entry async for entry in entries]
+
+
+async def test_export_keeps_the_given_document_order(source, tmp_path):
     mirror_rows(source)
-    entries = export(source, [OTHER, DOC, OTHER], page_xml_dir=tmp_path)
+    entries = await collect(export(source, [OTHER, DOC, OTHER], page_xml_dir=tmp_path))
     assert [e["documentId"] for e in entries] == [str(OTHER), str(DOC)]
     other, doc = entries
     assert other["status"] == "exported" and other["libraryFrom"] == "only_library"
     assert doc["library"] == "nlk" and [p["pageId"] for p in doc["pages"]] == [str(p) for p in reversed(NLK)]
     assert "no_page_xml_files" in codes(doc)
     assert summary(entries)["statuses"] == {"exported": 2}
+
+
+def many_documents(source, count, pages=3):
+    """``count`` single-library documents of ``pages`` pages each."""
+    documents = [UUID(int=0xD0C0000 + i) for i in range(count)]
+    add_rows(source, *({"id": UUID(int=d.int * 16 + p), "library": "nlk", "parent_id": d, "parent_library": "nlk",
+                        "order": pages - p, "image_path": IMAGE} for d in documents for p in range(pages)))
+    return documents
+
+
+async def test_export_spans_batches_in_input_order(source, monkeypatch):
+    documents = many_documents(source, 7)
+    reads = []
+    original = page_order.read_document_pages
+    monkeypatch.setattr(page_order, "read_document_pages", lambda c, ids: reads.append(list(ids)) or original(c, ids))
+    wanted = [documents[5], documents[0], UUID(int=1), documents[5], *documents[1:5], documents[6], documents[0]]
+
+    entries = await collect(export(source, wanted, batch_size=3))
+
+    expected = list(dict.fromkeys(wanted))
+    assert [e["documentId"] for e in entries] == [str(d) for d in expected]
+    assert reads == [expected[0:3], expected[3:6], expected[6:8]]          # bounded, deduplicated batches
+    assert entries == await collect(export(source, wanted, batch_size=1000))  # same as a single batch
+    assert [e["status"] for e in entries] == ["exported", "exported", "no_pages", *["exported"] * 5]
+    assert [p["order"] for p in entries[0]["pages"]] == [1, 2, 3]
+    assert summary(entries) == {"documents": 8, "statuses": {"exported": 7, "no_pages": 1},
+                                "libraryFrom": {"paths": 7}, "pages": 21, "warnings": {"missing_page_xml": 7}}
+
+
+async def test_export_is_lazy(source, monkeypatch):
+    documents = many_documents(source, 4)
+    reads = []
+    original = page_order.read_document_pages
+    monkeypatch.setattr(page_order, "read_document_pages", lambda c, ids: reads.append(list(ids)) or original(c, ids))
+    stream = export(source, documents, batch_size=2)
+    await anext(stream)
+    assert reads == [documents[:2]]
+    await stream.aclose()
+
+
+async def test_export_checks_start_pages_only_of_exportable_documents(source):
+    documents = many_documents(source, 3)
+    pages_of = {d: [UUID(int=d.int * 16 + p) for p in range(3)] for d in documents}
+    stored = {documents[0]: pages_of[documents[0]] * 400,                         # passes
+              documents[1]: pages_of[documents[1]] * 400 + [NKP[0]],              # conflict after 1,200
+              documents[2]: pages_of[documents[2]]}                               # read fails
+    calls = []
+
+    async def checker(document_id, page_ids):
+        calls.append(document_id)
+        check = StartPageCheck(page_ids)
+        values = stored[document_id]
+        for first in range(0, len(values), 1000):
+            check.add(values[first:first + 1000])
+        if document_id == documents[2]:
+            check.error = "IncompleteRead: read 3 of 4 chunks"
+        return check
+
+    entries = await collect(export(source, [*documents, UUID(int=1)], check_start_pages=checker, batch_size=2))
+
+    assert calls == documents                                                     # not for no_pages
+    assert [e["status"] for e in entries] == ["exported", "start_page_conflict", "start_pages_unchecked", "no_pages"]
+    assert len(entries[0]["pages"]) == 3 and entries[1]["pages"] == entries[2]["pages"] == []
+    conflict = next(w for w in entries[1]["warnings"] if w["code"] == "start_pages_not_in_library")
+    assert conflict == {"code": "start_pages_not_in_library", "count": 1, "sample": [str(NKP[0])]}
+    assert "start_pages_incomplete" in codes(entries[2])
 
 
 def test_read_only_connection_option(source):
@@ -245,4 +324,20 @@ async def test_cli_writes_json_lines(no_weaviate, monkeypatch, tmp_path):
     [entry] = [json.loads(line) for line in output.read_text().splitlines()]
     assert entry["library"] == "nlk" and len(entry["pages"]) == 4
 
+    assert not output.with_name("pages.jsonl.partial").exists()
+
     assert await page_order._main([str(UUID(int=1)), "--output", str(output)]) == 1   # no_pages
+
+
+async def test_weaviate_checker_never_passes_a_partial_read(monkeypatch):
+    from semant_demo.adapters.weaviate import document_metadata
+
+    async def fails_after_a_batch(client, names, document_id, page_size=1000):
+        yield [str(NLK[0])] * 1000
+        raise document_metadata.IncompleteRead("read 1000 of 1500 chunks")
+
+    monkeypatch.setattr(document_metadata, "iter_start_pages", fails_after_a_batch)
+    check = await page_order.weaviate_start_page_checker(object(), None)(DOC, set(NLK))
+    assert check.chunks == 1000 and check.error.startswith("IncompleteRead")
+    entry = page_order.apply_start_page_check(export_document(DOC, mirrored()), check)
+    assert entry["status"] == "start_pages_unchecked" and entry["pages"] == []

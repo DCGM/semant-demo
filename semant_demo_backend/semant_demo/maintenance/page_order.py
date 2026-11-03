@@ -15,10 +15,12 @@ UUIDs. The library is chosen, in this order:
    (``page_xml``), or the only library with pages (``only_library``, with a warning).
 
 Supplied PAGE XML file names (``--page-xml-dir``) and, with ``--check-start-pages``, the
-chunks' ``start_page_id`` values must belong to the chosen library's pages; otherwise the
-document is ``page_xml_conflict`` or ``start_page_conflict`` and no pages are exported. A
-document whose library cannot be decided is ``ambiguous``; one without page rows is
-``no_pages``. Null or duplicate orders, pages without an image or PAGE XML and unrecognized
+``start_page_id`` values of all the document's chunks must belong to the chosen library's
+pages; otherwise the document is ``page_xml_conflict`` or ``start_page_conflict`` and no
+pages are exported. When the chunks cannot all be read (a failed query, a chunk without
+``order``, a count that changed during the read) the document is ``start_pages_unchecked``,
+also without pages. A document whose library cannot be decided is ``ambiguous``; one
+without page rows is ``no_pages``. Null or duplicate orders, pages without an image or PAGE XML and unrecognized
 file names are reported in ``warnings``, never fixed.
 
 Usage (from ``semant_demo_backend/``)::
@@ -30,11 +32,15 @@ Usage (from ``semant_demo_backend/``)::
 ``ids.txt`` has one document UUID per line (``#`` comments allowed); ids may also be given
 as arguments. ``--page-xml-dir`` holds ``<document>.page_xml.zip`` files or ``<document>/``
 folders of ``<page>.xml`` files; only the file names are read. ``--check-start-pages`` reads
-the start pages of up to 1000 chunks per document from the configured Weaviate
-(``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` / ``WEAVIATE_GRPC_PORT``), read-only.
+the start pages of every chunk of each document from the configured Weaviate
+(``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` / ``WEAVIATE_GRPC_PORT``), read-only, in pages of
+1000 chunks.
 
-The mirror is read in a read-only transaction. Paths are reported as stored, not checked on
-disk. Counts per status go to stderr. The exit code is 0 when every document was exported,
+The mirror is read in a read-only transaction, ``DOCUMENT_BATCH`` documents per query, and
+each JSON line is written as soon as its document is done, so memory does not grow with the
+number of pages or the output size (only the list of document ids is kept). With
+``--output`` the lines go to ``<output>.partial``, renamed to ``<output>`` when the run
+completes. Paths are reported as stored, not checked on disk. Counts per status go to stderr. The exit code is 0 when every document was exported,
 1 when any was not, 2 for invalid arguments.
 """
 import argparse
@@ -44,7 +50,8 @@ import os
 import sys
 import zipfile
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -53,11 +60,12 @@ from semant_demo.adapters.sql.kramerius_metadata import PageRow, read_document_p
 
 DSN_VARIABLE = "KRAMERIUS_METADATA_DSN"
 NOT_FOUND = "not_found"
-MAX_START_PAGES = 1000
-"""Chunks per document whose ``start_page_id`` is checked."""
+DOCUMENT_BATCH = 100
+"""Documents whose page rows are read and exported together."""
 SAMPLE = 5
 EXPORTED = "exported"
-STATUSES = (EXPORTED, "ambiguous", "page_xml_conflict", "start_page_conflict", "no_pages")
+START_PAGES_UNCHECKED = "start_pages_unchecked"
+STATUSES = (EXPORTED, "ambiguous", "page_xml_conflict", "start_page_conflict", START_PAGES_UNCHECKED, "no_pages")
 
 
 def real_path(value: str | None) -> str | None:
@@ -103,22 +111,78 @@ def _warning(code: str, items: Iterable[Any]) -> dict[str, Any]:
     return {"code": code, "count": len(items), "sample": items[:SAMPLE]}
 
 
+class _Sample:
+    """A count and the ``SAMPLE`` smallest distinct values, in bounded memory."""
+
+    def __init__(self):
+        self.count, self.values = 0, set()
+
+    def add(self, value: Any) -> None:
+        self.count += 1
+        self.values.add(str(value))
+        if len(self.values) > SAMPLE:
+            self.values.remove(max(self.values))
+
+    def warning(self, code: str) -> dict[str, Any]:
+        return {"code": code, "count": self.count, "sample": sorted(self.values)}
+
+
+@dataclass
+class StartPageCheck:
+    """The ``start_page_id`` values of a document's chunks checked against its library's pages,
+    batch by batch, keeping counts and samples only. ``error`` is set when not every chunk was
+    read; the check then proves nothing."""
+    page_ids: set[UUID]
+    chunks: int = 0
+    invalid: _Sample = field(default_factory=_Sample)
+    foreign: _Sample = field(default_factory=_Sample)
+    error: str | None = None
+
+    def add(self, values: Iterable[Any]) -> None:
+        for value in values:
+            self.chunks += 1
+            try:
+                page = value if isinstance(value, UUID) else UUID(str(value))
+            except (TypeError, ValueError):
+                self.invalid.add(value)
+                continue
+            if page not in self.page_ids:
+                self.foreign.add(page)
+
+
+StartPageChecker = Callable[[UUID, set[UUID]], Awaitable[StartPageCheck]]
+"""Checks all start pages of a document against these page ids."""
+
+
+def apply_start_page_check(entry: dict[str, Any], check: StartPageCheck) -> dict[str, Any]:
+    """The entry after the start-page check: ``start_pages_unchecked`` when the chunks could not
+    all be read, ``start_page_conflict`` when one starts on a page of another library; both
+    without pages. Counts in these warnings are chunks."""
+    if check.invalid.count:
+        entry["warnings"].append(check.invalid.warning("invalid_start_page_ids"))
+    if check.error is not None:
+        entry["status"], entry["pages"] = START_PAGES_UNCHECKED, []
+        entry["warnings"].append({"code": "start_pages_incomplete", "count": check.chunks, "sample": [check.error]})
+    elif check.foreign.count:
+        entry["status"], entry["pages"] = "start_page_conflict", []
+        entry["warnings"].append(check.foreign.warning("start_pages_not_in_library"))
+    return entry
+
+
 def export_document(document_id: UUID, rows: Sequence[PageRow], *, xml_pages: set[UUID] | None = None,
-                    xml_unrecognized: Sequence[str] = (), start_pages: Sequence[Any] | None = None,
-                    start_pages_truncated: bool = False) -> dict[str, Any]:
+                    xml_unrecognized: Sequence[str] = (), start_pages: Iterable[Any] | None = None) -> dict[str, Any]:
     """The export entry of one document from its page rows (all libraries).
 
     ``xml_pages`` are the page ids named by the supplied PAGE XML files (None when none were
-    supplied); ``start_pages`` the stored ``start_page_id`` values of its chunks (None when not
-    checked). Pages are exported only with status ``exported``."""
+    supplied); ``start_pages`` the stored ``start_page_id`` values of all its chunks (None when
+    not checked; ``export`` checks them in batches instead). Pages are exported only with
+    status ``exported``."""
     libraries = sorted({row.library for row in rows})
     entry: dict[str, Any] = {"documentId": str(document_id), "status": EXPORTED, "library": None,
                              "libraryFrom": None, "libraries": libraries, "pages": [], "warnings": []}
     warnings = entry["warnings"]
     if xml_unrecognized:
         warnings.append(_warning("unrecognized_page_xml_names", xml_unrecognized))
-    if start_pages_truncated:
-        warnings.append({"code": "start_pages_truncated", "count": MAX_START_PAGES, "sample": []})
     if not rows:
         entry["status"] = "no_pages"
         return entry
@@ -137,19 +201,6 @@ def export_document(document_id: UUID, rows: Sequence[PageRow], *, xml_pages: se
         entry["status"] = "page_xml_conflict"
         warnings.append(_warning("page_xml_not_in_library", foreign))
         return entry
-    if start_pages is not None:
-        parsed, invalid = set(), []
-        for value in start_pages:
-            try:
-                parsed.add(value if isinstance(value, UUID) else UUID(str(value)))
-            except (TypeError, ValueError):
-                invalid.append(value)
-        if invalid:
-            warnings.append(_warning("invalid_start_page_ids", invalid))
-        if foreign := parsed - page_ids:
-            entry["status"] = "start_page_conflict"
-            warnings.append(_warning("start_pages_not_in_library", foreign))
-            return entry
 
     orders = Counter(row.order for row in pages if row.order is not None)
     if nulls := [row.page_id for row in pages if row.order is None]:
@@ -168,6 +219,10 @@ def export_document(document_id: UUID, rows: Sequence[PageRow], *, xml_pages: se
         warnings.append(_warning("missing_image", missing))
     if missing := [p["pageId"] for p in entry["pages"] if not p["hasPageXml"]]:
         warnings.append(_warning("missing_page_xml", missing))
+    if start_pages is not None:
+        check = StartPageCheck(page_ids)
+        check.add(start_pages)
+        apply_start_page_check(entry, check)
     return entry
 
 
@@ -200,30 +255,72 @@ def read_document_ids(path: Path) -> list[UUID]:
     return [UUID(line.strip()) for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
 
-def export(source, document_ids: Sequence[UUID], *, page_xml_dir: Path | None = None,
-           start_pages: dict[UUID, tuple[list[Any], bool]] | None = None) -> list[dict[str, Any]]:
-    """The export entries of the documents, in the given order (duplicates removed)."""
-    document_ids = list(dict.fromkeys(document_ids))
+async def export(source, document_ids: Iterable[UUID], *, page_xml_dir: Path | None = None,
+                 check_start_pages: StartPageChecker | None = None,
+                 batch_size: int = DOCUMENT_BATCH) -> AsyncIterator[dict[str, Any]]:
+    """The export entries of the documents, in the given order (duplicates removed), one at a
+    time: page rows are read ``batch_size`` documents at a time and nothing is kept after an
+    entry is yielded. Start pages are checked only for documents that would be exported."""
+    pending: list[UUID] = []
+    seen: set[UUID] = set()
+    for document_id in document_ids:
+        if document_id not in seen:
+            seen.add(document_id)
+            pending.append(document_id)
+        if len(pending) == batch_size:
+            async for entry in _export_batch(source, pending, page_xml_dir, check_start_pages):
+                yield entry
+            pending = []
+    if pending:
+        async for entry in _export_batch(source, pending, page_xml_dir, check_start_pages):
+            yield entry
+
+
+async def _export_batch(source, document_ids: list[UUID], page_xml_dir: Path | None,
+                        check_start_pages: StartPageChecker | None) -> AsyncIterator[dict[str, Any]]:
     rows = read_document_pages(source, document_ids)
-    entries = []
     for document_id in document_ids:
         xml = page_xml_names(page_xml_dir, document_id) if page_xml_dir else None
-        starts, truncated = start_pages.get(document_id, ([], False)) if start_pages is not None else (None, False)
-        entry = export_document(document_id, rows.get(document_id, []),
-                                xml_pages=xml[0] if xml else None, xml_unrecognized=xml[1] if xml else (),
-                                start_pages=starts, start_pages_truncated=truncated)
+        entry = export_document(document_id, rows.pop(document_id, []),
+                                xml_pages=xml[0] if xml else None, xml_unrecognized=xml[1] if xml else ())
         if page_xml_dir and xml is None:
             entry["warnings"].append({"code": "no_page_xml_files", "count": 0, "sample": []})
-        entries.append(entry)
-    return entries
+        if check_start_pages is not None and entry["status"] == EXPORTED:
+            page_ids = {UUID(page["pageId"]) for page in entry["pages"]}
+            apply_start_page_check(entry, await check_start_pages(document_id, page_ids))
+        yield entry
 
 
-def summary(entries: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    statuses = Counter(entry["status"] for entry in entries)
-    return {"documents": len(entries), "statuses": {s: statuses[s] for s in STATUSES if statuses[s]},
-            "libraryFrom": dict(Counter(e["libraryFrom"] for e in entries if e["libraryFrom"])),
-            "pages": sum(len(entry["pages"]) for entry in entries),
-            "warnings": dict(Counter(w["code"] for entry in entries for w in entry["warnings"]))}
+class Summary:
+    """Running counts of the exported entries."""
+
+    def __init__(self):
+        self.documents, self.pages = 0, 0
+        self.statuses, self.library_from, self.warnings = Counter(), Counter(), Counter()
+
+    def add(self, entry: dict[str, Any]) -> None:
+        self.documents += 1
+        self.pages += len(entry["pages"])
+        self.statuses[entry["status"]] += 1
+        if entry["libraryFrom"]:
+            self.library_from[entry["libraryFrom"]] += 1
+        self.warnings.update(warning["code"] for warning in entry["warnings"])
+
+    def as_json(self) -> dict[str, Any]:
+        return {"documents": self.documents,
+                "statuses": {s: self.statuses[s] for s in STATUSES if self.statuses[s]},
+                "libraryFrom": dict(self.library_from), "pages": self.pages, "warnings": dict(self.warnings)}
+
+    @property
+    def all_exported(self) -> bool:
+        return self.statuses[EXPORTED] == self.documents
+
+
+def summary(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    result = Summary()
+    for entry in entries:
+        result.add(entry)
+    return result.as_json()
 
 
 def connect_read_only(engine):
@@ -231,19 +328,23 @@ def connect_read_only(engine):
     return engine.connect().execution_options(postgresql_readonly=True)
 
 
-async def read_start_pages_of(document_ids: Sequence[UUID]) -> dict[UUID, tuple[list[Any], bool]]:
-    from semant_demo.adapters.weaviate.client import connect_weaviate
-    from semant_demo.adapters.weaviate.document_metadata import read_start_pages
-    from semant_demo.config import Config
+def weaviate_start_page_checker(client, names) -> StartPageChecker:
+    """A checker reading every chunk's ``start_page_id`` from Weaviate (read-only), in batches.
+    A failed or incomplete read gives a check with ``error`` set, never a passing one."""
+    from weaviate.exceptions import WeaviateBaseError
 
-    config = Config()
-    print(f"Weaviate endpoint (read-only): {config.WEAVIATE_HOST}:{config.WEAVIATE_REST_PORT}", file=sys.stderr)
-    client = await connect_weaviate(config)
-    try:
-        return {document_id: await read_start_pages(client, config.collectionNames, document_id, MAX_START_PAGES)
-                for document_id in dict.fromkeys(document_ids)}
-    finally:
-        await client.close()
+    from semant_demo.adapters.weaviate.document_metadata import IncompleteRead, iter_start_pages
+
+    async def check(document_id: UUID, page_ids: set[UUID]) -> StartPageCheck:
+        result = StartPageCheck(page_ids)
+        try:
+            async for values in iter_start_pages(client, names, document_id):
+                result.add(values)
+        except (IncompleteRead, WeaviateBaseError) as e:
+            result.error = f"{type(e).__name__}: {e}"[:300]
+        return result
+
+    return check
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -278,22 +379,40 @@ async def _main(argv: list[str]) -> int:
         print(f"Set {DSN_VARIABLE} to the metadata mirror's SQLAlchemy URL", file=sys.stderr)
         return 2
 
-    start_pages = await read_start_pages_of(document_ids) if args.check_start_pages else None
+    client = None
     engine = create_engine(dsn)
+    result = Summary()
+    target = args.output.with_name(args.output.name + ".partial") if args.output else None
     try:
-        with connect_read_only(engine) as source:
-            entries = export(source, document_ids, page_xml_dir=args.page_xml_dir, start_pages=start_pages)
+        checker = None
+        if args.check_start_pages:
+            from semant_demo.adapters.weaviate.client import connect_weaviate
+            from semant_demo.config import Config
+
+            config = Config()
+            print(f"Weaviate endpoint (read-only): {config.WEAVIATE_HOST}:{config.WEAVIATE_REST_PORT}",
+                  file=sys.stderr)
+            client = await connect_weaviate(config)
+            checker = weaviate_start_page_checker(client, config.collectionNames)
+        with connect_read_only(engine) as source, \
+                (open(target, "w", encoding="utf-8") if target else _stdout()) as out:
+            async for entry in export(source, document_ids, page_xml_dir=args.page_xml_dir,
+                                      check_start_pages=checker):
+                out.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                result.add(entry)
+        if target:
+            target.replace(args.output)
     finally:
         engine.dispose()
+        if client is not None:
+            await client.close()
+    print(json.dumps(result.as_json(), indent=2), file=sys.stderr)
+    return 0 if result.all_exported else 1
 
-    lines = "".join(json.dumps(entry, ensure_ascii=False) + "\n" for entry in entries)
-    if args.output:
-        args.output.write_text(lines, encoding="utf-8")
-    else:
-        sys.stdout.write(lines)
-    result = summary(entries)
-    print(json.dumps(result, indent=2), file=sys.stderr)
-    return 0 if result["statuses"].get(EXPORTED, 0) == len(entries) else 1
+
+def _stdout():
+    from contextlib import nullcontext
+    return nullcontext(sys.stdout)
 
 
 if __name__ == "__main__":
