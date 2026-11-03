@@ -4,6 +4,8 @@ from pydantic import BaseModel
 from uuid import UUID
 from datetime import datetime
 
+from semant_demo.features.documents.schemas import LayoutStart
+
 
 class Collection(BaseModel):
     id: UUID
@@ -67,6 +69,8 @@ class CollectionChunk(BaseModel):
     language: str | None = None
     order: int
     in_collection: bool = False
+    layoutStart: LayoutStart | None = None
+    """The chunk's start on the page scans (``documents.schemas.LayoutStart``), when imported."""
 
 
 class CreateResponse(BaseModel):

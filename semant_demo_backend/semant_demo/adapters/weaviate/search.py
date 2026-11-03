@@ -16,6 +16,7 @@ from weaviate.classes.query import Filter, QueryReference
 from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import REF_BY_TYPE
+from semant_demo.adapters.weaviate.documents import chunk_properties
 from semant_demo.features.annotations.schemas import SpanType
 from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter, SearchResultChunk
@@ -105,7 +106,7 @@ class ChunkSearchRepository:
             first_doc = doc_objs[0]
             results.append(SearchResultChunk(
                 id=obj.uuid,
-                **obj.properties,
+                **chunk_properties(obj.properties),
                 document_object=Document(id=first_doc.uuid, **first_doc.properties),
                 document=first_doc.uuid,
                 metadata=classifications(obj.properties),

@@ -17,6 +17,7 @@ Name | Type
 `language` | string
 `order` | number
 `inCollection` | boolean
+`layoutStart` | [LayoutStart](LayoutStart.md)
 
 ## Example
 
@@ -35,6 +36,7 @@ const example = {
   "language": null,
   "order": null,
   "inCollection": null,
+  "layoutStart": null,
 } satisfies CollectionChunk
 
 console.log(example)
