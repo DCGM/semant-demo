@@ -146,14 +146,22 @@ def read_page_xml(directory: Path, document_id: UUID) -> tuple[dict[UUID, bytes]
     ``<document>/`` folder of ``<page>.xml``) and the names that are not ``<uuid>.xml``;
     None when the directory has neither. Archives are read in memory, never extracted."""
     archive, folder = directory / f"{document_id}.page_xml.zip", directory / str(document_id)
-    files: list[tuple[str, bytes]] = []
     if archive.is_file():
-        with zipfile.ZipFile(archive) as zf:
-            files = [(Path(i.filename).name, zf.read(i)) for i in zf.infolist() if not i.is_dir()]
-    elif folder.is_dir():
-        files = [(p.name, p.read_bytes()) for p in sorted(folder.iterdir()) if p.is_file()]
-    else:
-        return None
+        return read_page_xml_zip(archive)
+    if folder.is_dir():
+        return _by_page_id([(p.name, p.read_bytes()) for p in sorted(folder.iterdir()) if p.is_file()])
+    return None
+
+
+def read_page_xml_zip(archive: Path) -> tuple[dict[UUID, bytes], list[str]]:
+    """The PAGE XML files of one ``.page_xml.zip`` by page id, and the names that are not
+    ``<uuid>.xml``. Read in memory, never extracted; raises ``zipfile.BadZipFile`` or
+    ``OSError`` for an unreadable archive."""
+    with zipfile.ZipFile(archive) as zf:
+        return _by_page_id([(Path(i.filename).name, zf.read(i)) for i in zf.infolist() if not i.is_dir()])
+
+
+def _by_page_id(files: list[tuple[str, bytes]]) -> tuple[dict[UUID, bytes], list[str]]:
     pages, unrecognized = {}, []
     for name, data in files:
         stem, dot, suffix = name.rpartition(".")
