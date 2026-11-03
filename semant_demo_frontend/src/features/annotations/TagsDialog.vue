@@ -2,8 +2,9 @@
   <FormDialog
     ref="dialogRef"
     :dirty="isDirty"
-    :ok-label="props.dialogType === 'CREATE' ? 'Create' : 'Save'"
-    @hide="onDialogHide"
+    :ok-label="savedTag ? 'Save' : 'Create'"
+    :busy="saving"
+    @hide="onHide"
     @confirm="handleConfirm"
   >
     <q-card-section>
@@ -17,6 +18,7 @@
         <q-input
           v-model="tagName"
           autofocus
+          :disable="saving"
           :rules="tagNameRules"
           lazy-rules
           outlined
@@ -28,6 +30,7 @@
 
         <q-input
           v-model="tagShorthand"
+          :disable="saving"
           :rules="tagShorthandRules"
           lazy-rules
           outlined
@@ -58,6 +61,7 @@
               outlined
               unelevated
               class="q-mr-sm"
+              :disable="saving"
               @click="openColorPicker"
             >
               <q-tooltip>Choose tag color</q-tooltip>
@@ -67,6 +71,7 @@
           <q-select
             class="col-6"
             v-model="tagPictogram"
+            :disable="saving"
             outlined
             label="Tag Pictogram"
             :options="tagPictogramOptions"
@@ -113,6 +118,7 @@
 
         <q-input
           v-model="tagDefinition"
+          :disable="saving"
           outlined
           label="Tag Definition"
           type="textarea"
@@ -136,6 +142,7 @@
                 v-model="tagExamples[index]"
                 outlined
                 :label="`Example ${index + 1}`"
+                :disable="saving"
                 clearable
               />
             </div>
@@ -145,6 +152,7 @@
                 round
                 color="negative"
                 icon="delete"
+                :disable="saving"
                 @click="removeExampleField(index)"
               >
                 <q-tooltip>Delete example</q-tooltip>
@@ -158,8 +166,24 @@
             icon="add"
             label="Add Example"
             no-caps
+            :disable="saving"
             @click="addExampleField"
           />
+        </div>
+
+        <TagApplicableAttributes
+          v-model:wanted="wanted"
+          :attributes="attributes"
+          :tag-id="savedTag?.id ?? null"
+          :errors="attributeErrors"
+          :loading="attributesLoading"
+          :error="attributesError"
+          :disable="saving"
+          @retry="loadAttributes"
+        />
+
+        <div v-if="formError" class="text-negative" role="alert" data-testid="tag-dialog-error">
+          {{ formError }}
         </div>
       </q-form>
     </q-card-section>
@@ -170,24 +194,31 @@
 <script setup lang="ts">
 import FormDialog from 'src/shared/ui/FormDialog.vue'
 import { QForm, useDialogPluginComponent } from 'quasar'
+import { storeToRefs } from 'pinia'
 import useColorPicker from 'src/shared/useColorPicker'
+import { plural } from 'src/shared/plural'
+import { apiErrorMessage } from 'src/shared/api'
 import { PostTag, Tag } from 'src/generated/api'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import TagApplicableAttributes from 'src/features/attributes/TagApplicableAttributes.vue'
+import { useAttributesStore } from 'src/features/attributes/attributesStore'
+import { tagApplicabilityChanges } from 'src/features/attributes/attributeForm'
+import { TagsDialogProps } from './TagsDialogTypes'
 
-type DialogType = 'CREATE' | 'EDIT'
-
-interface TagsDialogProps {
-  dialogType: DialogType
-  tag?: Tag
-}
-
+// The dialog saves on its own and closes only when everything is saved (#516): first the tag,
+// then one change per attribute whose applicability to it was switched. They are separate
+// writes: a tag saved before an attribute change fails stays saved (Create becomes Edit), the
+// failed changes are shown at their attributes and Save tries them again. Only a save of
+// everything confirms the dialog (`ok`, on which the caller may go on, e.g. tag the selected
+// text); closing it before that is a dismissal even when the tag was saved, and the caller learns
+// of that tag from its `save`. After a failed attribute change, closing reloads the attributes, as
+// they may have been changed by someone else.
 const props = defineProps<TagsDialogProps>()
+defineEmits([...useDialogPluginComponent.emits])
 const { dialogRef, onDialogHide, onDialogOK } =
   useDialogPluginComponent()
 
 const defaultTagPictogram = 'label'
-
-defineEmits([...useDialogPluginComponent.emits])
 
 const {
   currentColor,
@@ -210,7 +241,24 @@ const tagExamples = ref<string[]>(
     : ['']
 )
 
-const dialogTitle = props.dialogType === 'CREATE' ? 'Create Tag' : 'Edit Tag'
+// The tag as saved: the one edited, or the one this dialog created.
+const savedTag = ref<Tag | null>(props.tag ?? null)
+let confirmed = false
+let attributeChangeFailed = false
+const saving = ref(false)
+const formError = ref<string | null>(null)
+const attributeErrors = ref<Record<string, string>>({})
+const wanted = ref<Record<string, boolean>>({})
+
+const attributesStore = useAttributesStore()
+const { attributes, loading: attributesLoading, error: attributesError } = storeToRefs(attributesStore)
+const loadAttributes = () => attributesStore.load(props.collectionId)
+onMounted(loadAttributes)
+
+const pendingChanges = computed(() =>
+  tagApplicabilityChanges(attributes.value, savedTag.value?.id ?? null, wanted.value))
+
+const dialogTitle = computed(() => savedTag.value ? 'Edit Tag' : 'Create Tag')
 const formRef = ref<QForm | null>(null)
 const tagPictogramOptions = [
   { label: 'Label', value: 'label' },
@@ -248,26 +296,30 @@ const removeExampleField = (index: number) => {
   tagExamples.value.splice(index, 1)
 }
 
-const isDirty = computed(() => {
-  const originalExamples = (props.tag?.examples ?? [])
+const tagDirty = computed(() => {
+  const saved = savedTag.value
+  const originalExamples = (saved?.examples ?? [])
     .map((item: string) => item.trim())
     .filter((item: string) => item.length > 0)
 
   return (
-    (tagName.value ?? '').trim() !== (props.tag?.name ?? '').trim() ||
+    (tagName.value ?? '').trim() !== (saved?.name ?? '').trim() ||
     (tagShorthand.value ?? '').trim() !==
-      (props.tag?.shorthand ?? '').trim() ||
+      (saved?.shorthand ?? '').trim() ||
     tagPictogram.value.trim() !==
-      (props.tag?.pictogram ?? defaultTagPictogram).trim() ||
+      (saved?.pictogram?.trim() || defaultTagPictogram) ||
     (tagDefinition.value ?? '').trim() !==
-      (props.tag?.definition ?? '').trim() ||
-    currentColor.value !== (props.tag?.color ?? '#1976d2') ||
+      (saved?.definition ?? '').trim() ||
+    currentColor.value !== (saved?.color ?? '#1976d2') ||
     JSON.stringify(normalizedExamples.value) !==
       JSON.stringify(originalExamples)
   )
 })
 
+const isDirty = computed(() => tagDirty.value || pendingChanges.value.length > 0)
+
 const handleSubmit = async () => {
+  if (saving.value) return
   const payload: PostTag = {
     name: tagName.value?.trim() ?? '',
     shorthand: tagShorthand.value?.trim() ?? '',
@@ -277,7 +329,57 @@ const handleSubmit = async () => {
     examples: normalizedExamples.value
   }
 
-  onDialogOK(payload)
+  saving.value = true
+  formError.value = null
+  attributeErrors.value = {}
+  try {
+    // Whether this save wrote the tag: only then is the failure of an attribute change worth
+    // saying the tag is saved (a new tag exists although the dialog stays open).
+    const tagSaved = !savedTag.value || tagDirty.value
+    if (tagSaved) {
+      try {
+        savedTag.value = await props.save(payload, savedTag.value)
+      } catch (e) {
+        formError.value = await apiErrorMessage(e, 'The tag could not be saved.')
+        return
+      }
+    }
+    const tag = savedTag.value
+    if (!tag) return
+    const tagId = tag.id
+    const changes = tagApplicabilityChanges(attributes.value, tagId, wanted.value)
+    const results = await Promise.allSettled(changes.map(({ attribute, add }) =>
+      attributesStore.updateAttribute(props.collectionId, attribute.id,
+        add ? { addTagIds: [tagId] } : { removeTagIds: [tagId] })))
+    const errors: Record<string, string> = {}
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const reason: unknown = result.reason
+        errors[changes[index]!.attribute.id] =
+          reason instanceof Error && reason.message ? reason.message : 'The change could not be saved.'
+      }
+    })
+    const failed = Object.keys(errors).length
+    if (!failed) {
+      confirmed = true
+      onDialogOK(tag)
+      return
+    }
+    attributeChangeFailed = true
+    attributeErrors.value = errors
+    const what = plural(failed, 'attribute change')
+    const were = failed === 1 ? 'was' : 'were'
+    formError.value = tagSaved
+      ? `The tag is saved, but ${what} ${were} not; Save tries again.`
+      : `${what} ${were} not saved; Save tries again.`
+  } finally {
+    saving.value = false
+  }
+}
+
+const onHide = () => {
+  if (!confirmed && attributeChangeFailed) void loadAttributes()
+  onDialogHide()
 }
 
 const handleConfirmColor = () => {

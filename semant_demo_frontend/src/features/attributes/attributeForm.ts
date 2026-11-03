@@ -134,3 +134,22 @@ export function isTaken (e: unknown, prefix: string): boolean {
 export function cleanList (items: string[]): string[] {
   return items.map(item => item.trim()).filter(item => item.length > 0)
 }
+
+/** Whether the attribute applies to the tag now; before a tag exists (`null`), only an All tags
+ * attribute does. */
+export const appliesToTag = (attribute: Pick<Attribute, 'allTags' | 'tagIds'>, tagId: string | null) =>
+  !!attribute.allTags || (!!tagId && !!attribute.tagIds?.includes(tagId))
+
+/** A change of one Selected tags attribute that Create/Edit Tag writes (#516): add the tag or
+ * take it out. */
+export type TagApplicabilityChange = { attribute: Attribute, add: boolean }
+
+/** The changes that make the current, Selected tags attributes apply to the tag as `wanted`
+ * says, against how they apply now. All tags and retired attributes are never changed from the
+ * tag side; an attribute not in `wanted` is left as it is. */
+export function tagApplicabilityChanges (attributes: Attribute[], tagId: string | null,
+  wanted: Record<string, boolean>): TagApplicabilityChange[] {
+  return attributes
+    .filter(a => !a.retired && !a.allTags && a.id in wanted && wanted[a.id] !== appliesToTag(a, tagId))
+    .map(attribute => ({ attribute, add: !!wanted[attribute.id] }))
+}

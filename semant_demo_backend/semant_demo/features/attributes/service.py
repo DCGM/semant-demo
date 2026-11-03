@@ -26,9 +26,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
-from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.adapters.sql.attributes import AttributeRepository, StaleRevision
 from semant_demo.adapters.weaviate.writes import step_failure
-from semant_demo.core.errors import InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
+from semant_demo.core.errors import EditConflictError, InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.core.outcomes import StepFailure, outcome_of
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.features.annotations.service import ATTRIBUTES_NOT_ENABLED as NOT_ENABLED
@@ -48,6 +48,10 @@ Id = str | UUID
 ASSIGN_CONCURRENCY = 16
 """Annotations of one assign request written at the same time (each is a read and a write)."""
 EDIT_CONFLICT = "Changed by someone else since it was loaded; nothing was saved."
+SCOPE_ATTEMPTS = 3
+"""Times a change of an attribute's tags is computed again when someone else changed the attribute
+in between, before it is refused."""
+SCOPE_CONFLICT = "The attribute kept being changed by someone else; nothing was saved. Try again."
 USAGE_UNKNOWN = "Could not check which annotations hold these values; nothing was changed. Try again later."
 
 
@@ -106,28 +110,53 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
     selected tags or to none, or leaving out a selected tag) of an attribute that annotations
     hold values of is refused (``InUseError``, 409, with the number of annotations affected):
     those values would stop being applicable. Removing the last selected tag leaves the
-    attribute with no tag, never All tags (#522)."""
+    attribute with no tag, never All tags (#522).
+
+    ``add_tag_ids``/``remove_tag_ids`` change only those tags of the tags selected when the
+    change is written (#516); an attribute for all tags takes neither (400), its scope is
+    changed with ``all_tags``. Every change is written only on the revision it was computed
+    from (one that leaves the tags alone keeps them as read): when someone else changed the
+    attribute in between, it is computed again (and checked again), and after
+    ``SCOPE_ATTEMPTS`` such races it is refused (``EditConflictError``, 409) rather than written
+    over another change."""
     grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
-    if patch.all_tags is not None or patch.tag_ids is not None:
-        current = await _read(store, grant.collection_id, attribute_id)
+    aid = access.parse_id(attribute_id, "Attribute")
+    named = [*(patch.tag_ids or []), *(patch.add_tag_ids or [])]
+    if named:
+        await access.require_tags_in_collection(store.annotations.tags, named, grant.collection_id)
+    for _ in range(SCOPE_ATTEMPTS):
+        current = await _read(store, grant.collection_id, aid)
         all_tags, tag_ids = _scope_after(current, patch)
-        if patch.tag_ids:
-            await access.require_tags_in_collection(store.annotations.tags, patch.tag_ids, grant.collection_id)
+        unchanged = all_tags == current.all_tags and tag_ids == current.tag_ids
         if not all_tags and (current.all_tags or not set(current.tag_ids) <= set(tag_ids)):
             used = await _usage(store, grant, current.id, outside_tags=tag_ids)
             if used:
                 raise InUseError(f"{used} annotations with values of this attribute have a tag outside the new "
                                  "applicable tags; change or remove those values first.", used)
-        patch = patch.model_copy(update={"all_tags": all_tags, "tag_ids": tag_ids})
-    updated = await store.definitions.update(grant.collection_id, access.parse_id(attribute_id, "Attribute"), patch)
-    if updated is None:
-        raise _attribute_not_found()
-    return updated
+        scoped = patch.model_copy(update={"all_tags": all_tags, "tag_ids": tag_ids,
+                                          "add_tag_ids": None, "remove_tag_ids": None})
+        if unchanged and all(v is None for v in (patch.name, patch.description, patch.retired)):
+            return current
+        try:
+            updated = await store.definitions.update(grant.collection_id, aid, scoped,
+                                                     expected_revision=current.revision)
+        except StaleRevision:
+            continue
+        if updated is None:
+            raise _attribute_not_found()
+        return updated
+    raise EditConflictError(SCOPE_CONFLICT, (await _read(store, grant.collection_id, aid)).model_dump(mode="json"))
 
 
 def _scope_after(current: Attribute, patch: PatchAttribute) -> tuple[bool, list[UUID]]:
     """``(all_tags, tag_ids)`` the patch leaves the attribute with. All tags is only ever chosen
     explicitly; an empty list of tags is no tag."""
+    if patch.changes_tags_by_id:
+        if current.all_tags:
+            raise InvalidRequestError("This attribute applies to all tags; change its scope in Edit Attribute.")
+        removed = set(patch.remove_tag_ids or [])
+        kept = [t for t in current.tag_ids if t not in removed]
+        return False, list(dict.fromkeys([*kept, *(patch.add_tag_ids or [])]))
     all_tags = current.all_tags if patch.all_tags is None else patch.all_tags
     if all_tags:
         if patch.tag_ids:

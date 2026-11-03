@@ -165,9 +165,9 @@ import { computed, onMounted, ref, useSlots } from 'vue'
 import { QTableColumn } from 'quasar'
 import { useRoute } from 'vue-router'
 
-import useTagsDialog from './useTagsDialog'
+import { useTagEditing } from './useTagEditing'
 import { useTagsStore } from './tagsStore'
-import { PostTag, Tag, PatchTag } from 'src/generated/api'
+import { Tag } from 'src/generated/api'
 import CreateButton from 'src/shared/ui/CreateButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
@@ -184,8 +184,8 @@ const route = useRoute()
 const confirmDelete = useConfirmDelete()
 const tagsStore = useTagsStore()
 const { tags, loading } = storeToRefs(tagsStore)
-const { fetchTagsByCollection, createTag, deleteTag, deleteManyTags, updateTag } = tagsStore
-const { openTagsDialog } = useTagsDialog()
+const { fetchTagsByCollection, deleteTag, deleteManyTags } = tagsStore
+const tagEditing = useTagEditing(() => collectionId.value)
 const filter = ref<string>('')
 const selected = ref<Tag[]>([])
 const initialPagination = {
@@ -213,13 +213,7 @@ const collectionId = computed<string>(() => {
   return value
 })
 
-const handleCreate = () => {
-  openTagsDialog({
-    dialogType: 'CREATE'
-  }).onOk(async (tagData: PostTag) => {
-    await createTag(collectionId.value, tagData)
-  })
-}
+const handleCreate = () => tagEditing.createTag()
 
 const handleDelete = async (tag: Tag) => {
   confirmDelete({
@@ -231,14 +225,7 @@ const handleDelete = async (tag: Tag) => {
   })
 }
 
-const handleEdit = (tag: Tag) => {
-  openTagsDialog({
-    dialogType: 'EDIT',
-    tag
-  }).onOk(async (updatedData: PatchTag) => {
-    await updateTag(tag.id, updatedData)
-  })
-}
+const handleEdit = (tag: Tag) => tagEditing.editTag(tag)
 
 const handleBulkDelete = () => {
   if (selected.value.length === 0) return

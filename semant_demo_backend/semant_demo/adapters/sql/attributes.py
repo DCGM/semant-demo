@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, delete, select,
+    JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, delete, select, update,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -119,6 +119,10 @@ def _new_value(attribute_id: str, value: PostAttributeValue, position: int) -> A
                              examples=list(value.examples), kind=value.kind.value, retired=False, position=position)
 
 
+class StaleRevision(Exception):
+    """The attribute was changed since the revision the write expected; nothing was written."""
+
+
 class AttributeRepository:
     def __init__(self, session_maker: async_sessionmaker):
         self.session_maker = session_maker
@@ -163,24 +167,43 @@ class AttributeRepository:
             await self._commit(session, "An attribute with this name, or a value with the same label,")
             return _attribute(row)
 
-    async def update(self, collection_id: UUID, attribute_id: UUID, patch: PatchAttribute) -> Attribute | None:
+    async def update(self, collection_id: UUID, attribute_id: UUID, patch: PatchAttribute,
+                     expected_revision: int | None = None) -> Attribute | None:
+        """Writes only when the attribute still has ``expected_revision`` (or, without it, the
+        revision just read), in one conditional statement, so a change written by someone else
+        in between is never overwritten: ``StaleRevision`` then, and nothing is changed.
+        ``add_tag_ids``/``remove_tag_ids`` are resolved by the service into ``tag_ids``."""
         async with self.session_maker() as session:
             row = await self._load(session, collection_id, attribute_id)
             if row is None:
                 return None
+            revision = row.revision if expected_revision is None else expected_revision
+            changes: dict = {"revision": revision + 1}
             if patch.name is not None:
-                row.name, row.name_key = patch.name.strip(), _key(patch.name)
+                changes["name"], changes["name_key"] = patch.name.strip(), _key(patch.name)
             if patch.description is not None:
-                row.description = patch.description
+                changes["description"] = patch.description
             if patch.all_tags is not None:
-                row.all_tags = patch.all_tags
+                changes["all_tags"] = patch.all_tags
             if patch.tag_ids is not None:
-                row.tag_ids = [str(t) for t in dict.fromkeys(patch.tag_ids)]
+                changes["tag_ids"] = [str(t) for t in dict.fromkeys(patch.tag_ids)]
             if patch.retired is not None:
-                row.retired = patch.retired
-            row.revision += 1
-            await self._commit(session, "An attribute with this name")
-            return _attribute(row)
+                changes["retired"] = patch.retired
+            try:
+                result = await session.execute(
+                    update(AttributeRow)
+                    .where(AttributeRow.id == str(attribute_id), AttributeRow.collection_id == str(collection_id),
+                           AttributeRow.revision == revision)
+                    .values(**changes).execution_options(synchronize_session=False))
+            except IntegrityError:
+                await session.rollback()
+                raise InvalidRequestError("An attribute with this name already exists") from None
+            if result.rowcount != 1:
+                await session.rollback()
+                raise StaleRevision()
+            await session.commit()
+            session.expire_all()
+            return _attribute(await self._load(session, collection_id, attribute_id))
 
     async def delete(self, collection_id: UUID, attribute_id: UUID) -> bool:
         async with self.session_maker() as session:

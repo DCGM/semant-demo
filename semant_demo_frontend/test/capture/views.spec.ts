@@ -527,6 +527,64 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
   }
 })
 
+test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }, testInfo) => {
+  // Create Tag lists the Selected tags attributes to switch and the All tags ones locked on; a
+  // refused removal of the tag from an attribute is shown at that attribute.
+  const base = `/api/user_collections/${fixture.collection('chronicles').id}`
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const person = fixture.tag('person')
+  for (const data of [
+    { name: 'Speaker type', tag_ids: [person.id], values: [{ label: 'politician' }] },
+    { name: 'Mood', tag_ids: [], values: [{ label: 'calm' }] },
+    { name: 'Tone of an unusually long attribute name that has to wrap', tag_ids: [], values: [{ label: 'formal' }] },
+    { name: 'Topic', all_tags: true, values: [{ label: 'elections' }] }
+  ]) {
+    expect((await request.post(`${base}/attributes`, { headers, data })).ok()).toBe(true)
+  }
+  const speaker = (await (await request.get(`${base}/attributes`, { headers })).json() as { id: string, name: string, values: { id: string }[] }[])
+    .find(a => a.name === 'Speaker type')!
+  const novak = fixture.span('novak_manual').id
+  const rows = await request.get(`${base}/annotations`, { headers, params: { annotation_id: novak } })
+  const assigned = await request.post(`${base}/annotations/attributes/assign`, {
+    headers,
+    data: {
+      attribute_id: speaker.id,
+      annotation_ids: [novak],
+      mode: 'replace',
+      value_ids: [speaker.values[0]!.id],
+      expected_versions: { [novak]: (await rows.json()).rows[0].attributeVersion }
+    }
+  })
+  expect((await assigned.json()).outcome).toBe('complete')
+  try {
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${fixture.collection('chronicles').id}/tags`)
+    await page.reload() // without the sign-in notification
+    await closePhoneNavigation(page)
+    const dialog = page.getByRole('dialog')
+    const toggle = (name: string) => dialog.getByTestId('tag-applicable-attribute').filter({ hasText: name }).getByRole('switch')
+
+    await page.getByRole('button', { name: 'Create' }).first().click()
+    await dialog.getByLabel('Tag Name').fill('Speaker')
+    await dialog.getByLabel('Tag Shorthand').fill('SPK')
+    await toggle('Mood').click()
+    await dialog.getByTestId('tag-applicable-attributes').scrollIntoViewIfNeeded()
+    await save(page, testInfo, 'tag-create-applicable-attributes')
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await page.getByRole('button', { name: 'Yes' }).click()
+
+    const row = page.locator('tbody tr').filter({ has: page.getByText(person.name, { exact: true }) })
+    await row.getByRole('button', { name: 'Edit tag' }).click()
+    await toggle('Speaker type').click()
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(dialog.getByTestId('tag-applicable-attribute-error')).toContainText('1 annotations')
+    await dialog.getByTestId('tag-applicable-attribute-error').scrollIntoViewIfNeeded()
+    await save(page, testInfo, 'tag-edit-refused-attribute')
+  } finally {
+    await deleteAddedAttributes(request, 'owner', 'chronicles')
+  }
+})
+
 test('corpus overview', async ({ page }, testInfo) => {
   await withLibraries(page)
   await page.goto('/#/corpus')
