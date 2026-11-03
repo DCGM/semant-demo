@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef, watch, type Ref } from 'vue'
 import {
+  clearHistory,
   matchingEntries,
   readHistory,
   savedQuery,
@@ -23,7 +24,8 @@ import {
  * every keystroke: typing only narrows what was read.
  *
  * A history written by a newer version of the application (`newerFormat`) is not shown and
- * nothing is recorded into it; the list then asks the user to reload the page.
+ * nothing is recorded into it; the list then asks the user to reload the page, or to clear
+ * the history when reloading does not help.
  *
  * Keyboard (`onKeydown` on the input): ArrowDown/ArrowUp open the list and move the
  * highlight, Enter on a highlighted entry picks it (the caller's own Enter handling runs
@@ -102,8 +104,10 @@ export function useSearchHistory<C> (
     update(current => withoutEntry(current, entry, criteria))
   }
 
+  /** Removes the whole history, also one of a newer format. */
   function clear () {
-    update(() => [])
+    if (audience.value) clearHistory(audience.value, criteria.namespace)
+    apply({ entries: [], newerFormat: false })
     close()
   }
 
@@ -130,7 +134,7 @@ export function useSearchHistory<C> (
     if (event.isComposing) return false
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       move(event.key === 'ArrowDown' ? 1 : -1)
-      if (!shown.value) return false // nothing listed: the caret moves as usual
+      if (!shown.value || !suggestions.value.length) return false // nothing listed: the caret moves as usual
       event.preventDefault()
       return true
     }
