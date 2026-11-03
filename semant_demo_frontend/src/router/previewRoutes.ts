@@ -15,6 +15,13 @@ export function previewRoutes (enabled: boolean): RouteRecordRaw[] {
       path: '/preview/scan/:documentId',
       component: () => import('src/features/documents/scan/ScanPreviewPage.vue'),
       props: true
+    },
+    {
+      // The text and scan panes with their correspondence (#544), until #545.
+      name: 'previewTextScan',
+      path: '/preview/text-scan/:documentId',
+      component: () => import('src/features/documents/correspondence/TextScanPreviewPage.vue'),
+      props: true
     }
   ]
 }

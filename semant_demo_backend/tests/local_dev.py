@@ -298,12 +298,15 @@ async def derive_annotations(client, profile: Profile, corpus) -> None:
 
 async def seed_weaviate(client, profile: Profile, corpus) -> None:
     from semant_demo.config import Config
+    from tests.page_fixtures import seed_layout_anchors
     from tests.seed import insert_corpus
     from tests.weaviate_store import create_app_schema
 
     names = Config(environ={}).collectionNames
     await create_app_schema(client, names)
     await insert_corpus(client, names, corpus)
+    # The chunks' anchors on the page fixtures that this backend serves (#544).
+    await seed_layout_anchors(client, names.chunks_collection_name, corpus)
     await derive_annotations(client, profile, corpus)
 
 

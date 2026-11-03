@@ -28,6 +28,12 @@ export interface TextSelection {
   end: TextPoint
 }
 
+/** What the text shows of the scan pages (#544): the chunk's part on the page shown, page starts. */
+export interface ChunkPageMarks {
+  range?: { start: number, end: number } | null
+  breaks: { offset: number, pageId: string, label: string, approximate?: boolean }[]
+}
+
 /** What a DocumentTextPane template ref offers its owner. */
 export interface DocumentTextPaneApi {
   /** The text element: each chunk inside it is an element with `data-chunk-id`. */
@@ -36,4 +42,6 @@ export interface DocumentTextPaneApi {
   scrollToChunk: (chunkId: string) => void
   /** Scrolls the start of a range to the middle of the view. */
   scrollToRange: (range: ChunkRange) => void
+  /** Scrolls only when the start of the range is not visible enough; whether it scrolled. */
+  revealRange: (range: Pick<ChunkRange, 'chunkId' | 'start'>, options?: { margin?: number }) => boolean
 }

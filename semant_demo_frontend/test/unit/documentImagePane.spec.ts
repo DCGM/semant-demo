@@ -121,7 +121,7 @@ describe('DocumentImagePane', () => {
     calls[0].answer({ document_id: DOC, available: false, pages: [] })
     await flushPromises()
     expect(wrapper.find('[data-testid="image-pane-text-only"]').exists()).toBe(true)
-    expect(wrapper.emitted('loaded')![0][0]).toEqual({ available: false, pageCount: 0 })
+    expect(wrapper.emitted('loaded')![0][0]).toEqual({ available: false, pageCount: 0, pages: [] })
     wrapper.unmount()
 
     const w = await open({ pageId: 'p0' })

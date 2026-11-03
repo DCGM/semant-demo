@@ -67,3 +67,36 @@ def test_the_development_backend_writes_them_once_per_corpus_and_generator(tmp_p
     (root / "fixtures.sha256").write_text("an older generator")
     local_dev.write_page_assets(root)
     assert len(calls) == 2
+
+
+def test_fixture_anchors_replay_to_their_chunks_as_the_import_would_store_them(store):
+    """The anchors of the browser tests (#544) are what the import's matcher accepts: an
+    exact one replays to the chunk text, an approximate one within the 5 % edit distance."""
+    from semant_demo.maintenance.page_layout.anchors import MAX_EDIT_RATIO, replay
+    from semant_demo.maintenance.page_layout.edit_distance import levenshtein
+    from tests.page_fixtures import fixture_anchors
+
+    corpus = load_corpus()
+    anchors = fixture_anchors(corpus)
+    assert {corpus.chunks[k]["document"] for k in anchors} == {"chronicle", "gazette"}
+    matches = {}
+    for key, anchor in anchors.items():
+        chunk = corpus.chunks[key]
+        manifest = store.read_manifest(_doc(chunk["document"]))
+        order = [str(p.pageId) for p in manifest.pages]
+        pages = {str(p.pageId): json.loads(store.asset_file(manifest.documentId, p.pageId, "layout").read_bytes())
+                 for p in manifest.pages if p.layout}
+        assert order.index(anchor["pageId"]) == chunk["from_page"]
+        replayed = replay(pages, order, anchor, len(chunk["text"].encode("utf-16-le")) // 2)
+        if anchor["match"] == "exact":
+            assert replayed == chunk["text"]
+        else:
+            assert replayed != chunk["text"]
+            # The chunk against the text from the anchor, ending where it aligns best.
+            longer = replay(pages, order, anchor, len(chunk["text"]) + 10) or ""
+            distance = min(levenshtein(chunk["text"], longer[:n]) for n in range(len(chunk["text"]), len(longer) + 1))
+            assert 0 < distance <= MAX_EDIT_RATIO * len(chunk["text"])
+        matches[key] = anchor["match"]
+    # One chunk continues onto the next page.
+    assert corpus.chunks["chronicle_2"]["to_page"] == corpus.chunks["chronicle_2"]["from_page"] + 1
+    assert sorted(matches.values()) == ["approximate"] * 3 + ["exact"] * 2

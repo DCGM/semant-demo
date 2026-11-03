@@ -11,10 +11,12 @@ The documents cover the cases the viewer must handle:
 * ``chronicle``: a front cover, two text pages (straight, skewed and curved baselines) whose
   lines hold the text of the corpus chunks, a blank page, a skipped page number, a page with a
   scan but no layout, a page without any asset and a back cover;
-* ``gazette``: a long periodical (``GAZETTE_PAGES`` pages) for the thumbnail strip and page jumps;
+* ``gazette``: a long periodical (``GAZETTE_PAGES`` pages) for the thumbnail strip and page jumps,
+  whose page 1 holds its two chunks, one line each (exact anchors);
 * ``letters`` has no pages: a text-only document.
 
-Nothing here is used by the production application.
+``fixture_anchors`` gives the chunks the ``layoutStart`` of the import (#542) on these pages,
+for the text/scan correspondence (#544). Nothing here is used by the production application.
 """
 from __future__ import annotations
 
@@ -119,23 +121,68 @@ def chronicle_pages(corpus) -> list[FixturePage]:
 
 
 def gazette_pages(corpus) -> list[FixturePage]:
-    first_page = corpus.documents["gazette"]["chunks"][0]["start_page_id"]
+    chunks = corpus.documents["gazette"]["chunks"]
+    first_page = chunks[0]["start_page_id"]
     pages = []
     for order in range(GAZETTE_PAGES):
         page_id = UUID(first_page) if order == 1 else _uuid(f"d3{order:06x}0")
-        regions = [] if order == 0 else [
-            _region("r001", [f"VĚSTNÍK — strana {order}"], 120, left=60),
-            _region("r002", [f"Zpráva {order}.{i}: trh a divadlo." for i in range(1, 5)], 240, left=60),
-        ]
+        size = (600, 840)
+        if order == 0:
+            regions = []
+        elif order == 1:
+            # The page of both gazette chunks, one line each: their text is exactly the
+            # serialized lines, so their anchors are exact (#544). Wider, for the long lines.
+            size = (1000, 840)
+            regions = [_region("r001", ["VĚSTNÍK — strana 1"], 120, left=60),
+                       _region("r002", [chunks[0]["text"]], 240, left=60),
+                       _region("r003", [chunks[1]["text"]], 360, left=60)]
+        else:
+            regions = [
+                _region("r001", [f"VĚSTNÍK — strana {order}"], 120, left=60),
+                _region("r002", [f"Zpráva {order}.{i}: trh a divadlo." for i in range(1, 5)], 240, left=60),
+            ]
         pages.append(FixturePage(page_id, "[1]" if order == 0 else str(order),
                                  "FrontCover" if order == 0 else "NormalPage", regions=regions,
-                                 size=(600, 840)))
+                                 size=size))
     return pages
 
 
 def fixture_documents(corpus) -> dict[UUID, list[FixturePage]]:
     return {UUID(corpus.documents["chronicle"]["id"]): chronicle_pages(corpus),
             UUID(corpus.documents["gazette"]["id"]): gazette_pages(corpus)}
+
+
+def fixture_anchors(corpus) -> dict[str, dict]:
+    """The ``layoutStart`` of each fixture chunk on the fixture pages (#544), by chunk key, as
+    the import (#542) stores them. The gazette chunks are single lines, so their anchors are
+    ``exact``. The chronicle lines are the chunk text cut at spaces, the spaces kept at the
+    line ends, so the serialized text has a line break more per line: ``approximate``
+    anchors, one of a chunk continuing from page 1 onto page 2. The letters have no pages, so
+    no anchors. ``tests/test_page_fixtures.py`` replays every anchor."""
+    chronicle = [str(p.id) for p in chronicle_pages(corpus)]
+    gazette = corpus.documents["gazette"]["chunks"][0]["start_page_id"]
+
+    def anchor(page_id: str, line_id: str, match: str) -> dict:
+        return {"pageId": page_id, "lineId": line_id, "offset": 0, "match": match}
+
+    return {
+        "chronicle_1": anchor(chronicle[1], "r002-l001", "approximate"),
+        "chronicle_2": anchor(chronicle[1], "r003-l001", "approximate"),
+        "chronicle_3": anchor(chronicle[2], "r002-l001", "approximate"),
+        "gazette_1": anchor(gazette, "r002-l001", "exact"),
+        "gazette_2": anchor(gazette, "r003-l001", "exact"),
+    }
+
+
+async def seed_layout_anchors(client, chunks_collection: str, corpus) -> None:
+    """Declare ``Chunks.layoutStart`` on a freshly seeded test-owned store and store the
+    fixture anchors. Only for the stores of the browser-test profile and the local
+    development backend, which serve the page fixtures."""
+    from semant_demo.adapters.weaviate.layout_anchors import declare_layout_start, write_layout_start
+
+    await declare_layout_start(client, chunks_collection)
+    for key, value in fixture_anchors(corpus).items():
+        await write_layout_start(client, chunks_collection, UUID(corpus.chunks[key]["id"]), value)
 
 
 def layout_json(page: FixturePage) -> dict:
