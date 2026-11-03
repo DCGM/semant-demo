@@ -105,6 +105,36 @@ command only reads the mirror and never prints the password.
 Known metadata limitations, including mirror rows without MODS metadata, are tracked
 on [#259](https://github.com/DCGM/semant-demo/issues/259).
 
+## Document page lists (`page_order`, #571)
+
+Exports, read-only, each document's pages from the Kramerius mirror as JSON lines: page ids in
+mirror `order`, the printed label (`number`), the page type and the stored image and PAGE XML
+paths. The PAGE XML converter (#540), the page manifest (#541) and the page asset import
+(#542) use it, because PAGE XML zips carry no page order.
+
+The same document id often exists in several libraries, each with its own page ids. The
+export takes the library whose page rows have real paths (neither empty nor the mirror's
+`not_found` marker), preferring real PAGE XML paths. Supplied PAGE XML file names
+(`--page-xml-dir`) and, with `--check-start-pages`, the chunks' `start_page_id` values
+(read from the configured Weaviate) must belong to that library; otherwise the document is
+reported as a conflict and no pages are exported. The start-page check reads every chunk of
+the document (keyset paging on `order`, 1,000 chunks per query); when that read fails or is
+incomplete (a chunk without `order`, 1,000 or more chunks sharing one `order`, a chunk count
+that changed during the read), the document is `start_pages_unchecked`, also without pages,
+never a passing check. Undecidable documents are `ambiguous`. Null or duplicate orders and
+missing images or PAGE XML are reported, never fixed. The exit code is 1 when any document
+was not exported.
+
+Memory does not grow with the corpus: page rows are read 100 documents per query, each JSON
+line is written when its document is done (in input order, duplicates removed), and the
+summary is kept as running counts. Only the document id list is held. With `--output` the
+lines are written to `<output>.partial` and renamed when the run completes, so an interrupted
+run leaves no complete-looking file.
+
+Prerequisites are those of `metadata_sync` (the PostgreSQL driver and
+`KRAMERIUS_METADATA_DSN`). The mirror is read in a read-only transaction; paths are reported
+as stored, not checked on disk.
+
 ## Page layout files and anchors (`page_layout`, #540)
 
 Converts PERO PAGE XML (`<document>.page_xml.zip` or `<document>/` folders) into one layout
