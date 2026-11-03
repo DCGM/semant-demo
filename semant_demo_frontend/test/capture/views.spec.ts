@@ -67,6 +67,17 @@ test('recent searches', async ({ page }, testInfo) => {
   await input.press('ArrowDown')
   await expectSidebarsOpen(page, testInfo)
   await save(page, testInfo, 'search-history-filtered')
+
+  // A history saved by a newer version of the application: the list asks for a reload.
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(k => k.startsWith('semant.searchHistory.search.')) as string
+    localStorage.setItem(key, JSON.stringify({ ...JSON.parse(localStorage.getItem(key) ?? '{}'), criteriaVersion: 99 }))
+  })
+  await page.reload()
+  await closePhoneNavigation(page)
+  await input.click()
+  await expect(page.getByTestId('search-history-reload')).toBeVisible()
+  await save(page, testInfo, 'search-history-newer-version')
 })
 
 test('search vector selection', async ({ page }, testInfo) => {

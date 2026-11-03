@@ -11,8 +11,22 @@
     @mousedown.prevent
   >
     <div class="search-history__header text-caption text-grey-7">Recent searches</div>
-    <div v-if="note" class="search-history__note text-caption text-grey-8" role="status" data-testid="search-history-note">{{ note }}</div>
-    <ul :id="listId" role="listbox" aria-label="Recent searches" class="search-history__list">
+    <div v-if="newerFormat" class="search-history__reload" role="status" data-testid="search-history-reload">
+      <span class="text-body2">Your recent searches were saved by a newer version of this application. Reload the page to see them.</span>
+      <q-btn
+        flat
+        dense
+        no-caps
+        color="primary"
+        icon="refresh"
+        label="Reload"
+        tabindex="-1"
+        @mousedown="keepFocus"
+        @click="reloadPage"
+      />
+    </div>
+    <div v-if="note && items.length" class="search-history__note text-caption text-grey-8" role="status" data-testid="search-history-note">{{ note }}</div>
+    <ul v-if="items.length" :id="listId" role="listbox" aria-label="Recent searches" class="search-history__list">
       <li
         v-for="(item, index) in items"
         :id="optionId(index)"
@@ -45,8 +59,8 @@
         />
       </li>
     </ul>
-    <q-separator />
-    <div class="search-history__footer">
+    <q-separator v-if="items.length" />
+    <div v-if="items.length" class="search-history__footer">
       <q-btn
         flat
         dense
@@ -75,6 +89,8 @@ const props = defineProps<{
   listId: string
   /** A line above the entries, e.g. why picking one does not run it yet. */
   note?: string | null
+  /** The stored history was written by a newer version of the application: ask for a reload. */
+  newerFormat?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -87,6 +103,10 @@ const emit = defineEmits<{
 /** Keeps the focus in the input when a button of the list is pressed. */
 function keepFocus (event: Event) {
   event.preventDefault()
+}
+
+function reloadPage () {
+  window.location.reload()
 }
 
 function optionId (index: number): string {
@@ -113,6 +133,15 @@ function optionId (index: number): string {
 
 .search-history__note {
   padding: 0 12px 4px;
+}
+
+.search-history__reload {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 4px 8px 8px 12px;
 }
 
 .search-history__list {

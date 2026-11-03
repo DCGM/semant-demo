@@ -3,12 +3,13 @@ import {
   matchingEntries,
   readHistory,
   savedQuery,
+  updateHistory,
   withEntry,
   withoutEntry,
-  writeHistory,
   type HistoryAudience,
   type HistoryCriteria,
-  type HistoryEntry
+  type HistoryEntry,
+  type StoredHistory
 } from './history'
 
 /**
@@ -20,6 +21,9 @@ import {
  *
  * The stored list is read when the list opens (and when the audience changes), not on
  * every keystroke: typing only narrows what was read.
+ *
+ * A history written by a newer version of the application (`newerFormat`) is not shown and
+ * nothing is recorded into it; the list then asks the user to reload the page.
  *
  * Keyboard (`onKeydown` on the input): ArrowDown/ArrowUp open the list and move the
  * highlight, Enter on a highlighted entry picks it (the caller's own Enter handling runs
@@ -33,11 +37,17 @@ export function useSearchHistory<C> (
   pick: (entry: HistoryEntry<C>) => void
 ) {
   const entries = shallowRef<HistoryEntry<C>[]>([])
+  const newerFormat = ref(false)
   const open = ref(false)
   const activeIndex = ref(-1)
 
+  function apply (history: StoredHistory<C>) {
+    entries.value = history.entries
+    newerFormat.value = history.newerFormat
+  }
+
   function reload () {
-    entries.value = audience.value ? readHistory(audience.value, criteria) : []
+    apply(audience.value ? readHistory(audience.value, criteria) : { entries: [], newerFormat: false })
   }
   // Another audience replaces the whole list (never mixed); an open list stays open, so one
   // opened while the stored session was being verified shows that user's history once it is.
@@ -47,7 +57,7 @@ export function useSearchHistory<C> (
   }, { immediate: true, deep: true })
 
   const suggestions = computed(() => matchingEntries(entries.value, text.value))
-  const shown = computed(() => open.value && suggestions.value.length > 0)
+  const shown = computed(() => open.value && (suggestions.value.length > 0 || newerFormat.value))
 
   watch(suggestions, (list) => {
     if (activeIndex.value >= list.length) activeIndex.value = list.length - 1
@@ -67,25 +77,25 @@ export function useSearchHistory<C> (
     activeIndex.value = -1
   }
 
-  function update (change: (current: HistoryEntry<C>[]) => HistoryEntry<C>[]) {
+  /** Changes the stored history; false when it is of a newer format and was left unchanged. */
+  function update (change: (current: HistoryEntry<C>[]) => HistoryEntry<C>[]): boolean {
     const target = audience.value
-    if (!target) return
-    const next = change(readHistory(target, criteria))
-    writeHistory(target, criteria, next)
-    entries.value = next
+    if (!target) return false
+    const history = updateHistory(target, criteria, change)
+    apply(history)
+    return !history.newerFormat
   }
 
   /**
    * Adds a search that ran as the newest entry. `tooLong`: the query is longer than
-   * MAX_QUERY_LENGTH and not saved (the caller tells the user); `skipped`: a blank query or
-   * no known audience.
+   * MAX_QUERY_LENGTH and not saved (the caller tells the user); `skipped`: a blank query, no
+   * known audience or a history of a newer format (the list asks for a reload).
    */
   function record (query: string, searchCriteria: C): 'saved' | 'tooLong' | 'skipped' {
     const saved = savedQuery(query)
     if (saved === null) return query.trim() ? 'tooLong' : 'skipped'
-    if (!audience.value) return 'skipped'
-    update(current => withEntry(current, { query: saved, criteria: searchCriteria, savedAt: Date.now() }, criteria))
-    return 'saved'
+    const done = update(current => withEntry(current, { query: saved, criteria: searchCriteria, savedAt: Date.now() }, criteria))
+    return done ? 'saved' : 'skipped'
   }
 
   function remove (entry: HistoryEntry<C>) {
@@ -144,5 +154,5 @@ export function useSearchHistory<C> (
     return false
   }
 
-  return { entries, suggestions, open, shown, activeIndex, show, close, record, remove, clear, choose, onKeydown }
+  return { entries, newerFormat, suggestions, open, shown, activeIndex, show, close, record, remove, clear, choose, onKeydown }
 }

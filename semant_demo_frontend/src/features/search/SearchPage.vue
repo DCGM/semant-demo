@@ -20,7 +20,7 @@
                   role="combobox"
                   aria-autocomplete="list"
                   :aria-expanded="history.shown.value"
-                  :aria-controls="history.shown.value ? HISTORY_LIST_ID : undefined"
+                  :aria-controls="history.shown.value && historyItems.length ? HISTORY_LIST_ID : undefined"
                   :aria-activedescendant="activeHistoryOptionId"
                   data-testid="search-query"
                   @keydown="onQueryKeydown"
@@ -48,6 +48,7 @@
                   :active-index="history.activeIndex.value"
                   :list-id="HISTORY_LIST_ID"
                   :note="historyNote"
+                  :newer-format="history.newerFormat.value"
                   @choose="chooseHistory"
                   @remove="removeHistory"
                   @highlight="history.activeIndex.value = $event"
@@ -620,7 +621,7 @@ const vectorsStatus = ref<LoadStatus>('loading')
 function optionsStatus (criteria?: SearchHistoryCriteria): LoadStatus {
   const needed: LoadStatus[] = [filtersStatus.value]
   if (!criteria || criteria.vector) needed.push(vectorsStatus.value)
-  if (!criteria || criteria.collectionId) {
+  if (!criteria || criteria.userCollectionId) {
     const userId = userStore.getUserId
     if (userStore.isLoggedIn && userId) {
       const load = collectionsLoad.value
@@ -657,7 +658,7 @@ function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
   searchForm.value.query = entry.query
   searchForm.value.type = restored.type
   searchForm.value.vector = restored.vector
-  searchForm.value.userCollectionId = restored.collectionId
+  searchForm.value.userCollectionId = restored.userCollectionId
   filterValues.value = restored.filterValues
   if (restored.dropped.length) {
     Notify.create({
