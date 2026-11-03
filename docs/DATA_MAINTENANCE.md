@@ -135,6 +135,24 @@ Prerequisites are those of `metadata_sync` (the PostgreSQL driver and
 `KRAMERIUS_METADATA_DSN`). The mirror is read in a read-only transaction; paths are reported
 as stored, not checked on disk.
 
+## Page layout files and anchors (`page_layout`, #540)
+
+Converts PERO PAGE XML (`<document>.page_xml.zip` or `<document>/` folders) into one layout
+file per page and a `layoutStart` anchor per chunk; the format and the matching rules are in
+[PAGE_LAYOUT.md](PAGE_LAYOUT.md). It reads and writes only files: no database or network
+access, and it writes nothing to any store. Give it the page lists from the `page_order`
+export (#571) with `--page-order`; without them it uses the file names' order, which is
+wrong for many documents, and says so. `--chunks` takes the chunks to anchor (stored
+chunks, exported by #542); without it the regenerated chunks are anchored, which checks the
+converter against itself. The chunking parameters (`--line-confidence`, `--min-chunk-chars`,
+`--max-chunk-chars`) default to the legacy 0.6/768/1152 and are recorded in every output,
+including each anchor line, so an import can check that anchors and page files belong
+together. The output directory must be empty unless `--overwrite`; then each converted
+document's page folder is replaced as a whole (no page files of an earlier page list stay),
+other documents' folders are kept, and `chunks.jsonl`, `anchors.jsonl` and `report.json`
+cover only this run's documents. The exit code is 1 when any
+document failed or any non-empty chunk lacks an exact anchor; read `report.json`.
+
 ## Document year on chunks (`chunk_year`, #153)
 
 The search filters years on `Chunks.yearIssued`, a copy of the referenced document's
