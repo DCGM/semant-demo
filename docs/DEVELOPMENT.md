@@ -49,7 +49,12 @@ Prahy* has none (text only). They are drawn images, regenerated when the corpus 
 generator changes, never seeded into the stores. Until the document workspace (#545) uses
 the scan viewer, it has a preview page in the dev server and the browser-test builds
 (`SEMANT_PREVIEW_ROUTES=1`), e.g.
-`http://localhost:9000/#/preview/scan/5e3a0000-0000-4000-8000-00000000d001`.
+`http://localhost:9000/#/preview/scan/5e3a0000-0000-4000-8000-00000000d001`. The fixture
+chunks also get `layoutStart` anchors on these pages when the stores are seeded (#544): exact
+on page 1 of *Pražský věstník*, approximate on *Kronika obce Lhota* (one chunk continues onto
+the next page); the text and scan side by side are at
+`http://localhost:9000/#/preview/text-scan/5e3a0000-0000-4000-8000-00000000d001`. A store
+seeded before #544 has no anchors: `make dev-reset CONFIRM=yes` reseeds it.
 
 **More documents.** For the corpus overview (`/corpus`) three documents are too few:
 `make dev-add-documents` adds 2,000 synthetic documents with bibliographic metadata only

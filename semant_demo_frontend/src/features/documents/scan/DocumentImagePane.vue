@@ -121,7 +121,7 @@ import type { PageLayout } from './pageLayout'
 // manifest and layout files (#541) itself, lazily and for the current page only, and
 // knows nothing of the text: it reports line clicks and keyboard focus as
 // `{ pageId, lineId, offset? }` and takes highlights and focus requests in the same terms.
-// The text/scan correspondence is a separate module (#544).
+// The text/scan correspondence is a separate module (correspondence/, #544).
 
 export interface ScanTarget {
   pageId: string
@@ -150,7 +150,8 @@ const props = withDefaults(defineProps<{
   highlights?: ScanHighlight[]
   showThumbnails?: boolean
   documentTitle?: string
-  /** For tests: a layout cache of another loader. */
+  /** The layouts' cache, shared with the text/scan correspondence (#544) so that a layout is
+   * read once; the pane's own when null. Replace it with the document. */
   layoutCache?: LayoutCache | null
 }>(), { pageId: null, highlights: () => [], showThumbnails: true, documentTitle: '', layoutCache: null })
 
@@ -163,7 +164,7 @@ const emit = defineEmits<{
   /** A line became the current one by keyboard (Up/Down). */
   lineFocus: [target: ScanTarget]
   /** The manifest was read; `available` false: a text-only document. */
-  loaded: [info: { available: boolean, pageCount: number }]
+  loaded: [info: { available: boolean, pageCount: number, pages: DocumentPage[] }]
 }>()
 
 const pages = ref<DocumentPage[]>([])
@@ -216,7 +217,7 @@ async function loadManifest () {
     if (controller.signal.aborted) return
     pages.value = result.available ? result.pages : []
     manifestState.value = 'loaded'
-    emit('loaded', { available: result.available, pageCount: pages.value.length })
+    emit('loaded', { available: result.available, pageCount: pages.value.length, pages: pages.value })
     if (pages.value.length) showPage(indexOf(props.pageId) ?? 0, { force: true })
   } catch (e) {
     if (controller.signal.aborted || isAbortError(e)) return

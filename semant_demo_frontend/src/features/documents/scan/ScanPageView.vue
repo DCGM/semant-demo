@@ -52,6 +52,7 @@
           v-for="h in highlightBands"
           :key="h.key"
           class="scan-highlight"
+          :class="{ 'scan-highlight--approximate': h.approximate }"
           :points="h.points"
           :data-highlight-line-id="h.lineId"
         />
@@ -101,6 +102,8 @@ export interface LineHighlight {
   /** UTF-16 offsets in the line's text; widened to whole (approximate) words. */
   start?: number
   end?: number
+  /** Placed approximately (the OCR text differs from the document text): drawn dashed. */
+  approximate?: boolean
 }
 
 const props = withDefaults(defineProps<{
@@ -156,7 +159,7 @@ const highlightBands = computed(() => props.highlights.flatMap((h, i) => {
   const line = linesById.value.get(h.lineId)
   if (!line) return []
   const [from, to] = rangeDistances(line, h.start, h.end)
-  return [{ key: `${i}-${h.lineId}`, lineId: h.lineId, points: svgPoints(lineBand(line, from, to)) }]
+  return [{ key: `${i}-${h.lineId}`, lineId: h.lineId, approximate: !!h.approximate, points: svgPoints(lineBand(line, from, to)) }]
 }))
 
 const limits = () => stageSize.value ? scaleLimits(stageSize.value, viewerSize.value) : { min: 0.01, max: 4 }
@@ -485,6 +488,12 @@ defineExpose({
   stroke: rgba(230, 160, 0, 0.9);
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
+}
+
+.scan-highlight--approximate {
+  fill: rgba(255, 193, 7, 0.2);
+  stroke-width: 1.5px;
+  stroke-dasharray: 6 4;
 }
 
 .scan-view__state {

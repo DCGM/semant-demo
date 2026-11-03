@@ -21,6 +21,9 @@
             :highlight-span-id="annotation?.highlightSpanId ?? null"
             :focus-tag-id="annotation?.focusTagId ?? null"
             :active-range="activeByChunk[chunk.id] ?? null"
+            :active-approximate="activeApproximate && !!activeByChunk[chunk.id]"
+            :page-range="pageMarks?.[chunk.id]?.range ?? null"
+            :page-breaks="pageMarks?.[chunk.id]?.breaks ?? NO_BREAKS"
             :class="chunkClass?.(chunk)"
             @boundary-drag="emit('boundaryDrag', $event)"
           />
@@ -41,8 +44,10 @@ import ChunkAnnotator from 'src/features/annotations/ChunkAnnotator.vue'
 import type { ProjectedSpan } from 'src/features/annotations/useAnnotations'
 // TextChunk is the bound of the `generic` attribute, which the linter does not see.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { ChunkClass, TextChunk, TextPaneAnnotation, TextSelection } from './documentTextPane'
+import type { ChunkClass, ChunkPageMarks, TextChunk, TextPaneAnnotation, TextSelection } from './documentTextPane'
+import type { PageBreakMark } from 'src/features/annotations/ChunkAnnotator.vue'
 import { groupParagraphs, rangeByChunk, resolveSelectionEndpoint, type ChunkRange, type TextPoint } from './readerOffsets'
+import { revealDelta, scrollContainer } from './textReveal'
 
 // The continuous canonical text of a document's chunks, in the given order: chunks
 // grouped into paragraphs, their stored text unchanged, with the original whitespace
@@ -57,11 +62,17 @@ const props = withDefaults(defineProps<{
   annotation?: TextPaneAnnotation | null
   /** A passage focused from outside the text, highlighted; may continue into later chunks. */
   activeRange?: ChunkRange | null
+  /** The active passage is placed approximately; it is marked so. */
+  activeApproximate?: boolean
+  /** Per chunk: its part on the page shown next to the text and where pages begin in it. */
+  pageMarks?: Record<string, ChunkPageMarks> | null
   chunkClass?: ChunkClass<T>
 }>(), {
   preserveWhitespace: true,
   annotation: null,
   activeRange: null,
+  activeApproximate: false,
+  pageMarks: null,
   chunkClass: undefined
 })
 
@@ -75,6 +86,7 @@ const emit = defineEmits<{
 
 const NO_SPANS: ProjectedSpan[] = []
 const NO_TAGS: Tag[] = []
+const NO_BREAKS: PageBreakMark[] = []
 
 const root = ref<HTMLElement | null>(null)
 const paragraphs = computed(() => groupParagraphs(props.chunks))
@@ -125,7 +137,40 @@ function scrollToRange ({ chunkId, start, end }: ChunkRange) {
   }
 }
 
-defineExpose({ root, scrollToChunk, scrollToRange })
+/** The screen rectangle of the character at `offset` of a chunk (the last one at its end). */
+function pointRect (chunkId: string, offset: number): DOMRect | null {
+  const chunkEl = chunkElement(chunkId)
+  if (!chunkEl) return null
+  const segments = Array.from(chunkEl.querySelectorAll<HTMLElement>('.text-segment'))
+  const seg = segments.find(s => Number(s.dataset.end) > offset) ?? segments[segments.length - 1]
+  if (!seg) return chunkEl.getBoundingClientRect()
+  const node = Array.from(seg.childNodes).find(n => n.nodeType === Node.TEXT_NODE)
+  if (!node || typeof document.createRange !== 'function') return seg.getBoundingClientRect()
+  const local = Math.max(0, Math.min(offset - Number(seg.dataset.start), (node.textContent ?? '').length - 1))
+  const range = document.createRange()
+  range.setStart(node, local)
+  range.setEnd(node, Math.min(local + 1, (node.textContent ?? '').length))
+  return range.getClientRects()[0] ?? seg.getBoundingClientRect()
+}
+
+/**
+ * Smart focus: scrolls the text only when the beginning of `range` is not visible with a
+ * margin, by the least distance when it is near the edge, to the middle when it is out of
+ * view. Returns whether it scrolled.
+ */
+function revealRange ({ chunkId, start }: Pick<ChunkRange, 'chunkId' | 'start'>, { margin = 48 } = {}): boolean {
+  const rect = pointRect(chunkId, start)
+  const container = root.value ? scrollContainer(root.value) : null
+  if (!rect || !container) return false
+  const page = container === document.scrollingElement
+  const view = page ? { top: 0, bottom: window.innerHeight } : container.getBoundingClientRect()
+  const delta = revealDelta({ top: rect.top, bottom: rect.bottom }, { top: view.top, bottom: view.bottom }, margin)
+  if (delta === 0) return false
+  container.scrollBy({ top: delta, behavior: 'smooth' })
+  return true
+}
+
+defineExpose({ root, scrollToChunk, scrollToRange, revealRange })
 </script>
 
 <style scoped>

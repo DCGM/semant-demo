@@ -17,6 +17,8 @@ export interface ScanLine {
   /** Source line id from the PAGE XML, unique within the page. */
   id: string
   regionId: string
+  /** Index of the line's region in the file (region ids need not be unique). */
+  regionIndex: number
   /** Index in the page's serialization order. */
   index: number
   text: string
@@ -122,11 +124,11 @@ export function parsePageLayout (raw: unknown, pageId: string): PageLayout {
     : null
   const regions = Array.isArray(file.regions) ? file.regions as Record<string, unknown>[] : []
 
-  type Raw = { id: string, regionId: string, text: string, baseline: Point[], heights: [number, number] | null, wordStarts: unknown }
+  type Raw = { id: string, regionId: string, regionIndex: number, text: string, baseline: Point[], heights: [number, number] | null, wordStarts: unknown }
   const raws: Raw[] = []
   const seen = new Set<string>()
   let skipped = 0
-  for (const region of regions) {
+  for (const [regionIndex, region] of regions.entries()) {
     const lines = Array.isArray(region?.lines) ? region.lines as Record<string, unknown>[] : []
     for (const line of lines) {
       const baseline = Array.isArray(line?.baseline) ? line.baseline : []
@@ -142,7 +144,7 @@ export function parsePageLayout (raw: unknown, pageId: string): PageLayout {
         : null
       // A one-point baseline is a line of zero length; keep it as a point.
       const points: Point[] = baseline.length === 1 ? [baseline[0], baseline[0]] : baseline
-      raws.push({ id: line.id, regionId: String(region.id ?? ''), text: line.text, baseline: points, heights, wordStarts: line.wordStarts })
+      raws.push({ id: line.id, regionId: String(region?.id ?? ''), regionIndex, text: line.text, baseline: points, heights, wordStarts: line.wordStarts })
     }
   }
   const fallback = fallbackHeights(raws.map(r => r.heights), image?.height ?? null)
@@ -154,6 +156,7 @@ export function parsePageLayout (raw: unknown, pageId: string): PageLayout {
     return {
       id: r.id,
       regionId: r.regionId,
+      regionIndex: r.regionIndex,
       index,
       text: r.text,
       baseline: r.baseline,

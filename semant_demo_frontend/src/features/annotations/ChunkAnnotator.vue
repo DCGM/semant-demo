@@ -1,8 +1,21 @@
 <template>
-  <div class="chunk-annotator" :data-chunk-id="chunkId" :class="{ 'is-dragging': draggingHandle }">
-    <span
-      v-for="segment in renderedSegments"
-      :key="`${segment.start}-${segment.end}`"
+  <div
+    class="chunk-annotator"
+    :data-chunk-id="chunkId"
+    :class="{ 'is-dragging': draggingHandle, 'has-approximate-passage': activeApproximate }"
+  >
+    <template v-for="segment in renderedSegments" :key="`${segment.start}-${segment.end}`">
+      <!-- Where text from another page begins: a label outside the text (not selected or copied). -->
+      <span
+        v-if="segment.pageBreak"
+        class="page-break"
+        :class="{ 'page-break--approximate': segment.pageBreak.approximate }"
+        role="separator"
+        :aria-label="segment.pageBreak.approximate ? `${segment.pageBreak.label} (approximate position)` : segment.pageBreak.label"
+        :title="segment.pageBreak.approximate ? 'Approximate position of the page start' : undefined"
+        :data-label="segment.pageBreak.label"
+        :data-page-break="segment.pageBreak.pageId"
+      /><span
       class="text-segment"
       :class="{
         'is-tagged': segment.tags.length > 0,
@@ -10,6 +23,7 @@
         'is-auto': segment.isAuto,
         'is-highlighted': segment.isHighlighted,
         'is-active-passage': segment.isActivePassage,
+        'is-current-page': segment.isCurrentPage,
         'has-deep-stack': segment.hasDeepStack
       }"
       :style="segment.style"
@@ -28,6 +42,7 @@
         @mousedown.prevent.stop="startDrag($event, 'end')"
         @touchstart.prevent.stop="startDrag($event, 'end')"
       ></span></span>
+    </template>
   </div>
 </template>
 
@@ -36,6 +51,14 @@ import { computed, ref, onBeforeUnmount } from 'vue'
 import type { ProjectedSpan, LocalSelection } from './useAnnotations'
 import type { Tag } from 'src/generated/api'
 import { assignLanes } from './spanLanes'
+
+export interface PageBreakMark {
+  /** UTF-16 offset of the page's first character in the chunk. */
+  offset: number
+  pageId: string
+  label: string
+  approximate?: boolean
+}
 
 interface TextSegment {
   text: string
@@ -47,6 +70,10 @@ interface TextSegment {
   isHighlighted: boolean
   /** In the passage focused from outside the text (`activeRange`). */
   isActivePassage: boolean
+  /** On the page shown in the scan viewer (`pageRange`). */
+  isCurrentPage: boolean
+  /** Text from another page begins here (`pageBreaks`). */
+  pageBreak: PageBreakMark | null
   /** The underlines reach the next line of text, so the line gets extra space below. */
   hasDeepStack: boolean
   isSelectionStart: boolean
@@ -74,6 +101,12 @@ const props = defineProps<{
   focusTagId?: string | null
   /** The part of this chunk in the passage focused from outside the text, e.g. a citation. */
   activeRange?: { start: number, end: number } | null
+  /** The active passage is placed approximately (e.g. from an OCR line that differs). */
+  activeApproximate?: boolean
+  /** The part of this chunk on the page shown in the scan viewer. */
+  pageRange?: { start: number, end: number } | null
+  /** Where text from another page begins in this chunk. */
+  pageBreaks?: PageBreakMark[]
 }>()
 
 const emit = defineEmits<{
@@ -126,6 +159,18 @@ const renderedSegments = computed((): TextSegment[] => {
     boundaries.add(Math.min(text.length, active.end))
   }
 
+  const page = props.pageRange
+  if (page) {
+    boundaries.add(Math.max(0, page.start))
+    boundaries.add(Math.min(text.length, page.end))
+  }
+  const breaks = new Map<number, PageBreakMark>()
+  for (const mark of props.pageBreaks ?? []) {
+    if (mark.offset < 0 || mark.offset >= text.length) continue
+    boundaries.add(mark.offset)
+    if (!breaks.has(mark.offset)) breaks.set(mark.offset, mark)
+  }
+
   const sorted = Array.from(boundaries).sort((a, b) => a - b)
   const segments: TextSegment[] = []
 
@@ -158,6 +203,8 @@ const renderedSegments = computed((): TextSegment[] => {
       isAuto,
       isHighlighted,
       isActivePassage: !!active && active.start <= start && active.end >= end,
+      isCurrentPage: !!page && page.start <= start && page.end >= end,
+      pageBreak: breaks.get(start) ?? null,
       hasDeepStack: '--stack-height' in style,
       isSelectionStart: isSelected && start === props.selection?.start && (props.selection?.showStartHandle ?? true),
       isSelectionEnd: isSelected && end === props.selection?.end && (props.selection?.showEndHandle ?? true),
@@ -400,6 +447,44 @@ const hexToRgba = (hex: string, alpha: number): string => {
 /* A tag's or the selection's background (inline style) takes precedence. */
 .text-segment.is-active-passage {
   background-color: rgba(250, 204, 21, 0.3);
+}
+
+/* An approximate place: the same tint, marked as uncertain by a dashed underline. */
+.chunk-annotator.has-approximate-passage .text-segment.is-active-passage {
+  background-color: rgba(250, 204, 21, 0.18);
+  text-decoration: underline dashed rgba(161, 98, 7, 0.7);
+  text-underline-offset: 4px;
+}
+
+/* The page shown in the scan viewer: a faint tint under the other marks. */
+.text-segment.is-current-page {
+  box-shadow: inset 0 -1.2em 0 rgba(59, 130, 246, 0.07);
+}
+
+.page-break {
+  display: inline-block;
+  margin: 0 6px 0 0;
+  padding: 0 6px;
+  border: 1px solid rgba(71, 85, 105, 0.45);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: rgba(51, 65, 85, 0.9);
+  vertical-align: 0.15em;
+  user-select: none;
+  cursor: default;
+}
+
+.page-break::before {
+  content: attr(data-label);
+}
+
+.page-break--approximate {
+  border-style: dashed;
+}
+
+.page-break--approximate::before {
+  content: '≈ ' attr(data-label);
 }
 
 .text-segment.is-highlighted {

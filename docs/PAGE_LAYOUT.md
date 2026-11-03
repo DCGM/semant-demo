@@ -5,7 +5,8 @@ the frontend. It needs two things: one compact layout file per page and, per chu
 line where the chunk's first character is (`layoutStart`). Both are produced offline from
 PERO PAGE XML by `python -m semant_demo.maintenance.page_layout` (#540); the application
 never parses PAGE XML. Storage, serving and the `Chunks` field are #541
-([below](#page-asset-store-and-reads-541)); the import of the existing corpus is #542; the frontend mapping is #544. The operator command is described in
+([below](#page-asset-store-and-reads-541)); the import of the existing corpus is #542; the frontend mapping is #544
+([below](#textscan-correspondence-544)). The operator command is described in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#page-layout-files-and-anchors-page_layout-540).
 
 ## Page file (`semant.page-layout`, version 1)
@@ -174,7 +175,7 @@ the request and never shows its lines). It knows nothing of the text: line click
 keyboard focus are reported as `{pageId, lineId, offset?}` (the source ids of the page file;
 `offset` is the UTF-16 start of the word clicked, estimated from `wordStarts`), and highlights
 and focus requests come in the same terms. The correspondence with chunks and annotations
-is #544.
+is #544 ([below](#textscan-correspondence-544)).
 
 - **Geometry** (`pageLayout.ts`): a line is the band from `heights[0]` above to `heights[1]`
   below its baseline, perpendicular to each baseline segment, so skewed and curved lines are
@@ -199,3 +200,49 @@ Until #545 places it in the document view, the pane has a preview page,
 `/#/preview/scan/<document id>?page=<page id>`, built only with `SEMANT_PREVIEW_ROUTES=1`
 (the dev server and the browser-test builds). The browser-test profile and the local
 development backend serve synthetic page fixtures (`tests/page_fixtures.py`).
+
+## Text/scan correspondence (#544)
+
+`semant_demo_frontend/src/features/documents/correspondence/` connects the text pane (#539)
+and the scan viewer (#543) in the browser. Nothing about it is stored: no line-to-chunk table,
+no per-line text ranges, no matching service.
+
+- **The walk** (`layoutMap.ts`) is the importer's `replay`: from a chunk's `layoutStart`, the
+  rest of the anchor line from `offset`, then each following line of the page files, preceded by
+  `\n` within a region and `\n\n` between regions and pages, for the chunk's length in UTF-16
+  units. It reads the anchor's page and only the following pages the chunk reaches, through the
+  scan viewer's layout cache. The result is the chunk's *pieces*: for each line, the same
+  text's `[start, end)` in the line and in the chunk; the separators lie between them.
+- **Precision.** A map is `exact` only when the anchor is `exact`, the walk reproduces every
+  character and separator of the chunk text and no page file on the way has malformed lines.
+  Otherwise it is `approximate`: only whole lines are shown, on the scan (dashed highlight) and
+  in the text (dashed passage, a `≈` page mark at the nearest word start), with a notice. A walk
+  that reaches a page without a layout file stops there; the rest of the chunk is text only.
+  A chunk without an anchor, or whose anchor's page or line is not in the files, has no map.
+- **Text to scan.** A click in the text highlights the line of the caret (and its word, from
+  `wordStarts`, when exact) and marks that line's text; a selection highlights every line of
+  every page it covers, across chunks, and the scan viewer focuses its beginning only.
+- **Scan to text.** A click or keyboard step on a line marks the line's text (an exact map
+  maps the word clicked to its character) and reveals it. The candidate chunks are the ones
+  shown whose `from_page`..`to_page` includes the page, then `chunks/by_page` for that page.
+- **Pages.** Page navigation in the scan viewer brings the page's first text into view,
+  reading `chunks/by_page` for that page alone; a page without line positions falls back to the
+  chunk whose stored range covers it. The text marks where each page's text begins (an
+  element outside the text: not selected or copied, offsets unchanged) and tints the part on
+  the page shown, for the chunks near that page.
+- **Smart focus, no feedback.** Only explicit interactions move the other pane: a click or
+  selection, a line step, page navigation, a deep link. Scrolling, zooming and panning are never
+  followed; the text scrolls only when its target is not visible with a margin, the scan
+  viewer as in #543. A focus request's own page change is not followed back. A newer
+  interaction, or scrolling the text, cancels a pending one, so a late layout or page read
+  never moves a pane afterwards.
+- **Bounded text** (`useDocumentText`): the chunks around a deep-linked chunk (`/window`), of an
+  opened page (`/by_page`), extended with `/adjacent` on request; never all earlier pages or the
+  whole document.
+
+Until #545 places both panes in the document workspace, they have a preview page,
+`/#/preview/text-scan/<document id>?page=<page id>` or `?chunk=<chunk id>&start=&end=`
+(UTF-16 offsets in the chunk), in the same builds as the scan preview. The browser-test
+profile and the local development backend store anchors for the fixture chunks
+(`fixture_anchors` in `tests/page_fixtures.py`; verified against `replay` by
+`tests/test_page_fixtures.py`).
