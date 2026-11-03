@@ -131,19 +131,35 @@ class PageAssetStore:
             return None
         return self._existing(self.asset_path(document_id, page_id, kind))
 
+    def documents(self) -> list[UUID]:
+        """The documents with a manifest, sorted (walks the two directory levels)."""
+        if self.root is None or not self.root.is_dir():
+            return []
+        found = []
+        for shard in sorted(p for p in self.root.iterdir() if p.is_dir() and len(p.name) == 2):
+            for folder in sorted(shard.iterdir()):
+                try:
+                    document_id = UUID(folder.name)
+                except ValueError:
+                    continue
+                if str(document_id) == folder.name and (folder / MANIFEST_NAME).is_file():
+                    found.append(document_id)
+        return found
+
     def write_manifest(self, manifest: PageManifest) -> None:
         """Replace the document's manifest atomically."""
         data = manifest.model_dump_json(by_alias=True, indent=1).encode("utf-8")
-        _write_atomically(self.manifest_path(manifest.documentId), data)
+        write_atomically(self.manifest_path(manifest.documentId), data)
 
     def write_asset(self, document_id: UUID, page_id: UUID, kind: AssetKind, data: bytes) -> Path:
         """Replace one asset atomically; returns its path."""
         path = self.asset_path(document_id, page_id, kind)
-        _write_atomically(path, data)
+        write_atomically(path, data)
         return path
 
 
-def _write_atomically(path: Path, data: bytes) -> None:
+def write_atomically(path: Path, data: bytes) -> None:
+    """Replace ``path`` with ``data``: written to a temporary file next to it, then renamed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:

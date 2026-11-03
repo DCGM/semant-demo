@@ -110,7 +110,8 @@ misordered chunks got none.
 
 The application serves the page files, the scans and thumbnails from one directory,
 `PAGE_ASSETS_DIR` (empty: no document has pages). It only reads it; the existing-corpus
-import (#542) writes it. Every path is derived from UUIDs, never from client text
+import (#542, [DATA_MAINTENANCE](DATA_MAINTENANCE.md#page-scans-layouts-and-anchors-for-the-existing-corpus-page_import-542))
+writes it, together with an anchor plan (`anchors.jsonl`, never served) per document. Every path is derived from UUIDs, never from client text
 (`adapters/filesystem/page_assets.py`):
 
 ```text
