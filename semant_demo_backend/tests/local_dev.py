@@ -94,6 +94,10 @@ class Profile:
         return self.data_dir / SQLITE_NAME
 
     @property
+    def page_assets_dir(self) -> Path:
+        return self.data_dir / "page_assets"
+
+    @property
     def provider_url(self) -> str:
         return f"http://{HOST}:{self.provider_port}"
 
@@ -130,7 +134,25 @@ def backend_environ(profile: Profile) -> dict[str, str]:
         "PRODUCTION": "false",
         "OTEL_ENABLED": "false",
         "DEPLOYMENT_ENVIRONMENT": "local-development",
+        # Written by `environ` (cmd_environ), before the backend starts.
+        "PAGE_ASSETS_DIR": str(profile.page_assets_dir),
     }
+
+
+def write_page_assets(root: Path) -> Path:
+    """The synthetic page scans and layouts of fixture documents (``tests.page_fixtures``,
+    #543) under ``root``; rewritten only when the corpus or the generator changed. They are
+    regenerable files, not seeded data: the stores are not touched."""
+    from tests.corpus import load_corpus
+    from tests import page_fixtures
+
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = root / "fixtures.sha256"
+    digest = hashlib.sha256(corpus_digest().encode() + Path(page_fixtures.__file__).read_bytes()).hexdigest()
+    if not stamp.is_file() or stamp.read_text() != digest:
+        page_fixtures.write_page_fixtures(root, load_corpus())
+        stamp.write_text(digest)
+    return root
 
 
 def write_rag_configs(rag_dir: Path) -> Path:
@@ -556,6 +578,7 @@ async def cmd_add_documents(profile: Profile, count: int, outliers: bool) -> int
 
 
 def cmd_environ(profile: Profile) -> int:
+    write_page_assets(profile.page_assets_dir)
     for key, value in backend_environ(profile).items():
         print(f"export {key}={shlex.quote(value)}")
     return 0

@@ -45,7 +45,7 @@ export default defineConfig({
       `cd ../semant_demo_backend && ${python} -m tests.e2e_server --port ${port} --static ../semant_demo_frontend/dist/e2e`
     ].join(' && '),
     url: `${baseURL}/health`,
-    env: { BACKEND_URL: baseURL, QUASAR_DIST_DIR: 'dist/e2e' },
+    env: { BACKEND_URL: baseURL, QUASAR_DIST_DIR: 'dist/e2e', SEMANT_PREVIEW_ROUTES: '1' },
     timeout: 240_000,
     // Set E2E_REUSE_SERVER=1 to iterate against an e2e_server you started yourself.
     reuseExistingServer: process.env.E2E_REUSE_SERVER === '1',
