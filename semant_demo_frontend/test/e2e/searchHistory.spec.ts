@@ -239,7 +239,7 @@ test('the history cannot be cleared while a search is running', async ({ page })
   await expect(dropdown(page)).toHaveCount(0)
 })
 
-test('a history saved by a newer version asks for a reload and is not written over', async ({ page }) => {
+test('a history saved by a newer version asks for a reload, is not written over and can be cleared', async ({ page }) => {
   await search(page, 'Lhota')
   // Pretend a newer version of the application wrote this browser's history meanwhile.
   const newer = await page.evaluate(() => {
@@ -258,4 +258,16 @@ test('a history saved by a newer version asks for a reload and is not written ov
   expect((await answer).status()).toBe(200)
   await expect(page.locator('#result-1')).toBeVisible()
   expect(await page.evaluate((key) => localStorage.getItem(key), newer.key)).toBe(newer.value)
+
+  // Reloading does not help here (no newer version runs); the history can be cleared instead.
+  await openSearchPage(page)
+  await input(page).click()
+  await expect(page.getByTestId('search-history-reload')).toBeVisible()
+  await page.getByTestId('search-history-clear').click()
+  await expect(dropdown(page)).toHaveCount(0)
+  expect(await page.evaluate((key) => localStorage.getItem(key), newer.key)).toBeNull()
+  await search(page, 'Lhota')
+  await openSearchPage(page)
+  await input(page).click()
+  await expect(entries(page)).toHaveText([/Lhota/])
 })

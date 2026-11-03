@@ -11,20 +11,39 @@
     @mousedown.prevent
   >
     <div class="search-history__header text-caption text-grey-7">Recent searches</div>
-    <div v-if="newerFormat" class="search-history__reload" role="status" data-testid="search-history-reload">
-      <span class="text-body2">Your recent searches were saved by a newer version of this application. Reload the page to see them.</span>
-      <q-btn
-        flat
-        dense
-        no-caps
-        color="primary"
-        icon="refresh"
-        label="Reload"
-        tabindex="-1"
-        @mousedown="keepFocus"
-        @click="reloadPage"
-      />
-    </div>
+    <template v-if="newerFormat">
+      <div class="search-history__reload" role="status" data-testid="search-history-reload">
+        <span class="text-body2">Your recent searches were saved by a newer version of this application. Reload the page to see them.</span>
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          icon="refresh"
+          label="Reload"
+          tabindex="-1"
+          @mousedown="keepFocus"
+          @click="reloadPage"
+        />
+      </div>
+      <q-separator />
+      <!-- Like the list's footer: Clear history on the left, away from Reload. -->
+      <div class="search-history__footer search-history__footer--start" data-testid="search-history-reload-clear">
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="grey-8"
+          icon="delete_sweep"
+          label="Clear history"
+          tabindex="-1"
+          data-testid="search-history-clear"
+          @mousedown="keepFocus"
+          @click="emit('clear')"
+        />
+        <span class="text-caption text-grey-7">If this message stays after reloading, you can clear the history to start a new one.</span>
+      </div>
+    </template>
     <div v-if="note && items.length" class="search-history__note text-caption text-grey-8" role="status" data-testid="search-history-note">{{ note }}</div>
     <ul v-if="items.length" :id="listId" role="listbox" aria-label="Recent searches" class="search-history__list">
       <li
@@ -188,5 +207,12 @@ function optionId (index: number): string {
   justify-content: space-between;
   gap: 8px;
   padding: 2px 8px;
+}
+
+.search-history__footer--start {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  padding-bottom: 6px;
 }
 </style>

@@ -182,7 +182,7 @@ describe('stored history', () => {
     expect(parseHistory(value, tagCriteria)).toEqual({ entries: [entry('converted', 2, 'tag-7')], newerFormat: false })
   })
 
-  it('neither reads nor writes over a history of a newer format', () => {
+  it('neither reads nor writes over a history of a newer format; only clearing removes it', () => {
     for (const newer of [{ version: 2, criteriaVersion: 2 }, { version: 1, criteriaVersion: 3 }]) {
       const value = stored({ ...newer, entries: [{ query: 'from a newer version', criteria: 'cs', savedAt: 5 }] })
       localStorage.setItem(storageKey('test', ALICE), value)
@@ -192,9 +192,20 @@ describe('stored history', () => {
       history.show()
       expect(history.newerFormat.value).toBe(true)
       expect(history.shown.value).toBe(true) // the list asks for a reload
+      const arrow = new KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true })
+      expect(history.onKeydown(arrow)).toBe(false) // no entry to move to: left to the input
+      expect(arrow.defaultPrevented).toBe(false)
       expect(history.record('added', 'de')).toBe('skipped')
-      history.clear()
+      history.remove(entry('from a newer version', 5, 'cs'))
       expect(localStorage.getItem(storageKey('test', ALICE))).toBe(value)
+
+      // Reloading does not help when no newer version runs any more (e.g. after a rollback).
+      history.clear()
+      expect(localStorage.getItem(storageKey('test', ALICE))).toBeNull()
+      expect(history.newerFormat.value).toBe(false)
+      expect(history.record('added', 'de')).toBe('saved')
+      expect(readHistory(ALICE, tagCriteria).entries.map(e => e.query)).toEqual(['added'])
+      localStorage.clear()
     }
   })
 
@@ -422,15 +433,17 @@ describe('SearchHistoryDropdown', () => {
     })
   }
 
-  it('asks for a reload instead of listing a history of a newer format', () => {
+  it('asks for a reload instead of listing a history of a newer format, or offers to clear it', async () => {
     const wrapper = mount(SearchHistoryDropdown, {
       props: { items: [], activeIndex: -1, listId: 'history', newerFormat: true, note: 'Loading search options' },
       global: { plugins: [[Quasar, {}]] }
     })
     expect(wrapper.get('[data-testid="search-history-reload"]').text()).toContain('Reload the page')
     expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="search-history-clear"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="search-history-note"]').exists()).toBe(false)
+    // When reloading does not help, the history can be cleared from the message.
+    await wrapper.get('[data-testid="search-history-reload-clear"] [data-testid="search-history-clear"]').trigger('click')
+    expect(wrapper.emitted('clear')).toHaveLength(1)
   })
 
   it('lists entries as plain text with their criteria and marks the highlighted one', () => {

@@ -687,7 +687,7 @@ criteria: a search input's `HistoryCriteria` validates them and compares them by
 stored list names its own format (`version`) and its criteria's (`criteriaVersion`, the
 input's), and every write stores the current ones; older criteria are converted or left out
 by the input; a list of a newer format is neither read nor written over, and the dropdown asks
-the user to reload the page),
+the user to reload the page or, when that does not help (e.g. after a rollback), to clear it),
 `visualization/VegaChart.vue`: draws a Vega-Lite or Vega specification with vega-embed,
 loaded on demand, fitted to its container width and disposed of on unmount; each redraw is
 made in a detached element and only the newest is shown, so overlapping redraws cannot

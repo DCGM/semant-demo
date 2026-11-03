@@ -15,7 +15,8 @@ import { readStored, removeStored, writeStored } from 'src/shared/browserStorage
  * of an older criteria format are converted or left out by the search input. A list of a
  * newer format of either kind was written by a newer version of the application (e.g. in
  * another tab): it is neither read nor written over, and the user is asked to reload the
- * page. Every write stores the current formats, so a list never mixes formats.
+ * page, or to clear the history when reloading does not help (e.g. after a rollback). Every
+ * write stores the current formats, so a list never mixes formats.
  */
 
 /** Entries kept per audience; the oldest is dropped first. */
@@ -197,6 +198,14 @@ export function updateHistory<C> (
   const entries = change(current.entries)
   writeHistory(audience, criteria, entries)
   return { entries, newerFormat: false }
+}
+
+/**
+ * Removes an audience's history whatever its format: the user's choice, also for a history
+ * of a newer format that reloading does not make readable (e.g. after a rollback).
+ */
+export function clearHistory (audience: HistoryAudience, namespace: string): void {
+  removeStored(storageKey(namespace, audience))
 }
 
 /** A format number: a positive integer. */
