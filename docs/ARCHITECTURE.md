@@ -123,7 +123,8 @@ semant_demo_backend/semant_demo/
                           summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
                           page_order (read-only export of documents' ordered page lists from the Kramerius mirror, #571),
                           page_layout (offline PAGE XML -> page layout files and chunk-start anchors, #540;
-                          [PAGE_LAYOUT.md](PAGE_LAYOUT.md))
+                          [PAGE_LAYOUT.md](PAGE_LAYOUT.md)),
+                          page_import (existing-corpus page assets and chunk anchors, #542)
 ```
 
 ```mermaid

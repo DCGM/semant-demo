@@ -142,8 +142,8 @@ file per page and a `layoutStart` anchor per chunk; the format and the matching 
 [PAGE_LAYOUT.md](PAGE_LAYOUT.md). It reads and writes only files: no database or network
 access, and it writes nothing to any store. Give it the page lists from the `page_order`
 export (#571) with `--page-order`; without them it uses the file names' order, which is
-wrong for many documents, and says so. `--chunks` takes the chunks to anchor (stored
-chunks, exported by #542); without it the regenerated chunks are anchored, which checks the
+wrong for many documents, and says so. `--chunks` takes the chunks to anchor (JSON lines; the corpus import, `page_import`
+below, passes the stored chunks directly); without it the regenerated chunks are anchored, which checks the
 converter against itself. The chunking parameters (`--line-confidence`, `--min-chunk-chars`,
 `--max-chunk-chars`) default to the legacy 0.6/768/1152 and are recorded in every output,
 including each anchor line, so an import can check that anchors and page files belong
@@ -152,6 +152,67 @@ document's page folder is replaced as a whole (no page files of an earlier page 
 other documents' folders are kept, and `chunks.jsonl`, `anchors.jsonl` and `report.json`
 cover only this run's documents. The exit code is 1 when any
 document failed or any non-empty chunk lacks an exact anchor; read `report.json`.
+
+## Page scans, layouts and anchors for the existing corpus (`page_import`, #542)
+
+Fills the page asset store (`PAGE_ASSETS_DIR`, [PAGE_LAYOUT](PAGE_LAYOUT.md#page-asset-store-and-reads-541))
+and adds verified `layoutStart` anchors to the **existing** chunks. It never changes chunk
+text, ids, order, positions, vectors, page fields or annotations. It also never re-chunks,
+re-embeds or runs OCR. Two separate steps:
+
+```bash
+python -m semant_demo.maintenance.page_order --document-ids ids.txt --check-start-pages --output pages.jsonl
+python -m semant_demo.maintenance.page_import assets --page-order pages.jsonl --assets-dir DIR --report assets.json
+python -m semant_demo.maintenance.page_import anchors --check check.json --assets-dir DIR          # read-only
+python -m semant_demo.maintenance.page_import anchors --write write.json --assets-dir DIR --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.page_import anchors --check check_after.json --assets-dir DIR    # expect exit 0
+```
+
+- **Inputs.** The `page_order` export names each page's scan (`imagePath`) and PAGE XML zip
+  (`pageXmlPath`); the files are read from there, so run on a machine where they are mounted.
+  A document that was not exported (ambiguous, conflicting) is reported as `not_exported`.
+  The chunking parameters default to the legacy 0.6/768/1152; they are recorded in the
+  manifest and every plan line.
+- **`assets`** writes only files, and reads the chunks read-only from the configured Weaviate.
+  Per document, in input order, it runs the converter (#540) against the stored chunks, then
+  per page:
+  - writes the layout file when it differs;
+  - copies the original scan byte for byte when the stored copy is missing or of another
+    size (the source must decode as a JPEG; otherwise `corrupt_image`);
+  - makes a JPEG thumbnail (at most 256 px wide) when it is missing or older than its scan.
+
+  The manifest (what actually exists) and the anchor plan (`anchors.jsonl`: chunk id, a hash
+  of the stored text, `layoutStart` or null with a reason) come last. Thumbnails need Pillow,
+  from the development requirements (`requirements-dev.txt`). It is not an application
+  dependency.
+- **`anchors`** compares each plan with the stored chunks:
+  - it writes only differing anchors (`set`), and clears anchors the plan no longer verifies
+    (`clear`). Each write is a merge of `layoutStart` alone, then read back;
+  - it skips chunks whose text changed since the plan (`text_changed`) and refuses a plan whose
+    parameters differ from the manifest's;
+  - `--write` declares `Chunks.layoutStart` when it is missing (an additive schema change).
+- **Resuming.** Both steps are simply run again with the same arguments and a new report
+  name. Files are replaced atomically, so an interrupted page leaves no partial file;
+  finished pages are skipped and unchanged chunks are not rewritten. No step is transactional
+  across a document: until both steps are done, a document may have scans without anchors,
+  which the viewer shows as text-only correspondence.
+- **Reports.** `REPORT` holds the totals and is replaced after every document;
+  `REPORT.documents.jsonl` has one line per document. They cover:
+  - anchors per match level and reason;
+  - scans copied, kept, missing, corrupt or unreadable, and missing PAGE XML;
+  - line-id problems and other converter warnings;
+  - the page fields compared with the anchors (`start_page_id_differs`, `from_page_differs`,
+    `outside_page_range`). These are **reported, never repaired** (decision on #542).
+
+  `assets` exits 0 when every document was imported; `anchors` exits 0 when nothing is left
+  to write and no chunk text changed.
+- **Disk sizing.** About 1.1 MB per page scan (up to ~5 MB), 10 KB per layout file and 25 KB
+  per thumbnail; the assets are regenerable and need no backup. The documents' pages must be
+  in the mirror and their files mounted; scans under paths that are not mounted are
+  `missing_image`.
+- **Safety.** Follow the rules above for the `--write` step (endpoint, authorization,
+  backup). The `assets` step writes to the asset directory only. Rehearse on a disposable
+  copy first; record the results on the issue or PR.
 
 ## Document year on chunks (`chunk_year`, #153)
 
