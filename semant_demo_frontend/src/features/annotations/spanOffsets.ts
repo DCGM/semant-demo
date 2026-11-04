@@ -116,3 +116,18 @@ export function anchorAtStart (chunks: OrderedText[], index: number, start: numb
   if (start < 0 || start >= chunks[index].text.length || end <= start) return null
   return { index, start, end }
 }
+
+/**
+ * The index of the chunk after which a span anchored on `chunks[anchor]` runs into a gap in
+ * `order` (its text there is not known, so it cannot be shown past it), or null when the span
+ * ends before a gap, or at the last chunk (the end of what is known, not a gap).
+ */
+export function cutAtGap (chunks: OrderedText[], anchor: number, end: number): number | null {
+  let offset = 0
+  for (let i = anchor; i < chunks.length - 1; i++) {
+    offset += chunks[i].text.length
+    if (offset >= end) return null
+    if (chunks[i + 1].order !== chunks[i].order + 1) return i
+  }
+  return null
+}

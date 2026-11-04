@@ -263,7 +263,12 @@ correspondence but not their text:
   opened in the scan is found in the reader's text by reading that page's chunks
   (`pageChunks.ts`: `/chunks/by_page`, continued with `/adjacent`) and showing only their orders
   in the reader (`useChunkWindow.showRange`, with their annotations), leaving a gap to the text
-  shown rather than loading everything in between. Clicks and selections in the text, an
+  shown rather than loading everything in between. As on the initial load (`preloadGapChunks`),
+  a gap it opens of at most `GAP_PRELOAD_LIMIT` (100) chunks is read as hidden chunks, so
+  annotations crossing it are shown and edited across it; a larger gap is not read, and an
+  annotation running into it is reported in the gap's row (*An annotation continues in the
+  missing text*, `useAnnotations.cutAtGapOrders`) rather than cut silently. The initial load
+  still shows all the collection's chunks of the document. Clicks and selections in the text, an
   annotation link (`?annotation=`), a chunk link (`?chunk=&order=`), a page link (`?page=`) and
   summary or chat citations show their lines on the scan; the annotation popover works as
   before. A collection the user cannot read says so and links to the public view.
@@ -273,8 +278,18 @@ correspondence but not their text:
   *Text and scan*, *Text* or *Scan* (`WorkspaceModeToggle`), and only one of them when the
   workspace is under 720 px wide. The scan viewer stays mounted while hidden, so it keeps its
   page; showing the text again reveals the passage last focused from the scan.
+- **Links.** The link's target (a passage, an annotation or chunk, a page) and its view are
+  followed also when only the query changes (another link to the same document: the page is
+  reused, the document is not read again). The reader's own page changes in the scan viewer
+  (page buttons and keys, thumbnails, the page field: the pane's `navigate` event) are written
+  into the URL as `?page=`, replacing the target they supersede (`chunk`/`start`/`end`, or
+  `annotation`/`chunk`/`order`), so a reload opens the page the reader moved to. The first page
+  and pages opened for the text (a click, a selection, a linked target) leave the link as it was.
+  In the collection view the scan's page is followed in the text only once the reader's text
+  is loaded, and only the latest page shown meanwhile.
 - **Return.** Search and Chat are kept alive while another page is shown (`router/keptPages.ts`,
   `meta.keepAlive`; their sidebar panels leave and return with them and their window listeners
   pause, `shared/whileShown.ts`), so the back link or browser back finds the results, the
   opened result or source and the scroll position as they were. The state is in memory: after
-  a reload of the document the back link leads to an empty search or conversation.
+  a reload of the document the back link leads to an empty search or conversation. This part
+  of #545's reload criterion is deferred, tracked in #584.

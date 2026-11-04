@@ -25,3 +25,21 @@ export function withMode<Q extends Record<string, unknown>> (query: Q, mode: Wor
   if (mode !== 'split') next.view = mode
   return next as Q
 }
+
+/**
+ * `query` after the reader moved to page `pageId` in the scan viewer: the page is kept
+ * (`?page=`) and the link targets it replaces (`targets`, e.g. a passage) are dropped, so a
+ * reload opens the page the reader moved to. Only the reader's own page changes are kept: the
+ * first page and pages opened for the text leave the link as it was.
+ */
+export function withScanPage<Q extends Record<string, unknown>> (query: Q, pageId: string, targets: readonly string[]): Q {
+  const next: Record<string, unknown> = { ...query }
+  for (const key of targets) delete next[key]
+  next.page = pageId
+  return next as Q
+}
+
+/** A key of the link targets `keys` in `query`: a change of the target, not of other parameters. */
+export function targetKey (query: Record<string, unknown>, keys: readonly string[]): string {
+  return JSON.stringify(keys.map(k => query[k] ?? null))
+}

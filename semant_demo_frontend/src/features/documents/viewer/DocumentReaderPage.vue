@@ -23,7 +23,7 @@
       :layout-cache="scanSync.layouts.value"
       :sticky-top="96"
       view-height="var(--document-layout-height, 100vh)"
-      @update:page-id="onScanPageId"
+      @navigate="onScanNavigate"
       @page-change="onScanPage"
       @loaded="onScanLoaded"
       @line-select="scanSync.sync.showLineInText"
@@ -113,6 +113,9 @@
                 <span class="gap-label">
                   <q-icon name="warning_amber" size="16px" />
                   {{ missingChunksText(gapSize(group)) }}
+                </span>
+                <span v-if="annotationCutAt(group)" class="gap-label gap-label--cut" data-testid="gap-annotation-cut">
+                  An annotation continues in the missing text; load it to see all of it.
                 </span>
                 <q-btn
                   flat dense no-caps
@@ -256,7 +259,7 @@ import { useReaderScanSync } from './useReaderScanSync'
 import { selectionRange } from '../correspondence/layoutMap'
 import DocumentWorkspace from '../workspace/DocumentWorkspace.vue'
 import { useWorkspaceMode } from '../workspace/useWorkspaceMode'
-import { parseMode, withMode, type WorkspaceMode } from '../workspace/workspaceMode'
+import { parseMode, targetKey, withMode, withScanPage, type WorkspaceMode } from '../workspace/workspaceMode'
 import WorkspaceModeToggle from '../workspace/WorkspaceModeToggle.vue'
 
 // The collection's document reader: the text of the displayed chunks (DocumentTextPane)
@@ -534,14 +537,25 @@ const textLoaded = new Promise<void>(resolve => { textReady = resolve })
 let scanReady: () => void = () => undefined
 const scanLoaded = new Promise<void>(resolve => { scanReady = resolve })
 let firstScanPage = true
+/** Incremented by every page shown in the scan: an older page still waiting for the text gives up. */
+let scanPageGeneration = 0
+/** The link's targets: an annotation or a chunk, or a page. */
+const LINK_TARGETS = ['annotation', 'chunk', 'order', 'page'] as const
+/** The targets a page the reader moved to replaces. */
+const TEXT_TARGETS = ['annotation', 'chunk', 'order'] as const
+/** The targets of the URL this page wrote itself (the reader's page change): not a new link. */
+let ownTarget: string | null = null
 
 function chooseMode (mode: WorkspaceMode) {
   workspace.chosen.value = mode
   void router.replace({ query: withMode(route.query, mode) })
 }
 
-function onScanPageId (id: string) {
-  if (id !== scanPageId.value) void router.replace({ query: { ...route.query, page: id } })
+/** The reader moved to another page in the scan: the URL opens it again, not the link's annotation or chunk. */
+function onScanNavigate (page: DocumentPage) {
+  const query = withScanPage(route.query, page.pageId, TEXT_TARGETS)
+  ownTarget = targetKey(query, LINK_TARGETS)
+  void router.replace({ query })
 }
 
 function onScanLoaded (info: { available: boolean, pages: DocumentPage[] }) {
@@ -551,17 +565,25 @@ function onScanLoaded (info: { available: boolean, pages: DocumentPage[] }) {
 }
 
 /**
- * A page shown in the scan: the text goes to it when the reader opened it there. The first
- * page shown is followed only when the link named it, and only once the text is loaded.
+ * A page shown in the scan: the text goes to it when the reader opened it there, once the text
+ * is loaded. The first page shown is followed only when the link named it; a page replaced
+ * while the text was still loading is not followed at all.
  */
 async function onScanPage (page: DocumentPage, index: number) {
-  if (!firstScanPage) {
-    void scanSync.sync.onScanPage(page, index)
-    return
-  }
+  const generation = ++scanPageGeneration
+  const first = firstScanPage
   firstScanPage = false
   await textLoaded
-  void scanSync.sync.onScanPage(page, index, { follow: linkedPageId === page.pageId })
+  if (generation !== scanPageGeneration) return
+  void scanSync.sync.onScanPage(page, index, { follow: !first || linkedPageId === page.pageId })
+}
+
+/** An annotation runs into this gap: its chunks are not known (a distant page shown, a large gap). */
+function annotationCutAt (group: { gapAfter: number | null, gapBefore: number | null }): boolean {
+  const { gapAfter, gapBefore } = group
+  if (gapAfter === null || gapBefore === null) return false
+  for (const order of annotations.cutAtGapOrders.value) if (order >= gapAfter && order < gapBefore) return true
+  return false
 }
 
 /** Text to scan once the manifest is known: the lines of a range (a linked annotation, a citation). */
@@ -575,6 +597,33 @@ watch(workspace.shown, async (mode, before) => {
   if (before !== 'scan' || mode === 'scan' || !at) return
   await nextTick()
   textPane.value?.revealRange(at)
+})
+
+// Another link to this document (a query-only navigation: Vue Router reuses the reader): its
+// annotation or chunk once the text is loaded; a page alone is opened by the scan viewer
+// (`pageId`), whose text follows it. The view follows `?view=`.
+watch(() => targetKey(route.query, LINK_TARGETS), async (key, before) => {
+  if (route.name !== 'documentDetailV1' || route.params.documentId !== props.documentId) return
+  if (key === before || key === ownTarget) return
+  ownTarget = null
+  await textLoaded
+  linkedAnnotationShown = null
+  linkedChunkShown = null
+  if (navHighlightedSpanId.value === linkedSpanId.value) navHighlightedSpanId.value = null
+  const { annotation, chunk } = route.query
+  if (typeof annotation === 'string' || typeof chunk === 'string') {
+    await showLinkedAnnotation()
+    await showLinkedChunk()
+    return
+  }
+  // The scan shows the linked page already: its text is shown as for a page change.
+  const shown = workspacePane.value?.currentPage()
+  const index = shown ? scanSync.pages.value.findIndex(p => p.pageId === shown.pageId) : -1
+  if (shown && index >= 0 && shown.pageId === scanPageId.value) void scanSync.sync.onScanPage(shown, index)
+})
+watch(() => route.query.view, (view) => {
+  if (route.name !== 'documentDetailV1') return
+  workspace.chosen.value = parseMode(view) ?? 'split'
 })
 
 /** A link to a chunk without an annotation (`?chunk=&order=`): the chunk in view and on the scan. */
@@ -951,9 +1000,12 @@ watch(
       await showLinkedAnnotation()
       await showLinkedChunk()
     }
-    textReady()
+    // Not the chunks cleared when the load starts: the text is loaded once the load is done.
+    if (!loading.value) textReady()
   }
 )
+// A load that failed, or found no chunks, without changing them: there is no text to wait for.
+watch(loading, (now) => { if (!now && !chunks.value.length) textReady() })
 
 watch(
   () => annotations.spansVersion.value,
@@ -1017,7 +1069,6 @@ onMounted(async () => {
     loadChunksInCollectionDocument(props.collectionId, props.documentId)
   ])
 
-  if (!chunks.value.length) textReady()
   void countDocumentChunks(props.documentId).then(n => { totalDocumentChunks.value = n })
 
   await nextTick()
@@ -1187,6 +1238,13 @@ onBeforeUnmount(() => {
   color: #92400e;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+/* Below the buttons, on its own line. */
+.gap-label--cut {
+  order: 1;
+  flex-basis: 100%;
+  font-weight: 400;
 }
 
 .gap-btn {

@@ -22,7 +22,7 @@
       <div class="image-pane__toolbar" role="toolbar" aria-label="Page scan controls">
         <q-btn
           flat dense round icon="chevron_left" aria-label="Previous page"
-          :disable="currentIndex <= 0" @click="goToPage(currentIndex - 1)"
+          :disable="currentIndex <= 0" @click="navigateTo(currentIndex - 1)"
         />
         <form class="image-pane__jump" @submit.prevent="jump">
           <q-input
@@ -44,7 +44,7 @@
         </span>
         <q-btn
           flat dense round icon="chevron_right" aria-label="Next page"
-          :disable="currentIndex >= pages.length - 1" @click="goToPage(currentIndex + 1)"
+          :disable="currentIndex >= pages.length - 1" @click="navigateTo(currentIndex + 1)"
         />
         <q-space />
         <span v-if="layoutNotice" class="image-pane__notice text-grey-8" data-testid="layout-notice">
@@ -100,7 +100,7 @@
         v-if="showThumbnails"
         :pages="pages"
         :current-index="currentIndex"
-        @select="goToPage"
+        @select="navigateTo"
       />
     </template>
   </section>
@@ -159,6 +159,9 @@ const emit = defineEmits<{
   'update:pageId': [pageId: string]
   /** The shown page changed (also the first page after loading). */
   pageChange: [page: DocumentPage, index: number]
+  /** The user moved to another page (the page buttons and keys, a thumbnail, the page field);
+   * not the first page, a focus request or a new `pageId`. */
+  navigate: [page: DocumentPage, index: number]
   /** A line was clicked. */
   lineSelect: [target: ScanTarget]
   /** A line became the current one by keyboard (Up/Down). */
@@ -273,10 +276,17 @@ function showPage (index: number, { force = false } = {}): Promise<PageLayout | 
   return layoutLoad
 }
 
-/** Show the page at `index` (user navigation; cancels a pending focus request). */
+/** Show the page at `index` (cancels a pending focus request). */
 function goToPage (index: number) {
   focusGeneration++
   void showPage(index)
+}
+
+/** The user moves to the page at `index`. */
+function navigateTo (index: number) {
+  if (index < 0 || index >= pages.value.length || index === currentIndex.value) return
+  goToPage(index)
+  emit('navigate', pages.value[index], index)
 }
 
 function jump () {
@@ -285,7 +295,7 @@ function jump () {
     jumpError.value = `No page "${jumpText.value.trim()}"`
     return
   }
-  goToPage(index)
+  navigateTo(index)
 }
 
 /**
@@ -348,8 +358,8 @@ function onKeydown (e: KeyboardEvent) {
   switch (e.key) {
     case 'ArrowDown': stepLine(1); break
     case 'ArrowUp': stepLine(-1); break
-    case 'PageDown': goToPage(currentIndex.value + 1); break
-    case 'PageUp': goToPage(currentIndex.value - 1); break
+    case 'PageDown': navigateTo(currentIndex.value + 1); break
+    case 'PageUp': navigateTo(currentIndex.value - 1); break
     case '+': case '=': view.value?.zoomIn(); break
     case '-': case '_': view.value?.zoomOut(); break
     case '0': view.value?.fit(); break

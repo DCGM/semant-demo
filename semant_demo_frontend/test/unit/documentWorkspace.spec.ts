@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { documentLink, returnLink } from 'src/features/documents/workspace/documentLink'
-import { parseMode, shownMode, withMode } from 'src/features/documents/workspace/workspaceMode'
+import { parseMode, shownMode, targetKey, withMode, withScanPage } from 'src/features/documents/workspace/workspaceMode'
 import { keepScrollOfKeptPages } from 'src/router/keptPages'
 
 // The paired document workspace (#545): its views, the links to the public document view and
@@ -24,6 +24,21 @@ describe('workspace views', () => {
     expect(parseMode(['scan'])).toBeNull()
     expect(withMode({ page: 'p1', view: 'scan' }, 'split')).toEqual({ page: 'p1' })
     expect(withMode({ page: 'p1' }, 'text')).toEqual({ page: 'p1', view: 'text' })
+  })
+})
+
+describe('the page the reader moved to in the URL (#545 review)', () => {
+  it('replaces the link target and keeps the rest', () => {
+    const query = { chunk: 'c1', start: '3', end: '9', view: 'scan', from: 'search', page: 'p1' }
+    expect(withScanPage(query, 'p2', ['chunk', 'start', 'end'])).toEqual({ view: 'scan', from: 'search', page: 'p2' })
+    expect(withScanPage({ annotation: 'a', chunk: 'c', order: '4' }, 'p3', ['annotation', 'chunk', 'order'])).toEqual({ page: 'p3' })
+  })
+
+  it('tells a new target from a change of other parameters', () => {
+    const keys = ['chunk', 'page'] as const
+    expect(targetKey({ chunk: 'c1', view: 'text' }, keys)).toBe(targetKey({ chunk: 'c1' }, keys))
+    expect(targetKey({ chunk: 'c1' }, keys)).not.toBe(targetKey({ chunk: 'c2' }, keys))
+    expect(targetKey({ page: 'p1' }, keys)).not.toBe(targetKey({ chunk: 'p1' }, keys))
   })
 })
 
