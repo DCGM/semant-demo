@@ -174,6 +174,34 @@ async def test_openrouter_request_applies_tier_reasoning_and_omits_claude_temper
 
 
 
+def ollama_catalog(thinking=None) -> dict:
+    tier = {"provider": "ollama", "model": "fake-thinking", "input_price": 0, "output_price": 0}
+    return {"tiers": {"tiny": tier | ({"thinking": thinking} if thinking else {})},
+            "features": {"summary": {"default": "tiny"}}}
+
+
+@pytest.mark.parametrize("thinking, think", [("separate", True), ("off", False), (None, "unset")])
+async def test_ollama_tier_thinking_is_separated_by_ollama_or_off(transport, thinking, think):
+    llm = gateway(transport, catalog=ollama_catalog(thinking))
+
+    reply = await llm.complete("summary", messages())
+    streamed = "".join([text async for text in llm.stream("summary", messages())])
+
+    assert [p.get("think", "unset") for p in transport.payloads] == [think, think]
+    # The model's thinking (in whatever format) is never part of the answer.
+    assert reply == streamed == "Fake summary of 2 passage(s); last [doc2]."
+
+
+@pytest.mark.parametrize("tier", [
+    {"provider": "ollama", "model": "m", "thinking": "on"},
+    {"provider": "ollama", "model": "m", "thinking": True},
+    {"provider": "openai", "model": "m", "thinking": "off"},   # OpenRouter tiers use reasoning
+])
+def test_catalog_rejects_invalid_thinking_settings(tier):
+    with pytest.raises(LlmConfigurationError, match="thinking"):
+        ModelCatalog.from_dict({"tiers": {"tiny": tier}, "features": {"x": {"default": "tiny"}}})
+
+
 # ── non-streamed calls ─────────────────────────────────────────────────────
 
 async def test_openai_compatible_call_records_provider_usage_and_estimated_cost(transport, metrics):

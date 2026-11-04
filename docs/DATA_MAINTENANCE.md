@@ -262,6 +262,57 @@ answers year-filtered searches with an error), and again after ingesting chunks 
 document years (for example after `metadata_sync`) until ingestion keeps the copy itself
 ([#313](https://github.com/DCGM/semant-demo/issues/313)).
 
+## Chunk titles (`chunk_titles`, #575)
+
+Generates a short title (the prompt asks for at most 10 words, in the excerpt's language; a
+reply over 20 words is refused) for chunks without one and writes only `Chunks.title`. **Run
+it after `chunk_ingest` and `metadata_sync`:** the prompt uses the title of the chunk's document, and chunks of documents without a title are deferred
+(`deferred_no_document_title`, exit 1) until a later run, or generated without it with
+`--allow-missing-document-title` (for documents Kramerius has no title for; the command cannot
+tell the two cases apart). It is independent of `chunk_year`, the embeddings (they use only
+`text`), the classification and `chunk_summaries`.
+
+```bash
+python -m semant_demo.maintenance.chunk_titles --check check.json \
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml --documents-from new_documents.txt
+python -m semant_demo.maintenance.chunk_titles --write write.json --confirm-endpoint HOST:PORT \
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml --documents-from new_documents.txt
+```
+
+- **Model.** `--models-config` is required: a tier catalog declaring the `chunk_titles` feature.
+  `configs/chunk_titles_ollama.yaml` uses the self-hosted `qwen3.5:9b` at the first `OLLAMA_URLS`
+  endpoint; `configs/chunk_titles_vllm.yaml` a vLLM server through its OpenAI-compatible API (set
+  its `base_url` and served `model`; `OPENAI_API_KEY` is sent to that server, so give it the
+  server's key, never another provider's). The command reads only the model's answer and never
+  parses its thinking (the format differs between models): the provider separates it. An Ollama
+  tier sets `thinking: off` or `separate` (the shipped file: `off`); a vLLM server runs a
+  thinking model with its `--reasoning-parser` or with thinking off (the catalog cannot switch
+  it per request, [#585](https://github.com/DCGM/semant-demo/issues/585)), and with a
+  `--max-model-len` of at least `max_input_tokens + max_output_tokens`. Thinking left in the
+  answer is refused as `invalid_output`. Copy either file for another model. The
+  application's `llm_models.yaml` does not declare the feature, so a run never uses the
+  application's paid tiers by default; doing so needs authorization for that run. Both modes
+  check the catalog and the provider settings before anything else, without a model call;
+  `--check` makes no model calls at all.
+- **Selection.** After an import pass the imported documents (`--documents-from FILE`, one id
+  per line), since the default (every untitled chunk of the store) also takes the older untitled
+  chunks. `--chunks`/`--chunks-from` select chunks; `--regenerate` (explicit selection only)
+  also replaces existing titles. Chunks that have a title are otherwise skipped, so a rerun makes
+  no model calls.
+- **Writes.** A merge of `title` alone, read back per page; the schema is never changed (a store
+  without `Chunks.title` is refused). Invalid replies (empty, several lines, too long) and failed
+  calls are never written; they are retried first when the same command runs again, once per
+  run (a chunk that keeps failing stays in the checkpoint for the next run). A failed write is
+  retried with its recorded title, without a new model call. `--limit` counts the retries.
+- **Records.** The checkpoint holds the run's provenance once (prompt version and hash, model,
+  catalog and its hash), the counts (also per chunk language) and the model usage.
+  `CHECKPOINT.titled.uuids` lists every chunk whose title the run wrote (raw 16-byte UUIDs);
+  `--chunks-from` accepts it, so `--regenerate` can redo exactly one run's titles. Keep both
+  with the run records.
+
+The older export-based scripts in `weaviate_utils/generate_text_chunk_titles/` (#80) were
+retired: they rewrote `order` and changed the schema.
+
 ## Document chunk-value summaries (`chunk_summary_schema`, `chunk_summaries`, #529)
 
 Document browsing and Analytics apply chunk filters (chunk language, classifications) per
@@ -540,7 +591,9 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
 
 1. `metadata_sync` fills the new documents' metadata.
 2. `chunk_year --write` copies their year to the chunks.
-3. `data_tools/embedder` computes the `Qwen3_Embedding_0_6B` vectors; until then the new chunks
+3. `chunk_titles --write` generates the new chunks' titles; after `metadata_sync`, since it uses
+   the document titles ([Chunk titles](#chunk-titles-chunk_titles-575)).
+4. `data_tools/embedder` computes the `Qwen3_Embedding_0_6B` vectors; until then the new chunks
    are missing from vector and hybrid search.
 
 The import does none of this, nor anything to existing annotations: their positions stay valid,

@@ -94,7 +94,8 @@ documents collections), an ``--offline-backup`` note is recorded as given and no
 Every reported document gets a line in ``CHECKPOINT.manifest.jsonl``.
 
 Afterwards run ``metadata_sync`` (document metadata), then ``chunk_year`` (the year on the
-new chunks) and ``data_tools/embedder`` (their vectors; until then they are missing from
+new chunks), ``chunk_titles`` (their titles; after ``metadata_sync``, since it uses the
+document titles) and ``data_tools/embedder`` (their vectors; until then they are missing from
 vector and hybrid search), see ``docs/DATA_MAINTENANCE.md``.
 
 Exit code 0 when the pass is complete and nothing was rejected, invalid or blocked; 1

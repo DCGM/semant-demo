@@ -211,6 +211,10 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 
 - **Named vectors** — pre-computed embeddings; the deployed store holds only `Qwen3_Embedding_0_6B` (Qwen/Qwen3-Embedding-0.6B, 1,024 dimensions, #385). The former `default` vector (`BAAI/bge-multilingual-gemma2`) was dropped ([audit](WEAVIATE_AUDIT_2026-10-17.md))
 - `text` — the full chunk text (also used for BM25)
+- `title` (`text`) — a short generated title of the chunk, shown on search hits and searched by
+  BM25 with the other text properties. Chunk ingestion writes none: `python -m
+  semant_demo.maintenance.chunk_titles` generates and writes it
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-titles-chunk_titles-575), #575)
 - `from_page` / `to_page` — page range in the source document
 - `start_page_id` — UUID of the first page
 - `ner_*` — named entity arrays extracted by NER (Persons, Temporal, Address, Geographical, Institution, Media, Cultural artifacts)
@@ -567,8 +571,9 @@ New chunks are added by the append-only import
   first chunk it inserts an empty `Documents` object.
 - **What it never does.** It never changes the schema or an existing object, and writes no document
   metadata, `yearIssued`, vectors or annotations.
-- **Afterwards.** `metadata_sync` fills the documents, `chunk_year` the chunk years and
-  `data_tools/embedder` the `Qwen3_Embedding_0_6B` vectors.
+- **Afterwards.** `metadata_sync` fills the documents, `chunk_year` the chunk years,
+  `chunk_titles` (after `metadata_sync`) the chunk titles and `data_tools/embedder` the
+  `Qwen3_Embedding_0_6B` vectors.
 
 The input format, the plan per document and the procedure are in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313). The former

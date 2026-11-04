@@ -67,6 +67,11 @@ class TierModel:
     """Optional OpenRouter ``reasoning`` payload, fixed server-side per tier."""
     supports_temperature: bool = True
     """Some current models reject non-default sampling temperatures altogether."""
+    thinking: str | None = None
+    """Ollama tiers only: ``separate`` (the model thinks; Ollama returns the thinking apart from
+    the answer, in the model's own format) or ``off``; ``None`` keeps the model's default, which
+    for a thinking model leaves its thinking in the answer. Ollama refuses both values for a
+    model that cannot think."""
 
     def estimated_cost(self, input_tokens: int, output_tokens: int) -> float | None:
         if self.input_price is None or self.output_price is None:
@@ -148,6 +153,10 @@ class ModelCatalog:
         return policy
 
 
+THINKING = ("separate", "off")
+"""The values of an Ollama tier's ``thinking``."""
+
+
 def _tiers(names: Iterable[str]) -> list[ModelTier]:
     return [ModelTier(n) for n in names]
 
@@ -169,6 +178,9 @@ def _tier(tier: ModelTier, spec: dict[str, Any]) -> TierModel:
                 raise ValueError(f"reasoning.{flag} must be a boolean")
         if reasoning.get("enabled") is False and "effort" in reasoning:
             raise ValueError("Disabled reasoning cannot have an effort")
+    thinking = spec.get("thinking")
+    if thinking is not None and (provider != Provider.ollama or thinking not in THINKING):
+        raise ValueError(f"thinking is an Ollama tier option: one of {', '.join(THINKING)}")
     supports_temperature = spec.get("supports_temperature", True)
     if not isinstance(supports_temperature, bool):
         raise ValueError("supports_temperature must be a boolean")
@@ -187,6 +199,7 @@ def _tier(tier: ModelTier, spec: dict[str, Any]) -> TierModel:
         price_basis=price_basis,
         reasoning=reasoning,
         supports_temperature=supports_temperature,
+        thinking=thinking,
     )
 
 
