@@ -206,7 +206,8 @@ python -m semant_demo.maintenance.page_import anchors --check check_after.json -
   - it writes only differing anchors (`set`), and clears anchors the plan no longer verifies
     (`clear`). Each write is a merge of `layoutStart` alone, then read back;
   - it skips chunks whose text changed since the plan (`text_changed`) and refuses a plan whose
-    parameters differ from the manifest's;
+    parameters differ from the manifest's. A skipped chunk keeps its stored anchor, which the
+    viewer then shows as approximate, until `assets` is run again for its document (#593);
   - `--write` declares `Chunks.layoutStart` when it is missing (an additive schema change).
 - **Resuming.** Both steps are simply run again with the same arguments and a new report
   name. Files are replaced atomically, so an interrupted page leaves no partial file;
@@ -227,6 +228,20 @@ python -m semant_demo.maintenance.page_import anchors --check check_after.json -
   per thumbnail; the assets are regenerable and need no backup. The documents' pages must be
   in the mirror and their files mounted; scans under paths that are not mounted are
   `missing_image`.
+- **Verifying a run.** After `anchors --write`, `anchors --check` must exit 0 (nothing left to
+  write, no changed text). Read the anchor totals of the `assets` report per document: most
+  documents anchor every chunk exactly; a document with many `not_found`/`too_different`
+  chunks usually has stored chunks made from another OCR or a page list that repeats pages,
+  not a matcher fault (compare a stored chunk with `page_layout` output for the same pages;
+  #591). Many `missing_image` pages under one path usually mean an unmounted share: mount it
+  and run `assets` again. The expected numbers and the limitations are in
+  [PAGE_LAYOUT.md](PAGE_LAYOUT.md#validation-on-real-material-546). To confirm that a write
+  changed nothing but `layoutStart`, compare an export of the objects' properties and vectors
+  before and after on the rehearsal copy.
+- **Prerequisites.** `page_order` needs the PostgreSQL driver and a `postgresql+psycopg://`
+  DSN (as for `metadata_sync`, above); a plain `postgresql://` DSN asks for `psycopg2`, which
+  is not installed. On 32 documents (1,565 pages) `assets` took 80 s and 220 MB of memory,
+  reading the sources over the network share; `anchors --write` took a few seconds.
 - **Safety.** Follow the rules above for the `--write` step (endpoint, authorization,
   backup). The `assets` step writes to the asset directory only. Rehearse on a disposable
   copy first; record the results on the issue or PR.
