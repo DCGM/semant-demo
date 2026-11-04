@@ -39,7 +39,7 @@
       :highlights="sync.scanHighlights.value"
       :layout-cache="layouts"
       :sticky-top="STICKY_TOP"
-      @update:page-id="onPageId"
+      @navigate="onNavigate"
       @page-change="onScanPage"
       @loaded="onLoaded"
       @line-select="sync.showLineInText"
@@ -121,7 +121,7 @@ import { gapSize, missingChunksText, type ChunkRange, type TextPoint } from '../
 import DocumentWorkspace from './DocumentWorkspace.vue'
 import { returnLink } from './documentLink'
 import { useWorkspaceMode } from './useWorkspaceMode'
-import { parseMode, withMode, type WorkspaceMode } from './workspaceMode'
+import { parseMode, targetKey, withMode, withScanPage, type WorkspaceMode } from './workspaceMode'
 import WorkspaceModeToggle from './WorkspaceModeToggle.vue'
 
 // The public document view (#545, `/documents/:documentId`): the document's canonical text
@@ -129,10 +129,17 @@ import WorkspaceModeToggle from './WorkspaceModeToggle.vue'
 // document's metadata in the general right sidebar. Read-only and without a collection: no
 // annotation is read and no editing state exists. Deep links: `?page=<page id>` opens a page
 // and its text, `?chunk=<chunk id>&start=&end=` a passage (UTF-16 offsets in the chunk) and its
-// lines, `?view=split|text|scan` the view, `?from=search|chat` the back link.
+// lines, `?view=split|text|scan` the view, `?from=search|chat` the back link. A change of these
+// on the same document (another link to it) is followed without reading the document again. The
+// reader's own page changes in the scan viewer replace the passage with the page in the URL;
+// the first page and pages opened for the text leave the link as it was.
 
 /** Below the application header (MainLayout), with a small gap. */
 const STICKY_TOP = 58
+/** The link's targets: a passage, or a page. */
+const TARGETS = ['chunk', 'start', 'end', 'page'] as const
+/** The targets a page the reader moved to replaces. */
+const PASSAGE = ['chunk', 'start', 'end'] as const
 
 const props = defineProps<{ documentId: string }>()
 
@@ -148,6 +155,10 @@ const layouts = shallowRef(createLayoutCache())
 const linkedRange = shallowRef<ChunkRange | null>(null)
 /** The deep link has been handled: from then on, page changes in the scan viewer are followed. */
 let following = false
+/** Incremented by every link target: an older one still loading gives up. */
+let targetGeneration = 0
+/** The targets of the URL this page wrote itself (the reader's page change): not a new link. */
+let ownTarget: string | null = null
 let manifestReady: () => void = () => undefined
 let manifest: Promise<void> = Promise.resolve()
 
@@ -190,8 +201,10 @@ watch(workspace.shown, async (mode, before) => {
   textPane.value?.revealRange(at)
 })
 
-function onPageId (id: string) {
-  if (id !== pageId.value) void router.replace({ query: { ...route.query, page: id } })
+function onNavigate (page: DocumentPage) {
+  const query = withScanPage(route.query, page.pageId, PASSAGE)
+  ownTarget = targetKey(query, TARGETS)
+  void router.replace({ query })
 }
 
 function onLoaded (info: { available: boolean, pages: DocumentPage[] }) {
@@ -232,20 +245,11 @@ async function open (documentId: string) {
   text.reset()
   layouts.value = createLayoutCache()
   manifest = new Promise(resolve => { manifestReady = resolve })
+  ownTarget = null
+  const generation = ++targetGeneration
   const chunkId = typeof route.query.chunk === 'string' ? route.query.chunk : null
   if (chunkId) {
-    const chunk = await text.openChunk(chunkId)
-    await manifest
-    if (documentId !== props.documentId) return
-    following = true
-    if (!chunk) return
-    const length = chunk.text.length
-    const start = Math.min(queryNumber('start') ?? 0, length)
-    const end = Math.min(length, Math.max(start, queryNumber('end') ?? start))
-    if (end > start) linkedRange.value = { chunkId, start, end }
-    await nextTick()
-    textPane.value?.revealRange({ chunkId, start })
-    await sync.showTextOnScan({ chunkId, start, end }, { markLine: end === start })
+    await showPassage(documentId, chunkId, generation)
     return
   }
   await manifest
@@ -255,6 +259,43 @@ async function open (documentId: string) {
   const index = shown ? pages.value.findIndex(p => p.pageId === shown.pageId) : -1
   if (pageId.value && shown && index >= 0) await sync.onScanPage(shown, index)
   if (!text.chunks.value.length && documentId === props.documentId) await text.openStart()
+}
+
+/** A linked passage (`?chunk=&start=&end=`): its text in view and its lines on the scan. */
+async function showPassage (documentId: string, chunkId: string, generation: number) {
+  const chunk = await text.openChunk(chunkId)
+  await manifest
+  if (documentId !== props.documentId || generation !== targetGeneration) return
+  following = true
+  if (!chunk) return
+  const length = chunk.text.length
+  const start = Math.min(queryNumber('start') ?? 0, length)
+  const end = Math.min(length, Math.max(start, queryNumber('end') ?? start))
+  linkedRange.value = end > start ? { chunkId, start, end } : null
+  await nextTick()
+  textPane.value?.revealRange({ chunkId, start })
+  await sync.showTextOnScan({ chunkId, start, end }, { markLine: end === start })
+}
+
+/**
+ * Another link to this document (a query change; the page is reused): its passage is shown
+ * with the text read so far. A page alone is opened by the scan viewer (`pageId`) and its
+ * text followed from there.
+ */
+function followLink () {
+  const generation = ++targetGeneration
+  const chunkId = typeof route.query.chunk === 'string' ? route.query.chunk : null
+  if (chunkId) {
+    void showPassage(props.documentId, chunkId, generation)
+    return
+  }
+  // The scan shows the linked page already: its text is shown as for a page change.
+  const shown = workspacePane.value?.currentPage()
+  const index = shown ? pages.value.findIndex(p => p.pageId === shown.pageId) : -1
+  if (shown && index >= 0 && shown.pageId === pageId.value) {
+    linkedRange.value = null
+    void sync.onScanPage(shown, index)
+  }
 }
 
 async function loadDocument (id: string) {
@@ -271,10 +312,22 @@ async function loadDocument (id: string) {
   }
 }
 
-watch(() => props.documentId, (id) => {
-  void loadDocument(id)
-  void open(id)
+// Another document is read anew; another link to this one (a query-only navigation: Vue
+// Router reuses the page) shows its target with the document read so far.
+watch(() => [props.documentId, targetKey(route.query, TARGETS)] as const, ([id, key], before) => {
+  if (!before || id !== before[0]) {
+    void loadDocument(id)
+    void open(id)
+    return
+  }
+  if (route.name !== 'document' || key === before[1] || key === ownTarget) return
+  ownTarget = null
+  followLink()
 }, { immediate: true })
+watch(() => route.query.view, (view) => {
+  if (route.name !== 'document') return
+  workspace.chosen.value = parseMode(view) ?? 'split'
+})
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(() => {

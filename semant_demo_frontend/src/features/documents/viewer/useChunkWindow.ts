@@ -3,6 +3,13 @@ import type { CollectionChunk } from 'src/generated/api'
 import { useChunksRepository } from '../useChunksRepository'
 
 /**
+ * The largest gap (in chunks) that `showRange` reads as hidden chunks, so that annotations
+ * crossing it are projected as on the initial load (`preloadGapChunks`). A larger gap is left
+ * unread: annotations running into it are reported (`useAnnotations` `cutAtGapOrders`).
+ */
+export const GAP_PRELOAD_LIMIT = 100
+
+/**
  * The chunks the reader shows: the collection's chunks of a document plus preview chunks
  * loaded around them, and hidden chunks that are kept only for offset math across gaps.
  * `relayout` is called after the displayed chunks changed and were rendered.
@@ -296,17 +303,49 @@ export function useChunkWindow (
     let complete = true
     for (let order = from; order <= to; order++) if (!shownOrders.has(order)) { complete = false; break }
     if (complete) return { shown: inRange(), fresh: [] }
-    const chunks = await repository.getChunksInRange(collectionId(), documentId(), from - 1, to + 1)
+    const [chunks, gapChunks] = await Promise.all([
+      repository.getChunksInRange(collectionId(), documentId(), from - 1, to + 1),
+      readNewGaps(from, to)
+    ])
     const known = new Set(displayChunks.value.map(c => c.id))
     const fresh = chunks.filter(c => !known.has(c.id))
     if (fresh.length) {
       const ids = new Set(fresh.map(c => c.id))
-      hiddenPreviewChunks.value = hiddenPreviewChunks.value.filter(c => !ids.has(c.id))
+      const hidden = hiddenPreviewChunks.value.filter(c => !ids.has(c.id))
+      const hiddenIds = new Set(hidden.map(c => c.id))
+      hiddenPreviewChunks.value = [...hidden, ...gapChunks.filter(c => !known.has(c.id) && !ids.has(c.id) && !hiddenIds.has(c.id))]
       displayChunks.value = [...displayChunks.value, ...fresh].sort((a, b) => a.order - b.order)
       await relayoutAfterRender()
       await checkNeighbours()
     }
     return { shown: inRange(), fresh }
+  }
+
+  /**
+   * The chunks of the gaps that showing `from`..`to` opens next to the text shown, read as on
+   * the initial load (`preloadGapChunks`) for annotations crossing them, when the gap is at most
+   * GAP_PRELOAD_LIMIT chunks and not known already. A failed read leaves the gap unread.
+   */
+  async function readNewGaps (from: number, to: number): Promise<CollectionChunk[]> {
+    const orders = displayChunks.value.map(c => c.order)
+    const before = orders.filter(o => o < from)
+    const after = orders.filter(o => o > to)
+    const known = new Set([...displayChunks.value, ...hiddenPreviewChunks.value].map(c => c.order))
+    const gaps: [number, number][] = []
+    if (before.length) gaps.push([Math.max(...before), from])
+    if (after.length) gaps.push([to, Math.min(...after)])
+    const reads = gaps
+      .filter(([a, b]) => {
+        const size = b - a - 1
+        if (size <= 0 || size > GAP_PRELOAD_LIMIT) return false
+        for (let o = a + 1; o < b; o++) if (!known.has(o)) return true
+        return false
+      })
+      .map(([a, b]) => repository.getChunksInRange(collectionId(), documentId(), a, b).catch((e) => {
+        console.warn('Reading the chunks of a gap failed:', e)
+        return [] as CollectionChunk[]
+      }))
+    return (await Promise.all(reads)).flat()
   }
 
   /** Stops showing a chunk; a preview chunk is kept hidden for offset math. */

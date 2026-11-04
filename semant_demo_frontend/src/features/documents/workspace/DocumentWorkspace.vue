@@ -24,8 +24,8 @@
         :document-title="documentTitle"
         :highlights="highlights"
         :layout-cache="layoutCache"
-        @update:page-id="emit('update:pageId', $event)"
         @page-change="(page, index) => emit('pageChange', page, index)"
+        @navigate="(page, index) => emit('navigate', page, index)"
         @line-select="emit('lineSelect', $event)"
         @line-focus="emit('lineFocus', $event)"
         @loaded="emit('loaded', $event)"
@@ -65,9 +65,10 @@ withDefaults(defineProps<{
 }>(), { pageId: null, documentTitle: '', highlights: () => [], layoutCache: null, stickyTop: 0, viewHeight: '100vh' })
 
 const emit = defineEmits<{
-  'update:pageId': [pageId: string]
   'update:narrow': [narrow: boolean]
   pageChange: [page: DocumentPage, index: number]
+  /** The user moved to another page in the scan viewer. */
+  navigate: [page: DocumentPage, index: number]
   lineSelect: [target: ScanTarget]
   lineFocus: [target: ScanTarget]
   loaded: [info: { available: boolean, pageCount: number, pages: DocumentPage[] }]

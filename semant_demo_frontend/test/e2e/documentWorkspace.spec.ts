@@ -257,6 +257,57 @@ test.describe('the public document view', () => {
     await expect(notice(page)).toHaveCount(0)
   })
 
+  test('the reader\'s page change replaces the linked passage in the URL; a reload opens that page', async ({ page }) => {
+    await useViewport(page, 'wide')
+    const passage = fixture.chunk('chronicle_1')
+    await open(page, chronicle.id, `?chunk=${passage.id}&start=0&end=5&from=search`)
+    await expect(position(page)).toHaveText('2 / 7')
+    await expect(chunk(page, 'chronicle_1').locator('.is-active-passage')).not.toHaveCount(0)
+    // The page opened for the passage is not written into the link.
+    await expect(page).not.toHaveURL(/page=/)
+
+    await page.getByRole('button', { name: 'Next page' }).click()
+    await expect(position(page)).toHaveText('3 / 7')
+    await expect(page).toHaveURL(new RegExp(`page=${PAGE_2}`))
+    await expect(page).not.toHaveURL(/chunk=|start=|end=/)
+    await expect(page).toHaveURL(/from=search/)
+
+    // Reloaded: the page the reader moved to, not the passage of the original link.
+    await page.reload()
+    await expect(position(page)).toHaveText('3 / 7')
+    await expect(chunk(page, 'chronicle_3')).toBeVisible()
+    await expect(chunk(page, 'chronicle_1')).toHaveCount(0)
+    await expect(page.locator('.is-active-passage')).toHaveCount(0)
+  })
+
+  test('another link to the same document shows its passage, page and view without opening it again', async ({ page }) => {
+    await useViewport(page, 'wide')
+    const first = fixture.chunk('chronicle_1')
+    const second = fixture.chunk('chronicle_3')
+    await open(page, chronicle.id, `?chunk=${first.id}&start=0&end=5`)
+    await expect(position(page)).toHaveText('2 / 7')
+    await expect(chunk(page, 'chronicle_1').locator('.is-active-passage')).not.toHaveCount(0)
+    const documentReads: string[] = []
+    page.on('request', r => { if (new URL(r.url()).pathname === `/api/document/${chronicle.id}`) documentReads.push(r.url()) })
+    const follow = (query: string) => page.evaluate((hash) => { location.hash = hash }, `#/documents/${chronicle.id}${query}`)
+
+    // A query-only navigation: the same page shows the new passage and its page.
+    const word = second.text.indexOf('polovinu')
+    await follow(`?chunk=${second.id}&start=${word}&end=${word + 'polovinu'.length}`)
+    await expect(position(page)).toHaveText('3 / 7')
+    await expect(chunk(page, 'chronicle_3').locator('.is-active-passage')).toHaveText('polovinu')
+    await expect(chunk(page, 'chronicle_1').locator('.is-active-passage')).toHaveCount(0)
+
+    // The view of the link, and the default view of a link without one.
+    await follow(`?chunk=${second.id}&start=${word}&end=${word + 'polovinu'.length}&view=text`)
+    await expect(workspace(page)).toHaveAttribute('data-mode', 'text')
+    await follow(`?page=${PAGE_1}`)
+    await expect(workspace(page)).toHaveAttribute('data-mode', 'split')
+    await expect(position(page)).toHaveText('2 / 7')
+    await expect(page.locator('.is-active-passage')).toHaveCount(0)
+    expect(documentReads).toEqual([])
+  })
+
   test('an unknown document says so', async ({ page }) => {
     await useViewport(page, 'wide')
     await page.goto('/#/documents/5e3a0000-0000-4000-8000-00000000dead')
@@ -352,6 +403,48 @@ test.describe('the collection document view', () => {
     await modes(page).getByRole('button', { name: 'Text', exact: true }).click()
     await expect(page.getByTestId('workspace-scan')).toBeHidden()
     await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+  })
+
+  test('the reader\'s page change replaces the linked annotation in the URL; a reload opens that page', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await ensureLoggedIn(page, 'owner')
+    const novak = fixture.span('novak_manual')
+    await page.goto(collectionUrl(`?annotation=${novak.id}&chunk=${fixture.chunk('chronicle_1').id}`))
+    // The annotation's page, opened for the text: not written into the link.
+    await expect(position(page)).toHaveText('2 / 7')
+    await expect(page).not.toHaveURL(/page=/)
+
+    await page.getByRole('button', { name: 'Next page' }).click()
+    await expect(position(page)).toHaveText('3 / 7')
+    await expect(page).toHaveURL(new RegExp(`page=${PAGE_2}`))
+    await expect(page).not.toHaveURL(/annotation=|chunk=|order=/)
+
+    await page.reload()
+    await expect(position(page)).toHaveText('3 / 7')
+    await expect(chunk(page, 'chronicle_3').locator('.is-current-page')).not.toHaveCount(0)
+  })
+
+  test('a page change while the text is still loading is followed, not the page shown first', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await ensureLoggedIn(page, 'owner')
+    // The collection's chunks of the document arrive only once the reader moved on in the scan.
+    let release: () => void = () => undefined
+    const released = new Promise<void>(resolve => { release = resolve })
+    await page.route(new RegExp(`/api/user_collections/${chronicles.id}/documents/${chronicle.id}/chunks(\\?|$)`), async (route) => {
+      await released
+      await route.continue()
+    })
+    await page.goto(collectionUrl(`?page=${PAGE_1}`))
+    await expect(position(page)).toHaveText('2 / 7')
+    await page.getByRole('button', { name: 'Next page' }).click()
+    await expect(position(page)).toHaveText('3 / 7')
+    // Still no text of the collection.
+    await expect(chunk(page, 'chronicle_1')).toHaveCount(0)
+    release()
+
+    await expect(chunk(page, 'chronicle_3').locator('.is-current-page')).not.toHaveCount(0)
+    await expect(chunk(page, 'chronicle_1').locator('.is-current-page')).toHaveCount(0)
+    await expect(position(page)).toHaveText('3 / 7')
   })
 
   test('a collection the user cannot open says so and leads to the public document', async ({ page }) => {

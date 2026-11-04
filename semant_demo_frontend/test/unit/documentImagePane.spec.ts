@@ -131,6 +131,8 @@ describe('DocumentImagePane', () => {
     await w.setProps({ pageId: 'p3' })
     await flushPromises()
     expect(w.find('[data-testid="no-scan"]').exists()).toBe(true)
+    // A page given by the owner is not the user's navigation.
+    expect(w.emitted('navigate')).toBeUndefined()
   })
 
   it('reports a manifest failure with a retry', async () => {
@@ -190,6 +192,8 @@ describe('DocumentImagePane', () => {
     expect(w.emitted('update:pageId')!.at(-1)![0]).toBe('p2')
     await press(w, 'PageUp')
     expect(w.emitted('update:pageId')!.at(-1)![0]).toBe('p1')
+    // The user's own page changes, which the owner keeps in its URL (#545 review).
+    expect(w.emitted('navigate')!.map(e => (e[0] as { pageId: string }).pageId)).toEqual(['p2', 'p1'])
   })
 
   it('leaves the keys of the page field and of modified shortcuts alone', async () => {
@@ -217,6 +221,8 @@ describe('DocumentImagePane', () => {
     await flushPromises()
     // The first page on opening, then the page labelled "2" ("[1]" is shown already).
     expect(w.emitted('update:pageId')!.map(e => e[0])).toEqual(['p0', 'p2'])
+    // The first page is not the user's navigation; the jump is.
+    expect(w.emitted('navigate')!.map(e => (e[0] as { pageId: string }).pageId)).toEqual(['p2'])
   })
 
   it('reports a clicked line by its source ids', async () => {
@@ -242,6 +248,8 @@ describe('DocumentImagePane', () => {
     expect(await older).toBe(false)
     expect(await newer).toBe(true)
     expect(w.emitted('update:pageId')!.at(-1)![0]).toBe('p1')
+    // A focus request opens pages for the text, not as the user's navigation.
+    expect(w.emitted('navigate')).toBeUndefined()
     loadImage(w)
     await flushPromises()
     expect(w.find('polygon.scan-line--active').attributes('data-line-id')).toBe('p1-l2')
