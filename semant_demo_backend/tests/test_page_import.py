@@ -289,6 +289,31 @@ async def test_pages_without_line_heights_or_with_large_print(tmp_path):
     assert 0 < summary["imagePixelsRatio"] < 1 and summary["scanProfile"]["quality"] == 85
 
 
+async def test_a_page_xml_without_image_size_keeps_the_scan_size_and_its_coordinates(tmp_path, monkeypatch):
+    """Regression (#598 review): with large lines but no PAGE image size, a reduced scan would
+    leave the layout in unknown coordinates; the scan keeps its size and is only re-encoded."""
+    import semant_demo.maintenance.page_import.assets as assets_module
+    real_zip = assets_module.read_page_xml_zip
+
+    def without_size(archive):
+        pages, unrecognized = real_zip(archive)
+        return {k: v.replace(b' imageWidth="1378" imageHeight="2000"', b"") for k, v in pages.items()}, unrecognized
+    monkeypatch.setattr(assets_module, "read_page_xml_zip", without_size)
+    regions = [[("r1", [line(f"r1-l{i}", f"Velké písmo, řádek číslo {i}.", heights="[60, 40]") for i in range(3)])],
+               [], []]
+    store, sources = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src", images=(0,), regions=regions)
+
+    _, line_report = await assets(store, sources, [], tmp_path)
+
+    assert line_report["assets"]["image_unresized"] == 1 and "image_resized" not in line_report["assets"]
+    assert line_report["assets"]["image_unknown_layout_size"] == 1
+    assert "unknown_layout_size" in {w["code"] for w in line_report["warnings"]}
+    assert size_of(store.asset_file(DOC, PAGES[0], "image")) == (WIDTH, HEIGHT)
+    page = page_files(store)[str(PAGES[0])]
+    assert page["image"] is None and page["regions"][0]["lines"][0]["heights"] == [60, 40]  # unscaled
+    assert line_report["scans"][0]["lineHeightP10"] == 100.0 and line_report["scans"][0]["reduction"] == 1.0
+
+
 async def test_an_unavailable_source_keeps_the_stored_scan_and_its_layout(tmp_path):
     store, sources, chunks = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src"), stored_chunks()
     await assets(store, sources, chunks, tmp_path)

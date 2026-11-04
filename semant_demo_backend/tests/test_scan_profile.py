@@ -77,6 +77,18 @@ def test_layout_of_the_same_size_or_without_image_is_unchanged():
     assert sp.scale_layout(empty, (10, 10)) is empty
 
 
+@pytest.mark.parametrize("image", [None, {}, {"width": 0, "height": 2000}, {"width": 1000, "height": None},
+                                   {"width": -5, "height": 2000}, {"width": 1000.0, "height": 2000},
+                                   {"width": True, "height": 2000}])
+def test_an_unknown_or_invalid_layout_size_neither_scales_nor_reduces(image):
+    """Without a valid coordinate system the geometry cannot follow a smaller scan (#598 review)."""
+    page = {**layout([[60, 40]] * 3), "image": image}
+    assert sp.layout_size(page) is None
+    assert sp.scale_layout(page, (300, 600)) is page
+    assert sp.source_line_height(page, (1000, 2000)) is None
+    assert sp.reduction(sp.source_line_height(page, (1000, 2000))) == 1.0
+
+
 @pytest.mark.parametrize("mode", ["RGB", "L", "CMYK"])
 def test_derived_scan_is_a_quality_85_jpeg_of_the_requested_size(mode):
     out = io.BytesIO()

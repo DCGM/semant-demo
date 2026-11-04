@@ -211,7 +211,9 @@ python -m semant_demo.maintenance.page_import anchors --check check_after.json -
   heights (`image_no_heights`). The layout's `image` size, baselines, heights and word starts are
   scaled to the stored JPEG's integer size (rounded; baselines clamped to the image). Ids, text,
   order, chunk text, offsets and anchors are unchanged: anchors are verified on the original
-  PAGE geometry before scaling. A page without a stored scan keeps the PAGE geometry. To change
+  PAGE geometry before scaling. A page without a stored scan keeps the PAGE geometry. A page
+  whose PAGE XML has no valid image size (`unknown_layout_size`) cannot have its geometry
+  scaled, so its scan keeps the source's size and is only re-encoded. To change
   the profile, edit it there (and its `version`) and run `assets` again: every scan, layout and
   thumbnail is made again from the originals.
 
