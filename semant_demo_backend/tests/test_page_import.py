@@ -1,7 +1,7 @@
 """The existing-corpus page import (#542) with synthetic PAGE XML, JPEGs and fake chunk stores.
 
-``assets`` writes page files, scans, thumbnails, the manifest and an anchor plan, page by
-page and repeatably; ``anchors`` writes only the anchors that differ from the stored ones and
+``assets`` writes page files, derived scans (import profile v1, #594), thumbnails, the
+manifest and an anchor plan, page by page and repeatably; ``anchors`` writes only the anchors that differ from the stored ones and
 never touches chunk text. Sources that are missing or corrupt are reported, not fatal.
 """
 import asyncio
@@ -18,12 +18,12 @@ from PIL import Image
 from semant_demo.adapters.filesystem.page_assets import PageAssetStore
 from semant_demo.adapters.weaviate.layout_anchors import AnchoredChunk
 from semant_demo.features.documents.positions import text_length
-from semant_demo.maintenance.page_import import run
+from semant_demo.maintenance.page_import import run, scan_profile
 from semant_demo.maintenance.page_import.__main__ import _main
-from semant_demo.maintenance.page_import.assets import plan_path
+from semant_demo.maintenance.page_import.assets import plan_path, scan_state_path
 from semant_demo.maintenance.page_layout.anchors import replay
 from semant_demo.maintenance.page_layout.convert import convert_document
-from tests.test_page_layout import SMALL, page_xml, para
+from tests.test_page_layout import SMALL, line, page_xml, para
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d542")
 PAGES = [UUID(int=0x542_000 + i) for i in range(3)]
@@ -34,29 +34,41 @@ REGIONS = [
 ]
 
 
-def jpeg(width=120, height=200, color=(200, 190, 170)) -> bytes:
+WIDTH, HEIGHT = 1378, 2000
+"""The size the synthetic PAGE XML names (``tests.test_page_layout.page_xml``)."""
+RESIZED = (954, 1385)
+"""Its default lines are 19 + 7 = 26 px high: 26 / 18 = 1.44 times smaller."""
+
+
+def jpeg(width=WIDTH, height=HEIGHT, color=(200, 190, 170)) -> bytes:
     out = io.BytesIO()
-    Image.new("RGB", (width, height), color).save(out, "JPEG")
+    Image.new("RGB", (width, height), color).save(out, "JPEG", quality=95)
     return out.getvalue()
+
+
+def size_of(path: Path) -> tuple[int, int]:
+    with Image.open(path) as image:
+        assert image.format == "JPEG"
+        return image.size
 
 
 class Sources:
     """A document's sources on disk and its export line (``page_order``, #571)."""
 
-    def __init__(self, root: Path, xml_pages=(0, 1), images=(0, 1)):
+    def __init__(self, root: Path, xml_pages=(0, 1), images=(0, 1), regions=REGIONS):
         self.root = root
         root.mkdir(parents=True, exist_ok=True)
         self.zip = root / f"{DOC}.page_xml.zip"
         with zipfile.ZipFile(self.zip, "w") as zf:
             for i in xml_pages:
-                zf.writestr(f"{PAGES[i]}.xml", page_xml(PAGES[i], REGIONS[i]))
+                zf.writestr(f"{PAGES[i]}.xml", page_xml(PAGES[i], regions[i]))
         self.images = {}
         for i in range(3):
             path = root / "images" / f"{PAGES[i]}.jpg"
             self.images[i] = path
             if i in images:
                 path.parent.mkdir(exist_ok=True)
-                path.write_bytes(jpeg(width=120 + i))
+                path.write_bytes(jpeg(color=(200, 190, 170 - 20 * i)))
         self.export = {"documentId": str(DOC), "status": "exported", "library": "nlk", "pages": [
             {"pageId": str(PAGES[i]), "order": i, "label": f"[{i + 1}]", "pageType": "NormalPage",
              "imagePath": str(self.images[i]), "pageXmlPath": str(self.zip), "hasImage": True, "hasPageXml": True}
@@ -97,16 +109,24 @@ async def test_import_writes_pages_scans_thumbnails_manifest_and_plan(tmp_path):
     summary, line = await assets(store, sources, chunks, tmp_path)
 
     assert run.assets_exit_code(summary) == 0 and line["status"] == "imported"
-    assert line["assets"] == {"image_copied": 1, "image_missing": 2, "layout_written": 3, "thumbnail_made": 1}
+    assert line["assets"] == {"image_missing": 2, "image_resized": 1, "layout_written": 3, "thumbnail_made": 1}
     assert line["anchors"] == {"exact": len(chunks), "approximate": 0, "none": 0, "reasons": {}}
     assert {w["code"] for w in line["warnings"]} == {"missing_image", "start_page_id_differs"}
-    assert store.asset_file(DOC, PAGES[0], "image").read_bytes() == sources.images[0].read_bytes()  # byte for byte
+    assert size_of(store.asset_file(DOC, PAGES[0], "image")) == RESIZED  # a derived scan, not the original
+    assert line["scans"] == [{"pageId": str(PAGES[0]), "sourceSize": [WIDTH, HEIGHT], "size": list(RESIZED),
+                              "sourceBytes": sources.images[0].stat().st_size,
+                              "bytes": store.asset_path(DOC, PAGES[0], "image").stat().st_size,
+                              "lineHeightP10": 26.0, "reduction": round(WIDTH / RESIZED[0], 3)}]
+    assert line["scanSizes"]["image_output_pixels"] == RESIZED[0] * RESIZED[1]
     with Image.open(store.asset_file(DOC, PAGES[0], "thumbnail")) as thumbnail:
         assert thumbnail.format == "JPEG" and thumbnail.width <= 256
     manifest = store.read_manifest(DOC)
     assert [(p.order, p.label, p.image, p.layout, p.thumbnail) for p in manifest.pages] == [
         (0, "[1]", True, True, True), (1, "[2]", False, True, False), (2, "[3]", False, True, False)]
-    assert (manifest.pages[0].width, manifest.pages[0].height) == (120, 200)
+    assert (manifest.pages[0].width, manifest.pages[0].height) == RESIZED
+    files = page_files(store)
+    assert files[str(PAGES[0])]["image"] == dict(zip(("width", "height"), RESIZED))  # the stored scan's pixels
+    assert files[str(PAGES[1])]["image"] == {"width": WIDTH, "height": HEIGHT}  # no scan: PAGE geometry
     assert manifest.params == SMALL.as_json() and manifest.library == "nlk"
     assert page_files(store)[str(PAGES[2])]["regions"] == []  # every page gets a file
 
@@ -153,9 +173,132 @@ async def test_an_interrupted_run_is_completed_by_running_again(tmp_path, monkey
 
     _, line = await assets(store, sources, chunks, tmp_path)
 
-    assert line["assets"]["image_copied"] == 2 and line["status"] == "imported"
-    assert store.asset_file(DOC, PAGES[0], "image").read_bytes() == sources.images[0].read_bytes()
+    assert line["assets"]["image_resized"] == 2 and line["assets"]["image_replaced"] == 1
+    assert line["status"] == "imported"
+    assert [size_of(store.asset_file(DOC, p, "image")) for p in PAGES[:2]] == [RESIZED, RESIZED]
     assert [p.image for p in store.read_manifest(DOC).pages] == [True, True, False]
+
+    _, line = await assets(store, sources, chunks, tmp_path, "again.json")
+    assert line["assets"]["image_kept"] == 2 and line["assets"]["layout_unchanged"] == 3
+
+
+def lines_of(page_file: dict) -> list[tuple[str, str, str]]:
+    return [(r["id"], l["id"], l["text"]) for r in page_file["regions"] for l in r["lines"]]
+
+
+async def test_scaled_layouts_keep_ids_text_and_anchors(tmp_path):
+    """Scaling changes only pixel geometry: the layout's ids and text and the anchor plan are
+    those of the original PAGE geometry, and every anchor still replays the stored text."""
+    store, sources, chunks = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src"), stored_chunks()
+    xml = {PAGES[i]: page_xml(PAGES[i], REGIONS[i]) for i in range(2)}
+    original = convert_document(DOC, PAGES, xml, SMALL, None)
+
+    await assets(store, sources, chunks, tmp_path)
+
+    files = page_files(store)
+    for page_id in PAGES[:2]:
+        before, after = original.pages[page_id], files[str(page_id)]
+        assert lines_of(after) == lines_of(before) and lines_of(after)
+        assert after["image"] == dict(zip(("width", "height"), size_of(store.asset_file(DOC, page_id, "image"))))
+        first, scaled = before["regions"][0]["lines"][0], after["regions"][0]["lines"][0]
+        assert first["heights"] == [19, 7] and scaled["heights"] == [13, 5]
+        assert scaled["baseline"] == [[round(x * RESIZED[0] / WIDTH), round(y * RESIZED[1] / HEIGHT)]
+                                      for x, y in first["baseline"]]
+        assert len(scaled["wordStarts"]) == len(first["wordStarts"])
+        assert scaled["wordStarts"][-1] < first["wordStarts"][-1]
+    plan = [json.loads(l) for l in plan_path(store, DOC).read_text().splitlines()]
+    assert [p["layoutStart"] for p in plan] == [a["layoutStart"] for a in original.anchors]
+    for entry, chunk in zip(plan, chunks):
+        assert replay(files, [str(p) for p in PAGES], entry["layoutStart"], text_length(chunk.text)) == chunk.text
+
+
+async def test_a_changed_profile_regenerates_scans_layouts_and_thumbnails(tmp_path, monkeypatch):
+    store, sources, chunks = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src"), stored_chunks()
+    await assets(store, sources, chunks, tmp_path)
+    plan, thumbnail = plan_path(store, DOC).read_bytes(), store.asset_path(DOC, PAGES[0], "thumbnail")
+    thumbnail_before = thumbnail.stat().st_mtime_ns
+    monkeypatch.setattr(scan_profile, "TARGET_LINE_HEIGHT", 13)
+    monkeypatch.setattr(scan_profile, "PROFILE", {**scan_profile.PROFILE, "targetLineHeight": 13})
+
+    _, line = await assets(store, sources, chunks, tmp_path, "changed.json")
+
+    assert line["assets"]["image_resized"] == 2 and line["assets"]["image_replaced"] == 2
+    assert line["assets"]["layout_written"] == 2 and line["assets"]["thumbnail_made"] == 2
+    assert size_of(store.asset_file(DOC, PAGES[0], "image")) == (689, 1000)  # 26 / 13: twice smaller
+    assert page_files(store)[str(PAGES[0])]["image"] == {"width": 689, "height": 1000}
+    assert thumbnail.stat().st_mtime_ns > thumbnail_before
+    assert plan_path(store, DOC).read_bytes() == plan  # anchors do not depend on the scan
+    state = json.loads(scan_state_path(store, DOC).read_text())
+    assert {e["profile"]["targetLineHeight"] for e in state["pages"].values()} == {13}
+
+    before = mtimes(store)
+    _, line = await assets(store, sources, chunks, tmp_path, "again.json")
+    assert line["assets"]["image_kept"] == 2 and mtimes(store) == before
+
+
+async def test_a_changed_source_is_derived_again(tmp_path):
+    store, sources, chunks = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src"), stored_chunks()
+    await assets(store, sources, chunks, tmp_path)
+    sources.images[1].write_bytes(jpeg(width=WIDTH // 2, height=HEIGHT // 2))  # another scan of the page
+
+    _, line = await assets(store, sources, chunks, tmp_path, "changed.json")
+
+    assert line["assets"]["image_kept"] == 1 and line["assets"]["image_unresized"] == 1
+    assert size_of(store.asset_file(DOC, PAGES[1], "image")) == (WIDTH // 2, HEIGHT // 2)  # 13 px lines there
+    assert page_files(store)[str(PAGES[1])]["image"] == {"width": WIDTH // 2, "height": HEIGHT // 2}
+    assert "layout_size_differs" in {w["code"] for w in line["warnings"]}
+
+
+async def test_an_earlier_original_copy_of_the_same_size_is_replaced(tmp_path):
+    """Regression (#594): the import before the profile stored the original scan and kept it
+    while its byte length equalled the source's; such a copy must become the derived scan."""
+    store, sources, chunks = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src"), stored_chunks()
+    for i in (0, 1):
+        store.write_asset(DOC, PAGES[i], "image", sources.images[i].read_bytes())
+
+    _, line = await assets(store, sources, chunks, tmp_path)
+
+    assert line["assets"]["image_resized"] == 2 and line["assets"]["image_replaced"] == 2
+    assert "image_kept" not in line["assets"]
+    assert size_of(store.asset_file(DOC, PAGES[0], "image")) == RESIZED
+
+
+async def test_pages_without_line_heights_or_with_large_print(tmp_path):
+    regions = [
+        [("r1", [line("r1-l0", "Bez výšek řádků, jen text.", heights=None),
+                 line("r1-l1", "Druhý řádek bez výšek.", heights=None)])],
+        [("r1", [line(f"r1-l{i}", f"Velké písmo, řádek číslo {i}.", heights="[60, 40]") for i in range(3)])],
+        [],
+    ]
+    store, sources = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src", regions=regions)
+    async def no_chunks(document_id):
+        return []
+    await run.run_assets(store, [sources.export], no_chunks, SMALL, 0.05, tmp_path / "r.json",
+                         progress=lambda m: None)
+    [report] = [json.loads(l) for l in (tmp_path / "r.json.documents.jsonl").read_text().splitlines()]
+
+    assert report["assets"]["image_no_heights"] == 1 and report["assets"]["image_unresized"] == 1
+    assert report["assets"]["image_resized"] == 1
+    assert size_of(store.asset_file(DOC, PAGES[0], "image")) == (WIDTH, HEIGHT)  # re-encoded only
+    assert size_of(store.asset_file(DOC, PAGES[1], "image")) == (460, 667)  # 100 / 18, capped at 3
+    files = page_files(store)
+    assert files[str(PAGES[1])]["image"] == {"width": 460, "height": 667}
+    assert {tuple(l["heights"]) for r in files[str(PAGES[1])]["regions"] for l in r["lines"]} == {(20, 13)}
+    assert [s["lineHeightP10"] for s in report["scans"]] == [None, 100.0]
+    summary = json.loads((tmp_path / "r.json").read_text())
+    assert 0 < summary["imagePixelsRatio"] < 1 and summary["scanProfile"]["quality"] == 85
+
+
+async def test_an_unavailable_source_keeps_the_stored_scan_and_its_layout(tmp_path):
+    store, sources, chunks = PageAssetStore(tmp_path / "assets"), Sources(tmp_path / "src"), stored_chunks()
+    await assets(store, sources, chunks, tmp_path)
+    before = mtimes(store)
+    sources.images[0].rename(sources.images[0].with_suffix(".away"))
+
+    _, line = await assets(store, sources, chunks, tmp_path, "away.json")
+
+    assert line["assets"]["image_missing"] == 2 and line["assets"]["layout_unchanged"] == 3
+    assert mtimes(store) == before and size_of(store.asset_file(DOC, PAGES[0], "image")) == RESIZED
 
 
 async def test_corrupt_and_missing_scans_are_reported(tmp_path):

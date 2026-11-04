@@ -16,6 +16,7 @@ from uuid import UUID
 from semant_demo.adapters.filesystem.page_assets import PageAssetStore, write_atomically
 from semant_demo.adapters.weaviate.layout_anchors import AnchoredChunk
 from semant_demo.maintenance.page_import.anchors import AnchorStore, apply_plan, plan_document
+from semant_demo.maintenance.page_import import scan_profile
 from semant_demo.maintenance.page_import.assets import import_document
 from semant_demo.maintenance.page_layout.serialize import Params
 
@@ -42,6 +43,10 @@ class Report:
         summary = {**self.header, "complete": complete, "seconds": round(time.time() - self.started, 1),
                    "documents": sum(self.statuses.values()), "statuses": dict(sorted(self.statuses.items())),
                    "totals": dict(sorted(self.totals.items())), "documentReports": self.lines_path.name}
+        if source := self.totals.get("image_source_bytes"):
+            summary["imageBytesRatio"] = round(self.totals.get("image_output_bytes", 0) / source, 4)
+            summary["imagePixelsRatio"] = round(self.totals.get("image_output_pixels", 0)
+                                                / max(1, self.totals.get("image_source_pixels", 0)), 4)
         write_atomically(self.path, json.dumps(summary, indent=2, ensure_ascii=False).encode("utf-8"))
         return summary
 
@@ -67,7 +72,7 @@ async def run_assets(store: PageAssetStore, exports: list[dict[str, Any]], read_
                      params: Params, max_edit_ratio: float, report_path: Path,
                      progress=lambda message: print(message, file=sys.stderr)) -> dict[str, Any]:
     report = Report(report_path, {"step": "assets", "assetsDir": str(store.root), "params": params.as_json(),
-                                  "maxEditRatio": max_edit_ratio})
+                                  "maxEditRatio": max_edit_ratio, "scanProfile": scan_profile.PROFILE})
     for n, entry in enumerate(exports, 1):
         document_id = UUID(entry["documentId"])
         if entry.get("status", "exported") != "exported" or not entry.get("pages"):
@@ -83,7 +88,8 @@ async def run_assets(store: PageAssetStore, exports: list[dict[str, Any]], read_
                 continue
             line = import_document(store, entry, chunks, params, max_edit_ratio)
             report.add(line, {"pages": line["pages"], "chunks": line["chunks"], **_flat("", line["assets"]),
-                              **_flat("anchors_", line["anchors"]), **_flat("pageMetadata_", line["pageMetadata"])})
+                              **_flat("anchors_", line["anchors"]), **_flat("pageMetadata_", line["pageMetadata"]),
+                              **line.get("scanSizes", {})})
         progress(f"[{n}/{len(exports)}] {document_id} {line['status']}")
     return report.save(complete=True)
 

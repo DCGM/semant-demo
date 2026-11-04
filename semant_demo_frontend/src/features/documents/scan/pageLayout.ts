@@ -1,7 +1,7 @@
 // Page layout files (`semant.page-layout` version 1, docs/PAGE_LAYOUT.md) as scan lines:
 // each OCR line's baseline, the band around it from the heights above/below the baseline,
-// and its approximate word starts. All geometry is in pixels of the original scan, the
-// coordinate system of the image and its overlay. Word positions are estimates
+// and its approximate word starts. All geometry is in pixels of the served scan (`image`
+// is its size), the coordinate system of the image and its overlay. Word positions are estimates
 // (proportional to character positions); a line without them is used as a whole.
 
 export type Point = readonly [number, number]

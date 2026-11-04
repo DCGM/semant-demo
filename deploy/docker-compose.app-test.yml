@@ -16,6 +16,8 @@ services:
     environment:
       # Set here, next to the mount, so a stale .env cannot point the app at another file.
       SQL_DB_URL: sqlite+aiosqlite:////app/sql_data/tasks.db
+      # The page asset store (#541) shared by all test instances, mounted read-only (#594).
+      PAGE_ASSETS_DIR: /app/page_assets
     volumes:
       # The whole instance directory, not only tasks.db: SQLite keeps its rollback journal
       # (tasks.db-journal) beside the database and needs it after a crash (#406).
@@ -28,6 +30,14 @@ services:
       - type: bind
         source: ${SQL_DB_PATH}/feedback
         target: /app/feedback
+        bind:
+          create_host_path: false
+      # Page scans, layout files, thumbnails and manifests, written by the page import on the
+      # host (docs/DATA_MAINTENANCE.md); the application only reads them.
+      - type: bind
+        source: ${PAGE_ASSETS_PATH}
+        target: /app/page_assets
+        read_only: true
         bind:
           create_host_path: false
     networks:
