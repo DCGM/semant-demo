@@ -193,8 +193,13 @@ def test_page_import_of_real_pages_with_missing_scans(tmp_path):
     scanned = [i for i, p in enumerate(manifest.pages) if p.image]
     assert scanned == [14] and manifest.pages[14].thumbnail
     assert all(p.layout for p in manifest.pages) and not any(p.thumbnail for i, p in enumerate(manifest.pages) if i != 14)
-    # The scan is kept byte for byte; its size is the downscaled copy's.
-    assert manifest.pages[14].width == 900
+    # The stored scan is derived from the downscaled copy (#594); the page file, made in the
+    # original scan's coordinates, is scaled to it.
+    page_id = manifest.pages[14].pageId
+    layout = json.loads(store.asset_file(document.id, page_id, "layout").read_bytes())
+    stored = line["scans"][0]
+    assert stored["sourceSize"][0] == 900 and manifest.pages[14].width == stored["size"][0]
+    assert layout["image"] == {"width": manifest.pages[14].width, "height": manifest.pages[14].height}
     plan = {line["chunkId"]: line["layoutStart"] for line in read_plan(store, document.id)}
     generated = {a["chunkId"]: a["layoutStart"] for a in map(json.loads, (GENERATED / "anchors.jsonl").read_text().splitlines())
                  if a["documentId"] == str(document.id)}

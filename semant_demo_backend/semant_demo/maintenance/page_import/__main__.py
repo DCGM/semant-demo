@@ -17,9 +17,11 @@ From ``semant_demo_backend/``; the Weaviate endpoint comes from ``WEAVIATE_HOST`
 ``assets`` takes the documents of a ``page_order`` export (#571; ``--check-start-pages``
 recommended), in its order or that of the given ids. Per document it reads the PAGE XML zips and
 scans the export names and the stored chunks, runs the #540 converter against the stored chunks
-and writes, per page, the layout file (when it differs), the original scan (when the stored copy
-is missing or of another size; the source must be a JPEG) and a thumbnail, then the manifest
-and the anchor plan (``anchors.jsonl``). Missing or corrupt sources are reported, never fatal.
+and writes, per page, the derived viewing scan made from the original JPEG by the fixed import
+profile (``scan_profile``, #594: reduced when its small print is large, JPEG quality 85; made
+again only when its source, the profile or the line heights changed), the layout file scaled
+to that scan (when it differs) and a thumbnail, then the manifest and the anchor plan
+(``anchors.jsonl``). Missing or corrupt sources are reported, never fatal.
 Exit code 0 when every document was imported, 1 otherwise.
 
 ``anchors`` takes the given documents or every document of the asset store. ``--check``

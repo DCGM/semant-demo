@@ -2,17 +2,26 @@
 
 Writes only files of the page asset store (#541). The chunks are read by the caller
 (read-only) and passed in; nothing here touches a database. Each page is finished on its
-own and an interrupted run is simply repeated: a layout file is rewritten only when its
-content differs, a scan is copied only when the stored copy is missing or has another size
-than the source (copies are atomic, so a stored file is always complete), and a thumbnail is
-made only when missing or older than its scan. The manifest and the anchor plan are written
-last and describe what exists then.
+own and an interrupted run is simply repeated:
+
+- the stored scan is a derived viewing JPEG made from the original source scan by the
+  import profile (``scan_profile``, #594). The scan state (``scans.json``, never served)
+  records per page the source's identity (path, size, modification time), the profile and
+  the layout's line heights it was made with; a scan is made again when any of them changed
+  or the stored file is not the one recorded, and is otherwise kept untouched;
+- the layout file describes the stored scan's pixels (its geometry scaled to the stored
+  JPEG) and is rewritten only when its content differs;
+- a thumbnail is made from the stored scan when missing or older than it.
+
+Writes are atomic, so a stored file is always complete. The manifest and the anchor plan
+are written last and describe what exists then. Anchors are verified on the original PAGE
+geometry before the layout is scaled; scaling changes no id, text, order or offset.
 
 A page without a ``pageXmlPath`` in the export has no OCR and gets an empty layout. A named
 archive that cannot be read (missing, e.g. an unmounted share, or damaged) is different: the
 layouts and anchors made without it would be wrong, so the document is ``page_xml_unavailable``
-and nothing of it is written; its earlier layouts, manifest and anchor plan stay as they were,
-so a later ``anchors --write`` does not clear verified anchors.
+and nothing of it is written; its earlier layouts, scans, manifest and anchor plan stay as
+they were, so a later ``anchors --write`` does not clear verified anchors.
 """
 import hashlib
 import io
@@ -27,11 +36,15 @@ from uuid import UUID
 from semant_demo.adapters.filesystem.page_assets import (
     InvalidManifest, ManifestPage, PageAssetStore, PageManifest, write_atomically)
 from semant_demo.adapters.weaviate.layout_anchors import AnchoredChunk
+from semant_demo.maintenance.page_import import scan_profile
 from semant_demo.maintenance.page_layout.convert import StoredChunk, convert_document, read_page_xml_zip
 from semant_demo.maintenance.page_layout.serialize import Params
 
 PLAN_NAME = "anchors.jsonl"
 """The anchor plan of a document, next to its manifest (never served)."""
+SCAN_STATE_NAME = "scans.json"
+"""What each stored scan was derived from (never served)."""
+SCAN_STATE_SCHEMA = "semant.page-scan-state"
 THUMBNAIL_WIDTH = 256
 THUMBNAIL_QUALITY = 80
 SAMPLE = 5
@@ -145,38 +158,135 @@ def _stored_chunks(chunks: list[AnchoredChunk], issues: Issues) -> list[StoredCh
     return [StoredChunk(str(c.id), c.order, c.text) for c in sorted(chunks, key=lambda c: c.order)]
 
 
-def _import_image(store: PageAssetStore, document_id: UUID, page: dict, counts: Counter,
-                  issues: Issues) -> tuple[int, int] | None:
-    """Copy the page's scan when needed; its size, or None when there is no stored scan."""
+def scan_state_path(store: PageAssetStore, document_id: UUID) -> Path:
+    return store.document_dir(document_id) / SCAN_STATE_NAME
+
+
+class ScanState:
+    """The document's ``scans.json``: per page, the inputs and the result of its stored scan.
+    Saved atomically every ``SAVE_EVERY`` scans made and when the document ends (also when
+    interrupted). A scan written but not yet recorded is simply made again by the next run."""
+    SAVE_EVERY = 20
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.pages: dict[str, dict[str, Any]] = {}
+        self.unsaved = 0
+        try:
+            data = json.loads(path.read_bytes())
+            if data.get("schema") == SCAN_STATE_SCHEMA and isinstance(data.get("pages"), dict):
+                self.pages = data["pages"]
+        except (OSError, ValueError, AttributeError):
+            pass  # absent or unreadable: every scan is made again
+
+    def record(self, page_id: UUID, entry: dict[str, Any]) -> None:
+        self.pages[str(page_id)] = entry
+        self.unsaved += 1
+        if self.unsaved >= self.SAVE_EVERY:
+            self.save()
+
+    def save(self) -> None:
+        if not self.unsaved:
+            return
+        self.unsaved = 0
+        data = {"schema": SCAN_STATE_SCHEMA, "version": 1, "pages": dict(sorted(self.pages.items()))}
+        write_atomically(self.path, json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8"))
+
+
+def _inputs(source: Path, stat, layout: dict) -> dict[str, Any]:
+    """What the derived scan depends on: the source file, the profile and the layout's line
+    heights and image size."""
+    h10 = scan_profile.percentile(scan_profile.line_heights(layout))
+    image = layout.get("image") or {}
+    return {"source": {"path": str(source), "bytes": stat.st_size, "mtimeNs": stat.st_mtime_ns},
+            "profile": scan_profile.PROFILE, "lineHeightP10": None if h10 is None else round(h10, 3),
+            "layoutSize": [image.get("width"), image.get("height")] if image else None}
+
+
+def _current(stored: Path, entry: dict | None, inputs: dict) -> tuple[int, int] | None:
+    """The stored scan's size when it was made from ``inputs`` and is still the file recorded."""
+    if not entry or {k: entry.get(k) for k in inputs} != inputs or not stored.is_file():
+        return None
+    size = _stored_size(stored)
+    if stored.stat().st_size != entry.get("bytes") or size is None or list(size) != entry.get("size"):
+        return None
+    return size
+
+
+def _add_scan(scans: list, page_id: UUID, entry: dict) -> None:
+    scans.append({"pageId": str(page_id), "sourceSize": entry["sourceSize"], "size": entry["size"],
+                  "sourceBytes": entry["source"]["bytes"], "bytes": entry["bytes"],
+                  "lineHeightP10": entry["lineHeightP10"], "reduction": entry["reduction"]})
+
+
+def scan_sizes(scans: list[dict[str, Any]]) -> dict[str, int]:
+    """Bytes and pixels of the sources and stored scans of the pages with a current scan."""
+    return {"image_source_bytes": sum(s["sourceBytes"] for s in scans),
+            "image_output_bytes": sum(s["bytes"] for s in scans),
+            "image_source_pixels": sum(s["sourceSize"][0] * s["sourceSize"][1] for s in scans),
+            "image_output_pixels": sum(s["size"][0] * s["size"][1] for s in scans)}
+
+
+def _import_image(store: PageAssetStore, document_id: UUID, page: dict, layout: dict, state: ScanState,
+                  counts: Counter, issues: Issues, scans: list) -> tuple[int, int] | None:
+    """Make the page's derived scan when needed; its stored size, or None when there is no
+    stored scan. Without a usable source an earlier stored scan is kept."""
     page_id = UUID(page["pageId"])
     source = _real(page.get("imagePath"))
     stored = store.asset_path(document_id, page_id, "image")
+
+    def earlier() -> tuple[int, int] | None:
+        return _stored_size(stored) if stored.is_file() else None
     if source is None:
         counts["image_none"] += 1
-        return _stored_size(stored) if stored.is_file() else None
+        return earlier()
     try:
-        source_size = source.stat().st_size
+        stat = source.stat()
     except OSError:
         counts["image_missing"] += 1
         issues.add("missing_image", page_id)
-        return _stored_size(stored) if stored.is_file() else None
-    if stored.is_file() and stored.stat().st_size == source_size and (size := _stored_size(stored)):
+        return earlier()
+    inputs = _inputs(source, stat, layout)
+    entry = state.pages.get(str(page_id))
+    if size := _current(stored, entry, inputs):
         counts["image_kept"] += 1
+        _add_scan(scans, page_id, entry)
         return size
     try:
         data = source.read_bytes()
-        size = _jpeg_size(data)
+        source_size = _jpeg_size(data)
     except OSError:
         counts["image_unreadable"] += 1
         issues.add("unreadable_image", page_id)
-        return None
+        return earlier()
     except CorruptImage:
         counts["image_corrupt"] += 1
         issues.add("corrupt_image", page_id)
-        return None
-    store.write_asset(document_id, page_id, "image", data)
-    counts["image_copied"] += 1
-    return size
+        return earlier()
+    line_height = scan_profile.source_line_height(layout, source_size)
+    factor = scan_profile.reduction(line_height)
+    image = layout.get("image") or {}
+    if image and (image.get("width"), image.get("height")) != source_size:
+        issues.add("layout_size_differs", f"{page_id}:{image.get('width')}x{image.get('height')}"
+                                          f"/{source_size[0]}x{source_size[1]}")
+    try:
+        derived = scan_profile.derive_scan(data, scan_profile.output_size(*source_size, factor))
+    except Exception as e:  # Pillow raises many types: reported, the earlier scan (if any) stays
+        counts["image_derive_failed"] += 1
+        issues.add("derive_failed", f"{page_id}:{type(e).__name__}")
+        return earlier()
+    replaced = stored.is_file()
+    store.write_asset(document_id, page_id, "image", derived.data)
+    entry = {**inputs, "sourceSize": list(source_size), "size": list(derived.size), "bytes": len(derived.data),
+             "reduction": round(source_size[0] / derived.size[0], 3)}
+    state.record(page_id, entry)
+    counts["image_resized" if derived.size != source_size else "image_unresized"] += 1
+    if inputs["lineHeightP10"] is None:
+        counts["image_no_heights"] += 1
+    if replaced:
+        counts["image_replaced"] += 1
+    _add_scan(scans, page_id, entry)
+    return derived.size
 
 
 def _import_thumbnail(store: PageAssetStore, document_id: UUID, page_id: UUID, counts: Counter,
@@ -237,26 +347,32 @@ def import_document(store: PageAssetStore, entry: dict, chunks: list[AnchoredChu
                               max_edit_ratio)
 
     manifest_pages = []
-    for index, page in enumerate(pages):
-        page_id = page_ids[index]
-        layout = result.pages[page_id]
-        data = _layout_bytes(layout)
-        path = store.asset_path(document_id, page_id, "layout")
-        if path.is_file() and path.read_bytes() == data:
-            counts["layout_unchanged"] += 1
-        else:
-            store.write_asset(document_id, page_id, "layout", data)
-            counts["layout_written"] += 1
-        size = _import_image(store, document_id, page, counts, issues)
-        _import_thumbnail(store, document_id, page_id, counts, issues)
-        image_size = layout.get("image") or {}
-        width, height = size or (image_size.get("width"), image_size.get("height"))
-        manifest_pages.append(ManifestPage(
-            pageId=page_id, order=index, label=page.get("label"), pageType=page.get("pageType"),
-            width=width, height=height,
-            image=store.asset_file(document_id, page_id, "image") is not None,
-            layout=store.asset_file(document_id, page_id, "layout") is not None,
-            thumbnail=store.asset_file(document_id, page_id, "thumbnail") is not None))
+    state = ScanState(scan_state_path(store, document_id))
+    scans: list[dict[str, Any]] = []
+    try:
+        for index, page in enumerate(pages):
+            page_id = page_ids[index]
+            size = _import_image(store, document_id, page, result.pages[page_id], state, counts, issues, scans)
+            # The layout describes the stored scan (original PAGE geometry without one).
+            layout = scan_profile.scale_layout(result.pages[page_id], size) if size else result.pages[page_id]
+            data = _layout_bytes(layout)
+            path = store.asset_path(document_id, page_id, "layout")
+            if path.is_file() and path.read_bytes() == data:
+                counts["layout_unchanged"] += 1
+            else:
+                store.write_asset(document_id, page_id, "layout", data)
+                counts["layout_written"] += 1
+            _import_thumbnail(store, document_id, page_id, counts, issues)
+            image_size = layout.get("image") or {}
+            width, height = size or (image_size.get("width"), image_size.get("height"))
+            manifest_pages.append(ManifestPage(
+                pageId=page_id, order=index, label=page.get("label"), pageType=page.get("pageType"),
+                width=width, height=height,
+                image=store.asset_file(document_id, page_id, "image") is not None,
+                layout=store.asset_file(document_id, page_id, "layout") is not None,
+                thumbnail=store.asset_file(document_id, page_id, "thumbnail") is not None))
+    finally:
+        state.save()
 
     plan = [{**anchor, "textSha256": text_sha(text)}
             for anchor, text in zip(result.anchors, (c.text for c in stored or []))]
@@ -286,6 +402,8 @@ def import_document(store: PageAssetStore, entry: dict, chunks: list[AnchoredChu
         "anchors": {"exact": matches["exact"], "approximate": matches["approximate"], "none": matches["none"],
                     "reasons": dict(sorted(reasons.items()))},
         "pageMetadata": dict(sorted(_page_metadata(chunks, plan, page_index, issues).items())),
+        "scanSizes": scan_sizes(scans),
+        "scans": scans,
         "warnings": issues.as_json(),
         "conversionWarnings": result.warnings,
     }

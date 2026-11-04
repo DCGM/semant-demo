@@ -34,7 +34,10 @@ The first line of a page of the example document `0004077e…` (abridged to one 
   contribute to canonical text**: lines below the confidence threshold, empty lines and
   dropped short paragraphs are left out. A region with no such line is left out.
 - `text` is the PAGE XML transcription verbatim (no trimming, no dehyphenation).
-- All geometry is in **integer pixels of the original scan**: `baseline` is the polyline,
+- All geometry is in **integer pixels of the scan**: the converter writes the original scan's
+  (PAGE XML) pixels; the asset store's files are scaled to its stored, derived scan (#594,
+  [DATA_MAINTENANCE](DATA_MAINTENANCE.md#page-scans-layouts-and-anchors-for-the-existing-corpus-page_import-542)),
+  so `image` is always the size of the JPEG served with it. `baseline` is the polyline,
   `heights` are `[above, below]` the baseline (from PERO's `custom` attribute, else
   estimated from the line polygon; null when neither exists). `wordStarts` (optional) has
   one value per word (the word rule of #463: runs of L*, M*, N*, Cf characters), the
@@ -119,7 +122,7 @@ writes it, together with an anchor plan (`anchors.jsonl`, never served) per docu
 
 ```text
 <root>/<first two hex digits of the document id>/<document id>/manifest.json
-<root>/<..>/<document id>/<page id>.jpg          the scan, the original JPEG
+<root>/<..>/<document id>/<page id>.jpg          the scan, a JPEG derived from the original (#594)
 <root>/<..>/<document id>/<page id>.json         the page file above
 <root>/<..>/<document id>/<page id>.thumb.jpg    the thumbnail
 ```

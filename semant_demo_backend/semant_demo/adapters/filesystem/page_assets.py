@@ -4,7 +4,7 @@ The asset store is one configured directory (``PAGE_ASSETS_DIR``). Every path is
 from document and page UUIDs only, never from client text::
 
     <root>/<first two hex digits of the document id>/<document id>/manifest.json
-    <root>/<..>/<document id>/<page id>.jpg          the page scan (original JPEG)
+    <root>/<..>/<document id>/<page id>.jpg          the page scan (a viewing JPEG derived from the original)
     <root>/<..>/<document id>/<page id>.json         the page layout file (docs/PAGE_LAYOUT.md)
     <root>/<..>/<document id>/<page id>.thumb.jpg    the thumbnail
 
