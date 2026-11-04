@@ -6,7 +6,9 @@ line where the chunk's first character is (`layoutStart`). Both are produced off
 PERO PAGE XML by `python -m semant_demo.maintenance.page_layout` (#540); the application
 never parses PAGE XML. Storage, serving and the `Chunks` field are #541
 ([below](#page-asset-store-and-reads-541)); the import of the existing corpus is #542; the frontend mapping is #544
-([below](#textscan-correspondence-544)). The operator command is described in
+([below](#textscan-correspondence-544)); the workspace is #545. Its validation on real OCR
+material, with the measured coverage and the known approximations, is
+[below](#validation-on-real-material-546) (#546). The operator command is described in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#page-layout-files-and-anchors-page_layout-540).
 
 ## Page file (`semant.page-layout`, version 1)
@@ -293,3 +295,79 @@ correspondence but not their text:
   opened result or source and the scroll position as they were. The state is in memory: after
   a reload of the document the back link leads to an empty search or conversation. This part
   of #545's reload criterion is deferred, tracked in #584.
+
+## Validation on real material (#546)
+
+The whole chain was run on real data: the 32 documents of the shared test store (3,260 stored
+legacy chunks, 1,565 pages; page lists from the metadata mirror, PERO PAGE XML and scans from
+the library share), read-only there, written only to a disposable copy. Run records are on
+#546; this section keeps the contracts and the numbers to expect.
+
+**Coverage.**
+
+| | Chunks | |
+| --- | --- | --- |
+| Exact anchor (character-precise map) | 2,886 | 88.5 % |
+| Approximate anchor (whole lines) | 80 | 2.5 % |
+| No anchor (text only) | 294 | 9.0 % |
+
+26 of the 32 documents anchor every chunk exactly. Nearly all misses are in six documents whose
+stored chunks are not made from the PAGE XML that exists now: another OCR version, legacy page
+lists that repeat pages (the copies get no anchor, as intended), pages without PAGE XML
+(#591). The browser walk (`layoutMap.ts`) maps all 2,886 exact anchors exactly, rebuilding
+each stored text from line pieces and separators (2.4 million UTF-16 units, no difference),
+and all 80 approximate ones as approximate. All 1,617 stored annotations and legacy spans on
+anchored chunks resolve to scan lines (301 over several lines, 6 over two pages).
+
+**Precision, separately from the text mapping.** Text offsets are exact wherever an anchor is
+exact; positions *within* a line are estimates. Word starts (`wordStarts`) are usable on
+99.6 % of the lines (the rest are highlighted as whole lines). Compared with PERO's own word
+boxes (ALTO `String/@HPOS` of the 13 example documents, 254,000 words), an estimated word
+start is off by a median of 7 px (p90 23 px, p99 46 px), 0.07 of the line's mean word pitch;
+99.6 % are within half a word. So a highlight covers whole, approximately placed words, never
+claimed character positions.
+
+**Known limitations.**
+
+- The stored page fields are coarse: a chunk at the top of a page often names the previous page
+  as `from_page` (179 of 2,966 anchored chunks here). The viewer uses `layoutStart`, not the
+  page fields, for positions; `by_page` reads may return one chunk too many.
+- A chunk whose text changed after the import keeps its old anchor until `page_import assets`
+  runs again; it is then shown as approximate (#593).
+- The legacy serialization of a page depends on the pages before it (short remainders are
+  dropped depending on where chunks end), so page files and anchors are made from the whole
+  document only. Converting an excerpt of pages can turn exact anchors into approximate ones at
+  the same position; the real-page fixtures show this on purpose.
+- Pages that are not mounted on the import machine get no scan (`missing_image`); the viewer
+  says so and the text and lines still work.
+- Rapid paging still downloads each passed page's scan in full (#592).
+
+**Import behaviour.** On the disposable copy, `assets` killed in the middle of a document left
+only whole files and no manifest (the document stays text-only); running it again skipped the
+finished pages and produced a tree byte-identical to an uninterrupted run. `anchors --write`
+killed after 443 writes was completed by running it again (2,523 more, then `--check` exit
+0). Before and after, every object of the store (6,670) had the same id, properties
+(chunk text, order, page fields, references, annotation offsets) and vectors; only
+`Chunks.layoutStart` differed, on the 2,966 anchored chunks.
+
+**Browser.** On the real 182- and 528-page documents, opening a page reads its manifest
+(88 KB and 116 KB), that page's chunks, the layouts of the page and its neighbours and the
+visible thumbnails, nothing else of the document (JS heap 10–15 MB). Twelve page steps within
+154 ms abort all twelve stale layout reads and end on the right page and `?page=`.
+
+**Regression fixtures** (`semant_demo_backend/tests/real_pages.py`): excerpts of five of these
+documents (1839–1922) in `tests/fixtures/real_pages/`, with their stored chunk texts and the
+anchors of the whole-document import: a whole 1839 newspaper page; a 1913 newspaper page in
+columns with the most curved and skewed baselines; the first sixteen pages of a 1906 volume,
+where one chunk crosses ten page breaks, blank pages, OCR of bleed-through below the
+confidence threshold and a caption repeated on three pages, and later chunks cross page
+breaks; a page whose legacy chunks repeat it; chunks from another OCR. `generated/` is the
+converter's output for them, checked by `tests/test_real_pages.py` and read by the frontend's
+`realPages.spec.ts` (the walk in both directions, hyphenated words, cross-page chunks); two
+downscaled scans serve `test/e2e/realScans.spec.ts`. It checks on the 1906 text page that the
+line bands lie on their printed lines (each band's darkest position within 0.2 of a band of
+where it is drawn, for more than 70 % of the bands; 93 % measured, 0–17 % for bands drawn 0.4
+of a band off) after zoom, pan, wheel zoom, resize and at phone width, and on the newspaper,
+whose small print and ruled boxes make that measure ambiguous, that the most curved and skewed
+bands follow their baselines on a scan smaller than the one the geometry refers to. The real
+corpus has no non-BMP text; the synthetic fixtures keep covering it.
