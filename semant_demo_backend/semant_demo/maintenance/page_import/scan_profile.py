@@ -70,15 +70,28 @@ def output_size(width: int, height: int, factor: float) -> tuple[int, int]:
     return side(width), side(height)
 
 
+def layout_size(layout: dict) -> tuple[int, int] | None:
+    """The size of the layout's coordinate system (the PAGE XML's image), when it is two
+    positive integers; None otherwise: the geometry cannot then be related to any JPEG."""
+    image = layout.get("image")
+    if not isinstance(image, dict):
+        return None
+    w, h = image.get("width"), image.get("height")
+    if all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in (w, h)):
+        return w, h
+    return None
+
+
 def source_line_height(layout: dict, source_size: tuple[int, int]) -> float | None:
     """The 10th-percentile line height in source-JPEG pixels. Layout heights are in the PAGE
-    XML's pixels; when the PAGE XML names another image size, they are converted."""
+    XML's pixels; when the PAGE XML names another image size, they are converted. None
+    without usable heights or without a valid layout size (the scan then keeps its size)."""
     h10 = percentile(line_heights(layout))
-    image = layout.get("image") or {}
-    if h10 is None:
+    size = layout_size(layout)
+    if h10 is None or size is None:
         return None
-    if image.get("height") and image["height"] != source_size[1]:
-        h10 = h10 * source_size[1] / image["height"]
+    if size[1] != source_size[1]:
+        h10 = h10 * source_size[1] / size[1]
     return h10
 
 
@@ -117,12 +130,13 @@ def scale_layout(layout: dict, size: tuple[int, int]) -> dict:
     """The layout with its pixel geometry in a ``size`` image: ``image``, baselines (rounded,
     clamped to the image), heights (by the vertical scale) and word starts (by the change of
     the baseline's length; the horizontal scale for a zero-length one). Ids, text and order
-    are unchanged. A layout without an image size, or of this size already, is returned as is."""
-    image = layout.get("image")
-    if not image or (image.get("width"), image.get("height")) == size:
+    are unchanged. A layout without a valid image size, or of this size already, is returned
+    as is."""
+    original = layout_size(layout)
+    if original is None or original == size:
         return layout
     width, height = size
-    sx, sy = width / image["width"], height / image["height"]
+    sx, sy = width / original[0], height / original[1]
     regions = []
     for region in layout.get("regions") or []:
         lines = []

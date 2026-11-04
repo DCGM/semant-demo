@@ -263,11 +263,16 @@ def _import_image(store: PageAssetStore, document_id: UUID, page: dict, layout: 
         counts["image_corrupt"] += 1
         issues.add("corrupt_image", page_id)
         return earlier()
+    # Without a valid layout size the OCR geometry cannot be scaled with the scan, so the scan
+    # keeps its size (still re-encoded) and the layout keeps its coordinates.
     line_height = scan_profile.source_line_height(layout, source_size)
     factor = scan_profile.reduction(line_height)
-    image = layout.get("image") or {}
-    if image and (image.get("width"), image.get("height")) != source_size:
-        issues.add("layout_size_differs", f"{page_id}:{image.get('width')}x{image.get('height')}"
+    original = scan_profile.layout_size(layout)
+    if original is None and scan_profile.line_heights(layout):
+        counts["image_unknown_layout_size"] += 1
+        issues.add("unknown_layout_size", page_id)
+    elif original is not None and original != source_size:
+        issues.add("layout_size_differs", f"{page_id}:{original[0]}x{original[1]}"
                                           f"/{source_size[0]}x{source_size[1]}")
     try:
         derived = scan_profile.derive_scan(data, scan_profile.output_size(*source_size, factor))
