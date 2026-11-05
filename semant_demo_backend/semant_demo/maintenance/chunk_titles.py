@@ -41,8 +41,9 @@ Ollama gets a context of ``max_input_tokens + max_output_tokens``. Both modes ch
 without a model call, that the catalog resolves the feature (and ``--tier``) and that the
 tier's provider settings are present (``OPENAI_API_KEY``, ``GOOGLE_API_KEY``).
 
-The prompt (``PROMPT_VERSION``) asks for a title of at most 10 words in the excerpt's
-language and passes the chunk's ``language`` as a hint when it has a single value. A reply is
+The prompt (``PROMPT_VERSION``) asks for a heading (a noun phrase, not a sentence) of at most
+10 words in the excerpt's language, and ends by naming that language when the chunk's
+``language`` is a single known code (``LANGUAGE_NAMES``). It does not alter a reply: a reply is
 the answer alone (the provider separates a model's thinking: ``thinking`` of an Ollama tier, a
 vLLM server's reasoning parser); it is cleaned (quotes around the whole title and markdown
 removed) and refused as ``invalid_output`` when empty, on several lines, longer than ``MAX_TITLE_WORDS`` words or
@@ -110,15 +111,29 @@ from semant_demo.adapters.weaviate.names import CollectionNames
 FEATURE = "chunk_titles"
 PROMPT_VERSION = "chunk-title-v1"
 SYSTEM_PROMPT = (
-    "You are a history expert who generates concise titles for specific excerpts from larger historical "
-    "documents. The title must not be longer than 10 words and must capture the main idea of only the provided "
-    "excerpt, not the entire document. You must generate the title in the exact same language as the provided "
-    "excerpt text. Respond absolutely only with the title itself, without quotes, without markdown formatting, "
-    "and without any introductory or concluding phrases.")
-LANGUAGE_BLOCK = "Language code:\n{language}\n\n"
+    "You write headings for excerpts of larger historical documents (newspapers, books, letters, records). "
+    "A heading names the main topic of the excerpt as a short noun phrase, like a newspaper or chapter "
+    "heading: it is not a sentence and does not end with a full stop. Use at most 10 words. Describe only the "
+    "provided excerpt, not the entire document. Write the heading in the language of the excerpt; never "
+    "translate it into English or any other language. Respond only with the heading itself, without quotes, "
+    "without markdown formatting and without any introductory or concluding phrases.\n\n"
+    "Examples of headings:\n"
+    "Požár obce v roce 1850\n"
+    "Odsouzení obchodníka za podvod\n"
+    "Anzeige einer Buchhandlung in Brünn\n"
+    "Výroční schůze hasičského spolku")
 DOCUMENT_BLOCK = "Original Document Title:\n{document_title}\n\n"
-EXCERPT_BLOCK = "Excerpt Text:\n{text}"
-"""The user message: the blocks of a missing language or document title are left out."""
+EXCERPT_BLOCK = "Excerpt Text:\n{text}\n\n"
+LANGUAGE_BLOCK = "Write the heading in {language}."
+"""The user message, in this order; the block of a missing document title is left out. The
+instruction comes last, where a model weighs it most."""
+LANGUAGE_NAMES = {"ces": "Czech", "slk": "Slovak", "deu": "German", "eng": "English", "pol": "Polish",
+                  "fra": "French", "lat": "Latin", "ita": "Italian", "spa": "Spanish", "hun": "Hungarian",
+                  "rus": "Russian", "ukr": "Ukrainian", "nld": "Dutch", "slv": "Slovenian", "hrv": "Croatian",
+                  "srp": "Serbian", "bul": "Bulgarian", "dan": "Danish", "swe": "Swedish", "nor": "Norwegian"}
+"""Languages named in the instruction. Another code (a rare language, or a wrong value such as
+``yue`` for a Czech text) is not named: the instruction is the excerpt's own language."""
+EXCERPT_LANGUAGE = "the language of the excerpt"
 
 PAGE_SIZE = 100
 """Chunks examined per page; the cursor is saved after each page."""
@@ -152,7 +167,8 @@ class InvalidTitle(ValueError):
 # ---- prompt and output -------------------------------------------------------------------
 
 def prompt_sha256() -> str:
-    parts = (PROMPT_VERSION, SYSTEM_PROMPT, LANGUAGE_BLOCK, DOCUMENT_BLOCK, EXCERPT_BLOCK)
+    parts = (PROMPT_VERSION, SYSTEM_PROMPT, DOCUMENT_BLOCK, EXCERPT_BLOCK, LANGUAGE_BLOCK, EXCERPT_LANGUAGE,
+             json.dumps(LANGUAGE_NAMES, sort_keys=True))
     return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
 
@@ -169,9 +185,9 @@ def text_value(value: Any) -> str | None:
 
 
 def messages(text: str, language: str | None, document_title: str | None) -> list[dict[str, str]]:
-    user = ((LANGUAGE_BLOCK.format(language=language) if language else "")
-            + (DOCUMENT_BLOCK.format(document_title=document_title) if document_title else "")
-            + EXCERPT_BLOCK.format(text=text))
+    user = ((DOCUMENT_BLOCK.format(document_title=document_title) if document_title else "")
+            + EXCERPT_BLOCK.format(text=text)
+            + LANGUAGE_BLOCK.format(language=LANGUAGE_NAMES.get(language or "", EXCERPT_LANGUAGE)))
     return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
 
 

@@ -94,13 +94,20 @@ def test_language_key(value, key):
     assert language_key(value) == key
 
 
-def test_messages_leave_out_a_missing_language_and_document_title():
-    full = messages("Požár zničil obec.", "ces", "Kronika obce Lhota")[1]["content"]
-    assert full == ("Language code:\nces\n\nOriginal Document Title:\nKronika obce Lhota\n\n"
-                    "Excerpt Text:\nPožár zničil obec.")
-    bare = messages("Text {with} braces", None, None)
-    assert bare[0]["role"] == "system" and "same language" in bare[0]["content"]
-    assert bare[1]["content"] == "Excerpt Text:\nText {with} braces"
+def test_messages_end_with_the_named_language_and_leave_out_a_missing_document_title():
+    full = messages("Požár zničil obec.", "ces", "Kronika obce Lhota")
+    assert full[0]["role"] == "system" and "not a sentence" in full[0]["content"]
+    assert full[1]["content"] == ("Original Document Title:\nKronika obce Lhota\n\n"
+                                  "Excerpt Text:\nPožár zničil obec.\n\nWrite the heading in Czech.")
+    assert messages("Brand in Wien.", "deu", None)[1]["content"] == (
+        "Excerpt Text:\nBrand in Wien.\n\nWrite the heading in German.")
+
+
+@pytest.mark.parametrize("language", [None, "yue", "xyz"])
+def test_an_unknown_or_missing_language_is_not_named(language):
+    # A wrong code (yue on a Czech text) must not ask for a heading in that language.
+    assert messages("Text {with} braces", language, None)[1]["content"] == (
+        "Excerpt Text:\nText {with} braces\n\nWrite the heading in the language of the excerpt.")
 
 
 def chunk(title=None, *documents, language=None) -> ChunkState:

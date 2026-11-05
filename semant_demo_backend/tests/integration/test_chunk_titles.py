@@ -110,8 +110,8 @@ async def test_check_write_touches_only_the_title_and_a_rerun_does_nothing(seede
     assert written["counts"]["written"] == 1 and written["to_retry"] == 0 and chunk_titles.exit_code(written) == 0
     assert written["provenance"]["model"] == "fake-titles" and written["provenance"]["prompt_version"] == "chunk-title-v1"
     assert written["usage"]["calls"] == 1 and written["usage"]["input_tokens"] > 0
-    assert provider.prompts == ["Language code:\nces\n\nOriginal Document Title:\nDopisy z Prahy\n\n"
-                                f"Excerpt Text:\n{letters_2['text']}"]
+    assert provider.prompts == ["Original Document Title:\nDopisy z Prahy\n\n"
+                                f"Excerpt Text:\n{letters_2['text']}\n\nWrite the heading in Czech."]
     after = await stored(seeded_store, collection_names, letters_2["id"])
     assert after.properties == {**before.properties, "title": fake_title(letters_2["text"])}
     assert after.vector == before.vector
@@ -150,7 +150,7 @@ async def test_documents_without_a_title_are_deferred_until_allowed(seeded_store
     assert allowed["counts"] == chunk_titles._counts() | {"examined": 2, "has_title": 1, "generate": 1,
                                                                "written": 1}
     assert chunk_titles.exit_code(allowed) == 0
-    assert provider.prompts[-1] == f"Language code:\nces\n\nExcerpt Text:\n{gazette_1['text']}"
+    assert provider.prompts[-1] == f"Excerpt Text:\n{gazette_1['text']}\n\nWrite the heading in Czech."
     assert (await stored(seeded_store, collection_names, gazette_1["id"])).properties["title"] == fake_title(
         gazette_1["text"])
 

@@ -26,7 +26,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from semant_demo.maintenance.chunk_titles import EXCERPT_BLOCK
+from semant_demo.maintenance.chunk_titles import EXCERPT_BLOCK, LANGUAGE_BLOCK
 from tests.corpus import Corpus
 from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
 
@@ -80,6 +80,8 @@ FAKE_THINKING = "The request asks for an answer.\nI will give it on one line."
 
 TITLE_EXCERPT = EXCERPT_BLOCK.split("{text}")[0]
 """Marks a chunk title request: the excerpt block of maintenance/chunk_titles.py's prompt."""
+TITLE_INSTRUCTION = "\n\n" + LANGUAGE_BLOCK.split("{language}")[0]
+"""Ends the excerpt of a chunk title request: the language instruction that follows it."""
 
 
 def fake_title(excerpt: str) -> str:
@@ -95,7 +97,7 @@ def fake_chat_answer(messages: list[dict[str, Any]]) -> str:
     user_messages = [m for m in messages if m.get("role") == "user"]
     prompt = str(user_messages[-1].get("content", "")) if user_messages else ""
     if TITLE_EXCERPT in prompt:
-        return fake_title(prompt.split(TITLE_EXCERPT, 1)[1])
+        return fake_title(prompt.split(TITLE_EXCERPT, 1)[1].rsplit(TITLE_INSTRUCTION, 1)[0])
     labels = sorted({int(n) for n in re.findall(r"\[doc ?([1-9][0-9]*)]", prompt)})
     if not labels:
         return "Fake summary without passages."

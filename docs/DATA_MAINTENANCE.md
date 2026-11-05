@@ -264,8 +264,9 @@ document years (for example after `metadata_sync`) until ingestion keeps the cop
 
 ## Chunk titles (`chunk_titles`, #575)
 
-Generates a short title (the prompt asks for at most 10 words, in the excerpt's language; a
-reply over 20 words is refused) for chunks without one and writes only `Chunks.title`. **Run
+Generates a short title (the prompt asks for a heading, a noun phrase of at most 10 words, in
+the excerpt's language, which it names when the chunk's language code is known; a reply over
+20 words is refused) for chunks without one and writes only `Chunks.title`. **Run
 it after `chunk_ingest` and `metadata_sync`:** the prompt uses the title of the chunk's document, and chunks of documents without a title are deferred
 (`deferred_no_document_title`, exit 1) until a later run, or generated without it with
 `--allow-missing-document-title` (for documents Kramerius has no title for; the command cannot
