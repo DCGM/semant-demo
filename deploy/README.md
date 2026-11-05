@@ -66,7 +66,7 @@ deployment-only values:
 | `BACKEND_URL` | `https://demo.semant.cz` | Public backend URL baked into the frontend bundle at build time |
 | `DOMAIN` | `demo.semant.cz` | Traefik Host rule |
 | `SQL_DB_PATH` | `/mnt/ssd2/semant_demo_app_data` | Host directory of the instance, mounted at `/app/sql_data`; the app opens `tasks.db` there (`SQL_DB_URL` is set in the Compose file) and writes the feedback log to its `feedback/` (also mounted at `/app/feedback`) |
-| `PAGE_ASSETS_PATH` | `/mnt/zfs1/semant_demo_page_assets/test` | Test instances only: host directory of the page asset store, mounted read-only at `/app/page_assets` (`PAGE_ASSETS_DIR` is set in the Compose file; [below](#page-asset-store-594)). It must exist before a deploy |
+| `PAGE_ASSETS_PATH` | `/mnt/zfs1/semant_demo_page_assets/production` (test: `.../test`) | Host directory of the page asset store, mounted read-only at `/app/page_assets` (`PAGE_ASSETS_DIR` is set in the Compose file; [below](#page-asset-store-594)). It must exist before a deploy |
 | `FEEDBACK_LOG_PATH` | `/app/feedback/feedback.log.jsonl` | In-app feedback log inside the mounted `feedback/` directory; keep this template value |
 | `GPU_DEVICE` | `0` | GPU of the embedding service |
 | `QWEN_EMBEDDER_PORT`, `QWEN_MAX_MODEL_LEN`, `QWEN_MAX_NUM_BATCHED_TOKENS`, `QWEN_GPU_MEMORY_UTILIZATION` | `8002`, `2048`, `16384`, `0.5` | Optional settings of the Qwen embedding service ([below](#qwen-embedding-service-385)) |
@@ -300,7 +300,7 @@ written on the host by the page import
 | Directory | Used by |
 |---|---|
 | `/mnt/zfs1/semant_demo_page_assets/test` | All test instances (`test-main` and PR previews share the test Weaviate, hence its chunks and anchors); mounted read-only by `docker-compose.app-test.yml` |
-| `/mnt/zfs1/semant_demo_page_assets/production` | Production, after visual acceptance on test; not mounted by `docker-compose.app.yaml` yet, so production documents are text-only |
+| `/mnt/zfs1/semant_demo_page_assets/production` | Production; mounted read-only by `docker-compose.app.yaml` |
 
 Created once by an administrator, writable by the operator who runs the import (the
 containers run as root and only read):
@@ -311,7 +311,7 @@ sudo chown -R <operator>:semantdemo /mnt/zfs1/semant_demo_page_assets
 sudo chmod -R 2775 /mnt/zfs1/semant_demo_page_assets
 ```
 
-The mount uses `create_host_path: false`: a test deploy fails when the directory is missing,
+The mount uses `create_host_path: false`: a deploy fails when the directory is missing,
 instead of silently serving an empty store. The assets are derived from the originals in the
 library share and can be regenerated; they are not backed up. An import into a mounted store
 is visible at once (no restart); browsers may show cached scans for up to a day (#595).
