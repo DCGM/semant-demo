@@ -2,7 +2,7 @@
   <div ref="column" class="span-gutter-column" :style="{ width: width + 'px' }">
     <!-- The gutter is as tall as the document, so a native scrollbar would usually be off
          screen (and hidden until used with overlay scrollbars). This one sits at the top
-         and sticks below the reader toolbar while the document scrolls. -->
+         and sticks to the top of the text's scroller while the document scrolls. -->
     <!-- .prevent: no compatibility mousedown, which would close an open popover. -->
     <div v-if="overflowing" class="span-gutter-scrollbar" @pointerdown.prevent="onTrackPointerDown">
       <div
@@ -291,13 +291,12 @@ onBeforeUnmount(() => {
 }
 
 /* At the top of the gutter, over the padding above the first line, so the markers keep
-   their offsets. While the document scrolls it sticks just below the reader toolbar
-   (ReaderToolbar.vue, sticky at 96px, 36px tall), which floats over this side of the
-   gutter. Sticking needs every ancestor up to the scrolling one to be free of
-   `overflow: hidden`. */
+   their offsets. While the document scrolls it sticks to the top of the text's scroller
+   (DocumentWorkspace.vue; the reader's controls are above it, outside the scroller).
+   Sticking needs every ancestor up to the scrolling one to be free of `overflow: hidden`. */
 .span-gutter-scrollbar {
   position: sticky;
-  top: 138px;
+  top: 0;
   z-index: 2;
   height: 20px;
   margin-bottom: -20px;

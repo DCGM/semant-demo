@@ -78,7 +78,14 @@ async function selectText (page: Page, from: [string, number], to: [string, numb
   }, [[ids[0], from[1]], [ids[1], to[1]]])
 }
 
-const scrollY = (page: Page) => page.evaluate(() => window.scrollY)
+/** The scroll position of the text, which scrolls in its own pane (#600). */
+const textScroll = (page: Page) => page.getByTestId('workspace-text').evaluate(el => el.scrollTop)
+/** How far the whole page scrolls; the document views fill the window and do not (#600). */
+const pageOverflow = (page: Page) => page.evaluate(() => ({
+  down: document.documentElement.scrollHeight - window.innerHeight,
+  across: document.documentElement.scrollWidth - window.innerWidth
+}))
+const top = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!.y
 const stageTransform = (page: Page) => page.getByTestId('scan-stage').evaluate(el => getComputedStyle(el).transform)
 
 test.describe('the public document view', () => {
@@ -166,7 +173,7 @@ test.describe('the public document view', () => {
     await expect(chunk(page, 'gazette_2')).toBeVisible()
     await expect(overlay(page)).toBeAttached()
     await page.waitForTimeout(400)
-    const [text0, scan0] = [await scrollY(page), await stageTransform(page)]
+    const [text0, scan0] = [await textScroll(page), await stageTransform(page)]
 
     // Both lines are readable on the fitted page and the short text is in view.
     await clickText(page, 'gazette_2', 3)
@@ -174,7 +181,7 @@ test.describe('the public document view', () => {
     await clickLine(page, 'r002-l001')
     await expect(chunk(page, 'gazette_1').locator('.is-active-passage')).toHaveText(fixture.chunk('gazette_1').text)
     await page.waitForTimeout(400)
-    expect(await scrollY(page)).toBe(text0)
+    expect(await textScroll(page)).toBe(text0)
     expect(await stageTransform(page)).toBe(scan0)
 
     // Zooming and panning the scan, scrolling the text: the other pane stays.
@@ -312,6 +319,114 @@ test.describe('the public document view', () => {
     await useViewport(page, 'wide')
     await page.goto('/#/documents/5e3a0000-0000-4000-8000-00000000dead')
     await expect(page.getByTestId('document-error')).toHaveText('This document is not in the corpus.')
+  })
+})
+
+test.describe('the layout of the document views (#600)', () => {
+  test('the scan left of the text, split by a divider dragged or moved by keys and remembered', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await open(page, chronicle.id, `?page=${PAGE_1}`)
+    await page.evaluate(() => localStorage.removeItem('semant.documentWorkspace.textShare'))
+    await page.reload()
+    const text = page.getByTestId('workspace-text')
+    const scan = page.getByTestId('workspace-scan')
+    const divider = page.getByRole('separator', { name: 'Resize the text and the scan' })
+    await expect(divider).toHaveAttribute('aria-valuenow', '55')
+    expect((await scan.boundingBox())!.x).toBeLessThan((await text.boundingBox())!.x)
+    await expect(modes(page).getByRole('button')).toHaveText(['imageScan', 'vertical_splitText and scan', 'articleText'])
+
+    // Dragged 200 px to the left: the text is 200 px wider, the scan 200 px narrower.
+    const [text0, scan0] = [(await text.boundingBox())!.width, (await scan.boundingBox())!.width]
+    const grip = (await divider.boundingBox())!
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(grip.x + grip.width / 2 - 200, grip.y + grip.height / 2, { steps: 5 })
+    await page.mouse.up()
+    expect((await text.boundingBox())!.width).toBeCloseTo(text0 + 200, -1)
+    expect((await scan.boundingBox())!.width).toBeCloseTo(scan0 - 200, -1)
+
+    // The keys: End gives the text its largest width, the scan keeps its minimum.
+    await divider.focus()
+    await page.keyboard.press('End')
+    expect(Math.round((await scan.boundingBox())!.width)).toBe(300)
+    await page.keyboard.press('ArrowRight')
+    const chosen = await divider.getAttribute('aria-valuenow')
+    await page.reload()
+    await expect(divider).toHaveAttribute('aria-valuenow', chosen!)
+    // A double click resets the split.
+    await divider.dblclick()
+    await expect(divider).toHaveAttribute('aria-valuenow', '55')
+  })
+
+  test('a one-row header with the long title cut; the page does not scroll, the panes do', async ({ page }) => {
+    const title = 'St. Petersburgische Zeitung. Ein sehr langer Titel einer Zeitung mit Beilagen, '.repeat(3).trim()
+    await page.route(`**/api/document/${chronicle.id}`, async (route) => {
+      const response = await route.fetch()
+      await route.fulfill({ response, json: { ...(await response.json()), title } })
+    })
+    // A short window: the scan's controls and thumbnails stay in it.
+    await page.setViewportSize({ width: 1920, height: 560 })
+    await open(page, chronicle.id, `?page=${PAGE_1}`)
+    const header = page.getByTestId('document-header')
+    await expect(page.getByTestId('document-title')).toHaveText(title)
+    expect((await header.boundingBox())!.height).toBe(48)
+    // The whole title is in the tooltip of the cut one.
+    expect(await page.getByTestId('document-title').locator('..').getAttribute('title')).toContain(title)
+    expect(await page.getByTestId('document-title').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+    expect(await pageOverflow(page)).toEqual({ down: 0, across: 0 })
+    for (const name of ['Previous page', 'Fit the page (0)']) {
+      await expect(page.getByRole('button', { name })).toBeInViewport()
+    }
+    await expect(page.getByRole('button', { name: 'Page 6' })).toBeInViewport()
+
+    // On a short phone screen the (whole, short) fixture text is longer than its pane: it
+    // scrolls, the header and controls stay.
+    await page.setViewportSize({ width: 390, height: 320 })
+    await modes(page).getByRole('button', { name: 'Text', exact: true }).click()
+    await page.getByTestId('text-later').click()
+    await expect(chunk(page, 'chronicle_3')).toBeAttached()
+    const text = page.getByTestId('workspace-text')
+    await expect.poll(() => text.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
+    const [header0, controls0] = [await top(page, 'document-header'), await top(page, 'workspace-controls')]
+    await text.hover()
+    await page.mouse.wheel(0, 300)
+    await expect.poll(() => textScroll(page)).toBeGreaterThan(0)
+    expect(await top(page, 'document-header')).toBe(header0)
+    expect(await top(page, 'workspace-controls')).toBe(controls0)
+    expect(await pageOverflow(page)).toEqual({ down: 0, across: 0 })
+  })
+
+  test('the public view collapses and restores the whitespace, as the collection reader does', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await open(page, letters.id)
+    const text = page.locator('.document-text')
+    const toggle = page.getByRole('button', { name: 'Original whitespace' })
+    await expect(text).toHaveClass(/document-text--preserve-whitespace/)
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await toggle.click()
+    await expect(text).not.toHaveClass(/document-text--preserve-whitespace/)
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    // A text-only document: the toggle, without a choice of views.
+    await expect(modes(page)).toHaveCount(0)
+  })
+
+  test('the collection reader\'s controls stay above the text while it scrolls (#588)', async ({ page }) => {
+    await ensureLoggedIn(page, 'owner')
+    await page.setViewportSize({ width: 390, height: 400 })
+    await page.goto(`/#/collections/${chronicles.id}/documents/${chronicle.id}/v1?view=text`)
+    await closePhoneNavigation(page)
+    await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+    const text = page.getByTestId('workspace-text')
+    await expect.poll(() => text.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
+    const controls = page.getByTestId('workspace-controls')
+    const before = (await controls.boundingBox())!
+    await text.hover()
+    await page.mouse.wheel(0, 300)
+    await expect.poll(() => textScroll(page)).toBeGreaterThan(0)
+    expect((await controls.boundingBox())!).toEqual(before)
+    await expect(page.getByRole('button', { name: 'Original whitespace' })).toBeInViewport()
+    await expect(controls.getByRole('button', { name: 'All chunks' })).toBeInViewport()
+    expect(await pageOverflow(page)).toEqual({ down: 0, across: 0 })
   })
 })
 

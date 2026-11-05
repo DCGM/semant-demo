@@ -1,18 +1,29 @@
 <template>
-  <q-page class="q-px-lg doc-page">
-    <!-- One row of fixed height for a document with scans: a notice must not move the text. -->
-    <div v-if="workspace.hasScan.value" class="reader-view-row">
-      <div class="reader-sync-notice text-caption text-grey-8 ellipsis" :title="scanSync.sync.notice.value">
-        <span v-if="scanSync.sync.notice.value" aria-live="polite" data-testid="sync-notice">{{ scanSync.sync.notice.value }}</span>
-      </div>
-      <WorkspaceModeToggle
-        :model-value="workspace.shown.value"
-        :narrow="workspace.narrow.value"
-        @update:model-value="chooseMode"
+  <!-- The reader fills the document view under its header; only its panes scroll (#600). -->
+  <q-page class="doc-page" :style-fn="fillHeight">
+    <!-- Fixed above the panes: the reader's view options, a notice (in the row: it never
+         moves the text) and, for a document with scans, the view toggle. -->
+    <WorkspaceControls
+      :mode="workspace.shown.value"
+      :narrow="workspace.narrow.value"
+      :has-scan="workspace.hasScan.value"
+      :notice="scanSync.sync.notice.value"
+      @update:mode="chooseMode"
+    >
+      <ReaderToolbar
+        v-model:chunk-gutter-visible="chunkGutterVisible"
+        v-model:preserve-whitespace="preserveWhitespace"
+        :collection-only="chunkWindow.displayedPreviewCount.value === 0"
+        :all-chunks="chunkWindow.allChunksShown.value"
+        :loading-all="chunkWindow.loadingAllChunks.value"
+        :focused-tag="focusedTag"
+        @show-collection-only="chunkWindow.hideAllPreviews"
+        @show-all-chunks="chunkWindow.loadAllChunks"
+        @clear-focused-tag="tagNav.setFocusedTagId(null)"
       />
-    </div>
-    <!-- The text (toolbar, gutters, annotated text) and, for a document with scans, the page scan
-         beside it (#545); the scan stays in view below the document header while the text scrolls. -->
+    </WorkspaceControls>
+    <!-- The text (gutters, annotated text) and, for a document with scans, the page scan
+         beside it (#545). -->
     <DocumentWorkspace
       ref="workspacePane"
       v-model:narrow="workspace.narrow.value"
@@ -21,25 +32,12 @@
       :page-id="scanPageId"
       :highlights="scanSync.sync.scanHighlights.value"
       :layout-cache="scanSync.layouts.value"
-      :sticky-top="96"
-      view-height="var(--document-layout-height, 100vh)"
       @navigate="onScanNavigate"
       @page-change="onScanPage"
       @loaded="onScanLoaded"
       @line-select="scanSync.sync.showLineInText"
       @line-focus="scanSync.sync.showLineInText"
     >
-    <ReaderToolbar
-      v-model:chunk-gutter-visible="chunkGutterVisible"
-      v-model:preserve-whitespace="preserveWhitespace"
-      :collection-only="chunkWindow.displayedPreviewCount.value === 0"
-      :all-chunks="chunkWindow.allChunksShown.value"
-      :loading-all="chunkWindow.loadingAllChunks.value"
-      :focused-tag="focusedTag"
-      @show-collection-only="chunkWindow.hideAllPreviews"
-      @show-all-chunks="chunkWindow.loadAllChunks"
-      @clear-focused-tag="tagNav.setFocusedTagId(null)"
-    />
     <div class="page-shell">
       <ChunkMembershipGutter
         v-if="chunkGutterVisible"
@@ -258,9 +256,10 @@ import { useReaderGutters } from './useReaderGutters'
 import { useReaderScanSync } from './useReaderScanSync'
 import { selectionRange } from '../correspondence/layoutMap'
 import DocumentWorkspace from '../workspace/DocumentWorkspace.vue'
+import WorkspaceControls from '../workspace/WorkspaceControls.vue'
+import { fillHeight } from '../workspace/fillHeight'
 import { useWorkspaceMode } from '../workspace/useWorkspaceMode'
 import { parseMode, targetKey, withMode, withScanPage, type WorkspaceMode } from '../workspace/workspaceMode'
-import WorkspaceModeToggle from '../workspace/WorkspaceModeToggle.vue'
 
 // The collection's document reader: the text of the displayed chunks (DocumentTextPane)
 // with their annotations, the chunk and span gutters, chunk membership, and annotation
@@ -527,8 +526,8 @@ const scanSync = useReaderScanSync({
   focusScan: (request) => workspacePane.value?.focus(request) ?? Promise.resolve(false),
   revealText: (at) => { textPane.value?.revealRange(at) }
 })
-/** The top of the reader's scroller under the document header, the sticky toolbar and the gutter's scrollbar. */
-const READER_COVERED_TOP = 158
+/** The top of the text's scroller covered by the span gutter's scrollbar (sticky at its top). */
+const READER_COVERED_TOP = 20
 const scanPageId = computed(() => typeof route.query.page === 'string' ? route.query.page : null)
 /** The page the link opened (`?page=`): its text is shown once the reader's text is loaded. */
 const linkedPageId = scanPageId.value
@@ -1098,58 +1097,32 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.reader-view-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 36px;
-  margin-top: 8px;
-}
-
-.reader-sync-notice {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .doc-page {
-  min-height: 100%;
-  background: #eef2f7;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  overflow: hidden;
+  background: #fff;
 }
 
+/* The gutters and the text, one white reading surface at least as tall as the text pane. */
 .page-shell {
   display: flex;
   flex-direction: row;
-  gap: 0;
   align-items: stretch;
-  /* One white card, outlined, so the gutter reads as part of it rather than of the
-     grey page around it. */
+  min-height: 100%;
   background: #ffffff;
-  border: 1px solid #d5dce6;
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.12);
-  /* clip, not hidden: hidden would make this the scroll container of the span gutter's
-     sticky scrollbar, so it would never stick to the window. */
-  overflow: clip;
 }
 
 .paper-card {
   flex: 4;
   min-width: 0;
-  min-height: calc(100vh - 160px);
   border-radius: 0;
   background: #ffffff;
   box-shadow: none;
 }
 
-.paper-card.has-gutter {
-  border-radius: 0;
-}
-
 .paper-body {
-  padding: 32px 32px 40px;
+  padding: 16px 20px 24px;
 }
 
 /* The text starts right next to the span gutter. */
@@ -1191,7 +1164,7 @@ onBeforeUnmount(() => {
 }
 
 .expand-row--top {
-  margin-top: -32px;
+  margin-top: -16px;
   margin-bottom: 20px;
 }
 
@@ -1264,27 +1237,17 @@ onBeforeUnmount(() => {
   color: #44403c;
 }
 
-@media (max-width: 1023px) {
-  .paper-card {
-    min-height: auto;
-  }
-
-  .paper-body {
-    padding: 24px;
-  }
-
-  .paper-card.has-gutter .paper-body {
-    padding-left: 10px;
-  }
-}
-
 @media (max-width: 599px) {
   .paper-body {
-    padding: 20px 16px 24px;
+    padding: 12px 12px 20px;
   }
 
   .paper-card.has-gutter .paper-body {
     padding-left: 8px;
+  }
+
+  .expand-row--top {
+    margin-top: -12px;
   }
 }
 </style>

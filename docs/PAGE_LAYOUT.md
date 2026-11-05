@@ -277,12 +277,21 @@ correspondence but not their text:
   annotation link (`?annotation=`), a chunk link (`?chunk=&order=`), a page link (`?page=`) and
   summary or chat citations show their lines on the scan; the annotation popover works as
   before. A collection the user cannot read says so and links to the public view.
-- **Layout** (`DocumentWorkspace`): the text scrolls with its scroller (the page, or the document
-  view's layout) and the scan sticks beside it below the header, so the two scroll
-  independently. A document without scans is text only, without a choice of views; otherwise
-  *Text and scan*, *Text* or *Scan* (`WorkspaceModeToggle`), and only one of them when the
-  workspace is under 720 px wide. The scan viewer stays mounted while hidden, so it keeps its
-  page; showing the text again reveals the passage last focused from the scan.
+- **Layout** (#600). Both views fill the window under the application header and do not
+  scroll as a page: a one-row header (`DocumentHeader`: back link, title cut with an ellipsis
+  and whole in its tooltip, subtitle or byline, *Original*, and the collection in the
+  collection view), a fixed controls row (`WorkspaceControls`: the whitespace toggle, in the
+  collection view with the rest of the reader's tools; the synchronization notice; the view
+  toggle) and the workspace (`DocumentWorkspace`). The workspace shows the scan on the left
+  and the text on the right; the text scrolls in its own pane, the scan keeps its page
+  controls and thumbnails in view and is panned and zoomed on its own. The divider between
+  them is dragged or moved with the arrow keys (Shift: larger steps; Home/End: the text's
+  smallest and largest width; a double click resets it); the text starts at 55 %, both panes
+  keep a minimum width (`splitRatio.ts`), and the split is remembered in this browser. A
+  document without scans is text only, without a choice of views; otherwise *Scan*, *Text
+  and scan* or *Text* (`WorkspaceModeToggle`), and only one of them when the workspace is
+  under 720 px wide. The scan viewer stays mounted while hidden, so it keeps its page;
+  showing the text again reveals the passage last focused from the scan.
 - **Links.** The link's target (a passage, an annotation or chunk, a page) and its view are
   followed also when only the query changes (another link to the same document: the page is
   reused, the document is not read again). The reader's own page changes in the scan viewer
