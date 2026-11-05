@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import {
   answerChat, askChat, chatSource, chunkText, closePhoneNavigation, ensureLoggedIn, fixture, search, useViewport
@@ -26,6 +26,25 @@ const highlights = (page: Page) => page.locator('polygon.scan-highlight')
 const overlay = (page: Page) => page.getByTestId('scan-overlay')
 const workspace = (page: Page) => page.getByTestId('document-workspace')
 const modes = (page: Page) => page.getByTestId('workspace-mode')
+
+/**
+ * Waits until an element stops moving: the same box in ten animation frames in a row. After a
+ * (re)load the drawers may still be sliding in and narrowing the workspace, and a drag started
+ * from a box read meanwhile can miss its target.
+ */
+async function settled (locator: Locator) {
+  await expect.poll(() => locator.evaluate(el => new Promise<boolean>(resolve => {
+    const box = () => JSON.stringify(el.getBoundingClientRect())
+    const first = box()
+    let frames = 0
+    const step = () => {
+      if (box() !== first) return resolve(false)
+      if (++frames === 10) return resolve(true)
+      requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }))).toBe(true)
+}
 
 /** Clicks the middle of a scan line (the overlay is hit-tested from the layout, not the DOM). */
 async function clickLine (page: Page, lineId: string) {
@@ -336,6 +355,7 @@ test.describe('the layout of the document views (#600)', () => {
     await expect(modes(page).getByRole('button')).toHaveText(['imageScan', 'vertical_splitText and scan', 'articleText'])
 
     // Dragged 200 px to the left: the text is 200 px wider, the scan 200 px narrower.
+    await settled(divider)
     const [text0, scan0] = [(await text.boundingBox())!.width, (await scan.boundingBox())!.width]
     const grip = (await divider.boundingBox())!
     await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
