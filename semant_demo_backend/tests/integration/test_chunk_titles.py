@@ -279,3 +279,68 @@ async def test_absent_chunks_are_reported_and_the_schema_is_never_changed(seeded
         assert [p.name for p in config.properties] == ["text"]
     finally:
         await seeded_store.collections.delete(bare)
+
+
+async def test_a_failed_write_is_not_retried_for_a_chunk_titled_or_deleted_since(seeded_store, collection_names,
+                                                                                 corpus, chunk_run, provider,
+                                                                                 tmp_path, monkeypatch):
+    chunks = seeded_store.collections.get(collection_names.chunks_collection_name)
+    letters_2, gazette_1 = corpus.chunks["letters_2"], corpus.chunks["gazette_1"]
+    set_chunk_title = chunk_titles.store.set_chunk_title
+
+    async def unavailable(*args):
+        raise ConnectionError("store unavailable")
+    monkeypatch.setattr(chunk_titles.store, "set_chunk_title", unavailable)
+    titled = await chunk_run(tmp_path / "titled.json", write=True)
+    regenerated = dict(write=True, regenerate=True, selection=Selection(True, chunks=(UUID(gazette_1["id"]),)))
+    deleted = await chunk_run(tmp_path / "deleted.json", **regenerated)
+    assert titled["counts"]["write_failed"] == deleted["counts"]["write_failed"] == 1 and len(provider.prompts) == 2
+    already_titled = titled["counts"]["has_title"]
+
+    await chunks.data.update(uuid=letters_2["id"], properties={"title": "Titulek jiného zapisovatele"})
+    await chunks.data.delete_by_id(gazette_1["id"])
+    monkeypatch.setattr(chunk_titles.store, "set_chunk_title", set_chunk_title)
+    titled = await chunk_run(tmp_path / "titled.json", write=True)
+    deleted = await chunk_run(tmp_path / "deleted.json", **regenerated)
+
+    assert len(provider.prompts) == 2   # neither is generated again
+    # The other writer's title is kept; the run finishes instead of retrying either forever.
+    assert (await stored(seeded_store, collection_names, letters_2["id"])).properties["title"] == (
+        "Titulek jiného zapisovatele")
+    assert titled["counts"]["has_title"] == already_titled + 1 and titled["counts"]["written"] == 0 and titled["to_retry"] == 0
+    assert deleted["counts"]["absent"] == 1 and deleted["to_retry"] == 0 and deleted["done"]
+    assert [line["status"] for line in manifest(tmp_path / "deleted.json.manifest.jsonl")] == [
+        "write_failed", "absent"]
+    with pytest.raises(Refused, match="finished"):
+        await chunk_run(tmp_path / "deleted.json", **regenerated)
+
+
+async def test_absent_ids_count_toward_the_limit_and_each_manifest_line_is_kept_once(seeded_store, corpus,
+                                                                                     chunk_run, provider, tmp_path):
+    absent = [UUID(f"00000000-0000-4000-8000-00000000000{i}") for i in (1, 2, 3)]   # before every corpus id
+    letters_2 = UUID(corpus.chunks["letters_2"]["id"])
+    options = dict(write=True, selection=Selection(True, chunks=(*absent, letters_2)), limit=2)
+    path = tmp_path / "write.json.manifest.jsonl"
+
+    first = await chunk_run(tmp_path / "write.json", **options)
+    assert not first["done"] and first["counts"]["absent"] == 2 and provider.prompts == []
+    # A line appended before an interruption, which the checkpoint did not record.
+    with path.open("a") as file:
+        file.write(json.dumps({"id": str(absent[2]), "status": "absent"}) + "\n")
+
+    second = await chunk_run(tmp_path / "write.json", **options)
+    assert second["done"] and second["counts"]["absent"] == 3 and second["counts"]["written"] == 1
+    assert manifest(path) == [{"id": str(i), "status": "absent"} for i in absent]
+
+
+async def test_document_titles_are_read_only_for_chunks_that_may_get_a_title(corpus, chunk_run, tmp_path,
+                                                                             monkeypatch):
+    read_document_titles, asked = chunk_titles.store.read_document_titles, []
+
+    async def recording(client, collection, ids, with_title=True):
+        asked.append(sorted(map(str, ids)))
+        return await read_document_titles(client, collection, ids, with_title)
+    monkeypatch.setattr(chunk_titles.store, "read_document_titles", recording)
+    await chunk_run(tmp_path / "check.json", write=False)
+
+    assert asked == [[corpus.documents["letters"]["id"]]]   # the document of the only untitled chunk

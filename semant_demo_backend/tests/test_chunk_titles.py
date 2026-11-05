@@ -1,6 +1,7 @@
 """Chunk title generation (#575): prompt, reply validation, planning, selection files, model
 calls through the real gateway against fake providers, provenance and exit codes. The runs
 against a store are in ``tests/integration/test_chunk_titles.py``."""
+import asyncio
 import json
 from pathlib import Path
 from uuid import UUID
@@ -72,9 +73,31 @@ def no_backoff(monkeypatch):
     ("„Svatý Václav“ a „Karel IV.“", "„Svatý Václav“ a „Karel IV.“"),
     ('"Foo" and "Bar"', '"Foo" and "Bar"'),
     ("«Kronika»", "Kronika"),
+    # emphasis inside the title is not a pair around it
+    ("**Požár** v obci **Brno**", "**Požár** v obci **Brno**"),
+    ("_a_ and _b_", "_a_ and _b_"),
+    ("*Kronika*", "Kronika"),
 ])
 def test_clean_title_keeps_only_the_title(reply, title):
     assert clean_title(reply) == title
+
+
+async def test_a_failing_call_cancels_the_others_before_the_error_propagates():
+    started, cancelled = [], []
+
+    async def call(item):
+        started.append(item)
+        if item == 0:
+            await asyncio.sleep(0)
+            raise Refused("refused")
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            cancelled.append(item)
+            raise
+    with pytest.raises(Refused):
+        await chunk_titles._gather(range(4), 4, call)
+    assert started == [0, 1, 2, 3] and sorted(cancelled) == [1, 2, 3]
 
 
 @pytest.mark.parametrize("reply", [

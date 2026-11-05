@@ -304,7 +304,9 @@ python -m semant_demo.maintenance.chunk_titles --write write.json --confirm-endp
   without `Chunks.title` is refused). Invalid replies (empty, several lines, too long) and failed
   calls are never written; they are retried first when the same command runs again, once per
   run (a chunk that keeps failing stays in the checkpoint for the next run). A failed write is
-  retried with its recorded title, without a new model call. `--limit` counts the retries.
+  retried with its recorded title, without a new model call, unless the chunk was deleted
+  (`absent`) or got another title since (kept, `has_title`, unless `--regenerate`). `--limit`
+  counts the retries and, with an explicit selection, its absent ids.
 - **Records.** The checkpoint holds the run's provenance once (prompt version and hash, model,
   catalog and its hash), the counts (also per chunk language) and the model usage.
   `CHECKPOINT.titled.uuids` lists every chunk whose title the run wrote (raw 16-byte UUIDs);

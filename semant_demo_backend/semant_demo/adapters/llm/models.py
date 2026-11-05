@@ -179,8 +179,11 @@ def _tier(tier: ModelTier, spec: dict[str, Any]) -> TierModel:
         if reasoning.get("enabled") is False and "effort" in reasoning:
             raise ValueError("Disabled reasoning cannot have an effort")
     thinking = spec.get("thinking")
+    if thinking is False:  # YAML reads an unquoted off as false
+        thinking = "off"
     if thinking is not None and (provider != Provider.ollama or thinking not in THINKING):
-        raise ValueError(f"thinking is an Ollama tier option: one of {', '.join(THINKING)}")
+        raise ValueError(f"thinking is an Ollama tier option: one of {', '.join(THINKING)} (quoted), "
+                         f"not {thinking!r}")
     supports_temperature = spec.get("supports_temperature", True)
     if not isinstance(supports_temperature, bool):
         raise ValueError("supports_temperature must be a boolean")

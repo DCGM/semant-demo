@@ -202,6 +202,14 @@ def test_catalog_rejects_invalid_thinking_settings(tier):
         ModelCatalog.from_dict({"tiers": {"tiny": tier}, "features": {"x": {"default": "tiny"}}})
 
 
+def test_an_unquoted_thinking_off_is_read_as_off():
+    # YAML reads an unquoted off as false.
+    spec = yaml.safe_load("tiers:\n  tiny:\n    provider: ollama\n    model: m\n    thinking: off\n"
+                          "features:\n  x:\n    default: tiny\n")
+    assert spec["tiers"]["tiny"]["thinking"] is False
+    assert ModelCatalog.from_dict(spec).resolve("x").thinking == "off"
+
+
 # ── non-streamed calls ─────────────────────────────────────────────────────
 
 async def test_openai_compatible_call_records_provider_usage_and_estimated_cost(transport, metrics):
