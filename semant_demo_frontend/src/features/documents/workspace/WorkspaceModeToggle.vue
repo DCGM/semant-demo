@@ -27,10 +27,11 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [mode: WorkspaceMode] }>()
 
 const value = computed(() => props.modelValue)
+// In the order of the panes: the scan on the left, the text on the right.
 const options = computed(() => [
+  { value: 'scan', label: 'Scan', icon: 'image' },
   ...(props.narrow ? [] : [{ value: 'split', label: 'Text and scan', icon: 'vertical_split' }]),
-  { value: 'text', label: 'Text', icon: 'article' },
-  { value: 'scan', label: 'Scan', icon: 'image' }
+  { value: 'text', label: 'Text', icon: 'article' }
 ])
 </script>
 

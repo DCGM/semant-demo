@@ -260,7 +260,7 @@ export async function openDocument (page: Page, collectionKey: string, documentK
   await page.getByText(fixture.collection(collectionKey).name, { exact: true }).click()
   await page.getByText('Documents & Tagging').click()
   await page.getByText(fixture.document(documentKey).properties.title, { exact: true }).click()
-  await expect(page.locator('.doc-header .text-h5')).toBeVisible()
+  await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
 }
 
 export function chunkText (page: Page, chunkKey: string): Locator {
