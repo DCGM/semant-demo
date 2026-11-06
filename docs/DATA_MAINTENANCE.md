@@ -590,11 +590,25 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
     it is recorded as given and not checked.
   - `--check` takes neither, nor `--bulk` or `--batch`.
 - Reported documents and invalid lines go to `CHECKPOINT.manifest.jsonl`.
+- A write run lists the input documents whose chunks are all stored in `CHECKPOINT.documents.txt`
+  (one document id per line, the format of `metadata_sync --document-ids` and
+  `page_order --document-ids`), appended after each page; the summary gives its path and count.
+  - Listed: `new` and `append` documents after their writes are read back, `replayed` ones, and a
+    `blocked` document once a rerun finishes it. Rejected documents are never listed; a check
+    writes no list.
+  - `replayed` documents are listed because a document written just before an interruption is
+    `replayed` in the resumed run. A document stored before the import and repeated in its input
+    is listed too; `metadata_sync` treats it like any other document (empty values filled,
+    `library` and `public` following the mirror row), and its report shows any change before
+    `--apply`.
+  - A page repeated after an interruption may list a document twice; both readers ignore the
+    repetition. A line cut off by a killed run is removed when the run resumes.
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
 **Afterwards**, as separate commands:
 
-1. `metadata_sync` fills the new documents' metadata.
+1. `metadata_sync --report REPORT --document-ids CHECKPOINT.documents.txt`, then
+   `--apply REPORT`, fills the new documents' metadata (`--sync` takes no document list).
 2. `chunk_year --write` copies their year to the chunks.
 3. `data_tools/embedder` computes the `Qwen3_Embedding_0_6B` vectors; until then the new chunks
    are missing from vector and hybrid search.
