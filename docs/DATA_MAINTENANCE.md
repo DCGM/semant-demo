@@ -275,9 +275,9 @@ tell the two cases apart). It is independent of `chunk_year`, the embeddings (th
 
 ```bash
 python -m semant_demo.maintenance.chunk_titles --check check.json \
-    --models-config semant_demo/configs/chunk_titles_ollama.yaml --documents-from new_documents.txt
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml
 python -m semant_demo.maintenance.chunk_titles --write write.json --confirm-endpoint HOST:PORT \
-    --models-config semant_demo/configs/chunk_titles_ollama.yaml --documents-from new_documents.txt
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml
 ```
 
 - **Model.** `--models-config` is required: a tier catalog declaring the `chunk_titles` feature.
@@ -295,11 +295,19 @@ python -m semant_demo.maintenance.chunk_titles --write write.json --confirm-endp
   application's paid tiers by default; doing so needs authorization for that run. Both modes
   check the catalog and the provider settings before anything else, without a model call;
   `--check` makes no model calls at all.
-- **Selection.** After an import pass the imported documents (`--documents-from FILE`, one id
-  per line), since the default (every untitled chunk of the store) also takes the older untitled
-  chunks. `--chunks`/`--chunks-from` select chunks; `--regenerate` (explicit selection only)
-  also replaces existing titles. Chunks that have a title are otherwise skipped, so a rerun makes
-  no model calls.
+- **Selection.** By default every chunk without a title, whichever way it was added: a pass over
+  all chunks in id order that checks the stored title in the command (no filter on `title`,
+  which the `word` tokenization of production's `Chunks.title` refuses for an empty value). No
+  document list is needed after an import ([#596](https://github.com/DCGM/semant-demo/issues/596)).
+  On a store with older untitled chunks (the backlog,
+  [#87](https://github.com/DCGM/semant-demo/issues/87)) the default covers them too: read the
+  selection size from `--check` first and bound a run with `--limit`. `--documents`/
+  `--documents-from FILE` (one id per line) and `--chunks`/`--chunks-from` optionally narrow
+  the selection; `--regenerate` (explicit selection only) also replaces existing titles.
+  Chunks that have a title are otherwise skipped, so a rerun makes no model calls. If a
+  per-chunk marker of completed stages is introduced
+  ([#590](https://github.com/DCGM/semant-demo/issues/590)), the default may select by it
+  instead.
 - **Writes.** A merge of `title` alone, read back per page; the schema is never changed (a store
   without `Chunks.title` is refused). Invalid replies (empty, several lines, too long) and failed
   calls are never written; they are retried first when the same command runs again, once per

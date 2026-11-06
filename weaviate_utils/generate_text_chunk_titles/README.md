@@ -9,7 +9,7 @@ Generate chunk titles with the maintenance command instead:
 ```bash
 cd semant_demo_backend
 python -m semant_demo.maintenance.chunk_titles --check check.json \
-    --models-config semant_demo/configs/chunk_titles_ollama.yaml --documents-from new_documents.txt
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml
 ```
 
 It writes only `Chunks.title`, never changes the schema, and is resumable. Its prompt is the

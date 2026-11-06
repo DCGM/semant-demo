@@ -18,8 +18,10 @@ pages of 100; only the id, title, language and document reference). ``--document
 ``--documents-from FILE`` (one document UUID per line; ``#`` starts a comment),
 ``--chunks ID ...`` and ``--chunks-from FILE`` (the same text format, or a ``.uuids`` file of
 an earlier run, below) select explicitly; they may be combined (the union of the chunks).
-An explicit selection is resolved to its sorted chunk ids at the start of every run. Prefer it
-after an import: the default selection also takes every older untitled chunk of the store.
+An explicit selection is resolved to its sorted chunk ids at the start of every run. The
+default needs no document list after an import and also finds chunks added by other means; on
+a store with older untitled chunks (#87) it covers them too, so read its size from ``--check``
+and bound a run with ``--limit``.
 
 Each selected chunk is planned as:
 
