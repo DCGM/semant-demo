@@ -37,17 +37,25 @@ pip install -e .
    python run.py --init config.yaml
    ```
 3. Edit `config.yaml`: set the Weaviate connection, the collection, `vector_name`, and the embedder `base_url`, `model_name` and `input_template`.
-4. Run the pipeline:
+4. Run the pipeline, confirming the Weaviate endpoint of the config (`weaviate_host:weaviate_port`):
    ```bash
-   python run.py config.yaml
+   python run.py config.yaml --confirm-endpoint localhost:8080
    ```
    Run the same command again to continue after an interruption.
+
+Every run writes (the vectors, and the schema with `create_vector`), so a pipeline run and
+`--create-test-collection` are refused with exit code 2, before connecting, unless
+`--confirm-endpoint HOST:PORT` equals the configured endpoint. This holds for `localhost`
+too: the production backfill reaches its Weaviate as `localhost` on the server.
+`--init` needs no confirmation.
 
 To try it out, you can create a small `EmbedderTest` collection (it uses the connection from the config):
 
 ```bash
-python run.py --create-test-collection config.yaml
+python run.py --create-test-collection config.yaml --confirm-endpoint localhost:8080
 ```
+
+Without a config it uses `localhost:8080`, which has to be confirmed the same way.
 
 An existing `EmbedderTest` collection is refused and left unchanged; add `--force` to delete it and create it again.
 
@@ -122,4 +130,6 @@ A new embedder backend can be added by subclassing `Embedder` and implementing `
 test-owned Weaviate (`make test-integration`, and in CI) with a fake OpenAI-compatible
 endpoint: vector creation, preservation of properties, references and other vectors,
 resuming, write failures, refused collections, the guarded test collection and Search
-over the filled vector. The tool's dependencies are part of the backend's development lock.
+over the filled vector. `semant_demo_backend/tests/test_embedder_cli.py` (fast, no Weaviate)
+covers the endpoint confirmation of the CLI. The tool's dependencies are part of the
+backend's development lock.

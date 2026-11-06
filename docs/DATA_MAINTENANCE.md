@@ -596,8 +596,8 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
 
 1. `metadata_sync` fills the new documents' metadata.
 2. `chunk_year --write` copies their year to the chunks.
-3. `data_tools/embedder` computes the `Qwen3_Embedding_0_6B` vectors; until then the new chunks
-   are missing from vector and hybrid search.
+3. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
+   vectors; until then the new chunks are missing from vector and hybrid search.
 
 The import does none of this, nor anything to existing annotations: their positions stay valid,
 and context near the former document end keeps its old right boundary.
