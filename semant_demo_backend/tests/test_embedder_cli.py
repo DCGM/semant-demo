@@ -2,8 +2,9 @@
 
 Every pipeline run and ``--create-test-collection`` write, so each needs
 ``--confirm-endpoint HOST:PORT`` equal to the configured Weaviate endpoint, checked before
-any connection; the read-only ``--check`` needs none. The connection and the runs are replaced here; the pipeline itself is
-tested against Weaviate in ``tests/integration/test_embedder_tool.py``.
+any connection; the read-only ``--check`` needs none and ignores one given. The connection
+and the runs are replaced here; the pipeline itself is tested against Weaviate in
+``tests/integration/test_embedder_tool.py``.
 """
 import sys
 from pathlib import Path
@@ -124,7 +125,8 @@ def test_generating_a_template_needs_no_endpoint(monkeypatch, tmp_path, started)
     assert (tmp_path / "template.yaml").exists() and started == []
 
 
-def test_the_read_only_check_needs_no_endpoint(monkeypatch, config, started):
+@pytest.mark.parametrize("confirm", [[], ["--confirm-endpoint", "localhost:8080"]])
+def test_the_read_only_check_needs_no_endpoint_and_ignores_one(monkeypatch, config, started, confirm):
     checked = []
 
     def check(self):
@@ -133,5 +135,5 @@ def test_the_read_only_check_needs_no_endpoint(monkeypatch, config, started):
 
     monkeypatch.setattr(EmbeddingPipeline, "check", check)
 
-    assert run_cli(monkeypatch, config, "--check") == 0
+    assert run_cli(monkeypatch, config, "--check", *confirm) == 0
     assert checked == [("weaviate.example", 18080)] and started == []

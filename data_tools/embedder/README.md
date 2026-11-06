@@ -55,7 +55,8 @@ schema, sending embedding requests or writing. It reads every record with the ve
 takes about as long as the scan of a run. Exit code 0 when nothing is left to embed, 1 when
 records are, 2 when the check fails (e.g. a missing collection) or a run would be refused (the
 vector is missing and `create_vector` is disabled, even in an empty collection). `max_records`
-does not limit it. Since it only reads, `--check` needs no `--confirm-endpoint`.
+does not limit it. Since it only reads, `--check` needs no `--confirm-endpoint` and ignores one
+given, like the read-only modes of the maintenance commands.
 
 ```bash
 python run.py config.yaml --check

@@ -46,7 +46,8 @@ def main():
         metavar="HOST:PORT",
         help="Required for a pipeline run and --create-test-collection: the Weaviate endpoint of the config "
              "(weaviate_host:weaviate_port; localhost:8080 for --create-test-collection without a config). "
-             "A missing or different value is refused (exit code 2) before connecting. --check needs none."
+             "A missing or different value is refused (exit code 2) before connecting. "
+             "--check needs none and ignores it."
     )
     parser.add_argument(
         "--check",
