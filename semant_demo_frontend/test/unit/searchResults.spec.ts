@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 
-import type { SearchResponse, SearchResultChunk } from 'src/generated/api'
+import type { SearchResultChunk } from 'src/generated/api'
 import { selectResults, type SearchResultsContext } from 'src/features/search/searchResults'
 import { parseSummaryTokens, useSearchSummary } from 'src/features/search/useSearchSummary'
-import { useSearchRequest } from 'src/features/search/useSearchRequest'
 import { onAiOperation } from 'src/shared/api'
 import { muteConsole } from './console'
 
@@ -21,14 +20,9 @@ const hit = (id: string): SearchResultChunk => ({
   documentObject: { id: `doc-${id}` }
 })
 
-const response = (ids: string[], query = 'q'): SearchResponse => ({
-  results: ids.map(hit),
-  searchRequest: { query, tagUuids: [], positive: true, automatic: true },
-  timeSpent: 0.1,
-  searchLog: []
+const contextOf = (id: number, ids: string[], query = 'q'): SearchResultsContext => ({
+  id, query, results: ids.map(hit), timeSpent: 0.1
 })
-
-const contextOf = (id: number, ids: string[]): SearchResultsContext => ({ id, response: response(ids) })
 
 describe('selectResults', () => {
   const context = contextOf(1, ['a', 'b', 'c', 'd'])
@@ -110,6 +104,8 @@ describe('useSearchSummary', () => {
     await flush()
     expect(calls[0].url).toMatch(/\/api\/summarize\/results\?length=short$/) // the default length level
     expect((calls[0].body as { results: { id: string }[] }).results.map((r) => r.id)).toEqual(['c'])
+    // The summary is about the search's own query.
+    expect((calls[0].body as { search_request: { query: string } }).search_request.query).toBe('q')
     calls[0].answer({ summary: 'Only [doc1].', time_spent: 0.5 })
     await running
 
@@ -256,36 +252,5 @@ describe('useSearchSummary', () => {
     calls[1].answer({ summary: 'new [doc2]', time_spent: 1 })
     await second
     expect([summary.summary.value, summary.summarizing.value]).toEqual(['new [doc2]', false])
-  })
-})
-
-describe('useSearchRequest', () => {
-  const originalFetch = globalThis.fetch
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-  })
-
-  it('lets a late answer of an earlier search neither replace the results nor end loading', async () => {
-    const answers: ((body: unknown) => void)[] = []
-    // Answers arrive regardless of abort: the response was already on its way.
-    globalThis.fetch = vi.fn(() => new Promise<Response>((resolve) => {
-      answers.push((body) => resolve(new Response(JSON.stringify(body))))
-    })) as typeof fetch
-    const search = useSearchRequest()
-
-    const first = search.search({ query: 'one', tagUuids: [], positive: true, automatic: true })
-    await flush()
-    const second = search.search({ query: 'two', tagUuids: [], positive: true, automatic: true })
-    await flush()
-
-    answers[0]({ results: [hit('old')], search_request: { query: 'one', tag_uuids: [], positive: true, automatic: true }, time_spent: 1, search_log: [] })
-    expect(await first).toBeNull()
-    expect([search.context.value, search.loading.value]).toEqual([null, true])
-
-    answers[1]({ results: [hit('new')], search_request: { query: 'two', tag_uuids: [], positive: true, automatic: true }, time_spent: 1, search_log: [] })
-    const context = await second
-    expect(context?.response.results.map((r) => r.id)).toEqual(['new'])
-    expect([search.context.value?.id, search.loading.value]).toEqual([context?.id, false])
   })
 })

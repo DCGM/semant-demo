@@ -30,7 +30,7 @@ export const fixture = {
 //   await useViewport(page, 'phone')
 //   await ensureLoggedIn(page, 'annotator')   // signed out, already annotator, or owner
 //   await search(page, 'Lhota')
-//   await goToResultsPage(page, 2)
+//   await openDocument(page, 'chronicle')
 
 export { viewports, type ViewportName } from './viewports'
 
@@ -138,26 +138,21 @@ export async function search (page: Page, query: string): Promise<void> {
   await expect(page.locator('#result-1'), `no results for "${query}"`).toBeVisible()
 }
 
-/** Goes to page `n` of the search results with its page number below them. */
-export async function goToResultsPage (page: Page, n: number): Promise<void> {
-  // The number buttons only: Quasar names the previous/next arrows after their target page too.
-  const button = page.locator('.q-pagination__middle').getByRole('button', { name: String(n), exact: true })
-  await expect(button, `no results page ${n}`).toHaveCount(1)
-  await button.click()
-  await expect(page.locator(`#result-${(n - 1) * 10 + 1}`)).toBeVisible()
-}
+export type SearchResponse = { items: { id: string, text: string }[], has_more: boolean, next_offset: number | null }
 
-export type SearchResponse = { results: { id: string, text: string }[] }
+/** Whether a request is a passage search (`POST /api/search/passages`, the Search page's results). */
+export const isPassageSearch = (url: string, method: string): boolean =>
+  new URL(url).pathname.endsWith('/api/search/passages') && method === 'POST'
 
 /**
- * Changes the `/api/search` answers of this page only, for deterministic edge cases the
- * fixture corpus lacks (long passages, many pages). Call before searching; the real
+ * Changes the `/api/search/passages` answers of this page only, for deterministic edge cases
+ * the fixture corpus lacks (long passages, many results). Call before searching; the real
  * response is fetched and passed to `edit`.
  *
  *   await editSearchResults(page, (body) => appendResultCopies(body, 2))
  */
 export async function editSearchResults (page: Page, edit: (body: SearchResponse) => void): Promise<void> {
-  await page.route('**/api/search', async (route) => {
+  await page.route('**/api/search/passages', async (route) => {
     const response = await route.fetch()
     const body = await response.json() as SearchResponse
     edit(body)
@@ -165,11 +160,11 @@ export async function editSearchResults (page: Page, edit: (body: SearchResponse
   })
 }
 
-/** Appends `copies` copies of the results (for pagination). Copies get ids of no stored chunk. */
+/** Appends `copies` copies of the passages (many results). Copies get ids of no stored chunk. */
 export function appendResultCopies (body: SearchResponse, copies: number): void {
-  const original = body.results
+  const original = body.items
   for (let copy = 1; copy <= copies; copy++) {
-    body.results = body.results.concat(original.map(r => ({ ...r, id: `${r.id.slice(0, -4)}${copy}fff` })))
+    body.items = body.items.concat(original.map(r => ({ ...r, id: `${r.id.slice(0, -4)}${copy}fff` })))
   }
 }
 

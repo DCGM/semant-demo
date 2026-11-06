@@ -230,7 +230,7 @@ import UserInfoDialog from 'src/features/auth/UserInfoDialog.vue'
 import QuotaIndicator from 'src/features/quota/QuotaIndicator.vue'
 import QuotaBanner from 'src/features/quota/QuotaBanner.vue'
 import { errorStatus } from 'src/shared/api'
-import { isKept } from 'src/router/keptPages'
+import { isKept, keptLocation } from 'src/router/keptPages'
 
 const drawerMiniState = ref(false)
 
@@ -259,7 +259,8 @@ interface DrawerAction {
 // Navigation follows the session: protected pages and account actions only when signed
 // in, Log in / Register only when signed out. The backend still authorizes every request.
 const drawerLinks1 = computed(() => [
-  { label: 'Document search', icon: 'search', to: { name: 'search' } },
+  // The search as it was left (its URL holds the applied criteria, #605).
+  { label: 'Document search', icon: 'search', to: keptLocation('search') },
   { label: 'Chat Assistant', icon: 'chat', to: { name: 'rag' } },
   { label: 'Corpus', icon: 'insights', to: { name: 'corpus' } },
   ...(userStore.isLoggedIn ? [{ label: 'Collections', icon: 'folder', to: { name: 'collections' } }] : []),

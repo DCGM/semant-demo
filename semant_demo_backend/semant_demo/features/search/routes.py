@@ -1,14 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter
-from semant_demo.features.search.schemas import SearchFiltersResponse, SearchRequest, SearchResponse, SearchVectorsResponse
+from semant_demo.config import Config
+from semant_demo.features.search.schemas import (
+    PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse, SearchRequest, SearchResponse,
+    SearchVectorsResponse)
 
 from semant_demo.features.quota.principal import get_allowance_budget
 from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.features.search import service
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.search.vectors import SearchVectors
-from semant_demo.routes.dependencies import get_search_backends, get_summarizer, get_search_filters, get_search_vectors
+from semant_demo.routes.dependencies import (
+    get_config, get_search_backends, get_summarizer, get_search_filters, get_search_vectors)
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 
@@ -40,5 +44,21 @@ async def search(req: SearchRequest, backends: SearchBackends = Depends(get_sear
     (422), never answered with no results."""
     try:
         return await service.search(backends, summarizer, current_user, req, available_filters, budget)
+    except UnavailableFilter as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@exp_router.post("/api/search/passages", response_model=PassageSearchResponse)
+async def search_passages(req: PassageSearchRequest, backends: SearchBackends = Depends(get_search_backends),
+                          current_user: User | None = Depends(current_active_optional_user),
+                          available_filters: SearchFiltersResponse = Depends(get_search_filters),
+                          config: Config = Depends(get_config)) -> PassageSearchResponse:
+    """One page of the passages matching the search criteria (#605): ranked chunks, every chunk
+    filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what
+    that covers. No generated titles or summaries. A filter on a property this corpus database
+    does not record is rejected (422)."""
+    try:
+        return await service.search_passages(backends, current_user, req, available_filters,
+                                             config.SEARCH_PASSAGES_LIMIT)
     except UnavailableFilter as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

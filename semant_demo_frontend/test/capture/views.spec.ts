@@ -80,6 +80,41 @@ test('recent searches', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-history-newer-version')
 })
 
+test('search passages: applied filters, coverage, Load more, pending and empty states (#605)', async ({ page }, testInfo) => {
+  // Pages of three, so Load more and the coverage line show with the small fixture corpus.
+  await page.route('**/api/search/passages', async (route) => {
+    await route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), limit: 3 }) })
+  })
+  await page.goto('/#/search?q=Lhota&chunk_languages=ces&year_max=1950')
+  await closePhoneNavigation(page)
+  await expect(page.locator('#result-1')).toBeVisible()
+  await expect(page.getByTestId('search-load-more')).toBeVisible()
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'search-passages')
+
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Brno')
+  await expect(page.getByTestId('search-pending')).toBeVisible()
+  await save(page, testInfo, 'search-passages-pending')
+
+  await page.goto('/#/search?chunk_languages=ces')
+  await expect(page.getByTestId('search-needs-query')).toBeVisible()
+  await page.getByTestId('search-needs-query').click() // closes the recent searches the field offers
+  await expect(page.getByTestId('search-history')).toHaveCount(0)
+  await save(page, testInfo, 'search-passages-needs-query')
+
+  await page.goto('/#/search?q=Lhota&chunk_classifications=complexity:expert&chunk_languages=zxx')
+  await expect(page.getByTestId('search-empty')).toBeVisible()
+  await save(page, testInfo, 'search-passages-empty')
+
+  await page.unroute('**/api/search/passages')
+  await page.route('**/api/search/passages', (route) => route.fulfill({
+    status: 422, json: { detail: 'Passages cannot be filtered by complexity: this corpus database is not recorded.' }
+  }))
+  await page.goto('/#/search?q=Brno')
+  await expect(page.getByTestId('search-error')).toBeVisible()
+  await save(page, testInfo, 'search-passages-error')
+})
+
 test('search vector selection', async ({ page }, testInfo) => {
   // The browser-test profile configures two search vectors (#217).
   await page.goto('/#/search')

@@ -182,6 +182,47 @@ async def test_a_filter_on_a_property_the_store_lacks_is_rejected_not_empty(lega
             "Documents cannot be filtered by library: this corpus database is not recorded."
 
 
+def passages_body(offset=0, limit=20, **criteria) -> dict:
+    return {"criteria": {"text_query": ALL_WORDS, **criteria}, "type": "text", "offset": offset, "limit": limit}
+
+
+async def test_passages_hold_every_chunk_filter_on_the_returned_chunk(api_client, update, corpus):
+    # #605: chronicle_1 is narration and formal; chronicle_2 (same document) becomes informal.
+    await update("chronicle_2", style=["informal"])
+    by_id = {c["id"]: key for key, c in corpus.chunks.items()}
+
+    async def keys(**criteria):
+        response = await api_client.post("/api/search/passages", json=passages_body(**criteria))
+        assert response.status_code == 200, response.text
+        return {by_id[item["id"]] for item in response.json()["items"]}
+
+    assert await keys() == EVERY_CHUNK
+    assert await keys(chunk_filters={"classifications": {"style": ["informal"]}}) == {"chronicle_2", "letters_1"}
+    # The chronicle meets both through different chunks: no passage of it does.
+    assert await keys(chunk_filters={"classifications": {"communicative_mode": ["narration"],
+                                                         "style": ["informal"]}}) == set()
+    assert await keys(document_filters={"year_max": 1900},
+                      chunk_filters={"classifications": {"style": ["informal"]}}) == {"chronicle_2"}
+
+
+async def test_passage_pages_continue_the_ranking_up_to_the_end(api_client):
+    whole = (await api_client.post("/api/search/passages", json=passages_body(limit=50))).json()
+    assert (whole["bounded"], whole["total_count"], whole["has_more"]) == (False, len(EVERY_CHUNK), False)
+
+    pages, offset = [], 0
+    while offset is not None:
+        response = await api_client.post("/api/search/passages", json=passages_body(offset=offset, limit=3))
+        assert response.status_code == 200, response.text
+        body = response.json()
+        pages.append(body)
+        offset = body["next_offset"]
+
+    assert [len(p["items"]) for p in pages] == [3, 3, 1]
+    assert [item["id"] for p in pages for item in p["items"]] == [item["id"] for item in whole["items"]]
+    assert [(p["has_more"], p["bounded"], p["total_count"]) for p in pages] == \
+        [(True, None, None), (True, None, None), (False, False, len(EVERY_CHUNK))]
+
+
 async def test_browse_takes_the_document_filters_as_query_parameters(api_client, update):
     await update("chronicle", library="mzk")
     await update("letters", library=" nkp")

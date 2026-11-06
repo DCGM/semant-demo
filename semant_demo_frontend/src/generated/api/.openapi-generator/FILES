@@ -81,6 +81,8 @@ docs/MinValue1.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
 docs/Partnumber.md
+docs/PassageSearchRequest.md
+docs/PassageSearchResponse.md
 docs/PatchAttribute.md
 docs/PatchAttributeValue.md
 docs/PatchCollection.md
@@ -104,6 +106,7 @@ docs/RagResponse.md
 docs/RagRouteConfig.md
 docs/RagSearch.md
 docs/ReviewAction.md
+docs/SearchCriteria.md
 docs/SearchFilter.md
 docs/SearchFilterInput.md
 docs/SearchFiltersResponse.md
@@ -219,6 +222,8 @@ models/MinValue1.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts
 models/Partnumber.ts
+models/PassageSearchRequest.ts
+models/PassageSearchResponse.ts
 models/PatchAttribute.ts
 models/PatchAttributeValue.ts
 models/PatchCollection.ts
@@ -242,6 +247,7 @@ models/RagResponse.ts
 models/RagRouteConfig.ts
 models/RagSearch.ts
 models/ReviewAction.ts
+models/SearchCriteria.ts
 models/SearchFilter.ts
 models/SearchFilterInput.ts
 models/SearchFiltersResponse.ts

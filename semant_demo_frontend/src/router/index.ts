@@ -10,7 +10,7 @@ import { Notify } from 'quasar'
 import { useUserStore } from 'src/features/auth/userStore'
 import routes from './routes'
 import { installAuthGuard } from './authGuard'
-import { keepScrollOfKeptPages } from './keptPages'
+import { keepScrollOfKeptPages, rememberKeptLocations } from './keptPages'
 
 /*
  * If not building with SSR mode, you can
@@ -38,6 +38,7 @@ export default route(function ({ store }) {
   })
 
   scrollBehavior = keepScrollOfKeptPages(Router)
+  rememberKeptLocations(Router)
 
   installAuthGuard(Router, useUserStore(store), () => {
     Notify.create({ type: 'warning', position: 'top', message: 'Log in to open your collections.' })

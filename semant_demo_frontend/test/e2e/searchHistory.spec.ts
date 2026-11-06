@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
-import { closePhoneNavigation, ensureLoggedIn, logOut, search, useViewport } from './support'
+import { closePhoneNavigation, ensureLoggedIn, isPassageSearch, logOut, search, useViewport } from './support'
 
 // Recent searches under the Search page's query field (#558): kept in this browser, one
 // history per signed-in user and one for signed-out use, run again with their criteria.
@@ -11,7 +11,7 @@ const entries = (page: Page) => page.getByTestId('search-history-entry')
 
 /** Resolves to the next search request the page sends. */
 function nextSearch (page: Page): Promise<Request> {
-  return page.waitForRequest((r) => r.url().endsWith('/api/search') && r.method() === 'POST')
+  return page.waitForRequest((r) => isPassageSearch(r.url(), r.method()))
 }
 
 /** A fresh load of the Search page (an empty query field), keeping the session. */
@@ -53,7 +53,7 @@ test('recent searches open on click, narrow while typing and run again', async (
   await expect(entries(page).nth(1)).toHaveAttribute('aria-selected', 'true')
   const rerun = nextSearch(page)
   await input(page).press('Enter')
-  expect((await rerun).postDataJSON().query).toBe('Lhota')
+  expect((await rerun).postDataJSON().criteria.text_query).toBe('Lhota')
   await expect(dropdown(page)).toHaveCount(0)
   await expect(page.locator('#result-1')).toBeVisible()
 
@@ -69,9 +69,9 @@ test('recent searches open on click, narrow while typing and run again', async (
   // A click on an entry runs it.
   await input(page).click()
   await expect(entries(page)).toHaveText([/Lhota/, /Brno/])
-  const clicked = page.waitForResponse((r) => r.url().endsWith('/api/search') && r.request().method() === 'POST')
+  const clicked = page.waitForResponse((r) => isPassageSearch(r.url(), r.request().method()))
   await entries(page).filter({ hasText: 'Brno' }).click()
-  expect((await clicked).request().postDataJSON().query).toBe('Brno')
+  expect((await clicked).request().postDataJSON().criteria.text_query).toBe('Brno')
   await expect(page.locator('#result-1')).toBeVisible() // saved once its results arrived
 
   // Remove one entry, then clear the history.
@@ -104,7 +104,8 @@ test('a search from the history runs with its criteria', async ({ page }) => {
   const rerun = nextSearch(page)
   await entries(page).first().click()
   const body = (await rerun).postDataJSON()
-  expect([body.query, body.vector, body.searchTitleGenerate ?? body.search_title_generate]).toEqual(['Lhota', 'fake-small', false])
+  // No generated titles or summaries: a passage search asks for none.
+  expect([body.criteria.text_query, body.vector, 'search_title_generate' in body]).toEqual(['Lhota', 'fake-small', false])
   await expect(page.locator('.active-filter-chip', { hasText: 'Embedding: Fake small' })).toBeVisible()
 })
 
@@ -144,33 +145,32 @@ test('recent searches are usable at phone width', async ({ page }) => {
   expect(box && box.x >= 0 && box.x + box.width <= (page.viewportSize()?.width ?? 0)).toBe(true)
   const rerun = nextSearch(page)
   await entries(page).first().click()
-  expect((await rerun).postDataJSON().query).toBe('Lhota')
+  expect((await rerun).postDataJSON().criteria.text_query).toBe('Lhota')
 })
 
 /** Counts the search requests the page sends from now on. */
 function countSearches (page: Page): () => number {
   let count = 0
-  page.on('request', (r) => { if (r.url().endsWith('/api/search') && r.method() === 'POST') count++ })
+  page.on('request', (r) => { if (isPassageSearch(r.url(), r.method())) count++ })
   return () => count
 }
 
-test('only searches that ran are saved; a too long query runs but is not saved', async ({ page }) => {
+test('only searches that ran are saved; a too long query is refused, not sent', async ({ page }) => {
   await search(page, 'Lhota')
 
   // A failed search is not remembered.
-  await page.route('**/api/search', (route) => route.fulfill({ status: 500, body: 'failure' }))
+  await page.route('**/api/search/passages', (route) => route.fulfill({ status: 500, body: 'failure' }))
   await input(page).fill('Brno')
   await input(page).press('Enter')
   await expect(page.getByText('Search failed')).toBeVisible()
-  await page.unroute('**/api/search')
+  await page.unroute('**/api/search/passages')
 
-  // Longer than 1000 characters: the search runs, the user is told it was not saved.
-  const longQuery = 'Lhota '.repeat(200).trim()
-  await input(page).fill(longQuery)
-  const answer = page.waitForResponse((r) => r.url().endsWith('/api/search') && r.request().method() === 'POST')
+  // Longer than the search criteria allow (1000 characters, #526): refused before searching.
+  const searches = countSearches(page)
+  await input(page).fill('Lhota '.repeat(200).trim())
   await input(page).press('Enter')
-  expect((await answer).status()).toBe(200)
-  await expect(page.getByText('Not added to recent searches: the query is longer than 1,000 characters.')).toBeVisible()
+  await expect(page.getByText('The text query can be at most 1,000 characters long.')).toBeVisible()
+  expect(searches()).toBe(0)
 
   await openSearchPage(page)
   await input(page).click()
@@ -197,7 +197,7 @@ test('an entry runs only once the search options are loaded', async ({ page }) =
   await expect(page.getByTestId('search-history-note')).toHaveCount(0)
   const rerun = nextSearch(page)
   await entries(page).first().click()
-  expect((await rerun).postDataJSON().query).toBe('Lhota')
+  expect((await rerun).postDataJSON().criteria.text_query).toBe('Lhota')
 })
 
 test('an entry is not run when the search options could not be loaded', async ({ page }) => {
@@ -217,7 +217,7 @@ test('the history cannot be cleared while a search is running', async ({ page })
   // Hold the next search's answer.
   let release: () => void = () => undefined
   const held = new Promise<void>((resolve) => { release = resolve })
-  await page.route('**/api/search', async (route) => { await held; await route.continue() })
+  await page.route('**/api/search/passages', async (route) => { await held; await route.continue() })
   await input(page).fill('Brno')
   await input(page).press('Enter')
   await input(page).fill('')
@@ -229,7 +229,7 @@ test('the history cannot be cleared while a search is running', async ({ page })
   // Once it finished, it is saved and the history can be cleared.
   release()
   await expect(page.locator('#result-1')).toBeVisible()
-  await page.unroute('**/api/search')
+  await page.unroute('**/api/search/passages')
   await input(page).click()
   await expect(entries(page)).toHaveText([/Brno/, /Lhota/])
   await page.getByTestId('search-history-clear').click()
@@ -253,7 +253,7 @@ test('a history saved by a newer version asks for a reload, is not written over 
   await expect(page.getByTestId('search-history-reload')).toContainText('Reload the page to see them.')
   await expect(entries(page)).toHaveCount(0)
   await input(page).fill('Brno')
-  const answer = page.waitForResponse((r) => r.url().endsWith('/api/search') && r.request().method() === 'POST')
+  const answer = page.waitForResponse((r) => isPassageSearch(r.url(), r.request().method()))
   await input(page).press('Enter')
   expect((await answer).status()).toBe(200)
   await expect(page.locator('#result-1')).toBeVisible()

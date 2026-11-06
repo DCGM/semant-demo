@@ -1,12 +1,12 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
 import {
-  answerChat, answerGuestQuota, chatSource, closePhoneNavigation, editSearchResults, ensureLoggedIn, logOut, search, useViewport
+  answerChat, answerGuestQuota, chatSource, closePhoneNavigation, ensureLoggedIn, logOut, useViewport
 } from './support'
 
 // The daily AI allowance in the browser (#234). The first two tests use the real backend
-// profile: its guest cookie and its allowance. The others answer `/api/quota`, `/api/rag`
-// or `/api/search` themselves to reach the near-limit and exhausted states, which the
+// profile: its guest cookie and its allowance. The others answer `/api/quota` or `/api/rag`
+// themselves to reach the near-limit and exhausted states, which the
 // profile's cheap fake calls would take hundreds of operations to reach.
 
 const indicator = (page: Page) => page.getByRole('button', { name: /^AI allowance: \d+% left today$/ })
@@ -65,7 +65,7 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
   // One guest: issued once, then sent with every later request (search, summary, allowance).
   expect(issued).toHaveLength(1)
   const sent = await Promise.all(laterRequests.map(async (r) => guestCookie(await r.headerValue('cookie') ?? undefined)))
-  expect(laterRequests.map((r) => new URL(r.url()).pathname)).toEqual(expect.arrayContaining(['/api/search', '/api/summarize/results']))
+  expect(laterRequests.map((r) => new URL(r.url()).pathname)).toEqual(expect.arrayContaining(['/api/search/passages', '/api/summarize/results']))
   expect(sent).toEqual(sent.map(() => issued[0]))
   // And it is kept: the reloaded page shows the same guest's allowance.
   const reloaded = page.waitForResponse(`${baseURL}/api/quota`)
@@ -139,24 +139,4 @@ test('an exhausted guest is told why a chat question was refused, and it is not 
   await expect(page.locator('.message-bubble').last()).toContainText('Logging in gives you a separate daily allowance.')
   await expect(input).toBeEnabled()
   expect(asked).toBe(1)
-})
-
-test('Search keeps its results and says why AI titles and summaries were skipped', async ({ page }) => {
-  await useViewport(page, 'wide')
-  const reset = await answerGuestQuota(page, 0.25)
-  const detail = 'Insufficient remaining daily AI allowance for this operation; it resets at … UTC.'
-  await editSearchResults(page, (body) => {
-    Object.assign(body, {
-      warnings: [`Titles and summaries were not generated. ${detail}`],
-      quota_exhausted: {
-        detail, code: 'llm_quota_exhausted', principal: 'guest', reset_at: reset.toISOString(), limit_usd: 0.25, used_usd: 0.25
-      }
-    })
-  })
-
-  await search(page, 'Lhota')
-
-  await expect(page.locator('#result-1')).toBeVisible()
-  await expect(page.getByText('AI titles and summaries were skipped: today\'s AI allowance has no room for them.')).toBeVisible()
-  await expect(page.getByText('Titles and summaries were not generated.')).toHaveCount(0)
 })

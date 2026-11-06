@@ -9,9 +9,10 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
-from semant_demo.features.documents.criteria import ChunkFilters, Condition, DocumentFilters
+from semant_demo.features.documents.criteria import ChunkFilters, Condition, DocumentFilters, SearchCriteria
 from semant_demo.features.documents.schemas import DocumentChunk, Document
 from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 
@@ -141,6 +142,66 @@ class SearchResultChunk(DocumentChunk):
     origin: Literal["corpus", "web"] = "corpus"
 
 
+MAX_PASSAGE_PAGE = 100
+"""Largest page of ``POST /api/search/passages``."""
+
+
+class PassageSearchRequest(BaseModel):
+    """One page of the passages for the search criteria (#605, docs/EXPLORATION.md).
+
+    The criteria need a text query: filter-only browsing of passages is deferred. Every
+    chunk filter holds on the returned chunk itself (same-chunk) and every document filter on
+    its document. The remaining fields are retrieval options, not criteria. Without
+    ``user_collection_id`` the public corpus is searched, also anonymously.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    criteria: SearchCriteria
+    offset: int = Field(0, ge=0)
+    """Position in the ranked passages of the first one returned; 0 is the best match."""
+    limit: int = Field(20, ge=1, le=MAX_PASSAGE_PAGE)
+    """Page size; a page never reaches past the retrieval limit (``PassageSearchResponse``)."""
+    type: SearchType = SearchType.hybrid
+    hybrid_search_alpha: float = Field(0.5, ge=0, le=1)
+    vector: str | None = None
+    """Configured search vector (``GET /api/search/vectors``); None: the default."""
+    user_collection_id: str | None = None
+    """Search only the chunks of this collection (read access needed)."""
+
+    @model_validator(mode="after")
+    def _text_query_required(self) -> "PassageSearchRequest":
+        if self.criteria.text_query is None:
+            raise PydanticCustomError(
+                "text_query_required", "Passages need a text query; browsing passages by filters alone is not supported.")
+        return self
+
+
+class PassageSearchResponse(BaseModel):
+    """A page of ranked passages and what the whole retrieved population covers.
+
+    One search retrieves at most ``retrieval_limit`` passages (best first), whatever the
+    paging; later visualizations of the same search describe that population. ``bounded``
+    says whether it holds every matching passage: ``False`` when the ranked list ended within
+    the limit (then ``total_count`` is its size), ``True`` when the limit cut it (more
+    passages match but are not retrievable), ``None`` while neither is known (``has_more``).
+    Vector and hybrid search rank every passage that passes the filters, so they are bounded
+    unless the filters leave fewer passages than the limit.
+    """
+    items: list[SearchResultChunk]
+    offset: int
+    next_offset: int | None
+    """``offset`` of the next page; None without one."""
+    has_more: bool
+    retrieval_limit: int
+    bounded: bool | None
+    total_count: int | None
+    criteria: SearchCriteria
+    """The applied criteria, normalized (as ``SearchRequest`` echoes them)."""
+    vector: str | None = None
+    """The search vector used; None for text search."""
+    time_spent: float
+
+
 class SearchResponse(BaseModel):
     results: list[SearchResultChunk]
     # Optional overall query-based summary of the results
@@ -193,6 +254,8 @@ class ChunkQuery:
     text: str
     mode: SearchType
     limit: int
+    offset: int = 0
+    """Ranked results skipped before the first one returned."""
     alpha: float = 0.5
     """Hybrid weighting between vector (1.0) and keyword (0.0) scores."""
     vector: list[float] | None = None
