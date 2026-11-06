@@ -47,7 +47,9 @@ To see what a run would do first, add `--check`: it reads the collection like a 
 how many records lack the vector, already have it or have an empty input, without changing the
 schema, sending embedding requests or writing. It reads every record with the vector, so it
 takes about as long as the scan of a run. Exit code 0 when nothing is left to embed, 1 when
-records are, 2 when the check fails (e.g. a missing collection). `max_records` does not limit it.
+records are, 2 when the check fails (e.g. a missing collection) or a run would be refused (the
+vector is missing and `create_vector` is disabled, even in an empty collection). `max_records`
+does not limit it.
 
 ```bash
 python run.py config.yaml --check

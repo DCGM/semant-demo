@@ -18,6 +18,7 @@ class PipelineStats:
     empty: int = 0  # records whose rendered input text is empty
     embedded: int = 0  # records whose vector was written in this run
     missing: int = 0  # check only: records without the vector that a run would embed
+    refused: Optional[str] = None  # check only: why a run would be refused before embedding anything
     dimension: Optional[int] = None
 
     # current state of the records in the pipeline (for monitoring of utilization and bottlenecks)
@@ -205,6 +206,9 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
     async def check_async(self) -> PipelineStats:
         """Count the records a run would embed; read-only (no schema change, no embedding requests).
 
+        When a run would be refused (the vector is missing and ``create_vector`` is disabled), the counts
+        are still collected and ``refused`` says why.
+
         It reads every record with the target vector, like a run, so it costs the same scan. ``max_records``
         is not applied: the counts cover the whole collection.
         """
@@ -218,9 +222,12 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         ) as client:
             exists = await named_vector_exists(client, self.collection, self.vector_name)
             if not exists:
-                action = ("a run would create it (create_vector)" if self.create_vector
-                          else "a run would be refused (create_vector is disabled)")
-                print(f"Named vector '{self.vector_name}' does not exist in collection '{self.collection}'; {action}.")
+                missing_vector = f"Named vector '{self.vector_name}' does not exist in collection '{self.collection}'"
+                if self.create_vector:
+                    print(f"{missing_vector}; a run would create it (create_vector).")
+                else:
+                    stats.refused = f"{missing_vector} and create_vector is disabled."
+                    print(f"{missing_vector}; a run would be refused (create_vector is disabled).")
             collection = client.collections.use(self.collection)
             print(f"Checking collection '{self.collection}' (vector '{self.vector_name}'), nothing is written...")
             async for objects in self._scan(collection, include_vector=exists):

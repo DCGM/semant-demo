@@ -30,7 +30,8 @@ def main():
         action="store_true",
         help="Read-only: count the records a run would embed (with the vector, without it, empty input). "
              "No schema change, no embedding requests, no writes. It reads every record with the vector, "
-             "like a run. Exit code 0 when nothing is left to embed, 1 when records are, 2 when the check fails."
+             "like a run. Exit code 0 when nothing is left to embed, 1 when records are, 2 when the check fails "
+             "or a run would be refused."
     )
     parser.add_argument(
         "--force",
@@ -103,6 +104,9 @@ def main():
             print(f"Check failed: {e}", file=sys.stderr)
             import traceback
             traceback.print_exc()
+            sys.exit(2)
+        if stats.refused:
+            print(f"A run would be refused: {stats.refused}", file=sys.stderr)
             sys.exit(2)
         sys.exit(1 if stats.missing else 0)
 

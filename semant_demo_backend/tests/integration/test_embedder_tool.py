@@ -282,3 +282,31 @@ async def test_the_check_exit_code_says_whether_records_are_left(tool_store, mak
     assert await asyncio.to_thread(check_cli) == 0
     assert await asyncio.to_thread(check_cli, collection=f"{TEST_COLLECTION}Missing") == 2
     assert "does not exist" in capsys.readouterr().err
+
+
+async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_embed(tool_store, make_pipeline,
+                                                                                      tmp_path, monkeypatch, capsys):
+    from semantembedder.__main__ import main
+    # A run refuses a missing vector with create_vector disabled before reading anything, so the check
+    # must not report "nothing left" (exit 0) for an empty collection or 1 for a populated one.
+    await tool_store.collections.create(f"{TEST_COLLECTION}Empty",
+                                        properties=[Property(name="text", data_type=DataType.TEXT)],
+                                        vector_config=Configure.Vectors.self_provided(name="default"))
+    await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
+
+    def check_cli(**settings) -> int:
+        make_pipeline(create_vector=False, **settings)
+        config = max(tmp_path.glob("embedder-*.yaml"), key=lambda p: int(p.stem.split("-")[1]))
+        monkeypatch.setattr(sys, "argv", ["semantembedder", str(config), "--check"])
+        with pytest.raises(SystemExit) as exit_:
+            main()
+        return exit_.value.code
+
+    stats = await make_pipeline(create_vector=False, collection=f"{TEST_COLLECTION}Empty").check_async()
+    assert (stats.scanned, stats.missing) == (0, 0) and "create_vector is disabled" in stats.refused
+    for collection in (f"{TEST_COLLECTION}Empty", TEST_COLLECTION):
+        assert await asyncio.to_thread(check_cli, collection=collection) == 2
+        assert "A run would be refused" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="create_vector is disabled"):
+        await make_pipeline(create_vector=False, collection=f"{TEST_COLLECTION}Empty").run_async()
+    assert set((await tool_store.collections.get(TEST_COLLECTION).config.get()).vector_config) == {"default"}
