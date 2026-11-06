@@ -19,6 +19,7 @@ from semant_demo.features.documents.criteria import (
     ChunkFilters, DocumentFilters, chunk_conditions, document_conditions, validate_chunk_filters)
 from semant_demo.features.search.filters import chunk_vocabulary, generate_default_filters
 from semant_demo.features.search.schemas import ChunkQuery, SearchType
+from tests.fakes import fake_embedding
 
 pytestmark = pytest.mark.integration
 
@@ -219,8 +220,28 @@ async def test_passage_pages_continue_the_ranking_up_to_the_end(api_client):
 
     assert [len(p["items"]) for p in pages] == [3, 3, 1]
     assert [item["id"] for p in pages for item in p["items"]] == [item["id"] for item in whole["items"]]
+    # The whole ranking is known from the first page: all seven, none cut by the limit.
     assert [(p["has_more"], p["bounded"], p["total_count"]) for p in pages] == \
-        [(True, None, None), (True, None, None), (False, False, len(EVERY_CHUNK))]
+        [(True, False, 7), (True, False, 7), (False, False, 7)]
+
+
+@pytest.mark.parametrize("mode", [SearchType.hybrid, SearchType.vector, SearchType.text])
+async def test_a_ranking_read_by_id_keeps_the_order_and_the_hits_of_the_search(seeded_store, collection_names, mode):
+    # #605: pages are slices of ranked ids read back in full (hybrid offset is unreliable).
+    repository = ChunkSearchRepository(seeded_store, collection_names)
+    query = ChunkQuery(text=ALL_WORDS, mode=mode, limit=50, alpha=0.5,
+                       vector=None if mode == SearchType.text else fake_embedding("Požár v obci"),
+                       target_vector=None if mode == SearchType.text else "default",
+                       chunk_conditions=tuple(chunk_conditions(validate_chunk_filters(
+                           ChunkFilters(languages=["ces"]), VOCABULARY), VOCABULARY)))
+
+    searched = await repository.search(query)
+    ranked = await repository.ranked_ids(query)
+
+    assert ranked == [hit.id for hit in searched] and len(ranked) == len(EVERY_CHUNK)
+    page = ranked[2:5]
+    assert [hit.id for hit in await repository.read_hits(page)] == page
+    assert await repository.read_hits([]) == []
 
 
 async def test_browse_takes_the_document_filters_as_query_parameters(api_client, update):

@@ -121,7 +121,7 @@ test('Load more continues the ranking up to its end and says what the results co
   await searchFor(page, 'Lhota')
   const coverage = page.getByTestId('search-coverage')
   await expect(page.locator('.search-result')).toHaveCount(3)
-  await expect(coverage).toContainText('The 3 best passages by relevance so far')
+  await expect(coverage).toContainText('7 matching passages (3 shown).') // the whole ranking is known at once
 
   const more = page.getByTestId('search-load-more')
   await more.click()

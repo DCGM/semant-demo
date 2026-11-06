@@ -50,11 +50,22 @@ class FakeTags:
 class FakeChunks:
     def __init__(self, hits=None):
         self.queries: list[ChunkQuery] = []
+        self.read: list[list] = []
         self.hits = hits if hits is not None else [hit("Roz-\ndělené\nřádky")]
 
     async def search(self, query):
         self.queries.append(query)
         return [h.model_copy() for h in self.hits]
+
+    async def ranked_ids(self, query):
+        """The ranking of the passage search: ids only, as many as the query's limit."""
+        self.queries.append(query)
+        return [h.id for h in self.hits[:query.limit]]
+
+    async def read_hits(self, ids):
+        self.read.append(list(ids))
+        by_id = {h.id: h for h in self.hits}
+        return [by_id[i].model_copy() for i in ids if i in by_id]
 
 
 class FakeEmbeddings:
@@ -553,13 +564,9 @@ async def test_the_results_limit_is_not_reported_without_per_result_generation()
 ############################
 
 class RankedChunks(FakeChunks):
-    """``count`` ranked hits, answered by the query's offset and limit as the store does."""
+    """``count`` ranked hits."""
     def __init__(self, count):
         super().__init__(hits=[hit(f"passage {i}") for i in range(count)])
-
-    async def search(self, query):
-        self.queries.append(query)
-        return [h.model_copy() for h in self.hits[query.offset:query.offset + query.limit]]
 
 
 def passages_request(text="Novák", **kwargs) -> PassageSearchRequest:
@@ -573,16 +580,17 @@ async def passages(req, retrieval_limit=1000, chunks=None, user=OWNER, definitio
 
 @pytest.mark.parametrize("count, offset, limit, retrieval_limit, page, expected", [
     # (stored matches, offset, page size, retrieval limit, returned texts, (next_offset, has_more, bounded, total))
-    (5, 0, 2, 100, [0, 1], (2, True, None, None)),          # more within the limit: not known yet
-    (5, 2, 2, 100, [2, 3], (4, True, None, None)),
-    (5, 4, 2, 100, [4], (None, False, False, 5)),            # the list ended: every match retrieved
+    (5, 0, 2, 100, [0, 1], (2, True, False, 5)),             # coverage is known from the first page
+    (5, 2, 2, 100, [2, 3], (4, True, False, 5)),
+    (5, 4, 2, 100, [4], (None, False, False, 5)),
     (4, 2, 2, 100, [2, 3], (None, False, False, 4)),         # ended exactly at the page end
     (5, 0, 3, 3, [0, 1, 2], (None, False, True, None)),      # the limit cut it: bounded
     (5, 2, 3, 4, [2, 3], (None, False, True, None)),         # a page never reaches past the limit
     (3, 0, 5, 3, [0, 1, 2], (None, False, False, 3)),        # exactly the limit, nothing beyond
     (0, 0, 5, 100, [], (None, False, False, 0)),
 ])
-async def test_passages_are_paged_up_to_the_retrieval_limit(count, offset, limit, retrieval_limit, page, expected):
+async def test_passage_pages_are_slices_of_one_ranking_up_to_the_retrieval_limit(
+        count, offset, limit, retrieval_limit, page, expected):
     chunks = RankedChunks(count)
 
     response = await passages(passages_request(offset=offset, limit=limit), retrieval_limit, chunks)
@@ -590,9 +598,24 @@ async def test_passages_are_paged_up_to_the_retrieval_limit(count, offset, limit
     assert [r.text for r in response.items] == [f"passage {i}" for i in page]
     assert (response.next_offset, response.has_more, response.bounded, response.total_count) == expected
     assert (response.offset, response.retrieval_limit) == (offset, retrieval_limit)
-    # One more than the page is asked for, to tell whether the ranked list goes on.
+    # Every page ranks the same population (one more than the limit, to tell whether it is
+    # cut there) and reads only its own passages in full.
     [query] = chunks.queries
-    assert (query.offset, query.limit) == (offset, min(limit, retrieval_limit - offset) + 1)
+    assert query.limit == retrieval_limit + 1
+    assert chunks.read == [[chunks.hits[i].id for i in page]]
+
+
+async def test_a_passage_gone_before_its_page_is_read_is_left_out_of_it():
+    chunks = RankedChunks(3)
+    gone = chunks.hits[1]
+
+    async def read_without_gone(ids):
+        return [h for h in await FakeChunks.read_hits(chunks, ids) if h.id != gone.id]
+    chunks.read_hits = read_without_gone
+
+    response = await passages(passages_request(limit=3), chunks=chunks)
+    assert [r.text for r in response.items] == ["passage 0", "passage 2"]
+    assert (response.total_count, response.has_more) == (3, False)
 
 
 async def test_an_offset_at_the_retrieval_limit_is_refused_before_retrieval():
