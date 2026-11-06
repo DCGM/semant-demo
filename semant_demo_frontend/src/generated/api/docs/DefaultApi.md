@@ -70,6 +70,7 @@ All URIs are relative to *http://localhost*
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
+| [**searchPassagesApiSearchPassagesPost**](DefaultApi.md#searchpassagesapisearchpassagespost) | **POST** /api/search/passages | Search Passages |
 | [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
 | [**shareCollectionApiUserCollectionsCollectionIdSharePost**](DefaultApi.md#sharecollectionapiusercollectionscollectionidsharepost) | **POST** /api/user_collections/{collection_id}/share | Share Collection |
 | [**suggestSpansOptimizedApiAiSuggestSpansOptimizedPost**](DefaultApi.md#suggestspansoptimizedapiaisuggestspansoptimizedpost) | **POST** /api/ai/suggest_spans/optimized | Suggest Spans Optimized |
@@ -4892,6 +4893,78 @@ example().catch(console.error);
 ### Return type
 
 [**SearchResponse**](SearchResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## searchPassagesApiSearchPassagesPost
+
+> PassageSearchResponse searchPassagesApiSearchPassagesPost(passageSearchRequest)
+
+Search Passages
+
+One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most &#x60;&#x60;SEARCH_PASSAGES_LIMIT&#x60;&#x60; per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SearchPassagesApiSearchPassagesPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // PassageSearchRequest
+    passageSearchRequest: ...,
+  } satisfies SearchPassagesApiSearchPassagesPostRequest;
+
+  try {
+    const data = await api.searchPassagesApiSearchPassagesPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **passageSearchRequest** | [PassageSearchRequest](PassageSearchRequest.md) |  | |
+
+### Return type
+
+[**PassageSearchResponse**](PassageSearchResponse.md)
 
 ### Authorization
 

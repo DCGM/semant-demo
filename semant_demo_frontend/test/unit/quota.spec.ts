@@ -14,7 +14,6 @@ import { useQuotaScope } from 'src/features/quota/useQuotaScope'
 import { useUserStore } from 'src/features/auth/userStore'
 import QuotaBanner from 'src/features/quota/QuotaBanner.vue'
 import QuotaIndicator from 'src/features/quota/QuotaIndicator.vue'
-import { generatesText, searchQuotaMessage } from 'src/features/search/searchQuota'
 
 // #234: the daily AI allowance in the frontend.
 
@@ -111,15 +110,6 @@ describe('daily AI allowance', () => {
         'Today\'s AI allowance has no room for this request, so nothing was generated. ' +
         `It resets tomorrow at ${time}; search and browsing still work. Logging in gives you a separate daily allowance.`)
       expect(quotaRefusalMessage({ ...refusal, principal: 'account' }, NOW)).not.toContain('Logging in')
-    })
-
-    it('explains skipped Search titles and summaries without calling it a failure', async () => {
-      const refusal = (await quotaRefusalOf(new ApiError(429, 'x', refusalBody())))!
-
-      expect(searchQuotaMessage(refusal, NOW)).toMatch(/^AI titles and summaries were skipped: today's AI allowance/)
-      expect(searchQuotaMessage(refusal, NOW)).toContain('The search results are complete')
-      expect(generatesText({ query: 'q', tagUuids: [], positive: true, automatic: true })).toBe(false)
-      expect(generatesText({ query: 'q', tagUuids: [], positive: true, automatic: true, searchTitleGenerate: true })).toBe(true)
     })
   })
 

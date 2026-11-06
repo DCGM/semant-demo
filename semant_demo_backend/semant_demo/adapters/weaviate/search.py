@@ -75,7 +75,8 @@ class ChunkSearchRepository:
         return self._schema
 
     async def search(self, query: ChunkQuery) -> list[SearchResultChunk]:
-        """Top ``query.limit`` chunks matching every condition, best first.
+        """The ``query.limit`` chunks after the best ``query.offset`` ones matching every
+        condition, best first.
 
         Chunks without a document reference are left out. Raises ``criteria.UnavailableFilter``
         for a criteria predicate on a property the store does not declare (or not as expected).
@@ -83,6 +84,7 @@ class ChunkSearchRepository:
         chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
         common = dict(
             limit=query.limit,
+            offset=query.offset or None,
             filters=await self._filter(query),
             return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())],
         )

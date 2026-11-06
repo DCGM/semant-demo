@@ -3,7 +3,7 @@ import type { SummaryLength } from 'src/generated/api'
 import { createContextGuard, isAbortError, quotaRefusalMessage, quotaRefusalOf, reportAiOperation, useApi } from 'src/shared/api'
 import { tokenizeCitations } from 'src/shared/citationTokens'
 import { SUMMARY_LENGTH_DEFAULT } from 'src/shared/summaryLength'
-import { selectResults, type ResultScope, type SearchResultsContext } from './searchResults'
+import { asSearchResponse, selectResults, type ResultScope, type SearchResultsContext } from './searchResults'
 
 export type SummaryToken =
   | { type: 'text'; value: string }
@@ -114,7 +114,7 @@ export function useSearchSummary (
     try {
       const data = await api.summarizeApiSummarizeSummaryTypePost({
         summaryType: 'results',
-        searchResponse: { ...current.response, results: subset.results },
+        searchResponse: asSearchResponse(current, subset.results),
         length: length.value
       }, { signal: controller.signal })
       if (!isCurrent()) return

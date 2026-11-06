@@ -38,7 +38,8 @@ from semant_demo.features.documents.criteria import (
 from semant_demo.features.search.filters import (
     InvalidSearchFilterError, chunk_vocabulary, parse_and_validate_search_filters)
 from semant_demo.features.search.schemas import (
-    ChunkQuery, FieldCondition, Op, SearchFiltersResponse, SearchRequest, SearchResponse, SearchType, TagFilter,
+    ChunkQuery, FieldCondition, Op, PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse, SearchRequest,
+    SearchResponse, SearchType, TagFilter,
 )
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
 
@@ -71,8 +72,9 @@ class SearchBackends:
 
 
 async def retrieve(backends: SearchBackends, user: Principal | None, request: SearchRequest,
-                   filter_definitions: SearchFiltersResponse | None = None) -> SearchResponse:
-    """Authorized retrieval without summaries.
+                   filter_definitions: SearchFiltersResponse | None = None, offset: int = 0) -> SearchResponse:
+    """Authorized retrieval without summaries: the ``request.limit`` hits after the best
+    ``offset`` ones.
 
     ``filter_definitions`` (the configured search filters) validate ``request.chunk_filters``
     and ``request.filters``; without definitions or requested ``filters``, the legacy
@@ -94,6 +96,7 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
         text=request.query,
         mode=request.type,
         limit=request.limit,
+        offset=offset,
         alpha=request.hybrid_search_alpha,
         collection_id=collection_id,
         tags=TagFilter(tuple(tag_ids), automatic=request.automatic, positive=request.positive)
@@ -147,6 +150,58 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
         response.warnings.append(SUMMARY_FAILED_WARNING)
     response.time_spent = time() - start
     return response
+
+
+async def search_passages(backends: SearchBackends, user: Principal | None, request: PassageSearchRequest,
+                          filter_definitions: SearchFiltersResponse | None, retrieval_limit: int,
+                          ) -> PassageSearchResponse:
+    """One page of the passages (#605): ``retrieve`` with the criteria's text query and filters,
+    so access, vector selection and filter validation are those of Search.
+
+    At most ``retrieval_limit`` ranked passages are reachable: a page ends there, and an offset
+    at or past it is refused (``InvalidRequestError``). One passage more than the page is
+    asked for, to tell whether the ranked list goes on: within the limit that is the next
+    page; at the limit it means the population is bounded. (Chunks without a document
+    reference are not returned by the adapter, so they are not counted either.)
+    """
+    start = time()
+    if request.offset >= retrieval_limit:
+        raise InvalidRequestError(f"At most {retrieval_limit} passages are retrieved for one search; "
+                                  f"the offset must be below that.")
+    page = min(request.limit, retrieval_limit - request.offset)
+    criteria = request.criteria
+    response = await retrieve(backends, user, SearchRequest(
+        query=criteria.text_query or "",
+        limit=page + 1,
+        type=request.type,
+        hybrid_search_alpha=request.hybrid_search_alpha,
+        vector=request.vector,
+        user_collection_id=request.user_collection_id,
+        document_filters=criteria.document_filters,
+        chunk_filters=criteria.chunk_filters,
+        tag_uuids=[], positive=False, automatic=False,
+        search_title_generate=False, search_summary_generate=False, search_results_summary_generate=False,
+    ), filter_definitions, offset=request.offset)
+    items = response.results[:page]
+    more = len(response.results) > page
+    end = request.offset + len(items)
+    has_more = more and end < retrieval_limit
+    # Unknown while the next page is within the limit; the list ended, or the limit cut it.
+    bounded = None if has_more else more
+    normalized = response.search_request
+    return PassageSearchResponse(
+        items=items,
+        offset=request.offset,
+        next_offset=end if has_more else None,
+        has_more=has_more,
+        retrieval_limit=retrieval_limit,
+        bounded=bounded,
+        total_count=end if bounded is False else None,
+        criteria=criteria.model_copy(update={"document_filters": normalized.document_filters,
+                                             "chunk_filters": normalized.chunk_filters}),
+        vector=response.vector,
+        time_spent=time() - start,
+    )
 
 
 def public_retriever(backends: SearchBackends, vector: str | None = None) -> Retriever:

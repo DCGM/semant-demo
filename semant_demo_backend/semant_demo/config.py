@@ -6,6 +6,8 @@ from semant_demo.adapters.weaviate.names import CollectionNames
 
 TRUE_VALUES = {"true", "1"}
 SCRIPT_PATH = Path(__file__).parent
+MAX_QUERY_RESULTS = 10_000
+"""Weaviate's default QUERY_MAXIMUM_RESULTS: no query reaches results past offset + limit beyond it."""
 
 class Config:
     """Application settings.
@@ -51,6 +53,12 @@ class Config:
         self.SEARCH_SUMMARIZER_CONFIG = env.get("SEARCH_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "search_summarizer.yaml"))
         self.DOCUMENT_SUMMARIZER_CONFIG = env.get("DOCUMENT_SUMMARIZER_CONFIG", str(SCRIPT_PATH / "configs" / "document_summarizer.yaml"))
         self.SEARCH_FILTERS_CONFIG = env.get("SEARCH_FILTERS_CONFIG", str(SCRIPT_PATH / "configs" / "search_filters.yaml"))
+        # Passage search (POST /api/search/passages, #605): the most ranked passages one search
+        # retrieves, page by page; a technical bound, reported in every answer. Weaviate's
+        # QUERY_MAXIMUM_RESULTS (default 10000) bounds offset + page size, and so this limit.
+        self.SEARCH_PASSAGES_LIMIT = int(env.get("SEARCH_PASSAGES_LIMIT", 1000))
+        if not 1 <= self.SEARCH_PASSAGES_LIMIT <= MAX_QUERY_RESULTS:
+            raise ValueError(f"SEARCH_PASSAGES_LIMIT must be from 1 to {MAX_QUERY_RESULTS}.")
 
         self.GOOGLE_API_KEY = env.get("GOOGLE_API_KEY", "")
 

@@ -59,6 +59,8 @@ import type {
   HTTPValidationError,
   LibraryYearDistribution,
   PageChunks,
+  PassageSearchRequest,
+  PassageSearchResponse,
   PatchAttribute,
   PatchAttributeValue,
   PatchCollection,
@@ -183,6 +185,10 @@ import {
     LibraryYearDistributionToJSON,
     PageChunksFromJSON,
     PageChunksToJSON,
+    PassageSearchRequestFromJSON,
+    PassageSearchRequestToJSON,
+    PassageSearchResponseFromJSON,
+    PassageSearchResponseToJSON,
     PatchAttributeFromJSON,
     PatchAttributeToJSON,
     PatchAttributeValueFromJSON,
@@ -553,6 +559,10 @@ export interface SaveFeedbackApiRagFeedbackPostRequest {
 
 export interface SearchApiSearchPostRequest {
     searchRequest: SearchRequest;
+}
+
+export interface SearchPassagesApiSearchPassagesPostRequest {
+    passageSearchRequest: PassageSearchRequest;
 }
 
 export interface SearchUsersApiUsersSearchGetRequest {
@@ -2338,6 +2348,30 @@ export interface DefaultApiInterface {
      * Search
      */
     searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse>;
+
+    /**
+     * Creates request options for searchPassagesApiSearchPassagesPost without sending the request
+     * @param {PassageSearchRequest} passageSearchRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchPassagesApiSearchPassagesPostRequestOpts(requestParameters: SearchPassagesApiSearchPassagesPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * @summary Search Passages
+     * @param {PassageSearchRequest} passageSearchRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchPassagesApiSearchPassagesPostRaw(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageSearchResponse>>;
+
+    /**
+     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * Search Passages
+     */
+    searchPassagesApiSearchPassagesPost(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageSearchResponse>;
 
     /**
      * Creates request options for searchUsersApiUsersSearchGet without sending the request
@@ -6503,6 +6537,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse> {
         const response = await this.searchApiSearchPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for searchPassagesApiSearchPassagesPost without sending the request
+     */
+    async searchPassagesApiSearchPassagesPostRequestOpts(requestParameters: SearchPassagesApiSearchPassagesPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['passageSearchRequest'] == null) {
+            throw new runtime.RequiredError(
+                'passageSearchRequest',
+                'Required parameter "passageSearchRequest" was null or undefined when calling searchPassagesApiSearchPassagesPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/passages`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PassageSearchRequestToJSON(requestParameters['passageSearchRequest']),
+        };
+    }
+
+    /**
+     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * Search Passages
+     */
+    async searchPassagesApiSearchPassagesPostRaw(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageSearchResponse>> {
+        const requestOptions = await this.searchPassagesApiSearchPassagesPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PassageSearchResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * Search Passages
+     */
+    async searchPassagesApiSearchPassagesPost(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageSearchResponse> {
+        const response = await this.searchPassagesApiSearchPassagesPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
