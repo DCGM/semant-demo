@@ -334,15 +334,17 @@ def test_browse_documents_its_chunk_filter_parameters(tmp_path):
 
 
 class _PassageChunks:
-    """Three ranked hits, answered by offset and limit; records the queries."""
+    """Three ranked hits; records the queries."""
     queries: list = []
+    hits = [SearchResultChunk(id=UUID(int=i + 1), text=f"Milá Marie {i}.", start_page_id=PAGE, from_page=1, to_page=1,
+                              document=DOC, order=i, document_object=Document(id=DOC, **STORED)) for i in range(3)]
 
-    async def search(self, query):
+    async def ranked_ids(self, query):
         self.queries.append(query)
-        hits = [SearchResultChunk(id=CHUNK, text=f"Milá Marie {i}.", start_page_id=PAGE, from_page=1, to_page=1,
-                                  document=DOC, order=i, document_object=Document(id=DOC, **STORED))
-                for i in range(3)]
-        return hits[query.offset:query.offset + query.limit]
+        return [h.id for h in self.hits[:query.limit]]
+
+    async def read_hits(self, ids):
+        return [h for h in self.hits if h.id in ids]
 
 
 async def _passages(tmp_path, body, **config):

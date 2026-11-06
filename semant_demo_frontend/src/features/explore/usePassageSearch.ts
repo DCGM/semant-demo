@@ -17,7 +17,8 @@ export interface PassageQuery {
 /**
  * The passages of one search, as loaded so far. A new search gets a new `id`; loading more
  * keeps it (the same search, more of its results). `last` is the newest page's answer, so
- * its `nextOffset`, `bounded`, `totalCount` and `retrievalLimit` describe the population.
+ * its `nextOffset` is the next page; `bounded`, `totalCount` and `retrievalLimit` describe the
+ * population, the same on every page.
  */
 export interface PassageResults {
   readonly id: number
@@ -136,21 +137,19 @@ export function usePassageSearch () {
 }
 
 /**
- * What the loaded passages cover, for the results header: how many are shown, and whether
- * they are all matching passages or only the best ones up to the retrieval limit.
+ * What the loaded passages cover, for the results header: every matching passage or only the
+ * best ones up to the retrieval limit (known from the first page), and how many are shown.
  */
 export function passageCoverage (results: PassageResults): string {
-  const shown = results.items.length
+  const shown = results.items.length.toLocaleString('en')
   const { bounded, totalCount, retrievalLimit } = results.last
-  const limit = retrievalLimit.toLocaleString('en')
-  if (bounded === false) {
-    const total = (totalCount ?? shown).toLocaleString('en')
-    return shown === totalCount || totalCount === null
-      ? `All ${total} matching ${total === '1' ? 'passage' : 'passages'}.`
-      : `${shown.toLocaleString('en')} of ${total} matching passages.`
+  if (bounded) {
+    return `The best ${retrievalLimit.toLocaleString('en')} passages by relevance (${shown} shown); more may match. ` +
+      'Refine the query or filters to reach others.'
   }
-  if (bounded === true) {
-    return `The best ${limit} passages by relevance; more may match. Refine the query or filters to reach others.`
-  }
-  return `The ${shown.toLocaleString('en')} best passages by relevance so far (at most ${limit} per search).`
+  const total = totalCount ?? results.items.length
+  const noun = total === 1 ? 'passage' : 'passages'
+  return shown === total.toLocaleString('en')
+    ? `All ${shown} matching ${noun}.`
+    : `${total.toLocaleString('en')} matching ${noun} (${shown} shown).`
 }

@@ -1,7 +1,7 @@
 
 # PassageSearchResponse
 
-A page of ranked passages and what the whole retrieved population covers.  One search retrieves at most ``retrieval_limit`` passages (best first), whatever the paging; later visualizations of the same search describe that population. ``bounded`` says whether it holds every matching passage: ``False`` when the ranked list ended within the limit (then ``total_count`` is its size), ``True`` when the limit cut it (more passages match but are not retrievable), ``None`` while neither is known (``has_more``). Vector and hybrid search rank every passage that passes the filters, so they are bounded unless the filters leave fewer passages than the limit.
+A page of ranked passages and what the whole retrieved population covers.  One search retrieves at most ``retrieval_limit`` passages (best first); every page is a slice of that one ranking, and later visualizations of the same search describe the same population. ``bounded`` is ``False`` when it holds every matching passage (then ``total_count`` is their number) and ``True`` when the limit cut the ranking (more passages match but are not retrievable). Vector and hybrid search rank every passage that passes the filters, so they are bounded unless the filters leave fewer than the limit.
 
 ## Properties
 

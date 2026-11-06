@@ -251,7 +251,7 @@ const hit = (id: string): SearchResultChunk => ({
 })
 
 /** A page as the server sends it (snake_case). */
-const page = (ids: string[], more: Partial<{ next_offset: number | null, has_more: boolean, bounded: boolean | null, total_count: number | null }> = {}) => ({
+const page = (ids: string[], more: Partial<{ next_offset: number | null, has_more: boolean, bounded: boolean, total_count: number | null }> = {}) => ({
   items: ids.map(hit).map(h => ({ id: h.id, text: h.text, start_page_id: 'p', from_page: 1, to_page: 1, document: h.document, order: 1, document_object: { id: h.document } })),
   offset: 0,
   next_offset: null,
@@ -299,7 +299,7 @@ describe('usePassageSearch', () => {
       vector: null,
       user_collection_id: 'c1'
     })
-    requests[0].answer(page(['a', 'b'], { next_offset: 2, has_more: true, bounded: null, total_count: null }))
+    requests[0].answer(page(['a', 'b'], { next_offset: 2, has_more: true, total_count: 3 }))
     const results = await first
     expect(results?.items.map(i => i.id)).toEqual(['a', 'b'])
 
@@ -319,7 +319,7 @@ describe('usePassageSearch', () => {
     const search = usePassageSearch()
     const first = search.search(query('one'))
     await flush()
-    requests[0].answer(page(['a'], { next_offset: 1, has_more: true, bounded: null, total_count: null }))
+    requests[0].answer(page(['a'], { next_offset: 1, has_more: true, total_count: 2 }))
     await first
     const more = search.loadMore()
     await flush()
@@ -348,7 +348,7 @@ describe('usePassageSearch', () => {
     const ok = search.search(query('two'))
     await flush()
     expect(search.error.value).toBeNull()
-    requests[1].answer(page(['a'], { next_offset: 1, has_more: true, bounded: null, total_count: null }))
+    requests[1].answer(page(['a'], { next_offset: 1, has_more: true, total_count: 2 }))
     await ok
     const more = search.loadMore()
     await flush()
@@ -369,12 +369,11 @@ describe('passage coverage', () => {
     timeSpent: 0
   })
 
-  it('says whether the passages are all matches, the best up to the limit, or the best so far', () => {
+  it('says whether the passages are all matches or the best up to the limit, and how many are shown', () => {
     expect(passageCoverage(results(1, {}))).toBe('All 1 matching passage.')
     expect(passageCoverage(results(37, {}))).toBe('All 37 matching passages.')
-    expect(passageCoverage(results(1000, { bounded: true, totalCount: null }))).toBe(
-      'The best 1,000 passages by relevance; more may match. Refine the query or filters to reach others.')
-    expect(passageCoverage(results(20, { bounded: null, totalCount: null, hasMore: true }))).toBe(
-      'The 20 best passages by relevance so far (at most 1,000 per search).')
+    expect(passageCoverage(results(20, { totalCount: 37, hasMore: true }))).toBe('37 matching passages (20 shown).')
+    expect(passageCoverage(results(20, { bounded: true, totalCount: null, hasMore: true }))).toBe(
+      'The best 1,000 passages by relevance (20 shown); more may match. Refine the query or filters to reach others.')
   })
 })
