@@ -70,6 +70,37 @@ def build_vector_index_config(index_type: str, distance_metric: str):
     return index_factory(distance_metric=distance)
 
 
+async def named_vector_exists(client: weaviate.WeaviateAsyncClient, collection_name: str, vector_name: str) -> bool:
+    """Whether the collection has the self-provided named vector (True) or can get it (False); read-only.
+
+    Raises:
+        ValueError: The collection does not exist, the vector has a vectorizer, or the collection has
+            the legacy unnamed vector (Weaviate adds named vectors only to collections created with them).
+    """
+    if not await client.collections.exists(collection_name):
+        raise ValueError(f"Collection '{collection_name}' does not exist in Weaviate database.")
+
+    schema_config = await client.collections.use(collection_name).config.get()
+    named_vectors = schema_config.vector_config or {}
+
+    if vector_name in named_vectors:
+        vectorizer = named_vectors[vector_name].vectorizer.vectorizer
+        if vectorizer != Vectorizers.NONE:
+            raise ValueError(
+                f"Named vector '{vector_name}' in collection '{collection_name}' uses vectorizer '{vectorizer}'. "
+                f"Only self-provided (vectorizer 'none') vectors can be filled by this tool."
+            )
+        return True
+
+    if not named_vectors:
+        raise ValueError(
+            f"Collection '{collection_name}' does not use named vectors (it has the legacy unnamed vector). "
+            f"Weaviate can add named vectors only to collections created with named vectors, "
+            f"so the collection must be migrated first."
+        )
+    return False
+
+
 async def ensure_named_vector_exists(
     client: weaviate.WeaviateAsyncClient,
     collection_name: str,
@@ -89,29 +120,10 @@ async def ensure_named_vector_exists(
         index_type: Vector index type used when the vector is created.
         distance_metric: Distance metric used when the vector is created.
     """
-    if not await client.collections.exists(collection_name):
-        raise ValueError(f"Collection '{collection_name}' does not exist in Weaviate database.")
-
-    collection = client.collections.use(collection_name)
-    schema_config = await collection.config.get()
-    named_vectors = schema_config.vector_config or {}
-
-    if vector_name in named_vectors:
-        vectorizer = named_vectors[vector_name].vectorizer.vectorizer
-        if vectorizer != Vectorizers.NONE:
-            raise ValueError(
-                f"Named vector '{vector_name}' in collection '{collection_name}' uses vectorizer '{vectorizer}'. "
-                f"Only self-provided (vectorizer 'none') vectors can be filled by this tool."
-            )
+    if await named_vector_exists(client, collection_name, vector_name):
         return
 
-    if not named_vectors:
-        raise ValueError(
-            f"Collection '{collection_name}' does not use named vectors (it has the legacy unnamed vector). "
-            f"Weaviate can add named vectors only to collections created with named vectors, "
-            f"so the collection must be migrated first."
-        )
-
+    collection = client.collections.use(collection_name)
     print(f"Named vector '{vector_name}' is missing in collection '{collection_name}'. Creating on the fly...")
     await collection.config.add_vector(
         vector_config=Configure.Vectors.self_provided(

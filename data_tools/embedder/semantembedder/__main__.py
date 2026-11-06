@@ -26,12 +26,21 @@ def main():
              "An existing EmbedderTest collection is refused unless --force is given."
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Read-only: count the records a run would embed (with the vector, without it, empty input). "
+             "No schema change, no embedding requests, no writes. It reads every record with the vector, "
+             "like a run. Exit code 0 when nothing is left to embed, 1 when records are, 2 when the check fails."
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="With --create-test-collection: delete an existing EmbedderTest collection and create it again."
     )
 
     args = parser.parse_args()
+    if args.check and (args.create_test_collection or args.init):
+        parser.error("--check takes neither --create-test-collection nor --init")
 
     if args.create_test_collection:
         try:
@@ -85,6 +94,17 @@ def main():
     if not args.config:
         parser.print_help()
         sys.exit(1)
+
+    if args.check:
+        try:
+            print(f"Loading configuration from '{args.config}'...")
+            stats = EmbeddingPipeline.create(args.config).check()
+        except Exception as e:
+            print(f"Check failed: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            sys.exit(2)
+        sys.exit(1 if stats.missing else 0)
 
     try:
         print(f"Loading configuration from '{args.config}'...")
