@@ -57,6 +57,8 @@ export * from './DocumentDetail';
 export * from './DocumentFilters';
 export * from './DocumentPage';
 export * from './DocumentPages';
+export * from './DocumentSearchRequest';
+export * from './DocumentSearchResponse';
 export * from './DocumentStats';
 export * from './DocumentSummaryCitation';
 export * from './DocumentSummaryResponse';

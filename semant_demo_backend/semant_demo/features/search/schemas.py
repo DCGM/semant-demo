@@ -224,6 +224,65 @@ class PassageReadResponse(BaseModel):
     time_spent: float
 
 
+MAX_DOCUMENT_PAGE = 100
+"""Most documents one ``POST /api/search/documents`` returns."""
+
+DocumentOrder = Literal["year_asc"]
+"""``year_asc``: publication year, oldest first, then document id; documents without a year
+after all dated ones, by id."""
+
+
+class DocumentSearchRequest(BaseModel):
+    """Documents matching search criteria without a text query (#606, docs/EXPLORATION.md),
+    one page of them in a stable order.
+
+    Document filters hold on the document. Chunk filters apply per dimension: for each, some
+    chunk of the document has one of its values (different filters may be met by different
+    chunks), answered from the documents' chunk-value summaries as last recomputed (#529).
+    Ranking documents by a text query is not available (#527): ``criteria.text_query`` must be
+    absent. Without ``user_collection_id`` the public corpus is browsed, also anonymously.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    criteria: SearchCriteria
+    limit: int = Field(20, ge=1, le=MAX_DOCUMENT_PAGE)
+    offset: int = Field(0, ge=0)
+    """Position of the page in ``order``; ``offset + limit`` is at most ``retrieval_limit``."""
+    user_collection_id: str | None = None
+    """Browse only the documents of this collection (read access needed)."""
+
+    @model_validator(mode="after")
+    def _no_text_query(self) -> "DocumentSearchRequest":
+        if self.criteria.text_query is not None:
+            raise PydanticCustomError(
+                "text_query_not_supported",
+                "Documents are browsed by filters only; ranking documents by a text query is not supported yet.")
+        return self
+
+
+class DocumentSearchResponse(BaseModel):
+    """One page of the documents matching the criteria and the whole population they belong to.
+
+    ``total_count`` is the exact number of matching documents (a count, not an estimate or a
+    sample). Weaviate reads no result past ``offset + limit = QUERY_MAXIMUM_RESULTS``, so only
+    the first ``retrieval_limit`` documents in ``order`` can be paged through; ``bounded`` is
+    ``True`` when more match than that (narrow the filters to reach the others). A chart of the
+    population counts ``total_count`` documents (#528), not the page.
+    """
+    items: list[Document]
+    """The page: at most ``limit`` documents from ``offset`` in ``order``."""
+    offset: int
+    next_offset: int | None
+    """Offset of the next page; None when this page ends the matching or the reachable documents."""
+    total_count: int
+    retrieval_limit: int
+    bounded: bool
+    order: DocumentOrder
+    criteria: SearchCriteria
+    """The applied criteria, normalized (chunk values in their configured spelling)."""
+    time_spent: float
+
+
 class SearchResponse(BaseModel):
     results: list[SearchResultChunk]
     # Optional overall query-based summary of the results

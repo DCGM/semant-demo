@@ -2,13 +2,18 @@ import { expect, test, type Page, type Request } from '@playwright/test'
 
 import { closePhoneNavigation, fixture, isPassageSearch, useViewport } from './support'
 
-// The Search page evolving into Explore Results (#605): draft and applied criteria, the
-// applied search in the URL (reload, Back/Forward, shared links), Passages loaded page by
-// page with their coverage, late answers dropped, and the reader's way back to the search.
+// The Search page evolving into Explore Results (#605, #606): draft and applied criteria, the
+// applied search in the URL (reload, Back/Forward, shared links), Passages and Documents loaded
+// page by page with their coverage, the results mode switch, late answers dropped, and the
+// reader's way back to the search.
 
 const input = (page: Page) => page.getByRole('combobox', { name: 'Search query' })
 const chip = (page: Page, text: string) => page.locator('.active-filter-chip', { hasText: text })
 const nextSearch = (page: Page): Promise<Request> => page.waitForRequest((r) => isPassageSearch(r.url(), r.method()))
+const isDocumentSearch = (r: Request) => new URL(r.url()).pathname.endsWith('/api/search/documents') && r.method() === 'POST'
+const nextDocuments = (page: Page): Promise<Request> => page.waitForRequest(isDocumentSearch)
+const documentTitles = (page: Page) => page.getByTestId('document-result-open')
+const modeButton = (page: Page, mode: 'documents' | 'passages') => page.getByTestId(`results-mode-${mode}`)
 const hash = (page: Page) => decodeURIComponent(new URL(page.url()).hash).replace(/\+/g, ' ')
 
 async function openSearch (page: Page, path = '/#/search') {
@@ -100,11 +105,11 @@ test('Discard changes puts the applied search back into the form', async ({ page
 
 test('a link with values that are not valid or not offered searches without them and says so', async ({ page }) => {
   const sent = nextSearch(page)
-  await openSearch(page, '/#/search?q=Lhota&year_min=soon&chunk_classifications=complexity:trivial&mode=documents')
+  await openSearch(page, '/#/search?q=Lhota&year_min=soon&chunk_classifications=complexity:trivial&view=visualizations')
   const criteria = (await sent).postDataJSON().criteria
   expect(criteria).toMatchObject({ text_query: 'Lhota', document_filters: { year_min: null }, chunk_filters: { classifications: {} } })
   await expect(page.getByText('Left out of the search because they are not valid: Publication year from: soon')).toBeVisible()
-  await expect(page.getByText(/Left out of the search because they are not available: Complexity: trivial, Documents results/)).toBeVisible()
+  await expect(page.getByText(/Left out of the search because they are not available: Complexity: trivial, Visualizations/)).toBeVisible()
   await expect(page.locator('#result-1')).toBeVisible()
   await expect.poll(() => hash(page)).toBe('#/search?q=Lhota')
 })
@@ -186,4 +191,106 @@ test('a passage opened in the reader leads back to the same search, not an empty
   expect(hash(page)).toBe(searchUrl)
   await expect(chip(page, 'Language: Czech')).toBeVisible()
   expect(searches).toBe(0) // the kept results, not a new search
+})
+
+/// ///////////////////////////
+// Documents results (#606) //
+/// ///////////////////////////
+
+const CHRONICLE = 'Kronika obce Lhota' // 1851
+const LETTERS = 'Dopisy z Prahy' // 1902
+const GAZETTE = 'Pražský věstník' // no year
+const ORDER = 'Sorted by publication year, oldest first; documents without a year last.'
+
+for (const viewport of ['wide', 'phone'] as const) {
+  test(`filters alone list Documents; the mode switch keeps the criteria in the URL and history (${viewport})`, async ({ page }) => {
+    await useViewport(page, viewport)
+    await openSearch(page)
+    await chooseLanguage(page, 'Czech')
+    const listed = nextDocuments(page)
+    await input(page).press('Enter')
+    // Per dimension, from the documents' chunk-value summaries: every fixture chunk is Czech.
+    expect((await listed).postDataJSON()).toMatchObject({ criteria: { text_query: null, chunk_filters: { languages: ['ces'] } }, limit: 20, offset: 0 })
+    await expect(documentTitles(page)).toHaveText([`1. ${CHRONICLE}`, `2. ${LETTERS}`, `3. ${GAZETTE}`])
+    await expect(page.getByTestId('document-result-year').nth(2)).toContainText('Year unknown')
+    await expect(page.getByTestId('search-coverage')).toHaveText(`All 3 matching documents. ${ORDER}`)
+    await expect(modeButton(page, 'documents')).toHaveAttribute('aria-pressed', 'true')
+    expect(hash(page)).toBe('#/search?chunk_languages=ces')
+
+    // Passages need a text query: the same criteria, a state that says so, a history entry.
+    await modeButton(page, 'passages').click()
+    await expect(page.getByTestId('search-needs-query')).toBeVisible()
+    await expect(chip(page, 'Language: Czech')).toBeVisible()
+    expect(hash(page)).toBe('#/search?chunk_languages=ces&mode=passages')
+    const back = nextDocuments(page)
+    await page.goBack()
+    await back
+    await expect(documentTitles(page)).toHaveCount(3)
+    expect(hash(page)).toBe('#/search?chunk_languages=ces')
+
+    // A text query searches Passages; Documents for it are not available yet (#527c).
+    await searchFor(page, 'Lhota')
+    expect(hash(page)).toBe('#/search?q=Lhota&chunk_languages=ces')
+    await expect(modeButton(page, 'passages')).toHaveAttribute('aria-pressed', 'true')
+    let documentSearches = 0
+    page.on('request', (r) => { if (isDocumentSearch(r)) documentSearches++ })
+    await modeButton(page, 'documents').click()
+    await expect(page.getByTestId('search-documents-need-no-query')).toBeVisible()
+    expect(hash(page)).toBe('#/search?q=Lhota&chunk_languages=ces&mode=documents')
+    expect(documentSearches).toBe(0)
+    await page.reload()
+    await expect(page.getByTestId('search-documents-need-no-query')).toBeVisible()
+    await expect(chip(page, 'Language: Czech')).toBeVisible()
+  })
+}
+
+test('an empty search lists every document, and Load more reads the next page in the same order', async ({ page }) => {
+  // A first page of one, so Load more has the two other documents to read.
+  await page.route('**/api/search/documents', async (route) => {
+    const body = route.request().postDataJSON()
+    const response = await route.fetch({ postData: JSON.stringify(body.offset === 0 ? { ...body, limit: 1 } : body) })
+    await route.fulfill({ response })
+  })
+  const pages: { offset: number, limit: number }[] = []
+  page.on('request', (r) => { if (isDocumentSearch(r)) pages.push(r.postDataJSON()) })
+  await openSearch(page)
+  await input(page).press('Enter')
+  await expect(documentTitles(page)).toHaveText([`1. ${CHRONICLE}`])
+  expect(hash(page)).toBe('#/search?mode=documents') // not the page as first opened
+  await expect(page.getByTestId('search-coverage')).toHaveText(`3 matching documents (1 shown). ${ORDER}`)
+
+  await page.getByTestId('search-load-more').click()
+  await expect(documentTitles(page)).toHaveText([`1. ${CHRONICLE}`, `2. ${LETTERS}`, `3. ${GAZETTE}`])
+  await expect(page.getByTestId('search-load-more')).toHaveCount(0)
+  await expect(page.getByTestId('search-coverage')).toHaveText(`All 3 matching documents. ${ORDER}`)
+  expect(pages.map(p => [p.offset, p.limit])).toEqual([[0, 20], [1, 100]])
+})
+
+test('a document opened from the Documents results leads back to the same results', async ({ page }) => {
+  await openSearch(page, '/#/search?year_max=1900')
+  await expect(documentTitles(page)).toHaveText([`1. ${CHRONICLE}`])
+  const searchUrl = hash(page)
+
+  await documentTitles(page).first().click()
+  await expect(page).toHaveURL(new RegExp(`#/documents/${fixture.document('chronicle').id}\\?from=search`))
+  let searches = 0
+  page.on('request', (r) => { if (isDocumentSearch(r)) searches++ })
+  await page.getByRole('link', { name: 'Back to search results' }).click()
+  await expect(documentTitles(page)).toHaveText([`1. ${CHRONICLE}`])
+  expect(hash(page)).toBe(searchUrl)
+  expect(searches).toBe(0) // the kept results, not a new search
+})
+
+test('a filter the corpus database cannot answer is reported, not shown as no documents', async ({ page }) => {
+  const detail = 'Documents cannot be filtered by chunk values (chunk_language): this corpus database has no chunk-value summaries of its documents.'
+  await page.route('**/api/search/documents', (route) => route.fulfill({ status: 422, json: { detail } }))
+  await openSearch(page, '/#/search?chunk_languages=ces')
+  await expect(page.getByTestId('search-error')).toContainText(detail)
+  await expect(page.getByTestId('search-empty')).toHaveCount(0)
+})
+
+test('documents that match no filter say so', async ({ page }) => {
+  await openSearch(page, '/#/search?chunk_classifications=communicative_mode:narration&year_min=1900')
+  await expect(page.getByTestId('search-empty')).toContainText('No documents match these filters.')
+  await expect(page.getByTestId('search-coverage')).toHaveCount(0)
 })

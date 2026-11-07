@@ -5,7 +5,8 @@
 Runs from ``semant_demo_backend``, after ``scripts/with-test-weaviate.sh`` has provided a
 test-owned Weaviate. It
 
-* resets the test store and seeds the fixture corpus (ownership verified first);
+* resets the test store and seeds the fixture corpus (ownership verified first), with the
+  documents' chunk-value summaries computed (#529), as on a store initialized by #561;
 * creates a temporary SQLite database with the corpus users;
 * writes synthetic page scans and layouts of fixture documents (``tests.page_fixtures``)
   into a temporary page asset store;
@@ -75,6 +76,7 @@ def profile_environ(endpoint: StoreEndpoint, work_dir: Path, static_dir: Path, f
 async def prepare_stores(config, endpoint: StoreEndpoint) -> None:
     from sqlalchemy.ext.asyncio import create_async_engine
 
+    from semant_demo.maintenance import chunk_summaries, chunk_summary_schema
     from tests.page_fixtures import seed_layout_anchors
     from tests.seed import derive_annotations, seed_users, seed_weaviate
     from tests.weaviate_store import connect, create_app_schema, drop_app_collections
@@ -89,6 +91,12 @@ async def prepare_stores(config, endpoint: StoreEndpoint) -> None:
         await seed_layout_anchors(client, config.collectionNames.chunks_collection_name, corpus)
         # Concordance rows (#329) read the derived text, as on a migrated store.
         await derive_annotations(client, config, corpus)
+        # The documents' chunk-value summaries (#529), as on a store initialized by #561, so the
+        # document-level chunk filters (Explore Documents, #606) work.
+        await chunk_summary_schema.update(client, config.collectionNames, apply=True)
+        with tempfile.TemporaryDirectory() as reports:
+            await chunk_summaries.run(client, config.collectionNames, report=Path(reports) / "chunk_summaries.json",
+                                      endpoint="e2e", write=True, progress=lambda line: None)
     finally:
         await client.close()
     engine = create_async_engine(config.SQL_DB_URL)

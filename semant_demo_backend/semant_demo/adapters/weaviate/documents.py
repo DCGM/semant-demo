@@ -18,6 +18,11 @@ from semant_demo.features.documents.schemas import (
 
 logger = logging.getLogger(__name__)
 
+YEAR = "yearIssued"
+"""The ``Documents`` property of the publication year, the order of ``browse_by_year``."""
+_LOWEST_YEAR = -(2 ** 63)
+"""Every stored year is at least this (``int`` is 64-bit in Weaviate): ``>=`` it means "has a year"."""
+
 LAYOUT_START = "layoutStart"
 """The ``Chunks`` object property of a chunk's start on the page scans (#541)."""
 
@@ -222,19 +227,9 @@ class DocumentRepository:
         the substring filters (``title``, ...) and the search criteria ``conditions`` (rendered
         as Analytics renders them, so both match the same documents). Raises
         ``criteria.UnavailableFilter`` for a condition on a property the store does not declare."""
-        name = self.collectionNames.document_collection_name
-        documents = self.client.collections.get(name)
-        parts = []
-        if collection_id is not None:
-            parts.append(Filter.by_ref("collection").by_id().equal(collection_id))
-        for prop, value in (("title", title), ("author", author), ("publisher", publisher),
-                            ("documentType", document_type)):
-            if value:
-                parts.append(Filter.by_property(prop).like(f"*{value}*"))
-        if conditions:
-            types, tokenizations = await criteria.declared(self.client, name)
-            parts.extend(criteria.parts(conditions, types, tokenizations))
-        filters = Filter.all_of(parts) if len(parts) > 1 else (parts[0] if parts else None)
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        filters = await self._browse_filter(collection_id, conditions, title=title, author=author,
+                                            publisher=publisher, documentType=document_type)
         sort = Sort.by_property(sort_by, ascending=not sort_desc) if sort_by else None
 
         count_response = await documents.aggregate.over_all(filters=filters, total_count=True)
@@ -249,3 +244,64 @@ class DocumentRepository:
             next_offset=(offset + limit) if has_more else None,
             total_count=count_response.total_count or 0,
         )
+
+    async def browse_by_year(self, collection_id: UUID | None = None, limit: int = 50, offset: int = 0,
+                             conditions: Sequence[Condition] = ()) -> DocumentBrowse:
+        """One page of the documents of ``browse`` (without its substring filters) in a stable
+        order: publication year, oldest first, then id; the documents without a year follow all
+        dated ones, by id.
+
+        Weaviate sorts a missing value first in ascending order and last in descending order,
+        and filtering by a missing value needs ``indexNullState``, which the stores do not
+        enable (measured on 1.40). So the dated documents are counted, read in ascending order
+        with a filter that only a year satisfies, and the undated ones are read past the dated
+        ones of the descending order (``YEAR``, then id ascending). Two counts and at most two
+        reads per page; ``offset + limit`` stays within ``QUERY_MAXIMUM_RESULTS`` for the
+        caller to ensure. A document whose year changes between those reads may be missed or
+        repeated on that page, never shown as undated."""
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        filters = await self._browse_filter(collection_id, conditions)
+        dated = Filter.by_property(YEAR).greater_or_equal(_LOWEST_YEAR)
+        dated_filters = dated if filters is None else Filter.all_of([filters, dated])
+        total = (await documents.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
+        dated_total = 0
+        if total:
+            dated_total = (await documents.aggregate.over_all(filters=dated_filters, total_count=True)).total_count or 0
+
+        objects = []
+        if offset < dated_total:
+            response = await documents.query.fetch_objects(
+                filters=dated_filters, limit=min(limit, dated_total - offset), offset=offset,
+                sort=Sort.by_property(YEAR, ascending=True).by_property("_id", ascending=True))
+            objects.extend(response.objects)
+        undated_offset = max(offset, dated_total)
+        undated_limit = offset + limit - undated_offset
+        if undated_limit > 0 and undated_offset < total:
+            response = await documents.query.fetch_objects(
+                filters=filters, limit=undated_limit, offset=undated_offset,
+                sort=Sort.by_property(YEAR, ascending=False).by_property("_id", ascending=True))
+            objects.extend(o for o in response.objects if o.properties.get(YEAR) is None)
+
+        has_more = offset + limit < total
+        return DocumentBrowse(
+            items=[Document(id=obj.uuid, **obj.properties) for obj in objects],
+            has_more=has_more,
+            next_offset=(offset + limit) if has_more else None,
+            total_count=total,
+        )
+
+    async def _browse_filter(self, collection_id: UUID | None, conditions: Sequence[Condition] = (),
+                             **substrings: str | None):
+        """The filter of a browse: the collection, the substring filters (stored property ->
+        text) and the search criteria ``conditions``; None without any."""
+        name = self.collectionNames.document_collection_name
+        parts = []
+        if collection_id is not None:
+            parts.append(Filter.by_ref("collection").by_id().equal(collection_id))
+        for prop, value in substrings.items():
+            if value:
+                parts.append(Filter.by_property(prop).like(f"*{value}*"))
+        if conditions:
+            types, tokenizations = await criteria.declared(self.client, name)
+            parts.extend(criteria.parts(conditions, types, tokenizations))
+        return Filter.all_of(parts) if len(parts) > 1 else (parts[0] if parts else None)

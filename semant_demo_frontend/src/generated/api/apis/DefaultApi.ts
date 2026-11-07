@@ -52,6 +52,8 @@ import type {
   DocumentChunkWindow,
   DocumentDetail,
   DocumentPages,
+  DocumentSearchRequest,
+  DocumentSearchResponse,
   DocumentStats,
   DocumentSummaryResponse,
   ExplainRequest,
@@ -173,6 +175,10 @@ import {
     DocumentDetailToJSON,
     DocumentPagesFromJSON,
     DocumentPagesToJSON,
+    DocumentSearchRequestFromJSON,
+    DocumentSearchRequestToJSON,
+    DocumentSearchResponseFromJSON,
+    DocumentSearchResponseToJSON,
     DocumentStatsFromJSON,
     DocumentStatsToJSON,
     DocumentSummaryResponseFromJSON,
@@ -569,6 +575,10 @@ export interface SaveFeedbackApiRagFeedbackPostRequest {
 
 export interface SearchApiSearchPostRequest {
     searchRequest: SearchRequest;
+}
+
+export interface SearchDocumentsApiSearchDocumentsPostRequest {
+    documentSearchRequest: DocumentSearchRequest;
 }
 
 export interface SearchPassagesApiSearchPassagesPostRequest {
@@ -2382,6 +2392,30 @@ export interface DefaultApiInterface {
      * Search
      */
     searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse>;
+
+    /**
+     * Creates request options for searchDocumentsApiSearchDocumentsPost without sending the request
+     * @param {DocumentSearchRequest} documentSearchRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchDocumentsApiSearchDocumentsPostRequestOpts(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The documents matching search criteria without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last), with the exact number of matching documents. The same documents as ``GET /api/documents/browse`` and Analytics for the same criteria: chunk filters apply per dimension to the documents\' chunk-value summaries. Only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``); a page past them is refused (400). A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * @summary Search Documents
+     * @param {DocumentSearchRequest} documentSearchRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchDocumentsApiSearchDocumentsPostRaw(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSearchResponse>>;
+
+    /**
+     * The documents matching search criteria without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last), with the exact number of matching documents. The same documents as ``GET /api/documents/browse`` and Analytics for the same criteria: chunk filters apply per dimension to the documents\' chunk-value summaries. Only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``); a page past them is refused (400). A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * Search Documents
+     */
+    searchDocumentsApiSearchDocumentsPost(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSearchResponse>;
 
     /**
      * Creates request options for searchPassagesApiSearchPassagesPost without sending the request
@@ -6625,6 +6659,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse> {
         const response = await this.searchApiSearchPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for searchDocumentsApiSearchDocumentsPost without sending the request
+     */
+    async searchDocumentsApiSearchDocumentsPostRequestOpts(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentSearchRequest'] == null) {
+            throw new runtime.RequiredError(
+                'documentSearchRequest',
+                'Required parameter "documentSearchRequest" was null or undefined when calling searchDocumentsApiSearchDocumentsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/documents`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DocumentSearchRequestToJSON(requestParameters['documentSearchRequest']),
+        };
+    }
+
+    /**
+     * The documents matching search criteria without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last), with the exact number of matching documents. The same documents as ``GET /api/documents/browse`` and Analytics for the same criteria: chunk filters apply per dimension to the documents\' chunk-value summaries. Only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``); a page past them is refused (400). A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * Search Documents
+     */
+    async searchDocumentsApiSearchDocumentsPostRaw(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSearchResponse>> {
+        const requestOptions = await this.searchDocumentsApiSearchDocumentsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentSearchResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * The documents matching search criteria without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last), with the exact number of matching documents. The same documents as ``GET /api/documents/browse`` and Analytics for the same criteria: chunk filters apply per dimension to the documents\' chunk-value summaries. Only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``); a page past them is refused (400). A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * Search Documents
+     */
+    async searchDocumentsApiSearchDocumentsPost(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSearchResponse> {
+        const response = await this.searchDocumentsApiSearchDocumentsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

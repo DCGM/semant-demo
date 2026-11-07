@@ -25,6 +25,7 @@ from time import time
 from typing import Awaitable, Callable, Protocol
 
 from semant_demo.adapters.llm.usage import OperationBudget
+from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -33,13 +34,14 @@ from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 from semant_demo.features.quota.service import QuotaExhausted
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
+from semant_demo.features.documents import service as document_service
 from semant_demo.features.documents.criteria import (
-    ChunkFilters, Condition, DocumentFilters, SearchCriteria, chunk_conditions, document_conditions,
+    ChunkFilters, ChunkVocabulary, Condition, DocumentFilters, SearchCriteria, chunk_conditions, document_conditions,
     validate_chunk_filters)
 from semant_demo.features.search.filters import (
     InvalidSearchFilterError, chunk_vocabulary, parse_and_validate_search_filters)
 from semant_demo.features.search.schemas import (
-    ChunkQuery, FieldCondition, Op, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse,
+    ChunkQuery, DocumentSearchRequest, DocumentSearchResponse, FieldCondition, Op, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse,
     SearchFiltersResponse, SearchRequest,
     SearchResponse, SearchType, TagFilter,
 )
@@ -218,6 +220,43 @@ async def read_passages(backends: SearchBackends, user: Principal | None, reques
     for item in items:
         item.text = display_text(item.text)
     return PassageReadResponse(items=items, time_spent=time() - start)
+
+
+async def search_documents(documents: DocumentRepository, collections: UserCollectionRepository,
+                           user: Principal | None, request: DocumentSearchRequest, vocabulary: ChunkVocabulary,
+                           retrieval_limit: int) -> DocumentSearchResponse:
+    """Documents matching criteria without a text query (#606): one page in a stable order,
+    with the exact number of matching documents.
+
+    Document browsing selects them (``documents.service.browse_by_year``): the same documents
+    as ``GET /api/documents/browse`` and Analytics for the same criteria, chunk filters per
+    dimension from the documents' chunk-value summaries. Only the first ``retrieval_limit``
+    documents in that order can be read (Weaviate's ``QUERY_MAXIMUM_RESULTS``): a page past it
+    is refused, and ``bounded`` says when more match.
+    """
+    start = time()
+    if request.offset + request.limit > retrieval_limit:
+        raise InvalidRequestError(
+            f"Only the first {retrieval_limit} matching documents can be listed; narrow the filters to reach others.")
+    criteria = request.criteria
+    chunk_filters = criteria.chunk_filters
+    if not chunk_filters.is_empty():
+        chunk_filters = validate_chunk_filters(chunk_filters, vocabulary)
+    page = await document_service.browse_by_year(
+        documents, collections, user, request.user_collection_id, filters=criteria.document_filters,
+        chunk_filters=chunk_filters, vocabulary=vocabulary, limit=request.limit, offset=request.offset)
+    end = request.offset + request.limit
+    return DocumentSearchResponse(
+        items=page.items,
+        offset=request.offset,
+        next_offset=end if end < min(page.total_count, retrieval_limit) else None,
+        total_count=page.total_count,
+        retrieval_limit=retrieval_limit,
+        bounded=page.total_count > retrieval_limit,
+        order="year_asc",
+        criteria=criteria.model_copy(update={"chunk_filters": chunk_filters}),
+        time_spent=time() - start,
+    )
 
 
 async def _passage_query(backends: SearchBackends, user: Principal | None, criteria: SearchCriteria,

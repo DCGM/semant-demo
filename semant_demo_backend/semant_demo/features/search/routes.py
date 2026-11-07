@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter
-from semant_demo.config import Config
+from semant_demo.adapters.weaviate.documents import DocumentRepository
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
+from semant_demo.config import MAX_QUERY_RESULTS, Config
+from semant_demo.features.documents.criteria import ChunkVocabulary
 from semant_demo.features.search.schemas import (
-    PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse,
+    DocumentSearchRequest, DocumentSearchResponse, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse,
     SearchRequest, SearchResponse,
     SearchVectorsResponse)
 
@@ -13,7 +16,8 @@ from semant_demo.features.search import service
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.search.vectors import SearchVectors
 from semant_demo.routes.dependencies import (
-    get_config, get_search_backends, get_summarizer, get_search_filters, get_search_vectors)
+    get_chunk_vocabulary, get_config, get_documents, get_search_backends, get_summarizer, get_search_filters,
+    get_search_vectors, get_user_collections)
 from semant_demo.users.auth import current_active_optional_user
 from semant_demo.users.models import User
 
@@ -76,5 +80,26 @@ async def read_passages(req: PassageReadRequest, backends: SearchBackends = Depe
     ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked."""
     try:
         return await service.read_passages(backends, current_user, req, available_filters)
+    except UnavailableFilter as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@exp_router.post("/api/search/documents", response_model=DocumentSearchResponse)
+async def search_documents(req: DocumentSearchRequest, documents: DocumentRepository = Depends(get_documents),
+                           collections: UserCollectionRepository = Depends(get_user_collections),
+                           vocabulary: ChunkVocabulary = Depends(get_chunk_vocabulary),
+                           current_user: User | None = Depends(current_active_optional_user),
+                           ) -> DocumentSearchResponse:
+    """The documents matching search criteria without a text query (#606): one page, ordered by
+    publication year (oldest first, then id; documents without a year last), with the exact
+    number of matching documents. The same documents as ``GET /api/documents/browse`` and
+    Analytics for the same criteria: chunk filters apply per dimension to the documents'
+    chunk-value summaries. Only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged
+    through (``bounded``); a page past them is refused (400). A filter on a property this
+    corpus database does not record, also a chunk filter without the summaries, is rejected
+    (422); an unconfigured chunk filter value is refused (400)."""
+    try:
+        return await service.search_documents(documents, collections, current_user, req, vocabulary,
+                                              MAX_QUERY_RESULTS)
     except UnavailableFilter as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
