@@ -81,6 +81,8 @@ docs/MinValue1.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
 docs/Partnumber.md
+docs/PassageReadRequest.md
+docs/PassageReadResponse.md
 docs/PassageSearchRequest.md
 docs/PassageSearchResponse.md
 docs/PatchAttribute.md
@@ -222,6 +224,8 @@ models/MinValue1.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts
 models/Partnumber.ts
+models/PassageReadRequest.ts
+models/PassageReadResponse.ts
 models/PassageSearchRequest.ts
 models/PassageSearchResponse.ts
 models/PatchAttribute.ts

@@ -1,16 +1,15 @@
 
 # PassageSearchResponse
 
-A page of ranked passages and what the whole retrieved population covers.  One search retrieves at most ``retrieval_limit`` passages (best first); every page is a slice of that one ranking, and later visualizations of the same search describe the same population. ``bounded`` is ``False`` when it holds every matching passage (then ``total_count`` is their number) and ``True`` when the limit cut the ranking (more passages match but are not retrievable). Vector and hybrid search rank every passage that passes the filters, so they are bounded unless the filters leave fewer than the limit.
+The ranking of one passage search, its first page and what the ranking covers.  The search ranks at most ``retrieval_limit`` passages once (best first, ``ranked_ids``); later pages read slices of those ids (``POST /api/search/passages/read``) instead of ranking again, and visualizations of the same search can describe the same population. ``bounded`` is ``False`` when the ranking holds every matching passage (then ``total_count`` is their number) and ``True`` when the limit cut it (more passages match but are not retrievable). Vector and hybrid search rank every passage that passes the filters, so they are bounded unless the filters leave fewer than the limit.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
+`rankedIds` | Array&lt;string&gt;
 `items` | [Array&lt;SearchResultChunk&gt;](SearchResultChunk.md)
-`offset` | number
-`nextOffset` | number
-`hasMore` | boolean
+`readCount` | number
 `retrievalLimit` | number
 `bounded` | boolean
 `totalCount` | number
@@ -25,10 +24,9 @@ import type { PassageSearchResponse } from ''
 
 // TODO: Update the object below with actual values
 const example = {
+  "rankedIds": null,
   "items": null,
-  "offset": null,
-  "nextOffset": null,
-  "hasMore": null,
+  "readCount": null,
   "retrievalLimit": null,
   "bounded": null,
   "totalCount": null,

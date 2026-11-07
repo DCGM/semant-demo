@@ -184,8 +184,8 @@ async def test_a_filter_on_a_property_the_store_lacks_is_rejected_not_empty(lega
             "Documents cannot be filtered by library: this corpus database is not recorded."
 
 
-def passages_body(offset=0, limit=20, **criteria) -> dict:
-    return {"criteria": {"text_query": ALL_WORDS, **criteria}, "type": "text", "offset": offset, "limit": limit}
+def passages_body(limit=20, **criteria) -> dict:
+    return {"criteria": {"text_query": ALL_WORDS, **criteria}, "type": "text", "limit": limit}
 
 
 async def test_passages_hold_every_chunk_filter_on_the_returned_chunk(api_client, update, corpus):
@@ -196,7 +196,9 @@ async def test_passages_hold_every_chunk_filter_on_the_returned_chunk(api_client
     async def keys(**criteria):
         response = await api_client.post("/api/search/passages", json=passages_body(**criteria))
         assert response.status_code == 200, response.text
-        return {by_id[item["id"]] for item in response.json()["items"]}
+        body = response.json()
+        assert body["ranked_ids"] == [item["id"] for item in body["items"]]
+        return {by_id[item["id"]] for item in body["items"]}
 
     assert await keys() == EVERY_CHUNK
     assert await keys(chunk_filters={"classifications": {"style": ["informal"]}}) == {"chronicle_2", "letters_1"}
@@ -207,23 +209,50 @@ async def test_passages_hold_every_chunk_filter_on_the_returned_chunk(api_client
                       chunk_filters={"classifications": {"style": ["informal"]}}) == {"chronicle_2"}
 
 
-async def test_passage_pages_continue_the_ranking_up_to_the_end(api_client):
+async def test_later_passage_pages_read_the_ranked_ids_up_to_the_end(api_client):
+    # #611: one ranking; Load more reads the next ranked ids instead of ranking again.
     whole = (await api_client.post("/api/search/passages", json=passages_body(limit=50))).json()
-    assert (whole["bounded"], whole["total_count"], whole["has_more"]) == (False, len(EVERY_CHUNK), False)
+    assert (whole["bounded"], whole["total_count"], whole["read_count"]) == (False, len(EVERY_CHUNK), len(EVERY_CHUNK))
 
-    pages, offset = [], 0
-    while offset is not None:
-        response = await api_client.post("/api/search/passages", json=passages_body(offset=offset, limit=3))
+    first = (await api_client.post("/api/search/passages", json=passages_body(limit=3))).json()
+    assert first["ranked_ids"] == whole["ranked_ids"] and first["read_count"] == 3
+    pages, ranked, position = [first["items"]], first["ranked_ids"], first["read_count"]
+    while position < len(ranked):
+        response = await api_client.post("/api/search/passages/read", json={
+            "ids": ranked[position:position + 3], "criteria": first["criteria"]})
         assert response.status_code == 200, response.text
-        body = response.json()
-        pages.append(body)
-        offset = body["next_offset"]
+        pages.append(response.json()["items"])
+        position += 3
 
-    assert [len(p["items"]) for p in pages] == [3, 3, 1]
-    assert [item["id"] for p in pages for item in p["items"]] == [item["id"] for item in whole["items"]]
-    # The whole ranking is known from the first page: all seven, none cut by the limit.
-    assert [(p["has_more"], p["bounded"], p["total_count"]) for p in pages] == \
-        [(True, False, 7), (True, False, 7), (False, False, 7)]
+    assert [len(p) for p in pages] == [3, 3, 1]
+    assert [item["id"] for p in pages for item in p] == [item["id"] for item in whole["items"]]
+
+
+async def test_a_later_passage_page_answers_only_ids_the_search_could_return(api_client, login, ids, update):
+    # #611: the ids come from the client; the collection, its access and the criteria are
+    # applied again, so ids of other collections or no longer matching chunks are left out.
+    every = [ids.chunk[key] for key in sorted(EVERY_CHUNK)]
+
+    async def read(user=None, **body):
+        response = await api_client.post("/api/search/passages/read", headers=await login(user), json={
+            "ids": every, "criteria": {"text_query": ALL_WORDS}, **body})
+        return response.status_code, response.json()
+
+    by_id = {v: k for k, v in ids.chunk.items()}
+    status, body = await read()
+    assert status == 200 and {by_id[item["id"]] for item in body["items"]} == EVERY_CHUNK  # the public corpus
+    status, body = await read("annotator", user_collection_id=ids.col["chronicles"])  # shared with the annotator
+    assert status == 200 and {by_id[item["id"]] for item in body["items"]} == {"chronicle_1", "chronicle_2"} | LETTERS
+    status, body = await read("owner", user_collection_id=ids.col["newspapers"],
+                              criteria={"text_query": ALL_WORDS, "document_filters": {"year_max": 1900}})
+    assert status == 200 and {by_id[item["id"]] for item in body["items"]} == {"chronicle_3"}
+    assert (await read("outsider", user_collection_id=ids.col["chronicles"]))[0] == 404
+    assert (await read(user_collection_id=ids.col["chronicles"]))[0] == 401
+
+    await update("letters_1", style=["informal"])
+    status, body = await read(criteria={"text_query": ALL_WORDS,
+                                        "chunk_filters": {"classifications": {"style": ["informal"]}}})
+    assert status == 200 and [by_id[item["id"]] for item in body["items"]] == ["letters_1"]
 
 
 @pytest.mark.parametrize("mode", [SearchType.hybrid, SearchType.vector, SearchType.text])
@@ -241,8 +270,8 @@ async def test_a_ranking_read_by_id_keeps_the_order_and_the_hits_of_the_search(s
 
     assert ranked == [hit.id for hit in searched] and len(ranked) == len(EVERY_CHUNK)
     page = ranked[2:5]
-    assert [hit.id for hit in await repository.read_hits(page)] == page
-    assert await repository.read_hits([]) == []
+    assert [hit.id for hit in await repository.read_hits(page, query)] == page
+    assert await repository.read_hits([], query) == []
 
 
 @pytest.mark.parametrize("mode", [SearchType.hybrid, SearchType.vector, SearchType.text])

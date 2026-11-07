@@ -77,6 +77,8 @@ export * from './MinValue1';
 export * from './NominalFilterValue';
 export * from './PageChunks';
 export * from './Partnumber';
+export * from './PassageReadRequest';
+export * from './PassageReadResponse';
 export * from './PassageSearchRequest';
 export * from './PassageSearchResponse';
 export * from './PatchAttribute';

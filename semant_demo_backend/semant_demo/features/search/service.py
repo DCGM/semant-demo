@@ -34,11 +34,13 @@ from semant_demo.features.quota.service import QuotaExhausted
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.documents.criteria import (
-    ChunkFilters, Condition, DocumentFilters, chunk_conditions, document_conditions, validate_chunk_filters)
+    ChunkFilters, Condition, DocumentFilters, SearchCriteria, chunk_conditions, document_conditions,
+    validate_chunk_filters)
 from semant_demo.features.search.filters import (
     InvalidSearchFilterError, chunk_vocabulary, parse_and_validate_search_filters)
 from semant_demo.features.search.schemas import (
-    ChunkQuery, FieldCondition, Op, PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse, SearchRequest,
+    ChunkQuery, FieldCondition, Op, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse,
+    SearchFiltersResponse, SearchRequest,
     SearchResponse, SearchType, TagFilter,
 )
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
@@ -162,47 +164,33 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
 async def search_passages(backends: SearchBackends, user: Principal | None, request: PassageSearchRequest,
                           filter_definitions: SearchFiltersResponse | None, retrieval_limit: int,
                           ) -> PassageSearchResponse:
-    """One page of the passages (#605), with access, vector selection and filter validation
-    as in ``retrieve``.
+    """A passage search (#605, #611): its ranking, once, and its first page; access, vector
+    selection and filter validation as in ``retrieve``.
 
-    Every page is a slice of one ranking: the ids of the best ``retrieval_limit`` passages
-    (one more, to tell whether the limit cut the ranking), read without properties; only the
-    page's passages are then read in full. A page is never ranked on its own, because
-    Weaviate's hybrid ranking depends on the limit and hybrid ``offset`` does not reach past
-    its first results (measured on 1.40.1), which would skip or repeat passages between pages.
-    An offset at or past the limit is refused (``InvalidRequestError``). Passages whose chunk is
-    gone or has no document by the time the page is read are left out of it.
+    The ranking is the ids of the best ``retrieval_limit`` passages (one more, to tell whether
+    the limit cut it), read without properties; only the first ``request.limit`` of them are
+    read in full. Later pages are slices of these ids (``read_passages``), never rankings of
+    their own: Weaviate's hybrid ranking depends on the limit and hybrid ``offset`` does not
+    reach past its first results (measured on 1.40.1), which would skip or repeat passages, and
+    ranking again for every page repeats the costliest step. Passages whose chunk is gone or
+    has no document by the time they are read are left out of the page.
     """
     start = time()
-    if request.offset >= retrieval_limit:
-        raise InvalidRequestError(f"At most {retrieval_limit} passages are retrieved for one search; "
-                                  f"the offset must be below that.")
     criteria = request.criteria
-    normalized, query, vector = await _authorized_query(backends, user, SearchRequest(
-        query=criteria.text_query or "",
-        limit=retrieval_limit + 1,
-        type=request.type,
-        hybrid_search_alpha=request.hybrid_search_alpha,
-        vector=request.vector,
-        user_collection_id=request.user_collection_id,
-        document_filters=criteria.document_filters,
-        chunk_filters=criteria.chunk_filters,
-        tag_uuids=[], positive=False, automatic=False,
-        search_title_generate=False, search_summary_generate=False, search_results_summary_generate=False,
-    ), filter_definitions)
-    ranked = await backends.chunks.ranked_ids(query)
+    normalized, query, vector = await _passage_query(
+        backends, user, criteria, request.user_collection_id, filter_definitions, limit=retrieval_limit + 1,
+        type=request.type, hybrid_search_alpha=request.hybrid_search_alpha, vector=request.vector)
+    ranked = list(dict.fromkeys(await backends.chunks.ranked_ids(query)))  # each once, in rank order
     bounded = len(ranked) > retrieval_limit
     ranked = ranked[:retrieval_limit]
-    end = min(request.offset + request.limit, len(ranked))
-    items = await backends.chunks.read_hits(ranked[request.offset:end])
+    read_count = min(request.limit, len(ranked))
+    items = await backends.chunks.read_hits(ranked[:read_count], query)
     for item in items:
         item.text = display_text(item.text)
-    has_more = end < len(ranked)
     return PassageSearchResponse(
+        ranked_ids=ranked,
         items=items,
-        offset=request.offset,
-        next_offset=end if has_more else None,
-        has_more=has_more,
+        read_count=read_count,
         retrieval_limit=retrieval_limit,
         bounded=bounded,
         total_count=None if bounded else len(ranked),
@@ -211,6 +199,41 @@ async def search_passages(backends: SearchBackends, user: Principal | None, requ
         vector=None if request.type == SearchType.text else vector.id,
         time_spent=time() - start,
     )
+
+
+async def read_passages(backends: SearchBackends, user: Principal | None, request: PassageReadRequest,
+                        filter_definitions: SearchFiltersResponse | None) -> PassageReadResponse:
+    """Passages of an earlier passage search by id (#611): a later page of its ``ranked_ids``.
+
+    The ids come from the client, so nothing about them is trusted: access to the collection
+    is checked again, the criteria are validated again, and the passages are read under the
+    same restrictions (collection, document and same-chunk filters) as the search's ranking.
+    An id the search could not have returned, also one of a deleted chunk or one that no
+    longer matches, is left out. Nothing is ranked or embedded.
+    """
+    start = time()
+    _, query, _ = await _passage_query(backends, user, request.criteria, request.user_collection_id,
+                                       filter_definitions, limit=len(request.ids), type=SearchType.text)
+    items = await backends.chunks.read_hits(list(dict.fromkeys(request.ids)), query)
+    for item in items:
+        item.text = display_text(item.text)
+    return PassageReadResponse(items=items, time_spent=time() - start)
+
+
+async def _passage_query(backends: SearchBackends, user: Principal | None, criteria: SearchCriteria,
+                         user_collection_id: str | None, filter_definitions: SearchFiltersResponse | None,
+                         limit: int, **options) -> tuple[SearchRequest, ChunkQuery, SearchVector]:
+    """``_authorized_query`` for the criteria of a passage search: no tags, no summaries."""
+    return await _authorized_query(backends, user, SearchRequest(
+        query=criteria.text_query or "",
+        limit=limit,
+        user_collection_id=user_collection_id,
+        document_filters=criteria.document_filters,
+        chunk_filters=criteria.chunk_filters,
+        tag_uuids=[], positive=False, automatic=False,
+        search_title_generate=False, search_summary_generate=False, search_results_summary_generate=False,
+        **options,
+    ), filter_definitions)
 
 
 def public_retriever(backends: SearchBackends, vector: str | None = None) -> Retriever:
