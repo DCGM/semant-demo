@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
-import { appendResultCopies, editSearchResults, ensureLoggedIn, fixture, goToResultsPage, search, useViewport } from './support'
+import { appendResultCopies, editSearchResults, ensureLoggedIn, fixture, search, useViewport } from './support'
 
 // Search result cards (#256): checkbox left of the title only, an understated selected
 // state, passage previews in narrow result columns, the selection toolbar and Escape.
@@ -10,9 +10,9 @@ const chronicle = fixture.chunk('chronicle_1')
 const longText = [chronicle.text, ...Array.from({ length: 12 }, (_, i) =>
   `Odstavec ${i + 1}: kronikář pečlivě zapsal, kdo do obce přijel, kde se ubytoval a co se ten den v hostinci U Lípy projednávalo.`)].join('\n')
 
-/** Lengthens chronicle_1 and, with `copies`, appends copies of the results (for pagination). */
+/** Lengthens chronicle_1 and, with `copies`, appends copies of the results (a long list). */
 const patchSearch = (page: Page, copies = 0) => editSearchResults(page, (body) => {
-  for (const result of body.results) {
+  for (const result of body.items) {
     if (result.text === chronicle.text) result.text = longText
   }
   appendResultCopies(body, copies)
@@ -127,14 +127,13 @@ test('the collection owner gets the collection actions', async ({ page }) => {
   await expect(toolbar(page)).toBeHidden()
 })
 
-test('Escape clears the selection on all pages, but not inside a field or menu', async ({ page }) => {
+test('Escape clears the whole selection, but not inside a field or menu', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
-  await patchSearch(page, 2) // more than one page of results
+  await patchSearch(page, 2) // a long list: selected results out of view
   await search(page, 'Lhota')
   const selected = page.locator('.search-result--selected')
 
   await page.locator('#result-1').getByRole('checkbox').click()
-  await goToResultsPage(page, 2)
   await page.locator('#result-11').getByRole('checkbox').click()
   await expect(toolbar(page)).toContainText('2 item(s) selected')
 
@@ -150,11 +149,9 @@ test('Escape clears the selection on all pages, but not inside a field or menu',
   await expect(page.locator('.q-menu')).toHaveCount(0)
   await expect(toolbar(page)).toContainText('2 item(s) selected')
 
-  // Otherwise it clears all pages.
+  // Otherwise it clears the whole selection, also of results out of view.
   await page.locator('#result-11 .search-result__title').click()
   await page.keyboard.press('Escape')
   await expect(toolbar(page)).toBeHidden()
-  await expect(selected).toHaveCount(0)
-  await goToResultsPage(page, 1)
   await expect(selected).toHaveCount(0)
 })

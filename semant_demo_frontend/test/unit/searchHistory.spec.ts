@@ -265,7 +265,7 @@ describe('useSearchHistory', () => {
     history.show()
     const getItem = vi.spyOn(Storage.prototype, 'getItem')
     text.value = 'a'
-    history.show()
+    history.onInput()
     await nextTick()
     expect(getItem).not.toHaveBeenCalled()
     history.close()
@@ -278,6 +278,7 @@ describe('useSearchHistory', () => {
     history.record('gazette', '')
     history.show()
     text.value = 'no such search'
+    history.onInput()
     await nextTick()
     const up = key('ArrowUp')
     expect(history.onKeydown(up)).toBe(false)
@@ -412,11 +413,30 @@ describe('useSearchHistory', () => {
     history.record('weather', '')
     history.show()
     text.value = 'GAZ'
+    history.onInput()
     await nextTick()
     expect(history.suggestions.value.map(e => e.query)).toEqual(['old gazette'])
     text.value = 'nothing like it'
+    history.onInput()
     await nextTick()
     expect(history.shown.value).toBe(false)
+  })
+
+  it('lists the whole history when opened while the input holds the last query (#608 review)', async () => {
+    const { history, text } = setup()
+    history.record('old gazette', '')
+    history.record('weather', '')
+    text.value = 'weather' // the query that ran stays in the input
+    history.show()
+    await nextTick()
+    expect(history.suggestions.value.map(e => e.query)).toEqual(['weather', 'old gazette'])
+    history.onInput() // typing (the text as edited) narrows it
+    await nextTick()
+    expect(history.suggestions.value.map(e => e.query)).toEqual(['weather'])
+    history.close()
+    history.show() // reopened: the whole history again
+    expect(history.suggestions.value.map(e => e.query)).toEqual(['weather', 'old gazette'])
+    expect(history.entries.value.map(e => e.query)).toEqual(['weather', 'old gazette'])
   })
 })
 

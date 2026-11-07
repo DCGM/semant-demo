@@ -11,11 +11,14 @@ from asgi_lifespan import LifespanManager
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from semant_demo.config import MAX_PASSAGES_LIMIT
 from semant_demo.features.documents.criteria import NumberRange
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
 from semant_demo.features.summarization.schemas import SummaryRequest
 from semant_demo.main import create_app
-from semant_demo.routes.dependencies import get_documents
+from semant_demo.features.search.service import SearchBackends
+from semant_demo.features.search.vectors import SearchVector, SearchVectors
+from semant_demo.routes.dependencies import get_documents, get_search_backends
 from semant_demo.features.documents.schemas import DocumentChunk, Document, DocumentBrowse
 from tests.app_support import make_test_config, offline_weaviate
 
@@ -329,3 +332,69 @@ def test_browse_documents_its_chunk_filter_parameters(tmp_path):
     assert parameters["chunk_languages"]["schema"]["type"] == "array"
     assert parameters["chunk_classifications"]["schema"]["type"] == "array"
     assert "<classification>:<value>" in operation["description"]
+
+
+class _PassageChunks:
+    """Three ranked hits; records the queries."""
+    queries: list = []
+    hits = [SearchResultChunk(id=UUID(int=i + 1), text=f"Milá Marie {i}.", start_page_id=PAGE, from_page=1, to_page=1,
+                              document=DOC, order=i, document_object=Document(id=DOC, **STORED)) for i in range(3)]
+
+    async def ranked_ids(self, query):
+        self.queries.append(query)
+        return [h.id for h in self.hits[:query.limit]]
+
+    async def read_hits(self, ids):
+        return [h for h in self.hits if h.id in ids]
+
+
+async def _passages(tmp_path, body, **config):
+    _PassageChunks.queries = []
+    app = create_app(make_test_config(tmp_path, **config), weaviate_connector=offline_weaviate)
+    vectors = SearchVectors([SearchVector("main", "Main", "", "default", None)], default="main")
+    app.dependency_overrides[get_search_backends] = lambda: SearchBackends(
+        chunks=_PassageChunks(), collections=None, tags=None, vectors=vectors)
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.post("/api/search/passages", json=body)
+
+
+async def test_passages_answer_a_page_with_its_coverage_anonymously(tmp_path):
+    response = await _passages(tmp_path, {"criteria": {"text_query": "Marie", "chunk_filters": {"languages": ["CES"]}},
+                                          "type": "text", "limit": 2}, SEARCH_PASSAGES_LIMIT="2")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [item["text"] for item in body["items"]] == ["Milá Marie 0.", "Milá Marie 1."]
+    assert body["items"][0]["document_object"]["title"] == "Dopisy z Prahy"
+    # The limit of 2 cut the three matches: bounded, no next page.
+    assert {k: body[k] for k in ("offset", "next_offset", "has_more", "retrieval_limit", "bounded", "total_count")} == {
+        "offset": 0, "next_offset": None, "has_more": False, "retrieval_limit": 2, "bounded": True, "total_count": None}
+    assert body["criteria"]["chunk_filters"] == {"languages": ["ces"], "classifications": {}}
+    assert body["vector"] is None
+
+
+@pytest.mark.parametrize("body, status", [
+    ({"criteria": {"text_query": " "}}, 422),                                       # filter-only is deferred
+    ({"criteria": {"document_filters": {"year_min": 1900}}}, 422),
+    ({"criteria": {"text_query": "Marie"}, "limit": 101}, 422),                     # page size
+    ({"criteria": {"text_query": "Marie"}, "offset": -1}, 422),
+    ({"criteria": {"text_query": "Marie"}, "query": "Marie"}, 422),                 # not the /api/search request
+    ({"criteria": {"text_query": "Marie"}, "offset": 1000}, 400),                   # at the retrieval limit
+    ({"criteria": {"text_query": "Marie", "chunk_filters": {"languages": ["Czech"]}}}, 400),
+])
+async def test_invalid_passage_requests_are_refused_before_retrieval(tmp_path, body, status):
+    response = await _passages(tmp_path, {"type": "text", **body})
+
+    assert response.status_code == status, response.text
+    assert _PassageChunks.queries == []
+
+
+@pytest.mark.parametrize("value", ["0", "10000", "many"])
+def test_the_passage_retrieval_limit_is_validated_at_startup(tmp_path, value):
+    # 10000 is Weaviate's QUERY_MAXIMUM_RESULTS; a search ranks limit + 1 passages (#608 review).
+    with pytest.raises(ValueError):
+        make_test_config(tmp_path, SEARCH_PASSAGES_LIMIT=value)
+
+
+def test_the_largest_passage_retrieval_limit_ranks_within_the_query_maximum(tmp_path):
+    assert make_test_config(tmp_path, SEARCH_PASSAGES_LIMIT=str(MAX_PASSAGES_LIMIT)).SEARCH_PASSAGES_LIMIT == 9999

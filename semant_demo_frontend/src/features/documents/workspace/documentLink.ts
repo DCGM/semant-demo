@@ -1,10 +1,11 @@
 import type { RouteLocationRaw } from 'vue-router'
+import { keptLocation } from 'src/router/keptPages'
 
 // Links to the public document view (#545, `/documents/:documentId`) and back to the page a
 // reader came from. The page that opens a document (Search, Chat) keeps its state while the
 // document is open (MainLayout keeps it alive), so going back finds the results and the
-// conversation as they were; after a reload of the document the link still leads there,
-// to an empty page.
+// conversation as they were; the link to Search carries the search's URL (`keptLocation`,
+// #605). After a reload of the document the link still leads there, to an empty page.
 
 export type ReturnSource = 'search' | 'chat'
 
@@ -40,7 +41,7 @@ export interface ReturnLink {
 
 /** Where the document view's back link leads, from its `?from=`; null without one. */
 export function returnLink (from: unknown): ReturnLink | null {
-  if (from === 'search') return { to: { name: 'search' }, label: 'Search', ariaLabel: 'Back to search results' }
+  if (from === 'search') return { to: keptLocation('search'), label: 'Search', ariaLabel: 'Back to search results' }
   if (from === 'chat') return { to: { name: 'rag' }, label: 'Chat', ariaLabel: 'Back to the conversation' }
   return null
 }

@@ -12,6 +12,7 @@ with Weaviate's default ``word`` tokenization, as in production.
 """
 import pytest
 
+from semant_demo.config import MAX_PASSAGES_LIMIT, MAX_QUERY_RESULTS
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.features.analytics import service as analytics
@@ -19,6 +20,7 @@ from semant_demo.features.documents.criteria import (
     ChunkFilters, DocumentFilters, chunk_conditions, document_conditions, validate_chunk_filters)
 from semant_demo.features.search.filters import chunk_vocabulary, generate_default_filters
 from semant_demo.features.search.schemas import ChunkQuery, SearchType
+from tests.fakes import fake_embedding
 
 pytestmark = pytest.mark.integration
 
@@ -180,6 +182,83 @@ async def test_a_filter_on_a_property_the_store_lacks_is_rejected_not_empty(lega
         assert response.status_code == 422
         assert response.json()["detail"] == \
             "Documents cannot be filtered by library: this corpus database is not recorded."
+
+
+def passages_body(offset=0, limit=20, **criteria) -> dict:
+    return {"criteria": {"text_query": ALL_WORDS, **criteria}, "type": "text", "offset": offset, "limit": limit}
+
+
+async def test_passages_hold_every_chunk_filter_on_the_returned_chunk(api_client, update, corpus):
+    # #605: chronicle_1 is narration and formal; chronicle_2 (same document) becomes informal.
+    await update("chronicle_2", style=["informal"])
+    by_id = {c["id"]: key for key, c in corpus.chunks.items()}
+
+    async def keys(**criteria):
+        response = await api_client.post("/api/search/passages", json=passages_body(**criteria))
+        assert response.status_code == 200, response.text
+        return {by_id[item["id"]] for item in response.json()["items"]}
+
+    assert await keys() == EVERY_CHUNK
+    assert await keys(chunk_filters={"classifications": {"style": ["informal"]}}) == {"chronicle_2", "letters_1"}
+    # The chronicle meets both through different chunks: no passage of it does.
+    assert await keys(chunk_filters={"classifications": {"communicative_mode": ["narration"],
+                                                         "style": ["informal"]}}) == set()
+    assert await keys(document_filters={"year_max": 1900},
+                      chunk_filters={"classifications": {"style": ["informal"]}}) == {"chronicle_2"}
+
+
+async def test_passage_pages_continue_the_ranking_up_to_the_end(api_client):
+    whole = (await api_client.post("/api/search/passages", json=passages_body(limit=50))).json()
+    assert (whole["bounded"], whole["total_count"], whole["has_more"]) == (False, len(EVERY_CHUNK), False)
+
+    pages, offset = [], 0
+    while offset is not None:
+        response = await api_client.post("/api/search/passages", json=passages_body(offset=offset, limit=3))
+        assert response.status_code == 200, response.text
+        body = response.json()
+        pages.append(body)
+        offset = body["next_offset"]
+
+    assert [len(p["items"]) for p in pages] == [3, 3, 1]
+    assert [item["id"] for p in pages for item in p["items"]] == [item["id"] for item in whole["items"]]
+    # The whole ranking is known from the first page: all seven, none cut by the limit.
+    assert [(p["has_more"], p["bounded"], p["total_count"]) for p in pages] == \
+        [(True, False, 7), (True, False, 7), (False, False, 7)]
+
+
+@pytest.mark.parametrize("mode", [SearchType.hybrid, SearchType.vector, SearchType.text])
+async def test_a_ranking_read_by_id_keeps_the_order_and_the_hits_of_the_search(seeded_store, collection_names, mode):
+    # #605: pages are slices of ranked ids read back in full (hybrid offset is unreliable).
+    repository = ChunkSearchRepository(seeded_store, collection_names)
+    query = ChunkQuery(text=ALL_WORDS, mode=mode, limit=50, alpha=0.5,
+                       vector=None if mode == SearchType.text else fake_embedding("Požár v obci"),
+                       target_vector=None if mode == SearchType.text else "default",
+                       chunk_conditions=tuple(chunk_conditions(validate_chunk_filters(
+                           ChunkFilters(languages=["ces"]), VOCABULARY), VOCABULARY)))
+
+    searched = await repository.search(query)
+    ranked = await repository.ranked_ids(query)
+
+    assert ranked == [hit.id for hit in searched] and len(ranked) == len(EVERY_CHUNK)
+    page = ranked[2:5]
+    assert [hit.id for hit in await repository.read_hits(page)] == page
+    assert await repository.read_hits([]) == []
+
+
+@pytest.mark.parametrize("mode", [SearchType.hybrid, SearchType.vector, SearchType.text])
+async def test_the_largest_passage_ranking_is_within_the_query_maximum(seeded_store, collection_names, mode):
+    # #608 review: at the largest SEARCH_PASSAGES_LIMIT the ranking asks for exactly
+    # QUERY_MAXIMUM_RESULTS ids, which Weaviate answers; one more it refuses.
+    repository = ChunkSearchRepository(seeded_store, collection_names)
+
+    def query(limit: int) -> ChunkQuery:
+        return ChunkQuery(text=ALL_WORDS, mode=mode, limit=limit, alpha=0.5,
+                          vector=None if mode == SearchType.text else fake_embedding("Požár v obci"),
+                          target_vector=None if mode == SearchType.text else "default")
+
+    assert len(await repository.ranked_ids(query(MAX_PASSAGES_LIMIT + 1))) == len(EVERY_CHUNK)
+    with pytest.raises(Exception, match="(?i)query maximum results"):
+        await repository.ranked_ids(query(MAX_QUERY_RESULTS + 1))
 
 
 async def test_browse_takes_the_document_filters_as_query_parameters(api_client, update):

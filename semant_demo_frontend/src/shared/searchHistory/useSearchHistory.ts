@@ -21,7 +21,9 @@ import {
  * before writing, so a search made in another tab meanwhile is kept.
  *
  * The stored list is read when the list opens (and when the audience changes), not on
- * every keystroke: typing only narrows what was read.
+ * every keystroke: typing only narrows what was read. Only typing narrows it (`onInput`): a
+ * list opened on focus or click shows the whole recent history, also when the input still
+ * holds the query that ran last (#608 review).
  *
  * A history written by a newer version of the application (`newerFormat`) is not shown and
  * nothing is recorded into it; the list then asks the user to reload the page, or to clear
@@ -42,6 +44,8 @@ export function useSearchHistory<C> (
   const newerFormat = ref(false)
   const open = ref(false)
   const activeIndex = ref(-1)
+  /** The user typed into the input since the list opened: the text then narrows the list. */
+  const typed = ref(false)
 
   function apply (history: StoredHistory<C>) {
     entries.value = history.entries
@@ -58,7 +62,7 @@ export function useSearchHistory<C> (
     activeIndex.value = -1
   }, { immediate: true, deep: true })
 
-  const suggestions = computed(() => matchingEntries(entries.value, text.value))
+  const suggestions = computed(() => matchingEntries(entries.value, typed.value ? text.value : ''))
   const shown = computed(() => open.value && (suggestions.value.length > 0 || newerFormat.value))
 
   watch(suggestions, (list) => {
@@ -71,11 +75,19 @@ export function useSearchHistory<C> (
   function show () {
     if (open.value) return
     reload()
+    typed.value = false
     open.value = true
+  }
+
+  /** The user typed into the input: opens the list, narrowed to what the input holds. */
+  function onInput () {
+    show()
+    typed.value = true
   }
 
   function close () {
     open.value = false
+    typed.value = false
     activeIndex.value = -1
   }
 
@@ -158,5 +170,5 @@ export function useSearchHistory<C> (
     return false
   }
 
-  return { entries, newerFormat, suggestions, open, shown, activeIndex, show, close, record, remove, clear, choose, onKeydown }
+  return { entries, newerFormat, suggestions, open, shown, activeIndex, show, onInput, close, record, remove, clear, choose, onKeydown }
 }

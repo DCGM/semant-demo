@@ -1,5 +1,5 @@
 <template>
-  <q-page :class="results.length ? 'q-pa-md bg-grey-1' : 'q-pa-md bg-grey-1 flex flex-center'">
+  <q-page :class="resultsState === 'idle' ? 'q-pa-md bg-grey-1 flex flex-center' : 'q-pa-md bg-grey-1'">
     <div style="width: 100%; max-width: 1400px; margin: 0 auto;">
 
       <q-card flat bordered class="q-mb-xl bg-white">
@@ -8,9 +8,10 @@
             <div class="row q-col-gutter-sm items-center">
               <div class="col relative-position">
                 <!-- Recent searches (#558) open under the input when it is focused by the user,
-                     clicked or typed into; not on the page's own autofocus. -->
+                     clicked or typed into; not on the page's own autofocus. Only typing
+                     narrows them: opened, they list the whole recent history. -->
                 <q-input
-                  v-model="searchForm.query"
+                  v-model="queryInput"
                   dense
                   outlined
                   required
@@ -27,7 +28,7 @@
                   @focus="onQueryFocus"
                   @click="history.show"
                   @blur="history.close"
-                  @update:model-value="history.show"
+                  @update:model-value="history.onInput"
                 >
                   <template v-slot:prepend>
                     <q-btn
@@ -37,6 +38,7 @@
                       round
                       flat
                       dense
+                      aria-label="Search"
                       :loading="loading"
                       @click="onSearch"
                     />
@@ -68,18 +70,32 @@
               </div>
             </div>
 
-            <div v-if="activeFilterBadges.length" class="row q-gutter-sm q-mt-sm">
+            <!-- Changes in the form are a draft until Enter or Search applies them; the results
+                 and the chips below stay those of the applied search. -->
+            <div
+              v-if="pending && applied.criteria.textQuery"
+              class="row no-wrap items-center q-mt-xs text-caption text-grey-8 pending-note"
+              role="status"
+              data-testid="search-pending"
+            >
+              <q-icon name="edit_note" size="18px" class="q-mr-xs" />
+              <span class="col">Changes not applied yet. Press Enter or Search to apply them.</span>
+              <q-btn flat dense no-caps size="sm" color="primary" label="Discard changes" @click="discardDraft" />
+            </div>
+
+            <div v-if="appliedChips.length" class="row q-gutter-sm q-mt-sm" aria-label="Applied filters">
               <q-chip
-                v-for="badge in activeFilterBadges"
-                :key="badge.key"
+                v-for="chip in appliedChips"
+                :key="chip.key"
                 removable
                 color="primary"
                 text-color="white"
                 class="active-filter-chip"
-                @remove="removeFilterBadge(badge)"
+                :aria-label="chip.label"
+                @remove="removeChip(chip)"
               >
-                <q-icon :name="badge.icon" size="16px" class="q-mr-xs" />
-                {{ badge.label }}
+                <q-icon :name="chip.icon" size="16px" class="q-mr-xs" />
+                {{ chip.label }}
               </q-chip>
             </div>
           </q-card-section>
@@ -88,7 +104,7 @@
             <div v-show="showFilters">
               <div class="relative-position q-pt-sm">
                 <q-separator inset />
-                <div class="absolute bg-white q-px-sm" style="z-index: 1; bottom: 0; left: 50%; transform: translate(-50%, 50%);" v-if="activeFilterBadges.length">
+                <div class="absolute bg-white q-px-sm" style="z-index: 1; bottom: 0; left: 50%; transform: translate(-50%, 50%);" v-if="draftHasFilters">
                   <q-btn
                     outline
                     dense
@@ -103,12 +119,12 @@
                   </q-btn>
                 </div>
               </div>
-              <q-card-section class="bg-grey-1" :style="activeFilterBadges.length ? 'padding-top: 24px;' : ''">
+              <q-card-section class="bg-grey-1" :style="draftHasFilters ? 'padding-top: 24px;' : ''">
                 <div class="row q-col-gutter-md">
 
                   <div v-if="userStore.isLoggedIn" class="col-12 col-sm-6 col-md-4">
                     <q-select
-                      v-model="searchForm.userCollectionId"
+                      v-model="draftCollection"
                       :options="collectionOptions"
                       label="Select a Collection"
                       outlined
@@ -156,32 +172,33 @@
                   </div>
                   <template v-else>
                     <div
-                      v-for="filter in availableSearchFilters"
+                      v-for="filter in offeredFilters"
                       :key="filter.id"
                       class="col-12 col-sm-6 col-md-4"
                     >
-                      <!-- Interval Filter -->
+                      <!-- Interval Filter: the publication year -->
                       <div v-if="filter.type === 'interval'">
                         <div class="row items-center text-subtitle2 q-mb-xs text-grey-8">
                           <q-icon :name="getFilterIcon(filter.id)" size="18px" class="q-mr-xs" />
-                          <span>{{ formatFilterLabel(filter.id) }}: {{ filterValues[filter.id]?.min }} - {{ filterValues[filter.id]?.max }}</span>
+                          <span>{{ formatFilterLabel(filter.id) }}: {{ draftYearRange(filter).min }} - {{ draftYearRange(filter).max }}</span>
                         </div>
-                        <div class="q-px-sm" v-if="filterValues[filter.id]">
+                        <div class="q-px-sm">
                           <q-range
-                            v-model="filterValues[filter.id]"
+                            :model-value="draftYearRange(filter)"
                             :min="intervalBounds(filter).min"
                             :max="intervalBounds(filter).max"
                             :step="1"
                             label
                             color="primary"
+                            @update:model-value="setDraftYearRange(filter, $event)"
                           />
                         </div>
                       </div>
 
-                      <!-- Nominal Filter -->
-                      <div v-else-if="filter.type === 'nominal' && filter.values">
+                      <!-- Nominal Filter: passage language and classifications -->
+                      <div v-else>
                         <q-select
-                          v-model="filterValues[filter.id]"
+                          :model-value="draftNominal(filter)"
                           :options="getNominalOptions(filter)"
                           :label="formatFilterLabel(filter.id)"
                           multiple
@@ -191,6 +208,7 @@
                           emit-value
                           map-options
                           clearable
+                          @update:model-value="setDraftNominal(filter, $event)"
                         >
                           <template v-slot:prepend>
                             <q-icon :name="getFilterIcon(filter.id)" />
@@ -208,11 +226,40 @@
         </q-form>
       </q-card>
 
-      <div v-if="results.length">
+      <div v-if="resultsState === 'loading'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-loading">
+        <q-spinner color="primary" size="2.5em" />
+        <div class="q-mt-sm">Searching passages…</div>
+      </div>
+
+      <q-banner v-else-if="resultsState === 'error'" rounded class="bg-red-1 text-negative" role="alert" data-testid="search-error">
+        <template v-slot:avatar>
+          <q-icon name="error_outline" color="negative" />
+        </template>
+        Search failed: {{ passages.error.value }}
+        <template v-slot:action>
+          <q-btn flat color="negative" label="Try again" @click="runApplied" />
+        </template>
+      </q-banner>
+
+      <div v-else-if="resultsState === 'empty'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-empty">
+        <q-icon name="search_off" size="2.5em" />
+        <div class="q-mt-sm text-subtitle1">No passages match this search.</div>
+        <div class="text-caption">Try other words, or remove some of the filters above.</div>
+      </div>
+
+      <div v-else-if="resultsState === 'needsQuery'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-needs-query">
+        <q-icon name="manage_search" size="2.5em" />
+        <div class="q-mt-sm text-subtitle1">Enter a text query to search passages with these filters.</div>
+        <div class="text-caption">Browsing documents by filters alone is not available here yet.</div>
+      </div>
+
+      <div v-else-if="resultsState === 'results'">
         <div class="row items-end justify-between q-mb-md">
           <div>
-            <div class="text-h5 text-weight-medium">Results ({{ results.length }})</div>
-            <div class="text-caption text-grey-7">Search completed in {{ timeSpent.toFixed(2) }}s</div>
+            <div class="text-h5 text-weight-medium">Passages</div>
+            <div class="text-caption text-grey-7" data-testid="search-coverage">
+              {{ coverage }} Search completed in {{ timeSpent.toFixed(2) }}s.
+            </div>
           </div>
         </div>
 
@@ -247,28 +294,33 @@
 
         <div class="q-gutter-y-md">
           <SearchResultCard
-            v-for="(chunk, index) in paginatedResults"
-            :id="`result-${resultNumber(index)}`"
+            v-for="(chunk, index) in results"
+            :id="`result-${index + 1}`"
             :key="chunk.id"
             :chunk="chunk"
-            :number="resultNumber(index)"
+            :number="index + 1"
             :filters="availableSearchFilters"
             :selected="selectedResults.includes(chunk.id)"
-            :highlighted="highlightedDocNumber === resultNumber(index)"
-            :context-shown="contextResultNumber === resultNumber(index)"
+            :highlighted="highlightedDocNumber === index + 1"
+            :context-shown="contextResultNumber === index + 1"
             @update:selected="setSelected(chunk.id, $event)"
-            @view-context="viewContext(chunk, resultNumber(index))"
+            @view-context="viewContext(chunk, index + 1)"
           />
         </div>
 
-        <div class="flex flex-center q-mt-xl">
-          <q-pagination
-            v-model="currentPage"
-            :max="totalPages"
-            :max-pages="7"
-            boundary-numbers
-            direction-links
+        <div class="column items-center q-mt-xl q-gutter-y-sm">
+          <q-banner v-if="passages.loadMoreError.value" dense rounded class="bg-red-1 text-negative" role="alert">
+            {{ passages.loadMoreError.value }}
+          </q-banner>
+          <q-btn
+            v-if="hasMore"
+            outline
             color="primary"
+            icon="expand_more"
+            label="Load more passages"
+            :loading="passages.loadingMore.value"
+            data-testid="search-load-more"
+            @click="passages.loadMore"
           />
         </div>
       </div>
@@ -313,21 +365,26 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, watch } from 'vue'
-import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QPagination, QItem, QItemSection, QItemLabel, Notify, useQuasar } from 'quasar'
-import { SearchType, WriteOutcome, type SearchFilter, type SearchFilterInput, type SearchRequest, type SearchResultChunk, type SearchVectorInfo } from 'src/generated/api'
-import { captureSession, reportAiOperation, useApi } from 'src/shared/api'
-import { generatesText, searchQuotaMessage } from './searchQuota'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
+import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QItem, QItemSection, QItemLabel, QBanner, QSpinner, Notify, useQuasar } from 'quasar'
+import { SearchType, WriteOutcome, type SearchFilter, type SearchVectorInfo } from 'src/generated/api'
+import { captureSession, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import { useSearchRequest } from './useSearchRequest'
+import { emptyCriteria, emptyLocation, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation } from 'src/features/explore/criteria'
+import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
+import { passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import SearchResultCard from './SearchResultCard.vue'
 import { escapeClearsSelection } from './resultLayout'
-import { formatFilterLabel, intervalBounds, nominalLabel } from './searchFilters'
+import type { SearchResultsContext } from './searchResults'
+import {
+  criteriaChips, criteriaOfFilterValues, filterTarget, formatFilterLabel, historyFiltersOf, intervalBounds,
+  nominalValuesOf, offeredCriteria, withNominalValues, withYearRange, yearRangeOf, type CriterionChip, type IntervalValue
+} from './searchFilters'
 import { criteriaOfRequest, describeCriteria, restoreSearch, searchHistoryCriteria, type SearchHistoryCriteria, type SearchOptions } from './searchHistoryCriteria'
 import SearchHistoryDropdown from 'src/shared/searchHistory/SearchHistoryDropdown.vue'
 import { useSearchHistory } from 'src/shared/searchHistory/useSearchHistory'
@@ -339,29 +396,29 @@ import { whileShown } from 'src/shared/whileShown'
 import { documentLink } from 'src/features/documents/workspace/documentLink'
 import { useChunkContext } from 'src/features/documents/useChunkContext'
 
+// The Search page is being evolved into Explore Results (#605, docs/EXPLORATION.md): it edits
+// draft search criteria, and Enter or Search applies them. The applied criteria, the search
+// vector and the results mode live in the URL (`features/explore`), so Back/Forward and shared
+// links restore a search; the collection scope is a page setting, never in the URL. Results are
+// Passages (`POST /api/search/passages`), loaded page by page; Documents follow in #527b/c.
+
 const api = useApi().default
 
-// Search Form State
+// Draft: what the form shows. Nothing is searched until it is applied.
 const showFilters = ref(false)
-const searchForm = ref<SearchRequest>({
-  query: '',
-  limit: 50, // Increased default to show pagination better
-  userCollectionId: null,
-  type: SearchType.hybrid,
-  searchTitleGenerate: false,
-  searchSummaryGenerate: false,
-  searchResultsSummaryGenerate: false,
-  filters: null,
-  minYear: null,
-  maxYear: null,
-  minDate: null,
-  maxDate: null,
-  language: null,
-  tagUuids: [],
-  positive: true,
-  automatic: true,
-  vector: null // the configured default
-})
+const queryInput = ref('')
+const draftFilters = ref<Criteria>(emptyCriteria())
+const draftVector = ref<string | null>(null) // null: the configured default
+const draftCollection = ref<string | null>(null)
+const draftCriteria = computed(() => normalizeCriteria({ ...draftFilters.value, textQuery: queryInput.value }))
+
+// Applied: the URL's location (`explore`, set up below once everything it runs exists), and the
+// collection scope it was applied with.
+const appliedCollection = ref<string | null>(null)
+const applied = shallowRef<ExploreLocation>(emptyLocation())
+
+const pending = computed(() => !sameCriteria(draftCriteria.value, applied.value.criteria) ||
+  draftVector.value !== applied.value.vector || draftCollection.value !== appliedCollection.value)
 
 // Search vectors (GET /api/search/vectors): null in the request means the server's default,
 // so choosing the default again sends no explicit selection.
@@ -373,15 +430,14 @@ const vectorOptions = computed(() => availableVectors.value.map(v => ({
   description: v.description
 })))
 const selectedVector = computed<string | null>({
-  get: () => searchForm.value.vector ?? defaultVector.value,
-  set: (id) => { searchForm.value.vector = id === defaultVector.value ? null : id }
+  get: () => draftVector.value ?? defaultVector.value,
+  set: (id) => { draftVector.value = id === defaultVector.value ? null : id }
 })
 
-// Dynamic Filter Data State
+// Configured search filters: widgets editing the draft criteria (searchFilters.ts).
 const loadingFilters = ref(false)
 const availableSearchFilters = ref<SearchFilter[]>([])
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const filterValues = ref<Record<string, any>>({})
+const offeredFilters = computed(() => availableSearchFilters.value.filter(f => filterTarget(f) !== null))
 
 function getFilterIcon (id: string): string {
   if (id === 'language') return 'language'
@@ -399,33 +455,45 @@ function getNominalOptions (filter: SearchFilter) {
   }))
 }
 
-// Results State: the current search context (results as retrieved)
-const searchRequest = useSearchRequest()
-const loading = searchRequest.loading
-const results = computed<SearchResultChunk[]>(() => searchRequest.context.value?.response.results ?? [])
-const timeSpent = computed(() => searchRequest.context.value?.response.timeSpent ?? 0)
+const draftYearRange = (filter: SearchFilter) => yearRangeOf(draftFilters.value, filter)
+const setDraftYearRange = (filter: SearchFilter, range: IntervalValue | null) => {
+  draftFilters.value = withYearRange(draftFilters.value, filter, range ?? intervalBounds(filter))
+}
+const draftNominal = (filter: SearchFilter) => nominalValuesOf(draftFilters.value, filter)
+const setDraftNominal = (filter: SearchFilter, values: string[] | null) => {
+  draftFilters.value = withNominalValues(draftFilters.value, filter, values)
+}
+
+// Results: the passages of the applied search, as loaded so far.
+const passages = usePassageSearch()
+const loading = passages.loading
+const results = computed(() => passages.results.value?.items ?? [])
+const timeSpent = computed(() => passages.results.value?.timeSpent ?? 0)
+const coverage = computed(() => (passages.results.value ? passageCoverage(passages.results.value) : ''))
+const hasMore = computed(() => passages.results.value?.last.hasMore ?? false)
+const searchContext = computed<SearchResultsContext | null>(() => {
+  const current = passages.results.value
+  return current
+    ? { id: current.id, query: current.query.criteria.textQuery ?? '', results: current.items, timeSpent: current.timeSpent }
+    : null
+})
 const selectedResults = ref<string[]>([])
 const targetCollectionId = ref<string | null>(null)
 
-// Pagination State
-const currentPage = ref(1)
-const itemsPerPage = ref(10)
-const totalPages = computed(() => Math.ceil(results.value.length / itemsPerPage.value))
-const paginatedResults = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  return results.value.slice(start, start + itemsPerPage.value)
+/** What the results area shows besides result cards. */
+const resultsState = computed<'results' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'idle'>(() => {
+  if (loading.value) return 'loading'
+  if (passages.error.value) return 'error'
+  if (passages.results.value) return results.value.length ? 'results' : 'empty'
+  if (!applied.value.criteria.textQuery && hasFilters(applied.value.criteria)) return 'needsQuery'
+  return 'idle'
 })
-
-/** 1-based position in the whole result list of the `index`-th result on this page. */
-function resultNumber (index: number): number {
-  return (currentPage.value - 1) * itemsPerPage.value + index + 1
-}
 
 function clearSelection () {
   selectedResults.value = []
 }
 
-// Escape clears the whole selection (all pages) unless a field or overlay needs it.
+// Escape clears the whole selection unless a field or overlay needs it.
 function onKeydown (event: KeyboardEvent) {
   if (selectedResults.value.length && escapeClearsSelection(event)) clearSelection()
 }
@@ -435,8 +503,8 @@ function setSelected (chunkId: string, selected: boolean) {
   selectedResults.value = selected ? [...others, chunkId] : others
 }
 
-// Summarization (right sidebar): works on the current results or the selected ones
-const searchSummary = reactive(useSearchSummary(searchRequest.context, selectedResults))
+// Summarization (right sidebar): works on the loaded results or the selected ones
+const searchSummary = reactive(useSearchSummary(searchContext, selectedResults))
 
 // Citations
 const highlightedDocNumber = ref<number | null>(null)
@@ -448,8 +516,6 @@ async function jumpToResult (docNumber: number) {
     Notify.create({ message: `Result [${docNumber}] is not available.`, position: 'top', color: 'warning' })
     return
   }
-
-  currentPage.value = Math.floor(resultIndex / itemsPerPage.value) + 1
   await nextTick()
 
   highlightedDocNumber.value = docNumber
@@ -474,7 +540,7 @@ const rightSidebar = useRightSidebarStore()
 const chunkContext = reactive(useChunkContext())
 const contextResultNumber = ref<number | null>(null)
 
-async function viewContext (chunk: SearchResultChunk, number: number) {
+async function viewContext (chunk: { document: string, id: string }, number: number) {
   contextResultNumber.value = number
   const opening = chunkContext.open({ documentId: chunk.document, chunkId: chunk.id })
   await nextTick() // the panel registers when the first result is opened
@@ -490,8 +556,8 @@ async function returnToContextResult () {
 }
 
 // The shown result belongs to one search: another search (or none) closes it and its
-// panel, so the view never shows a result that is no longer in the list.
-watch(() => searchRequest.context.value?.id, () => {
+// panel, so the view never shows a result that is no longer in the list. Loading more keeps it.
+watch(() => passages.results.value?.id, () => {
   chunkContext.clear()
   contextResultNumber.value = null
 })
@@ -522,9 +588,10 @@ watch(
     if (previousUserId && userId !== previousUserId) {
       // Signed out or another user: results and selections may come from the previous
       // user's collections.
-      searchRequest.cancel()
+      passages.cancel()
       selectedResults.value = []
-      searchForm.value.userCollectionId = null
+      draftCollection.value = null
+      appliedCollection.value = null
       targetCollectionId.value = null
     }
     await loadCollections()
@@ -547,6 +614,9 @@ const targetCollectionOptions = computed(() =>
 )
 const canAddToCollections = computed(() => userStore.isLoggedIn && targetCollectionOptions.value.length > 0)
 
+const collectionLabel = (id: string) => collectionOptions.value.find(option => option.value === id)?.label ?? `Collection ${id}`
+const vectorLabel = (id: string) => `Embedding: ${availableVectors.value.find(v => v.id === id)?.name ?? id}`
+
 // Recent searches (#558), kept in this browser: one history per signed-in user and one for
 // signed-out use, none while a stored session is not verified yet.
 const HISTORY_LIST_ID = 'search-history-list'
@@ -554,8 +624,7 @@ const historyAudience = computed<HistoryAudience | null>(() => {
   if (userStore.isLoggedIn && userStore.getUserId) return { kind: 'user', userId: String(userStore.getUserId) }
   return userStore.awaitingVerification ? null : { kind: 'anonymous' }
 })
-const queryText = computed(() => searchForm.value.query ?? '')
-const history = useSearchHistory(searchHistoryCriteria, historyAudience, queryText, (entry) => runFromHistory(entry))
+const history = useSearchHistory(searchHistoryCriteria, historyAudience, queryInput, (entry) => runFromHistory(entry))
 
 const searchOptions = computed<SearchOptions>(() => ({
   filters: availableSearchFilters.value,
@@ -639,9 +708,8 @@ const historyNote = computed(() => (optionsStatus() === 'loading' ? 'Loading sea
 
 /**
  * Runs a search from the history once the page's search options are loaded: its query and
- * criteria replace the form's (generated titles and summaries stay as currently chosen);
- * criteria no longer available are left out and named. Before that nothing runs, so a pick
- * never mixes with a later one or runs after the page is left.
+ * criteria replace the form's; criteria no longer available are left out and named. Before
+ * that nothing runs, so a pick never mixes with a later one or runs after the page is left.
  */
 function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
   const status = optionsStatus(entry.criteria)
@@ -658,11 +726,10 @@ function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
     return
   }
   const restored = restoreSearch(entry.criteria, searchOptions.value)
-  searchForm.value.query = entry.query
-  searchForm.value.type = restored.type
-  searchForm.value.vector = restored.vector
-  searchForm.value.userCollectionId = restored.userCollectionId
-  filterValues.value = restored.filterValues
+  queryInput.value = entry.query
+  draftVector.value = restored.vector
+  draftCollection.value = restored.userCollectionId
+  draftFilters.value = criteriaOfFilterValues('', restored.filterValues, availableSearchFilters.value)
   if (restored.dropped.length) {
     Notify.create({
       message: `Left out of this search because they are no longer available: ${restored.dropped.join(', ')}`,
@@ -673,109 +740,56 @@ function runFromHistory (entry: HistoryEntry<SearchHistoryCriteria>) {
   void onSearch()
 }
 
-type ActiveFilterBadge = {
-  key: string
-  type: 'collection' | 'vector' | 'dynamic'
-  filterId?: string
-  icon: string
-  label: string
-  value?: string
-}
+// Applied criteria as removable chips; removing one applies the search without it at once
+// (and drops it from the draft, which may hold other changes not applied yet).
+type AppliedChip = CriterionChip | { key: string, icon: string, label: string, without: null }
 
-const selectedCollectionLabel = computed(() => {
-  if (!searchForm.value.userCollectionId) return null
-  const option = collectionOptions.value.find(option => option.value === searchForm.value.userCollectionId)
-  return option?.label ?? `Collection ${searchForm.value.userCollectionId}`
+const appliedChips = computed<AppliedChip[]>(() => {
+  const chips: AppliedChip[] = []
+  if (appliedCollection.value) {
+    chips.push({ key: 'collection', icon: 'folder', label: collectionLabel(appliedCollection.value), without: null })
+  }
+  if (applied.value.vector) {
+    chips.push({ key: 'vector', icon: 'hub', label: vectorLabel(applied.value.vector), without: null })
+  }
+  return [...chips, ...criteriaChips(applied.value.criteria, availableSearchFilters.value)]
 })
 
-const activeFilterBadges = computed<ActiveFilterBadge[]>(() => {
-  const badges: ActiveFilterBadge[] = []
-
-  if (searchForm.value.userCollectionId) {
-    badges.push({
-      key: `collection:${searchForm.value.userCollectionId}`,
-      type: 'collection',
-      icon: 'folder',
-      label: selectedCollectionLabel.value ?? searchForm.value.userCollectionId
-    })
+function removeChip (chip: AppliedChip) {
+  const location: ExploreLocation = { ...applied.value }
+  if (chip.key === 'collection') {
+    appliedCollection.value = null
+    draftCollection.value = null
+  } else if (chip.key === 'vector') {
+    location.vector = null
+    draftVector.value = null
+  } else if (chip.without) {
+    location.criteria = chip.without
+    const inDraft = criteriaChips(draftFilters.value, availableSearchFilters.value).find(c => c.key === chip.key)
+    if (inDraft) draftFilters.value = inDraft.without
   }
-
-  if (searchForm.value.vector) {
-    const id = searchForm.value.vector
-    badges.push({
-      key: `vector:${id}`,
-      type: 'vector',
-      icon: 'hub',
-      label: `Embedding: ${availableVectors.value.find(v => v.id === id)?.name ?? id}`
-    })
-  }
-
-  availableSearchFilters.value.forEach(filter => {
-    const val = filterValues.value[filter.id]
-    if (!val) return
-
-    if (filter.type === 'interval') {
-      const bounds = intervalBounds(filter)
-      if (val.min !== bounds.min || val.max !== bounds.max) {
-        badges.push({
-          key: `interval:${filter.id}`,
-          type: 'dynamic',
-          filterId: filter.id,
-          icon: getFilterIcon(filter.id),
-          label: `${formatFilterLabel(filter.id)}: ${val.min}-${val.max}`
-        })
-      }
-    } else if (filter.type === 'nominal' && Array.isArray(val) && val.length > 0) {
-      val.forEach((selectedBackendVal: string) => {
-        const displayLabel = nominalLabel(filter, selectedBackendVal)
-        badges.push({
-          key: `nominal:${filter.id}:${selectedBackendVal}`,
-          type: 'dynamic',
-          filterId: filter.id,
-          icon: getFilterIcon(filter.id),
-          label: `${formatFilterLabel(filter.id)}: ${displayLabel}`,
-          value: selectedBackendVal
-        })
-      })
-    }
-  })
-
-  return badges
-})
-
-function removeFilterBadge (badge: ActiveFilterBadge) {
-  if (badge.type === 'collection') {
-    searchForm.value.userCollectionId = null
-    return
-  }
-  if (badge.type === 'vector') {
-    searchForm.value.vector = null
-    return
-  }
-
-  if (badge.filterId && filterValues.value[badge.filterId]) {
-    const filter = availableSearchFilters.value.find(f => f.id === badge.filterId)
-    if (!filter) return
-
-    if (filter.type === 'interval') {
-      filterValues.value[badge.filterId] = intervalBounds(filter)
-    } else if (filter.type === 'nominal' && badge.value) {
-      const current = filterValues.value[badge.filterId] as string[]
-      filterValues.value[badge.filterId] = current.filter(v => v !== badge.value)
-    }
-  }
+  void explore.apply(location)
 }
 
+/** Clears the draft filters, collection and search vector (not the query); applied by Search. */
 function clearAllFilters () {
-  searchForm.value.userCollectionId = null
-  searchForm.value.vector = null
-  availableSearchFilters.value.forEach(filter => {
-    if (filter.type === 'interval') {
-      filterValues.value[filter.id] = intervalBounds(filter)
-    } else if (filter.type === 'nominal') {
-      filterValues.value[filter.id] = []
-    }
-  })
+  draftCollection.value = null
+  draftVector.value = null
+  draftFilters.value = emptyCriteria()
+}
+
+const draftHasFilters = computed(() => hasFilters(draftFilters.value) || draftCollection.value !== null || draftVector.value !== null)
+
+/** Puts the applied search back into the form, discarding changes not applied. */
+function discardDraft () {
+  setDraft(applied.value)
+  draftCollection.value = appliedCollection.value
+}
+
+function setDraft (location: ExploreLocation) {
+  queryInput.value = location.criteria.textQuery ?? ''
+  draftFilters.value = location.criteria
+  draftVector.value = location.vector
 }
 
 // Methods
@@ -786,17 +800,6 @@ async function fetchAvailableFilters () {
   try {
     const data = await api.getAvailableSearchFiltersApiSearchFiltersGet()
     availableSearchFilters.value = data.filters || []
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const valuesMap: Record<string, any> = {}
-    availableSearchFilters.value.forEach(filter => {
-      if (filter.type === 'interval') {
-        valuesMap[filter.id] = intervalBounds(filter)
-      } else if (filter.type === 'nominal') {
-        valuesMap[filter.id] = []
-      }
-    })
-    filterValues.value = valuesMap
     filtersStatus.value = 'ready'
   } catch (e) {
     filtersStatus.value = 'failed'
@@ -820,75 +823,99 @@ async function fetchSearchVectors () {
   }
 }
 
+/** Applies the draft: a new history entry, or the same search again when nothing changed. */
 async function onSearch () {
-  selectedResults.value = []
-  currentPage.value = 1 // reset pagination
-
-  // Build dynamic filters payload
-  const filtersPayload: SearchFilterInput[] = []
-
-  availableSearchFilters.value.forEach(filter => {
-    const val = filterValues.value[filter.id]
-    if (!val) return
-
-    if (filter.type === 'interval') {
-      const bounds = intervalBounds(filter)
-      if (val.min !== bounds.min || val.max !== bounds.max) {
-        filtersPayload.push({
-          id: filter.id,
-          minValue: val.min,
-          maxValue: val.max
-        })
-      }
-    } else if (filter.type === 'nominal' && Array.isArray(val) && val.length > 0) {
-      filtersPayload.push({
-        id: filter.id,
-        values: val
-      })
-    }
-  })
-
-  // Attach filters array to request, clearing legacy fields
-  const request: SearchRequest = {
-    ...searchForm.value,
-    filters: filtersPayload.length > 0 ? filtersPayload : null,
-    minYear: null,
-    maxYear: null,
-    language: null
-  }
   history.close()
+  const criteria = draftCriteria.value
+  if (!criteria.textQuery) {
+    Notify.create({ message: 'Enter a text query to search passages.', position: 'top', color: 'info' })
+    return
+  }
+  if (criteria.textQuery.length > MAX_TEXT_QUERY_LENGTH) {
+    Notify.create({ message: `The text query can be at most ${MAX_TEXT_QUERY_LENGTH.toLocaleString('en')} characters long.`, position: 'top', color: 'warning' })
+    return
+  }
+  appliedCollection.value = draftCollection.value
+  await explore.apply({ ...applied.value, criteria, vector: draftVector.value })
+}
 
-  try {
-    const context = await searchRequest.search(request)
-    if (!context) return // replaced by a newer search
-    // Only a search that ran is remembered (with no results too); a failed one is not.
-    if (history.record(request.query, criteriaOfRequest(request)) === 'tooLong') {
-      Notify.create({
-        message: `Not added to recent searches: the query is longer than ${MAX_QUERY_LENGTH.toLocaleString('en')} characters.`,
-        position: 'top',
-        color: 'info'
-      })
-    }
-    if (context.response.results.length === 0) {
-      Notify.create({ message: 'No results found', position: 'top', color: 'info' })
-    }
-    // Generated titles/summaries skipped for the daily AI allowance: the results stand; the
-    // backend's warning is replaced by the allowance message (local reset time), shown as
-    // information rather than as a provider failure.
-    const refusal = context.response.quotaExhausted
-    for (const warning of context.response.warnings ?? []) {
-      if (refusal && warning.includes(refusal.detail)) continue
-      Notify.create({ message: warning, position: 'top', color: 'warning' })
-    }
-    if (refusal) {
-      Notify.create({ message: searchQuotaMessage(refusal), position: 'top', color: 'info', icon: 'hourglass_bottom' })
-    }
-    if (refusal || generatesText(request)) reportAiOperation()
-  } catch (e) {
-    console.error(e)
-    Notify.create({ message: 'Search failed', position: 'top', color: 'negative' })
+// The applied location runs once the search options are loaded: a link's values are checked
+// against them first, so an unknown filter or vector is reported instead of searched.
+let waitingForOptions = false
+
+function onApplied (location: ExploreLocation, { reason, invalid }: { reason: AppliedReason, invalid: string[] }) {
+  if (invalid.length) {
+    Notify.create({ message: `Left out of the search because they are not valid: ${invalid.join(', ')}`, position: 'top', color: 'warning' })
+  }
+  if (reason === 'navigation') {
+    // Back/Forward or a link: the form shows the applied search, the collection scope stays.
+    setDraft(location)
+    draftCollection.value = appliedCollection.value
+  }
+  selectedResults.value = []
+  void runApplied()
+}
+
+async function runApplied () {
+  if (filtersStatus.value === 'loading' || vectorsStatus.value === 'loading') {
+    waitingForOptions = true
+    return
+  }
+  waitingForOptions = false
+  const location = applied.value
+  const dropped: string[] = []
+  const corrected: ExploreLocation = { ...location }
+  if (filtersStatus.value === 'ready') {
+    const offered = offeredCriteria(location.criteria, availableSearchFilters.value)
+    dropped.push(...offered.dropped)
+    corrected.criteria = offered.criteria
+  }
+  if (location.vector && vectorsStatus.value === 'ready' && !availableVectors.value.some(v => v.id === location.vector)) {
+    dropped.push(vectorLabel(location.vector))
+    corrected.vector = null
+  }
+  // Only Passages results exist so far (#605); Documents and Visualizations follow (#527b/c, #528).
+  if (location.mode === 'documents') dropped.push('Documents results (not available yet; showing passages)')
+  if (location.view === 'visualizations') dropped.push('Visualizations (not available yet)')
+  if (location.mode === 'documents') corrected.mode = null
+  if (location.view === 'visualizations') corrected.view = null
+  if (dropped.length) {
+    Notify.create({ message: `Left out of the search because they are not available: ${dropped.join(', ')}`, position: 'top', color: 'warning' })
+    setDraft(corrected)
+    await explore.apply(corrected, { replace: true }) // runs the corrected search
+    return
+  }
+
+  if (!location.criteria.textQuery) {
+    passages.cancel()
+    return
+  }
+  const query = { criteria: location.criteria, vector: location.vector, userCollectionId: appliedCollection.value }
+  const found = await passages.search(query)
+  if (!found) return // failed (shown) or replaced by a newer search
+  // Only a search that ran is remembered (with no results too); a failed one is not.
+  const recorded = history.record(location.criteria.textQuery, criteriaOfRequest({
+    query: location.criteria.textQuery,
+    type: SearchType.hybrid,
+    vector: location.vector,
+    userCollectionId: query.userCollectionId,
+    filters: historyFiltersOf(location.criteria, availableSearchFilters.value),
+    tagUuids: [],
+    positive: false,
+    automatic: false
+  }))
+  if (recorded === 'tooLong') {
+    Notify.create({
+      message: `Not added to recent searches: the query is longer than ${MAX_QUERY_LENGTH.toLocaleString('en')} characters.`,
+      position: 'top',
+      color: 'info'
+    })
   }
 }
+
+watch([filtersStatus, vectorsStatus], () => {
+  if (waitingForOptions) void runApplied()
+})
 
 async function addSelectedChunksToCollection () {
   if (!targetCollectionId.value) {
@@ -954,6 +981,12 @@ async function addSelectedDocumentsToCollection () {
   Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })
 }
 
+// The applied location: the URL now, and on every Back/Forward or link (applies at once).
+const explore = useExploreLocation('search', (location, details) => {
+  applied.value = location
+  onApplied(location, details)
+})
+
 // Kept alive while a document opened from a result is shown: the listeners only while shown.
 whileShown(() => {
   window.addEventListener('keydown', onKeydown)
@@ -971,7 +1004,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  searchRequest.cancel()
+  passages.cancel()
   if (clearHighlightTimer !== null) {
     window.clearTimeout(clearHighlightTimer)
   }
@@ -990,6 +1023,11 @@ onBeforeUnmount(() => {
 
 .selection-toolbar__collection {
   flex: 1 1 220px;
+}
+
+.results-status {
+  min-height: 160px;
+  text-align: center;
 }
 
 :deep(.active-filter-chip .q-chip__icon--remove) {
