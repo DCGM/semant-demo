@@ -93,14 +93,18 @@ class ChunkSearchRepository:
         result = await self._ranked(query, return_properties=[])
         return [obj.uuid for obj in result.objects]
 
-    async def read_hits(self, ids: list[UUID]) -> list[SearchResultChunk]:
-        """The chunks ``ids`` as search hits, in that order; chunks gone meanwhile or without a
-        document reference are left out."""
+    async def read_hits(self, ids: list[UUID], scope: ChunkQuery) -> list[SearchResultChunk]:
+        """The chunks ``ids`` that match every condition of ``scope`` (its text, mode and limit
+        do not apply) as search hits, in the order of ``ids``. Chunks gone meanwhile, outside
+        the scope or without a document reference are left out: read under the ranking's own
+        restrictions, ids from a client never reach a chunk that ranking could not (#611)."""
         if not ids:
             return []
         chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        restrictions = await self._filter(scope)
+        by_ids = Filter.by_id().contains_any(ids)
         result = await chunks.query.fetch_objects(
-            filters=Filter.by_id().contains_any(ids), limit=len(ids),
+            filters=by_ids if restrictions is None else Filter.all_of([by_ids, restrictions]), limit=len(ids),
             return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())])
         by_id = {obj.uuid: obj for obj in result.objects}
         hits = (_hit(by_id[i]) for i in ids if i in by_id)

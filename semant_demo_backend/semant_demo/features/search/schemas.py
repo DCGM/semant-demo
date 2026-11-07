@@ -143,11 +143,11 @@ class SearchResultChunk(DocumentChunk):
 
 
 MAX_PASSAGE_PAGE = 100
-"""Largest page of ``POST /api/search/passages``."""
+"""Most passages one ``POST /api/search/passages`` or ``/api/search/passages/read`` returns."""
 
 
 class PassageSearchRequest(BaseModel):
-    """One page of the passages for the search criteria (#605, docs/EXPLORATION.md).
+    """A passage search (#605, #611, docs/EXPLORATION.md): its ranking and first page.
 
     The criteria need a text query: filter-only browsing of passages is deferred. Every
     chunk filter holds on the returned chunk itself (same-chunk) and every document filter on
@@ -157,10 +157,8 @@ class PassageSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     criteria: SearchCriteria
-    offset: int = Field(0, ge=0)
-    """Position in the ranked passages of the first one returned; 0 is the best match."""
     limit: int = Field(20, ge=1, le=MAX_PASSAGE_PAGE)
-    """Page size; a page never reaches past the retrieval limit (``PassageSearchResponse``)."""
+    """Size of the first page: the passages of this many leading ranked ids are read in full."""
     type: SearchType = SearchType.hybrid
     hybrid_search_alpha: float = Field(0.5, ge=0, le=1)
     vector: str | None = None
@@ -177,20 +175,23 @@ class PassageSearchRequest(BaseModel):
 
 
 class PassageSearchResponse(BaseModel):
-    """A page of ranked passages and what the whole retrieved population covers.
+    """The ranking of one passage search, its first page and what the ranking covers.
 
-    One search retrieves at most ``retrieval_limit`` passages (best first); every page is a
-    slice of that one ranking, and later visualizations of the same search describe the same
-    population. ``bounded`` is ``False`` when it holds every matching passage (then
-    ``total_count`` is their number) and ``True`` when the limit cut the ranking (more
-    passages match but are not retrievable). Vector and hybrid search rank every passage that
-    passes the filters, so they are bounded unless the filters leave fewer than the limit.
+    The search ranks at most ``retrieval_limit`` passages once (best first, ``ranked_ids``);
+    later pages read slices of those ids (``POST /api/search/passages/read``) instead of
+    ranking again, and visualizations of the same search can describe the same population.
+    ``bounded`` is ``False`` when the ranking holds every matching passage (then
+    ``total_count`` is their number) and ``True`` when the limit cut it (more passages match
+    but are not retrievable). Vector and hybrid search rank every passage that passes the
+    filters, so they are bounded unless the filters leave fewer than the limit.
     """
+    ranked_ids: list[UUID]
+    """The ranked passage ids, best first, each once; at most ``retrieval_limit``."""
     items: list[SearchResultChunk]
-    offset: int
-    next_offset: int | None
-    """``offset`` of the next page; None without one."""
-    has_more: bool
+    """The passages of the first ``read_count`` ranked ids, in that order; a passage gone or
+    without a document by the time it is read is left out."""
+    read_count: int
+    """How many leading ``ranked_ids`` this answer read; the next page starts there."""
     retrieval_limit: int
     bounded: bool
     total_count: int | None
@@ -199,6 +200,27 @@ class PassageSearchResponse(BaseModel):
     """The applied criteria, normalized (as ``SearchRequest`` echoes them)."""
     vector: str | None = None
     """The search vector used; None for text search."""
+    time_spent: float
+
+
+class PassageReadRequest(BaseModel):
+    """Passages of an earlier passage search by id (#611): a later page of its ``ranked_ids``.
+
+    ``criteria`` and ``user_collection_id`` are those of the search. Access is checked again
+    and the passages are read under the same restrictions as the search's ranking (the text
+    query ranks nothing here), so an id the search could not have returned is never answered.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[UUID] = Field(min_length=1, max_length=MAX_PASSAGE_PAGE)
+    criteria: SearchCriteria
+    user_collection_id: str | None = None
+
+
+class PassageReadResponse(BaseModel):
+    items: list[SearchResultChunk]
+    """The requested passages that still match the search, in the requested order, each once;
+    the others (deleted, outside the scope, no longer matching the filters) are left out."""
     time_spent: float
 
 

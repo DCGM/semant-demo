@@ -335,8 +335,9 @@ def test_browse_documents_its_chunk_filter_parameters(tmp_path):
 
 
 class _PassageChunks:
-    """Three ranked hits; records the queries."""
+    """Three ranked hits; records the queries and the scopes of the reads."""
     queries: list = []
+    reads: list = []
     hits = [SearchResultChunk(id=UUID(int=i + 1), text=f"Milá Marie {i}.", start_page_id=PAGE, from_page=1, to_page=1,
                               document=DOC, order=i, document_object=Document(id=DOC, **STORED)) for i in range(3)]
 
@@ -344,31 +345,33 @@ class _PassageChunks:
         self.queries.append(query)
         return [h.id for h in self.hits[:query.limit]]
 
-    async def read_hits(self, ids):
+    async def read_hits(self, ids, scope):
+        self.reads.append(scope)
         return [h for h in self.hits if h.id in ids]
 
 
-async def _passages(tmp_path, body, **config):
-    _PassageChunks.queries = []
+async def _passages(tmp_path, body, path="/api/search/passages", **config):
+    _PassageChunks.queries, _PassageChunks.reads = [], []
     app = create_app(make_test_config(tmp_path, **config), weaviate_connector=offline_weaviate)
     vectors = SearchVectors([SearchVector("main", "Main", "", "default", None)], default="main")
     app.dependency_overrides[get_search_backends] = lambda: SearchBackends(
         chunks=_PassageChunks(), collections=None, tags=None, vectors=vectors)
     async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        return await client.post("/api/search/passages", json=body)
+        return await client.post(path, json=body)
 
 
 async def test_passages_answer_a_page_with_its_coverage_anonymously(tmp_path):
     response = await _passages(tmp_path, {"criteria": {"text_query": "Marie", "chunk_filters": {"languages": ["CES"]}},
-                                          "type": "text", "limit": 2}, SEARCH_PASSAGES_LIMIT="2")
+                                          "type": "text", "limit": 1}, SEARCH_PASSAGES_LIMIT="2")
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert [item["text"] for item in body["items"]] == ["Milá Marie 0.", "Milá Marie 1."]
+    assert [item["text"] for item in body["items"]] == ["Milá Marie 0."]
     assert body["items"][0]["document_object"]["title"] == "Dopisy z Prahy"
-    # The limit of 2 cut the three matches: bounded, no next page.
-    assert {k: body[k] for k in ("offset", "next_offset", "has_more", "retrieval_limit", "bounded", "total_count")} == {
-        "offset": 0, "next_offset": None, "has_more": False, "retrieval_limit": 2, "bounded": True, "total_count": None}
+    # The limit of 2 cut the three matches: bounded; the first page is one of the two ranked.
+    assert body["ranked_ids"] == [str(UUID(int=1)), str(UUID(int=2))]
+    assert {k: body[k] for k in ("read_count", "retrieval_limit", "bounded", "total_count")} == {
+        "read_count": 1, "retrieval_limit": 2, "bounded": True, "total_count": None}
     assert body["criteria"]["chunk_filters"] == {"languages": ["ces"], "classifications": {}}
     assert body["vector"] is None
 
@@ -377,9 +380,9 @@ async def test_passages_answer_a_page_with_its_coverage_anonymously(tmp_path):
     ({"criteria": {"text_query": " "}}, 422),                                       # filter-only is deferred
     ({"criteria": {"document_filters": {"year_min": 1900}}}, 422),
     ({"criteria": {"text_query": "Marie"}, "limit": 101}, 422),                     # page size
-    ({"criteria": {"text_query": "Marie"}, "offset": -1}, 422),
+    ({"criteria": {"text_query": "Marie"}, "limit": 0}, 422),
+    ({"criteria": {"text_query": "Marie"}, "offset": 20}, 422),                     # pages are read by id (#611)
     ({"criteria": {"text_query": "Marie"}, "query": "Marie"}, 422),                 # not the /api/search request
-    ({"criteria": {"text_query": "Marie"}, "offset": 1000}, 400),                   # at the retrieval limit
     ({"criteria": {"text_query": "Marie", "chunk_filters": {"languages": ["Czech"]}}}, 400),
 ])
 async def test_invalid_passage_requests_are_refused_before_retrieval(tmp_path, body, status):
@@ -398,3 +401,31 @@ def test_the_passage_retrieval_limit_is_validated_at_startup(tmp_path, value):
 
 def test_the_largest_passage_retrieval_limit_ranks_within_the_query_maximum(tmp_path):
     assert make_test_config(tmp_path, SEARCH_PASSAGES_LIMIT=str(MAX_PASSAGES_LIMIT)).SEARCH_PASSAGES_LIMIT == 9999
+
+
+async def test_a_later_passage_page_is_read_by_id_without_ranking(tmp_path):
+    ids = [str(UUID(int=3)), str(UUID(int=1))]
+    response = await _passages(tmp_path, {"ids": ids, "criteria": {"text_query": "Marie",
+                                                                   "chunk_filters": {"languages": ["CES"]}}},
+                               path="/api/search/passages/read")
+
+    assert response.status_code == 200, response.text
+    assert [item["text"] for item in response.json()["items"]] == ["Milá Marie 0.", "Milá Marie 2."]
+    assert _PassageChunks.queries == []
+    [scope] = _PassageChunks.reads
+    assert [(c.prop, c.values) for c in scope.chunk_conditions] == [("language", ("ces",))]
+
+
+@pytest.mark.parametrize("body, status", [
+    ({"ids": [], "criteria": {"text_query": "Marie"}}, 422),
+    ({"ids": [str(UUID(int=i)) for i in range(101)], "criteria": {"text_query": "Marie"}}, 422),   # page size
+    ({"ids": ["not-a-uuid"], "criteria": {"text_query": "Marie"}}, 422),
+    ({"ids": [str(UUID(int=1))]}, 422),                                             # the search's criteria
+    ({"ids": [str(UUID(int=1))], "criteria": {}, "vector": "main"}, 422),           # nothing is ranked
+    ({"ids": [str(UUID(int=1))], "criteria": {"chunk_filters": {"languages": ["Czech"]}}}, 400),
+])
+async def test_invalid_passage_reads_are_refused_before_reading(tmp_path, body, status):
+    response = await _passages(tmp_path, body, path="/api/search/passages/read")
+
+    assert response.status_code == status, response.text
+    assert _PassageChunks.reads == []
