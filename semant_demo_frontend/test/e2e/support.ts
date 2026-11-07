@@ -138,9 +138,9 @@ export async function search (page: Page, query: string): Promise<void> {
   await expect(page.locator('#result-1'), `no results for "${query}"`).toBeVisible()
 }
 
-export type SearchResponse = { items: { id: string, text: string }[], has_more: boolean, next_offset: number | null }
+export type SearchResponse = { items: { id: string, text: string }[], ranked_ids: string[], read_count: number }
 
-/** Whether a request is a passage search (`POST /api/search/passages`, the Search page's results). */
+/** Whether a request is a passage search (`POST /api/search/passages`, the Search page's ranking and first page; not Load more). */
 export const isPassageSearch = (url: string, method: string): boolean =>
   new URL(url).pathname.endsWith('/api/search/passages') && method === 'POST'
 

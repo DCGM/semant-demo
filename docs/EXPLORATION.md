@@ -62,7 +62,7 @@ One typed backend `SearchCriteria` structure (`features/documents/criteria.py`) 
 ## Visualization population and counts
 
 - **No text query:** visualize the **full population matching the applied filters**, where technically feasible, with each chart explicitly naming its counting unit (documents or chunks). If an exhaustive calculation is unavailable, report the limitation; never silently substitute a sample or zero.
-- **With a text query:** visualize only the **retrieved results for the active Results mode**, bounded by a configurable technical limit. A relevance threshold may be added later only when the chosen retrieval scores support meaningful thresholding.
+- **With a text query:** visualize only the **retrieved results for the active Results mode**, bounded by a configurable technical limit. A relevance threshold may be added later only when the chosen retrieval scores support meaningful thresholding. For Passages, that population is the search's bounded ranking (`ranked_ids` of `POST /api/search/passages`, at most `SEARCH_PASSAGES_LIMIT`), which the page already holds for Load more (#611); charts of it need not search again.
 - State the unit, input size, retrieval method/limit and whether counts cover the full matching population or only retrieved results. A chart of 100 passages from 40 distinct documents is **not** a corpus-wide distribution.
 - Switching Results mode changes which retrieved population query-based charts describe. A chart can show a different counting unit (e.g. distinct source documents) **within that same retrieved population**, but must not silently widen it.
 - Keep missing/unknown/unavailable values distinguishable; retain exact record-level evidence for the displayed groups when practicable.

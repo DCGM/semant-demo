@@ -29,7 +29,7 @@ import {
 } from './SearchCriteria';
 
 /**
- * One page of the passages for the search criteria (#605, docs/EXPLORATION.md).
+ * A passage search (#605, #611, docs/EXPLORATION.md): its ranking and first page.
  * 
  * The criteria need a text query: filter-only browsing of passages is deferred. Every
  * chunk filter holds on the returned chunk itself (same-chunk) and every document filter on
@@ -45,12 +45,6 @@ export interface PassageSearchRequest {
      * @memberof PassageSearchRequest
      */
     criteria: SearchCriteria;
-    /**
-     * 
-     * @type {number}
-     * @memberof PassageSearchRequest
-     */
-    offset?: number;
     /**
      * 
      * @type {number}
@@ -104,7 +98,6 @@ export function PassageSearchRequestFromJSONTyped(json: any, ignoreDiscriminator
     return {
         
         'criteria': SearchCriteriaFromJSON(json['criteria']),
-        'offset': json['offset'] == null ? undefined : json['offset'],
         'limit': json['limit'] == null ? undefined : json['limit'],
         'type': json['type'] == null ? undefined : SearchTypeFromJSON(json['type']),
         'hybridSearchAlpha': json['hybrid_search_alpha'] == null ? undefined : json['hybrid_search_alpha'],
@@ -125,7 +118,6 @@ export function PassageSearchRequestToJSONTyped(value?: PassageSearchRequest | n
     return {
         
         'criteria': SearchCriteriaToJSON(value['criteria']),
-        'offset': value['offset'],
         'limit': value['limit'],
         'type': SearchTypeToJSON(value['type']),
         'hybrid_search_alpha': value['hybridSearchAlpha'],

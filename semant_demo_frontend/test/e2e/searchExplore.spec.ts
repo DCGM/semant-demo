@@ -109,13 +109,19 @@ test('a link with values that are not valid or not offered searches without them
   await expect.poll(() => hash(page)).toBe('#/search?q=Lhota')
 })
 
-test('Load more continues the ranking up to its end and says what the results cover', async ({ page }) => {
-  // Pages of three: the server pages the real results, so Load more reaches the next ones.
-  const offsets: number[] = []
+test('Load more reads the rest of the one ranking and says what the results cover', async ({ page }) => {
+  // A first page of three, so Load more has the other four ranked passages to read (#611).
+  let rankedIds: string[] = []
+  const reads: string[][] = []
   await page.route('**/api/search/passages', async (route) => {
-    const body = route.request().postDataJSON()
-    offsets.push(body.offset)
-    await route.continue({ postData: JSON.stringify({ ...body, limit: 3 }) })
+    const response = await route.fetch({ postData: JSON.stringify({ ...route.request().postDataJSON(), limit: 3 }) })
+    rankedIds = (await response.json()).ranked_ids
+    await route.fulfill({ response })
+  })
+  let searches = 0
+  page.on('request', (r) => {
+    if (isPassageSearch(r.url(), r.method())) searches++
+    if (r.url().endsWith('/api/search/passages/read')) reads.push(r.postDataJSON().ids)
   })
   await openSearch(page)
   await searchFor(page, 'Lhota')
@@ -125,12 +131,11 @@ test('Load more continues the ranking up to its end and says what the results co
 
   const more = page.getByTestId('search-load-more')
   await more.click()
-  await expect(page.locator('.search-result')).toHaveCount(6)
-  await more.click()
   await expect(page.locator('.search-result')).toHaveCount(7) // every fixture chunk, once
   await expect(more).toHaveCount(0)
   await expect(coverage).toContainText('All 7 matching passages.')
-  expect(offsets).toEqual([0, 3, 6])
+  expect(searches).toBe(1) // ranked once; Load more read the next ranked ids
+  expect(reads).toEqual([rankedIds.slice(3)])
   const ids = await page.locator('.search-result').evaluateAll(cards => cards.map(c => c.id))
   expect(new Set(ids).size).toBe(7)
 })

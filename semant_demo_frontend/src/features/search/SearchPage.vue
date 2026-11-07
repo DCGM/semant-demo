@@ -375,7 +375,7 @@ import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
 import { emptyCriteria, emptyLocation, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
-import { passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
+import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import SearchResultCard from './SearchResultCard.vue'
@@ -470,7 +470,7 @@ const loading = passages.loading
 const results = computed(() => passages.results.value?.items ?? [])
 const timeSpent = computed(() => passages.results.value?.timeSpent ?? 0)
 const coverage = computed(() => (passages.results.value ? passageCoverage(passages.results.value) : ''))
-const hasMore = computed(() => passages.results.value?.last.hasMore ?? false)
+const hasMore = computed(() => (passages.results.value ? hasMorePassages(passages.results.value) : false))
 const searchContext = computed<SearchResultsContext | null>(() => {
   const current = passages.results.value
   return current

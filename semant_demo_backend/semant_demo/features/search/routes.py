@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.config import Config
 from semant_demo.features.search.schemas import (
-    PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse, SearchRequest, SearchResponse,
+    PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse,
+    SearchRequest, SearchResponse,
     SearchVectorsResponse)
 
 from semant_demo.features.quota.principal import get_allowance_budget
@@ -53,12 +54,27 @@ async def search_passages(req: PassageSearchRequest, backends: SearchBackends = 
                           current_user: User | None = Depends(current_active_optional_user),
                           available_filters: SearchFiltersResponse = Depends(get_search_filters),
                           config: Config = Depends(get_config)) -> PassageSearchResponse:
-    """One page of the passages matching the search criteria (#605): ranked chunks, every chunk
-    filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what
-    that covers. No generated titles or summaries. A filter on a property this corpus database
-    does not record is rejected (422)."""
+    """The passages matching the search criteria (#605, #611): the ids of the ranked chunks,
+    every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what
+    they cover, and the first page of them in full. Later pages are read by id
+    (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries.
+    A filter on a property this corpus database does not record is rejected (422)."""
     try:
         return await service.search_passages(backends, current_user, req, available_filters,
                                              config.SEARCH_PASSAGES_LIMIT)
+    except UnavailableFilter as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@exp_router.post("/api/search/passages/read", response_model=PassageReadResponse)
+async def read_passages(req: PassageReadRequest, backends: SearchBackends = Depends(get_search_backends),
+                        current_user: User | None = Depends(current_active_optional_user),
+                        available_filters: SearchFiltersResponse = Depends(get_search_filters),
+                        ) -> PassageReadResponse:
+    """A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in
+    that order, read under the search's criteria and collection again (access checked again);
+    ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked."""
+    try:
+        return await service.read_passages(backends, current_user, req, available_filters)
     except UnavailableFilter as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

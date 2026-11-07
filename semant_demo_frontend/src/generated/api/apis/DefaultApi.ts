@@ -59,6 +59,8 @@ import type {
   HTTPValidationError,
   LibraryYearDistribution,
   PageChunks,
+  PassageReadRequest,
+  PassageReadResponse,
   PassageSearchRequest,
   PassageSearchResponse,
   PatchAttribute,
@@ -185,6 +187,10 @@ import {
     LibraryYearDistributionToJSON,
     PageChunksFromJSON,
     PageChunksToJSON,
+    PassageReadRequestFromJSON,
+    PassageReadRequestToJSON,
+    PassageReadResponseFromJSON,
+    PassageReadResponseToJSON,
     PassageSearchRequestFromJSON,
     PassageSearchRequestToJSON,
     PassageSearchResponseFromJSON,
@@ -513,6 +519,10 @@ export interface ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequ
 
 export interface ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest {
     documentId: string;
+}
+
+export interface ReadPassagesApiSearchPassagesReadPostRequest {
+    passageReadRequest: PassageReadRequest;
 }
 
 export interface ReadTagSpansApiTagSpansGetRequest {
@@ -2100,6 +2110,30 @@ export interface DefaultApiInterface {
     readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages>;
 
     /**
+     * Creates request options for readPassagesApiSearchPassagesReadPost without sending the request
+     * @param {PassageReadRequest} passageReadRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readPassagesApiSearchPassagesReadPostRequestOpts(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * @summary Read Passages
+     * @param {PassageReadRequest} passageReadRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readPassagesApiSearchPassagesReadPostRaw(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageReadResponse>>;
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * Read Passages
+     */
+    readPassagesApiSearchPassagesReadPost(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageReadResponse>;
+
+    /**
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
      * @param {string} collectionId Collection whose annotations to return
      * @param {string} [chunkId] Filter spans by chunk ID
@@ -2358,7 +2392,7 @@ export interface DefaultApiInterface {
     searchPassagesApiSearchPassagesPostRequestOpts(requestParameters: SearchPassagesApiSearchPassagesPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
      * @summary Search Passages
      * @param {PassageSearchRequest} passageSearchRequest 
      * @param {*} [options] Override http request option.
@@ -2368,7 +2402,7 @@ export interface DefaultApiInterface {
     searchPassagesApiSearchPassagesPostRaw(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageSearchResponse>>;
 
     /**
-     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
      * Search Passages
      */
     searchPassagesApiSearchPassagesPost(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageSearchResponse>;
@@ -5961,6 +5995,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for readPassagesApiSearchPassagesReadPost without sending the request
+     */
+    async readPassagesApiSearchPassagesReadPostRequestOpts(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['passageReadRequest'] == null) {
+            throw new runtime.RequiredError(
+                'passageReadRequest',
+                'Required parameter "passageReadRequest" was null or undefined when calling readPassagesApiSearchPassagesReadPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/passages/read`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PassageReadRequestToJSON(requestParameters['passageReadRequest']),
+        };
+    }
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * Read Passages
+     */
+    async readPassagesApiSearchPassagesReadPostRaw(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageReadResponse>> {
+        const requestOptions = await this.readPassagesApiSearchPassagesReadPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PassageReadResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * Read Passages
+     */
+    async readPassagesApiSearchPassagesReadPost(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageReadResponse> {
+        const response = await this.readPassagesApiSearchPassagesReadPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
      */
     async readTagSpansApiTagSpansGetRequestOpts(requestParameters: ReadTagSpansApiTagSpansGetRequest): Promise<runtime.RequestOpts> {
@@ -6575,7 +6663,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
      * Search Passages
      */
     async searchPassagesApiSearchPassagesPostRaw(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageSearchResponse>> {
@@ -6586,7 +6674,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the passages matching the search criteria (#605): ranked chunks, every chunk filter holding on the chunk itself; at most ``SEARCH_PASSAGES_LIMIT`` per search, with what that covers. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
      * Search Passages
      */
     async searchPassagesApiSearchPassagesPost(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageSearchResponse> {
