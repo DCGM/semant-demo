@@ -11,6 +11,7 @@ from asgi_lifespan import LifespanManager
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from semant_demo.config import MAX_PASSAGES_LIMIT
 from semant_demo.features.documents.criteria import NumberRange
 from semant_demo.features.search.schemas import SearchRequest, SearchResponse, SearchResultChunk
 from semant_demo.features.summarization.schemas import SummaryRequest
@@ -388,7 +389,12 @@ async def test_invalid_passage_requests_are_refused_before_retrieval(tmp_path, b
     assert _PassageChunks.queries == []
 
 
-@pytest.mark.parametrize("value", ["0", "10001", "many"])
+@pytest.mark.parametrize("value", ["0", "10000", "many"])
 def test_the_passage_retrieval_limit_is_validated_at_startup(tmp_path, value):
+    # 10000 is Weaviate's QUERY_MAXIMUM_RESULTS; a search ranks limit + 1 passages (#608 review).
     with pytest.raises(ValueError):
         make_test_config(tmp_path, SEARCH_PASSAGES_LIMIT=value)
+
+
+def test_the_largest_passage_retrieval_limit_ranks_within_the_query_maximum(tmp_path):
+    assert make_test_config(tmp_path, SEARCH_PASSAGES_LIMIT=str(MAX_PASSAGES_LIMIT)).SEARCH_PASSAGES_LIMIT == 9999

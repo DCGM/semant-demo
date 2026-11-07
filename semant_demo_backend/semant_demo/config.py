@@ -8,6 +8,9 @@ TRUE_VALUES = {"true", "1"}
 SCRIPT_PATH = Path(__file__).parent
 MAX_QUERY_RESULTS = 10_000
 """Weaviate's default QUERY_MAXIMUM_RESULTS: no query reaches results past offset + limit beyond it."""
+MAX_PASSAGES_LIMIT = MAX_QUERY_RESULTS - 1
+"""Largest SEARCH_PASSAGES_LIMIT: a passage search ranks one more than the limit, to tell whether
+the limit cut the ranking (``search_passages``), so that query stays within MAX_QUERY_RESULTS."""
 
 class Config:
     """Application settings.
@@ -57,8 +60,8 @@ class Config:
         # retrieves, page by page; a technical bound, reported in every answer. Weaviate's
         # QUERY_MAXIMUM_RESULTS (default 10000) bounds offset + page size, and so this limit.
         self.SEARCH_PASSAGES_LIMIT = int(env.get("SEARCH_PASSAGES_LIMIT", 1000))
-        if not 1 <= self.SEARCH_PASSAGES_LIMIT <= MAX_QUERY_RESULTS:
-            raise ValueError(f"SEARCH_PASSAGES_LIMIT must be from 1 to {MAX_QUERY_RESULTS}.")
+        if not 1 <= self.SEARCH_PASSAGES_LIMIT <= MAX_PASSAGES_LIMIT:
+            raise ValueError(f"SEARCH_PASSAGES_LIMIT must be from 1 to {MAX_PASSAGES_LIMIT}.")
 
         self.GOOGLE_API_KEY = env.get("GOOGLE_API_KEY", "")
 
