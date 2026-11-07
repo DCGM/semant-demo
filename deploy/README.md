@@ -143,8 +143,8 @@ refused, and accepted with truncation.
    next deploy. An instance whose Weaviate lacks the vector fails vector and hybrid search;
    the test instances share the test Weaviate and need the vector there too. Text search is
    unaffected.
-5. Start the backfill with a reviewed copy of `data_tools/embedder/config.qwen.yaml`;
-   rerun it to resume.
+5. Start the backfill with a reviewed copy of `data_tools/embedder/config.qwen.yaml` and
+   `--confirm-endpoint localhost:8080` (its `weaviate_host:weaviate_port`); rerun it to resume.
 
 ### Weaviate 1.40 upgrade and dropping a named vector (#312)
 
