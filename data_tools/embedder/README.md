@@ -43,6 +43,18 @@ pip install -e .
    ```
    Run the same command again to continue after an interruption.
 
+To see what a run would do first, add `--check`: it reads the collection like a run and prints
+how many records lack the vector, already have it or have an empty input, without changing the
+schema, sending embedding requests or writing. It reads every record with the vector, so it
+takes about as long as the scan of a run. Exit code 0 when nothing is left to embed, 1 when
+records are, 2 when the check fails (e.g. a missing collection) or a run would be refused (the
+vector is missing and `create_vector` is disabled, even in an empty collection). `max_records`
+does not limit it.
+
+```bash
+python run.py config.yaml --check
+```
+
 To try it out, you can create a small `EmbedderTest` collection (it uses the connection from the config):
 
 ```bash
@@ -121,5 +133,6 @@ A new embedder backend can be added by subclassing `Embedder` and implementing `
 `semant_demo_backend/tests/integration/test_embedder_tool.py` runs the pipeline against the
 test-owned Weaviate (`make test-integration`, and in CI) with a fake OpenAI-compatible
 endpoint: vector creation, preservation of properties, references and other vectors,
-resuming, write failures, refused collections, the guarded test collection and Search
-over the filled vector. The tool's dependencies are part of the backend's development lock.
+resuming, write failures, refused collections, the guarded test collection, Search
+over the filled vector and the read-only `--check`. The tool's dependencies are part of the
+backend's development lock.

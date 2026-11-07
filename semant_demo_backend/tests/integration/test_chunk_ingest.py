@@ -20,7 +20,7 @@ from weaviate.classes.query import Filter, MetadataQuery, QueryReference
 
 from semant_demo.adapters.weaviate import chunk_ingest as store
 from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
-from semant_demo.maintenance import chunk_ingest, chunk_positions as backfill
+from semant_demo.maintenance import chunk_ingest, chunk_positions as backfill, metadata_sync, page_order
 
 pytestmark = pytest.mark.integration
 
@@ -134,6 +134,12 @@ def manifest(tmp_path, checkpoint="run.json") -> list[dict]:
     return [json.loads(raw) for raw in path.read_text().splitlines()] if path.exists() else []
 
 
+def listed(tmp_path, checkpoint="run.json") -> list[str] | None:
+    """The lines of the run's document list, or None when it does not exist."""
+    path = tmp_path / f"{checkpoint}.documents.txt"
+    return path.read_text(encoding="utf-8").splitlines() if path.exists() else None
+
+
 async def stored_chunk(client, document: UUID, i: int):
     return (await store.read_chunks(client, CHUNKS, [cid(document, i)], ("language",))).get(cid(document, i))
 
@@ -176,6 +182,67 @@ async def test_repeating_a_completed_import_changes_nothing(ingest_store, tmp_pa
     assert code == 0 and result["counts"]["chunks_inserted"] == 0 and result["counts"]["replayed"] == 2
     assert result["counts"]["chunks_replayed"] == 4 + STORED
     assert await snapshot(s.client) == before
+
+
+async def test_a_write_lists_its_stored_documents_for_the_later_stages_and_a_check_lists_none(
+        ingest_store, tmp_path):
+    s = ingest_store
+    _, code = await run(s, tmp_path, jsonl(tmp_path, "new.jsonl", [line(NEW, i) for i in range(4)]), "first.json")
+    assert code == 0 and listed(tmp_path, "first.json") == [str(NEW)]
+
+    # NEW replayed, EXISTING appended, OTHER rejected (orders not consecutive).
+    inputs = jsonl(tmp_path, "mixed.jsonl", [line(NEW, i) for i in range(4)] + [line(EXISTING, i) for i in range(2, 6)]
+                   + [line(OTHER, 0), line(OTHER, 2)])
+    result, code = await run(s, tmp_path, inputs, "check.json", write=False)
+    assert code == 1 and listed(tmp_path, "check.json") is None and "document_list" not in result
+    result, code = await run(s, tmp_path, inputs, "second.json")
+    assert code == 1 and {a: result["counts"][a] for a in ("replayed", "append", "rejected")} == {
+        "replayed": 1, "append": 1, "rejected": 1}
+    assert listed(tmp_path, "second.json") == [str(EXISTING), str(NEW)]  # in document-id order
+    assert result["document_list"] == str(tmp_path / "second.json.documents.txt") and result["documents_listed"] == 2
+    path = tmp_path / "second.json.documents.txt"
+    assert metadata_sync.read_document_ids(path) == page_order.read_document_ids(path) == [EXISTING, NEW]
+
+
+async def test_a_document_written_before_an_interruption_is_listed_by_the_resumed_run(
+        ingest_store, tmp_path, monkeypatch):
+    s = ingest_store
+    inputs = jsonl(tmp_path, "new.jsonl", [line(NEW, i) for i in range(3)])
+
+    class Killed(Exception):
+        pass
+
+    def killed(path, ids):  # the run dies after the page's writes, before its list and checkpoint
+        raise Killed
+    monkeypatch.setattr(chunk_ingest, "_append_ids", killed)
+    with pytest.raises(Killed):
+        await run(s, tmp_path, inputs)
+    assert await stored_chunk(s.client, NEW, 2) is not None
+    assert json.loads((tmp_path / "run.json").read_text())["after"] is None
+    (tmp_path / "run.json.documents.txt").write_text("00000000-0000-0000-0000-0000000", encoding="utf-8")  # cut off
+
+    monkeypatch.undo()
+    result, code = await run(s, tmp_path, inputs)
+    assert code == 0 and result["counts"]["replayed"] == 1 and result["counts"]["chunks_inserted"] == 0
+    assert listed(tmp_path) == [str(NEW)]
+
+
+async def test_resuming_a_checkpoint_without_its_list_says_which_documents_are_missing(ingest_store, tmp_path):
+    s = ingest_store
+    inputs = jsonl(tmp_path, "new.jsonl", [line(NEW, 0), line(OTHER, 0)])
+
+    class Stopped(Exception):
+        pass
+
+    def stop(_line: str) -> None:
+        raise Stopped
+    with pytest.raises(Stopped):
+        await run(s, tmp_path, inputs, page=1, progress=stop)
+    (tmp_path / "run.json.documents.txt").unlink()  # as for a checkpoint written before the list existed
+    messages = []
+    _, code = await run(s, tmp_path, inputs, page=1, progress=messages.append)
+    assert code == 0 and listed(tmp_path) == [str(OTHER)]
+    assert any("documents of the pages before" in m and str(NEW) in m for m in messages)
 
 
 async def test_an_append_continues_after_the_tail_and_keeps_the_stored_chunks(ingest_store, tmp_path):
@@ -283,10 +350,12 @@ async def test_a_failed_write_blocks_only_its_document_and_a_rerun_finishes_it(i
     assert [await stored_chunk(s.client, NEW, i) is not None for i in range(5)] == [True, True, False, False, False]
     assert all([await stored_chunk(s.client, OTHER, i) is not None for i in range(3)])
     assert {m["status"] for m in manifest(tmp_path)} == {"blocked", "incomplete_document"}
+    assert listed(tmp_path) == [str(OTHER)]  # the blocked document is not listed yet
 
     monkeypatch.setattr(store, "insert_chunk", real)
     result, code = await run(s, tmp_path, inputs)  # resumes the same checkpoint: retries the blocked document
     assert code == 0 and result["blocked"] == 0
+    assert listed(tmp_path) == [str(OTHER), str(NEW)] and result["documents_listed"] == 2
     expected = list(chunk_positions(TEXTS[:5]))
     assert [(await stored_chunk(s.client, NEW, i)).position for i in range(5)] == expected
 
@@ -405,6 +474,7 @@ async def test_bulk_into_an_empty_chunk_collection_writes_what_the_single_insert
     result, code = await run(s, tmp_path, jsonl(tmp_path, "all.jsonl", records), bulk=True)
     assert code == 0 and result["counts"]["chunks_inserted"] == 3 * len(TEXTS)
     assert result["counts"]["documents_created"] == 2  # EXISTING was there; NEW and OTHER created
+    assert listed(tmp_path) == [str(EXISTING), str(NEW), str(OTHER)]
     assert [{k: v for k, v in r.items() if k in ("bulk", "page", "batch")} for r in result["runs"]] == [
         {"bulk": True, "page": 2000, "batch": 800}]
     expected = list(chunk_positions(TEXTS))
