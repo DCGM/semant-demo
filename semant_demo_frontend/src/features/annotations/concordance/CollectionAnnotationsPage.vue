@@ -6,11 +6,11 @@
       :documents="store.documents"
       :documents-error="store.documentsError"
       :attributes="attributesStore.attributes"
-      :shown-attribute-id="store.shownAttributeId"
+      :shown-attribute-ids="store.shownAttributeIds"
       class="q-mb-sm"
       @change="store.setFilters"
       @reset="store.resetFilters"
-      @show-attribute="id => { store.shownAttributeId = id }"
+      @show-attributes="ids => { store.shownAttributeIds = ids }"
     />
 
     <SelectionBar
@@ -74,7 +74,7 @@
       :selected="selection.ids"
       :focused-id="selection.focused?.id ?? null"
       :loading="store.loading"
-      :attribute="shownAttribute"
+      :attributes="shownAttributes"
       :pending="assignWaiting"
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
@@ -748,8 +748,11 @@ async function undoLast () {
 }
 
 // ── Attribute assignment (#331) ──
-const shownAttribute = computed(() =>
-  attributesStore.attributes.find(a => a.id === store.shownAttributeId) ?? null)
+/** The attributes shown in columns of their own, in the collection's order (#537). */
+const shownAttributes = computed(() => {
+  const ids = new Set(store.shownAttributeIds)
+  return attributesStore.attributes.filter(a => ids.has(a.id))
+})
 const assignReportAttribute = computed(() =>
   attributesStore.attributes.find(a => a.id === assign.report?.attributeId) ?? null)
 // While a selection's assignment runs, rows wait too: its later parts expect the versions the

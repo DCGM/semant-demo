@@ -13,9 +13,10 @@ import {
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
 import ConcordanceTable from 'src/features/annotations/concordance/ConcordanceTable.vue'
+import ConcordanceToolbar from 'src/features/annotations/concordance/ConcordanceToolbar.vue'
 import AnnotationAttributes from 'src/features/annotations/concordance/AnnotationAttributes.vue'
 import SelectionBar from 'src/features/annotations/concordance/SelectionBar.vue'
-import { useConcordanceStore } from 'src/features/annotations/concordance/concordanceStore'
+import { defaultFilters, useConcordanceStore } from 'src/features/annotations/concordance/concordanceStore'
 import { useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import { endSession } from 'src/shared/api'
 
@@ -302,6 +303,28 @@ describe('concordance store and attributes', () => {
     expect(useAnnotationSelectionStore().attributeVersionOf('r1')).toBe(5)
   })
 
+  it('keeps the shown attribute columns as a view setting: no reading, kept on return, cleared for another collection (#537)', async () => {
+    const store = await opened()
+    const before = calls.length
+    store.shownAttributeIds = ['a2', 'a1']
+    await flush()
+    expect(calls.length).toBe(before)
+    expect(store.filters.attributeValues).toEqual([])
+
+    // Back from the document context: the same collection keeps its columns.
+    const again = store.open('col-1')
+    await flush()
+    calls.slice(before).forEach(c => c.answer(c.url.pathname.endsWith('/annotations') ? { rows: [], total: 0, offset: 0, limit: 50 } : []))
+    await again
+    expect(store.shownAttributeIds).toEqual(['a2', 'a1'])
+
+    const other = store.open('col-2')
+    expect(store.shownAttributeIds).toEqual([])
+    await flush()
+    calls.filter(c => c.url.pathname.includes('col-2')).forEach(c => c.answer(c.url.pathname.endsWith('/annotations') ? { rows: [], total: 0, offset: 0, limit: 50 } : []))
+    await other
+  })
+
   it('keeps the attribute version of rows checked on the page', async () => {
     const store = await opened()
     store.setPageSelected(true)
@@ -338,7 +361,7 @@ describe('attribute components', () => {
     const without = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set() })
     expect(without.findAll('[data-testid="kwic-attribute"]')).toHaveLength(0)
 
-    const table = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attribute: speaker() })
+    const table = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attributes: [speaker()] })
     const cells = table.findAll('[data-testid="kwic-attribute"]')
     expect(cells[0]!.text()).toContain('politician')
     expect(cells[0]!.text()).toContain('Unknown value')
@@ -347,9 +370,70 @@ describe('attribute components', () => {
     expect(cells[1]!.text()).toContain('Only confirmed annotations take attribute values.')
   })
 
+  it('shows several attribute columns side by side, each with its own heading, values and assignment (#537)', async () => {
+    const rows = [row('r1', { attributes: { a1: ['v1'], a2: ['v2', 'v3'] } }), row('r2', { attributes: { a2: ['v1'] } })]
+    const table = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attributes: [topic(), speaker()] })
+    expect(table.findAll('[data-testid="kwic-attribute-head"]').map(h => h.text())).toEqual(['Topic', 'Speaker'])
+    const cells = (id: string) => table.find(`[data-annotation-id="${id}"]`).findAll('[data-testid="kwic-attribute"]')
+    expect(cells('r1').map(c => c.attributes('data-attribute-id'))).toEqual(['a2', 'a1'])
+    expect(cells('r1')[0]!.text()).toContain('journalist')
+    expect(cells('r1')[0]!.text()).toContain('old')
+    expect(cells('r1')[1]!.text()).toContain('politician')
+    expect(cells('r1')[1]!.text()).not.toContain('journalist')
+    expect(cells('r2')[0]!.text()).toContain('politician')
+    expect(cells('r2')[1]!.text()).toContain('Assign')
+    // Editable cells stay out of the Tab sequence (#530): the sidebar edits them by keyboard.
+    expect(table.findAll('[data-testid="kwic-attribute-edit"]').every(b => b.attributes('tabindex') === '-1')).toBe(true)
+    expect(table.find('.kwic__grid').attributes('style')).toContain('--kwic-attributes: 2')
+
+    // Opening one cell's picker opens only that one (its picker the only one present); choosing
+    // there assigns only its attribute.
+    const menus = () => cells('r1').map(c => c.findComponent(QMenu))
+    menus()[1]!.vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(menus().map(m => m.props('modelValue'))).toEqual([false, true])
+    expect(table.findAllComponents(AttributeValuePicker)).toHaveLength(1)
+    table.findComponent(AttributeValuePicker).vm.$emit('change', { mode: 'replace', valueIds: ['v2'] })
+    const [assigned, attribute, change, done] = table.emitted('assign')![0] as [AnnotationListRow, Attribute, unknown, (ok: boolean) => void]
+    expect([assigned.id, attribute.id, change]).toEqual(['r1', 'a1', { mode: 'replace', valueIds: ['v2'] }])
+    // Saved: the single-valued Speaker closes; then the multi-valued Topic, saved, stays open.
+    done(true)
+    await flushPromises()
+    expect(menus().map(m => m.props('modelValue'))).toEqual([false, false])
+    menus()[0]!.vm.$emit('update:modelValue', true)
+    await flushPromises()
+    table.findComponent(AttributeValuePicker).vm.$emit('change', { mode: 'add', valueIds: ['v1'] })
+    const [, topicAttribute, , topicDone] = table.emitted('assign')![1] as [AnnotationListRow, Attribute, unknown, (ok: boolean) => void]
+    expect(topicAttribute.id).toBe('a2')
+    topicDone(true)
+    await flushPromises()
+    expect(menus().map(m => m.props('modelValue'))).toEqual([true, false])
+  })
+
+  it('lets the toolbar show several attributes, listed by name, without touching the filters (#537)', async () => {
+    const toolbar = mountIt(ConcordanceToolbar, {
+      filters: defaultFilters(), tags: [], documents: [], attributes: [speaker(), topic({ retired: true })], shownAttributeIds: []
+    })
+    const select = () => toolbar.findAllComponents(QSelect).find(s => s.props('label') === 'Show attributes')!
+    expect(select().props('multiple')).toBe(true)
+    expect(select().props('options')).toEqual([{ label: 'Speaker', value: 'a1' }, { label: 'Topic (retired)', value: 'a2' }])
+    select().vm.$emit('update:modelValue', ['a2', 'a1'])
+    select().vm.$emit('update:modelValue', null)
+    expect(toolbar.emitted('show-attributes')).toEqual([[['a2', 'a1']], [[]]])
+    expect(toolbar.emitted('change')).toBeUndefined()
+
+    // Shown in the collection's order; an attribute deleted meanwhile no longer counts.
+    await toolbar.setProps({ shownAttributeIds: ['gone', 'a2'] } as never)
+    expect(select().props('modelValue')).toEqual(['a2'])
+    expect(select().props('displayValue')).toBe('Topic (retired)')
+    await toolbar.setProps({ shownAttributeIds: ['a2', 'a1'] } as never)
+    expect(select().props('modelValue')).toEqual(['a1', 'a2'])
+    expect(select().props('displayValue')).toBe('2 columns')
+  })
+
   it('greys and marks values kept on a tag the attribute no longer applies to (#500)', () => {
     const rows = [row('r1', { attributes: { a1: ['v1'] } }), row('r2', { tagId: 'tag-2', attributes: { a1: ['v2'] } })]
-    const table = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attribute: speaker() })
+    const table = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attributes: [speaker()] })
     const [valid, kept] = table.findAll('[data-testid="kwic-attribute"]')
     expect(valid!.find('[data-testid="attribute-chips-inapplicable"]').exists()).toBe(false)
     expect(kept!.find('[data-testid="attribute-chips-inapplicable"]').exists()).toBe(true)
@@ -364,7 +448,7 @@ describe('attribute components', () => {
   it('closes a single-valued attribute\'s picker once the choice is saved, not before and not on a failure', async () => {
     const rows = [row('r1', { attributes: { a1: ['v1'] } })]
     const menu = (w: VueWrapper) => w.findComponent(QMenu)
-    const single = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attribute: speaker() })
+    const single = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attributes: [speaker()] })
     menu(single).vm.$emit('update:modelValue', true)
     await flushPromises()
     expect(menu(single).props('modelValue')).toBe(true)
@@ -380,7 +464,7 @@ describe('attribute components', () => {
     expect(menu(single).props('modelValue')).toBe(false)
 
     // Several values: stays open for further choices.
-    const multi = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attribute: topic() })
+    const multi = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attributes: [topic()] })
     menu(multi).vm.$emit('update:modelValue', true)
     await flushPromises()
     multi.findComponent(AttributeValuePicker).vm.$emit('change', { mode: 'add', valueIds: ['v2'] })

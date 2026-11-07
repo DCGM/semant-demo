@@ -110,9 +110,9 @@ export const useConcordanceStore = defineStore('concordance', () => {
   /** The collection's owner and members, to name who created or changed annotations (#460). */
   const people = shallowRef<CollectionPerson[]>([])
   const scrollY = ref(0)
-  /** The attribute whose values the rows show in a column of their own (none by default);
-   * a view setting, not a filter. */
-  const shownAttributeId = ref<string | null>(null)
+  /** The attributes whose values the rows show in columns of their own (none by default),
+   * in any order (they are shown in the collection's order); a view setting, not a filter. */
+  const shownAttributeIds = ref<string[]>([])
   /** The query and offset of `page`. */
   let pageKey: string | null = null
 
@@ -155,7 +155,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     known.value = new Set()
     shownError.value = null
     people.value = []
-    shownAttributeId.value = null
+    shownAttributeIds.value = []
     pageKey = null
     scrollY.value = 0
   }
@@ -485,7 +485,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     resolving,
     people,
     scrollY,
-    shownAttributeId,
+    shownAttributeIds,
     open,
     load,
     readFocused,

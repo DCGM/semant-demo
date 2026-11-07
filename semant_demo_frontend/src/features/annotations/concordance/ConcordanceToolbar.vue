@@ -157,20 +157,32 @@
 
     <q-select
       v-if="attributes.length"
-      :model-value="shownAttributeId"
+      :model-value="shownIds"
       :options="shownAttributeOptions"
+      multiple
       emit-value
       map-options
       clearable
       dense
       outlined
       options-dense
-      label="Show attribute"
+      label="Show attributes"
+      :display-value="shownLabel"
       class="concordance-toolbar__show-attribute"
       data-testid="concordance-show-attribute"
-      @update:model-value="value => emit('show-attribute', value ?? null)"
+      @update:model-value="value => emit('show-attributes', value ?? [])"
     >
-      <q-tooltip>Shows the attribute's values in a column of their own, where they can be assigned</q-tooltip>
+      <template #option="{ itemProps, opt, selected, toggleOption }">
+        <q-item v-bind="itemProps">
+          <q-item-section side>
+            <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>{{ opt.label }}</q-item-label>
+          </q-item-section>
+        </q-item>
+      </template>
+      <q-tooltip>Shows each chosen attribute's values in a column of their own, where they can be assigned</q-tooltip>
     </q-select>
 
     <q-btn
@@ -200,14 +212,14 @@ const props = defineProps<{
   documentsError?: string | null
   /** The collection's attribute definitions (#331), retired ones included. */
   attributes?: Attribute[]
-  /** The attribute shown in a column of its own. */
-  shownAttributeId?: string | null
+  /** The attributes shown in columns of their own. */
+  shownAttributeIds?: string[]
 }>()
 
 const emit = defineEmits<{
   change: [change: Partial<ConcordanceFilters>]
   reset: []
-  'show-attribute': [attributeId: string | null]
+  'show-attributes': [attributeIds: string[]]
 }>()
 
 const attributes = computed(() => props.attributes ?? [])
@@ -295,6 +307,16 @@ const attributesLabel = computed(() => {
 const shownAttributeOptions = computed(() => attributes.value.map(a => ({
   label: a.retired ? `${a.name} (retired)` : a.name, value: a.id
 })))
+// Only attributes that still exist count as shown.
+const shownIds = computed(() => {
+  const ids = new Set(props.shownAttributeIds ?? [])
+  return attributes.value.filter(a => ids.has(a.id)).map(a => a.id)
+})
+const shownLabel = computed(() => {
+  const ids = shownIds.value
+  if (ids.length !== 1) return ids.length ? `${ids.length} columns` : ''
+  return shownAttributeOptions.value.find(o => o.value === ids[0])?.label ?? ''
+})
 
 const filtersChanged = computed(() => JSON.stringify(props.filters) !== JSON.stringify(defaultFilters()))
 </script>
