@@ -57,11 +57,9 @@ test('recent searches open on click, narrow while typing and run again', async (
   await expect(dropdown(page)).toHaveCount(0)
   await expect(page.locator('#result-1')).toBeVisible()
 
-  // The field holds the query that ran, which narrows the list to it; emptied, the list
-  // shows the search that ran again at the top. Escape closes it.
+  // The field still holds the query that ran; opened, the list shows the whole history,
+  // the search that ran again at the top. Escape closes it.
   await input(page).click()
-  await expect(entries(page)).toHaveText([/Lhota/])
-  await input(page).fill('')
   await expect(entries(page)).toHaveText([/Lhota/, /Brno/])
   await input(page).press('Escape')
   await expect(dropdown(page)).toHaveCount(0)
@@ -83,6 +81,44 @@ test('recent searches open on click, narrow while typing and run again', async (
   await openSearchPage(page)
   await input(page).click()
   await expect(dropdown(page)).toHaveCount(0)
+})
+
+test('reopened after several searches, the list shows every one of them, unchanged (#608 review)', async ({ page }) => {
+  const queries = ['Lhota', 'Brno', 'Praha', 'mlýn']
+  await openSearchPage(page)
+  for (const query of queries) {
+    await input(page).fill(query)
+    const ran = page.waitForResponse((r) => isPassageSearch(r.url(), r.request().method()))
+    await input(page).press('Enter')
+    await ran
+    await expect(page.locator('#result-1')).toBeVisible()
+  }
+  await expect(input(page)).toHaveValue('mlýn')
+
+  // The field holds the last query; a click lists the whole history, newest first.
+  const newestFirst = [...queries].reverse()
+  await page.keyboard.press('Escape')
+  await openHistory(page)
+  await expect(page.getByTestId('search-history-entry').locator('.search-history__query')).toHaveText(newestFirst)
+
+  // Typing narrows it; closed and opened again, everything is back, with its own query.
+  await input(page).fill('Br')
+  await expect(entries(page)).toHaveText([/Brno/])
+  await input(page).press('Escape')
+  await input(page).fill('mlýn')
+  await input(page).press('Escape')
+  await page.locator('body').click({ position: { x: 5, y: 5 } })
+  await openHistory(page)
+  await expect(page.getByTestId('search-history-entry').locator('.search-history__query')).toHaveText(newestFirst)
+
+  // An older entry runs its own query, not the one in the field.
+  const rerun = nextSearch(page)
+  await entries(page).filter({ hasText: 'Brno' }).click()
+  expect((await rerun).postDataJSON().criteria.text_query).toBe('Brno')
+  await expect(input(page)).toHaveValue('Brno')
+  await expect(page.locator('#result-1')).toBeVisible()
+  await openHistory(page)
+  await expect(page.getByTestId('search-history-entry').locator('.search-history__query')).toHaveText(['Brno', 'mlýn', 'Praha', 'Lhota'])
 })
 
 test('a search from the history runs with its criteria', async ({ page }) => {

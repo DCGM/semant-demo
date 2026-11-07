@@ -8,7 +8,8 @@
             <div class="row q-col-gutter-sm items-center">
               <div class="col relative-position">
                 <!-- Recent searches (#558) open under the input when it is focused by the user,
-                     clicked or typed into; not on the page's own autofocus. -->
+                     clicked or typed into; not on the page's own autofocus. Only typing
+                     narrows them: opened, they list the whole recent history. -->
                 <q-input
                   v-model="queryInput"
                   dense
@@ -27,7 +28,7 @@
                   @focus="onQueryFocus"
                   @click="history.show"
                   @blur="history.close"
-                  @update:model-value="history.show"
+                  @update:model-value="history.onInput"
                 >
                   <template v-slot:prepend>
                     <q-btn

@@ -12,6 +12,7 @@ with Weaviate's default ``word`` tokenization, as in production.
 """
 import pytest
 
+from semant_demo.config import MAX_PASSAGES_LIMIT, MAX_QUERY_RESULTS
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.features.analytics import service as analytics
@@ -242,6 +243,22 @@ async def test_a_ranking_read_by_id_keeps_the_order_and_the_hits_of_the_search(s
     page = ranked[2:5]
     assert [hit.id for hit in await repository.read_hits(page)] == page
     assert await repository.read_hits([]) == []
+
+
+@pytest.mark.parametrize("mode", [SearchType.hybrid, SearchType.vector, SearchType.text])
+async def test_the_largest_passage_ranking_is_within_the_query_maximum(seeded_store, collection_names, mode):
+    # #608 review: at the largest SEARCH_PASSAGES_LIMIT the ranking asks for exactly
+    # QUERY_MAXIMUM_RESULTS ids, which Weaviate answers; one more it refuses.
+    repository = ChunkSearchRepository(seeded_store, collection_names)
+
+    def query(limit: int) -> ChunkQuery:
+        return ChunkQuery(text=ALL_WORDS, mode=mode, limit=limit, alpha=0.5,
+                          vector=None if mode == SearchType.text else fake_embedding("Požár v obci"),
+                          target_vector=None if mode == SearchType.text else "default")
+
+    assert len(await repository.ranked_ids(query(MAX_PASSAGES_LIMIT + 1))) == len(EVERY_CHUNK)
+    with pytest.raises(Exception, match="(?i)query maximum results"):
+        await repository.ranked_ids(query(MAX_QUERY_RESULTS + 1))
 
 
 async def test_browse_takes_the_document_filters_as_query_parameters(api_client, update):

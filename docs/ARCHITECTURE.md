@@ -158,7 +158,7 @@ A `Config` class that reads settings once, at construction, from the process env
 - **Observability** — `OTEL_ENABLED` (default off) and the `OTEL_*` / `DEPLOYMENT_ENVIRONMENT` export settings; see [OBSERVABILITY.md](OBSERVABILITY.md)
 - **Database** — `SQL_DB_URL` (default `sqlite+aiosqlite:///tasks.db`, relative to the working directory) for user accounts and RAG answer feedback (the file name `tasks.db` is historical; deployments keep it in a mounted host directory together with its rollback journal, so it is kept)
 - **Auth** — `JWT_SECRET` (override in production with a long random string); tokens are valid for 7 days (`users/auth.py`)
-- **Passage search** — `SEARCH_PASSAGES_LIMIT` (1000, at most 10000): the most ranked passages one search retrieves (*Search Pipeline* below)
+- **Passage search** — `SEARCH_PASSAGES_LIMIT` (1000, at most 9999: a search ranks one more, within Weaviate's `QUERY_MAXIMUM_RESULTS` of 10000): the most ranked passages one search retrieves (*Search Pipeline* below)
 - **Search vectors** — `SEARCH_VECTORS_CONFIG` (the configured Weaviate named vectors and their query embedding; see *Search vectors* below) and `EMBEDDING_API_KEY` (bearer key of OpenAI-compatible embedding endpoints; empty sends none); `EMBEDDING_SERVICE_HOST` / `_PORT` locate the embedding service
 - **RAG** — config directory path
 - **Annotation vector** — `ANNOTATION_VECTOR_CONFIG` (default `configs/annotation_vector_qwen.yaml`, empty: none): the contextual vector of span annotations ([below](#annotation-derived-data-328))
@@ -694,7 +694,7 @@ storage and validation in `history.ts`, the input's dropdown state and keys in
 `useSearchHistory`, the list in `SearchHistoryDropdown`; one `localStorage` key per
 signed-in user and one for signed-out use, never merged, kept after sign-out, at most 50
 entries of which 10 are shown, the query saved as typed and not saved over 1000 characters,
-stored entries validated when read and shown as plain text; the module never reads the
+stored entries validated when read and shown as plain text; opened on focus or click the list shows the whole recent history, only typing narrows it (the input may still hold the last query); the module never reads the
 criteria: a search input's `HistoryCriteria` validates them and compares them by key; the
 stored list names its own format (`version`) and its criteria's (`criteriaVersion`, the
 input's), and every write stores the current ones; older criteria are converted or left out

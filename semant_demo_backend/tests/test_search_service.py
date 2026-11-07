@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from semant_demo.config import MAX_PASSAGES_LIMIT, MAX_QUERY_RESULTS
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.search import service
@@ -603,6 +604,21 @@ async def test_passage_pages_are_slices_of_one_ranking_up_to_the_retrieval_limit
     [query] = chunks.queries
     assert query.limit == retrieval_limit + 1
     assert chunks.read == [[chunks.hits[i].id for i in page]]
+
+
+@pytest.mark.parametrize("count, bounded, total", [(MAX_QUERY_RESULTS, True, None), (MAX_PASSAGES_LIMIT, False, MAX_PASSAGES_LIMIT)])
+async def test_the_largest_retrieval_limit_ranks_at_most_the_query_maximum(count, bounded, total):
+    # #608 review: the limit + 1 ranked to tell whether the limit cut the ranking must not
+    # pass Weaviate's QUERY_MAXIMUM_RESULTS, so the largest limit is one below it.
+    chunks = RankedChunks(count)
+
+    first = await passages(passages_request(limit=100), MAX_PASSAGES_LIMIT, chunks)
+    last = await passages(passages_request(offset=MAX_PASSAGES_LIMIT - 1, limit=100), MAX_PASSAGES_LIMIT, chunks)
+
+    assert [query.limit for query in chunks.queries] == [MAX_QUERY_RESULTS, MAX_QUERY_RESULTS]
+    assert (first.bounded, first.total_count, last.bounded, last.total_count) == (bounded, total, bounded, total)
+    assert [r.text for r in last.items] == [f"passage {MAX_PASSAGES_LIMIT - 1}"]
+    assert (last.has_more, last.next_offset) == (False, None)
 
 
 async def test_a_passage_gone_before_its_page_is_read_is_left_out_of_it():
