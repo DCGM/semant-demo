@@ -3,13 +3,13 @@ import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-import { FilterType, type PassageSearchResponse, type SearchFilter, type SearchResultChunk } from 'src/generated/api'
+import { FilterType, type SearchFilter, type SearchResultChunk } from 'src/generated/api'
 import {
   criteriaKey, effectiveMode, emptyLocation, locationQuery, normalizeCriteria, parseLocationQuery, sameCriteria,
   type ExploreLocation
 } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
-import { passageCoverage, usePassageSearch, type PassageQuery, type PassageResults } from 'src/features/explore/usePassageSearch'
+import { hasMorePassages, passageCoverage, usePassageSearch, type PassageQuery, type PassageResults } from 'src/features/explore/usePassageSearch'
 import {
   criteriaChips, criteriaOfFilterValues, historyFiltersOf, nominalValuesOf, offeredCriteria, withNominalValues,
   withYearRange, yearRangeOf
@@ -250,23 +250,28 @@ const hit = (id: string): SearchResultChunk => ({
   id, text: `text of ${id}`, startPageId: 'p', fromPage: 1, toPage: 1, document: `doc-${id}`, order: 1, documentObject: { id: `doc-${id}` }
 })
 
-/** A page as the server sends it (snake_case). */
-const page = (ids: string[], more: Partial<{ next_offset: number | null, has_more: boolean, bounded: boolean, total_count: number | null }> = {}) => ({
-  items: ids.map(hit).map(h => ({ id: h.id, text: h.text, start_page_id: 'p', from_page: 1, to_page: 1, document: h.document, order: 1, document_object: { id: h.document } })),
-  offset: 0,
-  next_offset: null,
-  has_more: false,
+const serverHit = (id: string) => ({ id, text: `text of ${id}`, start_page_id: 'p', from_page: 1, to_page: 1, document: `doc-${id}`, order: 1, document_object: { id: `doc-${id}` } })
+
+/** A search answer as the server sends it (snake_case): the ranking and its first `readCount` passages. */
+const ranking = (ranked: string[], readCount = ranked.length, more: Partial<{ bounded: boolean, total_count: number | null, items: string[] }> = {}) => ({
+  ranked_ids: ranked,
+  items: (more.items ?? ranked.slice(0, readCount)).map(serverHit),
+  read_count: readCount,
   retrieval_limit: 1000,
-  bounded: false,
-  total_count: ids.length,
+  bounded: more.bounded ?? false,
+  total_count: 'total_count' in more ? more.total_count : ranked.length,
   criteria: { text_query: 'q', document_filters: {}, chunk_filters: {} },
-  time_spent: 0.2,
-  ...more
+  time_spent: 0.2
 })
+
+/** A later page as the server sends it. */
+const read = (ids: string[]) => ({ items: ids.map(serverHit), time_spent: 0.01 })
+
+const ids = (count: number, from = 0) => Array.from({ length: count }, (_, i) => `c${from + i}`)
 
 describe('usePassageSearch', () => {
   const originalFetch = globalThis.fetch
-  const requests: { body: Record<string, unknown>, answer: (body: unknown, status?: number) => void }[] = []
+  const requests: { path: string, body: Record<string, unknown>, answer: (body: unknown, status?: number) => void }[] = []
 
   afterEach(() => {
     globalThis.fetch = originalFetch
@@ -274,8 +279,9 @@ describe('usePassageSearch', () => {
   })
 
   function serve () {
-    globalThis.fetch = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve) => {
+    globalThis.fetch = vi.fn((url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve) => {
       requests.push({
+        path: new URL(String(url), 'http://test').pathname,
         body: JSON.parse(String(init?.body)),
         answer: (body, status = 200) => resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
       })
@@ -285,33 +291,44 @@ describe('usePassageSearch', () => {
   const query = (text: string, userCollectionId: string | null = null): PassageQuery => ({
     criteria: criteria({ textQuery: text, chunkFilters: { languages: ['ces'] } }), vector: null, userCollectionId
   })
+  const sentCriteria = (text: string) => ({ text_query: text, document_filters: { year_min: null, year_max: null, title_contains: [], libraries: [], languages: [] }, chunk_filters: { languages: ['ces'], classifications: {} } })
 
-  it('sends the criteria and retrieval options, and pages with Load more under the same search', async () => {
+  it('ranks once, then Load more reads the next 100 ranked ids under the same search', async () => {
     serve()
     const search = usePassageSearch()
+    const ranked = ids(125)
     const first = search.search(query('Lhota', 'c1'))
     await flush()
-    expect(requests[0].body).toEqual({
-      criteria: { text_query: 'Lhota', document_filters: { year_min: null, year_max: null, title_contains: [], libraries: [], languages: [] }, chunk_filters: { languages: ['ces'], classifications: {} } },
-      offset: 0,
-      limit: 20,
-      type: 'hybrid',
-      vector: null,
-      user_collection_id: 'c1'
-    })
-    requests[0].answer(page(['a', 'b'], { next_offset: 2, has_more: true, total_count: 3 }))
+    expect(requests[0].path).toMatch(/\/api\/search\/passages$/)
+    expect(requests[0].body).toEqual({ criteria: sentCriteria('Lhota'), limit: 20, type: 'hybrid', vector: null, user_collection_id: 'c1' })
+    requests[0].answer(ranking(ranked, 20))
     const results = await first
-    expect(results?.items.map(i => i.id)).toEqual(['a', 'b'])
+    expect(results?.items.map(i => i.id)).toEqual(ids(20))
+    expect(results?.rankedIds).toEqual(ranked) // the population, for Load more and visualizations (#528)
+    expect(hasMorePassages(results!)).toBe(true)
 
     const more = search.loadMore()
     await flush()
-    expect(requests[1].body).toMatchObject({ offset: 2, user_collection_id: 'c1' })
+    // Not a new ranking: the next ranked ids, with the search's criteria and collection.
+    expect(requests[1].path).toMatch(/\/api\/search\/passages\/read$/)
+    expect(requests[1].body).toEqual({ ids: ids(100, 20), criteria: sentCriteria('Lhota'), user_collection_id: 'c1' })
     expect(search.loadingMore.value).toBe(true)
-    requests[1].answer(page(['b', 'c'])) // b ranked again: shown once
+    requests[1].answer(read(ids(100, 20).filter(id => id !== 'c30'))) // c30 is gone meanwhile: left out
     await more
-    expect(search.results.value?.items.map(i => i.id)).toEqual(['a', 'b', 'c'])
-    expect(search.results.value?.id).toBe(results?.id)
-    expect([search.loadingMore.value, search.results.value?.last.hasMore]).toEqual([false, false])
+    expect(search.results.value?.items).toHaveLength(119)
+    expect(search.results.value?.readCount).toBe(120)
+
+    const last = search.loadMore()
+    await flush()
+    expect(requests[2].body).toMatchObject({ ids: ids(5, 120) })
+    requests[2].answer(read(ids(5, 120)))
+    await last
+    const current = search.results.value!
+    expect(current.items.map(i => i.id)).toEqual(ranked.filter(id => id !== 'c30'))
+    expect([current.id, current.rankedIds, hasMorePassages(current), search.loadingMore.value]).toEqual([results?.id, ranked, false, false])
+
+    await search.loadMore() // nothing left to read
+    expect(requests).toHaveLength(3)
   })
 
   it('drops the late answers of an earlier search and of its Load more', async () => {
@@ -319,7 +336,7 @@ describe('usePassageSearch', () => {
     const search = usePassageSearch()
     const first = search.search(query('one'))
     await flush()
-    requests[0].answer(page(['a'], { next_offset: 1, has_more: true, total_count: 2 }))
+    requests[0].answer(ranking(['a', 'b'], 1))
     await first
     const more = search.loadMore()
     await flush()
@@ -327,11 +344,12 @@ describe('usePassageSearch', () => {
     await flush()
     expect(search.results.value).toBeNull() // no earlier results while the new search runs
 
-    requests[1].answer(page(['late']))
+    requests[1].answer(read(['b']))
     await more
     expect([search.results.value, search.loading.value]).toEqual([null, true])
-    requests[2].answer(page(['new']))
-    expect((await second)?.items.map(i => i.id)).toEqual(['new'])
+    requests[2].answer(ranking(['new']))
+    const found = await second
+    expect([found?.items.map(i => i.id), found?.rankedIds]).toEqual([['new'], ['new']]) // the new ranking replaces the old
     expect([search.loading.value, search.loadingMore.value]).toEqual([false, false])
   })
 
@@ -345,35 +363,41 @@ describe('usePassageSearch', () => {
     expect(await refused).toBeNull()
     expect(search.error.value).toBe('Passages cannot be filtered by complexity: this corpus database is not recorded.')
 
-    const ok = search.search(query('two'))
+    const ok = search.search(query('two', 'c1'))
     await flush()
     expect(search.error.value).toBeNull()
-    requests[1].answer(page(['a'], { next_offset: 1, has_more: true, total_count: 2 }))
+    requests[1].answer(ranking(['a', 'b'], 1))
     await ok
     const more = search.loadMore()
     await flush()
-    requests[2].answer({ detail: 'Weaviate unavailable' }, 500)
+    requests[2].answer({ detail: 'Collection not found' }, 404) // e.g. unshared since the search
     await more
     expect(search.results.value?.items.map(i => i.id)).toEqual(['a'])
-    expect(search.loadMoreError.value).toBe('Weaviate unavailable')
+    expect(search.results.value?.readCount).toBe(1) // Load more can try again
+    expect(search.loadMoreError.value).toBe('Collection not found')
     expect(logged).toHaveBeenCalled()
   })
 })
 
 describe('passage coverage', () => {
-  const results = (items: number, last: Partial<PassageSearchResponse>): PassageResults => ({
+  const results = (items: number, coverage: Partial<Pick<PassageResults, 'bounded' | 'totalCount'>> = {}): PassageResults => ({
     id: 1,
     query: { criteria: criteria({ textQuery: 'q' }), vector: null, userCollectionId: null },
+    rankedIds: ids(coverage.totalCount ?? items),
     items: Array.from({ length: items }, (_, i) => hit(String(i))),
-    last: { items: [], offset: 0, nextOffset: null, hasMore: false, retrievalLimit: 1000, bounded: false, totalCount: items, criteria: { textQuery: 'q' }, timeSpent: 0, ...last },
-    timeSpent: 0
+    readCount: items,
+    retrievalLimit: 1000,
+    bounded: false,
+    totalCount: items,
+    timeSpent: 0,
+    ...coverage
   })
 
   it('says whether the passages are all matches or the best up to the limit, and how many are shown', () => {
-    expect(passageCoverage(results(1, {}))).toBe('All 1 matching passage.')
-    expect(passageCoverage(results(37, {}))).toBe('All 37 matching passages.')
-    expect(passageCoverage(results(20, { totalCount: 37, hasMore: true }))).toBe('37 matching passages (20 shown).')
-    expect(passageCoverage(results(20, { bounded: true, totalCount: null, hasMore: true }))).toBe(
+    expect(passageCoverage(results(1))).toBe('All 1 matching passage.')
+    expect(passageCoverage(results(37))).toBe('All 37 matching passages.')
+    expect(passageCoverage(results(20, { totalCount: 37 }))).toBe('37 matching passages (20 shown).')
+    expect(passageCoverage(results(20, { bounded: true, totalCount: null }))).toBe(
       'The best 1,000 passages by relevance (20 shown); more may match. Refine the query or filters to reach others.')
   })
 })

@@ -29,18 +29,25 @@ import {
 } from './SearchCriteria';
 
 /**
- * A page of ranked passages and what the whole retrieved population covers.
+ * The ranking of one passage search, its first page and what the ranking covers.
  * 
- * One search retrieves at most ``retrieval_limit`` passages (best first); every page is a
- * slice of that one ranking, and later visualizations of the same search describe the same
- * population. ``bounded`` is ``False`` when it holds every matching passage (then
- * ``total_count`` is their number) and ``True`` when the limit cut the ranking (more
- * passages match but are not retrievable). Vector and hybrid search rank every passage that
- * passes the filters, so they are bounded unless the filters leave fewer than the limit.
+ * The search ranks at most ``retrieval_limit`` passages once (best first, ``ranked_ids``);
+ * later pages read slices of those ids (``POST /api/search/passages/read``) instead of
+ * ranking again, and visualizations of the same search can describe the same population.
+ * ``bounded`` is ``False`` when the ranking holds every matching passage (then
+ * ``total_count`` is their number) and ``True`` when the limit cut it (more passages match
+ * but are not retrievable). Vector and hybrid search rank every passage that passes the
+ * filters, so they are bounded unless the filters leave fewer than the limit.
  * @export
  * @interface PassageSearchResponse
  */
 export interface PassageSearchResponse {
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof PassageSearchResponse
+     */
+    rankedIds: Array<string>;
     /**
      * 
      * @type {Array<SearchResultChunk>}
@@ -52,19 +59,7 @@ export interface PassageSearchResponse {
      * @type {number}
      * @memberof PassageSearchResponse
      */
-    offset: number;
-    /**
-     * 
-     * @type {number}
-     * @memberof PassageSearchResponse
-     */
-    nextOffset: number | null;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof PassageSearchResponse
-     */
-    hasMore: boolean;
+    readCount: number;
     /**
      * 
      * @type {number}
@@ -107,10 +102,9 @@ export interface PassageSearchResponse {
  * Check if a given object implements the PassageSearchResponse interface.
  */
 export function instanceOfPassageSearchResponse(value: object): value is PassageSearchResponse {
+    if (!('rankedIds' in value) || value['rankedIds'] === undefined) return false;
     if (!('items' in value) || value['items'] === undefined) return false;
-    if (!('offset' in value) || value['offset'] === undefined) return false;
-    if (!('nextOffset' in value) || value['nextOffset'] === undefined) return false;
-    if (!('hasMore' in value) || value['hasMore'] === undefined) return false;
+    if (!('readCount' in value) || value['readCount'] === undefined) return false;
     if (!('retrievalLimit' in value) || value['retrievalLimit'] === undefined) return false;
     if (!('bounded' in value) || value['bounded'] === undefined) return false;
     if (!('totalCount' in value) || value['totalCount'] === undefined) return false;
@@ -129,10 +123,9 @@ export function PassageSearchResponseFromJSONTyped(json: any, ignoreDiscriminato
     }
     return {
         
+        'rankedIds': json['ranked_ids'],
         'items': ((json['items'] as Array<any>).map(SearchResultChunkFromJSON)),
-        'offset': json['offset'],
-        'nextOffset': json['next_offset'],
-        'hasMore': json['has_more'],
+        'readCount': json['read_count'],
         'retrievalLimit': json['retrieval_limit'],
         'bounded': json['bounded'],
         'totalCount': json['total_count'],
@@ -153,10 +146,9 @@ export function PassageSearchResponseToJSONTyped(value?: PassageSearchResponse |
 
     return {
         
+        'ranked_ids': value['rankedIds'],
         'items': ((value['items'] as Array<any>).map(SearchResultChunkToJSON)),
-        'offset': value['offset'],
-        'next_offset': value['nextOffset'],
-        'has_more': value['hasMore'],
+        'read_count': value['readCount'],
         'retrieval_limit': value['retrievalLimit'],
         'bounded': value['bounded'],
         'total_count': value['totalCount'],

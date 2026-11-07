@@ -1,10 +1,12 @@
 import { ref, shallowRef } from 'vue'
-import { SearchType, type PassageSearchResponse, type SearchResultChunk } from 'src/generated/api'
+import { SearchType, type SearchResultChunk } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
 import { toSearchCriteria, type Criteria } from './criteria'
 
-/** Passages per page (#605): the first page and each Load more. */
-export const PASSAGE_PAGE_SIZE = 20
+/** Passages of the first page of a search (#605). */
+export const FIRST_PASSAGE_PAGE = 20
+/** Passages each Load more adds (#611); the server reads at most 100 at once. */
+export const MORE_PASSAGE_PAGE = 100
 
 /** What one passage search is for: the applied criteria and the retrieval options. */
 export interface PassageQuery {
@@ -16,21 +18,34 @@ export interface PassageQuery {
 
 /**
  * The passages of one search, as loaded so far. A new search gets a new `id`; loading more
- * keeps it (the same search, more of its results). `last` is the newest page's answer, so
- * its `nextOffset` is the next page; `bounded`, `totalCount` and `retrievalLimit` describe the
- * population, the same on every page.
+ * keeps it (the same search, more of its results).
+ *
+ * The search ranks once (#611): `rankedIds` is its whole bounded ranking, best first, and
+ * Load more reads the next of them by id instead of ranking again. It is the population the
+ * coverage describes and that visualizations of the same search can use (#528); it lives only
+ * in this state, never in the shareable URL, and a new search replaces it.
  */
 export interface PassageResults {
   readonly id: number
   readonly query: PassageQuery
+  readonly rankedIds: readonly string[]
+  /** The passages of the first `readCount` ranked ids; those gone by the time they were read are missing. */
   readonly items: readonly SearchResultChunk[]
-  readonly last: PassageSearchResponse
-  /** Time of the first page, in seconds. */
+  readonly readCount: number
+  /** Coverage of the ranking: at most `retrievalLimit`; `bounded` when the limit cut it, else `totalCount` matches. */
+  readonly retrievalLimit: number
+  readonly bounded: boolean
+  readonly totalCount: number | null
+  /** Time of the search (ranking and first page), in seconds. */
   readonly timeSpent: number
 }
 
+/** Whether Load more has ranked passages left to read. */
+export const hasMorePassages = (results: PassageResults): boolean => results.readCount < results.rankedIds.length
+
 /**
- * Runs passage searches (`POST /api/search/passages`) and holds the current results.
+ * Runs passage searches (`POST /api/search/passages`), reads their later pages
+ * (`POST /api/search/passages/read`) and holds the current results.
  * A new search aborts the previous one and its Load more; an answer that still arrives for
  * them is dropped and changes neither the results nor the loading and error states. While a
  * search runs, no results are shown, so earlier ones are never presented as its answer.
@@ -47,17 +62,6 @@ export function usePassageSearch () {
   const guard = createContextGuard()
   let abort: AbortController | null = null
   let lastId = 0
-
-  const request = (query: PassageQuery, offset: number, signal: AbortSignal) => api.searchPassagesApiSearchPassagesPost({
-    passageSearchRequest: {
-      criteria: toSearchCriteria(query.criteria),
-      offset,
-      limit: PASSAGE_PAGE_SIZE,
-      type: SearchType.hybrid,
-      vector: query.vector,
-      userCollectionId: query.userCollectionId
-    }
-  }, { signal })
 
   function start (): { isCurrent: () => boolean, signal: AbortSignal } {
     abort?.abort()
@@ -76,9 +80,27 @@ export function usePassageSearch () {
     loading.value = true
     loadingMore.value = false
     try {
-      const page = await request(query, 0, signal)
+      const found = await api.searchPassagesApiSearchPassagesPost({
+        passageSearchRequest: {
+          criteria: toSearchCriteria(query.criteria),
+          limit: FIRST_PASSAGE_PAGE,
+          type: SearchType.hybrid,
+          vector: query.vector,
+          userCollectionId: query.userCollectionId
+        }
+      }, { signal })
       if (!isCurrent()) return null
-      results.value = { id: ++lastId, query, items: page.items, last: page, timeSpent: page.timeSpent }
+      results.value = {
+        id: ++lastId,
+        query,
+        rankedIds: found.rankedIds,
+        items: found.items,
+        readCount: found.readCount,
+        retrievalLimit: found.retrievalLimit,
+        bounded: found.bounded,
+        totalCount: found.totalCount ?? null,
+        timeSpent: found.timeSpent
+      }
       return results.value
     } catch (e) {
       if (!isCurrent() || isAbortError(e)) return null
@@ -94,20 +116,32 @@ export function usePassageSearch () {
     }
   }
 
-  /** Loads the next page of the current search; nothing without one or while loading. */
+  /**
+   * Reads the next ranked ids of the current search; nothing without more or while loading.
+   * The server applies the search's collection and criteria again, so it may leave some out.
+   */
   async function loadMore (): Promise<void> {
     const current = results.value
-    const offset = current?.last.nextOffset
-    if (!current || offset == null || loading.value || loadingMore.value) return
+    if (!current || !hasMorePassages(current) || loading.value || loadingMore.value) return
+    const ids = current.rankedIds.slice(current.readCount, current.readCount + MORE_PASSAGE_PAGE)
     const { isCurrent, signal } = start()
     loadingMore.value = true
     loadMoreError.value = null
     try {
-      const page = await request(current.query, offset, signal)
+      const page = await api.readPassagesApiSearchPassagesReadPost({
+        passageReadRequest: {
+          ids,
+          criteria: toSearchCriteria(current.query.criteria),
+          userCollectionId: current.query.userCollectionId
+        }
+      }, { signal })
       if (!isCurrent() || results.value?.id !== current.id) return
-      // A passage ranked again on a later page (equal scores) is shown once.
       const seen = new Set(current.items.map(item => item.id))
-      results.value = { ...current, items: [...current.items, ...page.items.filter(item => !seen.has(item.id))], last: page }
+      results.value = {
+        ...current,
+        items: [...current.items, ...page.items.filter(item => !seen.has(item.id))],
+        readCount: current.readCount + ids.length
+      }
     } catch (e) {
       if (!isCurrent() || isAbortError(e)) return
       console.error('Loading more passages failed', e)
@@ -138,11 +172,11 @@ export function usePassageSearch () {
 
 /**
  * What the loaded passages cover, for the results header: every matching passage or only the
- * best ones up to the retrieval limit (known from the first page), and how many are shown.
+ * best ones up to the retrieval limit (known from the ranking), and how many are shown.
  */
 export function passageCoverage (results: PassageResults): string {
   const shown = results.items.length.toLocaleString('en')
-  const { bounded, totalCount, retrievalLimit } = results.last
+  const { bounded, totalCount, retrievalLimit } = results
   if (bounded) {
     return `The best ${retrievalLimit.toLocaleString('en')} passages by relevance (${shown} shown); more may match. ` +
       'Refine the query or filters to reach others.'
