@@ -80,6 +80,35 @@ test('recent searches', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-history-newer-version')
 })
 
+test('search documents: filter-only results, mode switch, Load more and states (#606)', async ({ page }, testInfo) => {
+  // A first page of two, so Load more and the coverage line show with the small fixture corpus.
+  await page.route('**/api/search/documents', async (route) => {
+    const body = route.request().postDataJSON()
+    await route.continue({ postData: JSON.stringify(body.offset === 0 ? { ...body, limit: 2 } : body) })
+  })
+  await page.goto('/#/search?chunk_languages=ces')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('document-result-open')).toHaveCount(2)
+  await expect(page.getByTestId('search-load-more')).toBeVisible()
+  await page.getByTestId('search-coverage').click() // closes the recent searches the field offers
+  // No right sidebar: the Summary panel serves passages only.
+  await save(page, testInfo, 'search-documents')
+
+  await page.getByTestId('search-load-more').click()
+  await expect(page.getByTestId('document-result-open')).toHaveCount(3)
+  await save(page, testInfo, 'search-documents-all')
+
+  await page.goto('/#/search?q=Lhota&chunk_languages=ces&mode=documents')
+  await expect(page.getByTestId('search-documents-need-no-query')).toBeVisible()
+  await page.getByTestId('search-documents-need-no-query').click()
+  await save(page, testInfo, 'search-documents-need-no-query')
+
+  await page.goto('/#/search?chunk_classifications=communicative_mode:narration&year_min=1900')
+  await expect(page.getByTestId('search-empty')).toBeVisible()
+  await page.getByTestId('search-empty').click()
+  await save(page, testInfo, 'search-documents-empty')
+})
+
 test('search passages: applied filters, coverage, Load more, pending and empty states (#605)', async ({ page }, testInfo) => {
   // Pages of three, so Load more and the coverage line show with the small fixture corpus.
   await page.route('**/api/search/passages', async (route) => {
@@ -96,7 +125,7 @@ test('search passages: applied filters, coverage, Load more, pending and empty s
   await expect(page.getByTestId('search-pending')).toBeVisible()
   await save(page, testInfo, 'search-passages-pending')
 
-  await page.goto('/#/search?chunk_languages=ces')
+  await page.goto('/#/search?chunk_languages=ces&mode=passages')
   await expect(page.getByTestId('search-needs-query')).toBeVisible()
   await page.getByTestId('search-needs-query').click() // closes the recent searches the field offers
   await expect(page.getByTestId('search-history')).toHaveCount(0)

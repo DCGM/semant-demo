@@ -14,7 +14,6 @@
                   v-model="queryInput"
                   dense
                   outlined
-                  required
                   autofocus
                   autocomplete="off"
                   aria-label="Search query"
@@ -73,7 +72,7 @@
             <!-- Changes in the form are a draft until Enter or Search applies them; the results
                  and the chips below stay those of the applied search. -->
             <div
-              v-if="pending && applied.criteria.textQuery"
+              v-if="pending && resultsState !== 'idle'"
               class="row no-wrap items-center q-mt-xs text-caption text-grey-8 pending-note"
               role="status"
               data-testid="search-pending"
@@ -226,108 +225,167 @@
         </q-form>
       </q-card>
 
-      <div v-if="resultsState === 'loading'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-loading">
-        <q-spinner color="primary" size="2.5em" />
-        <div class="q-mt-sm">Searching passages…</div>
-      </div>
-
-      <q-banner v-else-if="resultsState === 'error'" rounded class="bg-red-1 text-negative" role="alert" data-testid="search-error">
-        <template v-slot:avatar>
-          <q-icon name="error_outline" color="negative" />
-        </template>
-        Search failed: {{ passages.error.value }}
-        <template v-slot:action>
-          <q-btn flat color="negative" label="Try again" @click="runApplied" />
-        </template>
-      </q-banner>
-
-      <div v-else-if="resultsState === 'empty'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-empty">
-        <q-icon name="search_off" size="2.5em" />
-        <div class="q-mt-sm text-subtitle1">No passages match this search.</div>
-        <div class="text-caption">Try other words, or remove some of the filters above.</div>
-      </div>
-
-      <div v-else-if="resultsState === 'needsQuery'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-needs-query">
-        <q-icon name="manage_search" size="2.5em" />
-        <div class="q-mt-sm text-subtitle1">Enter a text query to search passages with these filters.</div>
-        <div class="text-caption">Browsing documents by filters alone is not available here yet.</div>
-      </div>
-
-      <div v-else-if="resultsState === 'results'">
-        <div class="row items-end justify-between q-mb-md">
-          <div>
-            <div class="text-h5 text-weight-medium">Passages</div>
-            <div class="text-caption text-grey-7" data-testid="search-coverage">
+      <div v-if="resultsState !== 'idle'">
+        <!-- One results header for both modes: the mode switch keeps the applied criteria (#606). -->
+        <div class="results-header">
+          <div class="results-header__title">
+            <div class="text-h5 text-weight-medium">{{ mode === 'documents' ? 'Documents' : 'Passages' }}</div>
+            <div v-if="resultsState === 'results'" class="text-caption text-grey-7" data-testid="search-coverage">
               {{ coverage }} Search completed in {{ timeSpent.toFixed(2) }}s.
             </div>
+            <div v-else-if="resultsState === 'documents'" class="text-caption text-grey-7" data-testid="search-coverage">
+              {{ coverage }} {{ DOCUMENT_ORDER_LABEL }}
+            </div>
           </div>
-        </div>
-
-        <q-slide-transition>
-          <div v-show="selectedResults.length > 0" class="q-mb-lg">
-            <q-card flat bordered class="bg-primary text-white">
-              <q-card-section class="selection-toolbar q-pa-sm">
-                <div class="row items-center no-wrap">
-                  <div class="text-subtitle2 q-ml-sm col" aria-live="polite">{{ selectedResults.length }} item(s) selected</div>
-                  <q-btn flat color="white" icon="close" label="Clear selection" @click="clearSelection" />
-                </div>
-                <!-- Collection membership: signed-in users with a collection they may edit (the backend checks again). -->
-                <div v-if="canAddToCollections" class="selection-toolbar__actions">
-                  <q-select
-                    v-model="targetCollectionId"
-                    :options="targetCollectionOptions"
-                    label="Select Collection"
-                    dense
-                    outlined
-                    dark
-                    emit-value
-                    map-options
-                    class="selection-toolbar__collection"
-                  />
-                  <q-btn flat color="white" icon="library_add" label="Add Chunks" @click="addSelectedChunksToCollection" />
-                  <q-btn flat color="white" icon="post_add" label="Add Documents" @click="addSelectedDocumentsToCollection" />
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </q-slide-transition>
-
-        <div class="q-gutter-y-md">
-          <SearchResultCard
-            v-for="(chunk, index) in results"
-            :id="`result-${index + 1}`"
-            :key="chunk.id"
-            :chunk="chunk"
-            :number="index + 1"
-            :filters="availableSearchFilters"
-            :selected="selectedResults.includes(chunk.id)"
-            :highlighted="highlightedDocNumber === index + 1"
-            :context-shown="contextResultNumber === index + 1"
-            @update:selected="setSelected(chunk.id, $event)"
-            @view-context="viewContext(chunk, index + 1)"
+          <q-btn-toggle
+            :model-value="mode"
+            :options="MODE_OPTIONS"
+            no-caps
+            unelevated
+            dense
+            toggle-color="primary"
+            color="white"
+            text-color="primary"
+            class="results-mode"
+            aria-label="Results mode"
+            data-testid="results-mode"
+            @update:model-value="chooseMode"
           />
         </div>
 
-        <div class="column items-center q-mt-xl q-gutter-y-sm">
-          <q-banner v-if="passages.loadMoreError.value" dense rounded class="bg-red-1 text-negative" role="alert">
-            {{ passages.loadMoreError.value }}
-          </q-banner>
-          <q-btn
-            v-if="hasMore"
-            outline
-            color="primary"
-            icon="expand_more"
-            label="Load more passages"
-            :loading="passages.loadingMore.value"
-            data-testid="search-load-more"
-            @click="passages.loadMore"
-          />
+        <div v-if="resultsState === 'loading'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-loading">
+          <q-spinner color="primary" size="2.5em" />
+          <div class="q-mt-sm">{{ mode === 'documents' ? 'Loading documents…' : 'Searching passages…' }}</div>
+        </div>
+
+        <q-banner v-else-if="resultsState === 'error'" rounded class="bg-red-1 text-negative" role="alert" data-testid="search-error">
+          <template v-slot:avatar>
+            <q-icon name="error_outline" color="negative" />
+          </template>
+          Search failed: {{ activeError }}
+          <template v-slot:action>
+            <q-btn flat color="negative" label="Try again" @click="runApplied" />
+          </template>
+        </q-banner>
+
+        <div v-else-if="resultsState === 'empty'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-empty">
+          <q-icon name="search_off" size="2.5em" />
+          <template v-if="mode === 'documents'">
+            <div class="q-mt-sm text-subtitle1">No documents match these filters.</div>
+            <div class="text-caption">Remove some of the filters above.</div>
+          </template>
+          <template v-else>
+            <div class="q-mt-sm text-subtitle1">No passages match this search.</div>
+            <div class="text-caption">Try other words, or remove some of the filters above.</div>
+          </template>
+        </div>
+
+        <div v-else-if="resultsState === 'needsQuery'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-needs-query">
+          <q-icon name="manage_search" size="2.5em" />
+          <div class="q-mt-sm text-subtitle1">Enter a text query to search passages with these filters.</div>
+          <div class="text-caption">Browsing passages by filters alone is not available. Documents lists the documents these filters match.</div>
+        </div>
+
+        <div v-else-if="resultsState === 'documentsNeedNoQuery'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-documents-need-no-query">
+          <q-icon name="description" size="2.5em" />
+          <div class="q-mt-sm text-subtitle1">Documents for a text query are not available yet.</div>
+          <div class="text-caption">Passages shows the passages that match it. Clear the text query to list the documents these filters match.</div>
+        </div>
+
+        <div v-else-if="resultsState === 'documents'">
+          <div class="q-gutter-y-md">
+            <DocumentResultCard
+              v-for="(item, index) in documentItems"
+              :id="`document-${index + 1}`"
+              :key="item.id"
+              :document="item"
+              :number="index + 1"
+            />
+          </div>
+          <div class="column items-center q-mt-xl q-gutter-y-sm">
+            <q-banner v-if="documents.loadMoreError.value" dense rounded class="bg-red-1 text-negative" role="alert">
+              {{ documents.loadMoreError.value }}
+            </q-banner>
+            <q-btn
+              v-if="hasMore"
+              outline
+              color="primary"
+              icon="expand_more"
+              label="Load more documents"
+              :loading="documents.loadingMore.value"
+              data-testid="search-load-more"
+              @click="documents.loadMore"
+            />
+          </div>
+        </div>
+
+        <div v-else-if="resultsState === 'results'">
+          <q-slide-transition>
+            <div v-show="selectedResults.length > 0" class="q-mb-lg">
+              <q-card flat bordered class="bg-primary text-white">
+                <q-card-section class="selection-toolbar q-pa-sm">
+                  <div class="row items-center no-wrap">
+                    <div class="text-subtitle2 q-ml-sm col" aria-live="polite">{{ selectedResults.length }} item(s) selected</div>
+                    <q-btn flat color="white" icon="close" label="Clear selection" @click="clearSelection" />
+                  </div>
+                  <!-- Collection membership: signed-in users with a collection they may edit (the backend checks again). -->
+                  <div v-if="canAddToCollections" class="selection-toolbar__actions">
+                    <q-select
+                      v-model="targetCollectionId"
+                      :options="targetCollectionOptions"
+                      label="Select Collection"
+                      dense
+                      outlined
+                      dark
+                      emit-value
+                      map-options
+                      class="selection-toolbar__collection"
+                    />
+                    <q-btn flat color="white" icon="library_add" label="Add Chunks" @click="addSelectedChunksToCollection" />
+                    <q-btn flat color="white" icon="post_add" label="Add Documents" @click="addSelectedDocumentsToCollection" />
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+          </q-slide-transition>
+
+          <div class="q-gutter-y-md">
+            <SearchResultCard
+              v-for="(chunk, index) in results"
+              :id="`result-${index + 1}`"
+              :key="chunk.id"
+              :chunk="chunk"
+              :number="index + 1"
+              :filters="availableSearchFilters"
+              :selected="selectedResults.includes(chunk.id)"
+              :highlighted="highlightedDocNumber === index + 1"
+              :context-shown="contextResultNumber === index + 1"
+              @update:selected="setSelected(chunk.id, $event)"
+              @view-context="viewContext(chunk, index + 1)"
+            />
+          </div>
+
+          <div class="column items-center q-mt-xl q-gutter-y-sm">
+            <q-banner v-if="passages.loadMoreError.value" dense rounded class="bg-red-1 text-negative" role="alert">
+              {{ passages.loadMoreError.value }}
+            </q-banner>
+            <q-btn
+              v-if="hasMore"
+              outline
+              color="primary"
+              icon="expand_more"
+              label="Load more passages"
+              :loading="passages.loadingMore.value"
+              data-testid="search-load-more"
+              @click="passages.loadMore"
+            />
+          </div>
         </div>
       </div>
 
     </div>
 
-    <RightSidebarPanel v-if="results.length || loading" id="search-summary" label="Summary" icon="summarize">
+    <RightSidebarPanel v-if="results.length || passages.loading.value" id="search-summary" label="Summary" icon="summarize">
       <SearchSummaryPanel
         :tokens="searchSummary.tokens"
         :time-spent="searchSummary.timeSpent"
@@ -366,19 +424,21 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
-import { QPage, QForm, QInput, QBtn, QCard, QCardSection, QSeparator, QSelect, QRange, QItem, QItemSection, QItemLabel, QBanner, QSpinner, Notify, useQuasar } from 'quasar'
+import { QPage, QForm, QInput, QBtn, QBtnToggle, QCard, QCardSection, QSeparator, QSelect, QRange, QItem, QItemSection, QItemLabel, QBanner, QSpinner, Notify, useQuasar } from 'quasar'
 import { SearchType, WriteOutcome, type SearchFilter, type SearchVectorInfo } from 'src/generated/api'
 import { captureSession, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import { emptyCriteria, emptyLocation, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation } from 'src/features/explore/criteria'
+import { effectiveMode, emptyCriteria, emptyLocation, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
+import { DOCUMENT_ORDER_LABEL, documentCoverage, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import SearchResultCard from './SearchResultCard.vue'
+import DocumentResultCard from './DocumentResultCard.vue'
 import { escapeClearsSelection } from './resultLayout'
 import type { SearchResultsContext } from './searchResults'
 import {
@@ -400,7 +460,8 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 // draft search criteria, and Enter or Search applies them. The applied criteria, the search
 // vector and the results mode live in the URL (`features/explore`), so Back/Forward and shared
 // links restore a search; the collection scope is a page setting, never in the URL. Results are
-// Passages (`POST /api/search/passages`), loaded page by page; Documents follow in #527b/c.
+// Passages (`POST /api/search/passages`) for a text query and Documents (`POST /api/search/documents`,
+// #606) for filters alone, each loaded page by page; documents ranked by a text query follow (#527c).
 
 const api = useApi().default
 
@@ -464,13 +525,27 @@ const setDraftNominal = (filter: SearchFilter, values: string[] | null) => {
   draftFilters.value = withNominalValues(draftFilters.value, filter, values)
 }
 
-// Results: the passages of the applied search, as loaded so far.
+// Results: the passages or the documents of the applied search, as loaded so far.
+const mode = computed<ResultsMode>(() => effectiveMode(applied.value))
+const MODE_OPTIONS = [
+  { label: 'Documents', value: 'documents', attrs: { 'data-testid': 'results-mode-documents' } },
+  { label: 'Passages', value: 'passages', attrs: { 'data-testid': 'results-mode-passages' } }
+]
 const passages = usePassageSearch()
-const loading = passages.loading
+const documents = useDocumentSearch()
+const loading = computed(() => passages.loading.value || documents.loading.value)
 const results = computed(() => passages.results.value?.items ?? [])
+const documentItems = computed(() => documents.results.value?.items ?? [])
+const activeError = computed(() => (mode.value === 'documents' ? documents.error.value : passages.error.value))
 const timeSpent = computed(() => passages.results.value?.timeSpent ?? 0)
-const coverage = computed(() => (passages.results.value ? passageCoverage(passages.results.value) : ''))
-const hasMore = computed(() => (passages.results.value ? hasMorePassages(passages.results.value) : false))
+const coverage = computed(() => {
+  if (mode.value === 'documents') return documents.results.value ? documentCoverage(documents.results.value) : ''
+  return passages.results.value ? passageCoverage(passages.results.value) : ''
+})
+const hasMore = computed(() => {
+  if (mode.value === 'documents') return documents.results.value ? hasMoreDocuments(documents.results.value) : false
+  return passages.results.value ? hasMorePassages(passages.results.value) : false
+})
 const searchContext = computed<SearchResultsContext | null>(() => {
   const current = passages.results.value
   return current
@@ -480,14 +555,42 @@ const searchContext = computed<SearchResultsContext | null>(() => {
 const selectedResults = ref<string[]>([])
 const targetCollectionId = ref<string | null>(null)
 
-/** What the results area shows besides result cards. */
-const resultsState = computed<'results' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'idle'>(() => {
-  if (loading.value) return 'loading'
+/** Nothing is applied: no criteria and no chosen results mode (the page as first opened). */
+const isIdleLocation = (location: ExploreLocation) =>
+  !location.criteria.textQuery && !hasFilters(location.criteria) && location.mode === null
+
+/**
+ * What the results area shows: passage cards (`results`), document cards (`documents`) or a
+ * state. Without a text query Passages need one (`needsQuery`); with one, Documents are not
+ * available yet (`documentsNeedNoQuery`, #527c).
+ */
+const resultsState = computed<'results' | 'documents' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'documentsNeedNoQuery' | 'idle'>(() => {
+  const location = applied.value
+  if (isIdleLocation(location)) return 'idle'
+  if (mode.value === 'documents') {
+    if (location.criteria.textQuery) return 'documentsNeedNoQuery'
+    if (documents.loading.value) return 'loading'
+    if (documents.error.value) return 'error'
+    if (documents.results.value) return documentItems.value.length ? 'documents' : 'empty'
+    return 'idle'
+  }
+  if (!location.criteria.textQuery) return 'needsQuery'
+  if (passages.loading.value) return 'loading'
   if (passages.error.value) return 'error'
   if (passages.results.value) return results.value.length ? 'results' : 'empty'
-  if (!applied.value.criteria.textQuery && hasFilters(applied.value.criteria)) return 'needsQuery'
   return 'idle'
 })
+
+/** The results mode a location shows without a choice: Passages for a text query, else Documents. */
+const defaultMode = (criteria: Criteria): ResultsMode => (criteria.textQuery ? 'passages' : 'documents')
+
+/** Shows the applied criteria in another results mode: a new history entry, the same criteria. */
+function chooseMode (chosen: ResultsMode) {
+  if (chosen === mode.value) return
+  const criteria = applied.value.criteria
+  // The default mode is not kept in the URL, so a later search picks the default for its criteria.
+  void explore.apply({ ...applied.value, mode: chosen === defaultMode(criteria) ? null : chosen })
+}
 
 function clearSelection () {
   selectedResults.value = []
@@ -589,6 +692,7 @@ watch(
       // Signed out or another user: results and selections may come from the previous
       // user's collections.
       passages.cancel()
+      documents.cancel()
       selectedResults.value = []
       draftCollection.value = null
       appliedCollection.value = null
@@ -768,6 +872,8 @@ function removeChip (chip: AppliedChip) {
     const inDraft = criteriaChips(draftFilters.value, availableSearchFilters.value).find(c => c.key === chip.key)
     if (inDraft) draftFilters.value = inDraft.without
   }
+  // Without its last filter, a documents search lists every document rather than nothing.
+  if (isIdleLocation(location) && mode.value === 'documents') location.mode = 'documents'
   void explore.apply(location)
 }
 
@@ -823,20 +929,23 @@ async function fetchSearchVectors () {
   }
 }
 
-/** Applies the draft: a new history entry, or the same search again when nothing changed. */
+/**
+ * Applies the draft: a new history entry, or the same search again when nothing changed.
+ * A text query searches Passages, filters alone list Documents (an empty form: every document).
+ * Each mode serves only one of them so far, so applied criteria show their default mode; a
+ * mode chosen for the earlier criteria is not carried over (#527c will offer both).
+ */
 async function onSearch () {
   history.close()
   const criteria = draftCriteria.value
-  if (!criteria.textQuery) {
-    Notify.create({ message: 'Enter a text query to search passages.', position: 'top', color: 'info' })
-    return
-  }
-  if (criteria.textQuery.length > MAX_TEXT_QUERY_LENGTH) {
+  if (criteria.textQuery && criteria.textQuery.length > MAX_TEXT_QUERY_LENGTH) {
     Notify.create({ message: `The text query can be at most ${MAX_TEXT_QUERY_LENGTH.toLocaleString('en')} characters long.`, position: 'top', color: 'warning' })
     return
   }
+  // The empty criteria keep the mode in the URL, which tells them apart from the page as first opened.
+  const chosen = !criteria.textQuery && !hasFilters(criteria) ? 'documents' : null
   appliedCollection.value = draftCollection.value
-  await explore.apply({ ...applied.value, criteria, vector: draftVector.value })
+  await explore.apply({ ...applied.value, criteria, mode: chosen, vector: draftVector.value })
 }
 
 // The applied location runs once the search options are loaded: a link's values are checked
@@ -874,10 +983,8 @@ async function runApplied () {
     dropped.push(vectorLabel(location.vector))
     corrected.vector = null
   }
-  // Only Passages results exist so far (#605); Documents and Visualizations follow (#527b/c, #528).
-  if (location.mode === 'documents') dropped.push('Documents results (not available yet; showing passages)')
+  // Visualizations follow (#528).
   if (location.view === 'visualizations') dropped.push('Visualizations (not available yet)')
-  if (location.mode === 'documents') corrected.mode = null
   if (location.view === 'visualizations') corrected.view = null
   if (dropped.length) {
     Notify.create({ message: `Left out of the search because they are not available: ${dropped.join(', ')}`, position: 'top', color: 'warning' })
@@ -886,6 +993,14 @@ async function runApplied () {
     return
   }
 
+  if (effectiveMode(location) === 'documents') {
+    passages.cancel()
+    // Documents ranked by a text query are not available yet (#527c): the page says so.
+    if (isIdleLocation(location) || location.criteria.textQuery) documents.cancel()
+    else await documents.search({ criteria: location.criteria, userCollectionId: appliedCollection.value })
+    return
+  }
+  documents.cancel()
   if (!location.criteria.textQuery) {
     passages.cancel()
     return
@@ -1005,6 +1120,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   passages.cancel()
+  documents.cancel()
   if (clearHighlightTimer !== null) {
     window.clearTimeout(clearHighlightTimer)
   }
@@ -1023,6 +1139,25 @@ onBeforeUnmount(() => {
 
 .selection-toolbar__collection {
   flex: 1 1 220px;
+}
+
+/* Padding, not a margin: a margin would collapse with the result list's negative gutter. */
+.results-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-bottom: 16px;
+}
+
+.results-header__title {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.results-mode {
+  border: 1px solid var(--q-primary);
 }
 
 .results-status {

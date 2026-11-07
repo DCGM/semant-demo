@@ -71,6 +71,7 @@ All URIs are relative to *http://localhost*
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
+| [**searchDocumentsApiSearchDocumentsPost**](DefaultApi.md#searchdocumentsapisearchdocumentspost) | **POST** /api/search/documents | Search Documents |
 | [**searchPassagesApiSearchPassagesPost**](DefaultApi.md#searchpassagesapisearchpassagespost) | **POST** /api/search/passages | Search Passages |
 | [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
 | [**shareCollectionApiUserCollectionsCollectionIdSharePost**](DefaultApi.md#sharecollectionapiusercollectionscollectionidsharepost) | **POST** /api/user_collections/{collection_id}/share | Share Collection |
@@ -4966,6 +4967,78 @@ example().catch(console.error);
 ### Return type
 
 [**SearchResponse**](SearchResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## searchDocumentsApiSearchDocumentsPost
+
+> DocumentSearchResponse searchDocumentsApiSearchDocumentsPost(documentSearchRequest)
+
+Search Documents
+
+The documents matching search criteria without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last), with the exact number of matching documents. The same documents as &#x60;&#x60;GET /api/documents/browse&#x60;&#x60; and Analytics for the same criteria: chunk filters apply per dimension to the documents\&#39; chunk-value summaries. Only the first &#x60;&#x60;QUERY_MAXIMUM_RESULTS&#x60;&#x60; (10 000) can be paged through (&#x60;&#x60;bounded&#x60;&#x60;); a page past them is refused (400). A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SearchDocumentsApiSearchDocumentsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // DocumentSearchRequest
+    documentSearchRequest: ...,
+  } satisfies SearchDocumentsApiSearchDocumentsPostRequest;
+
+  try {
+    const data = await api.searchDocumentsApiSearchDocumentsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentSearchRequest** | [DocumentSearchRequest](DocumentSearchRequest.md) |  | |
+
+### Return type
+
+[**DocumentSearchResponse**](DocumentSearchResponse.md)
 
 ### Authorization
 
