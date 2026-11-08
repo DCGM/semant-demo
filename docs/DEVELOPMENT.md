@@ -300,6 +300,9 @@ The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|sta
 - **Data.** Specs clean up what they create, so one seeded profile serves many runs. If a
   test fails half-way (or you click around in the profile) and leaves data behind,
   `make e2e-dev-restart` reseeds the fixture corpus.
+- **Result cards.** A passage card's title is the chunk's title (e.g. "Požár"); its document's
+  title appears under it as **Source**. Document cards show the document title. Match
+  passages by id or by their Source, not by the document title in the heading.
 - **Display.** The script runs headless Chromium without `DISPLAY` (unless `--headed`,
   `--debug` or `--ui` is passed): with a forwarded X display (`ssh -X`) Chromium otherwise
   waits ~25 s for its first frame at every browser launch. `make test-e2e` unsets it too.

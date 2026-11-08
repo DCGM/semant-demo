@@ -8,13 +8,24 @@
       </div>
       <ul class="ranked-charts__facts text-caption text-grey-8">
         <li data-testid="charts-ranking">
-          Ranked by {{ methodLabel }}<template v-if="vectorName"> ({{ vectorName }})</template>.
-          <template v-if="counts.ranking.bounded">
-            <strong>Bounded:</strong> only the best {{ fmt(counts.inputCount) }} by relevance were retrieved (the retrieval
-            limit is {{ fmt(counts.ranking.retrievalLimit) }}); more {{ unit }} may match, so these counts are not those of
-            every match.
+          <template v-if="unit === 'documents'">
+            Ordered as the Documents results: {{ DOCUMENT_ORDER }}
+            <template v-if="counts.ranking.bounded">
+              <strong>Bounded:</strong> only the first {{ fmt(counts.inputCount) }} documents of this order were retrieved (the
+              retrieval limit is {{ fmt(counts.ranking.retrievalLimit) }}); more documents may match, so these counts are not
+              those of every match.
+            </template>
+            <template v-else>Every matching document was retrieved (within the retrieval limit of {{ fmt(counts.ranking.retrievalLimit) }}).</template>
           </template>
-          <template v-else>Every matching {{ unitNoun(unit, 1) }} was retrieved (within the retrieval limit of {{ fmt(counts.ranking.retrievalLimit) }}).</template>
+          <template v-else>
+            Ranked by {{ methodLabel }}<template v-if="vectorName"> ({{ vectorName }})</template>.
+            <template v-if="counts.ranking.bounded">
+              <strong>Bounded:</strong> only the best {{ fmt(counts.inputCount) }} passages by relevance were retrieved (the
+              retrieval limit is {{ fmt(counts.ranking.retrievalLimit) }}); more passages may match, so these counts are not those
+              of every match.
+            </template>
+            <template v-else>Every matching passage was retrieved (within the retrieval limit of {{ fmt(counts.ranking.retrievalLimit) }}).</template>
+          </template>
         </li>
         <li v-if="unit === 'passages'" data-testid="charts-distinct-documents">
           Each passage is counted once, with the publication year, library and language of its document: the
@@ -25,6 +36,10 @@
         <li v-if="counts.missingCount" data-testid="charts-missing">
           {{ fmt(counts.missingCount) }} of the {{ fmt(counts.inputCount) }} ranked {{ unitNoun(unit, counts.inputCount) }}
           {{ counts.missingCount === 1 ? 'is' : 'are' }} not counted: deleted, or no longer matching the search's filters.
+        </li>
+        <li>
+          Clicking a bar applies it as a filter and searches again: the new results and counts may differ from these, as the
+          ranking is made again for the new filters.
         </li>
       </ul>
     </div>
@@ -45,14 +60,10 @@
               v-if="counts.publicationYear.years?.length"
               :distribution="counts.publicationYear"
               :unit="unit"
-              inspectable
-              @apply-period="(period) => emit('applyPeriod', period)"
-              @inspect="inspectYears"
+              searches
+              @apply-period="(period) => emit('applyFilter', { dimension: 'years', start: period.start, end: period.end })"
             />
-            <template v-else>
-              <p class="dimension-card__note">None of these results has a valid publication year.</p>
-              <q-btn dense flat no-caps color="primary" label="Inspect them" data-testid="timeline-inspect-unknown" @click="inspectYears(null)" />
-            </template>
+            <p v-else class="dimension-card__note">None of these results has a valid publication year.</p>
           </template>
           <p v-else class="dimension-card__unavailable" role="note">{{ unavailableText('publication years') }}</p>
         </q-card-section>
@@ -64,33 +75,10 @@
           <template v-if="dimension.distribution.available">
             <p class="dimension-card__coverage">{{ coverageText(dimension.distribution.unknownCount ?? 0, dimension.subject) }}</p>
             <p v-if="dimension.note" class="dimension-card__note">{{ dimension.note }}</p>
-            <VegaChart :spec="dimension.spec" :label="`Bar chart of ${unit} per ${dimension.axis.toLowerCase()}; the table below lists the same counts.`" />
-            <q-markup-table flat dense separator="horizontal" class="count-table">
-              <caption class="sr-only">{{ unitNoun(unit, 2, true) }} per {{ dimension.axis.toLowerCase() }}</caption>
-              <thead>
-                <tr>
-                  <th scope="col" class="text-left">{{ dimension.axis }}</th>
-                  <th scope="col" class="text-right">{{ unitNoun(unit, 2, true) }}</th>
-                  <th scope="col" class="text-right"><span class="sr-only">Inspect</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in dimension.rows" :key="row.key" :class="`count-table__${row.kind}`">
-                  <th scope="row" class="text-left text-weight-regular">
-                    {{ row.label }}<code v-if="row.kind === 'value' && row.label !== row.key" class="sr-only"> {{ row.key }}</code>
-                  </th>
-                  <td class="text-right">{{ fmt(row.count) }}</td>
-                  <td class="text-right">
-                    <q-btn
-                      v-if="row.count > 0" dense flat no-caps color="primary" label="Inspect"
-                      :aria-label="`Inspect the ${fmt(row.count)} ${unitNoun(unit, row.count)}: ${row.label}`"
-                      :data-testid="`inspect-${dimension.key}-${row.kind === 'value' ? row.key : row.kind}`"
-                      @click="emit('inspect', { dimension: dimension.dimension, value: inspectValue(row) })"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </q-markup-table>
+            <CategoryChart
+              :rows="dimension.rows" :axis="dimension.axis" :unit="unit" :test-id="`results-${dimension.key}`" filterable searches
+              @apply-filter="(value) => emit('applyFilter', { dimension: dimension.key, value })"
+            />
           </template>
           <p v-else class="dimension-card__unavailable" role="note">{{ unavailableText(dimension.subjectPlural) }}</p>
         </q-card-section>
@@ -104,16 +92,16 @@
  * The charts of a text query's ranked results (#620): one `RankedResultsDistributions` answer,
  * counted in the unit of the results mode (documents, or passages with their distinct source
  * documents), with the ranking that produced them and whether its retrieval limit cut it.
- * Every category with results can be inspected (`inspect`: the page shows those results of the
- * same ranking); a timeline period can also be applied as a filter, which is a new search.
+ * A clicked year bin, library or document language (or the shown period) is emitted as a
+ * filter: the page applies it, which is a new search, not a look into these results.
  */
 import { computed } from 'vue'
 import type { CategoryDistribution, RankedResultsDistributions } from 'src/generated/api'
-import VegaChart from 'src/shared/visualization/VegaChart.vue'
+import CategoryChart from 'src/features/analytics/CategoryChart.vue'
 import PublicationTimeline from 'src/features/analytics/PublicationTimeline.vue'
-import { categoryBarSpec, categoryRows, coverage, languageLabel, libraryLabel, type CategoryRow } from 'src/features/analytics/corpusOverview'
-import { unitNoun, type YearWindow } from 'src/features/analytics/timeline'
-import { INSPECT_OTHER, INSPECT_UNKNOWN, type InspectDimension, type Inspection } from './criteria'
+import { categoryRows, coverage, languageLabel, libraryLabel, type ChartFilter } from 'src/features/analytics/corpusOverview'
+import { unitNoun } from 'src/features/analytics/timeline'
+import { RANKED_DOCUMENT_ORDER as DOCUMENT_ORDER } from './useDocumentSearch'
 
 const props = defineProps<{
   counts: RankedResultsDistributions
@@ -122,10 +110,7 @@ const props = defineProps<{
   /** Newer counts are being loaded: the shown ones are dimmed. */
   loading?: boolean
 }>()
-const emit = defineEmits<{
-  inspect: [inspection: Inspection]
-  applyPeriod: [period: YearWindow]
-}>()
+const emit = defineEmits<{ applyFilter: [filter: ChartFilter] }>()
 
 const numberFormat = new Intl.NumberFormat('en')
 const fmt = (n: number) => numberFormat.format(n)
@@ -139,26 +124,17 @@ const METHODS: Record<string, string> = {
 const methodLabel = computed(() => METHODS[props.counts.ranking.type] ?? `${props.counts.ranking.type} search`)
 
 const categories = computed(() => {
-  const dimension = (key: string, dim: InspectDimension, title: string, axis: string, subject: string, subjectPlural: string,
-    distribution: CategoryDistribution, label: (v: string) => string, note?: string) => {
-    const rows = categoryRows(distribution, label)
-    return { key, dimension: dim, title, axis, subject, subjectPlural, note, distribution, rows, spec: categoryBarSpec(rows, axis, unit.value) }
-  }
+  const dimension = (key: 'libraries' | 'languages', title: string, axis: string, subject: string, subjectPlural: string,
+    distribution: CategoryDistribution, label: (v: string) => string, note?: string) =>
+    ({ key, title, axis, subject, subjectPlural, note, distribution, rows: categoryRows(distribution, label) })
   return [
-    dimension('libraries', 'library', 'Source library', 'Library', 'a source library', 'source libraries', props.counts.libraries, libraryLabel),
-    dimension('languages', 'language', 'Document language', 'Language', 'a document language', 'document languages', props.counts.languages, languageLabel,
+    dimension('libraries', 'Source library', 'Library', 'a source library', 'source libraries', props.counts.libraries, libraryLabel),
+    dimension('languages', 'Document language', 'Language', 'a document language', 'document languages', props.counts.languages, languageLabel,
       unit.value === 'passages'
-        ? 'The language recorded in the bibliographic metadata of each passage\'s document, not the language of the passage itself.'
+        ? 'The language recorded in the bibliographic metadata of each passage\'s document, not the language of the passage itself; applied as a filter, it is the document-language filter.'
         : 'The language recorded in the bibliographic metadata of each document, not detected from its text.')
   ]
 })
-
-const inspectValue = (row: CategoryRow) => (row.kind === 'value' ? row.key : row.kind === 'other' ? INSPECT_OTHER : INSPECT_UNKNOWN)
-
-function inspectYears (years: YearWindow | null) {
-  const value = years === null ? INSPECT_UNKNOWN : years.start === years.end ? `${years.start}` : `${years.start}-${years.end}`
-  emit('inspect', { dimension: 'year', value })
-}
 
 function coverageText (unknown: number, subject: string): string {
   const total = props.counts.totalCount
@@ -234,24 +210,6 @@ function unavailableText (subjectPlural: string): string {
   border-radius: 8px;
   padding: 12px;
   margin: 8px 0 0;
-}
-
-.count-table {
-  margin-top: 8px;
-}
-
-.count-table__other th,
-.count-table__unknown th {
-  font-style: italic;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 @media (max-width: 1023px) {

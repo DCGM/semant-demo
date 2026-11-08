@@ -24,10 +24,17 @@
  * The Vega signals named in `signals` (e.g. an interval selection) are reported as
  * `signal` events of the shown drawing, so the page can react to an interaction without
  * the chart being drawn again on every pointer movement.
+ *
+ * With `clickable`, a click (or tap) on a mark whose datum it accepts is reported as
+ * `itemClick` with that datum, and the pointer shows such marks as clickable. A press that
+ * moves before it is released is a drag (e.g. an interval selection), not a click. The page
+ * still offers the same actions without a pointer (in its data table).
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Result, VisualizationSpec } from 'vega-embed'
 import { loadEmbed } from './loadEmbed'
+
+type AcceptsDatum = (datum: Record<string, unknown>) => boolean
 
 const props = defineProps<{
   spec: VisualizationSpec
@@ -35,9 +42,39 @@ const props = defineProps<{
   label: string
   /** Names of Vega signals to report as `signal` events. */
   signals?: string[]
+  /** Which marks' data can be clicked (`itemClick`). */
+  clickable?: AcceptsDatum
 }>()
 
-const emit = defineEmits<{ signal: [name: string, value: unknown] }>()
+const emit = defineEmits<{
+  signal: [name: string, value: unknown]
+  itemClick: [datum: Record<string, unknown>]
+}>()
+
+/** Movement (in pixels) between press and release up to which it is still a click. */
+const CLICK_SLOP = 4
+
+type ViewEvent = { clientX: number, clientY: number }
+type ViewItem = { datum?: Record<string, unknown> } | null | undefined
+type EventView = { addEventListener?: (type: string, handler: (event: ViewEvent, item: ViewItem) => void) => unknown }
+
+function listenForClicks (view: EventView, drawing: HTMLElement) {
+  const accepts = (item: ViewItem) => !!item?.datum && !!props.clickable?.(item.datum)
+  let pressed: ViewEvent | null = null
+  let pointing = false
+  view.addEventListener?.('mousedown', (event) => { pressed = { clientX: event.clientX, clientY: event.clientY } })
+  view.addEventListener?.('click', (event, item) => {
+    const moved = pressed && Math.hypot(event.clientX - pressed.clientX, event.clientY - pressed.clientY) > CLICK_SLOP
+    pressed = null
+    if (!moved && accepts(item)) emit('itemClick', item!.datum!)
+  })
+  view.addEventListener?.('mousemove', (_event, item) => {
+    const over = accepts(item)
+    // Only the cursor set here is reset; Vega's own (e.g. over a selection) is left alone.
+    if (over !== pointing) drawing.style.cursor = over ? 'pointer' : ''
+    pointing = over
+  })
+}
 
 const container = ref<HTMLElement | null>(null)
 const failed = ref(false)
@@ -84,6 +121,7 @@ async function render () {
     for (const name of props.signals ?? []) {
       embedded.view.addSignalListener(name, (signal, value) => emit('signal', signal, value))
     }
+    if (props.clickable) listenForClicks(embedded.view as unknown as EventView, drawing)
     failed.value = false
   } catch (e) {
     if (current !== generation) return

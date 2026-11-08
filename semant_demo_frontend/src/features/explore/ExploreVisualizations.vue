@@ -27,8 +27,7 @@
         v-else
         :counts="ranked.counts"
         :vector-name="ranked.vectorName"
-        @inspect="(inspection) => emit('inspect', inspection)"
-        @apply-period="(period) => emit('applyPeriod', period)"
+        @apply-filter="(filter) => emit('applyFilter', filter)"
       />
     </template>
 
@@ -88,7 +87,7 @@
         <div class="q-mt-sm text-subtitle1">No documents match these filters.</div>
         <div class="text-caption">Remove some of the filters above.</div>
       </div>
-      <DocumentDistributions v-else :distributions="distributions" :loading="loading" @apply-period="(period) => emit('applyPeriod', period)" />
+      <DocumentDistributions v-else :distributions="distributions" :loading="loading" @apply-filter="(filter) => emit('applyFilter', filter)" />
     </template>
   </section>
 </template>
@@ -98,17 +97,16 @@
  * The Visualizations view of Explore (#618, #620): the charts of the documents matching the
  * applied criteria, of a text query's ranked results (`RankedResultCharts`), or why there are
  * none for them (`chartsAvailability`). The page owns the counts (`useExploreCharts`,
- * `useResultCharts`), the search and the criteria; a timeline period applied as a filter and
- * an inspected chart category are emitted.
+ * `useResultCharts`), the search and the criteria; a clicked chart category (or the shown
+ * period) is emitted as a filter, which the page applies (a new search or count).
  */
 import { computed } from 'vue'
 import type { CorpusDistributions } from 'src/generated/api'
 import RankedResultCharts from './RankedResultCharts.vue'
-import type { Inspection } from './criteria'
 import type { RankedChartsState } from './useResultCharts'
 import DocumentDistributions from 'src/features/analytics/DocumentDistributions.vue'
 import { hasChunkFilters, isUnfiltered } from 'src/features/analytics/corpusOverview'
-import type { YearWindow } from 'src/features/analytics/timeline'
+import type { ChartFilter } from 'src/features/analytics/corpusOverview'
 import type { ChartsAvailability } from './useExploreCharts'
 
 const props = defineProps<{
@@ -126,8 +124,7 @@ const emit = defineEmits<{
   retry: []
   retryRanked: []
   retrySearch: []
-  applyPeriod: [period: YearWindow]
-  inspect: [inspection: Inspection]
+  applyFilter: [filter: ChartFilter]
   showDocuments: []
 }>()
 

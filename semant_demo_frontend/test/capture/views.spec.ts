@@ -851,7 +851,7 @@ test('explore visualizations', async ({ page }, testInfo) => {
   await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-visualizations-full-${testInfo.project.name}.png`, fullPage: true })
 })
 
-test('explore visualizations of a text query, and an inspected category (#620)', async ({ page }, testInfo) => {
+test('explore visualizations of a text query, a chart filter and a data table (#620)', async ({ page }, testInfo) => {
   await page.goto('/#/search?q=Lhota&view=visualizations')
   await closePhoneNavigation(page)
   await expect(page.getByTestId('charts-total')).toHaveText('7')
@@ -860,9 +860,16 @@ test('explore visualizations of a text query, and an inspected category (#620)',
   await save(page, testInfo, 'explore-ranked-passages')
   await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-ranked-passages-full-${testInfo.project.name}.png`, fullPage: true })
 
-  await page.getByTestId('timeline-inspect-bin-1851').click()
-  await expect(page.locator('[data-testid="inspection"] .search-result__title')).toHaveCount(3)
-  await save(page, testInfo, 'explore-inspected-passages')
+  // A clicked 1851 bar: the year filter applied, a new search and its counts.
+  await page.getByTestId('results-years').locator('[aria-roledescription="bar"][aria-label*="Click to filter by 1851"]').first().click()
+  await expect(page.getByTestId('charts-total')).toHaveText('3')
+  await save(page, testInfo, 'explore-ranked-filtered')
+
+  // The language data table opened: exact counts and the bars' filters for the keyboard.
+  await page.getByTestId('results-languages-table').getByText(/^Show data table/).click()
+  await expect(page.getByTestId('results-languages-table').locator('.q-expansion-item__content')).not.toHaveAttribute('style', /height/)
+  await page.getByTestId('results-languages-filter-ces').scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'explore-ranked-table')
 
   // A bounded ranking of documents.
   await page.route('**/api/search/documents', async (route) => {
