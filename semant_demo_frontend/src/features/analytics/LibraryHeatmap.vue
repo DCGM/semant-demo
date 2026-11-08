@@ -33,7 +33,7 @@
         />
         <q-expansion-item
           dense dense-toggle switch-toggle-side class="library-heatmap__table"
-          :label="`Table: documents per library and period (${binsName(view.width)})`"
+          :label="`Show data table (documents per library and period, ${binsName(view.width)})`"
         >
           <div class="library-heatmap__scroll">
             <q-markup-table flat dense separator="cell" class="heatmap-table">

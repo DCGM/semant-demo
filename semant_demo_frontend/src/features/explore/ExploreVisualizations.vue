@@ -1,13 +1,35 @@
 <template>
   <section class="explore-visualizations" aria-label="Visualizations" data-testid="explore-visualizations">
-    <div v-if="availability === 'textQuery'" class="explore-visualizations__status" role="status" data-testid="charts-text-query">
-      <q-icon name="insights" size="2.5em" />
-      <div class="q-mt-sm text-subtitle1">Charts of search results are not available yet.</div>
-      <div class="text-caption">
-        With a text query, charts will describe only the retrieved results, not the whole corpus. Remove the text query
-        to chart every document that matches the filters.
+    <template v-if="availability === 'ranked'">
+      <q-banner v-if="ranked.searchError" rounded class="bg-red-1 text-negative" role="alert" data-testid="charts-search-error">
+        <template v-slot:avatar>
+          <q-icon name="error_outline" color="negative" />
+        </template>
+        Search failed: {{ ranked.searchError }}
+        <template v-slot:action>
+          <q-btn flat color="negative" label="Try again" data-testid="charts-search-retry" @click="emit('retrySearch')" />
+        </template>
+      </q-banner>
+      <q-banner v-else-if="ranked.error" rounded class="bg-red-1 text-negative" role="alert" data-testid="charts-error">
+        <template v-slot:avatar>
+          <q-icon name="error_outline" color="negative" />
+        </template>
+        The search results could not be counted: {{ ranked.error }}
+        <template v-if="!ranked.invalid" v-slot:action>
+          <q-btn flat color="negative" label="Try again" data-testid="charts-retry" @click="emit('retryRanked')" />
+        </template>
+      </q-banner>
+      <div v-else-if="!ranked.counts" class="explore-visualizations__status" role="status" data-testid="charts-loading">
+        <q-spinner color="primary" size="2.5em" />
+        <div class="q-mt-sm">{{ ranked.searching ? 'Searching…' : ranked.slow ? 'Counting the search results takes longer than usual…' : 'Counting the search results…' }}</div>
       </div>
-    </div>
+      <RankedResultCharts
+        v-else
+        :counts="ranked.counts"
+        :vector-name="ranked.vectorName"
+        @apply-filter="(filter) => emit('applyFilter', filter)"
+      />
+    </template>
 
     <div v-else-if="availability === 'passages'" class="explore-visualizations__status" role="status" data-testid="charts-passages">
       <q-icon name="insights" size="2.5em" />
@@ -18,8 +40,11 @@
 
     <div v-else-if="availability === 'collection'" class="explore-visualizations__status" role="status" data-testid="charts-collection">
       <q-icon name="folder_off" size="2.5em" />
-      <div class="q-mt-sm text-subtitle1">Charts of a collection are not available yet.</div>
-      <div class="text-caption">Charts count the documents of the public corpus. Remove the collection from the search to chart them.</div>
+      <div class="q-mt-sm text-subtitle1">Charts of a whole collection are not available yet.</div>
+      <div class="text-caption">
+        Without a text query, charts count the documents of the public corpus. Remove the collection from the search to
+        chart them, or enter a text query to chart the collection's search results.
+      </div>
     </div>
 
     <q-banner v-else-if="error" rounded class="bg-red-1 text-negative" role="alert" data-testid="charts-error">
@@ -62,22 +87,26 @@
         <div class="q-mt-sm text-subtitle1">No documents match these filters.</div>
         <div class="text-caption">Remove some of the filters above.</div>
       </div>
-      <DocumentDistributions v-else :distributions="distributions" :loading="loading" @apply-period="(period) => emit('applyPeriod', period)" />
+      <DocumentDistributions v-else :distributions="distributions" :loading="loading" @apply-filter="(filter) => emit('applyFilter', filter)" />
     </template>
   </section>
 </template>
 
 <script setup lang="ts">
 /**
- * The Visualizations view of Explore (#618): the charts of the documents matching the applied
- * criteria, or why there are none for them (`chartsAvailability`). The page owns the counts
- * (`useExploreCharts`) and the criteria; a timeline period applied as a filter is emitted.
+ * The Visualizations view of Explore (#618, #620): the charts of the documents matching the
+ * applied criteria, of a text query's ranked results (`RankedResultCharts`), or why there are
+ * none for them (`chartsAvailability`). The page owns the counts (`useExploreCharts`,
+ * `useResultCharts`), the search and the criteria; a clicked chart category (or the shown
+ * period) is emitted as a filter, which the page applies (a new search or count).
  */
 import { computed } from 'vue'
 import type { CorpusDistributions } from 'src/generated/api'
+import RankedResultCharts from './RankedResultCharts.vue'
+import type { RankedChartsState } from './useResultCharts'
 import DocumentDistributions from 'src/features/analytics/DocumentDistributions.vue'
 import { hasChunkFilters, isUnfiltered } from 'src/features/analytics/corpusOverview'
-import type { YearWindow } from 'src/features/analytics/timeline'
+import type { ChartFilter } from 'src/features/analytics/corpusOverview'
 import type { ChartsAvailability } from './useExploreCharts'
 
 const props = defineProps<{
@@ -88,12 +117,19 @@ const props = defineProps<{
   error: string | null
   /** The request was refused as invalid: trying again cannot help. */
   invalid: boolean
+  /** A text query's charts: its search and the counts of its ranking. */
+  ranked?: RankedChartsState
 }>()
 const emit = defineEmits<{
   retry: []
-  applyPeriod: [period: YearWindow]
+  retryRanked: []
+  retrySearch: []
+  applyFilter: [filter: ChartFilter]
   showDocuments: []
 }>()
+
+const NOTHING_RANKED: RankedChartsState = { searching: false, searchError: null, counts: null, slow: false, error: null, invalid: false, vectorName: null }
+const ranked = computed(() => props.ranked ?? NOTHING_RANKED)
 
 const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
