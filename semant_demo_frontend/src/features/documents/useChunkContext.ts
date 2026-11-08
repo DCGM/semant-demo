@@ -44,7 +44,8 @@ export function mergeChunks (
  * late answers dropped, so the view never shows another target's text. The passage can
  * be extended in both directions (reading only the neighbouring chunks, not the document
  * again); at most {@link MAX_CONTEXT_CHUNKS} chunks are kept. Every `open()`, also of the
- * same target, increases `focusRequest`, so a view brings the target into view again.
+ * same target, increases `focusRequest`, so a view brings the target into view again; in
+ * the same document it reuses the shown passage when it holds the target.
  */
 export function useChunkContext () {
   const api = useApi().default
@@ -91,11 +92,22 @@ export function useChunkContext () {
     return 'Failed to load the document context.'
   }
 
-  /** Shows the passage around `next`, replacing whatever was shown. */
+  /**
+   * Shows the passage around `next`. Another document starts from nothing. In the same
+   * document the shown passage stays: when it already holds `next`'s chunk nothing is
+   * read (only the target and `focusRequest` change); otherwise it stays visible until
+   * the passage around `next` replaces it (#493).
+   */
   async function open (next: ChunkContextTarget) {
-    clear()
+    const sameDocument = !!document.value && !error.value && !!chunks.value.length &&
+      target.value?.documentId === next.documentId && document.value.id === next.documentId
+    if (!sameDocument) clear()
     target.value = next
     focusRequest.value++
+    if (sameDocument && containsTarget.value) {
+      stop() // a running extension belongs to the previous target's passage
+      return
+    }
     await load()
   }
 
