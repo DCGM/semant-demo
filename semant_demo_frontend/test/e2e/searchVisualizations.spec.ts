@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
-import { closePhoneNavigation, isPassageSearch, useViewport } from './support'
+import { closePhoneNavigation, ensureLoggedIn, isPassageSearch, logOut, useViewport } from './support'
 
 // Explore Visualizations, first slice (#618): a Results | Visualizations switch on the Search page
 // over the same applied criteria and results mode, in the URL and history. Without a text query
@@ -133,4 +133,32 @@ test('a text query, filter-only passages and a failed count are stated, never ch
   fail = false
   await page.getByTestId('charts-retry').click()
   await expect(page.getByTestId('charts-total')).toHaveText('1')
+})
+
+test('signing out drops the collection scope and charts the public corpus for the same criteria', async ({ page }) => {
+  // Review of #621: the collection state must not stay, nor a spinner without a request.
+  await ensureLoggedIn(page, 'owner')
+  const counts = countRequests(page)
+  await openSearch(page, '/#/search?year_max=1900')
+  await expect(documentTitles(page)).toHaveText(['1. Kronika obce Lhota'])
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  await page.getByLabel('Select a Collection').click()
+  await page.getByRole('option', { name: 'Kroniky a dopisy' }).click()
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  const scoped = page.waitForRequest(isDocumentSearch)
+  await input(page).press('Enter')
+  expect((await scoped).postDataJSON().user_collection_id).toBeTruthy()
+  await expect(chip(page, 'Kroniky a dopisy')).toBeVisible()
+
+  await viewTab(page, 'visualizations').click()
+  await expect(page.getByTestId('charts-collection')).toBeVisible()
+  expect(counts.distributions).toBe(0)
+
+  const counted = page.waitForRequest(isDistributions)
+  await logOut(page)
+  expect((await counted).postDataJSON()).toEqual({ filters: { year_min: null, year_max: 1900, title_contains: [], libraries: [], languages: [] } })
+  await expect(page.getByTestId('charts-total')).toHaveText('1')
+  await expect(page.getByTestId('charts-collection')).toHaveCount(0)
+  await expect(chip(page, 'Kroniky a dopisy')).toHaveCount(0)
+  expect(hash(page)).toBe('#/search?year_max=1900&view=visualizations')
 })
