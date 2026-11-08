@@ -150,4 +150,20 @@ describe('SelectionBar', () => {
     expect(byTestId(mountBar({ report }), 'review-report').text())
       .toContain('Undo: restored 1 of 3 annotations. 1 was changed again since then; not restored. 1 no longer exist')
   })
+
+  it('uses the singular in the headline for a single annotation (#531)', () => {
+    const report: ReviewReport = {
+      action: ReviewAction.reject,
+      tagId: null,
+      target: 1,
+      saved: ['a'],
+      failed: [],
+      conflicts: [],
+      missing: [],
+      unsynced: [],
+      notSent: 0,
+      error: null
+    }
+    expect(byTestId(mountBar({ report }), 'review-report').text()).toContain('Rejected 1 of 1 annotation.')
+  })
 })
