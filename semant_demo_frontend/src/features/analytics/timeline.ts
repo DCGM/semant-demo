@@ -31,6 +31,15 @@ export interface YearWindow {
   end: number
 }
 
+/** What a chart counts: documents, or passages (a search's Passages results, #620). */
+export type CountUnit = 'documents' | 'passages'
+
+/** "document", "documents", "Documents", by count. */
+export function unitNoun (unit: CountUnit, count = 2, capital = false): string {
+  const noun = count === 1 ? unit.slice(0, -1) : unit
+  return capital ? noun[0].toUpperCase() + noun.slice(1) : noun
+}
+
 export interface TimelineBin {
   start: number
   endExclusive: number
@@ -157,7 +166,8 @@ export function binCount (n: number, width: number): string {
  * bins as one row, so gaps stay visible), documents after it. With the Unknown row the page
  * adds, the rows account for every document.
  */
-export function timelineRows (bins: TimelineBin[], width: number, out: { before: Outside, after: Outside }): TimelineRow[] {
+export function timelineRows (bins: TimelineBin[], width: number, out: { before: Outside, after: Outside },
+  unit: CountUnit = 'documents'): TimelineRow[] {
   const rows: TimelineRow[] = []
   const first = bins[0]?.start
   const last = bins[bins.length - 1]?.endExclusive
@@ -174,7 +184,7 @@ export function timelineRows (bins: TimelineBin[], width: number, out: { before:
         kind: 'gap',
         label: `${bins[i].start}–${bins[j - 1].endExclusive - 1}`,
         count: 0,
-        note: `no documents (${binCount(j - i, width)})`
+        note: `no ${unit} (${binCount(j - i, width)})`
       })
       i = j
     } else {
@@ -224,7 +234,8 @@ const MARK_HEIGHT = 4
  * Documents per bin of the visible window. Dragging across the chart selects a period
  * (signal `period`); every bin with documents has a small mark at the bottom.
  */
-export function timelineSpec (bins: TimelineBin[], width: number, window: YearWindow): VisualizationSpec {
+export function timelineSpec (bins: TimelineBin[], width: number, window: YearWindow, unit: CountUnit = 'documents'): VisualizationSpec {
+  const counted = unitNoun(unit, 2, true)
   const x = {
     field: 'start',
     type: 'quantitative',
@@ -235,7 +246,7 @@ export function timelineSpec (bins: TimelineBin[], width: number, window: YearWi
   }
   const tooltip = [
     { field: 'label', type: 'nominal', title: width === 1 ? 'Year' : 'Years' },
-    { field: 'count', type: 'quantitative', title: 'Documents', format: ',d' }
+    { field: 'count', type: 'quantitative', title: counted, format: ',d' }
   ]
   return {
     $schema: SCHEMA,
@@ -251,7 +262,7 @@ export function timelineSpec (bins: TimelineBin[], width: number, window: YearWi
           y: {
             field: 'count',
             type: 'quantitative',
-            title: 'Documents',
+            title: counted,
             axis: { format: ',d', tickMinStep: 1 }
           },
           tooltip

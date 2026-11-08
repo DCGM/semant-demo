@@ -115,6 +115,22 @@ export function fromSearchCriteria (criteria: SearchCriteria): Criteria {
 // URL //
 /// //////
 
+/** Dimensions a chart category of a search's results can be inspected by. */
+export type InspectDimension = 'year' | 'library' | 'language'
+export const INSPECT_DIMENSIONS: readonly InspectDimension[] = ['year', 'library', 'language']
+/** Inspected values that are no stored value: results without one, and those of unlisted values. */
+export const INSPECT_UNKNOWN = '~unknown'
+export const INSPECT_OTHER = '~other'
+
+/**
+ * One chart category: `year` takes `1851`, `1850-1859` (inclusive) or `~unknown`; `library`
+ * and `language` a stored value, `~unknown` or `~other` (values the counts do not list).
+ */
+export interface Inspection {
+  dimension: InspectDimension
+  value: string
+}
+
 /**
  * What an Explore URL holds: the applied criteria, the results mode and view when chosen
  * explicitly (`null`: the default), and the selected search vector (`null`: the server's
@@ -125,14 +141,40 @@ export interface ExploreLocation {
   mode: ResultsMode | null
   view: ExploreView | null
   vector: string | null
+  /**
+   * Results inspected from a chart category (#620): only those of the search's ranking with
+   * this value. It selects within the ranking, never searches with other criteria.
+   */
+  inspect: Inspection | null
 }
 
 export function emptyLocation (): ExploreLocation {
-  return { criteria: emptyCriteria(), mode: null, view: null, vector: null }
+  return { criteria: emptyCriteria(), mode: null, view: null, vector: null, inspect: null }
 }
 
+const inspectParam = (inspection: Inspection) => `${inspection.dimension}${CLASSIFICATION_SEPARATOR}${inspection.value}`
+
 export function locationKey (location: ExploreLocation): string {
-  return JSON.stringify([criteriaKey(location.criteria), location.mode, location.view, location.vector])
+  return JSON.stringify([criteriaKey(location.criteria), location.mode, location.view, location.vector,
+    location.inspect ? inspectParam(location.inspect) : null])
+}
+
+/** The inclusive years of a year inspection; null for `~unknown` or a malformed value. */
+export function inspectedYears (value: string): { start: number, end: number } | null {
+  const match = /^(\d{1,4})(?:-(\d{1,4}))?$/.exec(value)
+  if (!match) return null
+  const start = Number(match[1])
+  const end = match[2] === undefined ? start : Number(match[2])
+  return start >= 1 && start <= end ? { start, end } : null
+}
+
+function parseInspection (raw: string): Inspection | null {
+  const at = raw.indexOf(CLASSIFICATION_SEPARATOR)
+  const dimension = raw.slice(0, at) as InspectDimension
+  const value = raw.slice(at + 1).trim()
+  if (at <= 0 || !INSPECT_DIMENSIONS.includes(dimension) || !value || value.length > MAX_VALUE_LENGTH) return null
+  if (dimension === 'year') return value === INSPECT_UNKNOWN || inspectedYears(value) ? { dimension, value } : null
+  return { dimension, value }
 }
 
 /** The results mode shown: the chosen one, otherwise Passages for a text query and Documents without. */
@@ -161,6 +203,7 @@ export function locationQuery (location: ExploreLocation): LocationQueryRaw {
   if (location.mode) query.mode = location.mode
   if (location.view) query.view = location.view
   if (location.vector) query.vector = location.vector
+  if (location.inspect) query.inspect = inspectParam(location.inspect)
   return query
 }
 
@@ -255,6 +298,12 @@ export function parseLocationQuery (query: LocationQuery, now: Date = new Date()
   if (vector !== null) {
     if (vector.trim() && vector.length <= MAX_ID_LENGTH) location.vector = vector.trim()
     else invalid.push('Embedding model')
+  }
+
+  const inspect = single('inspect', 'Inspected results')
+  if (inspect !== null) {
+    location.inspect = parseInspection(inspect)
+    if (!location.inspect) invalid.push(`Inspected results: ${inspect}`)
   }
 
   location.criteria = normalizeCriteria(criteria)

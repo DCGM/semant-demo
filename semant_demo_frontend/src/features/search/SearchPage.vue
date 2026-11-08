@@ -250,7 +250,8 @@
           <div class="results-header__title">
             <div class="text-h5 text-weight-medium">{{ mode === 'documents' ? 'Documents' : 'Passages' }}</div>
             <div v-if="view === 'visualizations'" class="text-caption text-grey-7" data-testid="charts-unit">
-              {{ mode === 'documents' ? 'Charts of the matching documents.' : 'Charts of the matching passages.' }}
+              <template v-if="applied.criteria.textQuery">{{ mode === 'documents' ? 'Charts of the ranked documents of this search.' : 'Charts of the ranked passages of this search.' }}</template>
+              <template v-else>{{ mode === 'documents' ? 'Charts of the matching documents.' : 'Charts of the matching passages.' }}</template>
             </div>
             <div v-else-if="resultsState === 'results'" class="text-caption text-grey-7" data-testid="search-coverage">
               {{ coverage }} Search completed in {{ timeSpent.toFixed(2) }}s.
@@ -283,10 +284,104 @@
           :slow="charts.slow.value"
           :error="charts.error.value"
           :invalid="charts.invalid.value"
+          :ranked="rankedState"
           @retry="charts.retry"
+          @retry-ranked="resultCharts.retry"
+          @retry-search="runApplied({ force: true })"
           @apply-period="applyPeriod"
+          @inspect="inspect"
           @show-documents="chooseMode('documents')"
         />
+
+        <!-- Results of a chart category (#620): a subset of the shown search's ranking, never a new search. -->
+        <div v-else-if="inspecting" data-testid="inspection">
+          <q-banner rounded class="inspection-banner q-mb-md" data-testid="inspection-banner">
+            <template v-slot:avatar>
+              <q-icon name="filter_center_focus" color="primary" />
+            </template>
+            <div class="text-subtitle2" data-testid="inspection-label">
+              Inspecting the {{ mode === 'documents' ? 'documents' : 'passages' }} {{ inspectedLabel }}
+            </div>
+            <div v-if="inspectedList && rankedCounts" class="text-caption" data-testid="inspection-count">
+              {{ inspectionCount(inspectedList.length, rankedCounts) }} of this search, in ranking order. Only the results
+              this search ranked: nothing is searched again.
+            </div>
+            <template v-slot:action>
+              <q-btn flat no-caps color="primary" icon="insights" label="Back to charts" data-testid="inspection-charts" @click="chooseView('visualizations')" />
+              <q-btn flat no-caps color="primary" icon="close" label="Show all results" data-testid="inspection-clear" @click="stopInspecting" />
+            </template>
+          </q-banner>
+
+          <div v-if="inspectionState === 'loading'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="inspection-loading">
+            <q-spinner color="primary" size="2.5em" />
+            <div class="q-mt-sm">{{ activeLoading ? 'Searching…' : 'Loading the inspected results…' }}</div>
+          </div>
+          <q-banner v-else-if="inspectionState === 'error'" rounded class="bg-red-1 text-negative" role="alert" data-testid="inspection-error">
+            <template v-slot:avatar>
+              <q-icon name="error_outline" color="negative" />
+            </template>
+            {{ inspectionError }}
+            <template v-if="!rankedState.invalid" v-slot:action>
+              <q-btn flat color="negative" label="Try again" data-testid="inspection-retry" @click="retryInspection" />
+            </template>
+          </q-banner>
+          <div v-else-if="inspectionState === 'unavailable'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="inspection-unavailable">
+            <q-icon name="block" size="2.5em" />
+            <div class="q-mt-sm text-subtitle1">This corpus database does not record this property, so results cannot be inspected by it.</div>
+          </div>
+          <div v-else-if="inspectionState === 'empty'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="inspection-empty">
+            <q-icon name="search_off" size="2.5em" />
+            <div class="q-mt-sm text-subtitle1">None of this search's results are in this category.</div>
+            <div class="text-caption">Show all results, or go back to the charts and inspect another category.</div>
+          </div>
+          <div v-else-if="inspectionState === 'gone'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="inspection-gone">
+            <q-icon name="search_off" size="2.5em" />
+            <div class="q-mt-sm text-subtitle1">These results no longer exist or no longer match the search's filters.</div>
+            <div class="text-caption">Search again to rank the current corpus.</div>
+          </div>
+          <template v-else>
+            <div class="q-gutter-y-md">
+              <template v-if="mode === 'documents'">
+                <DocumentResultCard
+                  v-for="item in inspection.documents.value"
+                  :id="`document-${rankOf.get(item.document.id)}`"
+                  :key="item.document.id"
+                  :hit="item"
+                  :number="rankOf.get(item.document.id) ?? 0"
+                />
+              </template>
+              <template v-else>
+                <SearchResultCard
+                  v-for="chunk in inspection.passages.value"
+                  :id="`result-${rankOf.get(chunk.id)}`"
+                  :key="chunk.id"
+                  :chunk="chunk"
+                  :number="rankOf.get(chunk.id) ?? 0"
+                  :filters="availableSearchFilters"
+                  :selectable="false"
+                  :highlighted="highlightedDocNumber === rankOf.get(chunk.id)"
+                  :context-shown="contextResultNumber === rankOf.get(chunk.id)"
+                  @view-context="viewContext(chunk, rankOf.get(chunk.id) ?? 0)"
+                />
+              </template>
+            </div>
+            <div class="column items-center q-mt-xl q-gutter-y-sm">
+              <q-banner v-if="inspection.loadMoreError.value" dense rounded class="bg-red-1 text-negative" role="alert">
+                {{ inspection.loadMoreError.value }}
+              </q-banner>
+              <q-btn
+                v-if="inspection.hasMore()"
+                outline
+                color="primary"
+                icon="expand_more"
+                label="Load more inspected results"
+                :loading="inspection.loadingMore.value"
+                data-testid="inspection-load-more"
+                @click="inspection.loadMore"
+              />
+            </div>
+          </template>
+        </div>
 
         <div v-else-if="resultsState === 'loading'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-loading">
           <q-spinner color="primary" size="2.5em" />
@@ -460,11 +555,16 @@ import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
+import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ExploreView, type Inspection, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
 import { chartsAvailability, useExploreCharts } from 'src/features/explore/useExploreCharts'
+import {
+  documentPopulation, inspectedMembers, inspectionCount, inspectionLabel, passagePopulation, useResultCharts,
+  type RankedChartsState, type RankedPopulation
+} from 'src/features/explore/useResultCharts'
+import { useResultInspection, type InspectedSubset } from 'src/features/explore/useResultInspection'
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
 import type { YearWindow } from 'src/features/analytics/timeline'
 import { useSearchSummary } from './useSearchSummary'
@@ -495,8 +595,10 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 // Passages (`POST /api/search/passages`) for a text query, and Documents (`POST /api/search/documents`)
 // for filters alone (#606) or ranked by a text query (#607), each loaded page by page. The
 // Visualizations view (#618) charts the same applied criteria: for Documents without a text
-// query, every matching document (`useExploreCharts`). Switching between the views searches or
-// counts again only when the shown ones are of other criteria.
+// query, every matching document (`useExploreCharts`); for a text query, exactly the results its
+// search ranked (`useResultCharts`, #620), whose chart categories can be inspected in Results
+// (`inspect` in the URL: a subset of the same ranking, `useResultInspection`). Switching between
+// the views searches or counts again only when the shown ones are of other criteria.
 
 const api = useApi().default
 
@@ -600,6 +702,99 @@ const view = computed<ExploreView>(() => applied.value.view ?? 'results')
 const charts = useExploreCharts()
 const chartsShown = computed(() => chartsAvailability(applied.value.criteria, mode.value, appliedCollection.value))
 
+// Charts of a text query's results (#620): the counts of the ranking the Results hold.
+const resultCharts = useResultCharts()
+const inspection = useResultInspection()
+const activeLoading = computed(() => (mode.value === 'documents' ? documents.loading.value : passages.loading.value))
+
+/** The ranking of the applied text query in the shown mode, once its search answered. */
+const rankedPopulation = computed<RankedPopulation | null>(() => {
+  const location = applied.value
+  if (!location.criteria.textQuery) return null
+  const population = mode.value === 'documents'
+    ? (documents.results.value ? documentPopulation(documents.results.value) : null)
+    : (passages.results.value ? passagePopulation(passages.results.value) : null)
+  // Results of other criteria (a search not run yet) are never charted as these.
+  const same = population && criteriaKey(population.criteria) === criteriaKey(location.criteria) &&
+    population.vector === location.vector && population.userCollectionId === appliedCollection.value
+  return same ? population : null
+})
+/** Results show the inspected category of a chart: a text query's ranking only. */
+const inspecting = computed(() => view.value === 'results' && applied.value.inspect !== null && !!applied.value.criteria.textQuery)
+/** The counts are needed: the charts are shown, or a category of them is inspected. */
+const rankedNeeded = computed(() => view.value === 'visualizations' || inspecting.value)
+watch([rankedPopulation, rankedNeeded], ([population, needed]) => {
+  if (population && needed) void resultCharts.show(population)
+})
+const rankedCurrent = computed(() => !!rankedPopulation.value && resultCharts.population.value?.key === rankedPopulation.value.key)
+const rankedCounts = computed(() => (rankedCurrent.value ? resultCharts.distributions.value : null))
+const rankedState = computed<RankedChartsState>(() => {
+  const vector = rankedCounts.value?.ranking.vector ?? null
+  return {
+    searching: activeLoading.value,
+    searchError: activeError.value,
+    counts: rankedCounts.value,
+    slow: resultCharts.slow.value,
+    error: rankedCurrent.value ? resultCharts.error.value : null,
+    invalid: rankedCurrent.value && resultCharts.invalid.value,
+    vectorName: vector ? (availableVectors.value.find(v => v.id === vector)?.name ?? vector) : null
+  }
+})
+
+const inspectedLabel = computed(() => (applied.value.inspect ? inspectionLabel(applied.value.inspect) : ''))
+/** The counted results of the inspected category; null until counted or when the property is not recorded. */
+const inspectedList = computed(() => (inspecting.value && rankedCounts.value && applied.value.inspect
+  ? inspectedMembers(rankedCounts.value, applied.value.inspect)
+  : null))
+const inspectedSubset = computed<InspectedSubset | null>(() => {
+  const population = rankedPopulation.value
+  const members = inspectedList.value
+  const picked = applied.value.inspect
+  if (!population || !members || !picked) return null
+  const key = `${population.key}|${picked.dimension}:${picked.value}`
+  const base = { key, criteria: population.criteria, userCollectionId: population.userCollectionId }
+  if (population.mode === 'documents') {
+    const entries = new Map((documents.results.value?.ranked ?? []).map(entry => [entry.id, entry]))
+    return { ...base, documents: members.flatMap(m => entries.get(m.id) ?? []), passageIds: null }
+  }
+  return { ...base, documents: null, passageIds: members.map(m => m.id) }
+})
+watch(inspectedSubset, (subset) => {
+  if (subset) void inspection.open(subset)
+  else if (!inspecting.value) inspection.clear()
+})
+/** Ranking position of each ranked id (1-based), as Results number them. */
+const rankOf = computed(() => new Map((rankedPopulation.value?.ids ?? []).map((id, index) => [id, index + 1])))
+const inspectionError = computed(() => {
+  if (activeError.value) return `Search failed: ${activeError.value}`
+  if (rankedState.value.error) return `The search results could not be counted: ${rankedState.value.error}`
+  return inspection.error.value
+})
+const inspectionState = computed<'loading' | 'error' | 'unavailable' | 'empty' | 'gone' | 'items'>(() => {
+  if (inspectionError.value) return 'error'
+  if (!rankedCounts.value) return 'loading'
+  if (inspectedList.value === null) return 'unavailable'
+  if (!inspectedList.value.length) return 'empty'
+  if (inspection.loading.value || inspection.subset.value?.key !== inspectedSubset.value?.key) return 'loading'
+  const shown = mode.value === 'documents' ? inspection.documents.value.length : inspection.passages.value.length
+  return shown || inspection.hasMore() ? 'items' : 'gone'
+})
+
+function retryInspection () {
+  if (activeError.value) void runApplied({ force: true })
+  else if (rankedState.value.error) void resultCharts.retry()
+  else void inspection.retry()
+}
+
+/** Shows a chart category's results of the same ranking in Results: a new history entry. */
+function inspect (picked: Inspection) {
+  void explore.apply({ ...applied.value, view: null, inspect: picked })
+}
+
+function stopInspecting () {
+  void explore.apply({ ...applied.value, inspect: null })
+}
+
 /**
  * What the results area shows: passage cards (`results`), document cards (`documents`) or a
  * state. Without a text query Passages need one (`needsQuery`); Documents take both (#607).
@@ -631,13 +826,14 @@ function chooseMode (chosen: ResultsMode) {
   if (chosen === mode.value) return
   const criteria = applied.value.criteria
   // The default mode is not kept in the URL, so a later search picks the default for its criteria.
-  void explore.apply({ ...applied.value, mode: chosen === defaultMode(criteria) ? null : chosen })
+  void explore.apply({ ...applied.value, mode: chosen === defaultMode(criteria) ? null : chosen, inspect: null })
 }
 
 /** Shows the applied criteria in the other view: a new history entry, the same criteria and mode. */
 function chooseView (chosen: ExploreView) {
   if (chosen === view.value) return
-  const location: ExploreLocation = { ...applied.value, view: chosen === 'results' ? null : chosen }
+  // An inspected category is a part of Results; either view shows the whole ranking again.
+  const location: ExploreLocation = { ...applied.value, view: chosen === 'results' ? null : chosen, inspect: null }
   // Back in Results, no criteria list every document rather than show the page as first opened.
   if (isIdleLocation(location)) location.mode = 'documents'
   void explore.apply(location)
@@ -651,7 +847,7 @@ function applyPeriod (period: YearWindow) {
   const years = { yearMin: period.start, yearMax: period.end }
   const criteria = applied.value.criteria
   draftFilters.value = normalizeCriteria({ ...draftFilters.value, documentFilters: { ...draftFilters.value.documentFilters, ...years } })
-  void explore.apply({ ...applied.value, criteria: normalizeCriteria({ ...criteria, documentFilters: { ...criteria.documentFilters, ...years } }) })
+  void explore.apply({ ...applied.value, inspect: null, criteria: normalizeCriteria({ ...criteria, documentFilters: { ...criteria.documentFilters, ...years } }) })
 }
 
 function clearSelection () {
@@ -676,8 +872,8 @@ const highlightedDocNumber = ref<number | null>(null)
 let clearHighlightTimer: number | null = null
 
 async function jumpToResult (docNumber: number) {
-  const resultIndex = docNumber - 1
-  if (resultIndex < 0 || resultIndex >= results.value.length) {
+  // The loaded results, or the inspected ones (#620), are numbered by their ranking position.
+  if (!document.getElementById(`result-${docNumber}`)) {
     Notify.create({ message: `Result [${docNumber}] is not available.`, position: 'top', color: 'warning' })
     return
   }
@@ -761,7 +957,7 @@ watch(
       targetCollectionId.value = null
       // Without the collection scope the Visualizations may chart the public corpus now: count
       // the applied criteria rather than keep the collection's state or an unanswered spinner.
-      if (view.value === 'visualizations') void runApplied()
+      if (view.value === 'visualizations' || inspecting.value) void runApplied()
     }
     await loadCollections()
   }
@@ -925,7 +1121,7 @@ const appliedChips = computed<AppliedChip[]>(() => {
 })
 
 function removeChip (chip: AppliedChip) {
-  const location: ExploreLocation = { ...applied.value }
+  const location: ExploreLocation = { ...applied.value, inspect: null }
   if (chip.key === 'collection') {
     appliedCollection.value = null
     draftCollection.value = null
@@ -949,7 +1145,7 @@ function removeChip (chip: AppliedChip) {
 function clearAllApplied () {
   clearAllFilters()
   appliedCollection.value = null
-  const location: ExploreLocation = { ...applied.value, criteria: normalizeCriteria({ textQuery: applied.value.criteria.textQuery }), vector: null }
+  const location: ExploreLocation = { ...applied.value, criteria: normalizeCriteria({ textQuery: applied.value.criteria.textQuery }), vector: null, inspect: null }
   if (isIdleLocation(location) && mode.value === 'documents') location.mode = 'documents'
   void explore.apply(location)
 }
@@ -1027,7 +1223,7 @@ async function onSearch () {
     ? 'documents'
     : null
   appliedCollection.value = draftCollection.value
-  await explore.apply({ ...applied.value, criteria, mode: chosen, vector: draftVector.value })
+  await explore.apply({ ...applied.value, criteria, mode: chosen, vector: draftVector.value, inspect: null })
 }
 
 // The applied location runs once the search options are loaded: a link's values are checked
@@ -1088,6 +1284,11 @@ async function runApplied ({ force = false } = {}) {
     dropped.push(vectorLabel(location.vector))
     corrected.vector = null
   }
+  if (location.inspect && (!location.criteria.textQuery || location.view === 'visualizations')) {
+    // Only Results of a text query's ranking can be inspected.
+    dropped.push('Inspected results')
+    corrected.inspect = null
+  }
   if (dropped.length) {
     Notify.create({ message: `Left out of the search because they are not available: ${dropped.join(', ')}`, position: 'top', color: 'warning' })
     setDraft(corrected)
@@ -1095,7 +1296,9 @@ async function runApplied ({ force = false } = {}) {
     return
   }
 
-  if (location.view === 'visualizations') {
+  // A text query's charts count the ranking of its search: searched as for Results (#620).
+  const ranked = chartsAvailability(location.criteria, effectiveMode(location), appliedCollection.value) === 'ranked'
+  if (location.view === 'visualizations' && !ranked) {
     // The Results are searched when shown; a search of other criteria is not finished meanwhile.
     if (resultsKeyOf(location) !== resultsKey) {
       passages.cancel()
@@ -1110,6 +1313,8 @@ async function runApplied ({ force = false } = {}) {
   const key = resultsKeyOf(location)
   if (!force && key === resultsKey && resultsCurrent(location)) return
   resultsKey = key
+  resultCharts.clear()
+  inspection.clear()
 
   if (effectiveMode(location) === 'documents') {
     passages.cancel()

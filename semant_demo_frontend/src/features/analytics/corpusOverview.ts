@@ -8,6 +8,7 @@
  */
 import type { VisualizationSpec } from 'vega-embed'
 import type { CategoryDistribution, ChunkFilters, DocumentFilters } from 'src/generated/api'
+import { unitNoun, type CountUnit } from './timeline'
 
 export type RowKind = 'value' | 'other' | 'unknown'
 
@@ -140,8 +141,9 @@ const SCHEMA = 'https://vega.github.io/schema/vega-lite/v6.json'
 const BAR_STEP = 22
 const COLORS = { value: '#1976d2', other: '#78909c', unknown: '#b0bec5' }
 
-/** Documents per value as horizontal bars in row order; Other and Unknown are named on the axis. */
-export function categoryBarSpec (rows: CategoryRow[], title: string): VisualizationSpec {
+/** Documents (or passages) per value as horizontal bars in row order; Other and Unknown are named on the axis. */
+export function categoryBarSpec (rows: CategoryRow[], title: string, unit: CountUnit = 'documents'): VisualizationSpec {
+  const counted = unitNoun(unit, 2, true)
   return {
     $schema: SCHEMA,
     data: { values: rows.map((row, order) => ({ ...row, order })) },
@@ -150,7 +152,7 @@ export function categoryBarSpec (rows: CategoryRow[], title: string): Visualizat
     mark: { type: 'bar', tooltip: true },
     encoding: {
       y: { field: 'label', type: 'nominal', title, sort: { field: 'order', order: 'ascending' }, axis: { labelLimit: 180 } },
-      x: { field: 'count', type: 'quantitative', title: 'Documents', axis: { format: ',d', tickMinStep: 1 } },
+      x: { field: 'count', type: 'quantitative', title: counted, axis: { format: ',d', tickMinStep: 1 } },
       color: {
         field: 'kind',
         type: 'nominal',
@@ -159,7 +161,7 @@ export function categoryBarSpec (rows: CategoryRow[], title: string): Visualizat
       },
       tooltip: [
         { field: 'label', type: 'nominal', title },
-        { field: 'count', type: 'quantitative', title: 'Documents', format: ',d' }
+        { field: 'count', type: 'quantitative', title: counted, format: ',d' }
       ]
     }
   }
