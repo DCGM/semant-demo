@@ -68,7 +68,7 @@
         The corpus holds no documents.
       </p>
 
-      <DocumentDistributions v-else :distributions="overview" :loading="loading" @apply-period="applyPeriod" />
+      <DocumentDistributions v-else :distributions="overview" :loading="loading" @apply-filter="applyFilter" />
     </template>
   </div>
 </template>
@@ -77,8 +77,7 @@
 import { computed, onMounted } from 'vue'
 import CorpusFilters from './CorpusFilters.vue'
 import DocumentDistributions from './DocumentDistributions.vue'
-import { filterGroups, isUnfiltered, withoutFilter } from './corpusOverview'
-import type { YearWindow } from './timeline'
+import { filterGroups, isUnfiltered, withChartFilter, withoutFilter, type ChartFilter } from './corpusOverview'
 import { useCorpusOverview } from './useCorpusOverview'
 
 const { distributions: overview, corpus, filters, loading, slow, error, invalid, load, retry } = useCorpusOverview()
@@ -91,12 +90,13 @@ const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
 
 /**
- * Restricts the counted documents to a period of the timeline, keeping the other filters. Like
- * a removed chip, built on the filters requested last, not on the counted ones shown: a change
- * made while counting must not undo the previous one (#548).
+ * Restricts the counted documents to a clicked year bin, library or language, or the shown
+ * period, replacing that dimension's filter and keeping the others (#620). Like a removed chip,
+ * built on the filters requested last, not on the counted ones shown: a change made while
+ * counting must not undo the previous one (#548).
  */
-function applyPeriod (period: YearWindow) {
-  void load({ ...filters.value, yearMin: period.start, yearMax: period.end })
+function applyFilter (filter: ChartFilter) {
+  void load(withChartFilter(filters.value, filter))
 }
 
 onMounted(() => load())

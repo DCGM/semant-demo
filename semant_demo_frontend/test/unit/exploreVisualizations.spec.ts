@@ -69,9 +69,11 @@ describe('chartsAvailability', () => {
   it('charts Documents without a text query, and names why other criteria are not charted', () => {
     expect(chartsAvailability(filtered(), 'documents', null)).toBe('documents')
     expect(chartsAvailability(normalizeCriteria({}), 'documents', null)).toBe('documents')
-    // A text query: only its retrieved results could be charted (#619/#620), not the filtered corpus.
-    expect(chartsAvailability(filtered('Brno'), 'documents', null)).toBe('textQuery')
-    expect(chartsAvailability(filtered('Brno'), 'passages', null)).toBe('textQuery')
+    // A text query: only its ranked results are charted (#620), not the filtered corpus; a
+    // collection's search too.
+    expect(chartsAvailability(filtered('Brno'), 'documents', null)).toBe('ranked')
+    expect(chartsAvailability(filtered('Brno'), 'passages', null)).toBe('ranked')
+    expect(chartsAvailability(filtered('Brno'), 'passages', 'c1')).toBe('ranked')
     // Filter-only passages are not retrievable; document counts are not shown in their place.
     expect(chartsAvailability(filtered(), 'passages', null)).toBe('passages')
     expect(chartsAvailability(filtered(), 'documents', 'c1')).toBe('collection')
@@ -199,9 +201,9 @@ describe('ExploreVisualizations', () => {
     expect(view({ error: 'invalid', invalid: true }).find('[data-testid="charts-retry"]').exists()).toBe(false)
   })
 
-  it('charts nothing for a text query, filter-only passages or a collection, and says why', async () => {
+  it('charts nothing for filter-only passages or a whole collection, and says why', async () => {
     const counted = distributions(10)
-    for (const [availability, testId] of [['textQuery', 'charts-text-query'], ['passages', 'charts-passages'], ['collection', 'charts-collection']]) {
+    for (const [availability, testId] of [['passages', 'charts-passages'], ['collection', 'charts-collection']]) {
       const wrapper = view({ availability, distributions: counted })
       expect(testIds(wrapper)).toEqual(availability === 'passages' ? [testId, 'charts-show-documents'] : [testId])
       expect(wrapper.find('[data-testid="corpus-years"]').exists()).toBe(false)
