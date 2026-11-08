@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Request } from '@playwright/test'
+import { expect, test, type Page, type Request, type Response } from '@playwright/test'
 
 import {
   answerChat, answerGuestQuota, chatSource, closePhoneNavigation, ensureLoggedIn, logOut, useViewport
@@ -33,16 +33,30 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
   // API requests started after the guest cookie was issued.
   const laterRequests: Request[] = []
   const issued: string[] = []
-  const statuses: Promise<{ principal: string, used_usd: number }>[] = []
+  // The allowance response
+  const statuses: Response[] = []
   page.on('request', (request) => {
     if (request.url().startsWith(`${baseURL}/api/`) && issued.length) laterRequests.push(request)
   })
-  page.on('response', async (response) => {
-    if (!response.url().startsWith(`${baseURL}/api/`)) return
-    if (response.url() === `${baseURL}/api/quota`) statuses.push(response.json())
+
+  const cookieReads: Promise<void>[] = []
+  const readCookie = async (response: Response) => {
     const cookie = guestCookie((await response.headerValue('set-cookie')) ?? undefined)
     if (cookie) issued.push(cookie)
-  })
+  }
+  const onResponse = (response: Response) => {
+    if (!response.url().startsWith(`${baseURL}/api/`)) return
+    if (response.url() === `${baseURL}/api/quota`) statuses.push(response)
+    const read = readCookie(response)
+
+    read.catch(() => undefined)
+    cookieReads.push(read)
+  }
+  page.on('response', onResponse)
+  const allCookieReads = async () => {
+    page.off('response', onResponse)
+    await Promise.all(cookieReads)
+  }
 
   await page.goto(`${secondOrigin(baseURL!)}/#/search`)
   await closePhoneNavigation(page)
@@ -56,13 +70,15 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
   await page.getByRole('button', { name: 'Summarize Results' }).click()
   expect((await summary).status()).toBe(200)
   // The allowance is read again after the AI operation.
-  await expect.poll(async () => (await statuses.at(-1))?.used_usd ?? 0).toBeGreaterThan(0)
-  const used = (await statuses.at(-1))!
+  const quota = async () => await statuses.at(-1)?.json() as { principal: string, used_usd: number } | undefined
+  await expect.poll(async () => (await quota())?.used_usd ?? 0).toBeGreaterThan(0)
+  const used = (await quota())!
 
   // The summary was charged to the guest whose allowance the page then read.
   expect(used.principal).toBe('guest')
   expect(used.used_usd).toBeGreaterThan(0)
   // One guest: issued once, then sent with every later request (search, summary, allowance).
+  await Promise.all(cookieReads)
   expect(issued).toHaveLength(1)
   const sent = await Promise.all(laterRequests.map(async (r) => guestCookie(await r.headerValue('cookie') ?? undefined)))
   expect(laterRequests.map((r) => new URL(r.url()).pathname)).toEqual(expect.arrayContaining(['/api/search/passages', '/api/summarize/results']))
@@ -71,6 +87,9 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
   const reloaded = page.waitForResponse(`${baseURL}/api/quota`)
   await page.reload()
   expect((await (await reloaded).json() as { used_usd: number }).used_usd).toBe(used.used_usd)
+  await expect(indicator(page)).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  await allCookieReads()
   expect(issued).toHaveLength(1)
 })
 
