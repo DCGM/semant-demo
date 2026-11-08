@@ -759,6 +759,9 @@ watch(
       draftCollection.value = null
       appliedCollection.value = null
       targetCollectionId.value = null
+      // Without the collection scope the Visualizations may chart the public corpus now: count
+      // the applied criteria rather than keep the collection's state or an unanswered spinner.
+      if (view.value === 'visualizations') void runApplied()
     }
     await loadCollections()
   }
