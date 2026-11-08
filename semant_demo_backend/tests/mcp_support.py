@@ -14,7 +14,8 @@ BASE_URL = "http://localhost"
 
 @asynccontextmanager
 async def mcp_session(app, headers: dict[str, str] | None = None) -> AsyncIterator[ClientSession]:
-    """An initialized client session of the started ``app``."""
+    """An initialized client session of the started ``app``. Open it inside the test, not in an
+    async fixture: the client's task group must be closed in the task that opened it."""
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url=BASE_URL, headers=headers) as http:
         async with streamable_http_client(f"{BASE_URL}/mcp", http_client=http) as (read, write, *_):
