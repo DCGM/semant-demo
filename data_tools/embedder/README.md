@@ -37,17 +37,38 @@ pip install -e .
    python run.py --init config.yaml
    ```
 3. Edit `config.yaml`: set the Weaviate connection, the collection, `vector_name`, and the embedder `base_url`, `model_name` and `input_template`.
-4. Run the pipeline:
+4. Run the pipeline, confirming the Weaviate endpoint of the config (`weaviate_host:weaviate_port`):
    ```bash
-   python run.py config.yaml
+   python run.py config.yaml --confirm-endpoint localhost:8080
    ```
    Run the same command again to continue after an interruption.
+
+Every run writes (the vectors, and the schema with `create_vector`), so a pipeline run and
+`--create-test-collection` are refused with exit code 2, before connecting, unless
+`--confirm-endpoint HOST:PORT` equals the configured endpoint. This holds for `localhost`
+too: the production backfill reaches its Weaviate as `localhost` on the server.
+`--init` needs no confirmation.
+
+To see what a run would do first, add `--check`: it reads the collection like a run and prints
+how many records lack the vector, already have it or have an empty input, without changing the
+schema, sending embedding requests or writing. It reads every record with the vector, so it
+takes about as long as the scan of a run. Exit code 0 when nothing is left to embed, 1 when
+records are, 2 when the check fails (e.g. a missing collection) or a run would be refused (the
+vector is missing and `create_vector` is disabled, even in an empty collection). `max_records`
+does not limit it. Since it only reads, `--check` needs no `--confirm-endpoint` and ignores one
+given, like the read-only modes of the maintenance commands.
+
+```bash
+python run.py config.yaml --check
+```
 
 To try it out, you can create a small `EmbedderTest` collection (it uses the connection from the config):
 
 ```bash
-python run.py --create-test-collection config.yaml
+python run.py --create-test-collection config.yaml --confirm-endpoint localhost:8080
 ```
+
+Without a config it uses `localhost:8080`, which has to be confirmed the same way.
 
 An existing `EmbedderTest` collection is refused and left unchanged; add `--force` to delete it and create it again.
 
@@ -121,5 +142,7 @@ A new embedder backend can be added by subclassing `Embedder` and implementing `
 `semant_demo_backend/tests/integration/test_embedder_tool.py` runs the pipeline against the
 test-owned Weaviate (`make test-integration`, and in CI) with a fake OpenAI-compatible
 endpoint: vector creation, preservation of properties, references and other vectors,
-resuming, write failures, refused collections, the guarded test collection and Search
-over the filled vector. The tool's dependencies are part of the backend's development lock.
+resuming, write failures, refused collections, the guarded test collection, Search
+over the filled vector and the read-only `--check`. `semant_demo_backend/tests/test_embedder_cli.py`
+(fast, no Weaviate) covers the endpoint confirmation of the CLI. The tool's dependencies are part of the
+backend's development lock.

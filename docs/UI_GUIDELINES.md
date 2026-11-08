@@ -46,6 +46,9 @@ product decisions justify another rule.
   where practical; support direct links to meaningful views.
 - Make controls usable by keyboard and touch. Give icon-only actions accessible labels;
   do not rely on hover tooltips for essential meaning.
+- When a table has more columns than a narrow screen fits, give its key columns minimum widths
+  and let the table scroll sideways in its own container, never the page; keep what identifies
+  a row (its checkbox and key column) in view while scrolling (the annotation concordance, #537).
 - Check layouts and interaction states at the relevant desktop and phone widths, following
   the [UI change checklist](../CONTRIBUTING.md#ui-change-checklist).
 

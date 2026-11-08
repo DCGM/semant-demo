@@ -25,6 +25,7 @@ from time import time
 from typing import Awaitable, Callable, Protocol
 
 from semant_demo.adapters.llm.usage import OperationBudget
+from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -33,12 +34,16 @@ from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 from semant_demo.features.quota.service import QuotaExhausted
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
+from semant_demo.features.documents import service as document_service
 from semant_demo.features.documents.criteria import (
-    ChunkFilters, Condition, DocumentFilters, chunk_conditions, document_conditions, validate_chunk_filters)
+    ChunkFilters, ChunkVocabulary, Condition, DocumentFilters, SearchCriteria, chunk_conditions, document_conditions,
+    validate_chunk_filters)
 from semant_demo.features.search.filters import (
     InvalidSearchFilterError, chunk_vocabulary, parse_and_validate_search_filters)
 from semant_demo.features.search.schemas import (
-    ChunkQuery, FieldCondition, Op, SearchFiltersResponse, SearchRequest, SearchResponse, SearchType, TagFilter,
+    ChunkQuery, DocumentSearchRequest, DocumentSearchResponse, FieldCondition, Op, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse,
+    SearchFiltersResponse, SearchRequest,
+    SearchResponse, SearchType, TagFilter,
 )
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
 
@@ -80,6 +85,24 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
     request with its criteria filters normalized.
     """
     start = time()
+    request, query, vector = await _authorized_query(backends, user, request, filter_definitions)
+    hits = await backends.chunks.search(query)
+    for hit in hits:
+        hit.text = display_text(hit.text)
+
+    elapsed = time() - start
+    log_entry = f"Top {len(hits)} results for “{request.query}”. Retrieved in {elapsed:.2f} seconds:"
+    # Content-free: RAG retrieves with the user's (rephrased) question.
+    logger.info("Search returned %d results in %.2f s", len(hits), elapsed)
+    return SearchResponse(results=hits, search_request=request, time_spent=elapsed, search_log=[log_entry],
+                          vector=None if request.type == SearchType.text else vector.id)
+
+
+async def _authorized_query(backends: SearchBackends, user: Principal | None, request: SearchRequest,
+                            filter_definitions: SearchFiltersResponse | None,
+                            ) -> tuple[SearchRequest, ChunkQuery, SearchVector]:
+    """The request with normalized criteria filters, its neutral query (embedded) and the
+    search vector used; access and filters are checked first, before any embedding."""
     request, criteria = criteria_conditions(request, filter_definitions)
     # An unknown vector is refused before any other work, also for text search.
     vector = backends.vectors.resolve(request.vector)
@@ -104,16 +127,7 @@ async def retrieve(backends: SearchBackends, user: Principal | None, request: Se
         vector=await _embed(vector, request),
         target_vector=None if request.type == SearchType.text else vector.target_vector,
     )
-    hits = await backends.chunks.search(query)
-    for hit in hits:
-        hit.text = display_text(hit.text)
-
-    elapsed = time() - start
-    log_entry = f"Top {len(hits)} results for “{request.query}”. Retrieved in {elapsed:.2f} seconds:"
-    # Content-free: RAG retrieves with the user's (rephrased) question.
-    logger.info("Search returned %d results in %.2f s", len(hits), elapsed)
-    return SearchResponse(results=hits, search_request=request, time_spent=elapsed, search_log=[log_entry],
-                          vector=None if request.type == SearchType.text else vector.id)
+    return request, query, vector
 
 
 async def search(backends: SearchBackends, summarizer: Summarizer, user: Principal | None,
@@ -147,6 +161,118 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
         response.warnings.append(SUMMARY_FAILED_WARNING)
     response.time_spent = time() - start
     return response
+
+
+async def search_passages(backends: SearchBackends, user: Principal | None, request: PassageSearchRequest,
+                          filter_definitions: SearchFiltersResponse | None, retrieval_limit: int,
+                          ) -> PassageSearchResponse:
+    """A passage search (#605, #611): its ranking, once, and its first page; access, vector
+    selection and filter validation as in ``retrieve``.
+
+    The ranking is the ids of the best ``retrieval_limit`` passages (one more, to tell whether
+    the limit cut it), read without properties; only the first ``request.limit`` of them are
+    read in full. Later pages are slices of these ids (``read_passages``), never rankings of
+    their own: Weaviate's hybrid ranking depends on the limit and hybrid ``offset`` does not
+    reach past its first results (measured on 1.40.1), which would skip or repeat passages, and
+    ranking again for every page repeats the costliest step. Passages whose chunk is gone or
+    has no document by the time they are read are left out of the page.
+    """
+    start = time()
+    criteria = request.criteria
+    normalized, query, vector = await _passage_query(
+        backends, user, criteria, request.user_collection_id, filter_definitions, limit=retrieval_limit + 1,
+        type=request.type, hybrid_search_alpha=request.hybrid_search_alpha, vector=request.vector)
+    ranked = list(dict.fromkeys(await backends.chunks.ranked_ids(query)))  # each once, in rank order
+    bounded = len(ranked) > retrieval_limit
+    ranked = ranked[:retrieval_limit]
+    read_count = min(request.limit, len(ranked))
+    items = await backends.chunks.read_hits(ranked[:read_count], query)
+    for item in items:
+        item.text = display_text(item.text)
+    return PassageSearchResponse(
+        ranked_ids=ranked,
+        items=items,
+        read_count=read_count,
+        retrieval_limit=retrieval_limit,
+        bounded=bounded,
+        total_count=None if bounded else len(ranked),
+        criteria=criteria.model_copy(update={"document_filters": normalized.document_filters,
+                                             "chunk_filters": normalized.chunk_filters}),
+        vector=None if request.type == SearchType.text else vector.id,
+        time_spent=time() - start,
+    )
+
+
+async def read_passages(backends: SearchBackends, user: Principal | None, request: PassageReadRequest,
+                        filter_definitions: SearchFiltersResponse | None) -> PassageReadResponse:
+    """Passages of an earlier passage search by id (#611): a later page of its ``ranked_ids``.
+
+    The ids come from the client, so nothing about them is trusted: access to the collection
+    is checked again, the criteria are validated again, and the passages are read under the
+    same restrictions (collection, document and same-chunk filters) as the search's ranking.
+    An id the search could not have returned, also one of a deleted chunk or one that no
+    longer matches, is left out. Nothing is ranked or embedded.
+    """
+    start = time()
+    _, query, _ = await _passage_query(backends, user, request.criteria, request.user_collection_id,
+                                       filter_definitions, limit=len(request.ids), type=SearchType.text)
+    items = await backends.chunks.read_hits(list(dict.fromkeys(request.ids)), query)
+    for item in items:
+        item.text = display_text(item.text)
+    return PassageReadResponse(items=items, time_spent=time() - start)
+
+
+async def search_documents(documents: DocumentRepository, collections: UserCollectionRepository,
+                           user: Principal | None, request: DocumentSearchRequest, vocabulary: ChunkVocabulary,
+                           retrieval_limit: int) -> DocumentSearchResponse:
+    """Documents matching criteria without a text query (#606): one page in a stable order,
+    with the exact number of matching documents.
+
+    Document browsing selects them (``documents.service.browse_by_year``): the same documents
+    as ``GET /api/documents/browse`` and Analytics for the same criteria, chunk filters per
+    dimension from the documents' chunk-value summaries. Only the first ``retrieval_limit``
+    documents in that order can be read (Weaviate's ``QUERY_MAXIMUM_RESULTS``): a page past it
+    is refused, and ``bounded`` says when more match.
+    """
+    start = time()
+    if request.offset + request.limit > retrieval_limit:
+        raise InvalidRequestError(
+            f"Only the first {retrieval_limit} matching documents can be listed; narrow the filters to reach others.")
+    criteria = request.criteria
+    chunk_filters = criteria.chunk_filters
+    if not chunk_filters.is_empty():
+        chunk_filters = validate_chunk_filters(chunk_filters, vocabulary)
+    page = await document_service.browse_by_year(
+        documents, collections, user, request.user_collection_id, filters=criteria.document_filters,
+        chunk_filters=chunk_filters, vocabulary=vocabulary, limit=request.limit, offset=request.offset)
+    end = request.offset + request.limit
+    return DocumentSearchResponse(
+        items=page.items,
+        offset=request.offset,
+        next_offset=end if end < min(page.total_count, retrieval_limit) else None,
+        total_count=page.total_count,
+        retrieval_limit=retrieval_limit,
+        bounded=page.total_count > retrieval_limit,
+        order="year_asc",
+        criteria=criteria.model_copy(update={"chunk_filters": chunk_filters}),
+        time_spent=time() - start,
+    )
+
+
+async def _passage_query(backends: SearchBackends, user: Principal | None, criteria: SearchCriteria,
+                         user_collection_id: str | None, filter_definitions: SearchFiltersResponse | None,
+                         limit: int, **options) -> tuple[SearchRequest, ChunkQuery, SearchVector]:
+    """``_authorized_query`` for the criteria of a passage search: no tags, no summaries."""
+    return await _authorized_query(backends, user, SearchRequest(
+        query=criteria.text_query or "",
+        limit=limit,
+        user_collection_id=user_collection_id,
+        document_filters=criteria.document_filters,
+        chunk_filters=criteria.chunk_filters,
+        tag_uuids=[], positive=False, automatic=False,
+        search_title_generate=False, search_summary_generate=False, search_results_summary_generate=False,
+        **options,
+    ), filter_definitions)
 
 
 def public_retriever(backends: SearchBackends, vector: str | None = None) -> Retriever:

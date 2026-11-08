@@ -60,6 +60,7 @@ All URIs are relative to *http://localhost*
 | [**readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet**](DefaultApi.md#readdocumentpageassetapidocumentsdocumentidpagespageidkindget) | **GET** /api/documents/{document_id}/pages/{page_id}/{kind} | Read Document Page Asset |
 | [**readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet**](DefaultApi.md#readdocumentpagechunksapidocumentsdocumentidchunksbypageget) | **GET** /api/documents/{document_id}/chunks/by_page | Read Document Page Chunks |
 | [**readDocumentPagesApiDocumentsDocumentIdPagesGet**](DefaultApi.md#readdocumentpagesapidocumentsdocumentidpagesget) | **GET** /api/documents/{document_id}/pages | Read Document Pages |
+| [**readPassagesApiSearchPassagesReadPost**](DefaultApi.md#readpassagesapisearchpassagesreadpost) | **POST** /api/search/passages/read | Read Passages |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionscollectionidchunkschunkiddelete) | **DELETE** /api/user_collections/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
@@ -70,6 +71,8 @@ All URIs are relative to *http://localhost*
 | [**saveAppFeedbackApiV1FeedbackPost**](DefaultApi.md#saveappfeedbackapiv1feedbackpost) | **POST** /api/v1/feedback | Save App Feedback |
 | [**saveFeedbackApiRagFeedbackPost**](DefaultApi.md#savefeedbackapiragfeedbackpost) | **POST** /api/rag/feedback | Save Feedback |
 | [**searchApiSearchPost**](DefaultApi.md#searchapisearchpost) | **POST** /api/search | Search |
+| [**searchDocumentsApiSearchDocumentsPost**](DefaultApi.md#searchdocumentsapisearchdocumentspost) | **POST** /api/search/documents | Search Documents |
+| [**searchPassagesApiSearchPassagesPost**](DefaultApi.md#searchpassagesapisearchpassagespost) | **POST** /api/search/passages | Search Passages |
 | [**searchUsersApiUsersSearchGet**](DefaultApi.md#searchusersapiuserssearchget) | **GET** /api/users/search | Search Users |
 | [**shareCollectionApiUserCollectionsCollectionIdSharePost**](DefaultApi.md#sharecollectionapiusercollectionscollectionidsharepost) | **POST** /api/user_collections/{collection_id}/share | Share Collection |
 | [**suggestSpansOptimizedApiAiSuggestSpansOptimizedPost**](DefaultApi.md#suggestspansoptimizedapiaisuggestspansoptimizedpost) | **POST** /api/ai/suggest_spans/optimized | Suggest Spans Optimized |
@@ -4182,6 +4185,78 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## readPassagesApiSearchPassagesReadPost
+
+> PassageReadResponse readPassagesApiSearchPassagesReadPost(passageReadRequest)
+
+Read Passages
+
+A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\&#39;s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadPassagesApiSearchPassagesReadPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // PassageReadRequest
+    passageReadRequest: ...,
+  } satisfies ReadPassagesApiSearchPassagesReadPostRequest;
+
+  try {
+    const data = await api.readPassagesApiSearchPassagesReadPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **passageReadRequest** | [PassageReadRequest](PassageReadRequest.md) |  | |
+
+### Return type
+
+[**PassageReadResponse**](PassageReadResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## readTagSpansApiTagSpansGet
 
 > Array&lt;TagSpan&gt; readTagSpansApiTagSpansGet(collectionId, chunkId)
@@ -4892,6 +4967,150 @@ example().catch(console.error);
 ### Return type
 
 [**SearchResponse**](SearchResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## searchDocumentsApiSearchDocumentsPost
+
+> DocumentSearchResponse searchDocumentsApiSearchDocumentsPost(documentSearchRequest)
+
+Search Documents
+
+The documents matching search criteria without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last), with the exact number of matching documents. The same documents as &#x60;&#x60;GET /api/documents/browse&#x60;&#x60; and Analytics for the same criteria: chunk filters apply per dimension to the documents\&#39; chunk-value summaries. Only the first &#x60;&#x60;QUERY_MAXIMUM_RESULTS&#x60;&#x60; (10 000) can be paged through (&#x60;&#x60;bounded&#x60;&#x60;); a page past them is refused (400). A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SearchDocumentsApiSearchDocumentsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // DocumentSearchRequest
+    documentSearchRequest: ...,
+  } satisfies SearchDocumentsApiSearchDocumentsPostRequest;
+
+  try {
+    const data = await api.searchDocumentsApiSearchDocumentsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentSearchRequest** | [DocumentSearchRequest](DocumentSearchRequest.md) |  | |
+
+### Return type
+
+[**DocumentSearchResponse**](DocumentSearchResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## searchPassagesApiSearchPassagesPost
+
+> PassageSearchResponse searchPassagesApiSearchPassagesPost(passageSearchRequest)
+
+Search Passages
+
+The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most &#x60;&#x60;SEARCH_PASSAGES_LIMIT&#x60;&#x60;, with what they cover, and the first page of them in full. Later pages are read by id (&#x60;&#x60;POST /api/search/passages/read&#x60;&#x60;), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { SearchPassagesApiSearchPassagesPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // PassageSearchRequest
+    passageSearchRequest: ...,
+  } satisfies SearchPassagesApiSearchPassagesPostRequest;
+
+  try {
+    const data = await api.searchPassagesApiSearchPassagesPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **passageSearchRequest** | [PassageSearchRequest](PassageSearchRequest.md) |  | |
+
+### Return type
+
+[**PassageSearchResponse**](PassageSearchResponse.md)
 
 ### Authorization
 

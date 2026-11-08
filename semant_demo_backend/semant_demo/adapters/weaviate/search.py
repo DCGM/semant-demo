@@ -8,6 +8,7 @@ provider is called and no configuration is read here.
 """
 from collections.abc import Mapping
 from typing import Any
+from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import Metrics
@@ -80,38 +81,48 @@ class ChunkSearchRepository:
         Chunks without a document reference are left out. Raises ``criteria.UnavailableFilter``
         for a criteria predicate on a property the store does not declare (or not as expected).
         """
-        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
-        common = dict(
-            limit=query.limit,
-            filters=await self._filter(query),
-            return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())],
-        )
-        if query.mode == SearchType.text:
-            result = await chunks.query.bm25(query=query.text, **common)
-        elif query.mode == SearchType.vector:
-            vector, target = _vector(query)
-            result = await chunks.query.near_vector(near_vector=vector, target_vector=target, **common)
-        elif query.mode == SearchType.hybrid:
-            vector, target = _vector(query)
-            result = await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
-                                               target_vector=target, **common)
-        else:
-            raise ValueError(f"Unknown search type: {query.mode}")
+        result = await self._ranked(query, return_references=[QueryReference(
+            link_on="document", return_properties=await self._document_properties())])
+        return [hit for hit in map(_hit, result.objects) if hit is not None]
 
-        results: list[SearchResultChunk] = []
-        for obj in result.objects:
-            doc_objs = obj.references.get("document").objects if obj.references and obj.references.get("document") else []
-            if not doc_objs:
-                continue
-            first_doc = doc_objs[0]
-            results.append(SearchResultChunk(
-                id=obj.uuid,
-                **chunk_properties(obj.properties),
-                document_object=Document(id=first_doc.uuid, **first_doc.properties),
-                document=first_doc.uuid,
-                metadata=classifications(obj.properties),
-            ))
-        return results
+    async def ranked_ids(self, query: ChunkQuery) -> list[UUID]:
+        """Ids of the top ``query.limit`` chunks matching every condition, best first; no
+        properties or references are read. Pages of one ranking are slices of it (#605):
+        Weaviate's hybrid ranking depends on the limit, and hybrid ``offset`` does not reach
+        past its first results (measured on 1.40.1), so a page is never a query of its own."""
+        result = await self._ranked(query, return_properties=[])
+        return [obj.uuid for obj in result.objects]
+
+    async def read_hits(self, ids: list[UUID], scope: ChunkQuery) -> list[SearchResultChunk]:
+        """The chunks ``ids`` that match every condition of ``scope`` (its text, mode and limit
+        do not apply) as search hits, in the order of ``ids``. Chunks gone meanwhile, outside
+        the scope or without a document reference are left out: read under the ranking's own
+        restrictions, ids from a client never reach a chunk that ranking could not (#611)."""
+        if not ids:
+            return []
+        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        restrictions = await self._filter(scope)
+        by_ids = Filter.by_id().contains_any(ids)
+        result = await chunks.query.fetch_objects(
+            filters=by_ids if restrictions is None else Filter.all_of([by_ids, restrictions]), limit=len(ids),
+            return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())])
+        by_id = {obj.uuid: obj for obj in result.objects}
+        hits = (_hit(by_id[i]) for i in ids if i in by_id)
+        return [hit for hit in hits if hit is not None]
+
+    async def _ranked(self, query: ChunkQuery, **returned):
+        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        common = dict(limit=query.limit, filters=await self._filter(query), **returned)
+        if query.mode == SearchType.text:
+            return await chunks.query.bm25(query=query.text, **common)
+        if query.mode == SearchType.vector:
+            vector, target = _vector(query)
+            return await chunks.query.near_vector(near_vector=vector, target_vector=target, **common)
+        if query.mode == SearchType.hybrid:
+            vector, target = _vector(query)
+            return await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
+                                             target_vector=target, **common)
+        raise ValueError(f"Unknown search type: {query.mode}")
 
     async def document_filter_stats(self) -> tuple[int | None, int | None, list[str] | None]:
         """(min yearIssued, max yearIssued, languages) over all documents; None where unknown."""
@@ -158,6 +169,21 @@ class ChunkSearchRepository:
             *criteria.parts(copied, chunk_types, records="Documents"),
             *criteria.parts(query.chunk_conditions, chunk_types, chunk_tokenizations, records="Chunks"),
         ]
+
+
+def _hit(obj) -> SearchResultChunk | None:
+    """A chunk object with its document reference as a search hit; None without a document."""
+    doc_objs = obj.references.get("document").objects if obj.references and obj.references.get("document") else []
+    if not doc_objs:
+        return None
+    first_doc = doc_objs[0]
+    return SearchResultChunk(
+        id=obj.uuid,
+        **chunk_properties(obj.properties),
+        document_object=Document(id=first_doc.uuid, **first_doc.properties),
+        document=first_doc.uuid,
+        metadata=classifications(obj.properties),
+    )
 
 
 def classifications(properties: Mapping[str, Any]) -> dict[str, list[str]]:

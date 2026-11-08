@@ -80,6 +80,70 @@ test('recent searches', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-history-newer-version')
 })
 
+test('search documents: filter-only results, mode switch, Load more and states (#606)', async ({ page }, testInfo) => {
+  // A first page of two, so Load more and the coverage line show with the small fixture corpus.
+  await page.route('**/api/search/documents', async (route) => {
+    const body = route.request().postDataJSON()
+    await route.continue({ postData: JSON.stringify(body.offset === 0 ? { ...body, limit: 2 } : body) })
+  })
+  await page.goto('/#/search?chunk_languages=ces')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('document-result-open')).toHaveCount(2)
+  await expect(page.getByTestId('search-load-more')).toBeVisible()
+  await page.getByTestId('search-coverage').click() // closes the recent searches the field offers
+  // No right sidebar: the Summary panel serves passages only.
+  await save(page, testInfo, 'search-documents')
+
+  await page.getByTestId('search-load-more').click()
+  await expect(page.getByTestId('document-result-open')).toHaveCount(3)
+  await save(page, testInfo, 'search-documents-all')
+
+  await page.goto('/#/search?q=Lhota&chunk_languages=ces&mode=documents')
+  await expect(page.getByTestId('search-documents-need-no-query')).toBeVisible()
+  await page.getByTestId('search-documents-need-no-query').click()
+  await save(page, testInfo, 'search-documents-need-no-query')
+
+  await page.goto('/#/search?chunk_classifications=communicative_mode:narration&year_min=1900')
+  await expect(page.getByTestId('search-empty')).toBeVisible()
+  await page.getByTestId('search-empty').click()
+  await save(page, testInfo, 'search-documents-empty')
+})
+
+test('search passages: applied filters, coverage, Load more, pending and empty states (#605)', async ({ page }, testInfo) => {
+  // Pages of three, so Load more and the coverage line show with the small fixture corpus.
+  await page.route('**/api/search/passages', async (route) => {
+    await route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), limit: 3 }) })
+  })
+  await page.goto('/#/search?q=Lhota&chunk_languages=ces&year_max=1950')
+  await closePhoneNavigation(page)
+  await expect(page.locator('#result-1')).toBeVisible()
+  await expect(page.getByTestId('search-load-more')).toBeVisible()
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'search-passages')
+
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Brno')
+  await expect(page.getByTestId('search-pending')).toBeVisible()
+  await save(page, testInfo, 'search-passages-pending')
+
+  await page.goto('/#/search?chunk_languages=ces&mode=passages')
+  await expect(page.getByTestId('search-needs-query')).toBeVisible()
+  await page.getByTestId('search-needs-query').click() // closes the recent searches the field offers
+  await expect(page.getByTestId('search-history')).toHaveCount(0)
+  await save(page, testInfo, 'search-passages-needs-query')
+
+  await page.goto('/#/search?q=Lhota&chunk_classifications=complexity:expert&chunk_languages=zxx')
+  await expect(page.getByTestId('search-empty')).toBeVisible()
+  await save(page, testInfo, 'search-passages-empty')
+
+  await page.unroute('**/api/search/passages')
+  await page.route('**/api/search/passages', (route) => route.fulfill({
+    status: 422, json: { detail: 'Passages cannot be filtered by complexity: this corpus database is not recorded.' }
+  }))
+  await page.goto('/#/search?q=Brno')
+  await expect(page.getByTestId('search-error')).toBeVisible()
+  await save(page, testInfo, 'search-passages-error')
+})
+
 test('search vector selection', async ({ page }, testInfo) => {
   // The browser-test profile configures two search vectors (#217).
   await page.goto('/#/search')
@@ -489,18 +553,37 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await page.reload() // without the sign-in notification
     await closePhoneNavigation(page)
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
+    // Two columns side by side (#537).
     await page.getByTestId('concordance-show-attribute').click()
     await page.getByRole('option', { name: 'Role', exact: true }).click()
+    await page.getByRole('option', { name: 'Place type', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('listbox')).toHaveCount(0)
     const novak = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
-    await novak.getByTestId('kwic-attribute-edit').click()
+    const role = novak.locator(`[data-testid="kwic-attribute"][data-attribute-id="${(await created.json()).id}"]`)
+    const placeType = novak.locator(`[data-testid="kwic-attribute"][data-attribute-id="${(await place.json()).id}"]`)
     const picker = page.getByTestId('attribute-value-picker')
+    await placeType.getByTestId('kwic-attribute-edit').click()
+    await picker.getByText('town', { exact: true }).click()
+    await expect(placeType.getByTestId('attribute-chips')).toHaveText('town')
+    await expect(picker).toHaveCount(0)
+    await role.getByTestId('kwic-attribute-edit').click()
     await picker.getByText('statesman', { exact: true }).click()
-    await expect(novak.getByTestId('attribute-chips')).toHaveText('statesman')
+    await expect(role.getByTestId('attribute-chips')).toHaveText('statesman')
     await picker.getByText('witness', { exact: true }).click()
-    await expect(novak.getByTestId('attribute-chips')).toHaveText('statesmanwitness')
+    await expect(role.getByTestId('attribute-chips')).toHaveText('statesmanwitness')
     await expect(page.locator('.q-menu')).not.toHaveClass(/q-transition/)
     await save(page, testInfo, 'attribute-assign-column')
     await page.keyboard.press('Escape')
+    // A list narrower than its columns scrolls sideways under the checkbox and annotation (#537).
+    const kwic = page.getByTestId('kwic')
+    if (await kwic.evaluate(el => el.scrollWidth > el.clientWidth)) {
+      await expect(page.getByTestId('attribute-value-picker')).toHaveCount(0)
+      await kwic.evaluate(el => { el.scrollLeft = el.scrollWidth })
+      await page.mouse.move(0, 0)
+      await save(page, testInfo, 'attribute-assign-column-scrolled')
+      await kwic.evaluate(el => { el.scrollLeft = 0 })
+    }
 
     await page.getByTestId('select-all-matches').click()
     await page.getByTestId('assign-attribute').click()
@@ -517,7 +600,7 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await page.mouse.move(0, 0)
     await save(page, testInfo, 'attribute-assign-result')
 
-    await novak.click()
+    await novak.locator('.kwic__key').click() // not on an attribute cell, which edits instead
     await expect(page.getByTestId('annotation-attributes')).toBeVisible()
     await expectRightSidebarIn(page)
     await expectSidebarsOpen(page, testInfo)

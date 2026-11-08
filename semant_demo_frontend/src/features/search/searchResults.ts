@@ -1,9 +1,10 @@
 import type { SearchResponse, SearchResultChunk } from 'src/generated/api'
 
 /**
- * The results of one search, as retrieved: the explicit input of tools working on search
- * results (summary now, search-result chat later). A new search creates a new context
- * with a new `id`; tools drop work started for an older one.
+ * The results of one search, as retrieved so far: the explicit input of tools working on
+ * search results (summary now, search-result chat later). A new search creates a new context
+ * with a new `id`; tools drop work started for an older one. Loading more results of the same
+ * search keeps the `id` and adds to `results`, so earlier result numbers stay valid.
  *
  * Hits keep their source references (chunk `id`, `document`, `startPageId`,
  * `fromPage`/`toPage`). Their `text` is display text, not the canonical text annotation
@@ -11,7 +12,21 @@ import type { SearchResponse, SearchResultChunk } from 'src/generated/api'
  */
 export interface SearchResultsContext {
   readonly id: number
-  readonly response: SearchResponse
+  /** The text query the results were retrieved for. */
+  readonly query: string
+  readonly results: readonly SearchResultChunk[]
+  /** Retrieval time in seconds. */
+  readonly timeSpent: number
+}
+
+/** The context as the summary endpoint reads it (`/api/summarize`: a search response). */
+export function asSearchResponse (context: SearchResultsContext, results: SearchResultChunk[]): SearchResponse {
+  return {
+    results,
+    searchRequest: { query: context.query, tagUuids: [], positive: false, automatic: false },
+    timeSpent: context.timeSpent,
+    searchLog: []
+  }
 }
 
 /**
@@ -30,7 +45,7 @@ export interface ResultSubset {
 
 /** The chosen subset of the context's results; null when it is empty. */
 export function selectResults (context: SearchResultsContext, scope: ResultScope): ResultSubset | null {
-  const all = context.response.results
+  const all = context.results
   const picked: ResultSubset = { results: [], numbers: [] }
   if (scope.kind === 'selected') {
     const ids = new Set(scope.ids)

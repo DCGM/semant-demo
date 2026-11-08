@@ -14,7 +14,7 @@ type Hit = { text: string, document_object: { id: string, library?: string | nul
 
 /** The chronicle's hits come from `mzk`; other documents keep no library. */
 const chronicleFromMzk = (page: Page) => editSearchResults(page, (body) => {
-  for (const hit of body.results as unknown as Hit[]) {
+  for (const hit of body.items as unknown as Hit[]) {
     if (hit.document_object.id === chronicle.id) hit.document_object.library = 'mzk'
   }
 })

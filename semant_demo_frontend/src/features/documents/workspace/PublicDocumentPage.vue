@@ -1,32 +1,25 @@
 <template>
-  <q-page class="public-document q-px-lg q-pb-md">
-    <header class="public-document__header row items-end no-wrap q-py-sm">
-      <div class="col" style="min-width: 0">
-        <BackLink v-if="back" :to="back.to" :label="back.label" :aria-label="back.ariaLabel" />
-        <div class="text-caption text-grey-6">Document</div>
-        <h1 class="public-document__title text-h5 text-weight-medium ellipsis" data-testid="document-title">
-          {{ documentData ? (documentData.title || 'Untitled document') : (documentError ? 'Document not available' : '…') }}
-        </h1>
-        <div v-if="documentData" class="text-body2 text-grey-7 ellipsis">
-          <span v-if="documentData.subtitle">{{ documentData.subtitle }} · </span>
-          <span>{{ byline }}</span>
-          <OriginalSourceLink :document="documentData" :page-id="sync.currentPageId.value" class="q-ml-sm" />
-        </div>
-      </div>
-      <WorkspaceModeToggle
-        v-if="workspace.hasScan.value"
-        :model-value="workspace.shown.value"
-        :narrow="workspace.narrow.value"
-        class="q-ml-md"
-        @update:model-value="chooseMode"
-      />
-    </header>
+  <!-- The view fills the window below the app header; only its panes scroll (#600). -->
+  <q-page class="public-document" :style-fn="fillHeight">
+    <DocumentHeader
+      :title="documentData ? (documentData.title || 'Untitled document') : (documentError ? 'Document not available' : '…')"
+      :detail="detail"
+      :document="documentData"
+      :page-id="sync.currentPageId.value"
+      :back="back"
+    />
 
-    <div v-if="documentError" class="text-negative q-my-md" role="alert" data-testid="document-error">{{ documentError }}</div>
-    <!-- One line, always there: a new notice must not move the text or resize the scan. -->
-    <div class="public-document__notice text-caption text-grey-8 ellipsis" :title="sync.notice.value">
-      <span v-if="sync.notice.value" aria-live="polite" data-testid="sync-notice">{{ sync.notice.value }}</span>
-    </div>
+    <div v-if="documentError" class="text-negative q-pa-md" role="alert" data-testid="document-error">{{ documentError }}</div>
+    <WorkspaceControls
+      v-else
+      :mode="workspace.shown.value"
+      :narrow="workspace.narrow.value"
+      :has-scan="workspace.hasScan.value"
+      :notice="sync.notice.value"
+      @update:mode="chooseMode"
+    >
+      <WhitespaceToggle v-model="preserveWhitespace" />
+    </WorkspaceControls>
 
     <DocumentWorkspace
       v-if="!documentError"
@@ -38,7 +31,6 @@
       :document-title="documentData?.title ?? ''"
       :highlights="sync.scanHighlights.value"
       :layout-cache="layouts"
-      :sticky-top="STICKY_TOP"
       @navigate="onNavigate"
       @page-change="onScanPage"
       @loaded="onLoaded"
@@ -62,10 +54,10 @@
         <DocumentTextPane
           ref="textPane"
           :chunks="text.chunks.value"
+          :preserve-whitespace="preserveWhitespace"
           :active-range="activeRange"
           :active-approximate="!!sync.textFocus.value?.approximate"
           :page-marks="sync.pageMarks.value"
-          :reveal-inset="STICKY_TOP"
           @text-click="onTextClick"
           @select="onTextSelect"
         >
@@ -105,24 +97,25 @@ import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, ref, watch 
 import { useRoute, useRouter } from 'vue-router'
 import type { Document, DocumentPage } from 'src/generated/api'
 import { errorStatus } from 'src/shared/api'
-import BackLink from 'src/shared/ui/BackLink.vue'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useDocumentsRepository } from 'src/features/documents/useDocumentsRepository'
 import DocumentMetadataPanel from '../DocumentMetadataPanel.vue'
-import OriginalSourceLink from '../OriginalSourceLink.vue'
 import { createLayoutCache } from '../scan/pageAssets'
 import { selectionRange } from '../correspondence/layoutMap'
 import { useDocumentText } from '../correspondence/useDocumentText'
 import { useTextScanSync } from '../correspondence/useTextScanSync'
 import { DOCUMENT_SIDEBAR_PANELS } from '../viewer/documentSidebar'
 import DocumentTextPane from '../viewer/DocumentTextPane.vue'
+import WhitespaceToggle from '../viewer/WhitespaceToggle.vue'
 import type { DocumentTextPaneApi, TextSelection } from '../viewer/documentTextPane'
 import { gapSize, missingChunksText, type ChunkRange, type TextPoint } from '../viewer/readerOffsets'
+import DocumentHeader from './DocumentHeader.vue'
 import DocumentWorkspace from './DocumentWorkspace.vue'
+import { fillHeight } from './fillHeight'
 import { returnLink } from './documentLink'
 import { useWorkspaceMode } from './useWorkspaceMode'
 import { parseMode, targetKey, withMode, withScanPage, type WorkspaceMode } from './workspaceMode'
-import WorkspaceModeToggle from './WorkspaceModeToggle.vue'
+import WorkspaceControls from './WorkspaceControls.vue'
 
 // The public document view (#545, `/documents/:documentId`): the document's canonical text
 // and its page scans in the paired workspace, with the text/scan correspondence (#544) and the
@@ -134,8 +127,6 @@ import WorkspaceModeToggle from './WorkspaceModeToggle.vue'
 // reader's own page changes in the scan viewer replace the passage with the page in the URL;
 // the first page and pages opened for the text leave the link as it was.
 
-/** Below the application header (MainLayout), with a small gap. */
-const STICKY_TOP = 58
 /** The link's targets: a passage, or a page. */
 const TARGETS = ['chunk', 'start', 'end', 'page'] as const
 /** The targets a page the reader moved to replaces. */
@@ -150,6 +141,8 @@ const documentError = ref('')
 const textPane = ref<DocumentTextPaneApi | null>(null)
 const workspacePane = ref<InstanceType<typeof DocumentWorkspace> | null>(null)
 const pages = shallowRef<DocumentPage[]>([])
+/** The text keeps its original whitespace (as in the collection reader), or collapses it. */
+const preserveWhitespace = ref(true)
 const layouts = shallowRef(createLayoutCache())
 /** A passage opened by a deep link, until another interaction. */
 const linkedRange = shallowRef<ChunkRange | null>(null)
@@ -177,10 +170,12 @@ const back = computed(() => returnLink(route.query.from))
 const pageId = computed(() => typeof route.query.page === 'string' ? route.query.page : null)
 const firstOrder = computed(() => text.chunks.value[0]?.order ?? 0)
 const activeRange = computed(() => sync.textFocus.value?.range ?? linkedRange.value)
-const byline = computed(() => {
+/** The subtitle and byline, after the title in the header. */
+const detail = computed(() => {
   const d = documentData.value
   if (!d) return ''
-  return [d.author?.join(', '), d.yearIssued].filter(Boolean).join(', ') || 'Author and year unknown'
+  const byline = [d.author?.join(', '), d.yearIssued].filter(Boolean).join(', ') || 'Author and year unknown'
+  return [d.subtitle, byline].filter(Boolean).join(' · ')
 })
 
 const queryNumber = (name: string) => {
@@ -338,26 +333,16 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .public-document {
-  background: #f8fafc;
-}
-
-.public-document__title {
-  margin: 0;
-  line-height: 1.3;
-}
-
-.public-document__notice {
-  height: 20px;
-  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
 }
 
 .public-document__text {
   position: relative;
-  min-height: 200px;
-  padding: 24px 28px;
-  background: #fff;
-  border: 1px solid #d5dce6;
-  border-radius: 12px;
+  min-height: 100%;
+  padding: 16px 20px 24px;
 }
 
 .public-document__gap {
@@ -367,7 +352,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 599px) {
   .public-document__text {
-    padding: 16px;
+    padding: 12px 12px 20px;
   }
 }
 </style>

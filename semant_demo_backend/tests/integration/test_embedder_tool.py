@@ -7,6 +7,7 @@ failures, refused collections, the guarded test collection and querying a filled
 through Search (#217). Collections other than the application's are named
 ``EmbedderToolTest*`` and deleted after each test.
 """
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -235,4 +236,77 @@ async def test_a_vector_name_graphql_cannot_use_is_refused_before_any_write(tool
 
     with pytest.raises(Exception, match="vector_name"):
         make_pipeline(vector_name=name)
+    assert set((await tool_store.collections.get(TEST_COLLECTION).config.get()).vector_config) == {"default"}
+
+
+##############
+# Check mode #
+##############
+
+async def test_a_check_counts_what_a_run_would_embed_and_changes_nothing(tool_store, make_pipeline, embed_calls):
+    await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
+    collection = tool_store.collections.get(TEST_COLLECTION)
+    await collection.data.insert({"title": "empty", "text": "", "language": "ces"})
+
+    # Before the first run the vector does not exist: the check neither creates it nor reads vectors.
+    stats = await make_pipeline().check_async()
+    assert (stats.scanned, stats.missing, stats.already_filled, stats.empty) == (11, 10, 0, 1)
+    assert set((await collection.config.get()).vector_config) == {"default"}
+
+    await make_pipeline(max_records=4).run_async()
+    filled = await tool_vectors(tool_store)
+    calls = len(embed_calls)
+
+    stats = await make_pipeline().check_async()
+    assert (stats.scanned, stats.missing, stats.already_filled, stats.empty) == (11, 6, 4, 1)
+    assert stats.embedded == 0 and len(embed_calls) == calls     # no embedding requests
+    assert await tool_vectors(tool_store) == filled               # no writes
+
+
+async def test_the_check_exit_code_says_whether_records_are_left(tool_store, make_pipeline, tmp_path, monkeypatch,
+                                                                 capsys):
+    from semantembedder.__main__ import main
+    await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
+
+    def check_cli(**settings) -> int:
+        make_pipeline(**settings)
+        config = max(tmp_path.glob("embedder-*.yaml"), key=lambda p: int(p.stem.split("-")[1]))
+        monkeypatch.setattr(sys, "argv", ["semantembedder", str(config), "--check"])
+        with pytest.raises(SystemExit) as exit_:
+            main()
+        return exit_.value.code
+
+    assert await asyncio.to_thread(check_cli) == 1
+    assert "10 without the vector" in capsys.readouterr().out
+    await make_pipeline().run_async()
+    assert await asyncio.to_thread(check_cli) == 0
+    assert await asyncio.to_thread(check_cli, collection=f"{TEST_COLLECTION}Missing") == 2
+    assert "does not exist" in capsys.readouterr().err
+
+
+async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_embed(tool_store, make_pipeline,
+                                                                                      tmp_path, monkeypatch, capsys):
+    from semantembedder.__main__ import main
+    # A run refuses a missing vector with create_vector disabled before reading anything, so the check
+    # must not report "nothing left" (exit 0) for an empty collection or 1 for a populated one.
+    await tool_store.collections.create(f"{TEST_COLLECTION}Empty",
+                                        properties=[Property(name="text", data_type=DataType.TEXT)],
+                                        vector_config=Configure.Vectors.self_provided(name="default"))
+    await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
+
+    def check_cli(**settings) -> int:
+        make_pipeline(create_vector=False, **settings)
+        config = max(tmp_path.glob("embedder-*.yaml"), key=lambda p: int(p.stem.split("-")[1]))
+        monkeypatch.setattr(sys, "argv", ["semantembedder", str(config), "--check"])
+        with pytest.raises(SystemExit) as exit_:
+            main()
+        return exit_.value.code
+
+    stats = await make_pipeline(create_vector=False, collection=f"{TEST_COLLECTION}Empty").check_async()
+    assert (stats.scanned, stats.missing) == (0, 0) and "create_vector is disabled" in stats.refused
+    for collection in (f"{TEST_COLLECTION}Empty", TEST_COLLECTION):
+        assert await asyncio.to_thread(check_cli, collection=collection) == 2
+        assert "A run would be refused" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="create_vector is disabled"):
+        await make_pipeline(create_vector=False, collection=f"{TEST_COLLECTION}Empty").run_async()
     assert set((await tool_store.collections.get(TEST_COLLECTION).config.get()).vector_config) == {"default"}

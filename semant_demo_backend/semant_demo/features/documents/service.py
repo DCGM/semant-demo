@@ -15,7 +15,7 @@ from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.documents.criteria import (
-    ChunkFilters, ChunkVocabulary, DocumentFilters, document_level_conditions)
+    ChunkFilters, ChunkVocabulary, Condition, DocumentFilters, document_level_conditions)
 from semant_demo.features.documents.schemas import DocumentChunk, AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
 
 Id = str | UUID
@@ -113,11 +113,32 @@ async def browse(documents: DocumentRepository, collections: UserCollectionRepos
     read (``InvalidChunkFilterError``). ``options`` are the repository's paging, sorting and
     substring filter options.
     """
+    scope, conditions = await _browse_scope(collections, user, collection_id, filters, chunk_filters, vocabulary)
+    return await documents.browse(collection_id=scope, conditions=conditions, **options)
+
+
+async def browse_by_year(documents: DocumentRepository, collections: UserCollectionRepository,
+                         user: Principal | None, collection_id: Id | None = None,
+                         filters: DocumentFilters | None = None, chunk_filters: ChunkFilters | None = None,
+                         vocabulary: ChunkVocabulary | None = None, limit: int = 50, offset: int = 0,
+                         ) -> DocumentBrowse:
+    """``browse`` in a stable order for paging (Explore Documents, #606): publication year,
+    oldest first, then id, the documents without a year last. The same access, criteria and
+    chunk-filter rules; no substring filters."""
+    scope, conditions = await _browse_scope(collections, user, collection_id, filters, chunk_filters, vocabulary)
+    return await documents.browse_by_year(collection_id=scope, conditions=conditions, limit=limit, offset=offset)
+
+
+async def _browse_scope(collections: UserCollectionRepository, user: Principal | None, collection_id: Id | None,
+                        filters: DocumentFilters | None, chunk_filters: ChunkFilters | None,
+                        vocabulary: ChunkVocabulary | None) -> tuple[UUID | None, list[Condition]]:
+    """The collection a browse reads (read access checked) and its criteria predicates; the
+    chunk filters are checked first, before anything is read."""
     _, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
     scope = None
     if collection_id is not None:
         scope = (await access.require_collection_read(collections, user, collection_id)).collection_id
-    return await documents.browse(collection_id=scope, conditions=conditions, **options)
+    return scope, conditions
 
 
 async def read_chunks_in_collection(documents: DocumentRepository, collections: UserCollectionRepository,

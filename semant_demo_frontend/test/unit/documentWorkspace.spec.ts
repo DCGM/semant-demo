@@ -3,7 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { documentLink, returnLink } from 'src/features/documents/workspace/documentLink'
 import { parseMode, shownMode, targetKey, withMode, withScanPage } from 'src/features/documents/workspace/workspaceMode'
-import { keepScrollOfKeptPages } from 'src/router/keptPages'
+import { forgetKeptLocations, keepScrollOfKeptPages, keptLocation, rememberKeptLocations } from 'src/router/keptPages'
 
 // The paired document workspace (#545): its views, the links to the public document view and
 // back, and the scroll position of the pages kept alive while a document is shown.
@@ -52,7 +52,8 @@ describe('document links', () => {
   })
 
   it('lead back to Search or Chat, and nowhere for another or no origin', () => {
-    expect(returnLink('search')).toMatchObject({ to: { name: 'search' }, ariaLabel: 'Back to search results' })
+    forgetKeptLocations()
+    expect(returnLink('search')).toMatchObject({ to: { name: 'search', query: {} }, ariaLabel: 'Back to search results' })
     expect(returnLink('chat')).toMatchObject({ to: { name: 'rag' }, ariaLabel: 'Back to the conversation' })
     expect(returnLink('collections')).toBeNull()
     expect(returnLink(undefined)).toBeNull()
@@ -79,5 +80,26 @@ describe('pages kept alive', () => {
     expect(await scroll(route('/search'), route('/documents/d1'), null)).toEqual({ left: 0, top: 640 })
     expect(await scroll(route('/about'), route('/documents/d1'), null)).toEqual({ left: 0, top: 0 })
     expect(await scroll(route('/search'), route('/documents/d1'), { left: 0, top: 12 })).toEqual({ left: 0, top: 12 })
+  })
+
+  it('are linked back to with the query they were left with, so Search returns to the same search', async () => {
+    forgetKeptLocations()
+    const Page = { render: () => null }
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { name: 'search', path: '/search', component: Page, meta: { keepAlive: true } },
+        { name: 'document', path: '/documents/:documentId', component: Page }
+      ]
+    })
+    rememberKeptLocations(router)
+    await router.push({ name: 'search', query: { q: 'Lhota', chunk_languages: ['ces', 'deu'] } })
+    await router.push({ name: 'document', params: { documentId: 'd1' }, query: { from: 'search' } })
+
+    expect(keptLocation('search')).toEqual({ name: 'search', query: { q: 'Lhota', chunk_languages: ['ces', 'deu'] } })
+    expect(returnLink('search')?.to).toEqual(keptLocation('search'))
+    await router.push(returnLink('search')!.to)
+    expect(router.currentRoute.value.fullPath).toBe('/search?q=Lhota&chunk_languages=ces&chunk_languages=deu')
+    expect(keptLocation('rag')).toEqual({ name: 'rag', query: {} }) // never shown
   })
 })
