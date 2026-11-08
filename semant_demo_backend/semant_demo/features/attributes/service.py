@@ -167,12 +167,11 @@ async def _newly_inapplicable(store: AttributeStore, grant, current: Attribute, 
 
 
 def _narrowing_message(affected: int, confirmed: int | None) -> str:
+    """A plain summary for API callers; the UI words the warning itself (``narrowingWarning``)."""
     annotations = "1 annotation" if affected == 1 else f"{affected} annotations"
-    changed = ("" if confirmed is None
-               else f"The number of affected annotations changed from {confirmed} since it was shown. ")
-    return (f"{changed}Values on {annotations} will no longer apply. No values are deleted: they stay "
-            "marked as not applying, take no new values, can be removed, and apply again if their tag "
-            "applies again. Confirm to save.")
+    changed = "" if confirmed is None else f"The number changed from {confirmed}. "
+    return (f"{changed}Values on {annotations} would stop applying (they are kept); nothing was changed. "
+            f"Confirm with confirm_affected {affected}.")
 
 
 def _scope_after(current: Attribute, patch: PatchAttribute) -> tuple[bool, list[UUID]]:

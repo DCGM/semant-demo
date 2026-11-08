@@ -347,6 +347,53 @@ test('a confirmed narrowing keeps the values, greyed in the workspace, until the
   expect((await novakRow()).attributes).toEqual(before.attributes)
 })
 
+test('on a phone: no holders need no confirmation, an uncounted narrowing is not taken as none, Edit Tag asks', async ({ page, request }) => {
+  // #568: zero affected saves at once; a count that fails is an error to retry, never "0 affected".
+  await speakerOnNovak(request)
+  await createAttribute(request, { name: 'Tone', tag_ids: [fixture.tag('person').id], values: [{ label: 'formal' }] })
+  await useViewport(page, 'phone')
+  await openAttributes(page)
+  const removePerson = async (name: string) => {
+    await page.getByRole('button', { name: `Edit ${name}` }).click()
+    await dialog(page).getByLabel('Tags', { exact: true }).click()
+    await page.getByRole('option', { name: fixture.tag('person').name }).click()
+    await page.keyboard.press('Escape')
+    await dialog(page).getByRole('button', { name: 'Save' }).click()
+  }
+
+  await removePerson('Tone')
+  await expect(dialog(page)).toHaveCount(0)
+  expect((await listed(request, 'Tone')).tag_ids).toEqual([])
+
+  await page.route(`**${base}/attributes/*`, async route => {
+    if (route.request().method() !== 'PATCH') return await route.fallback()
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Could not check which annotations hold these values; nothing was changed. Try again later.' })
+    })
+  })
+  await removePerson('Speaker')
+  await expect(dialog(page).getByTestId('attribute-scope-section')).toContainText('Could not check which annotations hold these values')
+  await expect(dialog(page).getByTestId('attribute-narrowing-warning')).toHaveCount(0)
+  await expect(dialog(page).getByRole('button', { name: 'Save' })).toBeInViewport()
+  await page.unroute(`**${base}/attributes/*`)
+  await dialog(page).getByRole('button', { name: 'Save' }).click()
+  await expect(dialog(page).getByTestId('attribute-narrowing-warning')).toContainText('on 1 annotation.')
+  await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'Yes' }).click()
+  expect((await listed(request, 'Speaker')).tag_ids).toEqual([fixture.tag('person').id])
+
+  await page.goto(`/#/collections/${chronicles.id}/tags`)
+  const tagRow = page.locator('tbody tr').filter({ has: page.getByText(fixture.tag('person').name, { exact: true }) })
+  await tagRow.getByRole('button', { name: 'Edit tag' }).click()
+  await dialog(page).getByTestId('tag-applicable-attribute').filter({ hasText: 'Speaker' }).getByRole('switch').click()
+  await dialog(page).getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog(page).getByTestId('tag-applicable-attribute-warning')).toBeInViewport()
+  await expect(dialog(page).getByRole('button', { name: 'Confirm and save' })).toBeInViewport()
+  await page.screenshot({ path: 'test-results/ui-capture/tag-attribute-narrowing-phone.png' })
+})
+
 test('tags that are loading, failed or deleted are never shown as something else', async ({ page, request }) => {
   const headers = await headersOf(request)
   const tag = await request.post('/api/tags', {

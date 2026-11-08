@@ -717,7 +717,7 @@ async def test_a_narrowing_counts_only_values_that_stop_applying_and_refuses_a_s
     spans.stored[(COLLECTION, REJECTED)] = list(spans.stored[(COLLECTION, APPROVED)])
     with pytest.raises(ConfirmationRequiredError) as asked:
         await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PERSON]))
-    assert asked.value.affected == 2 and "Values on 2 annotations will no longer apply" in asked.value.detail
+    assert asked.value.affected == 2 and "Values on 2 annotations would stop applying" in asked.value.detail
     # Another annotation took a value meanwhile: the number confirmed is stale, nothing changes.
     spans.stored[(COLLECTION, SUGGESTION)] = list(spans.stored[(COLLECTION, APPROVED)])
     with pytest.raises(ConfirmationRequiredError) as again:
@@ -813,6 +813,34 @@ async def test_a_change_of_the_tags_never_writes_over_one_made_in_between(store,
         await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PLACE]))
     monkeypatch.setattr(definitions, "read", read)
     assert set((await read(COLLECTION, attribute.id)).tag_ids) == {PERSON, PLACE}
+
+
+async def test_a_narrowing_is_counted_again_when_the_attribute_changed_before_its_write(store, spans, definitions,
+                                                                                      monkeypatch):
+    """The count confirmed was right when read, but someone else changed the attribute and an
+    annotation took a value before the write: the retry counts again and asks for the new number."""
+    attribute = await define(store, tag_ids=[PERSON, PLACE])
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add,
+                                                                    attribute.values[:1]))
+    update = definitions.update
+    raced = []
+
+    async def someone_else_first(cid, aid, patch, expected_revision=None):
+        if not raced:
+            raced.append(True)
+            await update(cid, aid, PatchAttribute(description="edited meanwhile"))
+            spans.stored[(COLLECTION, SUGGESTION)] = list(spans.stored[(COLLECTION, APPROVED)])
+        return await update(cid, aid, patch, expected_revision=expected_revision)
+
+    monkeypatch.setattr(definitions, "update", someone_else_first)
+    counted = spans.counted
+    with pytest.raises(ConfirmationRequiredError) as asked:
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                       PatchAttribute(remove_tag_ids=[PERSON], confirm_affected=1))
+    assert (asked.value.affected, spans.counted - counted) == (2, 2)
+    monkeypatch.setattr(definitions, "update", update)
+    current = (await service.list_attributes(store, OWNER, COLLECTION))[0]
+    assert (current.tag_ids, current.description) == ([PERSON, PLACE], "edited meanwhile")
 
 
 async def test_a_rename_with_a_change_in_between_is_retried_and_a_persistent_race_is_a_conflict(
@@ -996,6 +1024,10 @@ def test_requests_are_validated_before_anything_is_read():
                                expected_versions={}, mode=AssignMode.replace)
     with pytest.raises(ValueError):
         PatchAttribute()
+    with pytest.raises(ValueError):  # a confirmation alone changes nothing; a count is never negative
+        PatchAttribute(confirm_affected=1)
+    with pytest.raises(ValueError):
+        PatchAttribute(tag_ids=[], confirm_affected=-1)
     with pytest.raises(ValueError):
         PatchAttributeValue()
 

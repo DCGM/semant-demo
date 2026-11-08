@@ -348,7 +348,9 @@ const handleSubmit = async () => {
   saving.value = true
   formError.value = null
   attributeErrors.value = {}
-  attributeWarnings.value = {}
+  // Pending confirmations and their warnings stay until the attribute changes answer again,
+  // together, so a confirmation is never armed without its count on screen (also when the tag
+  // save fails first).
   try {
     // Whether this save wrote the tag: only then is the failure of an attribute change worth
     // saying the tag is saved (a new tag exists although the dialog stays open).

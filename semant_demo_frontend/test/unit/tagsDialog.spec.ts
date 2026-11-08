@@ -219,6 +219,31 @@ describe('TagsDialog applicable attributes', () => {
     expect(updated.mock.calls).toEqual([['c1', 'a1', { removeTagIds: ['t1'] }]])
   })
 
+  it('keeps a pending confirmation with its count when the tag save fails first', async () => {
+    const save = vi.fn().mockRejectedValue(refused(400, 'A tag with this name already exists'))
+    updated.mockImplementation((_, id, patch) => patch.confirmAffected === undefined
+      ? Promise.reject(toConfirm(1))
+      : Promise.resolve(applied(speaker, patch)))
+    const wrapper = await open({ tag: person, save })
+    await switchTo(wrapper, 'speaker_type', false)
+    await confirm(wrapper, 'Save')
+    expect(text('tag-applicable-attribute-warning')[0]).toContain('on 1 annotation.')
+
+    updated.mockClear()
+    await type(wrapper, 'Tag Name', 'Place')
+    await confirm(wrapper, 'Confirm and save')
+    // Nothing about the attribute was sent; what Confirm and save confirms is still on screen.
+    expect(updated).not.toHaveBeenCalled()
+    expect(text('tag-dialog-error')).toEqual(['A tag with this name already exists'])
+    expect(text('tag-applicable-attribute-warning')[0]).toContain('on 1 annotation.')
+    expect(button(wrapper, 'Confirm and save')).toBeTruthy()
+
+    save.mockImplementation((payload: object) => Promise.resolve({ ...person, ...payload }))
+    await confirm(wrapper, 'Confirm and save')
+    expect(updated.mock.calls).toEqual([['c1', 'a1', { removeTagIds: ['t1'], confirmAffected: 1 }]])
+    expect(wrapper.emitted('ok')).toHaveLength(1)
+  })
+
   it('stays open with what was entered when the tag cannot be saved, and changes no attribute', async () => {
     const save = vi.fn().mockRejectedValue(refused(400, 'A tag with this name already exists'))
     const wrapper = await open({ save })

@@ -241,6 +241,8 @@ async def test_tags_can_limit_an_attribute_and_retired_or_used_definitions_are_k
     # them apply again (#568).
     emptied = await api_client.patch(base, headers=owner, json={"tag_ids": []})
     assert (emptied.status_code, emptied.json()["affected"], emptied.json()["confirm"]) == (409, 1, "narrowing")
+    negative = await api_client.patch(base, headers=owner, json={"tag_ids": [], "confirm_affected": -1})
+    assert negative.status_code == 422
     stale = await api_client.patch(base, headers=owner, json={"tag_ids": [], "confirm_affected": 2})
     assert (stale.status_code, stale.json()["affected"]) == (409, 1)
     confirmed = await api_client.patch(base, headers=owner, json={"tag_ids": [], "confirm_affected": 1})
