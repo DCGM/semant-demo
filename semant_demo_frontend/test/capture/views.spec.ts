@@ -600,6 +600,18 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await expect(dialog).toHaveCount(0)
     await page.mouse.move(0, 0)
     await save(page, testInfo, 'attribute-assign-result')
+    // The same again: Jan Novák already holds it, which is no change (#569).
+    await page.getByTestId('assign-attribute').click()
+    await dialog.getByTestId('assign-dialog-attribute').click()
+    await page.getByRole('option', { name: 'Role (several values)' }).click()
+    await expect(page.locator('.q-menu')).toHaveCount(0)
+    await dialog.getByRole('checkbox', { name: 'chronicler' }).click()
+    await dialog.getByRole('button', { name: 'Add to 4' }).click()
+    await expect(page.getByTestId('assign-report-title')).toContainText('no annotations changed')
+    await expect(page.getByTestId('assign-report')).toContainText('already matched')
+    await expect(dialog).toHaveCount(0)
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'attribute-assign-result-matched')
 
     await novak.locator('.kwic__key').click() // not on an attribute cell, which edits instead
     await expect(page.getByTestId('annotation-attributes')).toBeVisible()

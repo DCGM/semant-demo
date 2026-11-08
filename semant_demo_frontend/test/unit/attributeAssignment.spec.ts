@@ -181,7 +181,7 @@ describe('attribute assign store', () => {
       refused: [...report!.refused,
         { id: 'x', step: 'check_value', message: 'Unknown and Not applicable cannot be combined with other values.' }]
     }, speaker())
-    expect(summary.title).toBe(`"Speaker": changed ${ASSIGN_BATCH - 7} of ${ASSIGN_BATCH + 5} annotations`)
+    expect(summary.title).toBe(`"Speaker": changed ${ASSIGN_BATCH - 7} of ${ASSIGN_BATCH + 5} annotations (7 uncertain)`)
     expect(summary.lines.filter(l => l.label === 'not changed')).toEqual([
       { count: 1, label: 'not changed', detail: 'Only confirmed annotations take values.' },
       // Reasons with several causes are the server's own words.
@@ -228,7 +228,10 @@ describe('attribute assign store', () => {
     const running = assign.assign('col-1', 'a1', { mode: 'add', valueIds: ['v1'] }, [['a', 0], ['b', 0], ['c', 0]], ignore)
     await flush()
     assignCalls()[0].answer({ detail: 'bad gateway' }, 502)
-    await running
+    const first = await running
+    // Every write lost: not "no annotations changed", they may have been saved.
+    expect([assignChanged(first!), assignMayHaveChanged(first!)]).toEqual([0, 3])
+    expect(assignReportSummary(first!, speaker()).title).toBe('"Speaker": changed 0 of 3 annotations (3 uncertain)')
     const retrying = assign.retry('col-1', ignore)
     await flush()
     assignCalls()[1].answer({
@@ -587,7 +590,7 @@ describe('attribute components', () => {
       assignReport: report,
       assignAttribute: speaker()
     })
-    expect(bar.find('[data-testid="assign-report-title"]').text()).toBe('"Speaker": changed 1 of 4 annotations')
+    expect(bar.find('[data-testid="assign-report-title"]').text()).toBe('"Speaker": changed 1 of 4 annotations (1 uncertain)')
     expect(bar.findAll('[data-testid="assign-report-lines"] li').map(li => li.text())).toEqual([
       '1uncertainThe server did not confirm; they may have been saved.',
       '1not savedChanged by someone else since you selected them.',

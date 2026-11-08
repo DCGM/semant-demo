@@ -1,6 +1,6 @@
 import { AssignMode, Cardinality, SpanType, type Attribute, type AttributeValue } from 'src/generated/api'
 import { isSpecial, orderedValues, valueName } from './attributeForm'
-import { assignChanged, assignMayHaveChanged, type AssignReport } from './attributeAssignStore'
+import { assignChanged, assignUncertain, type AssignReport } from './attributeAssignStore'
 import { plural } from 'src/shared/plural'
 
 /** One assignment of values of one attribute (ADR 0011): what the assign route sends besides
@@ -126,14 +126,15 @@ export function assignReportSummary (report: AssignReport, attribute: Attribute 
     lines.push({ count: r.unrecorded.length, label: 'saved without history', detail: 'Their change could not be recorded; the values are saved.' })
   }
   if (r.error) lines.push({ count: null, label: r.error })
-  if (assignMayHaveChanged(r) && (r.failed.length || r.conflicts.length)) {
+  const changed = assignChanged(r)
+  // Saved for certain: written, or found as asked after a lost write.
+  if ((changed || r.savedOrMatched.length) && (r.failed.length || r.conflicts.length)) {
     lines.push({ count: null, label: 'Saved changes are kept.' })
   }
   const name = attribute ? `"${attribute.name}": ` : ''
   // Annotations that already held the values are no change (#569); those that may have been
-  // changed by a lost write are not claimed either way.
-  const changed = assignChanged(r)
-  const maybe = r.savedOrMatched.length
+  // written (the uncertain line and "saved or already matched" together) are not claimed either way.
+  const maybe = assignUncertain(r)
   const title = !changed && !maybe
     ? 'no annotations changed'
     : `changed ${changed} of ${plural(r.target, 'annotation')}${maybe ? ` (${maybe} uncertain)` : ''}`

@@ -764,7 +764,7 @@ const filtersByAttribute = computed(() =>
 /** Rows and the open annotation take what the server answered, never their own copy. */
 const answered = (attributeId: string) => (result: AttributeAssignResult) => store.applyAssignment(attributeId, result)
 
-/** An assignment that changed something, or may have (a retried lost write), is the last change,
+/** An assignment that changed something, or may have (a lost write), is the last change,
  * which cannot be undone (yet): the undo line no longer offers the change before it. One that
  * found every annotation already as asked changed nothing and keeps it (#569). */
 function noteAssigned (changed: number) {
