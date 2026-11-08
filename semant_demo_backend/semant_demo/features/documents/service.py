@@ -113,7 +113,7 @@ async def browse(documents: DocumentRepository, collections: UserCollectionRepos
     read (``InvalidChunkFilterError``). ``options`` are the repository's paging, sorting and
     substring filter options.
     """
-    scope, conditions = await _browse_scope(collections, user, collection_id, filters, chunk_filters, vocabulary)
+    scope, conditions = await browse_scope(collections, user, collection_id, filters, chunk_filters, vocabulary)
     return await documents.browse(collection_id=scope, conditions=conditions, **options)
 
 
@@ -125,15 +125,16 @@ async def browse_by_year(documents: DocumentRepository, collections: UserCollect
     """``browse`` in a stable order for paging (Explore Documents, #606): publication year,
     oldest first, then id, the documents without a year last. The same access, criteria and
     chunk-filter rules; no substring filters."""
-    scope, conditions = await _browse_scope(collections, user, collection_id, filters, chunk_filters, vocabulary)
+    scope, conditions = await browse_scope(collections, user, collection_id, filters, chunk_filters, vocabulary)
     return await documents.browse_by_year(collection_id=scope, conditions=conditions, limit=limit, offset=offset)
 
 
-async def _browse_scope(collections: UserCollectionRepository, user: Principal | None, collection_id: Id | None,
+async def browse_scope(collections: UserCollectionRepository, user: Principal | None, collection_id: Id | None,
                         filters: DocumentFilters | None, chunk_filters: ChunkFilters | None,
                         vocabulary: ChunkVocabulary | None) -> tuple[UUID | None, list[Condition]]:
-    """The collection a browse reads (read access checked) and its criteria predicates; the
-    chunk filters are checked first, before anything is read."""
+    """The collection a browse reads (read access checked) and its criteria predicates on
+    ``Documents``; the chunk filters are checked first, before anything is read. Also the
+    eligibility of documents for a text query (#607)."""
     _, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
     scope = None
     if collection_id is not None:

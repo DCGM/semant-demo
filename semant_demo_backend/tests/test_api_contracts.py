@@ -440,13 +440,59 @@ class _YearOrderedDocuments(_Documents):
         self.calls.append(kwargs)
         return DocumentBrowse(items=[Document(id=DOC, **STORED)], has_more=True, next_offset=1, total_count=self.total)
 
+    # A text query (#607): d2 and d1 match by metadata; d5 is not eligible.
+    async def count(self, collection_id=None, conditions=()):
+        self.calls.append({"count": conditions})
+        return 7
 
-async def _documents(tmp_path, body, total=3):
+    async def metadata_ranked_ids(self, text, limit, collection_id=None, conditions=()):
+        self.calls.append({"metadata": text, "limit": limit, "conditions": conditions})
+        return [_doc(2), _doc(1)][:limit]
+
+    async def read_eligible(self, document_ids, collection_id=None, conditions=()):
+        self.calls.append({"read": list(document_ids), "conditions": conditions})
+        return {d: Document(id=d, title=f"Document {d.int - 0xD0C0}") for d in document_ids if d != _doc(5)}
+
+
+async def _documents(tmp_path, body, total=3, path="/api/search/documents", **config):
     _YearOrderedDocuments.calls, _YearOrderedDocuments.total = [], total
-    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    _RankedChunks.queries, _RankedChunks.reads = [], []
+    app = create_app(make_test_config(tmp_path, **config), weaviate_connector=offline_weaviate)
     app.dependency_overrides[get_documents] = _YearOrderedDocuments
+    vectors = SearchVectors([SearchVector("main", "Main", "", "default", None)], default="main")
+    app.dependency_overrides[get_search_backends] = lambda: SearchBackends(
+        chunks=_RankedChunks(), collections=None, tags=None, vectors=vectors)
     async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        return await client.post("/api/search/documents", json=body)
+        return await client.post(path, json=body)
+
+
+def _doc(n: int) -> UUID:
+    return UUID(int=0xD0C0 + n)
+
+
+def _chunk(n: int) -> UUID:
+    return UUID(int=0xC0C0 + n)
+
+
+class _RankedChunks:
+    """Chunk ranking of a text query (#607): (chunk, document) pairs, best first; records the
+    queries and the scopes of the evidence reads."""
+    queries: list = []
+    reads: list = []
+    # d1 ranks by c1 (c4 is its second chunk), d3 by c3, d4 by c5; c9 belongs to d1.
+    pairs = [(_chunk(1), _doc(1)), (_chunk(3), _doc(3)), (_chunk(4), _doc(1)), (_chunk(5), _doc(4)),
+             (_chunk(9), _doc(1))]
+
+    async def ranked_documents(self, query):
+        self.queries.append(query)
+        return self.pairs[:query.limit]
+
+    async def read_hits(self, ids, scope):
+        self.reads.append((ids, scope))
+        documents = {chunk: document for chunk, document in self.pairs}
+        return [SearchResultChunk(id=i, text=f"Text\nof {i}", start_page_id=PAGE, from_page=1, to_page=1,
+                                  document=documents[i], order=0, document_object=Document(id=documents[i]))
+                for i in ids if i in documents]
 
 
 async def test_documents_answer_a_page_of_the_whole_matching_population_anonymously(tmp_path):
@@ -455,10 +501,12 @@ async def test_documents_answer_a_page_of_the_whole_matching_population_anonymou
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert [item["title"] for item in body["items"]] == ["Dopisy z Prahy"]
-    assert {k: body[k] for k in ("offset", "next_offset", "total_count", "retrieval_limit", "bounded", "order")} == {
-        "offset": 0, "next_offset": 1, "total_count": 3, "retrieval_limit": MAX_QUERY_RESULTS, "bounded": False,
-        "order": "year_asc"}
+    assert [item["document"]["title"] for item in body["items"]] == ["Dopisy z Prahy"]
+    assert (body["items"][0]["match"], body["items"][0]["chunk"]) == (None, None)
+    assert {k: body[k] for k in ("offset", "next_offset", "total_count", "eligible_count", "retrieval_limit",
+                                 "bounded", "order", "ranked", "retrieval")} == {
+        "offset": 0, "next_offset": 1, "total_count": 3, "eligible_count": 3, "retrieval_limit": MAX_QUERY_RESULTS,
+        "bounded": False, "order": "year_asc", "ranked": None, "retrieval": None}
     assert body["criteria"]["chunk_filters"] == {"languages": ["ces"], "classifications": {}}  # configured spelling
     [call] = _YearOrderedDocuments.calls
     assert (call["limit"], call["offset"], call["collection_id"]) == (1, 0, None)
@@ -468,12 +516,13 @@ async def test_documents_answer_a_page_of_the_whole_matching_population_anonymou
 
 
 @pytest.mark.parametrize("body, status", [
-    ({"criteria": {"text_query": "Marie"}}, 422),                       # text-query ranking is #527
+    ({"criteria": {"text_query": "Marie"}, "offset": 20}, 422),        # a ranking is read by id (#607)
     ({"criteria": {}, "limit": 101}, 422),                               # page size
     ({"criteria": {}, "limit": 0}, 422),
     ({"criteria": {}, "offset": -1}, 422),
     ({"criteria": {}, "offset": MAX_QUERY_RESULTS - 10, "limit": 20}, 400),  # past the engine cap
-    ({"criteria": {}, "type": "text"}, 422),                             # no retrieval options
+    ({"criteria": {}, "type": "keyword"}, 422),                          # not a search type
+    ({"criteria": {"text_query": "Marie"}, "vector": "other"}, 400),     # not a configured vector
     ({"criteria": {"chunk_filters": {"languages": ["Czech"]}}}, 400),    # not configured
     ({"criteria": {"chunk_filters": {"classifications": {"emotion": ["calm"]}}}}, 400),
 ])
@@ -482,6 +531,7 @@ async def test_invalid_document_requests_are_refused_before_browsing(tmp_path, b
 
     assert response.status_code == status, response.text
     assert _YearOrderedDocuments.calls == []
+    assert _RankedChunks.queries == []
 
 
 async def test_more_matching_documents_than_the_engine_cap_are_counted_but_not_paged_past_it(tmp_path):
@@ -490,3 +540,108 @@ async def test_more_matching_documents_than_the_engine_cap_are_counted_but_not_p
     assert response.status_code == 200, response.text
     body = response.json()
     assert (body["total_count"], body["bounded"], body["next_offset"]) == (25_000, True, None)
+
+
+async def test_a_text_query_ranks_metadata_matches_first_then_documents_by_their_best_chunk(tmp_path):
+    response = await _documents(tmp_path, {"criteria": {"text_query": "Marie", "chunk_filters": {"languages": ["CES"]}},
+                                           "type": "text", "limit": 2})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Metadata first (d2, d1), then by best chunk (d3, d4); d1 once, with its best chunk c1 as evidence.
+    assert body["ranked"] == [
+        {"id": str(_doc(2)), "match": "metadata", "chunk_id": None},
+        {"id": str(_doc(1)), "match": "metadata", "chunk_id": str(_chunk(1))},
+        {"id": str(_doc(3)), "match": "text", "chunk_id": str(_chunk(3))},
+        {"id": str(_doc(4)), "match": "text", "chunk_id": str(_chunk(5))}]
+    assert [(i["document"]["title"], i["match"], i["chunk"] and i["chunk"]["id"]) for i in body["items"]] == [
+        ("Document 2", "metadata", None), ("Document 1", "metadata", str(_chunk(1)))]
+    assert body["items"][1]["chunk"]["text"] == f"Text of {_chunk(1)}"  # display text
+    assert {k: body[k] for k in ("read_count", "total_count", "eligible_count", "bounded", "order", "next_offset",
+                                 "retrieval_limit")} == {
+        "read_count": 2, "total_count": 4, "eligible_count": 7, "bounded": False, "order": "metadata_then_text",
+        "next_offset": None, "retrieval_limit": 3000}
+    assert body["retrieval"] == {"metadata_limit": 1000, "metadata_bounded": False, "chunk_limit": 2000,
+                                 "chunk_bounded": False, "ranked_chunks": 5, "type": "text", "vector": None}
+
+    # Eligibility restricts the chunk ranking itself, before its limit; the chunk filter applies per
+    # dimension to the document's summary, never to the ranked chunk.
+    [query] = _RankedChunks.queries
+    assert (query.text, query.limit, query.chunk_conditions) == ("Marie", 2001, ())
+    assert [(c.prop, c.values) for c in query.document_conditions] == [("chunk_language", ("ces",))]
+    metadata = next(c for c in _YearOrderedDocuments.calls if "metadata" in c)
+    assert (metadata["limit"], [c.prop for c in metadata["conditions"]]) == (1001, ["chunk_language"])
+    [(read_ids, scope)] = _RankedChunks.reads
+    assert read_ids == [_chunk(1)] and [c.prop for c in scope.document_conditions] == ["chunk_language"]
+
+
+async def test_a_text_query_cut_by_a_retrieval_limit_reports_no_total(tmp_path):
+    response = await _documents(tmp_path, {"criteria": {"text_query": "Marie"}, "type": "text"},
+                                SEARCH_DOCUMENTS_CHUNK_LIMIT="2", SEARCH_DOCUMENTS_METADATA_LIMIT="1")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Metadata: d2 of two matches; chunks: c1 (d1), c3 (d3) of five.
+    assert [(r["id"], r["match"]) for r in body["ranked"]] == [
+        (str(_doc(2)), "metadata"), (str(_doc(1)), "text"), (str(_doc(3)), "text")]
+    assert (body["bounded"], body["total_count"], body["retrieval_limit"]) == (True, None, 3)
+    assert {k: body["retrieval"][k] for k in ("metadata_bounded", "chunk_bounded", "ranked_chunks")} == {
+        "metadata_bounded": True, "chunk_bounded": True, "ranked_chunks": 2}
+
+
+async def test_a_chunk_without_a_document_still_counts_towards_the_chunk_limit(tmp_path, monkeypatch):
+    # Review of #617: the limit is judged by the raw hits. Three hits for a limit of 2, the second
+    # without a document reference: one document links, but the limit cut the ranking.
+    monkeypatch.setattr(_RankedChunks, "pairs", [(_chunk(1), _doc(1)), (_chunk(2), None), (_chunk(3), _doc(3))])
+    response = await _documents(tmp_path, {"criteria": {"text_query": "Marie"}, "type": "text"},
+                                SEARCH_DOCUMENTS_CHUNK_LIMIT="2")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Metadata d2, d1 (evidence c1); d3's c3 is the hit past the limit, so no document ranks by text.
+    assert [(r["id"], r["match"], r["chunk_id"]) for r in body["ranked"]] == [
+        (str(_doc(2)), "metadata", None), (str(_doc(1)), "metadata", str(_chunk(1)))]
+    assert (body["bounded"], body["total_count"]) == (True, None)
+    assert {k: body["retrieval"][k] for k in ("chunk_bounded", "ranked_chunks")} == {
+        "chunk_bounded": True, "ranked_chunks": 2}
+
+
+async def test_a_later_document_page_is_read_by_its_ranking_entries_without_ranking(tmp_path):
+    ranked = [{"id": str(_doc(4)), "match": "text", "chunk_id": str(_chunk(5))},
+              {"id": str(_doc(5)), "match": "text", "chunk_id": str(_chunk(3))},       # no longer eligible
+              {"id": str(_doc(3)), "match": "text", "chunk_id": str(_chunk(9))},       # c9 is d1's chunk
+              {"id": str(_doc(4)), "match": "metadata", "chunk_id": None}]            # repeated
+    response = await _documents(tmp_path, {"ranked": ranked, "criteria": {"text_query": "Marie",
+                                                                          "chunk_filters": {"languages": ["CES"]}}},
+                                path="/api/search/documents/read")
+
+    assert response.status_code == 200, response.text
+    assert [(i["document"]["id"], i["match"], i["chunk"] and i["chunk"]["id"]) for i in response.json()["items"]] == [
+        (str(_doc(4)), "text", str(_chunk(5))), (str(_doc(3)), "text", None)]
+    assert _RankedChunks.queries == []
+    read = next(c for c in _YearOrderedDocuments.calls if "read" in c)
+    assert [c.prop for c in read["conditions"]] == ["chunk_language"]
+
+
+@pytest.mark.parametrize("body, status", [
+    ({"ranked": [], "criteria": {"text_query": "Marie"}}, 422),
+    ({"ranked": [{"id": str(_doc(i)), "match": "text"} for i in range(101)], "criteria": {}}, 422),  # page size
+    ({"ranked": [{"id": str(_doc(1)), "match": "title"}], "criteria": {}}, 422),
+    ({"ranked": [{"id": str(_doc(1)), "match": "text"}]}, 422),                     # the search's criteria
+    ({"ranked": [{"id": str(_doc(1)), "match": "text"}], "criteria": {}, "type": "text"}, 422),  # nothing is ranked
+    ({"ranked": [{"id": str(_doc(1)), "match": "text"}], "criteria": {"chunk_filters": {"languages": ["Czech"]}}},
+     400),
+])
+async def test_invalid_document_reads_are_refused_before_reading(tmp_path, body, status):
+    response = await _documents(tmp_path, body, path="/api/search/documents/read")
+
+    assert response.status_code == status, response.text
+    assert _YearOrderedDocuments.calls == [] and _RankedChunks.reads == []
+
+
+@pytest.mark.parametrize("name", ["SEARCH_DOCUMENTS_METADATA_LIMIT", "SEARCH_DOCUMENTS_CHUNK_LIMIT"])
+@pytest.mark.parametrize("value", ["0", "10000", "many"])
+def test_the_document_retrieval_limits_are_validated_at_startup(tmp_path, name, value):
+    # A search reads limit + 1, within Weaviate's QUERY_MAXIMUM_RESULTS of 10000.
+    with pytest.raises(ValueError):
+        make_test_config(tmp_path, **{name: value})

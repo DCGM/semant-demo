@@ -1,7 +1,7 @@
 import { getCurrentScope, onScopeDispose, ref, shallowRef } from 'vue'
-import type { CorpusDistributions, DocumentFilters } from 'src/generated/api'
+import type { ChunkFilters, CorpusDistributions, DocumentFilters } from 'src/generated/api'
 import { apiErrorMessage, errorStatus, isAbortError, useApi } from 'src/shared/api'
-import { isUnfiltered } from './corpusOverview'
+import { hasChunkFilters, isUnfiltered } from './corpusOverview'
 
 /** After this many milliseconds without an answer the page says that loading takes long. */
 export const SLOW_AFTER_MS = 4000
@@ -13,12 +13,16 @@ export const SLOW_AFTER_MS = 4000
  * the same filters again; leaving the page aborts the request in flight. A failure keeps no
  * stale counts: the page shows the error instead of old numbers. `corpus` keeps the latest
  * unfiltered counts, which the filter choices and the corpus total are taken from.
+ *
+ * `chunkFilters` (Explore Visualizations, #618) restrict the documents per dimension, as
+ * Documents results do (#529); they are sent only when set, and kept for `retry`.
  */
 export function useCorpusOverview () {
   const api = useApi().default
   const distributions = shallowRef<CorpusDistributions | null>(null)
   const corpus = shallowRef<CorpusDistributions | null>(null)
   const filters = shallowRef<DocumentFilters>({})
+  const chunkFilters = shallowRef<ChunkFilters>({})
   const loading = ref(false)
   const slow = ref(false)
   const error = ref<string | null>(null)
@@ -35,11 +39,12 @@ export function useCorpusOverview () {
     slowTimer = null
   }
 
-  async function load (requested: DocumentFilters = {}) {
+  async function load (requested: DocumentFilters = {}, requestedChunks: ChunkFilters = {}) {
     stop()
     const current = new AbortController()
     controller = current
     filters.value = requested
+    chunkFilters.value = requestedChunks
     loading.value = true
     slow.value = false
     error.value = null
@@ -47,11 +52,13 @@ export function useCorpusOverview () {
     slowTimer = setTimeout(() => { slow.value = true }, SLOW_AFTER_MS)
     try {
       const result = await api.corpusDistributionsApiAnalyticsCorpusDistributionsPost(
-        { corpusDistributionsRequest: { filters: requested } }, { signal: current.signal })
+        { corpusDistributionsRequest: { filters: requested, ...(hasChunkFilters(requestedChunks) ? { chunkFilters: requestedChunks } : {}) } },
+        { signal: current.signal })
       if (controller !== current) return
       distributions.value = result
       filters.value = result.filters
-      if (isUnfiltered(result.filters)) corpus.value = result
+      chunkFilters.value = result.chunkFilters ?? {}
+      if (isUnfiltered(result.filters) && !hasChunkFilters(result.chunkFilters)) corpus.value = result
     } catch (e) {
       if (controller !== current || isAbortError(e)) return
       console.error('Loading the corpus overview failed', e)
@@ -69,9 +76,9 @@ export function useCorpusOverview () {
     }
   }
 
-  const retry = () => load(filters.value)
+  const retry = () => load(filters.value, chunkFilters.value)
 
   if (getCurrentScope()) onScopeDispose(stop)
 
-  return { distributions, corpus, filters, loading, slow, error, invalid, load, retry }
+  return { distributions, corpus, filters, chunkFilters, loading, slow, error, invalid, load, retry }
 }

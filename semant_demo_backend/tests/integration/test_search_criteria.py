@@ -178,8 +178,10 @@ async def test_a_filter_on_a_property_the_store_lacks_is_rejected_not_empty(lega
     searched = await api_client.post("/api/search", json=search_body(document_filters={"libraries": ["mzk"]}))
     browsed = await api_client.get("/api/documents/browse", params={"libraries": "mzk"})
     explored = await api_client.post("/api/search/documents", json={"criteria": {"document_filters": {"libraries": ["mzk"]}}})
+    ranked = await api_client.post("/api/search/documents", json={  # #607
+        "criteria": {"text_query": "Prahy", "document_filters": {"libraries": ["mzk"]}}, "type": "text"})
 
-    for response in (searched, browsed, explored):
+    for response in (searched, browsed, explored, ranked):
         assert response.status_code == 422
         assert response.json()["detail"] == \
             "Documents cannot be filtered by library: this corpus database is not recorded."
@@ -329,7 +331,7 @@ async def _document_pages(api_client, limit, headers=None, **body) -> tuple[list
                                          json={"criteria": {}, "limit": limit, "offset": offset, **body})
         assert response.status_code == 200, response.text
         answer = response.json()
-        pages.append([d["title"] for d in answer["items"]])
+        pages.append([d["document"]["title"] for d in answer["items"]])
         offset = answer["next_offset"]
     return pages, answer
 
@@ -342,7 +344,7 @@ async def test_documents_are_paged_by_year_then_id_with_the_undated_last(api_cli
     assert (last["total_count"], last["bounded"], last["order"]) == (3, False, "year_asc")
     # A page across the last dated and the first undated document.
     straddling = await api_client.post("/api/search/documents", json={"criteria": {}, "limit": 2, "offset": 1})
-    assert [d["title"] for d in straddling.json()["items"]] == ["Dopisy z Prahy", "Pražský věstník"]
+    assert [d["document"]["title"] for d in straddling.json()["items"]] == ["Dopisy z Prahy", "Pražský věstník"]
 
     await update("chronicle", yearIssued=None)  # now undated too: the undated follow by id
     pages, _ = await _document_pages(api_client, limit=2)
@@ -353,7 +355,7 @@ async def test_documents_of_a_collection_need_read_access(api_client, login, ids
     async def titles(user, collection):
         response = await api_client.post("/api/search/documents", headers=await login(user), json={
             "criteria": {}, "user_collection_id": ids.col[collection]})
-        return response.status_code, sorted(d["title"] for d in response.json().get("items", []))
+        return response.status_code, sorted(d["document"]["title"] for d in response.json().get("items", []))
 
     assert await titles("annotator", "chronicles") == (200, ["Dopisy z Prahy", "Kronika obce Lhota"])  # shared
     assert await titles("owner", "newspapers") == (200, ["Kronika obce Lhota", "Pražský věstník"])

@@ -60,6 +60,7 @@ All URIs are relative to *http://localhost*
 | [**readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet**](DefaultApi.md#readdocumentpageassetapidocumentsdocumentidpagespageidkindget) | **GET** /api/documents/{document_id}/pages/{page_id}/{kind} | Read Document Page Asset |
 | [**readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet**](DefaultApi.md#readdocumentpagechunksapidocumentsdocumentidchunksbypageget) | **GET** /api/documents/{document_id}/chunks/by_page | Read Document Page Chunks |
 | [**readDocumentPagesApiDocumentsDocumentIdPagesGet**](DefaultApi.md#readdocumentpagesapidocumentsdocumentidpagesget) | **GET** /api/documents/{document_id}/pages | Read Document Pages |
+| [**readDocumentsApiSearchDocumentsReadPost**](DefaultApi.md#readdocumentsapisearchdocumentsreadpost) | **POST** /api/search/documents/read | Read Documents |
 | [**readPassagesApiSearchPassagesReadPost**](DefaultApi.md#readpassagesapisearchpassagesreadpost) | **POST** /api/search/passages/read | Read Passages |
 | [**readTagSpansApiTagSpansGet**](DefaultApi.md#readtagspansapitagspansget) | **GET** /api/tag_spans | Read Tag Spans |
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
@@ -4185,6 +4186,78 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## readDocumentsApiSearchDocumentsReadPost
+
+> DocumentReadResponse readDocumentsApiSearchDocumentsReadPost(documentReadRequest)
+
+Read Documents
+
+A later page of a text-query document search (#607): up to 100 of its ranked documents, in that order, with their evidence chunks, read under the search\&#39;s criteria and collection again (access checked again); documents no longer eligible, or gone, are left out, and a chunk is returned only for its own document. Nothing is ranked.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ReadDocumentsApiSearchDocumentsReadPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // DocumentReadRequest
+    documentReadRequest: ...,
+  } satisfies ReadDocumentsApiSearchDocumentsReadPostRequest;
+
+  try {
+    const data = await api.readDocumentsApiSearchDocumentsReadPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **documentReadRequest** | [DocumentReadRequest](DocumentReadRequest.md) |  | |
+
+### Return type
+
+[**DocumentReadResponse**](DocumentReadResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## readPassagesApiSearchPassagesReadPost
 
 > PassageReadResponse readPassagesApiSearchPassagesReadPost(passageReadRequest)
@@ -4993,7 +5066,7 @@ example().catch(console.error);
 
 Search Documents
 
-The documents matching search criteria without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last), with the exact number of matching documents. The same documents as &#x60;&#x60;GET /api/documents/browse&#x60;&#x60; and Analytics for the same criteria: chunk filters apply per dimension to the documents\&#39; chunk-value summaries. Only the first &#x60;&#x60;QUERY_MAXIMUM_RESULTS&#x60;&#x60; (10 000) can be paged through (&#x60;&#x60;bounded&#x60;&#x60;); a page past them is refused (400). A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+The documents matching search criteria, with the exact number of eligible documents. The filters select the same documents as &#x60;&#x60;GET /api/documents/browse&#x60;&#x60; and Analytics: chunk filters apply per dimension to the documents\&#39; chunk-value summaries.  Without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last); only the first &#x60;&#x60;QUERY_MAXIMUM_RESULTS&#x60;&#x60; (10 000) can be paged through (&#x60;&#x60;bounded&#x60;&#x60;), and a page past them is refused (400).  With a text query (#607): the ranking of distinct eligible documents, once, and its first page: the documents whose metadata holds every word of the query first, then the others by their best-matching chunk (which need not satisfy the chunk filters), each with that chunk as evidence. At most &#x60;&#x60;SEARCH_DOCUMENTS_METADATA_LIMIT&#x60;&#x60; metadata matches and &#x60;&#x60;SEARCH_DOCUMENTS_CHUNK_LIMIT&#x60;&#x60; ranked chunks (&#x60;&#x60;bounded&#x60;&#x60;, &#x60;&#x60;retrieval&#x60;&#x60;); later pages are read by id (&#x60;&#x60;POST /api/search/documents/read&#x60;&#x60;).  A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
 
 ### Example
 

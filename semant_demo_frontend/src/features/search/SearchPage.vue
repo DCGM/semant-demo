@@ -1,5 +1,5 @@
 <template>
-  <q-page :class="resultsState === 'idle' ? 'q-pa-md bg-grey-1 flex flex-center' : 'q-pa-md bg-grey-1'">
+  <q-page :class="pageIdle ? 'q-pa-md bg-grey-1 flex flex-center' : 'q-pa-md bg-grey-1'">
     <div style="width: 100%; max-width: 1400px; margin: 0 auto;">
 
       <q-card flat bordered class="q-mb-xl bg-white">
@@ -72,7 +72,7 @@
             <!-- Changes in the form are a draft until Enter or Search applies them; the results
                  and the chips below stay those of the applied search. -->
             <div
-              v-if="pending && resultsState !== 'idle'"
+              v-if="pending && !pageIdle"
               class="row no-wrap items-center q-mt-xs text-caption text-grey-8 pending-note"
               role="status"
               data-testid="search-pending"
@@ -82,7 +82,7 @@
               <q-btn flat dense no-caps size="sm" color="primary" label="Discard changes" @click="discardDraft" />
             </div>
 
-            <div v-if="appliedChips.length" class="row q-gutter-sm q-mt-sm" aria-label="Applied filters">
+            <div v-if="appliedChips.length" class="row items-center q-gutter-sm q-mt-sm" aria-label="Applied filters" data-testid="applied-filters">
               <q-chip
                 v-for="chip in appliedChips"
                 :key="chip.key"
@@ -96,6 +96,7 @@
                 <q-icon :name="chip.icon" size="16px" class="q-mr-xs" />
                 {{ chip.label }}
               </q-chip>
+              <q-btn flat dense no-caps color="primary" label="Clear all" data-testid="search-clear-all" @click="clearAllApplied" />
             </div>
           </q-card-section>
 
@@ -225,16 +226,37 @@
         </q-form>
       </q-card>
 
-      <div v-if="resultsState !== 'idle'">
+      <div v-if="!pageIdle">
+        <!-- Results and Visualizations show the same applied criteria and results mode (#618). -->
+        <q-tabs
+          :model-value="view"
+          dense
+          no-caps
+          inline-label
+          align="left"
+          active-color="primary"
+          indicator-color="primary"
+          class="explore-views q-mb-md"
+          aria-label="Explore view"
+          data-testid="explore-view"
+          @update:model-value="chooseView"
+        >
+          <q-tab name="results" icon="list" label="Results" data-testid="view-results" />
+          <q-tab name="visualizations" icon="insights" label="Visualizations" data-testid="view-visualizations" />
+        </q-tabs>
+
         <!-- One results header for both modes: the mode switch keeps the applied criteria (#606). -->
         <div class="results-header">
           <div class="results-header__title">
             <div class="text-h5 text-weight-medium">{{ mode === 'documents' ? 'Documents' : 'Passages' }}</div>
-            <div v-if="resultsState === 'results'" class="text-caption text-grey-7" data-testid="search-coverage">
+            <div v-if="view === 'visualizations'" class="text-caption text-grey-7" data-testid="charts-unit">
+              {{ mode === 'documents' ? 'Charts of the matching documents.' : 'Charts of the matching passages.' }}
+            </div>
+            <div v-else-if="resultsState === 'results'" class="text-caption text-grey-7" data-testid="search-coverage">
               {{ coverage }} Search completed in {{ timeSpent.toFixed(2) }}s.
             </div>
             <div v-else-if="resultsState === 'documents'" class="text-caption text-grey-7" data-testid="search-coverage">
-              {{ coverage }} {{ DOCUMENT_ORDER_LABEL }}
+              {{ coverage }} {{ documentOrder }}
             </div>
           </div>
           <q-btn-toggle
@@ -253,7 +275,20 @@
           />
         </div>
 
-        <div v-if="resultsState === 'loading'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-loading">
+        <ExploreVisualizations
+          v-if="view === 'visualizations'"
+          :availability="chartsShown"
+          :distributions="charts.distributions.value"
+          :loading="charts.loading.value"
+          :slow="charts.slow.value"
+          :error="charts.error.value"
+          :invalid="charts.invalid.value"
+          @retry="charts.retry"
+          @apply-period="applyPeriod"
+          @show-documents="chooseMode('documents')"
+        />
+
+        <div v-else-if="resultsState === 'loading'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-loading">
           <q-spinner color="primary" size="2.5em" />
           <div class="q-mt-sm">{{ mode === 'documents' ? 'Loading documents…' : 'Searching passages…' }}</div>
         </div>
@@ -264,15 +299,15 @@
           </template>
           Search failed: {{ activeError }}
           <template v-slot:action>
-            <q-btn flat color="negative" label="Try again" @click="runApplied" />
+            <q-btn flat color="negative" label="Try again" @click="runApplied({ force: true })" />
           </template>
         </q-banner>
 
         <div v-else-if="resultsState === 'empty'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-empty">
           <q-icon name="search_off" size="2.5em" />
           <template v-if="mode === 'documents'">
-            <div class="q-mt-sm text-subtitle1">No documents match these filters.</div>
-            <div class="text-caption">Remove some of the filters above.</div>
+            <div class="q-mt-sm text-subtitle1">{{ applied.criteria.textQuery ? 'No documents match this search.' : 'No documents match these filters.' }}</div>
+            <div class="text-caption">{{ applied.criteria.textQuery ? 'Try other words, or remove some of the filters above.' : 'Remove some of the filters above.' }}</div>
           </template>
           <template v-else>
             <div class="q-mt-sm text-subtitle1">No passages match this search.</div>
@@ -286,19 +321,13 @@
           <div class="text-caption">Browsing passages by filters alone is not available. Documents lists the documents these filters match.</div>
         </div>
 
-        <div v-else-if="resultsState === 'documentsNeedNoQuery'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-documents-need-no-query">
-          <q-icon name="description" size="2.5em" />
-          <div class="q-mt-sm text-subtitle1">Documents for a text query are not available yet.</div>
-          <div class="text-caption">Passages shows the passages that match it. Clear the text query to list the documents these filters match.</div>
-        </div>
-
         <div v-else-if="resultsState === 'documents'">
           <div class="q-gutter-y-md">
             <DocumentResultCard
               v-for="(item, index) in documentItems"
               :id="`document-${index + 1}`"
-              :key="item.id"
-              :document="item"
+              :key="item.document.id"
+              :hit="item"
               :number="index + 1"
             />
           </div>
@@ -424,17 +453,20 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
-import { QPage, QForm, QInput, QBtn, QBtnToggle, QCard, QCardSection, QSeparator, QSelect, QRange, QItem, QItemSection, QItemLabel, QBanner, QSpinner, Notify, useQuasar } from 'quasar'
+import { QPage, QForm, QInput, QBtn, QBtnToggle, QCard, QCardSection, QSeparator, QSelect, QRange, QItem, QItemSection, QItemLabel, QBanner, QSpinner, QTabs, QTab, Notify, useQuasar } from 'quasar'
 import { SearchType, WriteOutcome, type SearchFilter, type SearchVectorInfo } from 'src/generated/api'
 import { captureSession, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import { effectiveMode, emptyCriteria, emptyLocation, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ResultsMode } from 'src/features/explore/criteria'
+import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
-import { DOCUMENT_ORDER_LABEL, documentCoverage, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
+import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
+import { chartsAvailability, useExploreCharts } from 'src/features/explore/useExploreCharts'
+import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
+import type { YearWindow } from 'src/features/analytics/timeline'
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import SearchResultCard from './SearchResultCard.vue'
@@ -460,8 +492,11 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 // draft search criteria, and Enter or Search applies them. The applied criteria, the search
 // vector and the results mode live in the URL (`features/explore`), so Back/Forward and shared
 // links restore a search; the collection scope is a page setting, never in the URL. Results are
-// Passages (`POST /api/search/passages`) for a text query and Documents (`POST /api/search/documents`,
-// #606) for filters alone, each loaded page by page; documents ranked by a text query follow (#527c).
+// Passages (`POST /api/search/passages`) for a text query, and Documents (`POST /api/search/documents`)
+// for filters alone (#606) or ranked by a text query (#607), each loaded page by page. The
+// Visualizations view (#618) charts the same applied criteria: for Documents without a text
+// query, every matching document (`useExploreCharts`). Switching between the views searches or
+// counts again only when the shown ones are of other criteria.
 
 const api = useApi().default
 
@@ -542,6 +577,7 @@ const coverage = computed(() => {
   if (mode.value === 'documents') return documents.results.value ? documentCoverage(documents.results.value) : ''
   return passages.results.value ? passageCoverage(passages.results.value) : ''
 })
+const documentOrder = computed(() => (documents.results.value ? documentOrderLabel(documents.results.value) : ''))
 const hasMore = computed(() => {
   if (mode.value === 'documents') return documents.results.value ? hasMoreDocuments(documents.results.value) : false
   return passages.results.value ? hasMorePassages(passages.results.value) : false
@@ -555,20 +591,23 @@ const searchContext = computed<SearchResultsContext | null>(() => {
 const selectedResults = ref<string[]>([])
 const targetCollectionId = ref<string | null>(null)
 
-/** Nothing is applied: no criteria and no chosen results mode (the page as first opened). */
+/** Nothing is applied: no criteria, no chosen results mode or view (the page as first opened). */
 const isIdleLocation = (location: ExploreLocation) =>
-  !location.criteria.textQuery && !hasFilters(location.criteria) && location.mode === null
+  !location.criteria.textQuery && !hasFilters(location.criteria) && location.mode === null && location.view === null
+
+// Views: Results or Visualizations of the applied criteria, kept in the URL (`view`).
+const view = computed<ExploreView>(() => applied.value.view ?? 'results')
+const charts = useExploreCharts()
+const chartsShown = computed(() => chartsAvailability(applied.value.criteria, mode.value, appliedCollection.value))
 
 /**
  * What the results area shows: passage cards (`results`), document cards (`documents`) or a
- * state. Without a text query Passages need one (`needsQuery`); with one, Documents are not
- * available yet (`documentsNeedNoQuery`, #527c).
+ * state. Without a text query Passages need one (`needsQuery`); Documents take both (#607).
  */
-const resultsState = computed<'results' | 'documents' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'documentsNeedNoQuery' | 'idle'>(() => {
+const resultsState = computed<'results' | 'documents' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'idle'>(() => {
   const location = applied.value
   if (isIdleLocation(location)) return 'idle'
   if (mode.value === 'documents') {
-    if (location.criteria.textQuery) return 'documentsNeedNoQuery'
     if (documents.loading.value) return 'loading'
     if (documents.error.value) return 'error'
     if (documents.results.value) return documentItems.value.length ? 'documents' : 'empty'
@@ -581,6 +620,9 @@ const resultsState = computed<'results' | 'documents' | 'loading' | 'error' | 'e
   return 'idle'
 })
 
+/** The page as first opened (only the form), or Results with nothing to show. */
+const pageIdle = computed(() => view.value === 'results' && resultsState.value === 'idle')
+
 /** The results mode a location shows without a choice: Passages for a text query, else Documents. */
 const defaultMode = (criteria: Criteria): ResultsMode => (criteria.textQuery ? 'passages' : 'documents')
 
@@ -590,6 +632,26 @@ function chooseMode (chosen: ResultsMode) {
   const criteria = applied.value.criteria
   // The default mode is not kept in the URL, so a later search picks the default for its criteria.
   void explore.apply({ ...applied.value, mode: chosen === defaultMode(criteria) ? null : chosen })
+}
+
+/** Shows the applied criteria in the other view: a new history entry, the same criteria and mode. */
+function chooseView (chosen: ExploreView) {
+  if (chosen === view.value) return
+  const location: ExploreLocation = { ...applied.value, view: chosen === 'results' ? null : chosen }
+  // Back in Results, no criteria list every document rather than show the page as first opened.
+  if (isIdleLocation(location)) location.mode = 'documents'
+  void explore.apply(location)
+}
+
+/**
+ * Applies a timeline period as the publication-year filter, keeping the other criteria; the
+ * draft gets the same years and keeps its other changes.
+ */
+function applyPeriod (period: YearWindow) {
+  const years = { yearMin: period.start, yearMax: period.end }
+  const criteria = applied.value.criteria
+  draftFilters.value = normalizeCriteria({ ...draftFilters.value, documentFilters: { ...draftFilters.value.documentFilters, ...years } })
+  void explore.apply({ ...applied.value, criteria: normalizeCriteria({ ...criteria, documentFilters: { ...criteria.documentFilters, ...years } }) })
 }
 
 function clearSelection () {
@@ -697,6 +759,9 @@ watch(
       draftCollection.value = null
       appliedCollection.value = null
       targetCollectionId.value = null
+      // Without the collection scope the Visualizations may chart the public corpus now: count
+      // the applied criteria rather than keep the collection's state or an unanswered spinner.
+      if (view.value === 'visualizations') void runApplied()
     }
     await loadCollections()
   }
@@ -877,6 +942,18 @@ function removeChip (chip: AppliedChip) {
   void explore.apply(location)
 }
 
+/**
+ * Removes every applied chip at once: the filters, the collection and the search vector (not the
+ * text query), from the draft too, and applies the result.
+ */
+function clearAllApplied () {
+  clearAllFilters()
+  appliedCollection.value = null
+  const location: ExploreLocation = { ...applied.value, criteria: normalizeCriteria({ textQuery: applied.value.criteria.textQuery }), vector: null }
+  if (isIdleLocation(location) && mode.value === 'documents') location.mode = 'documents'
+  void explore.apply(location)
+}
+
 /** Clears the draft filters, collection and search vector (not the query); applied by Search. */
 function clearAllFilters () {
   draftCollection.value = null
@@ -932,8 +1009,8 @@ async function fetchSearchVectors () {
 /**
  * Applies the draft: a new history entry, or the same search again when nothing changed.
  * A text query searches Passages, filters alone list Documents (an empty form: every document).
- * Each mode serves only one of them so far, so applied criteria show their default mode; a
- * mode chosen for the earlier criteria is not carried over (#527c will offer both).
+ * Documents chosen for a text query stay for the next text query (#607); Passages need one,
+ * so criteria without it show Documents.
  */
 async function onSearch () {
   history.close()
@@ -943,7 +1020,12 @@ async function onSearch () {
     return
   }
   // The empty criteria keep the mode in the URL, which tells them apart from the page as first opened.
-  const chosen = !criteria.textQuery && !hasFilters(criteria) ? 'documents' : null
+  // Documents chosen for a text query stay for the next one (#607); browsing by filters alone
+  // shows Documents by default only, so a text query added there searches Passages.
+  const keepDocuments = Boolean(applied.value.criteria.textQuery) && applied.value.mode === 'documents'
+  const chosen = (!criteria.textQuery && !hasFilters(criteria)) || (criteria.textQuery && keepDocuments)
+    ? 'documents'
+    : null
   appliedCollection.value = draftCollection.value
   await explore.apply({ ...applied.value, criteria, mode: chosen, vector: draftVector.value })
 }
@@ -951,8 +1033,27 @@ async function onSearch () {
 // The applied location runs once the search options are loaded: a link's values are checked
 // against them first, so an unknown filter or vector is reported instead of searched.
 let waitingForOptions = false
+let waitingForce = false
 
-function onApplied (location: ExploreLocation, { reason, invalid }: { reason: AppliedReason, invalid: string[] }) {
+/** The search the Results show (null: none or cancelled); a view switch keeps it. */
+let resultsKey: string | null = null
+const resultsKeyOf = (location: ExploreLocation) =>
+  JSON.stringify([criteriaKey(location.criteria), effectiveMode(location), location.vector, appliedCollection.value])
+
+/** The Results hold (or are loading) the answer of their last search, not an error or nothing. */
+function resultsCurrent (location: ExploreLocation): boolean {
+  if (effectiveMode(location) === 'documents') {
+    return isIdleLocation(location) || (!documents.error.value && (documents.loading.value || documents.results.value !== null))
+  }
+  if (!location.criteria.textQuery) return true
+  return !passages.error.value && (passages.loading.value || passages.results.value !== null)
+}
+
+/**
+ * `again`: the applied location was applied unchanged (Search with the same criteria, or a
+ * changed collection scope), which searches or counts again.
+ */
+function onApplied (location: ExploreLocation, { reason, invalid }: { reason: AppliedReason, invalid: string[] }, again = false) {
   if (invalid.length) {
     Notify.create({ message: `Left out of the search because they are not valid: ${invalid.join(', ')}`, position: 'top', color: 'warning' })
   }
@@ -961,16 +1062,20 @@ function onApplied (location: ExploreLocation, { reason, invalid }: { reason: Ap
     setDraft(location)
     draftCollection.value = appliedCollection.value
   }
-  selectedResults.value = []
-  void runApplied()
+  // The selection belongs to the shown results, which a view switch keeps.
+  if (again || resultsKeyOf(location) !== resultsKey) selectedResults.value = []
+  void runApplied({ force: again })
 }
 
-async function runApplied () {
+async function runApplied ({ force = false } = {}) {
   if (filtersStatus.value === 'loading' || vectorsStatus.value === 'loading') {
     waitingForOptions = true
+    waitingForce ||= force
     return
   }
+  force ||= waitingForce
   waitingForOptions = false
+  waitingForce = false
   const location = applied.value
   const dropped: string[] = []
   const corrected: ExploreLocation = { ...location }
@@ -983,9 +1088,6 @@ async function runApplied () {
     dropped.push(vectorLabel(location.vector))
     corrected.vector = null
   }
-  // Visualizations follow (#528).
-  if (location.view === 'visualizations') dropped.push('Visualizations (not available yet)')
-  if (location.view === 'visualizations') corrected.view = null
   if (dropped.length) {
     Notify.create({ message: `Left out of the search because they are not available: ${dropped.join(', ')}`, position: 'top', color: 'warning' })
     setDraft(corrected)
@@ -993,11 +1095,26 @@ async function runApplied () {
     return
   }
 
+  if (location.view === 'visualizations') {
+    // The Results are searched when shown; a search of other criteria is not finished meanwhile.
+    if (resultsKeyOf(location) !== resultsKey) {
+      passages.cancel()
+      documents.cancel()
+      resultsKey = null
+    }
+    if (chartsAvailability(location.criteria, effectiveMode(location), appliedCollection.value) === 'documents') {
+      charts.show(location.criteria, { force })
+    }
+    return
+  }
+  const key = resultsKeyOf(location)
+  if (!force && key === resultsKey && resultsCurrent(location)) return
+  resultsKey = key
+
   if (effectiveMode(location) === 'documents') {
     passages.cancel()
-    // Documents ranked by a text query are not available yet (#527c): the page says so.
-    if (isIdleLocation(location) || location.criteria.textQuery) documents.cancel()
-    else await documents.search({ criteria: location.criteria, userCollectionId: appliedCollection.value })
+    if (isIdleLocation(location)) documents.cancel()
+    else await documents.search({ criteria: location.criteria, vector: location.vector, userCollectionId: appliedCollection.value })
     return
   }
   documents.cancel()
@@ -1098,8 +1215,9 @@ async function addSelectedDocumentsToCollection () {
 
 // The applied location: the URL now, and on every Back/Forward or link (applies at once).
 const explore = useExploreLocation('search', (location, details) => {
+  const again = details.reason === 'apply' && locationKey(location) === locationKey(applied.value)
   applied.value = location
-  onApplied(location, details)
+  onApplied(location, details, again)
 })
 
 // Kept alive while a document opened from a result is shown: the listeners only while shown.
@@ -1158,6 +1276,10 @@ onBeforeUnmount(() => {
 
 .results-mode {
   border: 1px solid var(--q-primary);
+}
+
+.explore-views {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .results-status {
