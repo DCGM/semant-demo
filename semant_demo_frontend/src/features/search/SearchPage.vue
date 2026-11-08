@@ -234,7 +234,7 @@
               {{ coverage }} Search completed in {{ timeSpent.toFixed(2) }}s.
             </div>
             <div v-else-if="resultsState === 'documents'" class="text-caption text-grey-7" data-testid="search-coverage">
-              {{ coverage }} {{ DOCUMENT_ORDER_LABEL }}
+              {{ coverage }} {{ documentOrder }}
             </div>
           </div>
           <q-btn-toggle
@@ -271,8 +271,8 @@
         <div v-else-if="resultsState === 'empty'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-empty">
           <q-icon name="search_off" size="2.5em" />
           <template v-if="mode === 'documents'">
-            <div class="q-mt-sm text-subtitle1">No documents match these filters.</div>
-            <div class="text-caption">Remove some of the filters above.</div>
+            <div class="q-mt-sm text-subtitle1">{{ applied.criteria.textQuery ? 'No documents match this search.' : 'No documents match these filters.' }}</div>
+            <div class="text-caption">{{ applied.criteria.textQuery ? 'Try other words, or remove some of the filters above.' : 'Remove some of the filters above.' }}</div>
           </template>
           <template v-else>
             <div class="q-mt-sm text-subtitle1">No passages match this search.</div>
@@ -286,19 +286,13 @@
           <div class="text-caption">Browsing passages by filters alone is not available. Documents lists the documents these filters match.</div>
         </div>
 
-        <div v-else-if="resultsState === 'documentsNeedNoQuery'" class="results-status column items-center q-pa-xl text-grey-8" role="status" data-testid="search-documents-need-no-query">
-          <q-icon name="description" size="2.5em" />
-          <div class="q-mt-sm text-subtitle1">Documents for a text query are not available yet.</div>
-          <div class="text-caption">Passages shows the passages that match it. Clear the text query to list the documents these filters match.</div>
-        </div>
-
         <div v-else-if="resultsState === 'documents'">
           <div class="q-gutter-y-md">
             <DocumentResultCard
               v-for="(item, index) in documentItems"
               :id="`document-${index + 1}`"
-              :key="item.id"
-              :document="item"
+              :key="item.document.id"
+              :hit="item"
               :number="index + 1"
             />
           </div>
@@ -434,7 +428,7 @@ import { collectionRights } from 'src/features/user_collections/permissions'
 import { effectiveMode, emptyCriteria, emptyLocation, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
-import { DOCUMENT_ORDER_LABEL, documentCoverage, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
+import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import SearchResultCard from './SearchResultCard.vue'
@@ -460,8 +454,8 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 // draft search criteria, and Enter or Search applies them. The applied criteria, the search
 // vector and the results mode live in the URL (`features/explore`), so Back/Forward and shared
 // links restore a search; the collection scope is a page setting, never in the URL. Results are
-// Passages (`POST /api/search/passages`) for a text query and Documents (`POST /api/search/documents`,
-// #606) for filters alone, each loaded page by page; documents ranked by a text query follow (#527c).
+// Passages (`POST /api/search/passages`) for a text query, and Documents (`POST /api/search/documents`)
+// for filters alone (#606) or ranked by a text query (#607), each loaded page by page.
 
 const api = useApi().default
 
@@ -542,6 +536,7 @@ const coverage = computed(() => {
   if (mode.value === 'documents') return documents.results.value ? documentCoverage(documents.results.value) : ''
   return passages.results.value ? passageCoverage(passages.results.value) : ''
 })
+const documentOrder = computed(() => (documents.results.value ? documentOrderLabel(documents.results.value) : ''))
 const hasMore = computed(() => {
   if (mode.value === 'documents') return documents.results.value ? hasMoreDocuments(documents.results.value) : false
   return passages.results.value ? hasMorePassages(passages.results.value) : false
@@ -561,14 +556,12 @@ const isIdleLocation = (location: ExploreLocation) =>
 
 /**
  * What the results area shows: passage cards (`results`), document cards (`documents`) or a
- * state. Without a text query Passages need one (`needsQuery`); with one, Documents are not
- * available yet (`documentsNeedNoQuery`, #527c).
+ * state. Without a text query Passages need one (`needsQuery`); Documents take both (#607).
  */
-const resultsState = computed<'results' | 'documents' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'documentsNeedNoQuery' | 'idle'>(() => {
+const resultsState = computed<'results' | 'documents' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'idle'>(() => {
   const location = applied.value
   if (isIdleLocation(location)) return 'idle'
   if (mode.value === 'documents') {
-    if (location.criteria.textQuery) return 'documentsNeedNoQuery'
     if (documents.loading.value) return 'loading'
     if (documents.error.value) return 'error'
     if (documents.results.value) return documentItems.value.length ? 'documents' : 'empty'
@@ -932,8 +925,8 @@ async function fetchSearchVectors () {
 /**
  * Applies the draft: a new history entry, or the same search again when nothing changed.
  * A text query searches Passages, filters alone list Documents (an empty form: every document).
- * Each mode serves only one of them so far, so applied criteria show their default mode; a
- * mode chosen for the earlier criteria is not carried over (#527c will offer both).
+ * Documents chosen for a text query stay for the next text query (#607); Passages need one,
+ * so criteria without it show Documents.
  */
 async function onSearch () {
   history.close()
@@ -943,7 +936,12 @@ async function onSearch () {
     return
   }
   // The empty criteria keep the mode in the URL, which tells them apart from the page as first opened.
-  const chosen = !criteria.textQuery && !hasFilters(criteria) ? 'documents' : null
+  // Documents chosen for a text query stay for the next one (#607); browsing by filters alone
+  // shows Documents by default only, so a text query added there searches Passages.
+  const keepDocuments = Boolean(applied.value.criteria.textQuery) && applied.value.mode === 'documents'
+  const chosen = (!criteria.textQuery && !hasFilters(criteria)) || (criteria.textQuery && keepDocuments)
+    ? 'documents'
+    : null
   appliedCollection.value = draftCollection.value
   await explore.apply({ ...applied.value, criteria, mode: chosen, vector: draftVector.value })
 }
@@ -995,9 +993,8 @@ async function runApplied () {
 
   if (effectiveMode(location) === 'documents') {
     passages.cancel()
-    // Documents ranked by a text query are not available yet (#527c): the page says so.
-    if (isIdleLocation(location) || location.criteria.textQuery) documents.cancel()
-    else await documents.search({ criteria: location.criteria, userCollectionId: appliedCollection.value })
+    if (isIdleLocation(location)) documents.cancel()
+    else await documents.search({ criteria: location.criteria, vector: location.vector, userCollectionId: appliedCollection.value })
     return
   }
   documents.cancel()

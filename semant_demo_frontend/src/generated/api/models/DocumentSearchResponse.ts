@@ -13,13 +13,20 @@
  */
 
 import { mapValues } from '../runtime';
-import type { Document } from './Document';
+import type { DocumentHit } from './DocumentHit';
 import {
-    DocumentFromJSON,
-    DocumentFromJSONTyped,
-    DocumentToJSON,
-    DocumentToJSONTyped,
-} from './Document';
+    DocumentHitFromJSON,
+    DocumentHitFromJSONTyped,
+    DocumentHitToJSON,
+    DocumentHitToJSONTyped,
+} from './DocumentHit';
+import type { RankedDocument } from './RankedDocument';
+import {
+    RankedDocumentFromJSON,
+    RankedDocumentFromJSONTyped,
+    RankedDocumentToJSON,
+    RankedDocumentToJSONTyped,
+} from './RankedDocument';
 import type { SearchCriteria } from './SearchCriteria';
 import {
     SearchCriteriaFromJSON,
@@ -27,25 +34,38 @@ import {
     SearchCriteriaToJSON,
     SearchCriteriaToJSONTyped,
 } from './SearchCriteria';
+import type { DocumentRetrieval } from './DocumentRetrieval';
+import {
+    DocumentRetrievalFromJSON,
+    DocumentRetrievalFromJSONTyped,
+    DocumentRetrievalToJSON,
+    DocumentRetrievalToJSONTyped,
+} from './DocumentRetrieval';
 
 /**
- * One page of the documents matching the criteria and the whole population they belong to.
+ * The documents matching the criteria: one page and what the whole result covers.
  * 
- * ``total_count`` is the exact number of matching documents (a count, not an estimate or a
- * sample). Weaviate reads no result past ``offset + limit = QUERY_MAXIMUM_RESULTS``, so only
- * the first ``retrieval_limit`` documents in ``order`` can be paged through; ``bounded`` is
- * ``True`` when more match than that (narrow the filters to reach the others). A chart of the
- * population counts ``total_count`` documents (#528), not the page.
+ * ``eligible_count`` is the exact number of documents the filters admit (a count, not an
+ * estimate or a sample). Without a text query those are the results: ``total_count`` equals
+ * it and the first ``retrieval_limit`` of them in ``order`` can be paged through by ``offset``
+ * (Weaviate reads no result past ``QUERY_MAXIMUM_RESULTS``); ``bounded`` when more match.
+ * 
+ * With a text query, ``ranked`` is its bounded ranking of distinct documents and ``items`` its
+ * first ``read_count`` entries in full. ``bounded`` is ``True`` when a retrieval limit
+ * (``retrieval``) cut it; ``total_count`` is the number of matching documents only when it did
+ * not (then every eligible document that matches is ranked), else None: the ranking is a lower
+ * bound and ``eligible_count`` an upper one. A chart of the result counts ``total_count``
+ * documents without a text query and the ranked documents with one (#528), never the page.
  * @export
  * @interface DocumentSearchResponse
  */
 export interface DocumentSearchResponse {
     /**
      * 
-     * @type {Array<Document>}
+     * @type {Array<DocumentHit>}
      * @memberof DocumentSearchResponse
      */
-    items: Array<Document>;
+    items: Array<DocumentHit>;
     /**
      * 
      * @type {number}
@@ -63,7 +83,13 @@ export interface DocumentSearchResponse {
      * @type {number}
      * @memberof DocumentSearchResponse
      */
-    totalCount: number;
+    totalCount: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof DocumentSearchResponse
+     */
+    eligibleCount: number;
     /**
      * 
      * @type {number}
@@ -84,6 +110,24 @@ export interface DocumentSearchResponse {
     order: DocumentSearchResponseOrderEnum;
     /**
      * 
+     * @type {Array<RankedDocument>}
+     * @memberof DocumentSearchResponse
+     */
+    ranked?: Array<RankedDocument> | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof DocumentSearchResponse
+     */
+    readCount?: number;
+    /**
+     * 
+     * @type {DocumentRetrieval}
+     * @memberof DocumentSearchResponse
+     */
+    retrieval?: DocumentRetrieval | null;
+    /**
+     * 
      * @type {SearchCriteria}
      * @memberof DocumentSearchResponse
      */
@@ -101,7 +145,8 @@ export interface DocumentSearchResponse {
  * @export
  */
 export const DocumentSearchResponseOrderEnum = {
-    yearAsc: 'year_asc'
+    yearAsc: 'year_asc',
+    metadataThenText: 'metadata_then_text'
 } as const;
 export type DocumentSearchResponseOrderEnum = typeof DocumentSearchResponseOrderEnum[keyof typeof DocumentSearchResponseOrderEnum];
 
@@ -114,6 +159,7 @@ export function instanceOfDocumentSearchResponse(value: object): value is Docume
     if (!('offset' in value) || value['offset'] === undefined) return false;
     if (!('nextOffset' in value) || value['nextOffset'] === undefined) return false;
     if (!('totalCount' in value) || value['totalCount'] === undefined) return false;
+    if (!('eligibleCount' in value) || value['eligibleCount'] === undefined) return false;
     if (!('retrievalLimit' in value) || value['retrievalLimit'] === undefined) return false;
     if (!('bounded' in value) || value['bounded'] === undefined) return false;
     if (!('order' in value) || value['order'] === undefined) return false;
@@ -132,13 +178,17 @@ export function DocumentSearchResponseFromJSONTyped(json: any, ignoreDiscriminat
     }
     return {
         
-        'items': ((json['items'] as Array<any>).map(DocumentFromJSON)),
+        'items': ((json['items'] as Array<any>).map(DocumentHitFromJSON)),
         'offset': json['offset'],
         'nextOffset': json['next_offset'],
         'totalCount': json['total_count'],
+        'eligibleCount': json['eligible_count'],
         'retrievalLimit': json['retrieval_limit'],
         'bounded': json['bounded'],
         'order': json['order'],
+        'ranked': json['ranked'] == null ? undefined : ((json['ranked'] as Array<any>).map(RankedDocumentFromJSON)),
+        'readCount': json['read_count'] == null ? undefined : json['read_count'],
+        'retrieval': json['retrieval'] == null ? undefined : DocumentRetrievalFromJSON(json['retrieval']),
         'criteria': SearchCriteriaFromJSON(json['criteria']),
         'timeSpent': json['time_spent'],
     };
@@ -155,13 +205,17 @@ export function DocumentSearchResponseToJSONTyped(value?: DocumentSearchResponse
 
     return {
         
-        'items': ((value['items'] as Array<any>).map(DocumentToJSON)),
+        'items': ((value['items'] as Array<any>).map(DocumentHitToJSON)),
         'offset': value['offset'],
         'next_offset': value['nextOffset'],
         'total_count': value['totalCount'],
+        'eligible_count': value['eligibleCount'],
         'retrieval_limit': value['retrievalLimit'],
         'bounded': value['bounded'],
         'order': value['order'],
+        'ranked': value['ranked'] == null ? undefined : ((value['ranked'] as Array<any>).map(RankedDocumentToJSON)),
+        'read_count': value['readCount'],
+        'retrieval': DocumentRetrievalToJSON(value['retrieval']),
         'criteria': SearchCriteriaToJSON(value['criteria']),
         'time_spent': value['timeSpent'],
     };

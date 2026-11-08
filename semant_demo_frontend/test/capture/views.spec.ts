@@ -80,7 +80,7 @@ test('recent searches', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-history-newer-version')
 })
 
-test('search documents: filter-only results, mode switch, Load more and states (#606)', async ({ page }, testInfo) => {
+test('search documents: filter-only and ranked results, Load more and states (#606, #607)', async ({ page }, testInfo) => {
   // A first page of two, so Load more and the coverage line show with the small fixture corpus.
   await page.route('**/api/search/documents', async (route) => {
     const body = route.request().postDataJSON()
@@ -98,10 +98,11 @@ test('search documents: filter-only results, mode switch, Load more and states (
   await expect(page.getByTestId('document-result-open')).toHaveCount(3)
   await save(page, testInfo, 'search-documents-all')
 
+  // Ranked by a text query (#607): the title match first, each document with its best passage.
   await page.goto('/#/search?q=Lhota&chunk_languages=ces&mode=documents')
-  await expect(page.getByTestId('search-documents-need-no-query')).toBeVisible()
-  await page.getByTestId('search-documents-need-no-query').click()
-  await save(page, testInfo, 'search-documents-need-no-query')
+  await expect(page.getByTestId('document-result-evidence').first()).toBeVisible()
+  await page.getByTestId('search-coverage').click()
+  await save(page, testInfo, 'search-documents-ranked')
 
   await page.goto('/#/search?chunk_classifications=communicative_mode:narration&year_min=1900')
   await expect(page.getByTestId('search-empty')).toBeVisible()
