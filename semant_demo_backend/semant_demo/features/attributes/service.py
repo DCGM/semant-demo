@@ -378,10 +378,11 @@ async def assign_attributes(store: AttributeStore, user: Principal | None, colle
     Adds, removes, replaces or clears the values of one attribute on up to ``MAX_ASSIGN_BATCH``
     approved annotations, each on its own: written best effort and reported per item (nothing is
     rolled back). ``succeeded`` includes annotations already as asked; ``unchanged`` names those,
-    which were not written (#569). A refused request (400/404) changed nothing; per item, ``failed`` names why an
-    annotation was not changed (``find_annotation``, ``read_annotation`` - reading it failed -,
-    ``edit_conflict``, ``check_annotation_type``, ``check_applicable``, ``check_value``, ``check_cardinality``, ``update_attributes`` -
-    ``uncertain`` on a timeout). Each saved change is recorded right after its write, under the same lock; when that fails the
+    which were not written (#569). A refused request (400/404) changed nothing; per item,
+    ``failed`` names why an annotation was not changed (``find_annotation``, ``read_annotation`` -
+    reading it failed -, ``edit_conflict``, ``check_annotation_type``, ``check_applicable``,
+    ``check_value``, ``check_cardinality``, ``update_attributes`` - ``uncertain`` on a timeout).
+    Each saved change is recorded right after its write, under the same lock; when that fails the
     assignment stays and ``record_attribute_changes`` is reported for that annotation.
     """
     grant = await access.require_annotation_edit(store.annotations.collections, user, collection_id)

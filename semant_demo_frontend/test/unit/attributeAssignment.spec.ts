@@ -8,7 +8,7 @@ import {
   assignReportHasProblems, assignReportSummary, cannotAssign, clearChange, pickChange
 } from 'src/features/attributes/assignment'
 import {
-  ASSIGN_BATCH, assignChanged, refusedWhole, useAttributeAssignStore, type AssignReport
+  ASSIGN_BATCH, assignChanged, assignMayHaveChanged, refusedWhole, useAttributeAssignStore, type AssignReport
 } from 'src/features/attributes/attributeAssignStore'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
@@ -221,6 +221,30 @@ describe('attribute assign store', () => {
     expect(summary.title).toBe('"Speaker": no annotations changed')
     expect(summary.lines.map(l => [l.count, l.label])).toEqual([[2, 'already matched']])
     expect(assignReportHasProblems(report!)).toBe(false)
+  })
+
+  it('claims no change either way for lost writes found as asked on retry', async () => {
+    const assign = useAttributeAssignStore()
+    const running = assign.assign('col-1', 'a1', { mode: 'add', valueIds: ['v1'] }, [['a', 0], ['b', 0], ['c', 0]], ignore)
+    await flush()
+    assignCalls()[0].answer({ detail: 'bad gateway' }, 502)
+    await running
+    const retrying = assign.retry('col-1', ignore)
+    await flush()
+    assignCalls()[1].answer({
+      outcome: 'partial',
+      succeeded: ['a', 'b'],
+      unchanged: ['a', 'b'],
+      failed: [{ item_id: 'c', step: 'update_attributes', message: 'down' }]
+    })
+    const retried = await retrying
+    expect([assignChanged(retried!), assignMayHaveChanged(retried!)]).toEqual([0, 2])
+    const summary = assignReportSummary(retried!, speaker())
+    // Not "no annotations changed": the lost writes may have landed.
+    expect(summary.title).toBe('"Speaker": changed 0 of 3 annotations (2 uncertain)')
+    expect(summary.lines.map(l => [l.count, l.label])).toEqual([
+      [1, 'failed'], [2, 'saved or already matched'], [null, 'Saved changes are kept.']
+    ])
   })
 
   it('takes a 503 as a refusal, not as a lost answer, and shows no result for a request refused as a whole', async () => {

@@ -58,6 +58,10 @@ export interface AssignReport {
 /** How many annotations an assignment actually wrote (also those whose change record is missing). */
 export const assignChanged = (r: AssignReport) => r.saved.length - r.unchanged.length - r.savedOrMatched.length
 
+/** Those it wrote, and those it may have written (a retried lost write found as asked): what
+ * makes it the last change, and what "Saved changes are kept" is about. */
+export const assignMayHaveChanged = (r: AssignReport) => assignChanged(r) + r.savedOrMatched.length
+
 /** The first request was refused as a whole: nothing was saved, looked at or possibly written. */
 export const refusedWhole = (r: AssignReport) =>
   !!r.error && !r.saved.length && !r.conflicts.length && !r.refused.length && !r.missing.length &&
