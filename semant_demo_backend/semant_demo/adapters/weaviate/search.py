@@ -6,7 +6,8 @@ which also names the stored vector to compare with (``query.target_vector``); ev
 vector and hybrid query names it, so a collection with several named vectors works. No
 provider is called and no configuration is read here.
 """
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Mapping, Sequence
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from weaviate.classes.aggregate import Metrics
 from weaviate.classes.query import Filter, QueryReference
 
 from semant_demo.adapters.weaviate import criteria
+from semant_demo.adapters.weaviate.analytics import READ_BATCH
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import REF_BY_TYPE
 from semant_demo.adapters.weaviate.documents import chunk_properties
@@ -128,6 +130,35 @@ class ChunkSearchRepository:
         by_id = {obj.uuid: obj for obj in result.objects}
         hits = (_hit(by_id[i]) for i in ids if i in by_id)
         return [hit for hit in hits if hit is not None]
+
+    async def document_values(self, ids: Sequence[UUID], scope: ChunkQuery,
+                              properties: Sequence[str]) -> list[tuple[UUID, UUID, dict[str, Any]]]:
+        """(chunk id, document id, the document's stored ``properties``) of the chunks ``ids`` that
+        match every condition of ``scope``, as ``read_hits`` reads them (#619): chunks gone, outside
+        the scope or without a document are left out, in the order of ``ids``. Only the document
+        reference and the named document properties are read (no text, no vectors), in batches of
+        ``READ_BATCH`` ids; every property must be declared on the documents."""
+        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        restrictions = await self._filter(scope)
+
+        async def read(batch: Sequence[UUID]) -> list:
+            by_ids = Filter.by_id().contains_any(list(batch))
+            result = await chunks.query.fetch_objects(
+                filters=by_ids if restrictions is None else Filter.all_of([by_ids, restrictions]), limit=len(batch),
+                return_properties=[], return_references=[QueryReference(link_on="document",
+                                                                        return_properties=list(properties))])
+            return result.objects
+
+        batches = await asyncio.gather(*(read(ids[i:i + READ_BATCH]) for i in range(0, len(ids), READ_BATCH)))
+        found: dict[UUID, tuple[UUID, dict[str, Any]]] = {}
+        for objects in batches:
+            for obj in objects:
+                refs = (obj.references or {}).get("document")
+                if refs and refs.objects:
+                    document = refs.objects[0]
+                    found[UUID(str(obj.uuid))] = (
+                        UUID(str(document.uuid)), {prop: document.properties.get(prop) for prop in properties})
+        return [(i, *found[i]) for i in ids if i in found]
 
     async def _ranked(self, query: ChunkQuery, **returned):
         chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)

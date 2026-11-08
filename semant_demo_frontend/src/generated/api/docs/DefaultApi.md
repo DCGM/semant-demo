@@ -55,6 +55,7 @@ All URIs are relative to *http://localhost*
 | [**listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet**](DefaultApi.md#listcollectionannotationsapiusercollectionscollectionidannotationsget) | **GET** /api/user_collections/{collection_id}/annotations | List Collection Annotations |
 | [**questionApiQuestionPost**](DefaultApi.md#questionapiquestionpost) | **POST** /api/question | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
+| [**rankedResultsDistributionsApiAnalyticsResultsDistributionsPost**](DefaultApi.md#rankedresultsdistributionsapianalyticsresultsdistributionspost) | **POST** /api/analytics/results/distributions | Ranked Results Distributions |
 | [**readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet**](DefaultApi.md#readdocumentadjacentchunksapidocumentsdocumentidchunkschunkidadjacentget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/adjacent | Read Document Adjacent Chunks |
 | [**readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet**](DefaultApi.md#readdocumentchunkwindowapidocumentsdocumentidchunkschunkidwindowget) | **GET** /api/documents/{document_id}/chunks/{chunk_id}/window | Read Document Chunk Window |
 | [**readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet**](DefaultApi.md#readdocumentpageassetapidocumentsdocumentidpagespageidkindget) | **GET** /api/documents/{document_id}/pages/{page_id}/{kind} | Read Document Page Asset |
@@ -3809,6 +3810,78 @@ example().catch(console.error);
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## rankedResultsDistributionsApiAnalyticsResultsDistributionsPost
+
+> RankedResultsDistributions rankedResultsDistributionsApiAnalyticsResultsDistributionsPost(rankedResultsDistributionsRequest)
+
+Ranked Results Distributions
+
+Counts of the ranked results of one text-query search (#619): exactly the ids that &#x60;&#x60;POST /api/search/documents&#x60;&#x60; (&#x60;&#x60;ranked&#x60;&#x60;) or &#x60;&#x60;POST /api/search/passages&#x60;&#x60; (&#x60;&#x60;ranked_ids&#x60;&#x60;) returned, with that search\&#39;s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (&#x60;&#x60;missing_count&#x60;&#x60;). The ranking\&#39;s description (&#x60;&#x60;ranking&#x60;&#x60;) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\&#39;s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // RankedResultsDistributionsRequest
+    rankedResultsDistributionsRequest: ...,
+  } satisfies RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest;
+
+  try {
+    const data = await api.rankedResultsDistributionsApiAnalyticsResultsDistributionsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **rankedResultsDistributionsRequest** | [RankedResultsDistributionsRequest](RankedResultsDistributionsRequest.md) |  | |
+
+### Return type
+
+[**RankedResultsDistributions**](RankedResultsDistributions.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

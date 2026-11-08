@@ -27,7 +27,7 @@ import logging
 from dataclasses import dataclass
 from functools import partial
 from time import time
-from typing import Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 from uuid import UUID
 
 from semant_demo.adapters.llm.usage import OperationBudget
@@ -227,6 +227,23 @@ async def read_passages(backends: SearchBackends, user: Principal | None, reques
     for item in items:
         item.text = display_text(item.text)
     return PassageReadResponse(items=items, time_spent=time() - start)
+
+
+async def passage_document_values(backends: SearchBackends, user: Principal | None, ids: list[UUID],
+                                  criteria: SearchCriteria, user_collection_id: str | None,
+                                  filter_definitions: SearchFiltersResponse | None, properties: list[str],
+                                  ) -> tuple[SearchCriteria, list[tuple[UUID, UUID, dict[str, Any]]]]:
+    """The passages among ``ids`` that a passage search of ``criteria`` could return, each with
+    its document's id and stored ``properties`` (Analytics of the ranked passages, #619), and the
+    normalized criteria. As ``read_passages``: the ids come from the client, so access to the
+    collection and the criteria are checked again and the chunks are read under the search's own
+    restrictions (collection, document and same-chunk filters); the others are left out, in the
+    order of ``ids``. No text, vector or ranking."""
+    normalized, query, _ = await _passage_query(backends, user, criteria, user_collection_id, filter_definitions,
+                                                limit=max(len(ids), 1), type=SearchType.text)
+    values = await backends.chunks.document_values(ids, query, properties)
+    return criteria.model_copy(update={"document_filters": normalized.document_filters,
+                                       "chunk_filters": normalized.chunk_filters}), values
 
 
 @dataclass(frozen=True)

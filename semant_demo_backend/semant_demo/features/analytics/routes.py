@@ -2,11 +2,19 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository, UnavailableFilter
+from semant_demo.config import Config
 from semant_demo.features.analytics import service
 from semant_demo.features.analytics.schemas import (
-    CorpusDistributions, CorpusDistributionsRequest, CorpusOverview, LibraryYearDistribution)
+    CorpusDistributions, CorpusDistributionsRequest, CorpusOverview, LibraryYearDistribution, RankedResultsDistributions,
+    RankedResultsDistributionsRequest)
 from semant_demo.features.documents.criteria import ChunkVocabulary
-from semant_demo.routes.dependencies import get_chunk_vocabulary, get_corpus_analytics, get_corpus_overview_cache
+from semant_demo.features.search.schemas import SearchFiltersResponse
+from semant_demo.features.search.service import SearchBackends
+from semant_demo.routes.dependencies import (
+    get_chunk_vocabulary, get_config, get_corpus_analytics, get_corpus_overview_cache, get_search_backends,
+    get_search_filters)
+from semant_demo.users.auth import current_active_optional_user
+from semant_demo.users.models import User
 
 exp_router = APIRouter()
 
@@ -55,5 +63,35 @@ async def corpus_library_years(request: CorpusDistributionsRequest,
     """
     try:
         return await service.library_years(analytics, request.filters, request.chunk_filters, vocabulary)
+    except UnavailableFilter as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@exp_router.post("/api/analytics/results/distributions", response_model=RankedResultsDistributions)
+async def ranked_results_distributions(request: RankedResultsDistributionsRequest,
+                                       analytics: CorpusAnalyticsRepository = Depends(get_corpus_analytics),
+                                       backends: SearchBackends = Depends(get_search_backends),
+                                       vocabulary: ChunkVocabulary = Depends(get_chunk_vocabulary),
+                                       available_filters: SearchFiltersResponse = Depends(get_search_filters),
+                                       current_user: User | None = Depends(current_active_optional_user),
+                                       config: Config = Depends(get_config)) -> RankedResultsDistributions:
+    """
+    Counts of the ranked results of one text-query search (#619): exactly the ids that
+    ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``)
+    returned, with that search's criteria and collection, per publication year, source library and
+    document language of their documents. Documents count once each; passages count as passages.
+    Access and eligibility are checked again: ids the search could not return now (gone, no longer
+    matching, outside the collection) are left out and reported (``missing_count``). The ranking's
+    description (``ranking``) is echoed with the configured limit; a bounded ranking describes the
+    retrieved results only. Without a text query, or with an id named twice: 422; more ids than the
+    mode's limit or an unconfigured chunk filter: 400; a filter on a property the store does not
+    record: 422.
+    """
+    limits = service.RankingLimits(
+        documents=config.SEARCH_DOCUMENTS_METADATA_LIMIT + config.SEARCH_DOCUMENTS_CHUNK_LIMIT,
+        passages=config.SEARCH_PASSAGES_LIMIT)
+    try:
+        return await service.ranked_results_distributions(analytics, backends, current_user, request, vocabulary,
+                                                          available_filters, limits)
     except UnavailableFilter as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
