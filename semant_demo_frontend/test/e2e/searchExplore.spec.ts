@@ -105,11 +105,11 @@ test('Discard changes puts the applied search back into the form', async ({ page
 
 test('a link with values that are not valid or not offered searches without them and says so', async ({ page }) => {
   const sent = nextSearch(page)
-  await openSearch(page, '/#/search?q=Lhota&year_min=soon&chunk_classifications=complexity:trivial&view=visualizations')
+  await openSearch(page, '/#/search?q=Lhota&year_min=soon&chunk_classifications=complexity:trivial')
   const criteria = (await sent).postDataJSON().criteria
   expect(criteria).toMatchObject({ text_query: 'Lhota', document_filters: { year_min: null }, chunk_filters: { classifications: {} } })
   await expect(page.getByText('Left out of the search because they are not valid: Publication year from: soon')).toBeVisible()
-  await expect(page.getByText(/Left out of the search because they are not available: Complexity: trivial, Visualizations/)).toBeVisible()
+  await expect(page.getByText('Left out of the search because they are not available: Complexity: trivial')).toBeVisible()
   await expect(page.locator('#result-1')).toBeVisible()
   await expect.poll(() => hash(page)).toBe('#/search?q=Lhota')
 })

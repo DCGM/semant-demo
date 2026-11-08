@@ -839,3 +839,18 @@ test('collection document with its scan', async ({ page }, testInfo) => {
     await save(page, testInfo, 'collection-document-scan-only')
   }
 })
+
+test('explore visualizations', async ({ page }, testInfo) => {
+  // #618: the Visualizations view of filters without a text query (no right sidebar panel here).
+  await page.goto('/#/search?year_max=1950&chunk_languages=ces&view=visualizations')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('charts-total')).toHaveText('2')
+  await expect(page.getByTestId('corpus-years').locator('svg').first()).toBeVisible()
+  await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'explore-visualizations')
+  await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-visualizations-full-${testInfo.project.name}.png`, fullPage: true })
+
+  await page.goto('/#/search?q=Lhota&view=visualizations')
+  await expect(page.getByTestId('charts-text-query')).toBeVisible()
+  await save(page, testInfo, 'explore-visualizations-text-query')
+})
