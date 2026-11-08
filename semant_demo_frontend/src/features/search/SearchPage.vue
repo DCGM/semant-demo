@@ -250,7 +250,8 @@
           <div class="results-header__title">
             <div class="text-h5 text-weight-medium">{{ mode === 'documents' ? 'Documents' : 'Passages' }}</div>
             <div v-if="view === 'visualizations'" class="text-caption text-grey-7" data-testid="charts-unit">
-              {{ mode === 'documents' ? 'Charts of the matching documents.' : 'Charts of the matching passages.' }}
+              <template v-if="applied.criteria.textQuery">{{ mode === 'documents' ? 'Charts of the ranked documents of this search.' : 'Charts of the ranked passages of this search.' }}</template>
+              <template v-else>{{ mode === 'documents' ? 'Charts of the matching documents.' : 'Charts of the matching passages.' }}</template>
             </div>
             <div v-else-if="resultsState === 'results'" class="text-caption text-grey-7" data-testid="search-coverage">
               {{ coverage }} Search completed in {{ timeSpent.toFixed(2) }}s.
@@ -283,8 +284,11 @@
           :slow="charts.slow.value"
           :error="charts.error.value"
           :invalid="charts.invalid.value"
+          :ranked="rankedState"
           @retry="charts.retry"
-          @apply-period="applyPeriod"
+          @retry-ranked="resultCharts.retry"
+          @retry-search="runApplied({ force: true })"
+          @apply-filter="applyChartFilter"
           @show-documents="chooseMode('documents')"
         />
 
@@ -465,8 +469,9 @@ import { useExploreLocation, type AppliedReason } from 'src/features/explore/use
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
 import { chartsAvailability, useExploreCharts } from 'src/features/explore/useExploreCharts'
+import { documentPopulation, passagePopulation, useResultCharts, type RankedChartsState, type RankedPopulation } from 'src/features/explore/useResultCharts'
+import { withChartFilter, type ChartFilter } from 'src/features/analytics/corpusOverview'
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
-import type { YearWindow } from 'src/features/analytics/timeline'
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import SearchResultCard from './SearchResultCard.vue'
@@ -495,8 +500,10 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 // Passages (`POST /api/search/passages`) for a text query, and Documents (`POST /api/search/documents`)
 // for filters alone (#606) or ranked by a text query (#607), each loaded page by page. The
 // Visualizations view (#618) charts the same applied criteria: for Documents without a text
-// query, every matching document (`useExploreCharts`). Switching between the views searches or
-// counts again only when the shown ones are of other criteria.
+// query, every matching document (`useExploreCharts`); for a text query, exactly the results its
+// search ranked (`useResultCharts`, #620). Clicking a chart category applies it as a filter (a new
+// search). Switching between the views searches or counts again only when the shown ones are of
+// other criteria.
 
 const api = useApi().default
 
@@ -600,6 +607,40 @@ const view = computed<ExploreView>(() => applied.value.view ?? 'results')
 const charts = useExploreCharts()
 const chartsShown = computed(() => chartsAvailability(applied.value.criteria, mode.value, appliedCollection.value))
 
+// Charts of a text query's results (#620): the counts of the ranking the Results hold.
+const resultCharts = useResultCharts()
+const activeLoading = computed(() => (mode.value === 'documents' ? documents.loading.value : passages.loading.value))
+
+/** The ranking of the applied text query in the shown mode, once its search answered. */
+const rankedPopulation = computed<RankedPopulation | null>(() => {
+  const location = applied.value
+  if (!location.criteria.textQuery) return null
+  const population = mode.value === 'documents'
+    ? (documents.results.value ? documentPopulation(documents.results.value) : null)
+    : (passages.results.value ? passagePopulation(passages.results.value) : null)
+  // Results of other criteria (a search not run yet) are never charted as these.
+  const same = population && criteriaKey(population.criteria) === criteriaKey(location.criteria) &&
+    population.vector === location.vector && population.userCollectionId === appliedCollection.value
+  return same ? population : null
+})
+watch([rankedPopulation, view], ([population, shown]) => {
+  if (population && shown === 'visualizations') void resultCharts.show(population)
+})
+const rankedCurrent = computed(() => !!rankedPopulation.value && resultCharts.population.value?.key === rankedPopulation.value.key)
+const rankedState = computed<RankedChartsState>(() => {
+  const counts = rankedCurrent.value ? resultCharts.distributions.value : null
+  const vector = counts?.ranking.vector ?? null
+  return {
+    searching: activeLoading.value,
+    searchError: activeError.value,
+    counts,
+    slow: resultCharts.slow.value,
+    error: rankedCurrent.value ? resultCharts.error.value : null,
+    invalid: rankedCurrent.value && resultCharts.invalid.value,
+    vectorName: vector ? (availableVectors.value.find(v => v.id === vector)?.name ?? vector) : null
+  }
+})
+
 /**
  * What the results area shows: passage cards (`results`), document cards (`documents`) or a
  * state. Without a text query Passages need one (`needsQuery`); Documents take both (#607).
@@ -644,14 +685,14 @@ function chooseView (chosen: ExploreView) {
 }
 
 /**
- * Applies a timeline period as the publication-year filter, keeping the other criteria; the
- * draft gets the same years and keeps its other changes.
+ * Applies a clicked chart category (a year bin, a library, a document language) as the filter
+ * of its dimension, keeping the other criteria, mode, vector and collection: a new search, whose
+ * ranking and counts may differ. The draft gets the same filter and keeps its other changes.
  */
-function applyPeriod (period: YearWindow) {
-  const years = { yearMin: period.start, yearMax: period.end }
+function applyChartFilter (filter: ChartFilter) {
   const criteria = applied.value.criteria
-  draftFilters.value = normalizeCriteria({ ...draftFilters.value, documentFilters: { ...draftFilters.value.documentFilters, ...years } })
-  void explore.apply({ ...applied.value, criteria: normalizeCriteria({ ...criteria, documentFilters: { ...criteria.documentFilters, ...years } }) })
+  draftFilters.value = normalizeCriteria({ ...draftFilters.value, documentFilters: withChartFilter(draftFilters.value.documentFilters, filter) })
+  void explore.apply({ ...applied.value, criteria: normalizeCriteria({ ...criteria, documentFilters: withChartFilter(criteria.documentFilters, filter) }) })
 }
 
 function clearSelection () {
@@ -1095,7 +1136,9 @@ async function runApplied ({ force = false } = {}) {
     return
   }
 
-  if (location.view === 'visualizations') {
+  // A text query's charts count the ranking of its search: searched as for Results (#620).
+  const ranked = chartsAvailability(location.criteria, effectiveMode(location), appliedCollection.value) === 'ranked'
+  if (location.view === 'visualizations' && !ranked) {
     // The Results are searched when shown; a search of other criteria is not finished meanwhile.
     if (resultsKeyOf(location) !== resultsKey) {
       passages.cancel()
@@ -1110,6 +1153,7 @@ async function runApplied ({ force = false } = {}) {
   const key = resultsKeyOf(location)
   if (!force && key === resultsKey && resultsCurrent(location)) return
   resultsKey = key
+  resultCharts.clear()
 
   if (effectiveMode(location) === 'documents') {
     passages.cancel()
