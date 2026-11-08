@@ -589,6 +589,23 @@ async def test_a_text_query_cut_by_a_retrieval_limit_reports_no_total(tmp_path):
         "metadata_bounded": True, "chunk_bounded": True, "ranked_chunks": 2}
 
 
+async def test_a_chunk_without_a_document_still_counts_towards_the_chunk_limit(tmp_path, monkeypatch):
+    # Review of #617: the limit is judged by the raw hits. Three hits for a limit of 2, the second
+    # without a document reference: one document links, but the limit cut the ranking.
+    monkeypatch.setattr(_RankedChunks, "pairs", [(_chunk(1), _doc(1)), (_chunk(2), None), (_chunk(3), _doc(3))])
+    response = await _documents(tmp_path, {"criteria": {"text_query": "Marie"}, "type": "text"},
+                                SEARCH_DOCUMENTS_CHUNK_LIMIT="2")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Metadata d2, d1 (evidence c1); d3's c3 is the hit past the limit, so no document ranks by text.
+    assert [(r["id"], r["match"], r["chunk_id"]) for r in body["ranked"]] == [
+        (str(_doc(2)), "metadata", None), (str(_doc(1)), "metadata", str(_chunk(1)))]
+    assert (body["bounded"], body["total_count"]) == (True, None)
+    assert {k: body["retrieval"][k] for k in ("chunk_bounded", "ranked_chunks")} == {
+        "chunk_bounded": True, "ranked_chunks": 2}
+
+
 async def test_a_later_document_page_is_read_by_its_ranking_entries_without_ranking(tmp_path):
     ranked = [{"id": str(_doc(4)), "match": "text", "chunk_id": str(_chunk(5))},
               {"id": str(_doc(5)), "match": "text", "chunk_id": str(_chunk(3))},       # no longer eligible
