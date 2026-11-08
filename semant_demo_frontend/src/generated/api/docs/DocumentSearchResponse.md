@@ -1,19 +1,23 @@
 
 # DocumentSearchResponse
 
-One page of the documents matching the criteria and the whole population they belong to.  ``total_count`` is the exact number of matching documents (a count, not an estimate or a sample). Weaviate reads no result past ``offset + limit = QUERY_MAXIMUM_RESULTS``, so only the first ``retrieval_limit`` documents in ``order`` can be paged through; ``bounded`` is ``True`` when more match than that (narrow the filters to reach the others). A chart of the population counts ``total_count`` documents (#528), not the page.
+The documents matching the criteria: one page and what the whole result covers.  ``eligible_count`` is the exact number of documents the filters admit (a count, not an estimate or a sample). Without a text query those are the results: ``total_count`` equals it and the first ``retrieval_limit`` of them in ``order`` can be paged through by ``offset`` (Weaviate reads no result past ``QUERY_MAXIMUM_RESULTS``); ``bounded`` when more match.  With a text query, ``ranked`` is its bounded ranking of distinct documents and ``items`` its first ``read_count`` entries in full. ``bounded`` is ``True`` when a retrieval limit (``retrieval``) cut it; ``total_count`` is the number of matching documents only when it did not (then every eligible document that matches is ranked), else None: the ranking is a lower bound and ``eligible_count`` an upper one. A chart of the result counts ``total_count`` documents without a text query and the ranked documents with one (#528), never the page.
 
 ## Properties
 
 Name | Type
 ------------ | -------------
-`items` | [Array&lt;Document&gt;](Document.md)
+`items` | [Array&lt;DocumentHit&gt;](DocumentHit.md)
 `offset` | number
 `nextOffset` | number
 `totalCount` | number
+`eligibleCount` | number
 `retrievalLimit` | number
 `bounded` | boolean
 `order` | string
+`ranked` | [Array&lt;RankedDocument&gt;](RankedDocument.md)
+`readCount` | number
+`retrieval` | [DocumentRetrieval](DocumentRetrieval.md)
 `criteria` | [SearchCriteria](SearchCriteria.md)
 `timeSpent` | number
 
@@ -28,9 +32,13 @@ const example = {
   "offset": null,
   "nextOffset": null,
   "totalCount": null,
+  "eligibleCount": null,
   "retrievalLimit": null,
   "bounded": null,
   "order": null,
+  "ranked": null,
+  "readCount": null,
+  "retrieval": null,
   "criteria": null,
   "timeSpent": null,
 } satisfies DocumentSearchResponse

@@ -6,9 +6,10 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter, QueryReference, Sort
+from weaviate.classes.query import BM25Operator, Filter, QueryReference, Sort
 
 from semant_demo.adapters.weaviate import criteria
+from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.features.annotations.schemas import AnnotationChunk
@@ -22,6 +23,11 @@ YEAR = "yearIssued"
 """The ``Documents`` property of the publication year, the order of ``browse_by_year``."""
 _LOWEST_YEAR = -(2 ** 63)
 """Every stored year is at least this (``int`` is 64-bit in Weaviate): ``>=`` it means "has a year"."""
+
+METADATA_PROPERTIES = {"title": 2, "subtitle": 1, "author": 1, "publisher": 1}
+"""The bibliographic ``Documents`` properties a text query matches as metadata (#607), with their
+BM25 weights: a word in the title counts double. Only those the store declares as searchable
+text are queried (stores differ, #312)."""
 
 LAYOUT_START = "layoutStart"
 """The ``Chunks`` object property of a chunk's start on the page scans (#541)."""
@@ -73,6 +79,7 @@ class DocumentRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
+        self._metadata_properties: list[str] | None = None
         self.positions = False
         """``Chunks`` declares the position properties (#463): chunk text reads return them
         (set at startup; a property that is not declared cannot be read)."""
@@ -289,6 +296,55 @@ class DocumentRepository:
             next_offset=(offset + limit) if has_more else None,
             total_count=total,
         )
+
+    async def count(self, collection_id: UUID | None = None, conditions: Sequence[Condition] = ()) -> int:
+        """The number of documents of ``browse`` (without its substring filters): of the collection,
+        if given, and matching ``conditions``. Raises ``criteria.UnavailableFilter``."""
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        filters = await self._browse_filter(collection_id, conditions)
+        return (await documents.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
+
+    async def metadata_ranked_ids(self, text: str, limit: int, collection_id: UUID | None = None,
+                                  conditions: Sequence[Condition] = ()) -> list[UUID]:
+        """Ids of the top ``limit`` documents of ``count`` whose bibliographic metadata
+        (``METADATA_PROPERTIES``) holds every word of ``text``, by BM25 relevance (#607); no
+        properties are read. Every word is required (BM25 ``and``): a single common word of a
+        longer query does not make a title a match. Empty when the store has none of the
+        properties."""
+        properties = await self._searchable_metadata()
+        if not properties:
+            return []
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        response = await documents.query.bm25(
+            query=text, query_properties=properties, operator=BM25Operator.and_(), limit=limit,
+            filters=await self._browse_filter(collection_id, conditions), return_properties=[])
+        return [obj.uuid for obj in response.objects]
+
+    async def read_eligible(self, document_ids: Sequence[UUID], collection_id: UUID | None = None,
+                            conditions: Sequence[Condition] = ()) -> dict[UUID, Document]:
+        """The documents among ``document_ids`` that ``count`` counts (of the collection, matching
+        ``conditions``); the others, also those that do not exist, are left out."""
+        if not document_ids:
+            return {}
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        by_ids = Filter.by_id().contains_any(list(document_ids))
+        scope = await self._browse_filter(collection_id, conditions)
+        response = await documents.query.fetch_objects(
+            filters=by_ids if scope is None else Filter.all_of([by_ids, scope]), limit=len(document_ids))
+        return {UUID(str(o.uuid)): Document(id=o.uuid, **o.properties) for o in response.objects}
+
+    async def _searchable_metadata(self) -> list[str]:
+        """``METADATA_PROPERTIES`` the store declares as searchable text, with their weights; read
+        once, then cached (a schema change needs a restart)."""
+        if self._metadata_properties is None:
+            config = await self.client.collections.get(
+                await resolve_collection(self.client, self.collectionNames.document_collection_name)
+            ).config.get()
+            searchable = {p.name for p in config.properties
+                          if p.data_type.value in ("text", "text[]") and p.index_searchable is not False}
+            self._metadata_properties = [name if weight == 1 else f"{name}^{weight}"
+                                         for name, weight in METADATA_PROPERTIES.items() if name in searchable]
+        return self._metadata_properties
 
     async def _browse_filter(self, collection_id: UUID | None, conditions: Sequence[Condition] = (),
                              **substrings: str | None):

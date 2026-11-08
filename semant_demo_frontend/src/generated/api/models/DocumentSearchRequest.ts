@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { SearchType } from './SearchType';
+import {
+    SearchTypeFromJSON,
+    SearchTypeFromJSONTyped,
+    SearchTypeToJSON,
+    SearchTypeToJSONTyped,
+} from './SearchType';
 import type { SearchCriteria } from './SearchCriteria';
 import {
     SearchCriteriaFromJSON,
@@ -22,14 +29,20 @@ import {
 } from './SearchCriteria';
 
 /**
- * Documents matching search criteria without a text query (#606, docs/EXPLORATION.md),
- * one page of them in a stable order.
+ * Documents matching search criteria (#606, #607, docs/EXPLORATION.md).
  * 
- * Document filters hold on the document. Chunk filters apply per dimension: for each, some
- * chunk of the document has one of its values (different filters may be met by different
- * chunks), answered from the documents' chunk-value summaries as last recomputed (#529).
- * Ranking documents by a text query is not available (#527): ``criteria.text_query`` must be
- * absent. Without ``user_collection_id`` the public corpus is browsed, also anonymously.
+ * The filters decide which documents are eligible: document filters hold on the document, and
+ * chunk filters apply per dimension: for each, some chunk of the document has one of its values
+ * (different filters may be met by different chunks), answered from the documents' chunk-value
+ * summaries as last recomputed (#529). Without ``user_collection_id`` the public corpus is
+ * searched, also anonymously.
+ * 
+ * Without a text query, the eligible documents are paged in a stable order (``offset``).
+ * With one, it ranks them once, independently of the filters (``metadata_then_text``): the
+ * best chunk of a document need not satisfy the chunk filters. The answer holds the whole
+ * bounded ranking and its first ``limit`` documents; later pages are read by id
+ * (``POST /api/search/documents/read``), so ``offset`` must be 0. ``type``,
+ * ``hybrid_search_alpha`` and ``vector`` select how chunks are ranked, as for passages.
  * @export
  * @interface DocumentSearchRequest
  */
@@ -54,11 +67,31 @@ export interface DocumentSearchRequest {
     offset?: number;
     /**
      * 
+     * @type {SearchType}
+     * @memberof DocumentSearchRequest
+     */
+    type?: SearchType;
+    /**
+     * 
+     * @type {number}
+     * @memberof DocumentSearchRequest
+     */
+    hybridSearchAlpha?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof DocumentSearchRequest
+     */
+    vector?: string | null;
+    /**
+     * 
      * @type {string}
      * @memberof DocumentSearchRequest
      */
     userCollectionId?: string | null;
 }
+
+
 
 /**
  * Check if a given object implements the DocumentSearchRequest interface.
@@ -81,6 +114,9 @@ export function DocumentSearchRequestFromJSONTyped(json: any, ignoreDiscriminato
         'criteria': SearchCriteriaFromJSON(json['criteria']),
         'limit': json['limit'] == null ? undefined : json['limit'],
         'offset': json['offset'] == null ? undefined : json['offset'],
+        'type': json['type'] == null ? undefined : SearchTypeFromJSON(json['type']),
+        'hybridSearchAlpha': json['hybrid_search_alpha'] == null ? undefined : json['hybrid_search_alpha'],
+        'vector': json['vector'] == null ? undefined : json['vector'],
         'userCollectionId': json['user_collection_id'] == null ? undefined : json['user_collection_id'],
     };
 }
@@ -99,6 +135,9 @@ export function DocumentSearchRequestToJSONTyped(value?: DocumentSearchRequest |
         'criteria': SearchCriteriaToJSON(value['criteria']),
         'limit': value['limit'],
         'offset': value['offset'],
+        'type': SearchTypeToJSON(value['type']),
+        'hybrid_search_alpha': value['hybridSearchAlpha'],
+        'vector': value['vector'],
         'user_collection_id': value['userCollectionId'],
     };
 }

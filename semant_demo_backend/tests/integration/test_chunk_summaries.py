@@ -262,7 +262,7 @@ async def test_explore_documents_apply_chunk_filters_per_dimension_with_the_actu
 
     # Different dimensions met by different chunks (chronicle_1 narration, chronicle_2 informal).
     both = await documents(classifications={"communicative_mode": ["narration"], "style": ["Informal"]})
-    assert [d["title"] for d in both["items"]] == ["Kronika obce Lhota"]
+    assert [d["document"]["title"] for d in both["items"]] == ["Kronika obce Lhota"]
     counted = await api_client.post("/api/analytics/corpus/distributions", json={
         "chunk_filters": {"classifications": {"communicative_mode": ["narration"], "style": ["informal"]}}})
     assert both["total_count"] == counted.json()["total_documents"] == 1
@@ -271,9 +271,9 @@ async def test_explore_documents_apply_chunk_filters_per_dimension_with_the_actu
     # Values of one dimension are alternatives; the gazette (no classifications, no year) is
     # left out without an error, and listed by a filter it meets, after the dated documents.
     either = await documents(classifications={"communicative_mode": ["narration", "interaction"]})
-    assert [d["title"] for d in either["items"]] == ["Kronika obce Lhota", "Dopisy z Prahy"]
+    assert [d["document"]["title"] for d in either["items"]] == ["Kronika obce Lhota", "Dopisy z Prahy"]
     every = await documents(languages=["ces"])
-    assert [d["title"] for d in every["items"]] == ["Kronika obce Lhota", "Dopisy z Prahy", "Pražský věstník"]
+    assert [d["document"]["title"] for d in every["items"]] == ["Kronika obce Lhota", "Dopisy z Prahy", "Pražský věstník"]
     assert (every["total_count"], every["bounded"], every["next_offset"]) == (3, False, None)
 
     # No match is an empty answer, not an error.
@@ -289,4 +289,4 @@ async def test_explore_documents_reject_chunk_filters_without_the_summaries(api_
     assert refused.status_code == 422
     assert "has no chunk-value summaries" in refused.json()["detail"]
     assert filtered.status_code == 200, filtered.text  # document filters need no summaries
-    assert [d["title"] for d in filtered.json()["items"]] == ["Kronika obce Lhota"]
+    assert [d["document"]["title"] for d in filtered.json()["items"]] == ["Kronika obce Lhota"]

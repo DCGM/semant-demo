@@ -2,7 +2,7 @@ import { expect, test, type Page, type Request } from '@playwright/test'
 
 import { closePhoneNavigation, fixture, isPassageSearch, useViewport } from './support'
 
-// The Search page evolving into Explore Results (#605, #606): draft and applied criteria, the
+// The Search page evolving into Explore Results (#605, #606, #607): draft and applied criteria, the
 // applied search in the URL (reload, Back/Forward, shared links), Passages and Documents loaded
 // page by page with their coverage, the results mode switch, late answers dropped, and the
 // reader's way back to the search.
@@ -201,6 +201,8 @@ const CHRONICLE = 'Kronika obce Lhota' // 1851
 const LETTERS = 'Dopisy z Prahy' // 1902
 const GAZETTE = 'Pražský věstník' // no year
 const ORDER = 'Sorted by publication year, oldest first; documents without a year last.'
+const RANKED_ORDER = 'Matches in the title, author or publisher first, then by the best-matching passage.'
+const isDocumentRead = (r: Request) => new URL(r.url()).pathname.endsWith('/api/search/documents/read') && r.method() === 'POST'
 
 for (const viewport of ['wide', 'phone'] as const) {
   test(`filters alone list Documents; the mode switch keeps the criteria in the URL and history (${viewport})`, async ({ page }) => {
@@ -228,19 +230,32 @@ for (const viewport of ['wide', 'phone'] as const) {
     await expect(documentTitles(page)).toHaveCount(3)
     expect(hash(page)).toBe('#/search?chunk_languages=ces')
 
-    // A text query searches Passages; Documents for it are not available yet (#527c).
+    // A text query searches Passages by default; Documents rank the same criteria (#607): the
+    // title match first, then the other documents by their best passage.
     await searchFor(page, 'Lhota')
     expect(hash(page)).toBe('#/search?q=Lhota&chunk_languages=ces')
     await expect(modeButton(page, 'passages')).toHaveAttribute('aria-pressed', 'true')
-    let documentSearches = 0
-    page.on('request', (r) => { if (isDocumentSearch(r)) documentSearches++ })
+    let ranked = nextDocuments(page)
     await modeButton(page, 'documents').click()
-    await expect(page.getByTestId('search-documents-need-no-query')).toBeVisible()
+    expect((await ranked).postDataJSON()).toMatchObject({ criteria: { text_query: 'Lhota', chunk_filters: { languages: ['ces'] } }, type: 'hybrid', offset: 0 })
+    await expect(documentTitles(page)).toHaveCount(3)
+    await expect(documentTitles(page).first()).toHaveText(`1. ${CHRONICLE}`)
+    await expect(page.getByTestId('document-result-match').first()).toHaveText(/Matches the title, author or publisher/)
+    await expect(page.getByTestId('search-coverage')).toHaveText(`All 3 matching documents. ${RANKED_ORDER}`)
     expect(hash(page)).toBe('#/search?q=Lhota&chunk_languages=ces&mode=documents')
-    expect(documentSearches).toBe(0)
+    ranked = nextDocuments(page)
     await page.reload()
-    await expect(page.getByTestId('search-documents-need-no-query')).toBeVisible()
+    await ranked
+    await expect(documentTitles(page).first()).toHaveText(`1. ${CHRONICLE}`)
     await expect(chip(page, 'Language: Czech')).toBeVisible()
+
+    // Another text query stays in Documents.
+    await input(page).fill('Prahy')
+    ranked = nextDocuments(page)
+    await input(page).press('Enter')
+    expect((await ranked).postDataJSON().criteria.text_query).toBe('Prahy')
+    await expect(documentTitles(page).first()).toHaveText(`1. ${LETTERS}`)
+    expect(hash(page)).toBe('#/search?q=Prahy&chunk_languages=ces&mode=documents')
   })
 }
 
@@ -279,6 +294,37 @@ test('a document opened from the Documents results leads back to the same result
   await expect(documentTitles(page)).toHaveText([`1. ${CHRONICLE}`])
   expect(hash(page)).toBe(searchUrl)
   expect(searches).toBe(0) // the kept results, not a new search
+})
+
+test('documents ranked by a text query load more by their ranking, and open at their best passage', async ({ page }) => {
+  // A first page of one, so Load more reads the two other ranked documents by id (#607).
+  await page.route('**/api/search/documents', async (route) => {
+    const response = await route.fetch({ postData: JSON.stringify({ ...route.request().postDataJSON(), limit: 1 }) })
+    await route.fulfill({ response })
+  })
+  let searches = 0
+  page.on('request', (r) => { if (isDocumentSearch(r)) searches++ })
+  await openSearch(page, '/#/search?q=Lhota&mode=documents')
+  await expect(documentTitles(page)).toHaveText([`1. ${CHRONICLE}`])
+  await expect(page.getByTestId('search-coverage')).toHaveText(`3 matching documents (1 shown). ${RANKED_ORDER}`)
+
+  const read = page.waitForRequest(isDocumentRead)
+  await page.getByTestId('search-load-more').click()
+  const entries = (await read).postDataJSON().ranked
+  expect(entries).toHaveLength(2)
+  await expect(documentTitles(page)).toHaveCount(3)
+  await expect(page.getByTestId('search-load-more')).toHaveCount(0)
+  await expect(page.getByTestId('search-coverage')).toHaveText(`All 3 matching documents. ${RANKED_ORDER}`)
+  expect(searches).toBe(1) // one ranking
+
+  // The best passage opens the reader at it; the way back finds the same results.
+  const second = page.locator('#document-2')
+  const target = entries[0]
+  await second.getByTestId('document-result-evidence').click()
+  await expect(page).toHaveURL(new RegExp(`#/documents/${target.id}\\?chunk=${target.chunk_id}&from=search`))
+  await page.getByRole('link', { name: 'Back to search results' }).click()
+  await expect(documentTitles(page)).toHaveCount(3)
+  expect(searches).toBe(1)
 })
 
 test('a filter the corpus database cannot answer is reported, not shown as no documents', async ({ page }) => {
