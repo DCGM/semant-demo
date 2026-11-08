@@ -20,7 +20,8 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
+from semant_demo.mcp import server as mcp_server
 from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.routes import export_router
 from semant_demo.users.auth import auth_router, register_router, users_router
@@ -42,7 +43,11 @@ async def lifespan(app: FastAPI):
         resources.rag = rag_factory(global_config=app_config, configs_path=app_config.RAG_CONFIGS_PATH,
                                     llm=resources.llm)
 
-        yield
+        async with AsyncExitStack() as stack:
+            if app_config.MCP_ENABLED:
+                # The public MCP endpoint's session manager shares the application lifespan (#635).
+                await stack.enter_async_context(mcp_server.serve(app))
+            yield
     finally:
         #shutdown all dependencies, also after a failed startup
         app.state.resources = None
@@ -88,6 +93,10 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    if app_config.MCP_ENABLED:
+        # Public read-only MCP endpoint (#635, docs/MCP.md), before the catch-all static mount.
+        mcp_server.mount(app)
 
     # Raised by collection access checks (features/user_collections/access.py, its
     # ResourceNotFound is a NotFoundError) and by repositories/services (core/errors.py).
