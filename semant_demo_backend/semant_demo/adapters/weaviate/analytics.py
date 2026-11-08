@@ -5,7 +5,11 @@ directly (never through their chunks). A single-valued property is described by 
 of documents that have a value (``known``, empty strings included) and the documents per
 distinct value, most frequent first; documents without a value are ``total - known``.
 Optional conditions (#361) restrict every count to the same documents: one filter is built
-once and applied to the total and to each grouped aggregate. Weaviate's ``is_none`` filter needs an indexed null state, which the deployed collections
+once and applied to the total and to each grouped aggregate.
+
+The documents of a ranked search result (#619) are few (at most a configured cap) and named by
+id: ``document_values`` reads the values of just those documents, in batches, for the service
+to count; still no texts or vectors. Weaviate's ``is_none`` filter needs an indexed null state, which the deployed collections
 lack, so missing values are never counted directly.
 
 The collection name is resolved through an alias for the schema read (the deployment serves
@@ -13,18 +17,19 @@ The collection name is resolved through an alias for the schema read (the deploy
 """
 import asyncio
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Any, Literal, Sequence
+from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import GroupByAggregate
-from weaviate.classes.query import Metrics
+from weaviate.classes.query import Filter, Metrics
 
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter, declared, where
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.features.documents.criteria import AnyOf, Condition, ContainsWords, NumberRange
 
 __all__ = ["AnyOf", "Condition", "ContainsWords", "CorpusAnalyticsRepository", "DocumentCounts", "NumberRange",
-           "Unavailable", "UnavailableFilter", "ValueCounts", "where"]
+           "READ_BATCH", "Unavailable", "UnavailableFilter", "ValueCounts", "where"]
 
 ValueKind = Literal["text", "number"]
 
@@ -53,6 +58,10 @@ class DocumentCounts:
     total: int
     properties: dict[str, ValueCounts | Unavailable]
 
+
+READ_BATCH = 1000
+"""Most ids one read by id names (``document_values``; ``ChunkSearchRepository.document_values``):
+a ranked result may hold more than Weaviate returns at once (``QUERY_MAXIMUM_RESULTS``)."""
 
 PER_VALUE_CONCURRENCY = 4
 """Most per-value counts (``count_documents_per_value``) running at once over all requests of
@@ -97,6 +106,37 @@ class CorpusAnalyticsRepository:
 
         counts = await asyncio.gather(*(count(value_filter) for value_filter in filters))
         return dict(zip(values, counts))
+
+    async def availability(self, properties: dict[str, ValueKind]) -> dict[str, Unavailable | None]:
+        """For each document property, why it cannot be counted, or None when it can."""
+        types, _ = await self._declared()
+        return {prop: (Unavailable(reason) if (reason := _unavailable(types.get(prop), kind)) else None)
+                for prop, kind in properties.items()}
+
+    async def document_values(self, ids: Sequence[UUID], properties: Sequence[str], collection_id: UUID | None = None,
+                              conditions: Sequence[Condition] = ()) -> dict[UUID, dict[str, Any]]:
+        """The stored values of ``properties`` (each declared, see ``availability``) of the
+        documents among ``ids`` that belong to the collection, if given, and meet every condition;
+        the others, also ids of no document, are left out. Read in batches of ``READ_BATCH``.
+        Raises ``UnavailableFilter`` when a condition's property cannot be filtered."""
+        types, tokenizations = await self._declared()
+        restrictions = []
+        if collection_id is not None:
+            restrictions.append(Filter.by_ref("collection").by_id().equal(collection_id))
+        if conditions:
+            restrictions.append(where(conditions, types, tokenizations))
+        documents = self._documents()
+
+        async def read(batch: Sequence[UUID]) -> list:
+            by_ids = Filter.by_id().contains_any(list(batch))
+            response = await documents.query.fetch_objects(
+                filters=Filter.all_of([by_ids, *restrictions]) if restrictions else by_ids, limit=len(batch),
+                return_properties=list(properties))
+            return response.objects
+
+        batches = await asyncio.gather(*(read(ids[i:i + READ_BATCH]) for i in range(0, len(ids), READ_BATCH)))
+        return {UUID(str(o.uuid)): {prop: o.properties.get(prop) for prop in properties}
+                for objects in batches for o in objects}
 
     async def _count(self, filters, properties: dict[str, ValueKind], types: dict[str, str],
                      group_limit: int) -> DocumentCounts:

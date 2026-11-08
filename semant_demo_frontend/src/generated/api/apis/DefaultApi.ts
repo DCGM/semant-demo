@@ -84,6 +84,8 @@ import type {
   RagRequestMain,
   RagResponse,
   RagRouteConfig,
+  RankedResultsDistributions,
+  RankedResultsDistributionsRequest,
   SearchFiltersResponse,
   SearchRequest,
   SearchResponse,
@@ -241,6 +243,10 @@ import {
     RagResponseToJSON,
     RagRouteConfigFromJSON,
     RagRouteConfigToJSON,
+    RankedResultsDistributionsFromJSON,
+    RankedResultsDistributionsToJSON,
+    RankedResultsDistributionsRequestFromJSON,
+    RankedResultsDistributionsRequestToJSON,
     SearchFiltersResponseFromJSON,
     SearchFiltersResponseToJSON,
     SearchRequestFromJSON,
@@ -501,6 +507,10 @@ export interface QuestionApiQuestionPostRequest {
 
 export interface RagApiRagPostRequest {
     ragRequestMain: RagRequestMain;
+}
+
+export interface RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest {
+    rankedResultsDistributionsRequest: RankedResultsDistributionsRequest;
 }
 
 export interface ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest {
@@ -1988,6 +1998,30 @@ export interface DefaultApiInterface {
      * Rag
      */
     ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse>;
+
+    /**
+     * Creates request options for rankedResultsDistributionsApiAnalyticsResultsDistributionsPost without sending the request
+     * @param {RankedResultsDistributionsRequest} rankedResultsDistributionsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequestOpts(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * @summary Ranked Results Distributions
+     * @param {RankedResultsDistributionsRequest} rankedResultsDistributionsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRaw(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RankedResultsDistributions>>;
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * Ranked Results Distributions
+     */
+    rankedResultsDistributionsApiAnalyticsResultsDistributionsPost(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RankedResultsDistributions>;
 
     /**
      * Creates request options for readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet without sending the request
@@ -5755,6 +5789,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse> {
         const response = await this.ragApiRagPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for rankedResultsDistributionsApiAnalyticsResultsDistributionsPost without sending the request
+     */
+    async rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequestOpts(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['rankedResultsDistributionsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'rankedResultsDistributionsRequest',
+                'Required parameter "rankedResultsDistributionsRequest" was null or undefined when calling rankedResultsDistributionsApiAnalyticsResultsDistributionsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/analytics/results/distributions`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: RankedResultsDistributionsRequestToJSON(requestParameters['rankedResultsDistributionsRequest']),
+        };
+    }
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * Ranked Results Distributions
+     */
+    async rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRaw(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RankedResultsDistributions>> {
+        const requestOptions = await this.rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RankedResultsDistributionsFromJSON(jsonValue));
+    }
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * Ranked Results Distributions
+     */
+    async rankedResultsDistributionsApiAnalyticsResultsDistributionsPost(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RankedResultsDistributions> {
+        const response = await this.rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
