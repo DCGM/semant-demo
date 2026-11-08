@@ -8,7 +8,7 @@
           <PublicationTimeline
             v-if="distributions.publicationYear.years?.length"
             :distribution="distributions.publicationYear"
-            @apply-period="(period) => emit('applyPeriod', period)"
+            @apply-period="(period) => emit('applyFilter', { dimension: 'years', start: period.start, end: period.end })"
             @view="(view) => (timelineView = view)"
           />
           <p v-else class="dimension-card__note">No document of these has a valid publication year.</p>
@@ -54,26 +54,10 @@
         <template v-if="dimension.distribution.available">
           <p class="dimension-card__coverage">{{ coverageText(dimension.distribution.unknownCount ?? 0, dimension.subject) }}</p>
           <p v-if="dimension.note" class="dimension-card__note">{{ dimension.note }}</p>
-          <VegaChart :spec="dimension.spec" :label="`Bar chart of documents per ${dimension.axis.toLowerCase()}; the table below lists the same counts.`" />
-          <q-expansion-item dense dense-toggle switch-toggle-side :label="`Table: documents per ${dimension.axis.toLowerCase()}`" class="dimension-card__table">
-            <q-markup-table flat dense separator="horizontal" class="count-table">
-              <caption class="sr-only">Documents per {{ dimension.axis.toLowerCase() }}</caption>
-              <thead>
-                <tr>
-                  <th scope="col" class="text-left">{{ dimension.axis }}</th>
-                  <th scope="col" class="text-left">Stored value</th>
-                  <th scope="col" class="text-right">Documents</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in dimension.rows" :key="row.key" :class="`count-table__${row.kind}`">
-                  <th scope="row" class="text-left text-weight-regular">{{ row.label }}</th>
-                  <td class="text-left"><code v-if="row.kind === 'value'">{{ row.key }}</code><span v-else>—</span></td>
-                  <td class="text-right">{{ formatCount(row.count) }}</td>
-                </tr>
-              </tbody>
-            </q-markup-table>
-          </q-expansion-item>
+          <CategoryChart
+            :rows="dimension.rows" :axis="dimension.axis" :test-id="`corpus-${dimension.key}`" filterable
+            @apply-filter="(value) => emit('applyFilter', { dimension: dimension.key, value })"
+          />
         </template>
         <p v-else class="dimension-card__unavailable" role="note">{{ unavailableText(dimension.subjectPlural) }}</p>
       </q-card-section>
@@ -85,16 +69,17 @@
 /**
  * The document charts of one `CorpusDistributions` answer (#254, #361): the publication
  * timeline, the period × library heatmap (counted when asked for) and the library and language
- * bars, each with its table and unknown/unavailable values. Shown by the Corpus overview and by
- * Explore Visualizations (#618). Zooming and panning stay in the charts; "Apply … as filter"
- * is emitted, and the page decides what it changes.
+ * bars, each with its data table (collapsed) and unknown/unavailable values. Shown by the Corpus
+ * overview and by Explore Visualizations (#618). Zooming and panning stay in the charts; a
+ * clicked year bin, library or language (or "Apply … as filter") is emitted as `applyFilter`,
+ * and the page decides what it changes (#620).
  */
 import { computed, ref, shallowRef } from 'vue'
 import type { CategoryDistribution, CorpusDistributions } from 'src/generated/api'
-import VegaChart from 'src/shared/visualization/VegaChart.vue'
+import CategoryChart from './CategoryChart.vue'
 import LibraryHeatmap from './LibraryHeatmap.vue'
 import PublicationTimeline from './PublicationTimeline.vue'
-import { categoryBarSpec, categoryRows, coverage, languageLabel, libraryLabel } from './corpusOverview'
+import { categoryRows, coverage, languageLabel, libraryLabel, type ChartFilter } from './corpusOverview'
 import type { YearWindow } from './timeline'
 
 const props = defineProps<{
@@ -102,7 +87,7 @@ const props = defineProps<{
   /** Newer counts are being loaded: the shown ones are dimmed. */
   loading?: boolean
 }>()
-const emit = defineEmits<{ applyPeriod: [period: YearWindow] }>()
+const emit = defineEmits<{ applyFilter: [filter: ChartFilter] }>()
 
 const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
@@ -115,7 +100,7 @@ const timelineView = shallowRef<{ window: YearWindow, width: number } | null>(nu
 const showHeatmap = ref(false)
 
 interface CategoryDimension {
-  key: string
+  key: 'libraries' | 'languages'
   title: string
   axis: string
   subject: string
@@ -123,15 +108,14 @@ interface CategoryDimension {
   note?: string
   distribution: CategoryDistribution
   rows: ReturnType<typeof categoryRows>
-  spec: ReturnType<typeof categoryBarSpec>
 }
 
 const categories = computed<CategoryDimension[]>(() => {
   const data = props.distributions
-  const dimension = (key: string, title: string, axis: string, subject: string, subjectPlural: string,
+  const dimension = (key: CategoryDimension['key'], title: string, axis: string, subject: string, subjectPlural: string,
     distribution: CategoryDistribution, label: (v: string) => string, note?: string): CategoryDimension => {
     const rows = categoryRows(distribution, label)
-    return { key, title, axis, subject, subjectPlural, note, distribution, rows, spec: categoryBarSpec(rows, axis) }
+    return { key, title, axis, subject, subjectPlural, note, distribution, rows }
   }
   return [
     dimension('libraries', 'Source library', 'Library', 'a source library', 'source libraries', data.libraries, libraryLabel),
@@ -195,28 +179,6 @@ function unavailableText (subjectPlural: string): string {
   border-radius: 8px;
   padding: 12px;
   margin: 8px 0 0;
-}
-
-.dimension-card__table {
-  margin-top: 8px;
-}
-
-.count-table {
-  max-width: 560px;
-}
-
-.count-table__other th,
-.count-table__unknown th {
-  font-style: italic;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 @media (max-width: 1023px) {

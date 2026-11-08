@@ -18,9 +18,9 @@ async function openFromNavigation (page: Page) {
   await expect(page).toHaveURL(/#\/corpus$/)
 }
 
-/** The rows of a card's table (opened first), as cell texts. */
+/** The rows of a card's data table (collapsed until opened here, #620), as cell texts. */
 async function tableRows (page: Page, key: string): Promise<string[][]> {
-  await card(page, key).getByText(/^Table: documents per/).click()
+  await card(page, key).getByText(/^Show data table \(documents per/).click()
   const rows = card(page, key).locator('tbody tr')
   await expect(rows.first()).toBeVisible()
   // The rows count as visible while the table is still closed: Quasar's slide holds it at
@@ -43,15 +43,15 @@ test('an anonymous user opens the corpus overview from the navigation', async ({
   // The timeline opens on 1850–1909 (60 years: single years); long empty periods are one row.
   await expect(page.getByTestId('timeline-window')).toHaveText('1850–1909 · single years')
   expect(await tableRows(page, 'years')).toEqual([
-    ['1850', '0'], ['1851', '1'], ['1852–1901 — no documents (50 years)', '0'], ['1902', '1'],
-    ['1903–1909 — no documents (7 years)', '0'], ['Unknown or invalid year', '1']
+    ['1850', '0', ''], ['1851', '1', 'Filter'], ['1852–1901 — no documents (50 years)', '0', ''], ['1902', '1', 'Filter'],
+    ['1903–1909 — no documents (7 years)', '0', ''], ['Unknown or invalid year', '1', '']
   ])
 
   await expect(card(page, 'languages').locator('svg').first()).toBeVisible()
-  expect(await tableRows(page, 'languages')).toEqual([['Czech (ces)', 'ces', '3'], ['Unknown', '—', '0']])
+  expect(await tableRows(page, 'languages')).toEqual([['Czech (ces)', 'ces', '3', 'Filter'], ['Unknown', '—', '0', '']])
 
   // Libraries are recorded, but none of these documents has one.
-  expect(await tableRows(page, 'libraries')).toEqual([['Unknown', '—', '3']])
+  expect(await tableRows(page, 'libraries')).toEqual([['Unknown', '—', '3', '']])
   await expect(page.getByTestId('filter-libraries')).toBeEnabled()
   await expect(page.getByTestId('heatmap-show')).toBeVisible()
 })
@@ -87,7 +87,7 @@ test('filters narrow every count to the matching documents until they are cleare
   await expect(page.getByTestId('corpus-of-total')).toHaveText('of 3 documents in the corpus')
   await expect(page.getByTestId('corpus-applied-years')).toContainText('1850–1901')
   await expect(card(page, 'years')).toContainText('1 of 1 documents (100 %) have a publication year; 0 unknown.')
-  expect(await tableRows(page, 'languages')).toEqual([['Czech (ces)', 'ces', '1'], ['Unknown', '—', '0']])
+  expect(await tableRows(page, 'languages')).toEqual([['Czech (ces)', 'ces', '1', 'Filter'], ['Unknown', '—', '0', '']])
 
   // Title words ignore case, not diacritics. Enter adds the title and empties the field.
   await page.getByRole('button', { name: 'Remove filter Years 1850–1901' }).click()
@@ -156,7 +156,7 @@ test('the overview fits a phone screen and lists the libraries of a synced store
   await closePhoneNavigation(page)
 
   await expect(card(page, 'libraries').locator('svg').first()).toBeVisible()
-  expect(await tableRows(page, 'libraries')).toEqual([['Moravian Library (mzk)', 'mzk', '2'], ['Unknown', '—', '1']])
+  expect(await tableRows(page, 'libraries')).toEqual([['Moravian Library (mzk)', 'mzk', '2', 'Filter'], ['Unknown', '—', '1', '']])
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow).toBeLessThanOrEqual(0)
   await expect(page.getByTestId('filter-libraries')).toBeEnabled()

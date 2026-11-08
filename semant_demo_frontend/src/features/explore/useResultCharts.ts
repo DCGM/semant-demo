@@ -1,13 +1,8 @@
 import { getCurrentScope, onScopeDispose, ref, shallowRef } from 'vue'
-import {
-  RankedResultsDistributionsRequestModeEnum, SearchType, type CategoryDistribution, type RankedResultsDistributions,
-  type ResultMember
-} from 'src/generated/api'
+import { RankedResultsDistributionsRequestModeEnum, SearchType, type RankedResultsDistributions } from 'src/generated/api'
 import { apiErrorMessage, errorStatus, isAbortError, useApi } from 'src/shared/api'
-import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
 import { SLOW_AFTER_MS } from 'src/features/analytics/useCorpusOverview'
-import { unitNoun, type CountUnit } from 'src/features/analytics/timeline'
-import { INSPECT_OTHER, INSPECT_UNKNOWN, inspectedYears, toSearchCriteria, type Criteria, type Inspection, type ResultsMode } from './criteria'
+import { toSearchCriteria, type Criteria, type ResultsMode } from './criteria'
 import type { DocumentResults } from './useDocumentSearch'
 import type { PassageResults } from './usePassageSearch'
 
@@ -15,7 +10,9 @@ import type { PassageResults } from './usePassageSearch'
  * Charts of a text query's results (#620, docs/EXPLORATION.md): the counts of exactly the ids
  * the shown search ranked (`POST /api/analytics/results/distributions`, #619), for its mode,
  * criteria, vector and collection. Nothing is searched or ranked again for them, so the charts
- * and the Results describe the same population; a new search is a new population.
+ * and the Results describe the same population; a new search is a new population. Only the
+ * aggregate counts are requested: a clicked category is applied as a filter (a new search), not
+ * looked up among the counted results.
  */
 
 /** What Visualizations show for a text query: its search, then the counts of its ranking. */
@@ -115,8 +112,7 @@ export function useResultCharts () {
           criteria: toSearchCriteria(requested.criteria),
           userCollectionId: requested.userCollectionId,
           // Both Results searches rank a text query by hybrid search.
-          ranking: { type: SearchType.hybrid, vector: requested.vector, bounded: requested.bounded },
-          members: true
+          ranking: { type: SearchType.hybrid, vector: requested.vector, bounded: requested.bounded }
         }
       }, { signal: mine.signal })
       if (controller !== mine) return
@@ -153,61 +149,4 @@ export function useResultCharts () {
   if (getCurrentScope()) onScopeDispose(stop)
 
   return { distributions, population, loading, slow, error, invalid, show, retry, clear }
-}
-
-/// ////////////
-// Inspection //
-/// ////////////
-
-const listedValues = (distribution: CategoryDistribution) => new Set((distribution.values ?? []).map(v => v.value))
-
-/**
- * The counted results of an inspected chart category, in ranking order: those the chart counts
- * in it, from the same answer. Null when the dimension is not available in this store.
- */
-export function inspectedMembers (counts: RankedResultsDistributions, inspection: Inspection): ResultMember[] | null {
-  const members = counts.members ?? []
-  if (inspection.dimension === 'year') {
-    if (!counts.publicationYear.available) return null
-    if (inspection.value === INSPECT_UNKNOWN) return members.filter(m => m.year === null)
-    const years = inspectedYears(inspection.value)
-    return years ? members.filter(m => m.year !== null && m.year >= years.start && m.year <= years.end) : []
-  }
-  const distribution = inspection.dimension === 'library' ? counts.libraries : counts.languages
-  if (!distribution.available) return null
-  const valueOf = (m: ResultMember) => (inspection.dimension === 'library' ? m.library : m.language)
-  if (inspection.value === INSPECT_UNKNOWN) return members.filter(m => valueOf(m) === null)
-  if (inspection.value === INSPECT_OTHER) {
-    const listed = listedValues(distribution)
-    return members.filter(m => valueOf(m) !== null && !listed.has(valueOf(m)!))
-  }
-  return members.filter(m => valueOf(m) === inspection.value)
-}
-
-/** "published 1850–1859", "from Moravian Library (mzk)", "without a document language"… */
-export function inspectionLabel (inspection: Inspection): string {
-  const { dimension, value } = inspection
-  if (dimension === 'year') {
-    if (value === INSPECT_UNKNOWN) return 'without a valid publication year'
-    const years = inspectedYears(value)
-    return years && years.start !== years.end ? `published ${years.start}–${years.end}` : `published in ${value}`
-  }
-  if (dimension === 'library') {
-    if (value === INSPECT_UNKNOWN) return 'without a source library'
-    if (value === INSPECT_OTHER) return 'from libraries not listed in the chart'
-    return `from ${libraryLabel(value)}`
-  }
-  if (value === INSPECT_UNKNOWN) return 'without a document language'
-  if (value === INSPECT_OTHER) return 'in document languages not listed in the chart'
-  return `in a document of ${languageLabel(value)}`
-}
-
-/** The counting unit of a mode's charts. */
-export const modeUnit = (mode: ResultsMode): CountUnit => (mode === 'documents' ? 'documents' : 'passages')
-
-/** "12 of the 300 ranked passages"; the noun follows the unit. */
-export function inspectionCount (shown: number, counts: RankedResultsDistributions): string {
-  const unit = modeUnit(counts.mode === 'documents' ? 'documents' : 'passages')
-  const fmt = (n: number) => n.toLocaleString('en')
-  return `${fmt(shown)} of the ${fmt(counts.totalCount)} counted ${unitNoun(unit, counts.totalCount)}`
 }

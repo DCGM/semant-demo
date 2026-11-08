@@ -246,11 +246,13 @@ export function timelineSpec (bins: TimelineBin[], width: number, window: YearWi
   }
   const tooltip = [
     { field: 'label', type: 'nominal', title: width === 1 ? 'Year' : 'Years' },
-    { field: 'count', type: 'quantitative', title: counted, format: ',d' }
+    { field: 'count', type: 'quantitative', title: counted, format: ',d' },
+    { field: 'action', type: 'nominal', title: 'Filter' }
   ]
   return {
     $schema: SCHEMA,
-    data: { values: bins },
+    // A bin with counts is applied as a year filter by a click (`PublicationTimeline`).
+    data: { values: bins.map(bin => ({ ...bin, action: bin.count > 0 ? `Click to filter by ${bin.label}; drag to zoom` : 'Drag to zoom' })) },
     height: HEIGHT,
     layer: [
       {

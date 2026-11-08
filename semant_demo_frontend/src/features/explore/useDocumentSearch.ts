@@ -198,10 +198,13 @@ export function useDocumentSearch () {
   return { results, loading, loadingMore, error, loadMoreError, search, loadMore, cancel }
 }
 
+/** The order of a text query's documents (#607), as the results header and the charts name it. */
+export const RANKED_DOCUMENT_ORDER = 'Matches in the title, author or publisher first, then by the best-matching passage.'
+
 /** The order of the documents, as the results header names it. */
 export function documentOrderLabel (results: DocumentResults): string {
   return results.ranked
-    ? 'Matches in the title, author or publisher first, then by the best-matching passage.'
+    ? RANKED_DOCUMENT_ORDER
     : 'Sorted by publication year, oldest first; documents without a year last.'
 }
 

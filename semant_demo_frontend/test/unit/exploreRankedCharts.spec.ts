@@ -4,10 +4,8 @@ import { Quasar } from 'quasar'
 import { effectScope } from 'vue'
 
 import { normalizeCriteria } from 'src/features/explore/criteria'
-import {
-  inspectedMembers, inspectionCount, inspectionLabel, useResultCharts, type RankedPopulation
-} from 'src/features/explore/useResultCharts'
-import { useResultInspection, type InspectedSubset } from 'src/features/explore/useResultInspection'
+import { useResultCharts, type RankedPopulation } from 'src/features/explore/useResultCharts'
+import { categoryBarSpec, categoryRows, withChartFilter } from 'src/features/analytics/corpusOverview'
 import RankedResultCharts from 'src/features/explore/RankedResultCharts.vue'
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
 import type { RankedResultsDistributions } from 'src/generated/api'
@@ -15,7 +13,7 @@ import { loadEmbed } from 'src/shared/visualization/loadEmbed'
 import { muteConsole } from './console'
 
 // Charts of a text query's ranked results (#620): the counts of exactly the ids the shown search
-// ranked (#619), labelled with their unit and ranking, and their categories inspected within it.
+// ranked (#619), labelled with their unit and ranking; a clicked category is applied as a filter.
 
 vi.mock('src/shared/visualization/loadEmbed', () => ({ loadEmbed: vi.fn() }))
 
@@ -68,11 +66,6 @@ const answer = (changes: Record<string, unknown> = {}) => ({
   publication_year: { available: true, years: [{ year: 1851, count: 2 }], unknown_count: 1 },
   libraries: { available: true, values: [{ value: 'mzk', count: 1 }], other_count: 1, unknown_count: 1 },
   languages: { available: true, values: [{ value: 'ces', count: 3 }], other_count: 0, unknown_count: 0 },
-  members: [
-    { id: 'p1', document_id: 'd1', year: 1851, library: 'mzk', language: 'ces' },
-    { id: 'p2', document_id: 'd1', year: 1851, library: 'nkp', language: 'ces' },
-    { id: 'p3', document_id: 'd2', year: null, library: null, language: 'ces' }
-  ],
   ...changes
 })
 
@@ -91,11 +84,6 @@ const counts = (changes: Partial<RankedResultsDistributions> = {}): RankedResult
   publicationYear: { available: true, years: [{ year: 1851, count: 2 }], unknownCount: 1 },
   libraries: { available: true, values: [{ value: 'mzk', count: 1 }], otherCount: 1, unknownCount: 1 },
   languages: { available: true, values: [{ value: 'ces', count: 3 }], otherCount: 0, unknownCount: 0 },
-  members: [
-    { id: 'p1', documentId: 'd1', year: 1851, library: 'mzk', language: 'ces' },
-    { id: 'p2', documentId: 'd1', year: 1851, library: 'nkp', language: 'ces' },
-    { id: 'p3', documentId: 'd2', year: null, library: null, language: 'ces' }
-  ],
   ...changes
 })
 
@@ -115,8 +103,7 @@ describe('useResultCharts', () => {
         chunk_filters: { languages: ['ces'], classifications: {} }
       },
       user_collection_id: 'c1',
-      ranking: { type: 'hybrid', vector: null, bounded: true },
-      members: true
+      ranking: { type: 'hybrid', vector: null, bounded: true }
     })
     // Shown again (a view switch) while counting and once counted: no new request.
     void charts.show(population())
@@ -162,76 +149,6 @@ describe('useResultCharts', () => {
   })
 })
 
-describe('inspecting a chart category', () => {
-  const ids = (list: { id: string }[] | null) => list?.map(m => m.id) ?? null
-
-  it('selects the counted results of the category, in ranking order, from the same answer', () => {
-    const c = counts()
-    expect(ids(inspectedMembers(c, { dimension: 'year', value: '1850-1859' }))).toEqual(['p1', 'p2'])
-    expect(ids(inspectedMembers(c, { dimension: 'year', value: '1852' }))).toEqual([])
-    expect(ids(inspectedMembers(c, { dimension: 'year', value: '~unknown' }))).toEqual(['p3'])
-    expect(ids(inspectedMembers(c, { dimension: 'library', value: 'mzk' }))).toEqual(['p1'])
-    // Other: a value the counts do not list (nkp); Unknown: none recorded.
-    expect(ids(inspectedMembers(c, { dimension: 'library', value: '~other' }))).toEqual(['p2'])
-    expect(ids(inspectedMembers(c, { dimension: 'library', value: '~unknown' }))).toEqual(['p3'])
-    expect(ids(inspectedMembers(c, { dimension: 'language', value: 'ces' }))).toEqual(['p1', 'p2', 'p3'])
-    // A property the store does not record cannot be inspected (not an empty category).
-    const unrecorded = counts({ libraries: { available: false, unavailableReason: 'missing_property' } })
-    expect(inspectedMembers(unrecorded, { dimension: 'library', value: '~unknown' })).toBeNull()
-  })
-
-  it('names the category and the counted population', () => {
-    expect(inspectionLabel({ dimension: 'year', value: '1850-1859' })).toBe('published 1850–1859')
-    expect(inspectionLabel({ dimension: 'year', value: '1851' })).toBe('published in 1851')
-    expect(inspectionLabel({ dimension: 'library', value: 'mzk' })).toBe('from Moravian Library (mzk)')
-    expect(inspectionLabel({ dimension: 'language', value: '~unknown' })).toBe('without a document language')
-    expect(inspectionCount(2, counts())).toBe('2 of the 3 counted passages')
-  })
-})
-
-describe('useResultInspection', () => {
-  const subset = (key: string, changes: Partial<InspectedSubset> = {}): InspectedSubset => ({
-    key, criteria: CRITERIA, userCollectionId: 'c1', documents: null, passageIds: ['p1', 'p2', 'p3'], ...changes
-  })
-  const chunk = (id: string) => ({ id, text: id, document: 'd1', documentObject: { id: 'd1' } })
-
-  it('reads the inspected passages by id under the search criteria, never searching', async () => {
-    const scope = effectScope()
-    const inspection = scope.run(() => useResultInspection())!
-    void inspection.open(subset('a'))
-    await flush()
-    expect(requests.map(r => r.path)).toEqual(['/api/search/passages/read'])
-    expect(requests[0].body).toMatchObject({ ids: ['p1', 'p2', 'p3'], user_collection_id: 'c1', criteria: { text_query: 'Lhota' } })
-    requests[0].answer({ items: [chunk('p1'), chunk('p3')], time_spent: 0 })
-    await flushPromises()
-    expect(inspection.passages.value.map(p => p.id)).toEqual(['p1', 'p3']) // p2 is gone: left out
-    expect([inspection.readCount.value, inspection.hasMore()]).toEqual([3, false])
-    // The same subset again: nothing read again.
-    void inspection.open(subset('a'))
-    await flush()
-    expect(requests).toHaveLength(1)
-    scope.stop()
-  })
-
-  it('reads inspected documents by their ranking entries and drops the answer of an earlier subset', async () => {
-    const scope = effectScope()
-    const inspection = scope.run(() => useResultInspection())!
-    const entry = (id: string) => ({ id, match: 'text' as const, chunkId: `${id}-c` })
-    void inspection.open(subset('a', { documents: [entry('d1')], passageIds: null }))
-    await flush()
-    void inspection.open(subset('b', { documents: [entry('d2')], passageIds: null }))
-    await flush()
-    expect(requests.map(r => r.path)).toEqual(['/api/search/documents/read', '/api/search/documents/read'])
-    expect(requests[1].body.ranked).toEqual([{ id: 'd2', match: 'text', chunk_id: 'd2-c' }])
-    const hit = (id: string) => ({ document: { id, title: id }, match: 'text' })
-    requests[0].answer({ items: [hit('d1')], time_spent: 0 })
-    requests[1].answer({ items: [hit('d2')], time_spent: 0 })
-    await flushPromises()
-    expect(inspection.documents.value.map(d => d.document.id)).toEqual(['d2'])
-    scope.stop()
-  })
-})
-
 describe('RankedResultCharts', () => {
   const view = (c: RankedResultsDistributions) => mount(RankedResultCharts, {
     props: { counts: c, vectorName: 'Default vector' }, global: { plugins: [[Quasar, {}]] }
@@ -245,36 +162,38 @@ describe('RankedResultCharts', () => {
     expect(scope).toContain('passages counted: the ranked passages of this search, not the whole corpus')
     expect(wrapper.get('[data-testid="charts-distinct-documents"]').text()).toContain('come from 2 distinct documents')
     expect(wrapper.get('[data-testid="charts-ranking"]').text()).toContain('hybrid search (keywords and meaning) (Default vector)')
-    expect(wrapper.get('[data-testid="charts-ranking"]').text()).toContain('Bounded: only the best 4 by relevance')
+    expect(wrapper.get('[data-testid="charts-ranking"]').text()).toContain('Bounded: only the best 4 passages by relevance')
+    expect(scope).toContain('Clicking a bar applies it as a filter and searches again')
     expect(wrapper.get('[data-testid="charts-missing"]').text()).toContain('1 of the 4 ranked passages is not counted')
   })
 
   it('says when every match was retrieved, counted once per document', async () => {
     const wrapper = view(counts({ mode: 'documents', unit: 'documents', ranking: { type: 'hybrid', vector: null, bounded: false, retrievalLimit: 3000 } }))
     await flushPromises()
+    // Documents are ordered metadata matches first, not by one relevance ranking (#607).
+    expect(wrapper.get('[data-testid="charts-ranking"]').text()).toContain('Ordered as the Documents results: Matches in the title, author or publisher first')
     expect(wrapper.get('[data-testid="charts-ranking"]').text()).toContain('Every matching document was retrieved')
     expect(wrapper.find('[data-testid="charts-distinct-documents"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="charts-scope"]').text()).toContain('Each document is counted once')
   })
 
-  it('inspects a category, Other and Unknown; a property not recorded is unavailable, not zero', async () => {
+  it('applies a year bin, library or document language as a filter; Other, Unknown and unavailable ones are not', async () => {
     const wrapper = view(counts({ libraries: { available: false, unavailableReason: 'missing_property' } }))
     await flushPromises()
     expect(wrapper.get('[data-testid="results-libraries"]').text()).toContain('Not available')
-    expect(wrapper.find('[data-testid^="inspect-libraries-"]').exists()).toBe(false)
-    await wrapper.get('[data-testid="inspect-languages-ces"]').trigger('click')
-    await wrapper.get('[data-testid="timeline-inspect-unknown"]').trigger('click')
-    await wrapper.get('[data-testid="timeline-inspect-period"]').trigger('click')
-    expect(wrapper.emitted('inspect')).toEqual([
-      [{ dimension: 'language', value: 'ces' }], [{ dimension: 'year', value: '~unknown' }], [{ dimension: 'year', value: '1850-1859' }]
+    expect(wrapper.find('[data-testid^="results-libraries-filter-"]').exists()).toBe(false)
+    // Keyboard equivalents of the bars in the collapsed data tables.
+    expect(wrapper.get('[data-testid="results-languages-table"]').classes()).not.toContain('q-expansion-item--expanded')
+    await wrapper.get('[data-testid="results-languages-filter-ces"]').trigger('click')
+    await wrapper.get('[data-testid="timeline-filter-bin-1851"]').trigger('click')
+    expect(wrapper.emitted('applyFilter')).toEqual([
+      [{ dimension: 'languages', value: 'ces' }], [{ dimension: 'years', start: 1851, end: 1851 }]
     ])
 
     const withOther = view(counts())
     await flushPromises()
-    await withOther.get('[data-testid="inspect-libraries-other"]').trigger('click')
-    expect(withOther.emitted('inspect')).toEqual([[{ dimension: 'library', value: '~other' }]])
-    // An empty category offers nothing to inspect (languages: no Unknown).
-    expect(withOther.find('[data-testid="inspect-languages-unknown"]').exists()).toBe(false)
+    expect(withOther.find('[data-testid="results-libraries-filter-mzk"]').exists()).toBe(true)
+    expect(withOther.findAll('[data-testid^="results-libraries-filter-"]')).toHaveLength(1) // not Other or Unknown
   })
 
   it('tells no ranked results apart from ranked results that could not be counted', () => {
@@ -306,7 +225,25 @@ describe('ExploreVisualizations of a text query', () => {
     const charted = view(state({ counts: counts() }))
     await flushPromises()
     expect(charted.get('[data-testid="charts-total"]').text()).toBe('3')
-    await charted.get('[data-testid="inspect-languages-ces"]').trigger('click')
-    expect(charted.emitted('inspect')).toEqual([[{ dimension: 'language', value: 'ces' }]])
+    await charted.get('[data-testid="results-languages-filter-ces"]').trigger('click')
+    expect(charted.emitted('applyFilter')).toEqual([[{ dimension: 'languages', value: 'ces' }]])
+  })
+})
+
+describe('chart filters', () => {
+  it('replace only their own dimension', () => {
+    const filters = { yearMin: 1800, yearMax: 1900, titleContains: ['Kronika'], libraries: ['nkp'], languages: ['deu'] }
+    expect(withChartFilter(filters, { dimension: 'years', start: 1850, end: 1859 }))
+      .toEqual({ ...filters, yearMin: 1850, yearMax: 1859 })
+    expect(withChartFilter(filters, { dimension: 'libraries', value: 'mzk' })).toEqual({ ...filters, libraries: ['mzk'] })
+    expect(withChartFilter(filters, { dimension: 'languages', value: 'ces' })).toEqual({ ...filters, languages: ['ces'] })
+  })
+
+  it('say which bars a click applies, and highlight only those', () => {
+    const rows = categoryRows({ available: true, values: [{ value: 'mzk', count: 2 }], otherCount: 1, unknownCount: 1 }, String)
+    const spec = categoryBarSpec(rows, 'Library', 'passages', true) as { data: { values: { action: string }[] }, encoding: Record<string, unknown> }
+    expect(spec.data.values.map(v => v.action)).toEqual(['Click to filter by mzk', 'Not available as a filter', 'Not available as a filter'])
+    expect(JSON.stringify(spec.encoding.opacity)).toContain("datum.kind === 'value'")
+    expect(JSON.stringify(categoryBarSpec(rows, 'Library'))).not.toContain('action')
   })
 })
