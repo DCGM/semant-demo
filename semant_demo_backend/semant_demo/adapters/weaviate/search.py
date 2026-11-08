@@ -95,22 +95,22 @@ class ChunkSearchRepository:
         result = await self._ranked(query, return_properties=[])
         return [obj.uuid for obj in result.objects]
 
-    async def ranked_documents(self, query: ChunkQuery) -> list[tuple[UUID, UUID]]:
+    async def ranked_documents(self, query: ChunkQuery) -> list[tuple[UUID, UUID | None]]:
         """(chunk id, document id) of the top ``query.limit`` chunks matching every condition, best
         first; only the document reference is read. A document is ranked by its best chunk where
-        it first appears (#607). Chunks without a document reference are left out.
+        it first appears (#607). Every hit is returned, a chunk without a document reference with
+        ``None``: whether the limit cut the ranking is told by the hits, not by the documents found.
 
         Not Weaviate's ``group_by`` on the reference: on 1.40.1 BM25 and hybrid search return no
         groups at all, and vector search groups only the first ``limit`` chunks
         (``tests/integration/test_document_search_benchmark.py``)."""
         result = await self._ranked(query, return_properties=[],
                                     return_references=[QueryReference(link_on="document", return_properties=[])])
-        pairs = []
+        hits: list[tuple[UUID, UUID | None]] = []
         for obj in result.objects:
             refs = (obj.references or {}).get("document")
-            if refs and refs.objects:
-                pairs.append((obj.uuid, refs.objects[0].uuid))
-        return pairs
+            hits.append((obj.uuid, refs.objects[0].uuid if refs and refs.objects else None))
+        return hits
 
     async def read_hits(self, ids: list[UUID], scope: ChunkQuery) -> list[SearchResultChunk]:
         """The chunks ``ids`` that match every condition of ``scope`` (its text, mode and limit

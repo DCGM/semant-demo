@@ -320,16 +320,18 @@ async def _rank_documents(documents: DocumentRepository, backends: SearchBackend
         document_collection_id=scope, document_conditions=tuple(conditions),
         vector=await _embed_text(vector, request.type, text),
         target_vector=None if request.type == SearchType.text else vector.target_vector)
-    eligible, metadata_ids, chunk_pairs = await asyncio.gather(
+    eligible, metadata_ids, chunk_hits = await asyncio.gather(
         documents.count(scope, conditions),
         documents.metadata_ranked_ids(text, limits.metadata + 1, scope, conditions),
         backends.chunks.ranked_documents(chunk_query))
     metadata_bounded = len(metadata_ids) > limits.metadata
-    chunk_bounded = len(chunk_pairs) > limits.chunks
-    chunk_pairs = chunk_pairs[:limits.chunks]
+    # Cut by the raw hits: a chunk without a document reference still counts towards the limit.
+    chunk_bounded = len(chunk_hits) > limits.chunks
+    chunk_hits = chunk_hits[:limits.chunks]
     best_chunk: dict[UUID, UUID] = {}
-    for chunk_id, document_id in chunk_pairs:
-        best_chunk.setdefault(document_id, chunk_id)
+    for chunk_id, document_id in chunk_hits:
+        if document_id is not None:
+            best_chunk.setdefault(document_id, chunk_id)
     metadata = list(dict.fromkeys(metadata_ids[:limits.metadata]))
     matched = set(metadata)
     ranked = [RankedDocument(id=d, match="metadata", chunk_id=best_chunk.get(d)) for d in metadata]
@@ -350,7 +352,7 @@ async def _rank_documents(documents: DocumentRepository, backends: SearchBackend
         read_count=read_count,
         retrieval=DocumentRetrieval(
             metadata_limit=limits.metadata, metadata_bounded=metadata_bounded, chunk_limit=limits.chunks,
-            chunk_bounded=chunk_bounded, ranked_chunks=len(chunk_pairs), type=request.type,
+            chunk_bounded=chunk_bounded, ranked_chunks=len(chunk_hits), type=request.type,
             vector=None if request.type == SearchType.text else vector.id),
         criteria=criteria,
         time_spent=0,

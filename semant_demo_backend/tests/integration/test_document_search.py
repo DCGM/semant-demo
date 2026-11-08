@@ -138,6 +138,23 @@ async def test_eligibility_restricts_the_ranking_before_its_limit(search, update
     assert (letters["bounded"], letters["total_count"]) == (False, 1)
 
 
+async def test_a_chunk_without_a_document_counts_towards_the_chunk_limit(
+        search, seeded_store, collection_names, api_app):
+    # Review of #617: an orphan chunk (no document reference) ranks first; with room for one chunk
+    # the limit cut the ranking although no ranked chunk was left out for a document.
+    chunks = seeded_store.collections.get(collection_names.chunks_collection_name)
+    orphan = await chunks.data.insert(properties={"text": "Lhota Lhota Lhota Lhota", "order": 0})
+    api_app.state.config.SEARCH_DOCUMENTS_CHUNK_LIMIT = 1
+
+    body = await search("Lhota")
+
+    assert [r["match"] for r in body["ranked"]] == ["metadata"]  # the chronicle's title; no text match
+    assert body["ranked"][0]["chunk_id"] is None and str(orphan) not in str(body["ranked"])
+    assert (body["bounded"], body["total_count"]) == (True, None)
+    assert {k: body["retrieval"][k] for k in ("chunk_bounded", "ranked_chunks")} == {
+        "chunk_bounded": True, "ranked_chunks": 1}
+
+
 @pytest.mark.parametrize("mode", [SearchType.vector, SearchType.hybrid])
 async def test_vector_and_hybrid_rank_every_eligible_document(seeded_store, collection_names, ids, mode):
     # Every chunk matches a vector query: unless a limit cuts the ranking, every eligible document
