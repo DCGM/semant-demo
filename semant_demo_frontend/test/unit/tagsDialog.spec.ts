@@ -39,8 +39,10 @@ function applied (attr: Attribute, patch: PatchAttribute): Attribute {
   return { ...attr, tagIds: [...kept, ...(patch.addTagIds ?? [])], revision: (attr.revision ?? 1) + 1 }
 }
 
-const refused = (status: number, detail: string) => new ResponseError(
-  new Response(JSON.stringify({ detail }), { status, headers: { 'Content-Type': 'application/json' } }))
+const refused = (status: number, detail: string, extra: Record<string, unknown> = {}) => new ResponseError(
+  new Response(JSON.stringify({ detail, ...extra }), { status, headers: { 'Content-Type': 'application/json' } }))
+/** A narrowing waiting for confirmation of `affected` annotations (#568). */
+const toConfirm = (affected: number) => refused(409, 'Confirm.', { affected, confirm: 'narrowing' })
 
 const mounted: VueWrapper[] = []
 async function open (props: Record<string, unknown>) {
@@ -166,6 +168,55 @@ describe('TagsDialog applicable attributes', () => {
     expect(wrapper.emitted('ok')).toBeUndefined()
     expect(wrapper.emitted('hide')).toHaveLength(1)
     expect(listed).toHaveBeenCalledWith('c1')
+  })
+
+  it('asks to confirm switching off an attribute whose values would stop applying, per attribute', async () => {
+    const save = vi.fn()
+    listed.mockResolvedValue([speaker, attribute('a5', 'role', { tagIds: ['t1'] }), mood, topic])
+    updated.mockImplementation((_, id, patch) => {
+      if (id === 'a1' && patch.confirmAffected === undefined) return Promise.reject(toConfirm(2))
+      if (id === 'a2') return Promise.reject(refused(503, 'Could not count.'))
+      return Promise.resolve(applied(id === 'a5' ? attribute('a5', 'role', { tagIds: ['t1'] }) : speaker, patch))
+    })
+    const wrapper = await open({ tag: person, save })
+    await switchTo(wrapper, 'speaker_type', false)
+    await switchTo(wrapper, 'role', false)
+    await switchTo(wrapper, 'mood', true)
+    await confirm(wrapper, 'Save')
+
+    // role had no values in the way and is saved; speaker_type waits with its own count, and
+    // mood's failure is reported as such, not as a confirmation.
+    expect(wrapper.emitted('ok')).toBeUndefined()
+    expect(text('tag-applicable-attribute-warning')).toHaveLength(1)
+    expect(text('tag-applicable-attribute-warning')[0]).toContain('existing values apply on 2 annotations')
+    expect(text('tag-applicable-attribute-error')).toEqual(['Could not count.'])
+    expect(text('tag-dialog-error')[0]).toContain('Switching off 1 attribute changes whether existing values apply')
+    expect(text('tag-dialog-error')[0]).toContain('1 attribute change was not saved')
+
+    updated.mockClear()
+    updated.mockImplementation((_, id, patch) => Promise.resolve(applied(id === 'a1' ? speaker : mood, patch)))
+    await confirm(wrapper, 'Confirm and save')
+    expect([...updated.mock.calls].sort((x, y) => x[1].localeCompare(y[1]))).toEqual([
+      ['c1', 'a1', { removeTagIds: ['t1'], confirmAffected: 2 }], ['c1', 'a2', { addTagIds: ['t1'] }]])
+    expect(wrapper.emitted('ok')).toEqual([[person]])
+  })
+
+  it('withdraws a confirmation when the attribute is switched back on', async () => {
+    updated.mockImplementation((_, id, patch) => patch.confirmAffected === undefined && patch.removeTagIds
+      ? Promise.reject(toConfirm(1))
+      : Promise.resolve(applied(speaker, patch)))
+    const wrapper = await open({ tag: person, save: vi.fn() })
+    await switchTo(wrapper, 'speaker_type', false)
+    await confirm(wrapper, 'Save')
+    expect(text('tag-applicable-attribute-warning')[0]).toContain('on 1 annotation.')
+    await switchTo(wrapper, 'speaker_type', true)
+    expect(text('tag-applicable-attribute-warning')).toEqual([])
+    expect(button(wrapper, 'Save')).toBeTruthy()
+    // Off again: not confirmed by the earlier answer, it is asked about again.
+    await switchTo(wrapper, 'speaker_type', false)
+    updated.mockClear()
+    await confirm(wrapper, 'Save')
+    expect(updated.mock.calls).toEqual([['c1', 'a1', { removeTagIds: ['t1'] }]])
   })
 
   it('stays open with what was entered when the tag cannot be saved, and changes no attribute', async () => {

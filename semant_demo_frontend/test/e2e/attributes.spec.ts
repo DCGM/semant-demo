@@ -6,8 +6,9 @@ import { apiToken, deleteAddedAttributes, deleteAddedTags, ensureLoggedIn, fixtu
 // attributes tab (#506): cards stay compact with ~100 values, the Edit dialog manages values,
 // each saved at once, Unknown / Not applicable are fixed and only retired / restored, the UI
 // offers Retire / Restore and never Delete, search highlights matches and says what Show
-// retired hides, narrowing the tags of a used attribute is refused with the count, and the
-// Tags part shows each tag's attributes, which Create/Edit Tag switches for its tag (#516).
+// retired hides, narrowing the tags of a used attribute waits for confirmation of the number of
+// annotations whose values stop applying and keeps the values (#568), and the Tags part shows
+// each tag's attributes, which Create/Edit Tag switches for its tag (#516).
 
 const chronicles = fixture.collection('chronicles')
 const base = `/api/user_collections/${chronicles.id}`
@@ -233,7 +234,7 @@ for (const viewport of ['wide', 'phone'] as const) {
   })
 }
 
-test('a shared user sees tag-side attributes, a refused narrowing and frozen fields while saving', async ({ page, request }) => {
+test('a shared user sees tag-side attributes, a narrowing to confirm and frozen fields while saving', async ({ page, request }) => {
   await speakerOnNovak(request)
   await createAttribute(request, { name: 'Mood', all_tags: true, values: [{ label: 'calm' }] })
   await useViewport(page, 'phone')
@@ -245,7 +246,8 @@ test('a shared user sees tag-side attributes, a refused narrowing and frozen fie
   await expect(row(fixture.tag('person').name).getByTestId('tag-attribute')).toHaveText(['Speaker', 'MoodAll tags'])
   await expect(row(fixture.tag('place').name).getByTestId('tag-attribute')).toHaveText(['MoodAll tags'])
 
-  // Narrowing to another tag would leave Jan Novák (a person) with a value that does not apply.
+  // Narrowing to another tag leaves Jan Novák (a person) with a value that does not apply: the
+  // dialog asks to confirm, at the tags, and saves nothing until then.
   await openAttributes(page, 'annotator')
   await page.getByRole('button', { name: 'Edit Speaker' }).click()
   await dialog(page).getByLabel('Tags', { exact: true }).click()
@@ -253,10 +255,12 @@ test('a shared user sees tag-side attributes, a refused narrowing and frozen fie
   await page.getByRole('option', { name: fixture.tag('person').name }).click()
   await page.keyboard.press('Escape')
   await dialog(page).getByRole('button', { name: 'Save' }).click()
-  await expect(dialog(page).getByTestId('attribute-scope-section'))
-    .toContainText('1 annotations with values of this attribute have a tag outside')
+  const warning = dialog(page).getByTestId('attribute-narrowing-warning')
+  await expect(warning).toContainText('existing values apply on 1 annotation.')
+  await expect(warning).toBeInViewport()
   await expect(page.getByTestId('attribute-dialog-error')).toHaveCount(0)
-  await expect(dialog(page).getByRole('button', { name: 'Save' })).toBeInViewport()
+  await expect(dialog(page).getByRole('button', { name: 'Confirm and save' })).toBeInViewport()
+  await page.screenshot({ path: 'test-results/ui-capture/attribute-narrowing-phone.png' })
   await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'Yes' }).click()
   await expect(card(page, 'Speaker').getByTestId('attribute-tags')).toHaveText(fixture.tag('person').name)
@@ -278,6 +282,69 @@ test('a shared user sees tag-side attributes, a refused narrowing and frozen fie
   release()
   await expect(dialog(page)).toHaveCount(0)
   await expect(card(page, 'Mood').getByTestId('attribute-description')).toHaveText('How the speaker sounds.')
+})
+
+test('a confirmed narrowing keeps the values, greyed in the workspace, until the tags are widened again', async ({ page, request }) => {
+  // #568: from Edit Attribute and from Edit Tag; only the definition changes.
+  await speakerOnNovak(request)
+  const headers = await headersOf(request)
+  const novak = fixture.span('novak_manual').id
+  const novakRow = async () => (await (await request.get(`${base}/annotations`, { headers, params: { annotation_id: novak } })).json()).rows[0]
+  const before = await novakRow()
+  const speaker = await listed(request, 'Speaker')
+  await useViewport(page, 'wide')
+  await openAttributes(page)
+
+  await page.getByRole('button', { name: 'Edit Speaker' }).click()
+  await dialog(page).getByLabel('Tags', { exact: true }).click()
+  await page.getByRole('option', { name: fixture.tag('person').name }).click()
+  await page.keyboard.press('Escape')
+  await dialog(page).getByRole('button', { name: 'Save' }).click()
+  await expect(dialog(page).getByTestId('attribute-narrowing-warning')).toContainText('No values are deleted')
+  await page.screenshot({ path: 'test-results/ui-capture/attribute-narrowing-wide.png' })
+  await dialog(page).getByRole('button', { name: 'Confirm and save' }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  expect([(await listed(request, 'Speaker')).all_tags, (await listed(request, 'Speaker')).tag_ids]).toEqual([false, []])
+  const after = await novakRow()
+  expect([after.attributes, after.attributeVersion]).toEqual([before.attributes, before.attributeVersion])
+
+  // In the workspace the kept value is marked as not applying and cannot be edited.
+  await page.goto(`/#/collections/${chronicles.id}/annotations`)
+  await expect(page.getByTestId('concordance-range')).toContainText('matching annotations')
+  await page.getByTestId('concordance-show-attribute').click()
+  await page.getByRole('option', { name: 'Speaker', exact: true }).click()
+  await page.keyboard.press('Escape')
+  const kept = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
+    .locator(`[data-testid="kwic-attribute"][data-attribute-id="${speaker.id}"]`)
+  await expect(kept).toContainText('politician')
+  await expect(kept.getByTestId('attribute-chips-inapplicable')).toBeVisible()
+
+  // Widening needs no confirmation and makes the value apply again.
+  await openAttributes(page)
+  await page.getByRole('button', { name: 'Edit Speaker' }).click()
+  await dialog(page).getByLabel('Tags', { exact: true }).click()
+  await page.getByRole('option', { name: fixture.tag('person').name }).click()
+  await page.keyboard.press('Escape')
+  await dialog(page).getByRole('button', { name: 'Save' }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  await page.goto(`/#/collections/${chronicles.id}/annotations`)
+  await expect(kept).toContainText('politician')
+  await expect(kept.getByTestId('attribute-chips-inapplicable')).toHaveCount(0)
+
+  // From Edit Tag: switching Speaker off for Person waits for confirmation at the attribute.
+  await page.goto(`/#/collections/${chronicles.id}/tags`)
+  const tagRow = page.locator('tbody tr').filter({ has: page.getByText(fixture.tag('person').name, { exact: true }) })
+  await tagRow.getByRole('button', { name: 'Edit tag' }).click()
+  await dialog(page).getByTestId('tag-applicable-attribute').filter({ hasText: 'Speaker' }).getByRole('switch').click()
+  await dialog(page).getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog(page).getByTestId('tag-applicable-attribute-warning')).toContainText('on 1 annotation.')
+  await expect(dialog(page).getByTestId('tag-applicable-attribute-warning')).toBeInViewport()
+  await expect(dialog(page).getByTestId('tag-dialog-error')).toContainText('Confirm and save to apply')
+  await page.screenshot({ path: 'test-results/ui-capture/tag-attribute-narrowing-wide.png' })
+  await dialog(page).getByRole('button', { name: 'Confirm and save' }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  expect((await listed(request, 'Speaker')).tag_ids).toEqual([])
+  expect((await novakRow()).attributes).toEqual(before.attributes)
 })
 
 test('tags that are loading, failed or deleted are never shown as something else', async ({ page, request }) => {
