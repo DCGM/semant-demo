@@ -11,6 +11,7 @@
       <!-- Only the title row is indented by the checkbox; the rest aligns with the passage. -->
       <div class="search-result__title-row row no-wrap items-start">
         <q-checkbox
+          v-if="selectable"
           :model-value="selected"
           :aria-label="`Select result ${number}: ${title}`"
           color="primary"
@@ -108,10 +109,12 @@ const props = withDefaults(defineProps<{
   number: number
   filters: readonly SearchFilter[]
   selected?: boolean
+  /** Offer the selection checkbox (not for results inspected from a chart, #620). */
+  selectable?: boolean
   highlighted?: boolean
   /** The result is the one shown in the document context view. */
   contextShown?: boolean
-}>(), { selected: false, highlighted: false, contextShown: false })
+}>(), { selected: false, selectable: true, highlighted: false, contextShown: false })
 
 const emit = defineEmits<{
   'update:selected': [value: boolean]

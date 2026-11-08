@@ -849,8 +849,29 @@ test('explore visualizations', async ({ page }, testInfo) => {
   await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
   await save(page, testInfo, 'explore-visualizations')
   await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-visualizations-full-${testInfo.project.name}.png`, fullPage: true })
+})
 
+test('explore visualizations of a text query, and an inspected category (#620)', async ({ page }, testInfo) => {
   await page.goto('/#/search?q=Lhota&view=visualizations')
-  await expect(page.getByTestId('charts-text-query')).toBeVisible()
-  await save(page, testInfo, 'explore-visualizations-text-query')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('charts-total')).toHaveText('7')
+  await expect(page.getByTestId('results-years').locator('svg').first()).toBeVisible()
+  await expect(page.getByTestId('results-languages').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'explore-ranked-passages')
+  await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-ranked-passages-full-${testInfo.project.name}.png`, fullPage: true })
+
+  await page.getByTestId('timeline-inspect-bin-1851').click()
+  await expect(page.locator('[data-testid="inspection"] .search-result__title')).toHaveCount(3)
+  await save(page, testInfo, 'explore-inspected-passages')
+
+  // A bounded ranking of documents.
+  await page.route('**/api/search/documents', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    await route.fulfill({ response, json: { ...body, ranked: body.ranked.slice(0, 2), bounded: true, total_count: null } })
+  })
+  await page.goto('/#/search?q=Lhota&mode=documents&view=visualizations')
+  await expect(page.getByTestId('charts-ranking')).toContainText('Bounded')
+  await expect(page.getByTestId('results-years').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'explore-ranked-documents-bounded')
 })

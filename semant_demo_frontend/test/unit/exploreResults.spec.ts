@@ -115,6 +115,19 @@ describe('the Explore URL', () => {
     ])
   })
 
+  it('keeps an inspected chart category (#620) and refuses malformed ones', () => {
+    const inspected = location({ criteria: criteria({ textQuery: 'Lhota' }), inspect: { dimension: 'year', value: '1850-1859' } })
+    expect(locationQuery(inspected)).toEqual({ q: 'Lhota', inspect: 'year:1850-1859' })
+    expect(parseLocationQuery({ q: 'Lhota', inspect: 'year:1850-1859' }, NOW)).toEqual({ location: inspected, invalid: [] })
+    for (const value of ['library:mzk', 'library:~other', 'language:~unknown', 'year:1851', 'year:~unknown']) {
+      expect(parseLocationQuery({ inspect: value }, NOW).invalid).toEqual([])
+    }
+    for (const value of ['year:1859-1850', 'year:abc', 'year:~other', 'author:x', 'library:', 'mzk']) {
+      const parsed = parseLocationQuery({ inspect: value }, NOW)
+      expect([parsed.location.inspect, parsed.invalid]).toEqual([null, [`Inspected results: ${value}`]])
+    }
+  })
+
   it('refuses reversed years and a too long text query', () => {
     expect(parseLocationQuery({ year_min: '1900', year_max: '1850' }, NOW).invalid).toEqual(['Publication years 1900–1850'])
     const long = parseLocationQuery({ q: 'x'.repeat(1001) }, NOW)

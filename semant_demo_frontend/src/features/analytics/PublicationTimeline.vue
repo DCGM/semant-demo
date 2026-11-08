@@ -29,42 +29,70 @@
         <q-btn dense flat no-caps color="primary" label="Reset zoom" :disable="isMain" data-testid="timeline-reset" @click="reset" />
         <q-btn dense flat no-caps color="primary" label="Full range" :disable="isFull" data-testid="timeline-full" @click="showFull" />
       </div>
-      <q-btn
-        dense outline no-caps color="primary" icon="filter_alt" :label="`Apply ${periodLabel} as filter`"
-        data-testid="timeline-apply-period" @click="emit('applyPeriod', period)"
-      />
+      <div class="timeline__actions">
+        <q-btn
+          v-if="inspectable" dense unelevated no-caps color="primary" icon="list" :label="`Inspect ${periodLabel}`"
+          :disable="!windowCount" data-testid="timeline-inspect-period" @click="emit('inspect', period)"
+        />
+        <q-btn
+          dense outline no-caps color="primary" icon="filter_alt" :label="`Apply ${periodLabel} as filter`"
+          data-testid="timeline-apply-period" @click="emit('applyPeriod', period)"
+        />
+      </div>
     </div>
     <p class="timeline__hint">
-      Drag across the chart to zoom into a period. Zooming changes only this chart; applying the period as a filter
-      restricts every count on the page.
+      Drag across the chart to zoom into a period. Zooming changes only this chart; <template v-if="inspectable">inspecting a
+      period lists its results without searching again, while applying it as a filter starts a new search.</template>
+      <template v-else>applying the period as a filter restricts every count on the page.</template>
     </p>
 
     <div @pointerup="zoomToSelection">
       <VegaChart
         :spec="spec"
         :signals="['period']"
-        :label="`Bar chart of documents per ${widthName(width)} from ${windowLabel}; the table below lists the same counts.`"
+        :label="`Bar chart of ${unit} per ${widthName(width)} from ${windowLabel}; the table below lists the same counts.`"
         @signal="onSignal"
       />
     </div>
 
     <q-expansion-item
       dense dense-toggle switch-toggle-side class="timeline__table"
-      :label="`Table: documents per ${widthName(width)}, ${windowLabel}`"
+      :default-opened="inspectable"
+      :label="`Table: ${unit} per ${widthName(width)}, ${windowLabel}`"
     >
       <q-markup-table flat dense separator="horizontal" class="count-table">
-        <caption class="sr-only">Documents per {{ widthName(width) }} of publication, {{ windowLabel }}</caption>
-        <thead><tr><th scope="col" class="text-left">Publication years</th><th scope="col" class="text-right">Documents</th></tr></thead>
+        <caption class="sr-only">{{ unitNoun(unit, 2, true) }} per {{ widthName(width) }} of publication, {{ windowLabel }}</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="text-left">Publication years</th>
+            <th scope="col" class="text-right">{{ unitNoun(unit, 2, true) }}</th>
+            <th v-if="inspectable" scope="col" class="text-right"><span class="sr-only">Inspect</span></th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="row in rows" :key="row.key" :class="`count-table__${row.kind}`">
             <th scope="row" class="text-left text-weight-regular">
               {{ row.label }}<span v-if="row.note" class="text-grey-7"> — {{ row.note }}</span>
             </th>
             <td class="text-right">{{ formatCount(row.count) }}</td>
+            <td v-if="inspectable" class="text-right">
+              <q-btn
+                v-if="row.kind === 'bin' && row.count > 0" dense flat no-caps color="primary" label="Inspect"
+                :aria-label="`Inspect the ${formatCount(row.count)} ${unitNoun(unit, row.count)} of ${row.label}`"
+                :data-testid="`timeline-inspect-${row.key}`" @click="emit('inspect', binYears(row.key))"
+              />
+            </td>
           </tr>
           <tr class="count-table__unknown">
             <th scope="row" class="text-left text-weight-regular">Unknown or invalid year</th>
             <td class="text-right">{{ formatCount(distribution.unknownCount ?? 0) }}</td>
+            <td v-if="inspectable" class="text-right">
+              <q-btn
+                v-if="distribution.unknownCount" dense flat no-caps color="primary" label="Inspect"
+                :aria-label="`Inspect the ${unit} without a valid year`" data-testid="timeline-inspect-unknown"
+                @click="emit('inspect', null)"
+              />
+            </td>
           </tr>
         </tbody>
       </q-markup-table>
@@ -83,12 +111,20 @@ import type { PublicationYearCounts } from 'src/generated/api'
 import VegaChart from 'src/shared/visualization/VegaChart.vue'
 import {
   alignWindow, binWidthFor, binsName, fullRange, mainRange, outside, panWindow, selectedWindow, timelineBins,
-  timelineRows, timelineSpec, widthName, zoomWindow, MIN_SPAN, type Outside, type YearWindow
+  timelineRows, timelineSpec, unitNoun, widthName, zoomWindow, MIN_SPAN, type CountUnit, type Outside, type YearWindow
 } from './timeline'
 
-const props = defineProps<{ distribution: PublicationYearCounts }>()
+const props = withDefaults(defineProps<{
+  distribution: PublicationYearCounts
+  /** What is counted (#620: a search's Passages results count passages). */
+  unit?: CountUnit
+  /** Offer Inspect for the shown period, each bin and the unknown years (a search's results, #620). */
+  inspectable?: boolean
+}>(), { unit: 'documents', inspectable: false })
 const emit = defineEmits<{
   applyPeriod: [period: YearWindow]
+  /** The results of these years (inclusive), or without a valid year (null). */
+  inspect: [years: YearWindow | null]
   /** The shown window and bin width, whenever they change (other views follow the timeline). */
   view: [view: { window: YearWindow, width: number }]
 }>()
@@ -112,8 +148,16 @@ const width = computed(() => binWidthFor(view.value))
 const shown = computed(() => alignWindow(view.value, width.value))
 const bins = computed(() => timelineBins(years.value, shown.value, width.value))
 const out = computed(() => outside(years.value, shown.value))
-const rows = computed(() => timelineRows(bins.value, width.value, out.value))
-const spec = computed(() => timelineSpec(bins.value, width.value, shown.value))
+const rows = computed(() => timelineRows(bins.value, width.value, out.value, props.unit))
+const spec = computed(() => timelineSpec(bins.value, width.value, shown.value, props.unit))
+/** Counted results in the shown window. */
+const windowCount = computed(() => bins.value.reduce((n, bin) => n + bin.count, 0))
+
+/** The years of a table row's bin (`bin-<start>`): whole bins, as counted. */
+function binYears (key: string): YearWindow {
+  const bin = bins.value.find(b => `bin-${b.start}` === key)!
+  return { start: Math.max(1, bin.start), end: Math.min(currentYear, bin.endExclusive - 1) }
+}
 
 watch([shown, width], () => emit('view', { window: shown.value, width: width.value }), { immediate: true })
 
@@ -140,7 +184,7 @@ const hiddenText = computed(() => {
   const describe = (o: Outside, where: string) => {
     if (!o.count) return null
     const named = o.years.length ? ` (${o.years.length === 1 ? 'year' : 'years'} ${o.years.join(', ')})` : ''
-    return `${formatCount(o.count)} ${o.count === 1 ? 'document' : 'documents'} ${where}${named}`
+    return `${formatCount(o.count)} ${unitNoun(props.unit, o.count)} ${where}${named}`
   }
   return [describe(out.value.before, `before ${shown.value.start}`), describe(out.value.after, `after ${shown.value.end}`)]
     .filter(Boolean).join('; ')
@@ -205,6 +249,12 @@ function zoomToSelection () {
   gap: 2px;
 }
 
+.timeline__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
 .timeline__hint {
   color: #4a5568;
   font-size: 0.85rem;
@@ -217,6 +267,12 @@ function zoomToSelection () {
 
 .count-table {
   max-width: 560px;
+}
+
+/* Long gap labels wrap, so the Inspect column stays inside a phone-wide card. */
+.count-table :deep(th),
+.count-table :deep(td) {
+  white-space: normal;
 }
 
 .count-table__gap th,

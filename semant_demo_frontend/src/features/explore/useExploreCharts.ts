@@ -3,22 +3,25 @@ import { useCorpusOverview } from 'src/features/analytics/useCorpusOverview'
 import { criteriaKey, normalizeCriteria, type Criteria, type ResultsMode } from './criteria'
 
 /**
- * Explore Visualizations, first slice (#618, docs/EXPLORATION.md): charts of the documents the
- * applied filters match, for Documents without a text query.
+ * Explore Visualizations (#618, #620, docs/EXPLORATION.md): what the charts of the applied
+ * criteria count; here also the charts of the documents the applied filters match, for
+ * Documents without a text query.
  *
  * - `documents`: every matching document is counted by `POST /api/analytics/corpus/distributions`
  *   with the same document filters and per-dimension chunk filters as the Documents results
  *   (#606, #529), never from a page of results.
- * - `textQuery`: the charts of a search would describe only its retrieved results (#619/#620);
- *   until then nothing is charted, rather than the filtered corpus shown as if it were the results.
+ * - `ranked`: a text query's charts describe only its ranked results, in either mode and any
+ *   collection scope (#620, `useResultCharts`): the counts of exactly the ids the search ranked,
+ *   never the filtered corpus shown as if it were the results.
  * - `passages`: Passages need a text query; filter-only passage counts are not available, and
  *   document counts are not shown in their place.
- * - `collection`: the distributions cover the public corpus only, not a collection scope.
+ * - `collection`: without a text query, the distributions cover the public corpus only, not a
+ *   collection scope.
  */
-export type ChartsAvailability = 'documents' | 'textQuery' | 'passages' | 'collection'
+export type ChartsAvailability = 'documents' | 'ranked' | 'passages' | 'collection'
 
 export function chartsAvailability (criteria: Criteria, mode: ResultsMode, userCollectionId: string | null): ChartsAvailability {
-  if (criteria.textQuery) return 'textQuery'
+  if (criteria.textQuery) return 'ranked'
   if (mode === 'passages') return 'passages'
   if (userCollectionId) return 'collection'
   return 'documents'
