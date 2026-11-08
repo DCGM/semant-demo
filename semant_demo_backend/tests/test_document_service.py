@@ -43,6 +43,10 @@ class FakeDocuments:
         self.reads.append(("browse", collection_id, options))
         return DocumentBrowse(items=[], has_more=False, total_count=0)
 
+    async def browse_by_year(self, collection_id=None, **options):
+        self.reads.append(("browse_by_year", collection_id, options))
+        return DocumentBrowse(items=[], has_more=False, total_count=0)
+
     async def read_chunks(self, document_id, collection_id):
         self.reads.append(("chunks", document_id, collection_id))
         return DocumentDetail(document=Document(id=document_id), chunks=[])
@@ -250,3 +254,24 @@ async def test_browse_with_empty_chunk_filters_is_unchanged():
     await service.browse(documents, FakeCollections(), None, chunk_filters=ChunkFilters(), limit=5)
 
     assert documents.reads == [("browse", None, {"conditions": [], "limit": 5})]
+
+
+@pytest.mark.parametrize("user, error", [(None, AuthenticationRequired), (OTHER, NotFoundError)])
+async def test_year_ordered_browse_of_a_collection_checks_read_access_before_reading(user, error):
+    documents = FakeDocuments()
+
+    with pytest.raises(error):
+        await service.browse_by_year(documents, FakeCollections(), user, str(COLLECTION))
+    assert documents.reads == []
+
+    await service.browse_by_year(documents, FakeCollections(), SHARED, str(COLLECTION), limit=5, offset=20)
+    assert documents.reads == [("browse_by_year", COLLECTION, {"conditions": [], "limit": 5, "offset": 20})]
+
+
+async def test_year_ordered_browse_rejects_unconfigured_chunk_filters_before_reading():
+    documents = FakeDocuments()
+
+    with pytest.raises(InvalidChunkFilterError):
+        await service.browse_by_year(documents, FakeCollections(), None, chunk_filters=ChunkFilters(languages=["Czech"]),
+                                     vocabulary=VOCABULARY)
+    assert documents.reads == []

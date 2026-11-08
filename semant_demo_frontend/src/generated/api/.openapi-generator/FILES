@@ -59,8 +59,14 @@ docs/DocumentChunk.md
 docs/DocumentChunkWindow.md
 docs/DocumentDetail.md
 docs/DocumentFilters.md
+docs/DocumentHit.md
 docs/DocumentPage.md
 docs/DocumentPages.md
+docs/DocumentReadRequest.md
+docs/DocumentReadResponse.md
+docs/DocumentRetrieval.md
+docs/DocumentSearchRequest.md
+docs/DocumentSearchResponse.md
 docs/DocumentStats.md
 docs/DocumentSummaryCitation.md
 docs/DocumentSummaryResponse.md
@@ -81,6 +87,8 @@ docs/MinValue1.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
 docs/Partnumber.md
+docs/PassageReadRequest.md
+docs/PassageReadResponse.md
 docs/PassageSearchRequest.md
 docs/PassageSearchResponse.md
 docs/PatchAttribute.md
@@ -105,6 +113,7 @@ docs/RagRequestMain.md
 docs/RagResponse.md
 docs/RagRouteConfig.md
 docs/RagSearch.md
+docs/RankedDocument.md
 docs/ReviewAction.md
 docs/SearchCriteria.md
 docs/SearchFilter.md
@@ -200,8 +209,14 @@ models/DocumentChunk.ts
 models/DocumentChunkWindow.ts
 models/DocumentDetail.ts
 models/DocumentFilters.ts
+models/DocumentHit.ts
 models/DocumentPage.ts
 models/DocumentPages.ts
+models/DocumentReadRequest.ts
+models/DocumentReadResponse.ts
+models/DocumentRetrieval.ts
+models/DocumentSearchRequest.ts
+models/DocumentSearchResponse.ts
 models/DocumentStats.ts
 models/DocumentSummaryCitation.ts
 models/DocumentSummaryResponse.ts
@@ -222,6 +237,8 @@ models/MinValue1.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts
 models/Partnumber.ts
+models/PassageReadRequest.ts
+models/PassageReadResponse.ts
 models/PassageSearchRequest.ts
 models/PassageSearchResponse.ts
 models/PatchAttribute.ts
@@ -246,6 +263,7 @@ models/RagRequestMain.ts
 models/RagResponse.ts
 models/RagRouteConfig.ts
 models/RagSearch.ts
+models/RankedDocument.ts
 models/ReviewAction.ts
 models/SearchCriteria.ts
 models/SearchFilter.ts
