@@ -99,7 +99,7 @@ semant_demo_backend/semant_demo/
     chat/                 contextual sidebar chat (ADR 0012): routes, service, schemas (NDJSON events);
                           document chat (#248) so far
     feedback/             app feedback: routes, service (feedback log, webhook), schemas
-    analytics/            corpus overview: routes, service (counting and filter rules, overview cache), schemas
+    analytics/            corpus overview and ranked-result counts (#619): routes, service (counting and filter rules, overview cache), schemas
     quota/                daily LLM allowances: principal (account or guest cookie), service
                           (status, admission, settlement), routes (GET /api/quota), schemas
   adapters/
@@ -259,7 +259,8 @@ but not change membership, metadata or sharing. Public corpus reads (`GET /api/d
 `/api/documents/{id}/chunks/{chunk_id}/window` and `/adjacent` (a bounded passage around a
 chunk and its extension), search
 without collection and tags, the corpus overview `/api/analytics/corpus/overview` and
-`/api/analytics/corpus/distributions`) need no login. RAG, `/api/summarize/results` and
+`/api/analytics/corpus/distributions`, and `/api/analytics/results/distributions` without a
+collection) need no login. RAG, `/api/summarize/results` and
 `/api/question` are public too and call LLM providers with client-supplied text, within the
 caller's daily AI allowance (guest or account, [below](#daily-llm-allowances-featuresquota-adapterssqlquotapy)).
 
@@ -384,6 +385,30 @@ throwaway Weaviate 1.40.1 with 300,002 synthetic documents from `make dev-add-do
 libraries; median of 5 warm runs): unfiltered 1.25 s (the distributions alone 1.0 s), filtered
 0.15–0.85 s, 5 concurrent unfiltered requests 3.7 s. With more libraries the per-library counts
 take longer, in rounds of 4; the reproducible benchmark is #494. The distributions with chunk filters (Explore Visualizations, #618), measured read-only on the production store on 2026-11-08 (59,008 documents with chunk-value summaries; median of 3 warm runs): unfiltered 0.48 s, a year range 0.28 s, chunk language `ces` 0.37 s, `ces` and narration 0.32 s, a year range with three chunk filters 0.13 s; 5 concurrent `ces` and narration requests 1.4 s.
+
+`POST /api/analytics/results/distributions` (#619; public, a collection needs read access)
+counts a *ranked search result* instead of the corpus: exactly the ids a text query's Documents
+(`ranked[].id`) or Passages (`ranked_ids`) Results hold, with that search's criteria, collection
+and a description of its ranking (`type`, `vector`, `bounded`, echoed with the configured
+`retrieval_limit`), per publication year, source library and language of their documents.
+Nothing is ranked again, embedded or scanned, and no other search stands in for the Results.
+The ids are untrusted: access is checked again and they are read by id under the mode's
+eligibility, as the searches' later pages are (documents: collection, document filters and
+per-dimension chunk filters on the chunk-value summaries; passages:
+`search.service.passage_document_values`, the passage search's own restrictions with every
+chunk filter on the passage itself). Ids that do not pass (gone, changed, outside the scope,
+unknown or of the other kind) are not counted but reported (`input_count`, `total_count`,
+`missing_count`). `unit` is `documents` (each once) or `passages` (several of one document each
+count; `distinct_documents` gives their documents). The values are read, not aggregated: just
+the three document properties (no text or vectors, `return_properties`), in batches of
+`READ_BATCH` (1,000) ids, and counted as the corpus counts are (`_years`, `_categories`: the same
+unknown, other and unavailable rules). With `members`, each counted result's values come back
+in ranking order, so a chart category can be inspected within the ranking (#620). A request
+without a text query or naming an id twice is 422, more ids than the mode's limit 400.
+Measured read-only on the production store on 2026-11-08 (59,008 documents, 8.3 M chunks;
+BM25 rankings of the production search code; median of 3 warm runs, `members` included):
+about 1,000–1,300 ranked documents 0.04 s; 1,000 passages 0.07–0.09 s; 9,999 passages (the
+largest `SEARCH_PASSAGES_LIMIT`) 0.56–0.66 s, also with a year range and chunk language filter.
 
 - **Filters.** The shared `DocumentFilters` of the search criteria (see *Search criteria*
   below). All given filters must match (AND); several libraries or languages match any
@@ -718,7 +743,7 @@ and `router/` the routes, the sign-in guard and the kept-alive pages (`keptPages
 | Feature | Contents |
 |---|---|
 | `search` | search page (#605: draft criteria in the form, applied by Enter/Search; the applied criteria, search vector and results mode in the URL through `explore`, so reload, Back/Forward and shared links restore a search, values a link holds that are malformed or not offered are left out with a notice; the collection scope is a page setting, not in the URL; removing an applied chip searches again at once, Clear all removes every applied chip; a Results | Visualizations switch (#618, `view` in the URL) shows the same applied criteria and results mode, and switching searches or counts again only when the shown answers are of other criteria (an explicit Search, Retry or a changed collection scope always does); Passages: the first 20, then Load more reads the next 100 of the search's ranked ids (#611), and a coverage line; loading, empty, error and needs-a-text-query states), result cards, classifications, summary panel and its input (`searchResults.ts`: the loaded results of one search, `SearchResultsContext`), filter labels and the configured filters as editors of the shared criteria (`searchFilters.ts`: year range = document year, language = passage language, other nominal filters = passage classifications by stored property; applied criteria chips), what the recent-search history keeps of a search and how it is restored (`searchHistoryCriteria.ts`: a snapshot of the `SearchRequest` fields that decide the results — `type`, `vector`, `userCollectionId` and `filters` as `SearchFilterInput` — not generated titles/summaries, criteria format `SEARCH_CRITERIA_VERSION`; criteria no longer available are left out and named). The page saves a search once its results arrive (a failed one is not saved) and runs an entry only once the filters, search vectors and the user's collections are loaded; while loading, or when one failed, it says so and runs nothing. Clear history is refused with a warning while a search runs (that search would be saved into the cleared history) |
-| `explore` | Explore state shared by Search now and the Explore workspace later (#605, [EXPLORATION.md](EXPLORATION.md)): the search criteria in canonical form, their URL form (`criteria.ts`: `q`, the document-browsing filter names, `mode`, `view`, `vector`; malformed values left out and named), the applied location kept in a page's URL (`useExploreLocation`: apply pushes a history entry, the same criteria search again, Back/Forward and links apply the URL, another page's URLs are ignored), passage retrieval: one ranking per search, kept as `rankedIds`, Load more reading its next ids, late-answer guards and the coverage text (`usePassageSearch`); the Visualizations view (#618, `ExploreVisualizations`, `useExploreCharts`): for Documents without a text query, the analytics distributions of the applied document and chunk filters (per dimension, #529), so its total is the `total_count` of the Documents results, never counted from their pages; a text query (charts of retrieved results follow, #619/#620), Passages without one and a collection scope (the distributions cover the public corpus only) state why they are not charted; a timeline period applies as a year filter |
+| `explore` | Explore state shared by Search now and the Explore workspace later (#605, [EXPLORATION.md](EXPLORATION.md)): the search criteria in canonical form, their URL form (`criteria.ts`: `q`, the document-browsing filter names, `mode`, `view`, `vector`; malformed values left out and named), the applied location kept in a page's URL (`useExploreLocation`: apply pushes a history entry, the same criteria search again, Back/Forward and links apply the URL, another page's URLs are ignored), passage retrieval: one ranking per search, kept as `rankedIds`, Load more reading its next ids, late-answer guards and the coverage text (`usePassageSearch`); the Visualizations view (#618, `ExploreVisualizations`, `useExploreCharts`): for Documents without a text query, the analytics distributions of the applied document and chunk filters (per dimension, #529), so its total is the `total_count` of the Documents results, never counted from their pages; a text query (charts of retrieved results follow in #620, over the ranked-result counts of `POST /api/analytics/results/distributions`, #619), Passages without one and a collection scope (the distributions cover the public corpus only) state why they are not charted; a timeline period applies as a year filter |
 | `rag` | RAG chat page, the conversation's sources panel and its source registry/selection (`useChatSources`) |
 | `user_collections` | collection list, collection workspace and its tabs, collection/share dialogs, `userCollectionsStore`, `collectionStatsStore`, `permissions.ts` |
 | `documents` | collection documents table, library browser, `documentsStore`, `chunksStore`, a result's document context (`useChunkContext`), the document view (`viewer/`), document metadata panel, links to the original digitized document (`originalSource.ts`, `OriginalSourceLink`; used by search results, their context, RAG sources and the document view), the scan viewer (`scan/`, #543: `DocumentImagePane` with `ScanPageView` and `PageThumbnailStrip`; line geometry `pageLayout.ts`, transform and smart focus `viewport.ts`, manifest/layout reads and the bounded layout cache `pageAssets.ts`; [PAGE_LAYOUT.md](PAGE_LAYOUT.md#scan-viewer-543)), the text/scan correspondence (`correspondence/`, #544: the chunk-to-line walk `layoutMap.ts`, pane synchronization `useTextScanSync`, bounded public text reads `useDocumentText` and `pageChunks.ts`; [PAGE_LAYOUT.md](PAGE_LAYOUT.md#textscan-correspondence-544)), the document workspace (`workspace/`, #545: the split layout `DocumentWorkspace`, its views `workspaceMode.ts`/`useWorkspaceMode`/`WorkspaceModeToggle`, the public document view `PublicDocumentPage`, links to it and back `documentLink.ts`; [PAGE_LAYOUT.md](PAGE_LAYOUT.md#document-workspace-545)) |
