@@ -143,11 +143,11 @@ class SearchResultChunk(DocumentChunk):
 
 
 MAX_PASSAGE_PAGE = 100
-"""Largest page of ``POST /api/search/passages``."""
+"""Most passages one ``POST /api/search/passages`` or ``/api/search/passages/read`` returns."""
 
 
 class PassageSearchRequest(BaseModel):
-    """One page of the passages for the search criteria (#605, docs/EXPLORATION.md).
+    """A passage search (#605, #611, docs/EXPLORATION.md): its ranking and first page.
 
     The criteria need a text query: filter-only browsing of passages is deferred. Every
     chunk filter holds on the returned chunk itself (same-chunk) and every document filter on
@@ -157,10 +157,8 @@ class PassageSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     criteria: SearchCriteria
-    offset: int = Field(0, ge=0)
-    """Position in the ranked passages of the first one returned; 0 is the best match."""
     limit: int = Field(20, ge=1, le=MAX_PASSAGE_PAGE)
-    """Page size; a page never reaches past the retrieval limit (``PassageSearchResponse``)."""
+    """Size of the first page: the passages of this many leading ranked ids are read in full."""
     type: SearchType = SearchType.hybrid
     hybrid_search_alpha: float = Field(0.5, ge=0, le=1)
     vector: str | None = None
@@ -177,20 +175,23 @@ class PassageSearchRequest(BaseModel):
 
 
 class PassageSearchResponse(BaseModel):
-    """A page of ranked passages and what the whole retrieved population covers.
+    """The ranking of one passage search, its first page and what the ranking covers.
 
-    One search retrieves at most ``retrieval_limit`` passages (best first); every page is a
-    slice of that one ranking, and later visualizations of the same search describe the same
-    population. ``bounded`` is ``False`` when it holds every matching passage (then
-    ``total_count`` is their number) and ``True`` when the limit cut the ranking (more
-    passages match but are not retrievable). Vector and hybrid search rank every passage that
-    passes the filters, so they are bounded unless the filters leave fewer than the limit.
+    The search ranks at most ``retrieval_limit`` passages once (best first, ``ranked_ids``);
+    later pages read slices of those ids (``POST /api/search/passages/read``) instead of
+    ranking again, and visualizations of the same search can describe the same population.
+    ``bounded`` is ``False`` when the ranking holds every matching passage (then
+    ``total_count`` is their number) and ``True`` when the limit cut it (more passages match
+    but are not retrievable). Vector and hybrid search rank every passage that passes the
+    filters, so they are bounded unless the filters leave fewer than the limit.
     """
+    ranked_ids: list[UUID]
+    """The ranked passage ids, best first, each once; at most ``retrieval_limit``."""
     items: list[SearchResultChunk]
-    offset: int
-    next_offset: int | None
-    """``offset`` of the next page; None without one."""
-    has_more: bool
+    """The passages of the first ``read_count`` ranked ids, in that order; a passage gone or
+    without a document by the time it is read is left out."""
+    read_count: int
+    """How many leading ``ranked_ids`` this answer read; the next page starts there."""
     retrieval_limit: int
     bounded: bool
     total_count: int | None
@@ -199,6 +200,179 @@ class PassageSearchResponse(BaseModel):
     """The applied criteria, normalized (as ``SearchRequest`` echoes them)."""
     vector: str | None = None
     """The search vector used; None for text search."""
+    time_spent: float
+
+
+class PassageReadRequest(BaseModel):
+    """Passages of an earlier passage search by id (#611): a later page of its ``ranked_ids``.
+
+    ``criteria`` and ``user_collection_id`` are those of the search. Access is checked again
+    and the passages are read under the same restrictions as the search's ranking (the text
+    query ranks nothing here), so an id the search could not have returned is never answered.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[UUID] = Field(min_length=1, max_length=MAX_PASSAGE_PAGE)
+    criteria: SearchCriteria
+    user_collection_id: str | None = None
+
+
+class PassageReadResponse(BaseModel):
+    items: list[SearchResultChunk]
+    """The requested passages that still match the search, in the requested order, each once;
+    the others (deleted, outside the scope, no longer matching the filters) are left out."""
+    time_spent: float
+
+
+MAX_DOCUMENT_PAGE = 100
+"""Most documents one ``POST /api/search/documents`` or ``/api/search/documents/read`` returns."""
+
+DocumentOrder = Literal["year_asc", "metadata_then_text"]
+"""``year_asc`` (no text query): publication year, oldest first, then document id; documents
+without a year after all dated ones, by id. ``metadata_then_text`` (a text query, #607): the
+documents whose bibliographic metadata matches the query, by metadata relevance, then the other
+documents by their best-matching chunk, in the chunk search's order."""
+
+DocumentMatch = Literal["metadata", "text"]
+"""Why a document is a result of a text query: its bibliographic metadata (title, subtitle,
+authors, publisher) holds every word of the query (``metadata``), or one of its chunks matches it
+(``text``). A metadata match may also have a matching chunk."""
+
+
+class DocumentSearchRequest(BaseModel):
+    """Documents matching search criteria (#606, #607, docs/EXPLORATION.md).
+
+    The filters decide which documents are eligible: document filters hold on the document, and
+    chunk filters apply per dimension: for each, some chunk of the document has one of its values
+    (different filters may be met by different chunks), answered from the documents' chunk-value
+    summaries as last recomputed (#529). Without ``user_collection_id`` the public corpus is
+    searched, also anonymously.
+
+    Without a text query, the eligible documents are paged in a stable order (``offset``).
+    With one, it ranks them once, independently of the filters (``metadata_then_text``): the
+    best chunk of a document need not satisfy the chunk filters. The answer holds the whole
+    bounded ranking and its first ``limit`` documents; later pages are read by id
+    (``POST /api/search/documents/read``), so ``offset`` must be 0. ``type``,
+    ``hybrid_search_alpha`` and ``vector`` select how chunks are ranked, as for passages.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    criteria: SearchCriteria
+    limit: int = Field(20, ge=1, le=MAX_DOCUMENT_PAGE)
+    offset: int = Field(0, ge=0)
+    """Position of the page in ``order`` without a text query; ``offset + limit`` is at most
+    ``retrieval_limit``. Must be 0 with a text query."""
+    type: SearchType = SearchType.hybrid
+    hybrid_search_alpha: float = Field(0.5, ge=0, le=1)
+    vector: str | None = None
+    """Configured search vector (``GET /api/search/vectors``); None: the default."""
+    user_collection_id: str | None = None
+    """Only the documents of this collection (read access needed)."""
+
+    @model_validator(mode="after")
+    def _ranked_from_the_start(self) -> "DocumentSearchRequest":
+        if self.criteria.text_query is not None and self.offset:
+            raise PydanticCustomError(
+                "offset_with_text_query",
+                "A text query ranks the documents once; read later pages by id (POST /api/search/documents/read).")
+        return self
+
+
+class RankedDocument(BaseModel):
+    """One document of a text query's ranking: why it matched and its best-matching chunk, if any."""
+    id: UUID
+    match: DocumentMatch
+    chunk_id: UUID | None = None
+    """The document's best-matching chunk in the chunk ranking: the evidence of a ``text`` match,
+    and of a ``metadata`` match when one of its chunks also ranked. It need not satisfy the chunk
+    filters."""
+
+
+class DocumentHit(BaseModel):
+    """A document result: the document, and for a text query why it matched and its best chunk."""
+    document: Document
+    match: DocumentMatch | None = None
+    """None without a text query."""
+    chunk: SearchResultChunk | None = None
+    """The best-matching chunk (``RankedDocument.chunk_id``), when there is one and it can still be
+    read; display text, as in passage results."""
+
+
+class DocumentRetrieval(BaseModel):
+    """How a text query ranked the documents, and whether each part covers everything it matches."""
+    metadata_limit: int
+    """Most metadata matches retrieved (``SEARCH_DOCUMENTS_METADATA_LIMIT``)."""
+    metadata_bounded: bool
+    """More documents match by metadata than ``metadata_limit``."""
+    chunk_limit: int
+    """Most chunks ranked to find the documents matching by text (``SEARCH_DOCUMENTS_CHUNK_LIMIT``)."""
+    chunk_bounded: bool
+    """More chunks match than ``chunk_limit``, so more documents may match by text. Vector and hybrid
+    search match every chunk of the eligible documents."""
+    ranked_chunks: int
+    """Chunks of the ranking (at most ``chunk_limit``)."""
+    type: SearchType
+    vector: str | None = None
+    """The search vector used; None for text search."""
+
+
+class DocumentSearchResponse(BaseModel):
+    """The documents matching the criteria: one page and what the whole result covers.
+
+    ``eligible_count`` is the exact number of documents the filters admit (a count, not an
+    estimate or a sample). Without a text query those are the results: ``total_count`` equals
+    it and the first ``retrieval_limit`` of them in ``order`` can be paged through by ``offset``
+    (Weaviate reads no result past ``QUERY_MAXIMUM_RESULTS``); ``bounded`` when more match.
+
+    With a text query, ``ranked`` is its bounded ranking of distinct documents and ``items`` its
+    first ``read_count`` entries in full. ``bounded`` is ``True`` when a retrieval limit
+    (``retrieval``) cut it; ``total_count`` is the number of matching documents only when it did
+    not (then every eligible document that matches is ranked), else None: the ranking is a lower
+    bound and ``eligible_count`` an upper one. A chart of the result counts ``total_count``
+    documents without a text query and the ranked documents with one (#528), never the page.
+    """
+    items: list[DocumentHit]
+    """The page, in ``order``; with a text query, a ranked document that is gone or no longer
+    eligible by the time it is read is left out."""
+    offset: int
+    next_offset: int | None
+    """Offset of the next page without a text query; None when this page ends the matching or the
+    reachable documents, and always with a text query (read by id)."""
+    total_count: int | None
+    eligible_count: int
+    retrieval_limit: int
+    """Without a text query, the most documents that can be paged through; with one, the most
+    documents the ranking can hold (``metadata_limit + chunk_limit``)."""
+    bounded: bool
+    order: DocumentOrder
+    ranked: list[RankedDocument] | None = None
+    """A text query's ranking, best first, each document once; None without a text query."""
+    read_count: int = 0
+    """How many leading ``ranked`` entries ``items`` read; the next page starts there."""
+    retrieval: DocumentRetrieval | None = None
+    """How a text query ranked the documents; None without one."""
+    criteria: SearchCriteria
+    """The applied criteria, normalized (chunk values in their configured spelling)."""
+    time_spent: float
+
+
+class DocumentReadRequest(BaseModel):
+    """Documents of an earlier text-query document search (#607): a later page of its ``ranked``.
+
+    ``criteria`` and ``user_collection_id`` are those of the search. Access is checked again and
+    the documents are read under the same eligibility, so an entry the search could not have
+    returned is never answered; an evidence chunk is read only when it belongs to the document.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    ranked: list[RankedDocument] = Field(min_length=1, max_length=MAX_DOCUMENT_PAGE)
+    criteria: SearchCriteria
+    user_collection_id: str | None = None
+
+
+class DocumentReadResponse(BaseModel):
+    items: list[DocumentHit]
+    """The requested documents that are still eligible, in the requested order, each once."""
     time_spent: float
 
 
@@ -265,6 +439,10 @@ class ChunkQuery:
     conditions: tuple[FieldCondition, ...] = ()
     """Older filters (``SearchRequest.filters`` and the legacy fields)."""
     document_conditions: tuple[Condition, ...] = ()
-    """Search criteria predicates on the chunk's document (``features/documents/criteria.py``)."""
+    """Search criteria predicates on the chunk's document (``features/documents/criteria.py``),
+    also on its chunk-value summaries (#529) for document-level chunk filters (#607)."""
+    document_collection_id: UUID | None = None
+    """Only chunks whose document belongs to this collection (all its chunks, #607); unlike
+    ``collection_id``, which selects the chunks linked to a collection themselves."""
     chunk_conditions: tuple[Condition, ...] = ()
     """Search criteria predicates that the returned chunk itself must satisfy (same-chunk)."""

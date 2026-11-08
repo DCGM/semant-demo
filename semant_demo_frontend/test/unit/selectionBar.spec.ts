@@ -64,8 +64,7 @@ describe('SelectionBar', () => {
     }
     const wrapper = mountBar({ selectedCount: 9, report })
     const text = byTestId(wrapper, 'review-report').text()
-    expect(text).toContain('Approved 7 of 10.')
-    expect(text).toContain('1 failed.')
+    expect(text).toContain('Approved 7 of 10 annotations. 1 failed.')
     expect(text).toContain('1 uncertain')
     expect(text).toContain('1 no longer exist')
     expect(text).toContain('Saved changes are kept.')
@@ -109,7 +108,7 @@ describe('SelectionBar', () => {
     }
     const wrapper = mountBar({ selectedCount: 5, report })
     const text = byTestId(wrapper, 'review-report').text()
-    expect(text).toContain('Rejected 3 of 5.')
+    expect(text).toContain('Rejected 3 of 5 annotations.')
     expect(text).toContain('2 were changed by someone else since you selected them; not saved.')
     expect(text).not.toContain('failed')
     // Conflicts are not retried: sending them again would overwrite a change not seen yet.
@@ -149,6 +148,22 @@ describe('SelectionBar', () => {
       error: null
     }
     expect(byTestId(mountBar({ report }), 'review-report').text())
-      .toContain('Undo: restored 1 of 3. 1 was changed again since then; not restored. 1 no longer exist')
+      .toContain('Undo: restored 1 of 3 annotations. 1 was changed again since then; not restored. 1 no longer exist')
+  })
+
+  it('uses the singular in the headline for a single annotation (#531)', () => {
+    const report: ReviewReport = {
+      action: ReviewAction.reject,
+      tagId: null,
+      target: 1,
+      saved: ['a'],
+      failed: [],
+      conflicts: [],
+      missing: [],
+      unsynced: [],
+      notSent: 0,
+      error: null
+    }
+    expect(byTestId(mountBar({ report }), 'review-report').text()).toContain('Rejected 1 of 1 annotation.')
   })
 })

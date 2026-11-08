@@ -7,7 +7,7 @@
  * charts and the tables are drawn from the same rows.
  */
 import type { VisualizationSpec } from 'vega-embed'
-import type { CategoryDistribution, DocumentFilters } from 'src/generated/api'
+import type { CategoryDistribution, ChunkFilters, DocumentFilters } from 'src/generated/api'
 
 export type RowKind = 'value' | 'other' | 'unknown'
 
@@ -86,6 +86,12 @@ const LISTS: Record<ListKey, { field: 'titleContains' | 'libraries' | 'languages
   title: { field: 'titleContains', label: 'Title contains', name: (v) => v },
   libraries: { field: 'libraries', label: 'Library', name: libraryLabel },
   languages: { field: 'languages', label: 'Language', name: languageLabel }
+}
+
+/** Whether any chunk filter is set (a document then needs, per filter, a chunk with one of its values). */
+export function hasChunkFilters (filters: ChunkFilters | null | undefined): boolean {
+  if (!filters) return false
+  return (filters.languages?.length ?? 0) > 0 || Object.values(filters.classifications ?? {}).some(values => values.length > 0)
 }
 
 /** True when the filters select every document. */

@@ -247,3 +247,46 @@ async def test_document_endpoints_reject_chunk_filters_without_the_summaries(api
     for response in (browsed, counted):
         assert response.status_code == 422
         assert "has no chunk-value summaries" in response.json()["detail"]
+
+
+async def test_explore_documents_apply_chunk_filters_per_dimension_with_the_actual_total(
+        summarized, recompute, update, api_client):
+    # #606: POST /api/search/documents selects what browsing and Analytics select.
+    await update("chronicle_2", style=["informal"])
+    await recompute()
+
+    async def documents(**chunk_filters):
+        response = await api_client.post("/api/search/documents", json={"criteria": {"chunk_filters": chunk_filters}})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    # Different dimensions met by different chunks (chronicle_1 narration, chronicle_2 informal).
+    both = await documents(classifications={"communicative_mode": ["narration"], "style": ["Informal"]})
+    assert [d["document"]["title"] for d in both["items"]] == ["Kronika obce Lhota"]
+    counted = await api_client.post("/api/analytics/corpus/distributions", json={
+        "chunk_filters": {"classifications": {"communicative_mode": ["narration"], "style": ["informal"]}}})
+    assert both["total_count"] == counted.json()["total_documents"] == 1
+    assert both["criteria"]["chunk_filters"]["classifications"]["style"] == ["informal"]
+
+    # Values of one dimension are alternatives; the gazette (no classifications, no year) is
+    # left out without an error, and listed by a filter it meets, after the dated documents.
+    either = await documents(classifications={"communicative_mode": ["narration", "interaction"]})
+    assert [d["document"]["title"] for d in either["items"]] == ["Kronika obce Lhota", "Dopisy z Prahy"]
+    every = await documents(languages=["ces"])
+    assert [d["document"]["title"] for d in every["items"]] == ["Kronika obce Lhota", "Dopisy z Prahy", "Pražský věstník"]
+    assert (every["total_count"], every["bounded"], every["next_offset"]) == (3, False, None)
+
+    # No match is an empty answer, not an error.
+    none = await documents(classifications={"communicative_mode": ["narration"], "complexity": ["expert"]})
+    assert (none["items"], none["total_count"]) == ([], 0)
+
+
+async def test_explore_documents_reject_chunk_filters_without_the_summaries(api_client):
+    refused = await api_client.post("/api/search/documents",
+                                    json={"criteria": {"chunk_filters": {"languages": ["ces"]}}})
+    filtered = await api_client.post("/api/search/documents", json={"criteria": {"document_filters": {"year_max": 1900}}})
+
+    assert refused.status_code == 422
+    assert "has no chunk-value summaries" in refused.json()["detail"]
+    assert filtered.status_code == 200, filtered.text  # document filters need no summaries
+    assert [d["document"]["title"] for d in filtered.json()["items"]] == ["Kronika obce Lhota"]

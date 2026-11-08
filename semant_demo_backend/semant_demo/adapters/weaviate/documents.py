@@ -6,9 +6,10 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from weaviate import WeaviateAsyncClient
-from weaviate.classes.query import Filter, QueryReference, Sort
+from weaviate.classes.query import BM25Operator, Filter, QueryReference, Sort
 
 from semant_demo.adapters.weaviate import criteria
+from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.features.annotations.schemas import AnnotationChunk
@@ -17,6 +18,16 @@ from semant_demo.features.documents.schemas import (
     DocumentChunk, Document, DocumentBrowse, DocumentDetail, DocumentViewChunk, LayoutStart)
 
 logger = logging.getLogger(__name__)
+
+YEAR = "yearIssued"
+"""The ``Documents`` property of the publication year, the order of ``browse_by_year``."""
+_LOWEST_YEAR = -(2 ** 63)
+"""Every stored year is at least this (``int`` is 64-bit in Weaviate): ``>=`` it means "has a year"."""
+
+METADATA_PROPERTIES = {"title": 2, "subtitle": 1, "author": 1, "publisher": 1}
+"""The bibliographic ``Documents`` properties a text query matches as metadata (#607), with their
+BM25 weights: a word in the title counts double. Only those the store declares as searchable
+text are queried (stores differ, #312)."""
 
 LAYOUT_START = "layoutStart"
 """The ``Chunks`` object property of a chunk's start on the page scans (#541)."""
@@ -68,6 +79,7 @@ class DocumentRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
         self.client = client
         self.collectionNames = collectionNames
+        self._metadata_properties: list[str] | None = None
         self.positions = False
         """``Chunks`` declares the position properties (#463): chunk text reads return them
         (set at startup; a property that is not declared cannot be read)."""
@@ -222,19 +234,9 @@ class DocumentRepository:
         the substring filters (``title``, ...) and the search criteria ``conditions`` (rendered
         as Analytics renders them, so both match the same documents). Raises
         ``criteria.UnavailableFilter`` for a condition on a property the store does not declare."""
-        name = self.collectionNames.document_collection_name
-        documents = self.client.collections.get(name)
-        parts = []
-        if collection_id is not None:
-            parts.append(Filter.by_ref("collection").by_id().equal(collection_id))
-        for prop, value in (("title", title), ("author", author), ("publisher", publisher),
-                            ("documentType", document_type)):
-            if value:
-                parts.append(Filter.by_property(prop).like(f"*{value}*"))
-        if conditions:
-            types, tokenizations = await criteria.declared(self.client, name)
-            parts.extend(criteria.parts(conditions, types, tokenizations))
-        filters = Filter.all_of(parts) if len(parts) > 1 else (parts[0] if parts else None)
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        filters = await self._browse_filter(collection_id, conditions, title=title, author=author,
+                                            publisher=publisher, documentType=document_type)
         sort = Sort.by_property(sort_by, ascending=not sort_desc) if sort_by else None
 
         count_response = await documents.aggregate.over_all(filters=filters, total_count=True)
@@ -249,3 +251,113 @@ class DocumentRepository:
             next_offset=(offset + limit) if has_more else None,
             total_count=count_response.total_count or 0,
         )
+
+    async def browse_by_year(self, collection_id: UUID | None = None, limit: int = 50, offset: int = 0,
+                             conditions: Sequence[Condition] = ()) -> DocumentBrowse:
+        """One page of the documents of ``browse`` (without its substring filters) in a stable
+        order: publication year, oldest first, then id; the documents without a year follow all
+        dated ones, by id.
+
+        Weaviate sorts a missing value first in ascending order and last in descending order,
+        and filtering by a missing value needs ``indexNullState``, which the stores do not
+        enable (measured on 1.40). So the dated documents are counted, read in ascending order
+        with a filter that only a year satisfies, and the undated ones are read past the dated
+        ones of the descending order (``YEAR``, then id ascending). Two counts and at most two
+        reads per page; ``offset + limit`` stays within ``QUERY_MAXIMUM_RESULTS`` for the
+        caller to ensure. A document whose year changes between those reads may be missed or
+        repeated on that page, never shown as undated."""
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        filters = await self._browse_filter(collection_id, conditions)
+        dated = Filter.by_property(YEAR).greater_or_equal(_LOWEST_YEAR)
+        dated_filters = dated if filters is None else Filter.all_of([filters, dated])
+        total = (await documents.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
+        dated_total = 0
+        if total:
+            dated_total = (await documents.aggregate.over_all(filters=dated_filters, total_count=True)).total_count or 0
+
+        objects = []
+        if offset < dated_total:
+            response = await documents.query.fetch_objects(
+                filters=dated_filters, limit=min(limit, dated_total - offset), offset=offset,
+                sort=Sort.by_property(YEAR, ascending=True).by_property("_id", ascending=True))
+            objects.extend(response.objects)
+        undated_offset = max(offset, dated_total)
+        undated_limit = offset + limit - undated_offset
+        if undated_limit > 0 and undated_offset < total:
+            response = await documents.query.fetch_objects(
+                filters=filters, limit=undated_limit, offset=undated_offset,
+                sort=Sort.by_property(YEAR, ascending=False).by_property("_id", ascending=True))
+            objects.extend(o for o in response.objects if o.properties.get(YEAR) is None)
+
+        has_more = offset + limit < total
+        return DocumentBrowse(
+            items=[Document(id=obj.uuid, **obj.properties) for obj in objects],
+            has_more=has_more,
+            next_offset=(offset + limit) if has_more else None,
+            total_count=total,
+        )
+
+    async def count(self, collection_id: UUID | None = None, conditions: Sequence[Condition] = ()) -> int:
+        """The number of documents of ``browse`` (without its substring filters): of the collection,
+        if given, and matching ``conditions``. Raises ``criteria.UnavailableFilter``."""
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        filters = await self._browse_filter(collection_id, conditions)
+        return (await documents.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
+
+    async def metadata_ranked_ids(self, text: str, limit: int, collection_id: UUID | None = None,
+                                  conditions: Sequence[Condition] = ()) -> list[UUID]:
+        """Ids of the top ``limit`` documents of ``count`` whose bibliographic metadata
+        (``METADATA_PROPERTIES``) holds every word of ``text``, by BM25 relevance (#607); no
+        properties are read. Every word is required (BM25 ``and``): a single common word of a
+        longer query does not make a title a match. Empty when the store has none of the
+        properties."""
+        properties = await self._searchable_metadata()
+        if not properties:
+            return []
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        response = await documents.query.bm25(
+            query=text, query_properties=properties, operator=BM25Operator.and_(), limit=limit,
+            filters=await self._browse_filter(collection_id, conditions), return_properties=[])
+        return [obj.uuid for obj in response.objects]
+
+    async def read_eligible(self, document_ids: Sequence[UUID], collection_id: UUID | None = None,
+                            conditions: Sequence[Condition] = ()) -> dict[UUID, Document]:
+        """The documents among ``document_ids`` that ``count`` counts (of the collection, matching
+        ``conditions``); the others, also those that do not exist, are left out."""
+        if not document_ids:
+            return {}
+        documents = self.client.collections.get(self.collectionNames.document_collection_name)
+        by_ids = Filter.by_id().contains_any(list(document_ids))
+        scope = await self._browse_filter(collection_id, conditions)
+        response = await documents.query.fetch_objects(
+            filters=by_ids if scope is None else Filter.all_of([by_ids, scope]), limit=len(document_ids))
+        return {UUID(str(o.uuid)): Document(id=o.uuid, **o.properties) for o in response.objects}
+
+    async def _searchable_metadata(self) -> list[str]:
+        """``METADATA_PROPERTIES`` the store declares as searchable text, with their weights; read
+        once, then cached (a schema change needs a restart)."""
+        if self._metadata_properties is None:
+            config = await self.client.collections.get(
+                await resolve_collection(self.client, self.collectionNames.document_collection_name)
+            ).config.get()
+            searchable = {p.name for p in config.properties
+                          if p.data_type.value in ("text", "text[]") and p.index_searchable is not False}
+            self._metadata_properties = [name if weight == 1 else f"{name}^{weight}"
+                                         for name, weight in METADATA_PROPERTIES.items() if name in searchable]
+        return self._metadata_properties
+
+    async def _browse_filter(self, collection_id: UUID | None, conditions: Sequence[Condition] = (),
+                             **substrings: str | None):
+        """The filter of a browse: the collection, the substring filters (stored property ->
+        text) and the search criteria ``conditions``; None without any."""
+        name = self.collectionNames.document_collection_name
+        parts = []
+        if collection_id is not None:
+            parts.append(Filter.by_ref("collection").by_id().equal(collection_id))
+        for prop, value in substrings.items():
+            if value:
+                parts.append(Filter.by_property(prop).like(f"*{value}*"))
+        if conditions:
+            types, tokenizations = await criteria.declared(self.client, name)
+            parts.extend(criteria.parts(conditions, types, tokenizations))
+        return Filter.all_of(parts) if len(parts) > 1 else (parts[0] if parts else None)

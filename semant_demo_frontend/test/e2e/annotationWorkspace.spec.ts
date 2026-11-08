@@ -248,7 +248,7 @@ test('all matches are a fixed selection that a shared user reviews in one batch'
     await expect(page.getByTestId('hidden-selected')).toHaveCount(0)
 
     await page.getByTestId('review-reject').click()
-    await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2.')
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2 annotations.')
     // Rejected annotations leave the default filters but stay selected, and the bar says so.
     await expect(rows(page)).toHaveCount(2)
     await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown by these filters')
@@ -287,7 +287,7 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
     await review.getByRole('button', { name: 'Delete…' }).click()
     await expect(page.getByRole('dialog')).toContainText('cannot be restored')
     await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
-    await expect(page.getByTestId('review-report')).toContainText('Deleted 1 of 1.')
+    await expect(page.getByTestId('review-report')).toContainText('Deleted 1 of 1 annotation.')
     await expect(row(page, first.slice(0, 4))).toHaveCount(0)
     await expect(panel(page).getByTestId('annotation-context-gone')).toBeVisible()
   } finally {
@@ -316,7 +316,7 @@ test('the sidebar names who changed the open annotation and refuses a review of 
 
     // Rejecting the version shown now is the user's explicit choice.
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
-    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1.')
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
     await expect(row(page, 'Lhoty')).toHaveCount(0) // rejected: out of the default filters
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })
@@ -345,7 +345,7 @@ test('a refused review keeps its conflict when the change took the annotation ou
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
     await expect(page.getByRole('dialog')).toContainText('not on this page')
     await page.getByRole('dialog').getByRole('button', { name: 'Reject 1' }).click()
-    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1.')
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })
   }
@@ -365,7 +365,7 @@ test('a batch review leaves annotations changed since they were selected and can
     await patchSpan(request, proposals[0].id, { tagId: fixture.tag('person').id })
     await page.getByTestId('review-reject').click()
     const report = page.getByTestId('review-report')
-    await expect(report).toContainText('Rejected 1 of 2.')
+    await expect(report).toContainText('Rejected 1 of 2 annotations.')
     await expect(report).toContainText('1 was changed by someone else since you selected it; not saved.')
     await expect(page.getByTestId('review-retry')).toHaveCount(0)
 
@@ -447,7 +447,7 @@ test('boundaries are edited from the sidebar by keyboard or selection and each e
 
     // Undo puts back the range before the last edit, on the chunk it was on.
     await page.getByTestId('undo').click()
-    await expect(page.getByTestId('review-report')).toContainText('Undo: restored 1 of 1.')
+    await expect(page.getByTestId('review-report')).toContainText('Undo: restored 1 of 1 annotation.')
     await expect(row(page, 'v Brně konala')).toHaveAttribute('data-annotation-id', brno.id)
     await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('v Brně konala')
     await expect(page.getByTestId('undo')).toHaveCount(0)
@@ -496,14 +496,14 @@ test('undoing a batch approval restores the proposals not changed since; a delet
     await page.getByTestId('concordance-status-pos').click() // proposals only
     await page.getByTestId('select-all-matches').click()
     await page.getByTestId('review-approve').click()
-    await expect(page.getByTestId('review-report')).toContainText('Approved 2 of 2.')
+    await expect(page.getByTestId('review-report')).toContainText('Approved 2 of 2 annotations.')
     await expect(page.getByTestId('undo-bar')).toContainText('Last change: you approved 2 annotations.')
 
     // The owner rejects one of them meanwhile.
     await patchSpan(request, praha.id, { type: 'neg' })
     await page.getByTestId('undo').click()
     const report = page.getByTestId('review-report')
-    await expect(report).toContainText('Undo: restored 1 of 2.')
+    await expect(report).toContainText('Undo: restored 1 of 2 annotations.')
     await expect(report).toContainText('1 was changed again since then; not restored.')
     await expect(row(page, 'Lhoty')).toContainText('Proposal')
     await expect(page.getByTestId('undo')).toHaveCount(0)
