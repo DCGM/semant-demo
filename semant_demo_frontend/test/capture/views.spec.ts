@@ -575,6 +575,15 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await expect(page.locator('.q-menu')).not.toHaveClass(/q-transition/)
     await save(page, testInfo, 'attribute-assign-column')
     await page.keyboard.press('Escape')
+    // A list narrower than its columns scrolls sideways under the checkbox and annotation (#537).
+    const kwic = page.getByTestId('kwic')
+    if (await kwic.evaluate(el => el.scrollWidth > el.clientWidth)) {
+      await expect(page.getByTestId('attribute-value-picker')).toHaveCount(0)
+      await kwic.evaluate(el => { el.scrollLeft = el.scrollWidth })
+      await page.mouse.move(0, 0)
+      await save(page, testInfo, 'attribute-assign-column-scrolled')
+      await kwic.evaluate(el => { el.scrollLeft = 0 })
+    }
 
     await page.getByTestId('select-all-matches').click()
     await page.getByTestId('assign-attribute').click()
