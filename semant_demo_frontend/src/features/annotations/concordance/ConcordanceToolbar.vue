@@ -172,10 +172,17 @@
       data-testid="concordance-show-attribute"
       @update:model-value="value => emit('show-attributes', value ?? [])"
     >
+      <!-- The option carries role and state (itemProps); its checkbox only shows them. -->
       <template #option="{ itemProps, opt, selected, toggleOption }">
         <q-item v-bind="itemProps">
           <q-item-section side>
-            <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
+            <q-checkbox
+              dense
+              tabindex="-1"
+              aria-hidden="true"
+              :model-value="selected"
+              @update:model-value="toggleOption(opt)"
+            />
           </q-item-section>
           <q-item-section>
             <q-item-label>{{ opt.label }}</q-item-label>

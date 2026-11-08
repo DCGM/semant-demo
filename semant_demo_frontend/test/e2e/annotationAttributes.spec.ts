@@ -187,12 +187,24 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await toggleOption(page, 'concordance-show-attribute', 'Place type')
   await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
   await expect(page.getByTestId('concordance-show-attribute')).toContainText('2 columns')
+  // Each option says its state itself; its checkbox is only a picture of it, not a tab stop.
+  await page.getByTestId('concordance-show-attribute').click()
+  await expect(page.getByRole('option', { name: 'Role', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('listbox').getByRole('checkbox')).toHaveCount(0)
+  await expect(page.getByRole('listbox').locator('.q-checkbox[tabindex="-1"][aria-hidden="true"]')).toHaveCount(2)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('listbox')).toHaveCount(0)
   await expect(page.getByTestId('kwic-attribute')).toHaveCount(8)
   // Nothing else changed: same rows in the same order, the check, the open row.
   await expect(rows(page).locator('.kwic__key')).toHaveText(order)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
   await expect(page.getByTestId('annotation-context')).toBeVisible()
+  // The checked and the open row keep their colours, also in the sticky annotation cell.
+  await expect(row(page, 'Brně')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
+  await expect(row(page, 'Brně').locator('.kwic__key')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
+  await expect(row(page, 'Jan Novák')).toHaveCSS('background-color', 'rgb(255, 248, 214)')
+  await expect(row(page, 'Lhoty')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
 
   // Each column assigns its own attribute.
   await cell(page, 'Jan Novák', place.id).getByTestId('kwic-attribute-edit').click()
@@ -253,6 +265,15 @@ test('on a phone several attribute columns scroll sideways under the annotation'
   expect(key!.x).toBeLessThan(box!.x + 40)
   await expect(row(page, 'Jan Novák').locator('.kwic__key')).toBeVisible()
   expect(stance!.x + stance!.width).toBeLessThanOrEqual(box!.x + box!.width + 1)
+
+  // Moving between rows by keyboard keeps the sideways scroll.
+  const scrolled = await kwic.evaluate(el => el.scrollLeft)
+  expect(scrolled).toBeGreaterThan(0)
+  await rows(page).first().evaluate(el => (el as HTMLElement).focus({ preventScroll: true }))
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await expect(rows(page).nth(2)).toBeFocused()
+  expect(await kwic.evaluate(el => el.scrollLeft)).toBe(scrolled)
 })
 
 test('a single-valued choice closes its picker once saved, in the column and in the sidebar', async ({ page, request }) => {

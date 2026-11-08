@@ -258,7 +258,12 @@ function focusRow (index: number) {
   const row = props.rows[index]
   if (!row) return
   activeIndex.value = index
-  void nextTick(() => rowEls.get(row.id)?.focus())
+  // Into view vertically only: a list scrolled sideways keeps its scroll (the row is wider).
+  void nextTick(() => {
+    const el = rowEls.get(row.id)
+    el?.focus({ preventScroll: true })
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  })
 }
 
 function onKeydown (event: KeyboardEvent) {
@@ -355,6 +360,14 @@ defineExpose({ reveal })
   min-width: var(--kwic-key-min);
 }
 
+/* Opaque rows, for the sticky cells to inherit. Without specificity of its own (:where), so the
+   hover, selected and focused backgrounds below still win; the header's hover must win over
+   its own `none` below, so it keeps the full specificity. */
+:where(.kwic__grid--attribute) .kwic__row,
+.kwic__grid--attribute .kwic__row--head:hover {
+  background: #fff;
+}
+
 /* The row's checkbox and annotation stay in view while the attribute columns scroll under. */
 .kwic__grid--attribute .kwic__check,
 .kwic__grid--attribute .kwic__key {
@@ -398,8 +411,6 @@ defineExpose({ reveal })
   align-items: center;
   min-height: 2rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  /* Opaque, for the sticky cells to inherit. */
-  background: #fff;
   cursor: pointer;
   outline: none;
 }
@@ -432,7 +443,7 @@ defineExpose({ reveal })
 }
 
 .kwic__row--head:hover {
-  background: #fff;
+  background: none;
 }
 
 .kwic__cell {
