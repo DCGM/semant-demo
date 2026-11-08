@@ -273,7 +273,14 @@ assist, Document, Summary, Chat), not just Summary, since switching to any of th
 corpus endpoint `GET /api/documents/{document_id}/chunks/{chunk_id}/window?before=&after=`
 (3 chunks on each side; with the document metadata and chunk count) and increases
 `focusRequest`, so the panel scrolls the hit into view on every open, also of the same
-result. `extend()` reads only the neighbours of the passage's edge chunk with
+result. Within the shown document (#493) `open()` keeps the passage: a target whose chunk is
+already loaded is shown without a request, otherwise the passage stays visible (with a small
+spinner in the header, extension disabled) until the window around the new target replaces it;
+another document, or a passage whose read failed, starts from nothing. The panel scrolls to a
+target of the same document from its side, so earlier text moves up and later text down: a
+target more than a screen away, or on the wrong side after the passage was replaced, is first
+put about a screen away (instantly), then scrolled to smoothly (`contextScroll.ts`;
+`prefers-reduced-motion` scrolls without animation). `extend()` reads only the neighbours of the passage's edge chunk with
 `GET /api/documents/{document_id}/chunks/{chunk_id}/adjacent?direction=before|after&limit=5`
 (chunks and `has_more`; no document metadata or count). Both need the chunk to belong to the
 document (404 otherwise) and read at most 50 chunks per side. At most 60 chunks are kept;

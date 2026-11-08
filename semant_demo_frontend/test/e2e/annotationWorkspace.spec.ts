@@ -99,6 +99,43 @@ test('opening, checking and keyboard use are distinct; the source shows the exac
   await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText(await next.locator('.kwic__key').innerText())
 })
 
+test('switching between annotations of one document keeps the passage in place', async ({ page }) => {
+  // Regression (#493): every switch blanked the Document panel and read the passage again.
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  const windowReads: string[] = []
+  page.on('request', r => { if (/\/api\/documents\/[^/]+\/chunks\/[^/]+\/window/.test(r.url())) windowReads.push(r.url()) })
+
+  await row(page, 'Jan Novák').click()
+  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Jan Novák')
+  expect(windowReads).toHaveLength(1)
+
+  // Record whether the passage ever disappears while switching.
+  await panel(page).evaluate(el => {
+    const w = window as unknown as { passageEmptied: boolean }
+    w.passageEmptied = false
+    new MutationObserver(() => {
+      if (!el.querySelector('.chunk-context__chunk')) w.passageEmptied = true
+    }).observe(el, { childList: true, subtree: true })
+  })
+
+  // Brně is in the next chunk of the same chronicle, already in the shown passage.
+  await row(page, 'Brně').click()
+  await expect(panel(page).getByTestId('annotation-context-text')).toHaveText('Brně')
+  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Brně')
+  await expect(panel(page).locator('[aria-current="true"]')).toHaveAttribute('data-chunk-id', fixture.chunk('chronicle_2').id)
+  await row(page, 'Jan Novák').click()
+  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Jan Novák')
+  expect(windowReads, 'no passage read within the shown passage').toHaveLength(1)
+  expect(await page.evaluate(() => (window as unknown as { passageEmptied: boolean }).passageEmptied)).toBe(false)
+
+  // Another document is read as before.
+  await row(page, 'Prahy').click()
+  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Prahy')
+  await expect(panel(page).getByTestId('chunk-context-header')).toContainText(fixture.document('letters').properties.title)
+  expect(windowReads).toHaveLength(2)
+})
+
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
