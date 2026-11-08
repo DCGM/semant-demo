@@ -241,13 +241,47 @@ describe('attribute assign store', () => {
       failed: [{ item_id: 'c', step: 'update_attributes', message: 'down' }]
     })
     const retried = await retrying
-    expect([assignChanged(retried!), assignMayHaveChanged(retried!)]).toEqual([0, 2])
+    // c failed again, but its first write may have landed: still uncertain.
+    expect([assignChanged(retried!), assignMayHaveChanged(retried!)]).toEqual([0, 3])
     const summary = assignReportSummary(retried!, speaker())
     // Not "no annotations changed": the lost writes may have landed.
-    expect(summary.title).toBe('"Speaker": changed 0 of 3 annotations (2 uncertain)')
+    expect(summary.title).toBe('"Speaker": changed 0 of 3 annotations (3 uncertain)')
     expect(summary.lines.map(l => [l.count, l.label])).toEqual([
-      [1, 'failed'], [2, 'saved or already matched'], [null, 'Saved changes are kept.']
+      [1, 'uncertain'], [2, 'saved or already matched'], [null, 'Saved values are kept.']
     ])
+  })
+
+  it('keeps a lost write uncertain through a retry that fails otherwise, and never calls it already matched', async () => {
+    const assign = useAttributeAssignStore()
+    const running = assign.assign('col-1', 'a1', { mode: 'remove', valueIds: ['v1'] }, [['a', 0]], ignore)
+    await flush()
+    assignCalls()[0].answer({ detail: 'bad gateway' }, 502)
+    await running
+    // The retry's read fails (not uncertain in itself): the first write may still have landed.
+    const second = assign.retry('col-1', ignore)
+    await flush()
+    assignCalls()[1].answer({
+      outcome: 'failed', succeeded: [], failed: [{ item_id: 'a', step: 'read_annotation', message: 'read failed' }]
+    })
+    expect((await second)?.failed.map(f => f.uncertain)).toEqual([true])
+    const third = assign.retry('col-1', ignore)
+    await flush()
+    assignCalls()[2].answer({ outcome: 'complete', succeeded: ['a'], unchanged: ['a'], failed: [] })
+    const settled = await third
+    expect([settled?.unchanged, settled?.savedOrMatched]).toEqual([[], ['a']])
+    expect(assignReportSummary(settled!, speaker()).title).toBe('"Speaker": changed 0 of 1 annotation (1 uncertain)')
+  })
+
+  it('says why an annotation already matched in the terms of the mode', async () => {
+    const assign = useAttributeAssignStore()
+    const removing = assign.assign('col-1', 'a1', { mode: 'remove', valueIds: ['v1'] }, [['a', 0]], ignore)
+    await flush()
+    assignCalls()[0].answer({ outcome: 'complete', succeeded: ['a'], unchanged: ['a'], failed: [] })
+    expect(assignReportSummary((await removing)!, speaker()).lines[0]?.detail).toBe('They had none of these values.')
+    const clearing = assign.assign('col-1', 'a1', clearChange(), [['a', 0]], ignore)
+    await flush()
+    assignCalls()[1].answer({ outcome: 'complete', succeeded: ['a'], unchanged: ['a'], failed: [] })
+    expect(assignReportSummary((await clearing)!, speaker()).lines[0]?.detail).toBe('They had no values.')
   })
 
   it('takes a 503 as a refusal, not as a lost answer, and shows no result for a request refused as a whole', async () => {

@@ -81,6 +81,15 @@ const REFUSED: Record<string, string> = {
   check_applicable: 'The attribute does not apply to their tag.'
 }
 
+/** Why an annotation already matched, per mode: adding or setting found the values held,
+ * removing or clearing found none of them. */
+const ALREADY: Record<AssignMode, string> = {
+  [AssignMode.add]: 'They already had the requested values.',
+  [AssignMode.replace]: 'They already had the requested values.',
+  [AssignMode.remove]: 'They had none of these values.',
+  [AssignMode.clear]: 'They had no values.'
+}
+
 /** One line of an assignment's result: how many annotations (none for a note) and what. */
 export interface ReportLine {
   count: number | null
@@ -113,7 +122,7 @@ export function assignReportSummary (report: AssignReport, attribute: Attribute 
     lines.push({ count: r.missing.length, label: 'no longer exist', detail: 'Removed from the selection.' })
   }
   if (r.unchanged.length) {
-    lines.push({ count: r.unchanged.length, label: 'already matched', detail: 'They already had the requested values.' })
+    lines.push({ count: r.unchanged.length, label: 'already matched', detail: ALREADY[r.change.mode] })
   }
   if (r.savedOrMatched.length) {
     lines.push({
@@ -127,9 +136,9 @@ export function assignReportSummary (report: AssignReport, attribute: Attribute 
   }
   if (r.error) lines.push({ count: null, label: r.error })
   const changed = assignChanged(r)
-  // Saved for certain: written, or found as asked after a lost write.
+  // Saved for certain: written, or found as asked after a lost write (no change known then).
   if ((changed || r.savedOrMatched.length) && (r.failed.length || r.conflicts.length)) {
-    lines.push({ count: null, label: 'Saved changes are kept.' })
+    lines.push({ count: null, label: changed ? 'Saved changes are kept.' : 'Saved values are kept.' })
   }
   const name = attribute ? `"${attribute.name}": ` : ''
   // Annotations that already held the values are no change (#569); those that may have been

@@ -15,7 +15,7 @@ export type AssignTarget = readonly [id: string, attributeVersion: number]
 export interface AssignFailure {
   id: string
   message: string
-  /** The write timed out or its answer was lost: it may have been applied. */
+  /** The write timed out or its answer was lost, now or in an earlier attempt: it may have been applied. */
   uncertain: boolean
   version: number
 }
@@ -123,7 +123,8 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
   }
 
   /** Files one answer's items into `into`; `wasUncertain`: retried items whose earlier write
-   * may have been applied. */
+   * may have been applied. They stay uncertain until an answer settles them: found as asked
+   * (`savedOrMatched`, not "already matched"), written, or refused for a reason of their own. */
   function file (into: AssignReport, result: AttributeAssignResult, expected: Record<string, number>,
     wasUncertain: ReadonlySet<string>) {
     const versions = result.versions ?? {}
@@ -143,7 +144,7 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
       // A rule refused it (`check_*`): retrying changes nothing. Anything else (a failed read or
       // write) may succeed when sent again.
       else if (f.step.startsWith('check_')) into.refused.push({ id, step: f.step, message: f.message })
-      else into.failed.push({ id, message: f.message, uncertain: !!f.uncertain, version: expected[id] ?? 0 })
+      else into.failed.push({ id, message: f.message, uncertain: !!f.uncertain || wasUncertain.has(id), version: expected[id] ?? 0 })
     }
   }
 
@@ -172,8 +173,9 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
     unchanged: () => boolean, onAnswer: (result: AttributeAssignResult) => void,
     wasUncertain: ReadonlySet<string> = new Set()) {
     progress.value = 0
+    // An earlier lost write stays uncertain when it fails again or is not sent.
     const failures = (list: AssignTarget[], message: string, uncertain = false) =>
-      list.map(([id, version]) => ({ id, message, uncertain, version }))
+      list.map(([id, version]) => ({ id, message, uncertain: uncertain || wasUncertain.has(id), version }))
     for (let i = 0; i < items.length; i += ASSIGN_BATCH) {
       if (!applies()) return false
       if (!unchanged()) {
