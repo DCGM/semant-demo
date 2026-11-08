@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 import { apiToken, deleteAddedAttributes, ensureLoggedIn, fixture, useViewport } from './support'
 
@@ -186,7 +186,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await toggleOption(page, 'concordance-show-attribute', 'Role')
   await toggleOption(page, 'concordance-show-attribute', 'Place type')
   await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
-  await expect(page.getByTestId('concordance-show-attribute')).toContainText('2 columns')
+  await expect(page.getByTestId('concordance-show-attribute')).toContainText('Place type, Role')
   // Each option says its state itself; its checkbox is only a picture of it, not a tab stop.
   await page.getByTestId('concordance-show-attribute').click()
   await expect(page.getByRole('option', { name: 'Role', exact: true })).toHaveAttribute('aria-selected', 'true')
@@ -248,32 +248,36 @@ test('on a phone several attribute columns scroll sideways under the annotation'
   const overflow = () => kwic.evaluate(el => el.scrollWidth - el.clientWidth)
   await toggleOption(page, 'concordance-show-attribute', 'Role')
   // One column fits, as before.
-  expect(await overflow()).toBeLessThanOrEqual(0)
+  await expect.poll(overflow).toBeLessThanOrEqual(0)
   await toggleOption(page, 'concordance-show-attribute', 'Place type')
   await toggleOption(page, 'concordance-show-attribute', 'Stance')
   await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role', 'Stance'])
-  expect(await overflow()).toBeGreaterThan(0)
+  await expect.poll(overflow).toBeGreaterThan(0)
   // The page itself does not scroll sideways.
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
 
   await kwic.evaluate(el => { el.scrollLeft = el.scrollWidth })
-  const box = await kwic.boundingBox()
-  const key = await row(page, 'Jan Novák').locator('.kwic__key').boundingBox()
-  const stance = await page.getByTestId('kwic-attribute-head').last().boundingBox()
+  const scrollLeft = () => kwic.evaluate(el => el.scrollLeft)
+  await expect.poll(scrollLeft).toBeGreaterThan(0)
+  /** Where an element's left and right edges are, from the list's left edge. */
+  const edges = async (locator: Locator) => {
+    const [list, box] = await Promise.all([kwic.boundingBox(), locator.boundingBox()])
+    return { left: box!.x - list!.x, right: box!.x + box!.width - list!.x - list!.width }
+  }
+  const key = row(page, 'Jan Novák').locator('.kwic__key')
   // The annotation stays in view next to the checkbox; the last column has come into view.
-  expect(key!.x).toBeGreaterThanOrEqual(box!.x)
-  expect(key!.x).toBeLessThan(box!.x + 40)
-  await expect(row(page, 'Jan Novák').locator('.kwic__key')).toBeVisible()
-  expect(stance!.x + stance!.width).toBeLessThanOrEqual(box!.x + box!.width + 1)
+  await expect.poll(async () => (await edges(key)).left).toBeGreaterThanOrEqual(0)
+  await expect.poll(async () => (await edges(key)).left).toBeLessThan(40)
+  await expect(key).toBeVisible()
+  await expect.poll(async () => (await edges(page.getByTestId('kwic-attribute-head').last())).right).toBeLessThanOrEqual(1)
 
   // Moving between rows by keyboard keeps the sideways scroll.
-  const scrolled = await kwic.evaluate(el => el.scrollLeft)
-  expect(scrolled).toBeGreaterThan(0)
+  const scrolled = await scrollLeft()
   await rows(page).first().evaluate(el => (el as HTMLElement).focus({ preventScroll: true }))
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await expect(rows(page).nth(2)).toBeFocused()
-  expect(await kwic.evaluate(el => el.scrollLeft)).toBe(scrolled)
+  await expect.poll(scrollLeft).toBe(scrolled)
 })
 
 test('a single-valued choice closes its picker once saved, in the column and in the sidebar', async ({ page, request }) => {

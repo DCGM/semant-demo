@@ -428,7 +428,7 @@ describe('attribute components', () => {
     expect(select().props('displayValue')).toBe('Topic (retired)')
     await toolbar.setProps({ shownAttributeIds: ['a2', 'a1'] } as never)
     expect(select().props('modelValue')).toEqual(['a1', 'a2'])
-    expect(select().props('displayValue')).toBe('2 columns')
+    expect(select().props('displayValue')).toBe('Speaker, Topic (retired)')
   })
 
   it('greys and marks values kept on a tag the attribute no longer applies to (#500)', () => {

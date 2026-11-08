@@ -319,10 +319,10 @@ const shownIds = computed(() => {
   const ids = new Set(props.shownAttributeIds ?? [])
   return attributes.value.filter(a => ids.has(a.id)).map(a => a.id)
 })
+// The shown attributes by name, in the columns' order (cut short when they do not fit).
 const shownLabel = computed(() => {
-  const ids = shownIds.value
-  if (ids.length !== 1) return ids.length ? `${ids.length} columns` : ''
-  return shownAttributeOptions.value.find(o => o.value === ids[0])?.label ?? ''
+  const ids = new Set(shownIds.value)
+  return shownAttributeOptions.value.filter(o => ids.has(o.value)).map(o => o.label).join(', ')
 })
 
 const filtersChanged = computed(() => JSON.stringify(props.filters) !== JSON.stringify(defaultFilters()))
@@ -358,6 +358,17 @@ const filtersChanged = computed(() => JSON.stringify(props.filters) !== JSON.str
 
 .concordance-toolbar__show-attribute {
   width: 180px;
+}
+
+/* One line, cut short, whatever the number of names. */
+.concordance-toolbar__show-attribute :deep(.q-field__native) {
+  flex-wrap: nowrap;
+}
+
+.concordance-toolbar__show-attribute :deep(.q-field__native > span) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .concordance-toolbar__status {
