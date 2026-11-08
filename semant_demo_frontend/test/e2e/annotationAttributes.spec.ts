@@ -150,7 +150,7 @@ test('a selection is assigned in one batch, reported per annotation, without ove
 
   const report = page.getByTestId('assign-report')
   // A headline, then each count on its own line next to its reason.
-  await expect(report.getByTestId('assign-report-title')).toHaveText('"Role": saved 0 of 4 annotations')
+  await expect(report.getByTestId('assign-report-title')).toHaveText('"Role": no annotations changed')
   await expect(report.getByTestId('assign-report-lines').getByRole('listitem')).toHaveText([
     /^1\s*not saved\s*Changed by someone else since you selected them\.$/,
     /^2\s*not changed\s*Only confirmed annotations take values\.$/,
@@ -166,9 +166,20 @@ test('a selection is assigned in one batch, reported per annotation, without ove
   await choose(page, 'assign-dialog-attribute', 'Role (several values)')
   await dialog(page).getByRole('checkbox', { name: 'statesman' }).click()
   await dialog(page).getByRole('button', { name: 'Add to 1' }).click()
-  await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": saved 1 of 1 annotation')
+  await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": changed 1 of 1 annotation')
   await expect(page.getByTestId('assign-report-lines')).toHaveCount(0)
   await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesmanchronicler')
+
+  // Assigned again, it already holds the value: done, but no change (#569).
+  await page.getByTestId('assign-attribute').click()
+  await choose(page, 'assign-dialog-attribute', 'Role (several values)')
+  await dialog(page).getByRole('checkbox', { name: 'statesman' }).click()
+  await dialog(page).getByRole('button', { name: 'Add to 1' }).click()
+  await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": no annotations changed')
+  await expect(page.getByTestId('assign-report-lines').getByRole('listitem')).toHaveText([
+    /^1\s*already matched\s*They already had the requested values\.$/
+  ])
+  await expect(page.getByTestId('assign-retry')).toHaveCount(0)
 })
 
 test('several attribute columns are shown side by side and edited one by one, changing nothing else', async ({ page, request }) => {
@@ -334,7 +345,7 @@ test('values kept after a retag are greyed and marked, and a batch Clear removes
     await choose(page, 'assign-dialog-attribute', 'Role (several values)')
     await dialog(page).getByRole('button', { name: 'Clear', exact: true }).click()
     await dialog(page).getByRole('button', { name: 'Clear on 1' }).click()
-    await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": saved 1 of 1 annotation')
+    await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": changed 1 of 1 annotation')
     await expect(kept.getByTestId('attribute-chips-inapplicable')).toHaveCount(0)
     await expect(kept).toContainText('–')
   } finally {

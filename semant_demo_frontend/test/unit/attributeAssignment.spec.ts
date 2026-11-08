@@ -5,10 +5,10 @@ import { QBtn, QCheckbox, QMenu, QOptionGroup, QRadio, QSelect, Quasar } from 'q
 
 import { Cardinality, ValueKind, type AnnotationListRow, type Attribute } from 'src/generated/api'
 import {
-  assignReportSummary, cannotAssign, clearChange, pickChange
+  assignReportHasProblems, assignReportSummary, cannotAssign, clearChange, pickChange
 } from 'src/features/attributes/assignment'
 import {
-  ASSIGN_BATCH, refusedWhole, useAttributeAssignStore, type AssignReport
+  ASSIGN_BATCH, assignChanged, refusedWhole, useAttributeAssignStore, type AssignReport
 } from 'src/features/attributes/attributeAssignStore'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
@@ -144,6 +144,8 @@ describe('attribute assign store', () => {
     assignCalls()[0].answer({
       outcome: 'partial',
       succeeded: [...ids(ASSIGN_BATCH).slice(7), 'id-4', 'id-5'],
+      // Already held the value: done, but nothing written (#569).
+      unchanged: ['id-7', 'id-8'],
       failed: [
         { item_id: 'id-0', step: 'edit_conflict', message: 'changed' },
         { item_id: 'id-1', step: 'check_annotation_type', message: 'not approved' },
@@ -167,6 +169,7 @@ describe('attribute assign store', () => {
     expect(report?.refused).toEqual([{ id: 'id-1', step: 'check_annotation_type', message: 'not approved' }])
     expect(report?.missing).toEqual(['id-2'])
     expect(report?.unrecorded).toEqual(['id-4'])
+    expect([report?.unchanged, report?.savedOrMatched, assignChanged(report!)]).toEqual([['id-7', 'id-8'], [], ASSIGN_BATCH - 7])
     expect(report?.failed.map(f => [f.id, f.uncertain])).toEqual([
       ['id-3', true], ['id-6', true], ...ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH).map(id => [id, true])])
     // Only this user's saved versions move the selection on; a conflict keeps the selected one.
@@ -178,7 +181,7 @@ describe('attribute assign store', () => {
       refused: [...report!.refused,
         { id: 'x', step: 'check_value', message: 'Unknown and Not applicable cannot be combined with other values.' }]
     }, speaker())
-    expect(summary.title).toBe(`"Speaker": saved ${ASSIGN_BATCH - 5} of ${ASSIGN_BATCH + 5} annotations`)
+    expect(summary.title).toBe(`"Speaker": changed ${ASSIGN_BATCH - 7} of ${ASSIGN_BATCH + 5} annotations`)
     expect(summary.lines.filter(l => l.label === 'not changed')).toEqual([
       { count: 1, label: 'not changed', detail: 'Only confirmed annotations take values.' },
       // Reasons with several causes are the server's own words.
@@ -186,7 +189,7 @@ describe('attribute assign store', () => {
     ])
     expect(summary.lines.map(l => [l.count, l.label])).toEqual([
       [7, 'uncertain'], [1, 'not saved'], [1, 'not changed'], [1, 'not changed'], [1, 'no longer exist'],
-      [1, 'saved without history'], [null, 'Saved changes are kept.']
+      [2, 'already matched'], [1, 'saved without history'], [null, 'Saved changes are kept.']
     ])
 
     // A retry sends only the failed and uncertain items, at the versions they were sent with.
@@ -194,9 +197,30 @@ describe('attribute assign store', () => {
     await flush()
     const resent = ['id-3', 'id-6', ...ids(ASSIGN_BATCH + 5).slice(ASSIGN_BATCH)]
     expect(assignCalls()[2].body).toMatchObject({ annotation_ids: resent })
-    assignCalls()[2].answer({ outcome: 'complete', succeeded: resent, failed: [] })
+    // id-3 timed out before and is now as asked: its lost write may have landed, or it held the
+    // value already; it counts neither as changed nor as already matched.
+    assignCalls()[2].answer({ outcome: 'complete', succeeded: resent, unchanged: ['id-3'], failed: [] })
     const retried = await retrying
     expect([retried?.failed.length, retried?.conflicts.length]).toEqual([0, 1])
+    expect([retried?.unchanged, retried?.savedOrMatched, assignChanged(retried!)])
+      .toEqual([['id-7', 'id-8'], ['id-3'], ASSIGN_BATCH - 7 + resent.length - 1])
+    expect(assignReportSummary(retried!, speaker()).lines.map(l => [l.count, l.label])).toEqual([
+      [1, 'not saved'], [1, 'not changed'], [1, 'no longer exist'], [2, 'already matched'],
+      [1, 'saved or already matched'], [1, 'saved without history'], [null, 'Saved changes are kept.']
+    ])
+  })
+
+  it('says that no annotation changed when every one already held the values', async () => {
+    const assign = useAttributeAssignStore()
+    const running = assign.assign('col-1', 'a1', { mode: 'add', valueIds: ['v1'] }, [['a', 0], ['b', 0]], ignore)
+    await flush()
+    assignCalls()[0].answer({ outcome: 'complete', succeeded: ['a', 'b'], unchanged: ['a', 'b'], failed: [] })
+    const report = await running
+    expect(assignChanged(report!)).toBe(0)
+    const summary = assignReportSummary(report!, speaker())
+    expect(summary.title).toBe('"Speaker": no annotations changed')
+    expect(summary.lines.map(l => [l.count, l.label])).toEqual([[2, 'already matched']])
+    expect(assignReportHasProblems(report!)).toBe(false)
   })
 
   it('takes a 503 as a refusal, not as a lost answer, and shows no result for a request refused as a whole', async () => {
@@ -513,7 +537,9 @@ describe('attribute components', () => {
       attributeId: 'a1',
       change: { mode: 'add', valueIds: ['v1'] },
       target: 4,
-      saved: ['a'],
+      saved: ['a', 'd'],
+      unchanged: ['d'],
+      savedOrMatched: [],
       conflicts: [['b', 2]],
       failed: [{ id: 'c', message: 'x', uncertain: true, version: 0 }],
       refused: [],
@@ -537,10 +563,11 @@ describe('attribute components', () => {
       assignReport: report,
       assignAttribute: speaker()
     })
-    expect(bar.find('[data-testid="assign-report-title"]').text()).toBe('"Speaker": saved 1 of 4 annotations')
+    expect(bar.find('[data-testid="assign-report-title"]').text()).toBe('"Speaker": changed 1 of 4 annotations')
     expect(bar.findAll('[data-testid="assign-report-lines"] li').map(li => li.text())).toEqual([
       '1uncertainThe server did not confirm; they may have been saved.',
       '1not savedChanged by someone else since you selected them.',
+      '1already matchedThey already had the requested values.',
       'Saved changes are kept.'
     ])
     await bar.find('[data-testid="assign-retry"]').trigger('click')
@@ -606,6 +633,8 @@ describe('assign attribute dialog', () => {
       change: { mode: 'add', valueIds: ['v1'] },
       target: 18,
       saved: [],
+      unchanged: [],
+      savedOrMatched: [],
       conflicts: [],
       failed: [],
       refused: [],

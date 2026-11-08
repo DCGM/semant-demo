@@ -34,7 +34,13 @@ export interface AssignReport {
   change: AssignChange
   /** Annotations it targeted when it started. */
   target: number
+  /** Processed successfully: changed, or already as asked. */
   saved: string[]
+  /** Of `saved`, those that already held the requested values: nothing was written. */
+  unchanged: string[]
+  /** Of `saved`, uncertain before and found as asked when retried: the lost write may have
+   * landed, or they held the values before; which one is not known. */
+  savedOrMatched: string[]
   failed: AssignFailure[]
   /** Changed by someone else since selected: not changed, and not retried; their versions now. */
   conflicts: AssignTarget[]
@@ -48,6 +54,9 @@ export interface AssignReport {
   /** Why it stopped early. */
   error: string | null
 }
+
+/** How many annotations an assignment actually wrote (also those whose change record is missing). */
+export const assignChanged = (r: AssignReport) => r.saved.length - r.unchanged.length - r.savedOrMatched.length
 
 /** The first request was refused as a whole: nothing was saved, looked at or possibly written. */
 export const refusedWhole = (r: AssignReport) =>
@@ -106,11 +115,17 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
     })
   }
 
-  /** Files one answer's items into `into`. */
-  function file (into: AssignReport, result: AttributeAssignResult, expected: Record<string, number>) {
+  /** Files one answer's items into `into`; `wasUncertain`: retried items whose earlier write
+   * may have been applied. */
+  function file (into: AssignReport, result: AttributeAssignResult, expected: Record<string, number>,
+    wasUncertain: ReadonlySet<string>) {
     const versions = result.versions ?? {}
     const saved = result.succeeded ?? []
     into.saved.push(...saved)
+    for (const id of result.unchanged ?? []) {
+      if (wasUncertain.has(id)) into.savedOrMatched.push(id)
+      else into.unchanged.push(id)
+    }
     selection.noteAttributeVersions(Object.fromEntries(saved.filter(id => id in versions).map(id => [id, versions[id]!])))
     for (const f of result.failed ?? []) {
       const id = f.itemId
@@ -130,6 +145,8 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
     change,
     target: count,
     saved: [],
+    unchanged: [],
+    savedOrMatched: [],
     failed: [],
     conflicts: [],
     refused: [],
@@ -145,7 +162,8 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
    * remaining parts are not sent.
    */
   async function send (collectionId: string, into: AssignReport, items: AssignTarget[], applies: () => boolean,
-    unchanged: () => boolean, onAnswer: (result: AttributeAssignResult) => void) {
+    unchanged: () => boolean, onAnswer: (result: AttributeAssignResult) => void,
+    wasUncertain: ReadonlySet<string> = new Set()) {
     progress.value = 0
     const failures = (list: AssignTarget[], message: string, uncertain = false) =>
       list.map(([id, version]) => ({ id, message, uncertain, version }))
@@ -163,7 +181,7 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
         const result = await request(collectionId, into.attributeId, into.change, part)
         if (!applies()) return false
         onAnswer(result)
-        file(into, result, Object.fromEntries(part))
+        file(into, result, Object.fromEntries(part), wasUncertain)
       } catch (e) {
         if (!applies()) return false
         const status = errorStatus(e)
@@ -242,6 +260,8 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
       notSent: 0,
       error: null,
       saved: [...last.saved],
+      unchanged: [...last.unchanged],
+      savedOrMatched: [...last.savedOrMatched],
       conflicts: [...last.conflicts],
       refused: [...last.refused],
       missing: [...last.missing],
@@ -251,7 +271,8 @@ export const useAttributeAssignStore = defineStore('attributeAssign', () => {
     running.value = true
     try {
       const items = last.failed.map(f => [f.id, f.version] as const)
-      if (!await send(collectionId, next, items, applies, selection.captureMembership(), onAnswer)) return null
+      const wasUncertain = new Set(last.failed.filter(f => f.uncertain).map(f => f.id))
+      if (!await send(collectionId, next, items, applies, selection.captureMembership(), onAnswer, wasUncertain)) return null
       report.value = next
       return next
     } finally {

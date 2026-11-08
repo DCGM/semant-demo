@@ -1,6 +1,6 @@
 import { AssignMode, Cardinality, SpanType, type Attribute, type AttributeValue } from 'src/generated/api'
 import { isSpecial, orderedValues, valueName } from './attributeForm'
-import type { AssignReport } from './attributeAssignStore'
+import { assignChanged, type AssignReport } from './attributeAssignStore'
 import { plural } from 'src/shared/plural'
 
 /** One assignment of values of one attribute (ADR 0011): what the assign route sends besides
@@ -88,8 +88,8 @@ export interface ReportLine {
   detail?: string
 }
 
-/** What an assignment report says: a headline, then one line per outcome, so each count stands
- * next to its own reason. */
+/** What an assignment report says: a headline with the annotations actually changed, then one
+ * line per outcome, so each count stands next to its own reason. */
 export function assignReportSummary (report: AssignReport, attribute: Attribute | null): { title: string, lines: ReportLine[] } {
   const r = report
   const lines: ReportLine[] = []
@@ -112,13 +112,26 @@ export function assignReportSummary (report: AssignReport, attribute: Attribute 
   if (r.missing.length) {
     lines.push({ count: r.missing.length, label: 'no longer exist', detail: 'Removed from the selection.' })
   }
+  if (r.unchanged.length) {
+    lines.push({ count: r.unchanged.length, label: 'already matched', detail: 'They already had the requested values.' })
+  }
+  if (r.savedOrMatched.length) {
+    lines.push({
+      count: r.savedOrMatched.length,
+      label: 'saved or already matched',
+      detail: 'The earlier attempt was not confirmed; it may have saved them.'
+    })
+  }
   if (r.unrecorded.length) {
     lines.push({ count: r.unrecorded.length, label: 'saved without history', detail: 'Their change could not be recorded; the values are saved.' })
   }
   if (r.error) lines.push({ count: null, label: r.error })
-  if (r.saved.length && (r.failed.length || r.conflicts.length)) lines.push({ count: null, label: 'Saved changes are kept.' })
+  const changed = assignChanged(r)
+  if (changed && (r.failed.length || r.conflicts.length)) lines.push({ count: null, label: 'Saved changes are kept.' })
   const name = attribute ? `"${attribute.name}": ` : ''
-  return { title: `${name}saved ${r.saved.length} of ${plural(r.target, 'annotation')}`, lines }
+  // Annotations that already held the values are no change (#569).
+  const title = changed ? `changed ${changed} of ${plural(r.target, 'annotation')}` : 'no annotations changed'
+  return { title: `${name}${title}`, lines }
 }
 
 /** Whether the report has anything besides saved changes. */

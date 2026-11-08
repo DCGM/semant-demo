@@ -596,7 +596,7 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await expect(dialog.getByTestId('assign-summary')).toContainText('Add "chronicler"')
     await save(page, testInfo, 'attribute-assign-dialog')
     await dialog.getByRole('button', { name: 'Add to 4' }).click()
-    await expect(page.getByTestId('assign-report')).toContainText('saved 1 of 4')
+    await expect(page.getByTestId('assign-report')).toContainText('changed 1 of 4')
     await expect(dialog).toHaveCount(0)
     await page.mouse.move(0, 0)
     await save(page, testInfo, 'attribute-assign-result')
