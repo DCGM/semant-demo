@@ -195,6 +195,33 @@ async def test_a_cancelled_operation_is_still_settled(ledger, tmp_path):
         == [("unfinished", "unknown", None)]
 
 
+async def test_releasing_an_operation_never_entered_settles_it_with_no_calls(transport, ledger, tmp_path):
+    llm = gateway(transport, catalog=catalog(reserve_usd=0.03))
+    unentered, entered = llm.operation("chat", budget(ledger)), llm.operation("chat", budget(ledger))
+    await unentered.admit()
+    async with entered:
+        await llm.complete("chat", messages())
+    charged = (await totals(ledger)).charged_micro_usd
+    assert (await totals(ledger)).reserved_micro_usd == 30_000
+
+    await unentered.release()
+    await unentered.release()
+    await entered.release()
+
+    assert await totals(ledger) == DayTotals(reserved_micro_usd=0, charged_micro_usd=charged)
+    assert rows(tmp_path / "quota.db", "SELECT status, count(*) FROM llm_quota_operation GROUP BY status") \
+        == [("settled", 2)]
+    assert len(transport.paths) == 1
+
+
+async def test_releasing_an_operation_never_admitted_does_nothing(transport, ledger, tmp_path):
+    llm = gateway(transport, catalog=catalog())
+
+    await llm.operation("chat", budget(ledger)).release()
+
+    assert rows(tmp_path / "quota.db", "SELECT count(*) FROM llm_quota_operation") == [(0,)]
+
+
 class SlowSettlement(AllowanceBudget):
     async def settle(self, admission, operation):
         await asyncio.sleep(0.05)

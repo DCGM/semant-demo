@@ -176,14 +176,16 @@ class _ChunkEvent:
 class SuggestionRun:
     """One prepared suggestion request; ``events()`` may be iterated once. While it runs,
     the collection's annotation tenant is recorded as in use (``hold``), so the idle
-    deactivation leaves it active."""
+    deactivation leaves it active. Call :meth:`release` once the response ended."""
 
     def __init__(self, produce: Callable[[_Tally], AsyncIterator[SuggestSpansChunkResult]], description: str,
-                 tally: _Tally, hold: Callable[[], AsyncContextManager[None]] | None = None):
+                 tally: _Tally, hold: Callable[[], AsyncContextManager[None]] | None = None,
+                 release: Callable[[], Awaitable[None]] | None = None):
         self._produce = produce
         self._description = description
         self._tally = tally
         self._hold = hold or nullcontext
+        self._release = release
         self.summary: SuggestSpansRunEnd | None = None
         """The final summary once the run ended (also when cancelled; then not sent)."""
 
@@ -201,6 +203,12 @@ class SuggestionRun:
             self._tally.error = "AI suggestions stopped by an unexpected error; saved suggestions are kept."
         self.summary = self._tally.summary()
         yield self.summary
+
+    async def release(self) -> None:
+        """Settle the admission made by ``prepare_*`` with no work if no unit used it (the
+        events were never iterated, or the run stopped first), releasing its reservation."""
+        if self._release is not None:
+            await self._release()
 
 
 # ── Shared steps ───────────────────────────────────────────────────────────
@@ -311,16 +319,19 @@ class _Allowance:
         """Raises ``QuotaExhausted`` when the allowance has no room for one more unit."""
         return None if self.budget is None else await self.budget.admit(self.feature, self.reserve_usd)
 
-    def admitter(self, tally: _Tally, first: str | None) -> Callable[[bool], Awaitable[Any]]:
+    def admitter(self, tally: _Tally, first: str | None) -> tuple[Callable[[bool], Awaitable[Any]],
+                                                                  Callable[[], Awaitable[None]]]:
         """Admissions of the run's units, starting with ``first`` (admitted by ``prepare_*``):
         each counts a processed unit. A refusal returns ``_LATER`` while ``others_running``
         (their settlement may free room), otherwise it is recorded in ``tally`` and returns
-        ``_STOP``."""
-        admissions = iter([first])
+        ``_STOP``. The second function settles ``first`` with no work when no unit took it
+        (the run never started, #563)."""
+        unused = [first]
 
         async def admit(others_running: bool = False) -> Any:
-            admission = next(admissions, _STOP)
-            if admission is _STOP:
+            if unused:
+                admission = unused.pop()
+            else:
                 try:
                     admission = await self.admit()
                 except QuotaExhausted as e:
@@ -333,7 +344,11 @@ class _Allowance:
             tally.units_processed += 1
             return admission
 
-        return admit
+        async def release() -> None:
+            if unused:
+                await self.settle(unused.pop(), None, no_work=True)
+
+        return admit, release
 
     async def settle(self, admission: str | None, usage: TopicerUsage | None, *, no_work: bool = False,
                      fallback: bool = False) -> None:
@@ -521,7 +536,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
         tally = _Tally(unit="tag", units_total=len(tags), max_chunks_per_tag=provider.max_chunks_per_tag,
                        actor=_run_actor(user))
     first = await allowance.admit() if tally.units_total else None
-    admit = allowance.admitter(tally, first)
+    admit, release = allowance.admitter(tally, first)
 
     async def thorough(tally: _Tally) -> AsyncGenerator[SuggestSpansChunkResult, None]:
         async def call(chunk: CollectionChunk, admission: str | None) -> list | TopicerError:
@@ -629,7 +644,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                 tally.completed_calls += 1
 
     return SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
-                         hold=lambda: store.activity.in_use(collection_id))
+                         hold=lambda: store.activity.in_use(collection_id), release=release)
 
 
 def _stream_problem(failure: TopicerError | None, summary: TopicerStreamSummary | None,
@@ -725,7 +740,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
     reserve = budget.policy.topicer_reserve_usd_per_chunk * len(chunks) if budget is not None else 0.0
     allowance = _Allowance(budget, "topicer_selection", reserve)
     tally = _Tally(unit="selection", units_total=1, actor=_run_actor(user))
-    admit = allowance.admitter(tally, await allowance.admit())
+    admit, release = allowance.admitter(tally, await allowance.admit())
 
     async def length_between(anchor: AnnotationChunk, last: AnnotationChunk) -> int | None:
         """UTF-16 length of the document's chunks from ``anchor`` up to (not including) ``last``.
@@ -786,4 +801,4 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
             tally.completed_calls += 1
 
     return SuggestionRun(produce, f"selection, collection {collection_id}, document {document_id}", tally,
-                         hold=lambda: store.activity.in_use(collection_id))
+                         hold=lambda: store.activity.in_use(collection_id), release=release)

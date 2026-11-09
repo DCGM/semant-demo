@@ -206,8 +206,8 @@ class OperationScope:
     Entering it admits the operation against its budget (unless :meth:`admit` did so
     already) and makes it the current operation; leaving it settles its calls with the
     budget. A streamed reply admits before its response starts and enters the scope in
-    the stream, so a refusal is still an HTTP error. An operation admitted and never
-    entered stays unsettled: its reservation remains charged.
+    the stream, so a refusal is still an HTTP error; when the stream never starts,
+    :meth:`release` settles the operation with no calls (``routes.streaming``).
     """
 
     def __init__(self, gateway: LlmGateway, feature: str, budget: OperationBudget | None):
@@ -216,6 +216,7 @@ class OperationScope:
         self.budget = budget
         self._admission: Any = None
         self._admitted = False
+        self._entered = False
         self._operation: LlmOperation | None = None
         self._token: Token | None = None
 
@@ -232,6 +233,7 @@ class OperationScope:
         if current is not None:
             return current
         await self.admit()
+        self._entered = True
         self._operation = LlmOperation(self.feature, self.gateway.catalog.policy(self.feature).limits.max_calls)
         self._token = current_llm_operation.set(self._operation)
         return self._operation
@@ -244,6 +246,16 @@ class OperationScope:
         self.gateway.recorder.record_operation(operation)
         if self._admitted:
             await self.gateway._settle(self.budget, self._admission, operation)
+
+    async def release(self) -> None:
+        """Settle an operation admitted but never entered with no calls, so its reservation
+        is released (a streamed reply whose stream never started); otherwise nothing."""
+        if not self._admitted or self._entered:
+            return
+        self._entered = True
+        operation = LlmOperation(self.feature, self.gateway.catalog.policy(self.feature).limits.max_calls)
+        self.gateway.recorder.record_operation(operation)
+        await self.gateway._settle(self.budget, self._admission, operation)
 
 
 async def _settle_logged(budget: OperationBudget, admission: Any, operation: LlmOperation) -> None:

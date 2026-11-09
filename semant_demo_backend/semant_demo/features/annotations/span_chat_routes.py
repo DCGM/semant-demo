@@ -10,7 +10,7 @@ whether a single span fits its tag. Each line is a :class:`SpanChatDelta`:
 
 The reply is one AI operation, admitted against the caller's daily allowance before the
 stream starts (a refusal is a 429) and settled when the stream ends, also when the client
-disconnects.
+disconnects, before the stream starts too.
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from semant_demo.features.quota.principal import get_allowance_budget
 from semant_demo.features.quota.schemas import QUOTA_EXHAUSTED_RESPONSES
 from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.routes.dependencies import get_annotation_store, get_config, get_span_chat
+from semant_demo.routes.streaming import OperationStreamingResponse
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
 
@@ -81,4 +82,4 @@ async def discuss_span(
                                           history_limit=config.SPAN_CHAT_HISTORY_LIMIT)
     operation = provider.operation(budget)
     await operation.admit()
-    return StreamingResponse(_stream(discussion, operation), media_type=_NDJSON_MEDIA_TYPE)
+    return OperationStreamingResponse(_stream(discussion, operation), operation, _NDJSON_MEDIA_TYPE)

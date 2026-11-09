@@ -52,10 +52,13 @@ class _RunResponse(StreamingResponse):
     """NDJSON stream of a suggestion run that is closed however the response ends.
 
     Starlette cancels a response whose client disconnected but does not close its
-    iterator; closing it here cancels and awaits the run's remaining work.
+    iterator; closing it here cancels and awaits the run's remaining work. A run that
+    never started (the client left before its first chunk) is released, so the admission
+    made before the stream is not kept charged (#563).
     """
 
     def __init__(self, run: suggestions.SuggestionRun):
+        self._run = run
         self._events = run.events()
         super().__init__(self._lines(), media_type=_NDJSON_MEDIA_TYPE)
 
@@ -67,7 +70,10 @@ class _RunResponse(StreamingResponse):
         try:
             await super().__call__(scope, receive, send)
         finally:
-            await self._events.aclose()
+            try:
+                await self._events.aclose()
+            finally:
+                await self._run.release()
 
 
 def _stream_responses(description: str) -> dict:
