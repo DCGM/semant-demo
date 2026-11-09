@@ -636,8 +636,9 @@ flowchart LR
    counts the chunks still without the vector, read-only. The flag confirms the host and port,
    not the collection: check `collection` in the config too.
 4. The classification and the titles have no safe command for new chunks on a populated store
-   yet: `data_tools/meta_data_enrichment` cannot select only them and overwrites existing
-   values ([#590](https://github.com/DCGM/semant-demo/issues/590)), and
+   yet: `data_tools/meta_data_enrichment` cannot select the chunks without a classification
+   (a filter on a field it writes is refused) and overwrites existing values
+   ([#590](https://github.com/DCGM/semant-demo/issues/590)), and
    `weaviate_utils/generate_text_chunk_titles/update_database.py` rewrites `order` too
    ([#575](https://github.com/DCGM/semant-demo/issues/575)). Until then the new chunks have
    neither.
