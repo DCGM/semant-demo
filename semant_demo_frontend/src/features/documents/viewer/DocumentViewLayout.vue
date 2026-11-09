@@ -6,27 +6,18 @@
     class="document-detail-layout"
     :style="layoutStyle"
   >
-    <q-header class="doc-header q-pl-sm" bordered>
-      <q-toolbar class="doc-header-toolbar">
-        <div class="q-ml-sm">
-          <BackLink :to="backRoute" :label="backText" :aria-label="backLabel" />
-          <template v-if="documentData">
-            <div class="text-caption text-grey-6">Document</div>
-            <div class="text-h5 text-weight-medium">{{ documentData.title || 'Untitled document' }}</div>
-            <div v-if="documentData.subtitle" class="text-body2 text-grey-7 q-mt-xs">
-              {{ documentData.subtitle }}
-            </div>
-            <OriginalSourceLink :document="documentData" class="text-body2 q-mt-xs" />
-          </template>
+    <q-header class="doc-header">
+      <DocumentHeader
+        :title="documentData ? (documentData.title || 'Untitled document') : '…'"
+        :detail="documentData?.subtitle ?? ''"
+        :document="documentData"
+        :back="{ to: backRoute, label: backText, ariaLabel: backLabel }"
+      >
+        <div class="collection-context ellipsis" :title="`Collection: ${activeCollectionName}`" data-testid="document-collection">
+          <q-icon name="collections_bookmark" size="16px" class="q-mr-xs" aria-hidden="true" />
+          <span class="sr-only">Collection: </span><span>{{ activeCollectionName }}</span>
         </div>
-
-        <q-space />
-
-        <div class="collection-context text-right q-pr-sm">
-          <div class="text-caption text-grey-6">Collection</div>
-          <div class="text-body1 text-weight-medium">{{ activeCollectionName }}</div>
-        </div>
-      </q-toolbar>
+      </DocumentHeader>
     </q-header>
 
     <!-- The tools are panels of the app's right sidebar; they get the document's context through props. -->
@@ -94,6 +85,15 @@
     </RightSidebarPanel>
 
     <q-page-container>
+      <!-- No access to the collection (or it is gone): the corpus document is still public. -->
+      <q-banner v-if="collectionUnavailable" class="bg-amber-1 text-grey-9 q-ma-md" rounded role="alert" data-testid="collection-unavailable">
+        <template #avatar><q-icon name="lock" color="amber-9" /></template>
+        This collection cannot be opened: it does not exist or is not shared with you. Its
+        annotations are not shown.
+        <template #action>
+          <q-btn flat no-caps color="primary" label="Open the public document" :to="documentLink(documentId)" />
+        </template>
+      </q-banner>
       <router-view />
     </q-page-container>
   </q-layout>
@@ -108,7 +108,6 @@ import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import { Document } from 'src/generated/api'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import DocumentMetadataPanel from 'src/features/documents/DocumentMetadataPanel.vue'
-import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import AiAssistPanel from 'src/features/annotations/AiAssistPanel.vue'
 import DocumentTagsPanel from 'src/features/annotations/DocumentTagsPanel.vue'
@@ -121,7 +120,8 @@ import { citeInReader } from 'src/features/documents/readerCitation'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
 import useScopedChat from 'src/features/chat/useScopedChat'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
-import BackLink from 'src/shared/ui/BackLink.vue'
+import DocumentHeader from 'src/features/documents/workspace/DocumentHeader.vue'
+import { documentLink } from 'src/features/documents/workspace/documentLink'
 
 // The document view: header, the tags, AI tagging and document tools as panels of the
 // app's right sidebar, and the reader (child route). It loads the document, collection and tags and
@@ -152,6 +152,8 @@ const documentChat = useScopedChat(() => ({
   kind: 'document', collectionId: props.collectionId, documentId: props.documentId
 }))
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
+/** The collection could not be read (no access, or it does not exist). */
+const collectionUnavailable = ref(false)
 
 function onSummarizeDocument() {
   void documentSummary.summarize(props.collectionId, props.documentId)
@@ -184,7 +186,7 @@ onBeforeUnmount(() => {
   documentSummary.reset()
 })
 
-const documentData = computed<Document>(() => activeDocument.value!)
+const documentData = computed<Document | null>(() => activeDocument.value ?? null)
 
 const activeCollectionName = computed(() => {
   if (activeCollection.value?.id === props.collectionId) {
@@ -263,7 +265,10 @@ watch(
     aiAssist.reset()
     tagSpans.clearAll()
     documentSummary.reset() // a stale/in-flight summary of the previous collection is dropped
+    collectionUnavailable.value = false
     await fetchCollection(collectionId)
+    if (collectionId !== props.collectionId) return
+    collectionUnavailable.value = activeCollection.value?.id !== collectionId
     await fetchTagsByCollection(collectionId)
   },
   { immediate: true }
@@ -289,24 +294,29 @@ onBeforeUnmount(() => {
 .document-detail-layout {
   height: var(--document-layout-height, auto);
   min-height: 0;
-  background: #eef2f7;
+  background: #fff;
 }
 
 .doc-header {
   background: #ffffff;
   color: #1f2a37;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
-}
-
-.doc-header-toolbar {
-  min-height: 88px;
 }
 
 .collection-context {
-  max-width: 360px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 280px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #475569;
 }
 
-.doc-header :deep(.q-btn) {
-  color: #334155;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 </style>

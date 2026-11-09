@@ -52,6 +52,10 @@ import type {
   DocumentChunkWindow,
   DocumentDetail,
   DocumentPages,
+  DocumentReadRequest,
+  DocumentReadResponse,
+  DocumentSearchRequest,
+  DocumentSearchResponse,
   DocumentStats,
   DocumentSummaryResponse,
   ExplainRequest,
@@ -59,6 +63,10 @@ import type {
   HTTPValidationError,
   LibraryYearDistribution,
   PageChunks,
+  PassageReadRequest,
+  PassageReadResponse,
+  PassageSearchRequest,
+  PassageSearchResponse,
   PatchAttribute,
   PatchAttributeValue,
   PatchCollection,
@@ -76,6 +84,8 @@ import type {
   RagRequestMain,
   RagResponse,
   RagRouteConfig,
+  RankedResultsDistributions,
+  RankedResultsDistributionsRequest,
   SearchFiltersResponse,
   SearchRequest,
   SearchResponse,
@@ -169,6 +179,14 @@ import {
     DocumentDetailToJSON,
     DocumentPagesFromJSON,
     DocumentPagesToJSON,
+    DocumentReadRequestFromJSON,
+    DocumentReadRequestToJSON,
+    DocumentReadResponseFromJSON,
+    DocumentReadResponseToJSON,
+    DocumentSearchRequestFromJSON,
+    DocumentSearchRequestToJSON,
+    DocumentSearchResponseFromJSON,
+    DocumentSearchResponseToJSON,
     DocumentStatsFromJSON,
     DocumentStatsToJSON,
     DocumentSummaryResponseFromJSON,
@@ -183,6 +201,14 @@ import {
     LibraryYearDistributionToJSON,
     PageChunksFromJSON,
     PageChunksToJSON,
+    PassageReadRequestFromJSON,
+    PassageReadRequestToJSON,
+    PassageReadResponseFromJSON,
+    PassageReadResponseToJSON,
+    PassageSearchRequestFromJSON,
+    PassageSearchRequestToJSON,
+    PassageSearchResponseFromJSON,
+    PassageSearchResponseToJSON,
     PatchAttributeFromJSON,
     PatchAttributeToJSON,
     PatchAttributeValueFromJSON,
@@ -217,6 +243,10 @@ import {
     RagResponseToJSON,
     RagRouteConfigFromJSON,
     RagRouteConfigToJSON,
+    RankedResultsDistributionsFromJSON,
+    RankedResultsDistributionsToJSON,
+    RankedResultsDistributionsRequestFromJSON,
+    RankedResultsDistributionsRequestToJSON,
     SearchFiltersResponseFromJSON,
     SearchFiltersResponseToJSON,
     SearchRequestFromJSON,
@@ -479,6 +509,10 @@ export interface RagApiRagPostRequest {
     ragRequestMain: RagRequestMain;
 }
 
+export interface RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest {
+    rankedResultsDistributionsRequest: RankedResultsDistributionsRequest;
+}
+
 export interface ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest {
     documentId: string;
     chunkId: string;
@@ -507,6 +541,14 @@ export interface ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequ
 
 export interface ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest {
     documentId: string;
+}
+
+export interface ReadDocumentsApiSearchDocumentsReadPostRequest {
+    documentReadRequest: DocumentReadRequest;
+}
+
+export interface ReadPassagesApiSearchPassagesReadPostRequest {
+    passageReadRequest: PassageReadRequest;
 }
 
 export interface ReadTagSpansApiTagSpansGetRequest {
@@ -553,6 +595,14 @@ export interface SaveFeedbackApiRagFeedbackPostRequest {
 
 export interface SearchApiSearchPostRequest {
     searchRequest: SearchRequest;
+}
+
+export interface SearchDocumentsApiSearchDocumentsPostRequest {
+    documentSearchRequest: DocumentSearchRequest;
+}
+
+export interface SearchPassagesApiSearchPassagesPostRequest {
+    passageSearchRequest: PassageSearchRequest;
 }
 
 export interface SearchUsersApiUsersSearchGetRequest {
@@ -1950,6 +2000,30 @@ export interface DefaultApiInterface {
     ragApiRagPost(requestParameters: RagApiRagPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RagResponse>;
 
     /**
+     * Creates request options for rankedResultsDistributionsApiAnalyticsResultsDistributionsPost without sending the request
+     * @param {RankedResultsDistributionsRequest} rankedResultsDistributionsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequestOpts(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * @summary Ranked Results Distributions
+     * @param {RankedResultsDistributionsRequest} rankedResultsDistributionsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRaw(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RankedResultsDistributions>>;
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * Ranked Results Distributions
+     */
+    rankedResultsDistributionsApiAnalyticsResultsDistributionsPost(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RankedResultsDistributions>;
+
+    /**
      * Creates request options for readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet without sending the request
      * @param {string} documentId 
      * @param {string} chunkId 
@@ -2088,6 +2162,54 @@ export interface DefaultApiInterface {
      * Read Document Pages
      */
     readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages>;
+
+    /**
+     * Creates request options for readDocumentsApiSearchDocumentsReadPost without sending the request
+     * @param {DocumentReadRequest} documentReadRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentsApiSearchDocumentsReadPostRequestOpts(requestParameters: ReadDocumentsApiSearchDocumentsReadPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * A later page of a text-query document search (#607): up to 100 of its ranked documents, in that order, with their evidence chunks, read under the search\'s criteria and collection again (access checked again); documents no longer eligible, or gone, are left out, and a chunk is returned only for its own document. Nothing is ranked.
+     * @summary Read Documents
+     * @param {DocumentReadRequest} documentReadRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readDocumentsApiSearchDocumentsReadPostRaw(requestParameters: ReadDocumentsApiSearchDocumentsReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentReadResponse>>;
+
+    /**
+     * A later page of a text-query document search (#607): up to 100 of its ranked documents, in that order, with their evidence chunks, read under the search\'s criteria and collection again (access checked again); documents no longer eligible, or gone, are left out, and a chunk is returned only for its own document. Nothing is ranked.
+     * Read Documents
+     */
+    readDocumentsApiSearchDocumentsReadPost(requestParameters: ReadDocumentsApiSearchDocumentsReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentReadResponse>;
+
+    /**
+     * Creates request options for readPassagesApiSearchPassagesReadPost without sending the request
+     * @param {PassageReadRequest} passageReadRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readPassagesApiSearchPassagesReadPostRequestOpts(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * @summary Read Passages
+     * @param {PassageReadRequest} passageReadRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    readPassagesApiSearchPassagesReadPostRaw(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageReadResponse>>;
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * Read Passages
+     */
+    readPassagesApiSearchPassagesReadPost(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageReadResponse>;
 
     /**
      * Creates request options for readTagSpansApiTagSpansGet without sending the request
@@ -2338,6 +2460,54 @@ export interface DefaultApiInterface {
      * Search
      */
     searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse>;
+
+    /**
+     * Creates request options for searchDocumentsApiSearchDocumentsPost without sending the request
+     * @param {DocumentSearchRequest} documentSearchRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchDocumentsApiSearchDocumentsPostRequestOpts(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The documents matching search criteria, with the exact number of eligible documents. The filters select the same documents as ``GET /api/documents/browse`` and Analytics: chunk filters apply per dimension to the documents\' chunk-value summaries.  Without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last); only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``), and a page past them is refused (400).  With a text query (#607): the ranking of distinct eligible documents, once, and its first page: the documents whose metadata holds every word of the query first, then the others by their best-matching chunk (which need not satisfy the chunk filters), each with that chunk as evidence. At most ``SEARCH_DOCUMENTS_METADATA_LIMIT`` metadata matches and ``SEARCH_DOCUMENTS_CHUNK_LIMIT`` ranked chunks (``bounded``, ``retrieval``); later pages are read by id (``POST /api/search/documents/read``).  A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * @summary Search Documents
+     * @param {DocumentSearchRequest} documentSearchRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchDocumentsApiSearchDocumentsPostRaw(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSearchResponse>>;
+
+    /**
+     * The documents matching search criteria, with the exact number of eligible documents. The filters select the same documents as ``GET /api/documents/browse`` and Analytics: chunk filters apply per dimension to the documents\' chunk-value summaries.  Without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last); only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``), and a page past them is refused (400).  With a text query (#607): the ranking of distinct eligible documents, once, and its first page: the documents whose metadata holds every word of the query first, then the others by their best-matching chunk (which need not satisfy the chunk filters), each with that chunk as evidence. At most ``SEARCH_DOCUMENTS_METADATA_LIMIT`` metadata matches and ``SEARCH_DOCUMENTS_CHUNK_LIMIT`` ranked chunks (``bounded``, ``retrieval``); later pages are read by id (``POST /api/search/documents/read``).  A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * Search Documents
+     */
+    searchDocumentsApiSearchDocumentsPost(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSearchResponse>;
+
+    /**
+     * Creates request options for searchPassagesApiSearchPassagesPost without sending the request
+     * @param {PassageSearchRequest} passageSearchRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchPassagesApiSearchPassagesPostRequestOpts(requestParameters: SearchPassagesApiSearchPassagesPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * @summary Search Passages
+     * @param {PassageSearchRequest} passageSearchRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    searchPassagesApiSearchPassagesPostRaw(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageSearchResponse>>;
+
+    /**
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * Search Passages
+     */
+    searchPassagesApiSearchPassagesPost(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageSearchResponse>;
 
     /**
      * Creates request options for searchUsersApiUsersSearchGet without sending the request
@@ -5623,6 +5793,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for rankedResultsDistributionsApiAnalyticsResultsDistributionsPost without sending the request
+     */
+    async rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequestOpts(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['rankedResultsDistributionsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'rankedResultsDistributionsRequest',
+                'Required parameter "rankedResultsDistributionsRequest" was null or undefined when calling rankedResultsDistributionsApiAnalyticsResultsDistributionsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/analytics/results/distributions`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: RankedResultsDistributionsRequestToJSON(requestParameters['rankedResultsDistributionsRequest']),
+        };
+    }
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * Ranked Results Distributions
+     */
+    async rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRaw(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RankedResultsDistributions>> {
+        const requestOptions = await this.rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RankedResultsDistributionsFromJSON(jsonValue));
+    }
+
+    /**
+     * Counts of the ranked results of one text-query search (#619): exactly the ids that ``POST /api/search/documents`` (``ranked``) or ``POST /api/search/passages`` (``ranked_ids``) returned, with that search\'s criteria and collection, per publication year, source library and document language of their documents. Documents count once each; passages count as passages. Access and eligibility are checked again: ids the search could not return now (gone, no longer matching, outside the collection) are left out and reported (``missing_count``). The ranking\'s description (``ranking``) is echoed with the configured limit; a bounded ranking describes the retrieved results only. Without a text query, or with an id named twice: 422; more ids than the mode\'s limit or an unconfigured chunk filter: 400; a filter on a property the store does not record: 422.
+     * Ranked Results Distributions
+     */
+    async rankedResultsDistributionsApiAnalyticsResultsDistributionsPost(requestParameters: RankedResultsDistributionsApiAnalyticsResultsDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RankedResultsDistributions> {
+        const response = await this.rankedResultsDistributionsApiAnalyticsResultsDistributionsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet without sending the request
      */
     async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequestOpts(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest): Promise<runtime.RequestOpts> {
@@ -5923,6 +6147,114 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages> {
         const response = await this.readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for readDocumentsApiSearchDocumentsReadPost without sending the request
+     */
+    async readDocumentsApiSearchDocumentsReadPostRequestOpts(requestParameters: ReadDocumentsApiSearchDocumentsReadPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentReadRequest'] == null) {
+            throw new runtime.RequiredError(
+                'documentReadRequest',
+                'Required parameter "documentReadRequest" was null or undefined when calling readDocumentsApiSearchDocumentsReadPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/documents/read`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DocumentReadRequestToJSON(requestParameters['documentReadRequest']),
+        };
+    }
+
+    /**
+     * A later page of a text-query document search (#607): up to 100 of its ranked documents, in that order, with their evidence chunks, read under the search\'s criteria and collection again (access checked again); documents no longer eligible, or gone, are left out, and a chunk is returned only for its own document. Nothing is ranked.
+     * Read Documents
+     */
+    async readDocumentsApiSearchDocumentsReadPostRaw(requestParameters: ReadDocumentsApiSearchDocumentsReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentReadResponse>> {
+        const requestOptions = await this.readDocumentsApiSearchDocumentsReadPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentReadResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * A later page of a text-query document search (#607): up to 100 of its ranked documents, in that order, with their evidence chunks, read under the search\'s criteria and collection again (access checked again); documents no longer eligible, or gone, are left out, and a chunk is returned only for its own document. Nothing is ranked.
+     * Read Documents
+     */
+    async readDocumentsApiSearchDocumentsReadPost(requestParameters: ReadDocumentsApiSearchDocumentsReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentReadResponse> {
+        const response = await this.readDocumentsApiSearchDocumentsReadPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for readPassagesApiSearchPassagesReadPost without sending the request
+     */
+    async readPassagesApiSearchPassagesReadPostRequestOpts(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['passageReadRequest'] == null) {
+            throw new runtime.RequiredError(
+                'passageReadRequest',
+                'Required parameter "passageReadRequest" was null or undefined when calling readPassagesApiSearchPassagesReadPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/passages/read`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PassageReadRequestToJSON(requestParameters['passageReadRequest']),
+        };
+    }
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * Read Passages
+     */
+    async readPassagesApiSearchPassagesReadPostRaw(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageReadResponse>> {
+        const requestOptions = await this.readPassagesApiSearchPassagesReadPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PassageReadResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * A later page of a passage search (#611): the passages of up to 100 of its ranked ids, in that order, read under the search\'s criteria and collection again (access checked again); ids that do not match them, or whose chunk is gone, are left out. Nothing is ranked.
+     * Read Passages
+     */
+    async readPassagesApiSearchPassagesReadPost(requestParameters: ReadPassagesApiSearchPassagesReadPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageReadResponse> {
+        const response = await this.readPassagesApiSearchPassagesReadPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -6503,6 +6835,114 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async searchApiSearchPost(requestParameters: SearchApiSearchPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SearchResponse> {
         const response = await this.searchApiSearchPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for searchDocumentsApiSearchDocumentsPost without sending the request
+     */
+    async searchDocumentsApiSearchDocumentsPostRequestOpts(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['documentSearchRequest'] == null) {
+            throw new runtime.RequiredError(
+                'documentSearchRequest',
+                'Required parameter "documentSearchRequest" was null or undefined when calling searchDocumentsApiSearchDocumentsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/documents`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: DocumentSearchRequestToJSON(requestParameters['documentSearchRequest']),
+        };
+    }
+
+    /**
+     * The documents matching search criteria, with the exact number of eligible documents. The filters select the same documents as ``GET /api/documents/browse`` and Analytics: chunk filters apply per dimension to the documents\' chunk-value summaries.  Without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last); only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``), and a page past them is refused (400).  With a text query (#607): the ranking of distinct eligible documents, once, and its first page: the documents whose metadata holds every word of the query first, then the others by their best-matching chunk (which need not satisfy the chunk filters), each with that chunk as evidence. At most ``SEARCH_DOCUMENTS_METADATA_LIMIT`` metadata matches and ``SEARCH_DOCUMENTS_CHUNK_LIMIT`` ranked chunks (``bounded``, ``retrieval``); later pages are read by id (``POST /api/search/documents/read``).  A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * Search Documents
+     */
+    async searchDocumentsApiSearchDocumentsPostRaw(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentSearchResponse>> {
+        const requestOptions = await this.searchDocumentsApiSearchDocumentsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => DocumentSearchResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * The documents matching search criteria, with the exact number of eligible documents. The filters select the same documents as ``GET /api/documents/browse`` and Analytics: chunk filters apply per dimension to the documents\' chunk-value summaries.  Without a text query (#606): one page, ordered by publication year (oldest first, then id; documents without a year last); only the first ``QUERY_MAXIMUM_RESULTS`` (10 000) can be paged through (``bounded``), and a page past them is refused (400).  With a text query (#607): the ranking of distinct eligible documents, once, and its first page: the documents whose metadata holds every word of the query first, then the others by their best-matching chunk (which need not satisfy the chunk filters), each with that chunk as evidence. At most ``SEARCH_DOCUMENTS_METADATA_LIMIT`` metadata matches and ``SEARCH_DOCUMENTS_CHUNK_LIMIT`` ranked chunks (``bounded``, ``retrieval``); later pages are read by id (``POST /api/search/documents/read``).  A filter on a property this corpus database does not record, also a chunk filter without the summaries, is rejected (422); an unconfigured chunk filter value is refused (400).
+     * Search Documents
+     */
+    async searchDocumentsApiSearchDocumentsPost(requestParameters: SearchDocumentsApiSearchDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSearchResponse> {
+        const response = await this.searchDocumentsApiSearchDocumentsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for searchPassagesApiSearchPassagesPost without sending the request
+     */
+    async searchPassagesApiSearchPassagesPostRequestOpts(requestParameters: SearchPassagesApiSearchPassagesPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['passageSearchRequest'] == null) {
+            throw new runtime.RequiredError(
+                'passageSearchRequest',
+                'Required parameter "passageSearchRequest" was null or undefined when calling searchPassagesApiSearchPassagesPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/passages`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PassageSearchRequestToJSON(requestParameters['passageSearchRequest']),
+        };
+    }
+
+    /**
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * Search Passages
+     */
+    async searchPassagesApiSearchPassagesPostRaw(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PassageSearchResponse>> {
+        const requestOptions = await this.searchPassagesApiSearchPassagesPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => PassageSearchResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * The passages matching the search criteria (#605, #611): the ids of the ranked chunks, every chunk filter holding on the chunk itself, at most ``SEARCH_PASSAGES_LIMIT``, with what they cover, and the first page of them in full. Later pages are read by id (``POST /api/search/passages/read``), not ranked again. No generated titles or summaries. A filter on a property this corpus database does not record is rejected (422).
+     * Search Passages
+     */
+    async searchPassagesApiSearchPassagesPost(requestParameters: SearchPassagesApiSearchPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PassageSearchResponse> {
+        const response = await this.searchPassagesApiSearchPassagesPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

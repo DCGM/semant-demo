@@ -1,4 +1,4 @@
-<!-- See CONTRIBUTING.md §6. Delete sections that do not apply. -->
+<!-- See CONTRIBUTING.md section 6. Delete inapplicable sections except Development friction. -->
 
 ## Purpose
 
@@ -23,3 +23,7 @@
 ## Risks and open decisions
 
 <!-- Remaining risks, decisions for the reviewer, incomplete work and follow-up issues. -->
+
+## Development friction
+
+<!-- Keep this section. Significant avoidable effort, including resolved hurdles: problem/impact, cause (confirmed or suspected), workaround/fix and prevention or follow-up. Prefer 1-3 brief items, or "None identified". See CONTRIBUTING.md#development-friction. -->

@@ -6,7 +6,9 @@ line where the chunk's first character is (`layoutStart`). Both are produced off
 PERO PAGE XML by `python -m semant_demo.maintenance.page_layout` (#540); the application
 never parses PAGE XML. Storage, serving and the `Chunks` field are #541
 ([below](#page-asset-store-and-reads-541)); the import of the existing corpus is #542; the frontend mapping is #544
-([below](#textscan-correspondence-544)). The operator command is described in
+([below](#textscan-correspondence-544)); the workspace is #545. Its validation on real OCR
+material, with the measured coverage and the known approximations, is
+[below](#validation-on-real-material-546) (#546). The operator command is described in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#page-layout-files-and-anchors-page_layout-540).
 
 ## Page file (`semant.page-layout`, version 1)
@@ -32,7 +34,10 @@ The first line of a page of the example document `0004077e…` (abridged to one 
   contribute to canonical text**: lines below the confidence threshold, empty lines and
   dropped short paragraphs are left out. A region with no such line is left out.
 - `text` is the PAGE XML transcription verbatim (no trimming, no dehyphenation).
-- All geometry is in **integer pixels of the original scan**: `baseline` is the polyline,
+- All geometry is in **integer pixels of the scan**: the converter writes the original scan's
+  (PAGE XML) pixels; the asset store's files are scaled to its stored, derived scan (#594,
+  [DATA_MAINTENANCE](DATA_MAINTENANCE.md#page-scans-layouts-and-anchors-for-the-existing-corpus-page_import-542)),
+  so `image` is always the size of the JPEG served with it. `baseline` is the polyline,
   `heights` are `[above, below]` the baseline (from PERO's `custom` attribute, else
   estimated from the line polygon; null when neither exists). `wordStarts` (optional) has
   one value per word (the word rule of #463: runs of L*, M*, N*, Cf characters), the
@@ -117,7 +122,7 @@ writes it, together with an anchor plan (`anchors.jsonl`, never served) per docu
 
 ```text
 <root>/<first two hex digits of the document id>/<document id>/manifest.json
-<root>/<..>/<document id>/<page id>.jpg          the scan, the original JPEG
+<root>/<..>/<document id>/<page id>.jpg          the scan, a JPEG derived from the original (#594)
 <root>/<..>/<document id>/<page id>.json         the page file above
 <root>/<..>/<document id>/<page id>.thumb.jpg    the thumbnail
 ```
@@ -196,10 +201,11 @@ is #544 ([below](#textscan-correspondence-544)).
 - **Missing parts**: a document without a manifest is text only; a page without a scan says so;
   a scan without a layout (or a layout that fails to load, with Retry) is shown without lines.
 
-Until #545 places it in the document view, the pane has a preview page,
-`/#/preview/scan/<document id>?page=<page id>`, built only with `SEMANT_PREVIEW_ROUTES=1`
-(the dev server and the browser-test builds). The browser-test profile and the local
-development backend serve synthetic page fixtures (`tests/page_fixtures.py`).
+In the application the pane is a part of the document workspace (#545, below). On its own it
+has a preview page, `/#/preview/scan/<document id>?page=<page id>`, the harness of its browser
+tests, built only with `SEMANT_PREVIEW_ROUTES=1` (the dev server and the browser-test builds).
+The browser-test profile and the local development backend serve synthetic page fixtures
+(`tests/page_fixtures.py`).
 
 ## Text/scan correspondence (#544)
 
@@ -240,9 +246,140 @@ no per-line text ranges, no matching service.
   opened page (`/by_page`), extended with `/adjacent` on request; never all earlier pages or the
   whole document.
 
-Until #545 places both panes in the document workspace, they have a preview page,
-`/#/preview/text-scan/<document id>?page=<page id>` or `?chunk=<chunk id>&start=&end=`
-(UTF-16 offsets in the chunk), in the same builds as the scan preview. The browser-test
-profile and the local development backend store anchors for the fixture chunks
-(`fixture_anchors` in `tests/page_fixtures.py`; verified against `replay` by
+The browser-test profile and the local development backend store anchors for the fixture
+chunks (`fixture_anchors` in `tests/page_fixtures.py`; verified against `replay` by
 `tests/test_page_fixtures.py`).
+
+## Document workspace (#545)
+
+`semant_demo_frontend/src/features/documents/workspace/` puts the text and the scan viewer
+side by side in the application, in two places that share the components and the
+correspondence but not their text:
+
+- **The public document view**, `/#/documents/<document id>` (`PublicDocumentPage`, no sign-in):
+  the bounded public text (`useDocumentText`), read-only, no collection and no annotation read,
+  the document's metadata in the general right sidebar (*Document*). `?page=<page id>` opens a
+  page and its text, `?chunk=<chunk id>&start=&end=` a passage (UTF-16 offsets in the chunk) and
+  its lines, `?view=split|text|scan` the view, `?from=search|chat` the back link. Search
+  results and chat sources open it from their context panel (*Open document*), which stays the
+  light, in-page view of a passage.
+- **The collection's document view**, `/#/collections/<cid>/documents/<did>/v1`: the reader with
+  its annotations, gutters and tools unchanged, the scan beside it (`useReaderScanSync`). A page
+  opened in the scan is found in the reader's text by reading that page's chunks
+  (`pageChunks.ts`: `/chunks/by_page`, continued with `/adjacent`) and showing only their orders
+  in the reader (`useChunkWindow.showRange`, with their annotations), leaving a gap to the text
+  shown rather than loading everything in between. As on the initial load (`preloadGapChunks`),
+  a gap it opens of at most `GAP_PRELOAD_LIMIT` (100) chunks is read as hidden chunks, so
+  annotations crossing it are shown and edited across it; a larger gap is not read, and an
+  annotation running into it is reported in the gap's row (*An annotation continues in the
+  missing text*, `useAnnotations.cutAtGapOrders`) rather than cut silently. The initial load
+  still shows all the collection's chunks of the document. Clicks and selections in the text, an
+  annotation link (`?annotation=`), a chunk link (`?chunk=&order=`), a page link (`?page=`) and
+  summary or chat citations show their lines on the scan; the annotation popover works as
+  before. A collection the user cannot read says so and links to the public view.
+- **Layout** (#600). Both views fill the window under the application header and do not
+  scroll as a page: a one-row header (`DocumentHeader`: back link, title cut with an ellipsis
+  and whole in its tooltip, subtitle or byline, *Original*, and the collection in the
+  collection view), a fixed controls row (`WorkspaceControls`: the whitespace toggle, in the
+  collection view with the rest of the reader's tools; the synchronization notice; the view
+  toggle) and the workspace (`DocumentWorkspace`). The workspace shows the scan on the left
+  and the text on the right; the text scrolls in its own pane, the scan keeps its page
+  controls and thumbnails in view and is panned and zoomed on its own. The divider between
+  them is dragged or moved with the arrow keys (Shift: larger steps; Home/End: the text's
+  smallest and largest width; a double click resets it); the text starts at 55 %, both panes
+  keep a minimum width (`splitRatio.ts`), and the split is remembered in this browser. A
+  document without scans is text only, without a choice of views; otherwise *Scan*, *Text
+  and scan* or *Text* (`WorkspaceModeToggle`), and only one of them when the workspace is
+  under 720 px wide. The scan viewer stays mounted while hidden, so it keeps its page;
+  showing the text again reveals the passage last focused from the scan.
+- **Links.** The link's target (a passage, an annotation or chunk, a page) and its view are
+  followed also when only the query changes (another link to the same document: the page is
+  reused, the document is not read again). The reader's own page changes in the scan viewer
+  (page buttons and keys, thumbnails, the page field: the pane's `navigate` event) are written
+  into the URL as `?page=`, replacing the target they supersede (`chunk`/`start`/`end`, or
+  `annotation`/`chunk`/`order`), so a reload opens the page the reader moved to. The first page
+  and pages opened for the text (a click, a selection, a linked target) leave the link as it was.
+  In the collection view the scan's page is followed in the text only once the reader's text
+  is loaded, and only the latest page shown meanwhile.
+- **Return.** Search and Chat are kept alive while another page is shown (`router/keptPages.ts`,
+  `meta.keepAlive`; their sidebar panels leave and return with them and their window listeners
+  pause, `shared/whileShown.ts`), so the back link or browser back finds the results, the
+  opened result or source and the scroll position as they were. The state is in memory: after
+  a reload of the document the back link leads to an empty search or conversation. This part
+  of #545's reload criterion is deferred, tracked in #584.
+
+## Validation on real material (#546)
+
+The whole chain was run on real data: the 32 documents of the shared test store (3,260 stored
+legacy chunks, 1,565 pages; page lists from the metadata mirror, PERO PAGE XML and scans from
+the library share), read-only there, written only to a disposable copy. Run records are on
+#546; this section keeps the contracts and the numbers to expect.
+
+**Coverage.**
+
+| | Chunks | |
+| --- | --- | --- |
+| Exact anchor (character-precise map) | 2,886 | 88.5 % |
+| Approximate anchor (whole lines) | 80 | 2.5 % |
+| No anchor (text only) | 294 | 9.0 % |
+
+26 of the 32 documents anchor every chunk exactly. Nearly all misses are in six documents whose
+stored chunks are not made from the PAGE XML that exists now: another OCR version, legacy page
+lists that repeat pages (the copies get no anchor, as intended), pages without PAGE XML
+(#591). The browser walk (`layoutMap.ts`) maps all 2,886 exact anchors exactly, rebuilding
+each stored text from line pieces and separators (2.4 million UTF-16 units, no difference),
+and all 80 approximate ones as approximate. All 1,617 stored annotations and legacy spans on
+anchored chunks resolve to scan lines (301 over several lines, 6 over two pages).
+
+**Precision, separately from the text mapping.** Text offsets are exact wherever an anchor is
+exact; positions *within* a line are estimates. Word starts (`wordStarts`) are usable on
+99.6 % of the lines (the rest are highlighted as whole lines). Compared with PERO's own word
+boxes (ALTO `String/@HPOS` of the 13 example documents, 254,000 words), an estimated word
+start is off by a median of 7 px (p90 23 px, p99 46 px), 0.07 of the line's mean word pitch;
+99.6 % are within half a word. So a highlight covers whole, approximately placed words, never
+claimed character positions.
+
+**Known limitations.**
+
+- The stored page fields are coarse: a chunk at the top of a page often names the previous page
+  as `from_page` (179 of 2,966 anchored chunks here). The viewer uses `layoutStart`, not the
+  page fields, for positions; `by_page` reads may return one chunk too many.
+- A chunk whose text changed after the import keeps its old anchor until `page_import assets`
+  runs again; it is then shown as approximate (#593).
+- The legacy serialization of a page depends on the pages before it (short remainders are
+  dropped depending on where chunks end), so page files and anchors are made from the whole
+  document only. Converting an excerpt of pages can turn exact anchors into approximate ones at
+  the same position; the real-page fixtures show this on purpose.
+- Pages that are not mounted on the import machine get no scan (`missing_image`); the viewer
+  says so and the text and lines still work.
+- Rapid paging still downloads each passed page's scan in full (#592).
+
+**Import behaviour.** On the disposable copy, `assets` killed in the middle of a document left
+only whole files and no manifest (the document stays text-only); running it again skipped the
+finished pages and produced a tree byte-identical to an uninterrupted run. `anchors --write`
+killed after 443 writes was completed by running it again (2,523 more, then `--check` exit
+0). Before and after, every object of the store (6,670) had the same id, properties
+(chunk text, order, page fields, references, annotation offsets) and vectors; only
+`Chunks.layoutStart` differed, on the 2,966 anchored chunks.
+
+**Browser.** On the real 182- and 528-page documents, opening a page reads its manifest
+(88 KB and 116 KB), that page's chunks, the layouts of the page and its neighbours and the
+visible thumbnails, nothing else of the document (JS heap 10–15 MB). Twelve page steps within
+154 ms abort all twelve stale layout reads and end on the right page and `?page=`.
+
+**Regression fixtures** (`semant_demo_backend/tests/real_pages.py`): excerpts of five of these
+documents (1839–1922) in `tests/fixtures/real_pages/`, with their stored chunk texts and the
+anchors of the whole-document import: a whole 1839 newspaper page; a 1913 newspaper page in
+columns with the most curved and skewed baselines; the first sixteen pages of a 1906 volume,
+where one chunk crosses ten page breaks, blank pages, OCR of bleed-through below the
+confidence threshold and a caption repeated on three pages, and later chunks cross page
+breaks; a page whose legacy chunks repeat it; chunks from another OCR. `generated/` is the
+converter's output for them, checked by `tests/test_real_pages.py` and read by the frontend's
+`realPages.spec.ts` (the walk in both directions, hyphenated words, cross-page chunks); two
+downscaled scans serve `test/e2e/realScans.spec.ts`. It checks on the 1906 text page that the
+line bands lie on their printed lines (each band's darkest position within 0.2 of a band of
+where it is drawn, for more than 70 % of the bands; 93 % measured, 0–17 % for bands drawn 0.4
+of a band off) after zoom, pan, wheel zoom, resize and at phone width, and on the newspaper,
+whose small print and ruled boxes make that measure ambiguous, that the most curved and skewed
+bands follow their baselines on a scan smaller than the one the geometry refers to. The real
+corpus has no non-BMP text; the synthetic fixtures keep covering it.

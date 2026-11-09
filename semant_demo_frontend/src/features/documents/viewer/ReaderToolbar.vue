@@ -15,18 +15,10 @@
       </q-btn>
     </div>
     <div class="paper-view-toolbar">
-      <q-btn
-        flat dense round
-        icon="format_indent_increase"
-        size="sm"
-        class="view-btn"
-        :class="{ 'view-btn--active': preserveWhitespace }"
-        :title="preserveWhitespace ? 'Switch to compact whitespace (collapse spaces & line breaks)' : 'Switch to original whitespace (preserve spaces & line breaks)'"
-        @click="emit('update:preserveWhitespace', !preserveWhitespace)"
-      >
-        <q-tooltip v-if="preserveWhitespace">Showing original whitespace — click to collapse</q-tooltip>
-        <q-tooltip v-else>Showing collapsed whitespace — click to preserve original</q-tooltip>
-      </q-btn>
+      <WhitespaceToggle
+        :model-value="preserveWhitespace"
+        @update:model-value="emit('update:preserveWhitespace', $event)"
+      />
     </div>
     <div class="paper-view-toolbar">
     <q-btn
@@ -79,6 +71,7 @@
 
 <script setup lang="ts">
 import type { Tag } from 'src/generated/api'
+import WhitespaceToggle from './WhitespaceToggle.vue'
 
 // View options of the document reader: chunk gutter, whitespace and which chunks to show,
 // and the tag new selections are tagged with, if one is focused.
@@ -103,26 +96,26 @@ const emit = defineEmits<{
 </script>
 
 <style scoped>
+/* A flat group in the view's controls row (WorkspaceControls), not a floating card (#600). */
 .paper-toolbar-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  position: sticky;
-  top: 96px;
-  z-index: 200;
-  margin-top: 8px;
+  gap: 2px;
+  min-width: 0;
 }
 
 .paper-view-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px 6px;
-  background: #ffffff;
-  border-radius: 10px;
-  border: 2px solid rgb(202, 202, 202);
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.14);
+}
+
+/* A thin separator between the groups. */
+.paper-view-toolbar + .paper-view-toolbar {
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid #e2e8f0;
 }
 
 .view-btn {
@@ -133,8 +126,8 @@ const emit = defineEmits<{
 
 .focus-tag-box {
   gap: 6px;
-  padding-left: 10px;
   max-width: 360px;
+  min-width: 0;
 }
 
 .focus-tag-text {

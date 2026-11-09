@@ -16,21 +16,34 @@ own. The overview is derived from them. Filtered counts match fewer documents, t
 a second and are always computed live (never answered from the unfiltered cache). A failed
 read raises (an error response, never a zero or empty overview) and is not cached.
 
+Ranked results (#619, ``ranked_results_distributions``): the same counts over exactly the ids
+a text-query search ranked (Documents or Passages Results), read by id under that search's
+access and eligibility again; see the function.
+
 A year counts only when it is a whole number from 1 to the current year; later years (e.g. a
 typo such as 2879) and fractional years are "unknown or invalid". A year range is filtered in
 the store, so a document with year 1909.5 matches 1900–1920 but is counted as unknown.
 """
 import asyncio
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
+from uuid import UUID
 
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository, Unavailable, ValueCounts
+from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.analytics.schemas import (
     CategoryCount, CategoryDistribution, CorpusDistributions, CorpusOverview, DocumentFilters, LibraryYearDistribution,
-    LibraryYears, PublicationYearCounts, PublicationYearDistribution, UnavailableReason, YearBin, YearCount)
+    LibraryYears, PublicationYearCounts, PublicationYearDistribution, RankedResultsDistributions,
+    RankedResultsDistributionsRequest, RankingScope, ResultMember, UnavailableReason, YearBin, YearCount)
+from semant_demo.features.documents import service as document_service
 from semant_demo.features.documents.criteria import (
     LANGUAGE_PROPERTY, LIBRARY_PROPERTY, YEAR_PROPERTY, ChunkFilters, ChunkVocabulary, Condition,
     document_level_conditions)
+from semant_demo.features.search import service as search_service
+from semant_demo.features.search.schemas import SearchFiltersResponse, SearchType
+from semant_demo.features.user_collections.access import Principal
 
 GROUP_LIMIT = 10_000
 """Most distinct values read per property. Valid years are whole numbers up to the current
@@ -176,6 +189,103 @@ async def _library_years(analytics: CorpusAnalyticsRepository, filters: Document
                                  total_documents=rest_total, unknown_year_count=rest_unknown,
                                  years=[YearCount(year=y, count=n) for y, n in sorted(rest.items()) if n]))
     return LibraryYearDistribution(**base, available=True, rows=rows)
+
+
+@dataclass(frozen=True)
+class RankingLimits:
+    """The configured size of a ranking per results mode (``config.py``)."""
+    documents: int
+    """``SEARCH_DOCUMENTS_METADATA_LIMIT + SEARCH_DOCUMENTS_CHUNK_LIMIT``."""
+    passages: int
+    """``SEARCH_PASSAGES_LIMIT``."""
+
+
+_COUNTED = {YEAR_PROPERTY: "number", LIBRARY_PROPERTY: "text", LANGUAGE_PROPERTY: "text"}
+
+
+async def ranked_results_distributions(analytics: CorpusAnalyticsRepository, search: search_service.SearchBackends,
+                                       user: Principal | None, request: RankedResultsDistributionsRequest,
+                                       vocabulary: ChunkVocabulary, filter_definitions: SearchFiltersResponse | None,
+                                       limits: RankingLimits) -> RankedResultsDistributions:
+    """Counts of the ranked results of one text-query search (#619): exactly the ids its Results
+    hold, by their document's publication year, library and language.
+
+    The ids, criteria and collection come from the client, so none is trusted: read access to the
+    collection is checked again and each id is read under the eligibility of its mode, as the
+    search's later pages are (``search.service.read_documents``/``read_passages``). Documents: in
+    the collection, meeting the document filters and, per dimension, the chunk filters (#529);
+    passages: in the collection, the document filters on their document and every chunk filter
+    on the passage itself (same-chunk, #526). Ids that do not pass, also unknown or forged ones,
+    are not counted (``missing_count``). Nothing is ranked, embedded or scanned: only the named
+    records are read, without text or vectors, in bounded batches; a property the store cannot
+    count is unavailable for every result. Documents are counted once each; passages each count
+    once, also several of one document (``distinct_documents`` tells them apart).
+
+    The ranking itself (``ranking``) is the client's description of its search and is echoed; the
+    vector must be a configured one. Raises ``InvalidRequestError`` for more ids than the mode's
+    configured limit.
+    """
+    computed_at = datetime.now(UTC)
+    limit = limits.documents if request.mode == "documents" else limits.passages
+    if len(request.ids) > limit:
+        raise InvalidRequestError(f"A {request.mode} ranking holds at most {limit} results; {len(request.ids)} were named.")
+    ranking = request.ranking
+    vector = None if ranking.type == SearchType.text else search.vectors.resolve(ranking.vector).id
+
+    availability = await analytics.availability(_COUNTED)
+    readable = [prop for prop, unavailable in availability.items() if unavailable is None]
+    criteria = request.criteria
+    records: list[tuple[UUID, UUID, dict[str, Any]]]
+    if request.mode == "documents":
+        chunk_filters, _ = document_level_conditions(None, criteria.chunk_filters, vocabulary)
+        scope, conditions = await document_service.browse_scope(
+            search.collections, user, request.user_collection_id, criteria.document_filters, criteria.chunk_filters,
+            vocabulary)
+        criteria = criteria.model_copy(update={"chunk_filters": chunk_filters})
+        found = await analytics.document_values(request.ids, readable, scope, conditions)
+        records = [(i, i, found[i]) for i in request.ids if i in found]
+    else:
+        criteria, records = await search_service.passage_document_values(
+            search, user, request.ids, criteria, request.user_collection_id, filter_definitions, readable)
+
+    total = len(records)
+    max_year = computed_at.year
+
+    def counts(prop: str) -> ValueCounts | Unavailable:
+        unavailable = availability[prop]
+        if unavailable is not None:
+            return unavailable
+        values = [values[prop] for _, _, values in records if values.get(prop) is not None]
+        groups = Counter(values).most_common()
+        return ValueCounts(known=len(values), groups=groups, complete=True)
+
+    members = None
+    if request.members:
+        members = [ResultMember(id=i, document_id=d, year=_valid_year(values.get(YEAR_PROPERTY), max_year),
+                                library=_known(values.get(LIBRARY_PROPERTY)), language=_known(values.get(LANGUAGE_PROPERTY)))
+                   for i, d, values in records]
+    return RankedResultsDistributions(
+        scope="ranked_results", mode=request.mode, unit=request.mode, criteria=criteria,
+        ranking=RankingScope(type=ranking.type, vector=vector, bounded=ranking.bounded, retrieval_limit=limit),
+        input_count=len(request.ids), total_count=total, missing_count=len(request.ids) - total,
+        distinct_documents=len({d for _, d, _ in records}), computed_at=computed_at,
+        publication_year=_years(counts(YEAR_PROPERTY), total, max_year=max_year),
+        libraries=_categories(counts(LIBRARY_PROPERTY), total, LIBRARY_PROPERTY),
+        languages=_categories(counts(LANGUAGE_PROPERTY), total, LANGUAGE_PROPERTY),
+        members=members)
+
+
+def _valid_year(value: Any, max_year: int) -> int | None:
+    """The year as ``_years`` counts it, or None when it is counted as unknown."""
+    if value is None:
+        return None
+    year = float(value)
+    return int(year) if year.is_integer() and MIN_YEAR <= year <= max_year else None
+
+
+def _known(value: Any) -> str | None:
+    """The value as ``_categories`` lists it, or None when it is counted as unknown."""
+    return str(value) if value is not None and str(value).strip() else None
 
 
 def _overview(distributions: CorpusDistributions) -> CorpusOverview:

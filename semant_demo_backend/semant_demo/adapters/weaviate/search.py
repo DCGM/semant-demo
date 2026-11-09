@@ -6,14 +6,17 @@ which also names the stored vector to compare with (``query.target_vector``); ev
 vector and hybrid query names it, so a collection with several named vectors works. No
 provider is called and no configuration is read here.
 """
-from collections.abc import Mapping
+import asyncio
+from collections.abc import Mapping, Sequence
 from typing import Any
+from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import Metrics
 from weaviate.classes.query import Filter, QueryReference
 
 from semant_demo.adapters.weaviate import criteria
+from semant_demo.adapters.weaviate.analytics import READ_BATCH
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.chunk_tags import REF_BY_TYPE
 from semant_demo.adapters.weaviate.documents import chunk_properties
@@ -50,7 +53,7 @@ class ChunkSearchRepository:
         self.client = client
         self.collectionNames = collectionNames
         self._returned_document_properties: list[str] | None = None
-        self._schema: tuple[dict[str, str], dict[str, str], dict[str, str]] | None = None
+        self._schema: tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]] | None = None
 
     async def _document_properties(self) -> list[str]:
         """``DOCUMENT_PROPERTIES`` that the document collection has; read once, then cached.
@@ -64,14 +67,16 @@ class ChunkSearchRepository:
             self._returned_document_properties = [name for name in DOCUMENT_PROPERTIES if name in stored]
         return self._returned_document_properties
 
-    async def _declared(self) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
-        """(document data types, chunk data types, chunk tokenizations) by property name, as
-        the store declares them; read once, then cached (a schema change needs a restart)."""
+    async def _declared(self) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+        """(document data types, document tokenizations, chunk data types, chunk tokenizations) by
+        property name, as the store declares them; read once, then cached (a schema change needs a
+        restart)."""
         if self._schema is None:
-            document_types, _ = await criteria.declared(self.client, self.collectionNames.document_collection_name)
+            document_types, document_tokenizations = await criteria.declared(
+                self.client, self.collectionNames.document_collection_name)
             chunk_types, chunk_tokenizations = await criteria.declared(
                 self.client, self.collectionNames.chunks_collection_name)
-            self._schema = (document_types, chunk_types, chunk_tokenizations)
+            self._schema = (document_types, document_tokenizations, chunk_types, chunk_tokenizations)
         return self._schema
 
     async def search(self, query: ChunkQuery) -> list[SearchResultChunk]:
@@ -80,38 +85,94 @@ class ChunkSearchRepository:
         Chunks without a document reference are left out. Raises ``criteria.UnavailableFilter``
         for a criteria predicate on a property the store does not declare (or not as expected).
         """
-        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
-        common = dict(
-            limit=query.limit,
-            filters=await self._filter(query),
-            return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())],
-        )
-        if query.mode == SearchType.text:
-            result = await chunks.query.bm25(query=query.text, **common)
-        elif query.mode == SearchType.vector:
-            vector, target = _vector(query)
-            result = await chunks.query.near_vector(near_vector=vector, target_vector=target, **common)
-        elif query.mode == SearchType.hybrid:
-            vector, target = _vector(query)
-            result = await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
-                                               target_vector=target, **common)
-        else:
-            raise ValueError(f"Unknown search type: {query.mode}")
+        result = await self._ranked(query, return_references=[QueryReference(
+            link_on="document", return_properties=await self._document_properties())])
+        return [hit for hit in map(_hit, result.objects) if hit is not None]
 
-        results: list[SearchResultChunk] = []
+    async def ranked_ids(self, query: ChunkQuery) -> list[UUID]:
+        """Ids of the top ``query.limit`` chunks matching every condition, best first; no
+        properties or references are read. Pages of one ranking are slices of it (#605):
+        Weaviate's hybrid ranking depends on the limit, and hybrid ``offset`` does not reach
+        past its first results (measured on 1.40.1), so a page is never a query of its own."""
+        result = await self._ranked(query, return_properties=[])
+        return [obj.uuid for obj in result.objects]
+
+    async def ranked_documents(self, query: ChunkQuery) -> list[tuple[UUID, UUID | None]]:
+        """(chunk id, document id) of the top ``query.limit`` chunks matching every condition, best
+        first; only the document reference is read. A document is ranked by its best chunk where
+        it first appears (#607). Every hit is returned, a chunk without a document reference with
+        ``None``: whether the limit cut the ranking is told by the hits, not by the documents found.
+
+        Not Weaviate's ``group_by`` on the reference: on 1.40.1 BM25 and hybrid search return no
+        groups at all, and vector search groups only the first ``limit`` chunks
+        (``tests/integration/test_document_search_benchmark.py``)."""
+        result = await self._ranked(query, return_properties=[],
+                                    return_references=[QueryReference(link_on="document", return_properties=[])])
+        hits: list[tuple[UUID, UUID | None]] = []
         for obj in result.objects:
-            doc_objs = obj.references.get("document").objects if obj.references and obj.references.get("document") else []
-            if not doc_objs:
-                continue
-            first_doc = doc_objs[0]
-            results.append(SearchResultChunk(
-                id=obj.uuid,
-                **chunk_properties(obj.properties),
-                document_object=Document(id=first_doc.uuid, **first_doc.properties),
-                document=first_doc.uuid,
-                metadata=classifications(obj.properties),
-            ))
-        return results
+            refs = (obj.references or {}).get("document")
+            hits.append((obj.uuid, refs.objects[0].uuid if refs and refs.objects else None))
+        return hits
+
+    async def read_hits(self, ids: list[UUID], scope: ChunkQuery) -> list[SearchResultChunk]:
+        """The chunks ``ids`` that match every condition of ``scope`` (its text, mode and limit
+        do not apply) as search hits, in the order of ``ids``. Chunks gone meanwhile, outside
+        the scope or without a document reference are left out: read under the ranking's own
+        restrictions, ids from a client never reach a chunk that ranking could not (#611)."""
+        if not ids:
+            return []
+        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        restrictions = await self._filter(scope)
+        by_ids = Filter.by_id().contains_any(ids)
+        result = await chunks.query.fetch_objects(
+            filters=by_ids if restrictions is None else Filter.all_of([by_ids, restrictions]), limit=len(ids),
+            return_references=[QueryReference(link_on="document", return_properties=await self._document_properties())])
+        by_id = {obj.uuid: obj for obj in result.objects}
+        hits = (_hit(by_id[i]) for i in ids if i in by_id)
+        return [hit for hit in hits if hit is not None]
+
+    async def document_values(self, ids: Sequence[UUID], scope: ChunkQuery,
+                              properties: Sequence[str]) -> list[tuple[UUID, UUID, dict[str, Any]]]:
+        """(chunk id, document id, the document's stored ``properties``) of the chunks ``ids`` that
+        match every condition of ``scope``, as ``read_hits`` reads them (#619): chunks gone, outside
+        the scope or without a document are left out, in the order of ``ids``. Only the document
+        reference and the named document properties are read (no text, no vectors), in batches of
+        ``READ_BATCH`` ids; every property must be declared on the documents."""
+        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        restrictions = await self._filter(scope)
+
+        async def read(batch: Sequence[UUID]) -> list:
+            by_ids = Filter.by_id().contains_any(list(batch))
+            result = await chunks.query.fetch_objects(
+                filters=by_ids if restrictions is None else Filter.all_of([by_ids, restrictions]), limit=len(batch),
+                return_properties=[], return_references=[QueryReference(link_on="document",
+                                                                        return_properties=list(properties))])
+            return result.objects
+
+        batches = await asyncio.gather(*(read(ids[i:i + READ_BATCH]) for i in range(0, len(ids), READ_BATCH)))
+        found: dict[UUID, tuple[UUID, dict[str, Any]]] = {}
+        for objects in batches:
+            for obj in objects:
+                refs = (obj.references or {}).get("document")
+                if refs and refs.objects:
+                    document = refs.objects[0]
+                    found[UUID(str(obj.uuid))] = (
+                        UUID(str(document.uuid)), {prop: document.properties.get(prop) for prop in properties})
+        return [(i, *found[i]) for i in ids if i in found]
+
+    async def _ranked(self, query: ChunkQuery, **returned):
+        chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
+        common = dict(limit=query.limit, filters=await self._filter(query), **returned)
+        if query.mode == SearchType.text:
+            return await chunks.query.bm25(query=query.text, **common)
+        if query.mode == SearchType.vector:
+            vector, target = _vector(query)
+            return await chunks.query.near_vector(near_vector=vector, target_vector=target, **common)
+        if query.mode == SearchType.hybrid:
+            vector, target = _vector(query)
+            return await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
+                                             target_vector=target, **common)
+        raise ValueError(f"Unknown search type: {query.mode}")
 
     async def document_filter_stats(self) -> tuple[int | None, int | None, list[str] | None]:
         """(min yearIssued, max yearIssued, languages) over all documents; None where unknown."""
@@ -139,6 +200,9 @@ class ChunkSearchRepository:
         if query.collection_id is not None:
             filters.append(Filter.by_ref(link_on=self.collectionNames.user_collection_link_name)
                            .by_id().equal(query.collection_id))
+        if query.document_collection_id is not None:
+            filters.append(Filter.by_ref(link_on="document").by_ref(link_on="collection")
+                           .by_id().equal(query.document_collection_id))
         filters.extend(_condition(c) for c in query.conditions)
         if query.document_conditions or query.chunk_conditions:
             filters.extend(await self._criteria_filters(query))
@@ -149,15 +213,30 @@ class ChunkSearchRepository:
         return Filter.all_of(filters) if len(filters) > 1 else filters[0]
 
     async def _criteria_filters(self, query: ChunkQuery) -> list:
-        document_types, chunk_types, chunk_tokenizations = await self._declared()
+        document_types, document_tokenizations, chunk_types, chunk_tokenizations = await self._declared()
         copied = [c for c in query.document_conditions if c.prop in CHUNK_COPIES]
         referenced = [c for c in query.document_conditions if c.prop not in CHUNK_COPIES]
         return [
-            *criteria.parts(referenced, document_types, records="Documents",
+            *criteria.parts(referenced, document_types, document_tokenizations, records="Documents",
                             target=lambda prop: Filter.by_ref(link_on="document").by_property(prop)),
             *criteria.parts(copied, chunk_types, records="Documents"),
             *criteria.parts(query.chunk_conditions, chunk_types, chunk_tokenizations, records="Chunks"),
         ]
+
+
+def _hit(obj) -> SearchResultChunk | None:
+    """A chunk object with its document reference as a search hit; None without a document."""
+    doc_objs = obj.references.get("document").objects if obj.references and obj.references.get("document") else []
+    if not doc_objs:
+        return None
+    first_doc = doc_objs[0]
+    return SearchResultChunk(
+        id=obj.uuid,
+        **chunk_properties(obj.properties),
+        document_object=Document(id=first_doc.uuid, **first_doc.properties),
+        document=first_doc.uuid,
+        metadata=classifications(obj.properties),
+    )
 
 
 def classifications(properties: Mapping[str, Any]) -> dict[str, list[str]]:

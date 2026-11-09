@@ -12,6 +12,20 @@
           <div class="text-caption text-grey-8">{{ document.yearIssued || 'Year N/A' }}</div>
           <OriginalSourceLink :document="document" :page-id="targetPageId" class="text-caption" />
         </div>
+        <!-- The full document view (text and scans), unlike this passage beside the page. -->
+        <q-btn
+          v-if="openLink"
+          dense
+          flat
+          no-caps
+          color="primary"
+          icon="open_in_full"
+          label="Open document"
+          :to="openLink"
+          class="chunk-context__open"
+          title="Open the whole document with its page scans"
+          data-testid="chunk-context-open"
+        />
         <slot name="header" />
         <q-btn
           v-if="returnLabel"
@@ -100,6 +114,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QSpinner } from 'quasar'
+import type { RouteLocationRaw } from 'vue-router'
 import type { Document, DocumentChunk } from 'src/generated/api'
 import OriginalSourceLink from './OriginalSourceLink.vue'
 import type { ContextDirection } from './useChunkContext'
@@ -143,6 +158,8 @@ const props = withDefaults(defineProps<{
   targetName?: string
   /** A range marked in the text (an annotation); none by default. */
   highlight?: ContextHighlight | null
+  /** The full document view at the target (#545, workspace/documentLink.ts); no link by default. */
+  openLink?: RouteLocationRaw | null
   emptyText?: string
 }>(), {
   hasBefore: false,
@@ -155,6 +172,7 @@ const props = withDefaults(defineProps<{
   targetLabel: null,
   targetName: 'Matched passage',
   highlight: null,
+  openLink: null,
   emptyText: 'Nothing selected.'
 })
 
@@ -265,6 +283,7 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value] as const, as
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
+.chunk-context__open,
 .chunk-context__return {
   margin-left: -6px;
 }

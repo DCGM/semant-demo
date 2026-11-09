@@ -93,7 +93,17 @@ documents collections), an ``--offline-backup`` note is recorded as given and no
 (an offline copy of the data directory, made with Weaviate stopped). A check takes neither.
 Every reported document gets a line in ``CHECKPOINT.manifest.jsonl``.
 
-Afterwards run ``metadata_sync`` (document metadata), then ``chunk_year`` (the year on the
+A write run lists the input documents whose input chunks are all stored in
+``CHECKPOINT.documents.txt``, one document id per line (the format of ``metadata_sync
+--document-ids`` and ``page_order --document-ids``), appended after each page before the
+checkpoint: ``new`` and ``append`` documents once their writes are read back, ``replayed``
+ones too (so that a document written before an interruption, which the resumed run finds
+stored, is not lost), and a ``blocked`` document once a rerun finishes it. Rejected
+documents are never listed. A page repeated after an interruption may list a document twice;
+both readers ignore the repetition. A check writes no list.
+
+Afterwards run ``metadata_sync`` (document metadata; ``--report --document-ids`` with the list,
+then ``--apply``), then ``chunk_year`` (the year on the
 new chunks), ``chunk_titles`` (their titles; after ``metadata_sync``, since it uses the
 document titles) and ``data_tools/embedder`` (their vectors; until then they are missing from
 vector and hybrid search), see ``docs/DATA_MAINTENANCE.md``.
@@ -676,7 +686,11 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
                  "lines": index.lines, "ignored_fields": index.ignored, "invalid_lines": index.unattributed}
         _write_json(checkpoint, state)
         _append(manifest_path(checkpoint), [{"status": "invalid_line", "reason": r} for r in index.unattributed])
+    listed = documents_path(checkpoint)
     if write_:
+        if state["after"] is not None and not listed.exists():
+            progress(f"{listed} is missing: the documents of the pages before {state['after']} are not listed")
+        _complete_lines(listed)
         state.setdefault("runs", []).append({"at": _now(), "bulk": bulk, "page": page,
                                               **({"batch": batch} if bulk else {}), **backup})
         _write_json(checkpoint, state)
@@ -705,8 +719,11 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
         return list(await asyncio.gather(*(one(d, chunks.get(d, [])) for d in ids)))
 
     def record(results: list[tuple[UUID, Plan, Outcome | None]], retried: set[str]) -> list[str]:
-        lines, blocked = [], []
+        lines, blocked, stored = [], [], []
         for document, plan_, outcome in results:
+            if write_ and (plan_.action == "replayed" or (
+                    plan_.action in ("new", "append") and outcome is not None and not outcome.failure)):
+                stored.append(str(document))
             if plan_.action != "failed" and str(document) not in retried:
                 counts["documents"] += 1
                 counts[plan_.action] += 1
@@ -725,6 +742,7 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
                         lines.append({"document": str(document), "status": "incomplete_document",
                                       "reason": f"{outcome.inserted} of {len(plan_.inserts)} chunks inserted"})
         _append(manifest, lines)
+        _append_ids(listed, stored)
         return blocked
 
     async def process(documents_: list[str]) -> list[str]:
@@ -769,6 +787,30 @@ def inputs_path(checkpoint: Path) -> Path:
     return checkpoint.with_name(checkpoint.name + ".inputs.jsonl")
 
 
+def documents_path(checkpoint: Path) -> Path:
+    """The list of the documents stored by a write run (``metadata_sync --document-ids`` format)."""
+    return checkpoint.with_name(checkpoint.name + ".documents.txt")
+
+
+def _append_ids(path: Path, ids: list[str]) -> None:
+    if ids:
+        with path.open("a", encoding="utf-8") as file:
+            file.write("".join(f"{i}\n" for i in ids))
+
+
+def _complete_lines(path: Path) -> None:
+    """Cut a last line without its newline (a run killed while appending), so that every line
+    stays a whole document id; the resumed run lists that page again."""
+    if path.exists() and (data := path.read_bytes()) and not data.endswith(b"\n"):
+        with path.open("r+b") as file:
+            file.truncate(data.rfind(b"\n") + 1)
+
+
+def _listed(path: Path) -> int:
+    """The number of distinct documents in the list (a resumed page may list some twice)."""
+    return len(set(path.read_text(encoding="utf-8").split())) if path.exists() else 0
+
+
 def _write_bytes(path: Path, data: bytes) -> None:
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(data)
@@ -791,12 +833,14 @@ def _differing_inputs(listing: Path, fingerprints: list[dict[str, Any]]) -> str:
 
 
 def summary(state: dict[str, Any], checkpoint: Path) -> dict[str, Any]:
+    listed = ({"document_list": str(documents_path(checkpoint)),
+               "documents_listed": _listed(documents_path(checkpoint))} if state["mode"] == "write" else {})
     return {key: state[key] for key in ("endpoint", "chunks", "documents", "mode", "done", "counts", "lines",
                                         "ignored_fields")} | {
         "invalid_lines": len(state["invalid_lines"]), "blocked": len(state["blocked"]),
         "runs": state.get("runs", []),
-        "checkpoint": str(checkpoint), "manifest": str(manifest_path(checkpoint)),
-        "next": "metadata_sync, then chunk_year and data_tools/embedder (docs/DATA_MAINTENANCE.md)"}
+        "checkpoint": str(checkpoint), "manifest": str(manifest_path(checkpoint)), **listed,
+        "next": "metadata_sync, then chunk_year, chunk_titles and data_tools/embedder (docs/DATA_MAINTENANCE.md)"}
 
 
 def exit_code(result: dict[str, Any]) -> int:

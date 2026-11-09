@@ -14,7 +14,7 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | [0003 - Request-scoped AI](0003-request-scoped-ai.md) | Agreed lifecycle; detailed events/retry policy proposed. |
 | [0004 - Storage and annotation search](0004-storage-and-annotation-search.md) | Implemented chunk-tag search; inconsistent entries need reviewed cleanup. |
 | [0005 - Testing contract](0005-testing-contract.md) | Implemented baseline; detailed test guidance supporting CONTRIBUTING. |
-| [0006 - Context and text](0006-context-and-text.md) | Search context/line-level roadmap agreed; mapping implementation left open. |
+| [0006 - Context and text](0006-context-and-text.md) | Search context agreed; line-level correspondence implemented as frontend mapping from stored chunk-start anchors (#351, validated in #546). |
 | [0007 - Access and collaboration](0007-access-and-collaboration.md) | Implemented shared annotation editing, owner-only membership and local progressive UI. |
 | [0008 - Multi-tenant annotation storage](0008-multi-tenant-annotation-storage.md) | Implemented one annotation tenant per collection; deployed stores migrated 2026-10-18; idle deactivation pending. |
 | [0009 - Derived annotation data](0009-derived-annotation-data.md) | Proposed with #328: annotation text, context, absolute document positions (#463) and a revision-guarded contextual vector; store rollout pending. |
@@ -30,7 +30,7 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | Q2 | Search uses chunk tag attributes. Unsupported entries without backing annotations are inconsistencies to remove. Document view/export/concordances select manual, automatic, or both. | Preserve search representation; fix consistency defects and review cleanup separately. Do not impose approved-only search defaults or a legacy compatibility layer. |
 | Q3 | Search chat uses retrieved results or an explicitly selected subset. | Explicit source set; no silent query rerun or scope expansion. Applied to the sidebar chats by ADR 0012 (proposed). |
 | Q4 | Real-time means local Document-view annotation, including immediate streamed AI suggestions. | Scope-safe UI updates; no cross-user synchronization requirement. |
-| Q5 | Line-level text-image correspondence is planned, possibly by frontend chunk-to-ALTO mapping; polygons may be added later. | Preserve text/source anchors; geometry stays optional and mapping is future feature work. |
+| Q5 | Line-level text-image correspondence is planned, possibly by frontend chunk-to-ALTO mapping; polygons may be added later. | Preserve text/source anchors; geometry stays optional. Implemented in the frontend from page layout files and `layoutStart` anchors ([PAGE_LAYOUT.md](../PAGE_LAYOUT.md)); polygons remain future work. |
 
 These answers supersede the initial Q1–Q5 proposals. Changes to agreed behavior
 require an explicit issue, review and ADR update; do not silently broaden scope.

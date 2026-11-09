@@ -28,6 +28,7 @@ describe('routes', () => {
     ['/search', 'search', false],
     ['/rag', 'rag', false],
     ['/corpus', 'corpus', false],
+    ['/documents/d1', 'document', false],
     ['/collections', 'collections', true],
     ['/collections/c1', 'collectionOverview', true],
     ['/collections/c1/overview', 'collectionOverview', true],

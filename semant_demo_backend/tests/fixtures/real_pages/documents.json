@@ -1,0 +1,798 @@
+{
+ "documents": [
+  {
+   "documentId": "000070c8-2b2a-46f9-8052-1ce4b7dac249",
+   "library": "nacr",
+   "title": "Intelligenzblatt zur Prager Zeitung. 1839",
+   "yearIssued": 1839,
+   "case": "A whole one-page document (an 1839 Intelligenzblatt page): every chunk exact.",
+   "sourcePageOrders": [
+    0
+   ],
+   "pages": [
+    {
+     "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+     "label": "[1]",
+     "pageType": "TitlePage"
+    }
+   ],
+   "chunks": [
+    {
+     "id": "487986dd-3ef3-4cbd-9898-f2e23267d5a2",
+     "order": 0,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "Jntelligenzblatt zur Prager Zeitung.\n\nDienstag den 27. August\n\nErh. 21. Aug.\n\n100 fl. Conv. Munze Belohnung.\nEs wird hiemit die Anzeige gemacht: Daß von einem mit dem k. k. Post-Courir-Wagen Reisenden am 18ten\noder 19ten dieses Monats in der Gegend zwischen Iglau und Czaslau, oder in einem Gasthofe ein Betrag von 370 fl.\nbis 380 fl. in Bank-Noten verloren wurde; es waren, so viel erinnerlich\n3 Stück Bank-Noten à fl. 100\n—\n1\ndetto\nà fl. 50\ncirca\nin kleinen detto\n\nfl. 300\nfl. 50\nfl. 30\n\nbeträgt fl. 380.\nDer redliche Finder dieses Betrages wird ersucht, denselben in der k. k. Kreiskassa in Czaslau abzugeben, wo\nihm unter Einem fl. 100 in Bank-Noten für die gefällige Zurückstellung des obigen Betrages behändiget werden.\n\nErh. 7. Aug.\n\nWohnungs-Veränderung.\n\nstehend aus alten, Zeit- und Jährlings-Müttern,\ndann alten Hammeln, an den Meistbietenden ver=\nkauft werden; wozu die geziemende Einladung ge-\nschiebt.\nVom Direktorialamte der Herrschaft Swoi-\n(3\nschitz, kaurzimer Kreises, den 19. August 1839.",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r014-l001",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "ba858b3c-79a8-47ec-8a0d-5d0ae20c92a1",
+     "order": 1,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "Die Kanzlei des sämmtlichen\nRechte Doktors Merolt befindet\nsich seit 6. August l. J. in der\nWassergasse Nro. Konsk. 698—\n2.\n\nErh. 8. Aug.\n\nFür ein Geschäft, welches sich mit Vortheil\nselbst in den kleinsten Orten betreiben läßt, und\ndurch Bekanntschaften besonders ausgedehnt wer-\nden kann, werden Agenten gesucht, deren ander-\nweitige Verhältnisse sie mit vielen Personen in Be-\nrührung bringen, und welche am Platze ihres Do-\nmicils als rechtliche Leute bekannt sind. Kauzion\nist nicht erforderlich, und Reflectirende wenden sich\nin portofreien Briefen directe an das Handlungs-\nhaus Baagoe et Comp. in Hamburg.\n\nF. A. Binder\nzeigt hiemit ergebenst an, daß er\nein\nHandlungs-Lokale am Kreuzherrenplatz\nverlassen, und in die\nJesuitengasse, in das ehemalig Schön-\nfeld’sche Haus Nro. Konsk. 184—1,\nüberzogen ist.",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r002-l042",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "e8ae0d21-1887-49cb-a020-c3704b1ed3cc",
+     "order": 2,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "F. A. Binder,\nKaufmann, Jesuitengasse, im ehmalig\nSchönfeld'schen Hause Nro. 184—1.\nErb. 8. Aug.\n\nErb. 17. Aug\n\nWohnungsanzeige.\n\nDer Gefertigte zeigt seinen hoch-\ngeehrten Herren Gönnern ergebenst an,\ndaß er seine frühere Wohnung in N. K.\n146 — 1, mit jener\nam Kohlmarkt Nr. K. 426.\nim ersten Stock\nverändert habe, und bittet um ferneren\ngeneigten Zuspruch.\n\nJakob Popelik,\nbürgerl. Männerkleidermacher.\n\nProbe-Häringe\nlangen jede Woche mi' kais.kön. Postwagen an bei\nAllois Joh. Wentzely,\nWei- und ital. Früchten-Handlung\nam Obstmarkt.\n\nErh. 8. Aug.\n\nHandspinnmaschine.\n\nIch mache hiedurch alle Mechaniker, Lein¬\nweber, Garnhändler, Vorsteher von öffentlichen\nArb eitsanstalten, Gemeinde-Vorsteher, so wie über-\nhaupt alle, die sich für die Leinen-Industrie in-\nte ressiren, auf meine in Würtemberg, Baiern und",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r041-l075",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "61cb6590-87e5-4725-85e3-fa7a80f72f62",
+     "order": 3,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "Oesterreich patentirte Handspinnmaschine für Flachs,\nHanf und Werg aufmerksam, mittelst welcher eine\nSpinnerin täglich ein verhältnißmäßig sehr be-\nträchtliches Quantum Garn produziren kann, und\ndie ich zu billigem Preise liefere.\nAuf Anfragen in frankirten Briefen werde ich\nnähere Auskunft gerne ertheilen.\nStuttgart den 1. August 1839.\nLouis v. Orth.\n\nAnzeige.\nGasthof-\n„Zur Nordbahn“ Nro. 30\nin der Jägerzeil zu Wien.\nUnterzeichneter empfiehlt sich allen Reisen-\nden ergebenst, und erlaubt sich hiermit anzuzeigen:\nDaß er seinen Gasthof ganz neu umgestaltet, aus\nden früheren Wohnungen Passagier-Zimmer errich-\ntet, auf das Neueste meublirt, und die Speise=\nZimmer vergrößern lassen, so daß die Reisenden\ndadurch alle mögliche Bequemlichkeit finden.\nDie Lage des Gasthofes ist überdieß für",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r004-l155",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "9bf0a7c1-489c-43ea-9673-a8f3cf915b1a",
+     "order": 4,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "jene Reisenden sehr gut gelegen, die zu ihrer Reise\nsich der Dampfwägen oder Dampfschiffe bedienen\nwollen, welch beide Anstalten nicht weit davon\nentfernt sind. Auch ist die beste Ordnung getroffen\nzur Hin- und Rückfahrt zum Bahnhof, wo die\nOmnibus, so wie auch die Träger auf Verlangen\nder Ankommenden bei meinem Gasthof stille halten,\ndamit sie Jedermannn auf Verlangen bedienen.\nEben so: Wer mit dem Dampfschiff ankömmt\noder fortfährt, wo Herr Janschky, bürgerl. Stadt=\nLohn-Kutscher in Wien, diese Gelegenheit besorgt,\nwie im vorigen Jahre, und auf Verlangen der\nReisenden bei der Hin- und Rückfahrt bei meinem\nGasthofe stille hält, damit sie in der besten Ordnung\nbedient werden.\n\nPeter Danhauser,\nGasthofinhaber.\n\nErh. 19. Aug.\n\nRapps\nkauft in großen und kleinen Parthien\nAlbert Duhm.\nPrag, am Viehmarkt Nro. Konsk. 670.",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r029-l117",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "889bba1e-60b7-47d6-985d-edfe65073293",
+     "order": 5,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "Erh. 21. Aug.\n6926.\nWagen-Verkauf.\nAuf der Kleinseite, Neumarktsgasse Nr. 368,\nist ein alter, aber noch wohlerhaltener halbgedeckter\n(2)\nWagen um 80 fl. C. M. zu verkaufen.\n\nErh. 17. Aug.\n\nBekanntmachung.\nDer Gefertigte hat eine kleine,\nneue solid gebaute Dampfmaschine,\ndie geeignet ist, jede Stunde 600\nKubikschuh Wasser zu fördern, da-\nher auf Kohlwerken anwendbar\nwäre, sammt Dampfkessel, um den\ngeringen Preis von 700 fl. C. M. zu\nverkaufen. Auch werden bei dem-\nselben stets Bestellungen auf Dampf-\nMaschinen von jeder beliebigen Kraft\nangenommen und aufs billigste und\nschnellste befördert. Da fortwäh-\nrend derlei Maschinen, Dampfkesseln,\nLuftheizungen, Schneid-Maschinen\nin Arbeit sind, so kann sich ein jeder\nKauflustige von der soliden Arbeit\nüberzeugen.\n\nErh. 1. Aug.",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r051-l088",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "38c214bf-ff03-49ae-95d6-f1ae35ca2dd7",
+     "order": 6,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "Erb. 16. Aug.\n\nEin Erzieher\nkann in einem Herrschaftshause auf dem Lande so-\ngleich unterkommen. Er muß der böhmischen Spra-\nche kündig und befähiget seyn, den Privatunterricht\nfür die Gymnasialschulen, oder wenigstens für die\nvier Grammatikalklassen zu ertheilen.\nNähere Auskunft hierüber wird, gegen Ueber-\nnahme der dießfälligen Nachweise, in der breiten\nGasse N. K. 751—2 ertheilt.\n(3)\n\nErh. 19. Aug.\n\nPiano-Forte\nvon a1/2 Oktaven ist zu verkaufen. Zu erfragen\nin der Obstgasse Nro. 376 im Hofe links.\n(3)\n\nErh. 19. Aug.\n\nSchafviehverkauf.\nDen 5. September 1839 Vormittags um\n10 Uhr werden im Amtsorte Swoischitz, 500 Stück\nüberzähliges, zur Zucht geeignetes Schafvieh, be-\n\nThomas Maubach,\nMaschinenfabrikant.\nRožmitalka vor dem Neuthore bei\nPrag am 16. August 1839.",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r023-l181",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "f962f1fc-4afb-411d-a1a5-dce325940924",
+     "order": 7,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "Erb. 22. Aug.\nBillard-Verkauf.\nEin sehr richtiges, und unlängst neu überzo-\ngenes Billard nebst Lampen, Bällen ꝛc., ist sogleich\nzu verkaufen in der Müllerschen Weinhandlung auf\n(2)\nder Palmowka im Karolinenthal bei Prag.\n\nVerleger: Gottlieb Haase Söhne. — Redakteur: S. A. Gellen.",
+     "fullRunLayoutStart": {
+      "pageId": "5521aa8f-f67f-43a2-bda2-7a54b468ca18",
+      "lineId": "r053-l192",
+      "offset": 0,
+      "match": "exact"
+     }
+    }
+   ]
+  },
+  {
+   "documentId": "0002097a-2223-46b0-8507-bde4b059daaa",
+   "library": "d",
+   "title": "Pilsner Tagblatt. 14. 32",
+   "yearIssued": 1913,
+   "case": "A newspaper page in columns (31 regions) with the most curved and skewed baselines of the sample and many hyphenated line ends.",
+   "sourcePageOrders": [
+    12
+   ],
+   "pages": [
+    {
+     "pageId": "7c7eaf71-d056-4a71-8386-cb1a6c4fb744",
+     "label": "13",
+     "pageType": "NormalPage"
+    }
+   ],
+   "chunks": [
+    {
+     "id": "1543a021-0988-46cf-a335-f87693f9a5c9",
+     "order": 149,
+     "fromPage": 12,
+     "toPage": 12,
+     "text": "Nur in der Wiederholung\nliegt der Erfolg der Inserate.\n\nErstes stäudiges elekztrisches Tueater\nim Saale des Arbeiterheims in Pilsen.\n\nNatur-Teebutter\nlieferrt in 1/2 1/2 112—5 kg-Stücken\nan Private und Händler von\nPostkolli aufwärts zu billigsten\nTagespreisen. Joh. Polzhuber,\n6158\nMolk., Steyr, O.-Oe.\n\naller Berufe und\nAdressen Lander mit\nPortogarantie im Internationalen\nAdressen- Bureau Josef Rosen-\nzweig & Söhne, Wien I., Sonnen-\nTelsgasse Nr. 17, Telephon 16831,\nBudapest V., Arany Janos utca 18.\nProspekte tranko. 6001\n\nNachweisbar amtlich eingeholte\n\nalle die Vorteile kennen lernen, die Ihnen beim Ankaufe eines erst-\nklassigen photographischen oder Projektions-Apparates oder eines\nPrismen-Binocles die Firma\nBrugerie H. Cervenky, PilSEE, Ferdinandsfr. 15\ngegenüber auswärtigen Firmen bieten kann! Vor allem ist es die\nunverbindliche, spesenfreie Ansichtssendung, absolute Garantie, Frei-\nUnterricht, erleichterte Zahlungsbedingungen ohne Aufschlag, bei\nFabrikspreisen und viele andere. Preisliste gratis.",
+     "fullRunLayoutStart": {
+      "pageId": "7c7eaf71-d056-4a71-8386-cb1a6c4fb744",
+      "lineId": "r022-l053",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "56b3a33a-b76d-4343-9d51-b7628f814c7a",
+     "order": 150,
+     "fromPage": 12,
+     "toPage": 12,
+     "text": "Heinrich\nBöhn\nKunstgewerbliche Ausstellung\nmustergültiger Wohnräume\nin allen Stilarten u. Preislagen\nPrag, Bergstein 12.\nWien, IV. Karlsgasse 13.\n\nDer Todesritt bei Balaklawa. Schlachtszenen aus dem\nHinkriege i. J. 1854. Glänzende Edisonaufnahme, die eine regel-\nreite Reiterschlacht, in der die leichte Brigade vorgeht und von\ner Reitern nur 17 das Schlachtfeld verlassen, vorstellt. —\nDer Brand des Rollschuhpalastes in Hoboken in Amerika,\nder durch Unvorsichtigkeit von Kindern entstanden ist und bei dem\n7 Häuser vollkommen eingeäschert wurden. — Naturaufnahmen:\nEine Jartarenhochzeit in Mezö Kövezd in Ungarn. — Durchs\nGesäuze. — Lustspiele: Der lachende Dritte. Ein neugieriger Blick.\n\nVom 31. Jänner bis 6. Feber 1913 gelangt zur\nAufführung:\n\nSpezialabteilung:",
+     "fullRunLayoutStart": {
+      "pageId": "7c7eaf71-d056-4a71-8386-cb1a6c4fb744",
+      "lineId": "r040-l047",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "fc12519a-24e9-4e43-a7ec-6caf5361a8b9",
+     "order": 151,
+     "fromPage": 12,
+     "toPage": 12,
+     "text": "Wohnungseinrichtung bestehend\naus Speise-Wohn-Schlafzimmer-\nMöbeln inklusive der Fenster-\nvorhänge und Bettdecken, sowie\nMatratzen in bekannt künst-\nlerischer geschmackvollster und\ngediegenster Ausführung.\nKomplett Kronen 5000.\nWEISSE WOCHEN\nvom 3. bis 12. Feber im I. Pilsner Warenhause\nS. Ohler 8 Comp., Ringplatz Nr. 33\nSämtl. Weißware\nals Damaste, Chiffone, Leinwande,\nTisch-Leintücher, Handtücher,\nTaschentücher, Damen- u. Herren-\nWäsche, Spitzen\nzu unglaublichen Preisen!\n\nTheodorz.\nKulturhistorisches Drama in 3 Akten nach dem\nMeisterwerke von Viktor Sardou.\nIn der Titelrolle Mlle. Sahary Djelly.\n\nProgrammänderungen vorbehalten!\n\nAbend-Vorstellungen finden täglich statt. Nachmittags-Vor-\nstellungen bei gewöhnlichen Preisen am Sonntag, bei ermäßig-\nten Prsen am Mittwoch. Beginn der Abend-Vorstellungen um 8 Uhr.\n— Während der Vorführungen konzertiert das Vereins-Salon-Quin-\n-Am Samstag. den 1. Feber finden keine Vorstellungen statt.\nKartenvorverkauf mit Ausnahme der Samstage und Sonntage täglich\nvon 3 bis 5 Uhr nachm. — Kassaeröffnung um 7 Uhr abends.",
+     "fullRunLayoutStart": {
+      "pageId": "7c7eaf71-d056-4a71-8386-cb1a6c4fb744",
+      "lineId": "r009-l084",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "71cf5740-49d4-4bbf-b41e-b17c6776fe05",
+     "order": 152,
+     "fromPage": 12,
+     "toPage": 12,
+     "text": "Sitzplätze 60, 50, 40, 30 Heller, Galerie 20 Heller.\n\nAlleinaufführungsrecht für Pllsen.\n\nim ergreifen-\nAsta Nielsen als Pierrof den Gramea Komödiantan.\n\nArrangement, Auswahl\nbillige Preise\n\nBedienung nur auf Verlangen!\n\nEintritt frei.\nTäglich Konzert\nvon 1/25 bis 1/28 Uhr.\nArbeitende Spitzenklöpplerin-\nnen aus dem Böhmerwalde.\n\nübertrifft alle bisherigen Ver-\nanstaltungen!\n\nMächste Woche:\n\nBedienung nur auf Verlangen!\n\nŽIVNOSTENSKÁ BANKA FIKIALE PILSEN\nEINLAGEN\nAktienkapital und Reserven über K 100 Millionen.\nVERZINSUNG\nZextrale in Prag gegr. 1868. Fillalen: Brünn, Budweis, Friedek-Mistek,\nauf Einlagshülcel cuulaniast\nIglau, Klattau, Königgrätz, Krakau, Lemberg, Helnik, Olmütz,\nMähr.-Ostrau, Pardubitz, Plsek, Frossnitz, Relchenberg, Tábor,\nim Konto-Kurrent-\nTriest u. Wienl., Herrengasse 12. Vom 1. April 1912 au in Karlsbad.\n2\nCeulante Besorguzg aller Baske und Börsentrausaktiones.\nZneker ea graz.\nuerkehrn 5%",
+     "fullRunLayoutStart": {
+      "pageId": "7c7eaf71-d056-4a71-8386-cb1a6c4fb744",
+      "lineId": "r026-l106",
+      "offset": 0,
+      "match": "exact"
+     }
+    }
+   ]
+  },
+  {
+   "documentId": "00094a56-54af-4bd4-9559-c5601d81b15d",
+   "library": "kvkli",
+   "title": "Mittheilungen aus dem Vereine der Naturfreunde in Reichenberg. 37",
+   "yearIssued": 1906,
+   "case": "The first sixteen pages of a 1906 volume: a title page, blank pages (scans without text lines, and OCR of bleed-through below the confidence threshold), plates with a repeated caption, the table of contents, which the first chunk reaches across ten page breaks, and the first text pages, with chunks across the page breaks.",
+   "sourcePageOrders": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "pages": [
+    {
+     "pageId": "8b82b0b8-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1a]",
+     "pageType": "TitlePage"
+    },
+    {
+     "pageId": "8b82b0b9-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1b]",
+     "pageType": "Blank"
+    },
+    {
+     "pageId": "8b82d7ca-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1c]",
+     "pageType": "Blank"
+    },
+    {
+     "pageId": "8b82d7cb-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1d]",
+     "pageType": "NormalPage"
+    },
+    {
+     "pageId": "8b82d7cc-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1e]",
+     "pageType": "Blank"
+    },
+    {
+     "pageId": "8b82d7cd-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1f]",
+     "pageType": "NormalPage"
+    },
+    {
+     "pageId": "8b82d7ce-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1g]",
+     "pageType": "Blank"
+    },
+    {
+     "pageId": "8b82d7cf-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1h]",
+     "pageType": "NormalPage"
+    },
+    {
+     "pageId": "8b82fee0-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1i]",
+     "pageType": "NormalPage"
+    },
+    {
+     "pageId": "8b82fee1-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1j]",
+     "pageType": "Blank"
+    },
+    {
+     "pageId": "8b82fee2-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1k]",
+     "pageType": "TableOfContents"
+    },
+    {
+     "pageId": "8b82fee3-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1l]",
+     "pageType": "Blank"
+    },
+    {
+     "pageId": "8b82fee4-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "[1]",
+     "pageType": "NormalPage"
+    },
+    {
+     "pageId": "8b82fee5-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "2",
+     "pageType": "NormalPage"
+    },
+    {
+     "pageId": "8b82fee6-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "3",
+     "pageType": "NormalPage"
+    },
+    {
+     "pageId": "8b8325f7-be8c-11ed-9d8c-001b63bd97ba",
+     "label": "4",
+     "pageType": "NormalPage"
+    }
+   ],
+   "chunks": [
+    {
+     "id": "2459afdf-c34c-4aff-ba48-a9aad75bbd84",
+     "order": 0,
+     "fromPage": 0,
+     "toPage": 10,
+     "text": "Krajská vědecká knihovna\n\nLiberci\nPA 989/1906\n\nMitteilungen\n\nVereine der Naturfreunde\nin Reichenberg.\n\nsiebenunddreißigster Jahrgang.\n\nAus dem naturhistorischen Vereinsmuseum.\n\nNach photographischen Aufnahmen des Herrn Emanuel Conrath.\n\nAus dem naturhistorischen Vereinsmuseum.\nNach photographischen Aufnahmen des Herrn Emanuel Conrath.\n\nAus dem naturhistorischen Vereinsmuseum.\nNach photographischen Aufnahmen des Herrn Emanuel Conrath.\n\nMitteilungen\n\nVereine der Naturfreunde\n\nReichenberg.\n\nIm Auftrage des Uorstandes zusammenge\n\nKarl Hübner,\n\nOberlehrer und derzeit Schrifführer des Uereines der Naturfreunde.\n\nSiebenunddreissigster Jahrgang.\n\nReichenberg.\nIm Verlage des Vereines. — Druck von Rudolf Gerzabek & Comp.\n1900.\n\nPA 989/37. 1906 a\n\nInhalts-Verzeichnis.\n\n1. Bryologisch-floristische Mitteilungen aus Böhmen. Von Prof. Franz\nMatouschek\n....\n2. Einige beantwortete und unbeantwortete Fragen der Süßwasserbiologie.\nVon Victor Langhans\n3. Gesteine aus der Umgebung Reichenbergs. Von Professor Dr. Josef\nGränzer\n4. Noch einige Fundorte von Mineralien und Gesteinen unserer Heimat.\nVon Bürgerschullehrer Anton Theodor Hönig",
+     "fullRunLayoutStart": {
+      "pageId": "8b82b0b8-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r001-l001",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "c2957286-1690-4c49-838d-7d5c81729942",
+     "order": 1,
+     "fromPage": 10,
+     "toPage": 12,
+     "text": "40-55\n56—61\n\nVereinsangelegenheiten\n5. Bericht über Stand und Gang des Vereinslebens i. J. 1905 .\n..\n6. Bericht der naturwissenschaftlichen Abteilung\n7. Bericht über den Stand des naturwissenschaftlichen Museums \n8. Bericht der Wetterwarte Reichenberg\n.....\n9. Bericht über die Tätigkeit der Gartenbauabteilung\n...\n10. Kassa-Ausweis\n.\n.\n11. Gedenkblatt\n12. Vorstand des Vereines für das Jahr 19\n13. Ehrenmitglieder\n15. Korrespondierende Mitglieder\n.\n15. Verzeichnis der mit dem Vereine in Verbindung stel\nGesellschaften,\nVereine und Anstalten und der im Jahre 1905 eingelangten\nSchriften.\n.\n16. Mitglieder-Verzeichnis\n\n62—64\n64—65\n65—69\n70—73\n74—75\n76—78\n79\n-80\n81\n82—83\n\n84-90\n91—103\n\n.\n.\n..\n.\n..\n.\n.\n.\n.\n.\n.\n.\n..\n-\n.\n.\n.\n.\n.\n..\n.\n.\n.\n\nBryologisch-floristische Mitteilungen\naus Böhmen.",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee2-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r005-l013",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "1e23f693-4d4f-4065-806c-9e5dfb5ac1ed",
+     "order": 2,
+     "fromPage": 12,
+     "toPage": 12,
+     "text": "Zugleich der I. Teil der Resultate, welche bei einer Durchsicht des im Landes-\nmuseum in Prag befindlichen Moosherbars gewonnen wurden.\n\nVon Prof. Franz Matouschek in Reichenberg.\n\nDie 1895—96 vorgenommene Revision des großen Moos-Herbars\nim Landesmuseum in Prag brachte, wie zu erwarten war, eine Menge\nvon Einzelheiten, die für die weitere Erforschung und die gründlichere\nKenntnis der Moosflora Böhmens sicher nicht belanglos sind. Es wird\nLicht geworfen auf die geradezu staunenswerte Liebe und Sachkenntnis,\nmit der die heimischen Botaniker von 1817 etwa bis 1860 der Er-\nforschung der heimatlichen bryologischen Floristik oblagen. Die Kenntnis\ndieser „alten Funde“ ist wohl jedem, der diesen Zweig der Floristik\nweiter auszubauen hilft, recht erwünscht. Im vorliegenden ersten",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee4-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r001-l007",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "dff2e903-8bc9-4c94-a944-3c4a35944b28",
+     "order": 3,
+     "fromPage": 12,
+     "toPage": 12,
+     "text": "Teile der Revision beschränkte ich mich zumeist auf das nördliche\nBöhmen, um im zweiten Teile, der nächstes Jahr in unseren „Mitteilun-\ngen“ erscheinen wird, die Funde aus den übrigen Teilen Böhmens\nnachzuholen. Besonderes Augenmerk widmete ich, wo nötig, auch der\ngeographischen Verbreitung der Arten in unserem Kronlande und der\nSynonymik. Deswegen darf ich vermuten, daß auch weitere Kreise sich\nfür manches hier mitgeteilte interessieren werden. — Was die Sammler\nder Moose anbelangt, so wolle man in V. Maiwald's Geschichte der\nBotanik in Böhmen nachlesen. Mit Absicht gab ich das Sammeljahr\ngetreu an, wenn es auf der Moosetiquette oder Scheda verzeichnet war.\nJeder erwähnte Fund wurde revidiert. Steht beim Fundorte nicht aus-\ndrücklich der Vermerk „steril“ (st.), so liegen die Moose mit Kapseln\n(msp.) im Herbar des Landesmuseums (Herb. mus. boh.). Daß Korrek-\nturen bei der Revision vorgenommen werden mußten, wird nicht Wunder\nnehmen. — Hin und wieder nahm ich neuere Funde auf und auch\n*) XI. und XII. erschienen in den vorhergehenden Jahrgängen unserer\n„Mitteilungen aus dem Vereine der Naturfreunde.“",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee4-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r000-l019",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "66c17e56-9eae-456a-9d2b-704c1b98bce8",
+     "order": 4,
+     "fromPage": 12,
+     "toPage": 13,
+     "text": "solche, die in anderen Moosherbarien deponiert sind; doch bemerkte\nich dies stets. Daher liegen alle Funde, bei denen solche Bemerkungen\nfehlen, im Herbare des Landesmuseums zu Prag. — Bei den Torfmoosen\nerwähnte ich immer denjenigen Forscher und Botaniker, der die Art\nals erster für Böhmen nachgewiesen hat, wenn dies überhaupt zu\neruieren war. Bei den Laubmoosen werde ich dies im „zweiten Teile\nder Revision“ nachholen. — Da Dědeček in seinem Werke: Die Leber-\nmoose Böhmens, Prag 1886, die meisten der im Herb. mus. boh.\nliegenden Lebermoose bereits mitgeteilt hat, so war die Nachlese nur\neine spärliche, wobei bemerkt wird, daß eine kritische Sichtung der\nLebermoose im Herb. mus. boh. in den letzten Jahren überhaupt nicht\nvorgenommen wurde. — Von sonstigen Abkürzungen merke man:\nc. per. = mit Perianthien, Čel. = Univ.-Prof. L. Čelakovský †.",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee5-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r000-l001",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "d40f96e4-091b-4124-b0fc-9a51470f2c17",
+     "order": 5,
+     "fromPage": 13,
+     "toPage": 13,
+     "text": "1. Andreaeales.\nAndreaea petrophila Ehrh. — Pirskenberg bei Schluckenau (Neumann\n1823), Böhm.-Kamnitz (Hrabal 1854), Kleis bei Haida (Opiz 1818).\nZinkenstein bei Widdin, auf Basalt (Kratzmann), Rollberg bei Niemes,\nauf Basalt (Schauta 1863); Isergebirge (Opiz); Riesengebirge (Wimmer\nals A. rupestris Hedw.), Schneekoppe (Beilschmied 1828, Čeněk).\nvar. rupestris (Hedw.) Wallr.—Tafelfichte (Menzel).\n\n2. Cleistocarpae.*)\n\nPhyscomitrella patens (Hedw.) Br. eur. var. megapolitana Br.\neur. (= Phascum punctatum Knaf in Opiz, Seznam rostl. kv. česk.\nSeite 201). — Jaroměř, an Ufergräben (Knaf 1840, teste Juratzka).\n\n3. Stegocarpae\n\nWeisia viridula (L.) Hedw. — Böhm.-Kamnitz (Hrabal 1854), Teplitz\n(Winkler 1853).\n\nDicranoweisia crispula (Hedw.) Lindb. — Buchberg im Isergebirge,\nauf Basalt (Opiz 1818, doch von Ludwig hier entdeckt).",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee5-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r001-l014",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "edcf15a0-f4c8-4dc0-9e24-c0ce62b1f731",
+     "order": 6,
+     "fromPage": 13,
+     "toPage": 14,
+     "text": "*) Im Herbar mus. boh. liegt ein Moos mit der Etiquette: Epheme-\nrella recurvifolia (Dicks). Schimp, bei Hohenfurt von Opiz? gesammelt.\nDas Exemplar enthält aber nur ein zwerghaftes steriles Dicranum.\nPhascum Wagnerianum Opiz manuscr. (cum descriptione et icone\nin Herb. mus. boh.) ist nach dem Originalexemplare Phascum cuspidatum\nSchreb. Die Seta ist übrigens gekrümmt und nicht gerade, wie Opiz\nabbildet. Fundort: Prag.\n\nRhabdoweisia fugax (Hedw.) Br. eur. — Höllengrund bei Leipa (Opiz\n1818); Böhm.-Kamnitz (Hrabal 1854), Nixdorf (Karl und Fischer-\nNeumann 1838, in beiden Fällen als Weisia denticulata bestimmt);\nReichenberg (Siegmund 1856); Isergebirge (Opiz 1818).\nCynodontium torquescens (Bruch) Limpr. — Tacha bei Dauba\n(Maly); Jeschken (Opiz 1818), Grottau (Menzel als Bryum strumiferum).",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee5-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r003-l030",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "15b4eed9-ed95-41bd-81f0-dd58260330f7",
+     "order": 7,
+     "fromPage": 14,
+     "toPage": 14,
+     "text": "C. polycarpum (Ehrh.) Schimp. — Auf Sandstein um Schönborn\nbei Bleiswedel nächst Auscha (Opiz 1848), auf dem Sandstein um\nNixdorf im Kirnschtale (Fischer-Neumann 1838 als Dicranum strumi-\nferum Sw.); Sächsiche Schweiz (Bertram); Isergebirge (Opiz); Neu-\nstadt bei Friedland (legit? als Dicranella cerviculata); Reichenberg\n(Siegmund 1856).\nDicranella curvata (Hedw.) Schimp. — Park zu Rothenhaus im\nErzgebirge (Roth, 1853 als Dicranella subulata).\nD. cerviculata (Hedw.) Schimp. — Reichenberg (Langer).\nD. heteromalla (Dill.) Schimp.*) — Teplitz (Winkler); B.-Kamnitz\n(Hrabal 1854); Schluckenau (Karl); Niemes (Lorinser als D. subulata).\nReichenberg (Siegmund (1843, 1850), Jeschken (Opiz 1818 als Dicra-\nnum sp.), Neustadt a. T. (Corda als Dicranella cerviculata); Iser-",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee6-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r000-l008",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "2ec16758-ee3d-43e7-8f40-2a93eeb5a5ee",
+     "order": 8,
+     "fromPage": 14,
+     "toPage": 14,
+     "text": "gebirge (Opiz 1818 als Dicranum falcatum); Türmaul (P. Clemens\n1855 als var. straminea)\nvar. sericea (Schimp.) H. Müller. — Tuhan bei Dauba (Maly\nals Dicranum sp.).\nD. falcatum Hedw. Tafelfichte (Menzel als Dicr. Starkei).\nD. Bergeri Bl. — Isergebirge, steril (Opiz 1818 als Hypnum elodes W. M.).\nD. undulatum Ehrh. — Teplitz (Winkler 1853), Tepl (Conrad).\nD. Bonjeani De Not. Neustadt a. T. (Corda, als Dicr. Bergeri).\nD. scoparium (L.) Hedw. — Isergebirge (Opiz 1818 als Dicr. longi-\nfolium Ehrh.); Neustadt a. T. (Corda als Dicr. maius); Bürgstein bei\nHaida (P. Hocke als Dicr. congestum); Tepl (Conrad als Dicr. sco-\nparium brachycarpon Opiz; eine Form mit kurzer Seta und Kapsel).\nvar. orthophyllum Brid. — Teplitz (Winkler 1853); Rothenhaus\nbei Teplitz (A. Roth 1855).\nvar. recurvatum (Schultz) Brid. — Isergebirge, steril (Opiz 1818).\nD. fulvum Hook. — Schönborn bei Leipa (Opiz als Dicranum sp.);\nIsergebirge (Opiz 1818 als Dicr. interruptum Brid.).\nD. longifolium Ehrh. — Teplitz (Winkler 1853); Schwarzer Berg im\nIsergebirge (Opiz); Schluckenau (Karl als Dicranum congestum Br.).",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee6-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r000-l021",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "55032416-79bf-44e1-839e-8c0e70858162",
+     "order": 9,
+     "fromPage": 14,
+     "toPage": 15,
+     "text": "*) Die Pflanze ist bisher in den höchsten Lagen des Riesengebirges\nnicht beobachtet worden; auf ihr eventuelles Vorkommen daselbst wäre\nzu achten.\n\n— Böhm.-Kamnitz (A. Hrabal\nCampylopus flexuosus (L.) Brid.\n1854).\nDicranodontium longirostre (Starke) Schimp. — Auf Sandstein-\nfelsen um Nixdorf (Fischer-Neumann)\nLeucobryum glaucum (L.) Schimp. — Rollberg bei Niemes, steril\n(Schauta); Schluckenau (Karl 1854).\nFissidens bryoides (L.) Hedw.*) — Teplitz (Winkler), Schluckenauer\nPfarrgarten (Karl 1839), Reichenberg (Veselský).\nFissidens adiantoides (L.) Hedw. — Teplitz (M. Winkler 1853),\nSchluckenau (Karl 1840).\nOctodiceras Julianum (Savi) Brid. — In Böhmen fand diese seltene\nArt P. Karl zuerst. Er gab sie in der Rabenhorst’schen Bryothek\nNr. 1. b. von Fugau an der Spree aus. Doch ist sie hier seitdem",
+     "fullRunLayoutStart": {
+      "pageId": "8b82fee6-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r001-l040",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "6ada8d8f-9d1d-4d57-a0ee-2d6c5522861d",
+     "order": 10,
+     "fromPage": 15,
+     "toPage": 15,
+     "text": "verschwunden, weil das Wasser von zahlreichen Fabriken verunreinigt\nwird. Auch der Standort: Hölzerne Brunnenverschalung im Garten\ndes H. Balcar in Poděbrad, wo die Art vom Verfasser 1890 entdeckt\nwurde, ist vernichtet worden. Nur an den folgenden zwei Orten ge-\ndeiht die Pflanze noch in ziemlicher Menge: Im Doberner Bache bei\nLeipa und in Biberbache im Höllengrunde nächst der Karbamühle.\nHier fand sie Schmidt 2. Juli 1887 und 27. August 1887 als erster.\nBrachydontium trichodes (Web. fil.) Bruch. — Am Nordfuße des\nKleis, auf Phonolithtrümmern, reichlich fruchtend (A. Schmidt 12. Juli\n1886 als Campylostelium saxicola; teste Breidler). — Im Herb. mus.\nboh. ist eine Notiz, welche besagt, daß Ludwig Ende des 18. Jahr-\nhunderts im Elbgrunde des Riesengebirges diese Pflanze gefunden",
+     "fullRunLayoutStart": {
+      "pageId": "8b8325f7-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r001-l016",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "e3930940-fdca-45ca-9704-e124aaabca86",
+     "order": 11,
+     "fromPage": 15,
+     "toPage": 15,
+     "text": "habe. Belegexemplare liegen aber nicht bei.\nDitrichum homomallum (Hedw.) Hampe. — Teplitz (M. Winkler\n1853 als Trichostomum tortile Schrad., in Gesellschaft von Diplo-\nphyllum obtusifolum c. per.); Jeschken (Opiz 1818 in Gesellschaft\nvon Dicranella heteromalla). Isergebirge (Opiz 1818, mit der gleichen\nBegleitpfanze). — Poech führt eine forma alpestris aus dem\nIsergebirge an, doch deckt sich diese mit der var. subalpinum Br. eur.\nDistichium capillaceum (Sw.) Br. eur. — Böhm-Kamnitz (A. Hrabal\n1854 als Ditrichum homomallum). — Die var. brevifolium Br. eur.\n\n*) Im Herb. mus. boh. liegt eine Pflanze, die Opiz 1852 im Michler\nWalde bei Prag gefunden hat. Er bestimmte sie als Fissidens bryoides\nδ asplenioides Hüben. Die Exemplare sind aber merkwürdig luxuriante\nFormen mit bisweiten 12—15 mm hohen Stämmchen und ebenso langen\nschlanken Seten. Die Antheriden stehen meist einzeln und nackt in den\nBlattwinkeln, bisweilen aber in zweiblättrigen, gestielten Knöpfchen. Der Blatt-\nsaum ist bis zur plötzlich zusammengezogenen Spitze fortgeführt. Die Pflanze\ndürfte in den Formenkreis der var. gymnandrus (Buse) R. Ruthe gehören.",
+     "fullRunLayoutStart": {
+      "pageId": "8b8325f7-be8c-11ed-9d8c-001b63bd97ba",
+      "lineId": "r001-l028",
+      "offset": 0,
+      "match": "exact"
+     }
+    }
+   ]
+  },
+  {
+   "documentId": "000b03e0-53d7-11ee-9c28-0050568d319f",
+   "library": "mzk",
+   "title": "Karlínské listy : politickohospodářský neodvislý týdenník města Karlína, Holešovic, Libně a Vysočan. 2. 28",
+   "yearIssued": 1904,
+   "case": "Repeated text: the legacy chunks hold the page twice (an exact run, an unmatched run, then copies of the first); the copies get no anchor.",
+   "sourcePageOrders": [
+    1
+   ],
+   "pages": [
+    {
+     "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+     "label": "2",
+     "pageType": "NormalPage"
+    }
+   ],
+   "chunks": [
+    {
+     "id": "c8381152-151b-4735-b236-4405a26b0e9d",
+     "order": 24,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "pozná, co se mu za dětství vlastně nelíbilo, a rád,\nkdyby to bylo možno, z praktického života a mno-\nhonásobných starostí, jaké ukládá dnešní život,\nby se zase vrátil do „nenáviděné“ školy. A dnešní\nmládež jest ještě horší, než bývala mládež druhdy,\načkoli není již tolik překážek a obtíží, kolik jich\nbývalo za naší paměti, a ačkoli život, přeplněný\nnezaměstnanci a konkurencí kandidátů, vyžaduje\nzřejmě toho, aby si každý osvojil ve škole znalostí\na vědomstí co nejvíce. Jaké výsledky vykazuje\nv tom směru letošní rok, nevíme a také není\nv těchto listech místa k tomu, abychom se podobným\npaedagogickým úvahám šíře věnovali. Tolik však\nmůžeme podotknouti, že dnešní mládež na úkor\nvědění a ideálním snahám věnuje se sportu tou\nměrou, v jaké míře my starší jsme ho nikdy",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r000-l050",
+      "offset": 0,
+      "match": "approximate"
+     }
+    },
+    {
+     "id": "54a6cf14-d3dd-40c2-8301-789a9329341e",
+     "order": 25,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "nepoznali. Vliv sportu je patrný i na vysvědčeních,\nkteré si naše děti právě přinášejí neb co nevidět\npřinesou ze školy domů.\n„Opomenutí“.... O Körbrovi se píše, že\npojede se podívat co nejdříve do Haliče. Mnsíme\nto bratrskému národu polskému nesmírně záviděti....\nProč nepřijede také k nám do Čech, aby si dů-\nkladně prohlédnul při nejmenším aspoň Prahu\na její předměstí? Ó, co by tu viděl rozkoše!\nKdyž u nás byl naposledy s císařem, to na to ani\nneměl času. A nebylo to u nás ještě daleko ani\ntak pěkné, jako je to teď, kdy nám „vládne“\npan Körber už pět let. Je sice letní, tak zvaná\nmrtvá saisona, ale pro pana Körbra by se tady\nuž nějaká zábava našla. V nejhorším případě mohl\nby si klidně usednouti do stinné zahrady pražského\nkasina, kde by nalezl tolik upřimných přátel ....",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r000-l094",
+      "offset": 0,
+      "match": "approximate"
+     }
+    },
+    {
+     "id": "f56ece71-ad9c-430c-8266-50bdc689c44d",
+     "order": 26,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Kdyby byly v době jeho přítomnosti zrovna prázd-\nniny, je jisto, že by se buršové aspoň na chvíli\nk vůli němu z nich vytrhli a sjeli se sem, neboť\nvděčnost sama by jim už kázala, aby se mu\npřišli osobně poděkovat na místo, kde stojí, sedí\na někdy také zmoženi leží pod stolem a pod\nochranou jeho Excelence. Amšl by měl v ty dny\njistě vyprodáno, neboť kde jaký člověk by chtěl\nspatřiti Körbrovu tvář, a jeho Excelence vrátila\nby se odtud šťastna, jak šťastnou nemůže jí učiniti\nžádná jiná země rakouská, ani Halič nevyjímaje....\nPichl do vosího hnízda. Na štěstí jsou\nv Rakousku také ještě země, kde při nejlepší vůli\nnelze užiti německých úřadníků, kterým slovanské\nřeči nevoní a proto se jim také neučí. Taková\nzemě je na příklad Dalmacie. Proto ne z lásky\nk Slovanům, nýbrž ze železné nutnosti vydal mi-",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r000-l145",
+      "offset": 0,
+      "match": "approximate"
+     }
+    },
+    {
+     "id": "8e8b0c0d-412f-4974-bb85-90609b177fc2",
+     "order": 27,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "nistr vyučování dr. šl. Hartel výnos, že absolventi\nprávnické fakulty v Záhřebě mohou na vídeňské\nuniversitě skládati přísné zkoušky z rakouského\nstátního práva v řeči mateřské. Tím píchl\novšem do vosího hnízda a němečtí studenti ve\nVídni proti výnosu protestovali. Na proti tomu\nmanifestovali čeští a slovanští studující v Praze,\nže stanovisko ministra vyučování jest úplně správné.\nVídeňáci mají patrně strach, aby se jim jejich\nuniversita nepochorvátštila. Ubozí Němci!\nZe Svatováclavské záložny. Nejvyšší soudní\ndvůr rozhodl, že považovati se má za člena, kdo\nzapsal se do matriky vlastnoručně jako člen.\ntřeba při podpisu ostatní rubriky nebyly vyplněny.\nZároveň rozhodnuto, že repartice schodku (300 K\nna jeden podíl) jest žalovatelná a může se soudně\nvymáhati. Učiní tedy členové dobře, chtějí-li se\nuvarovati útrat, když dobrovolně repartici zaplatí\na se záložnou po dobrém se vyrovnají.\nZavraždění Barbory Smrčkovy, jež svého\nčasu způsobilo velikou sensaci, octlo se před porotou\nv minulých dnech. Domnělý vrah, František Zima,\nač proti němu svědčilo mnoho okolností, uznán",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r000-l194",
+      "offset": 0,
+      "match": "approximate"
+     }
+    },
+    {
+     "id": "9ee4e413-8be2-4896-815d-eb0a10aedcf9",
+     "order": 28,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Rusofilci pojednávají dneska o žlutém ne-\nbezpečenství, nacionalisté říkají zase sociálně-de-\nmokratickým stranám nebezpečí červené, ale to\nobojí — byť to nebylo bez významu, nemá pro\nnás význam tak hluboký a smutný zároveň jako\nnebezpečí černé. Každý ví, že tím nemyslíme nic\njiného, než-li klerikalismus.\nCo tento klerikalismus se svým „zbožným“\nučením a životem nadělal již v lidstvu škody,\no tom mohou býti a také byly napsány celé dě-\njepisy. Ve středověku kláštery na oko pěstovaly\nvědu, ve skutečnosti však celá černá moc kleri-\nkalismu směřovala vždy jen a jen k utužení a\nrozšíření světského panství. „Mé království není\nz tohoto světa .. .“, řekl sice ten, jemuž do-\nmnívají se „naši“ klerikálové jíti v šlépějích, ale\noni sami, kdyby každý z nich měl několik párů",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r001-l024",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "3164c2e2-7228-4844-9fff-a954a0f51dc2",
+     "order": 29,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "rukou, všemi přičiňovali by se pouze o svůj\nhmotný zisk a o urvání nadvlády a moci\nnad spolubližními.\nVšeobecně má se za to, že „černé nebez-\npečí“ není již daleko tak velké, jako bývalo\ndruhdy, jako bylo na příklad v době, kdy mělo\npo ruce dokonce i inkvisici, kteroužto mohli své\nspolubližní a bratry v Kristu trýzniti způsobem\nnejděsnějším (jak to dokazují starobylá, zachovaná\nna naše časy mučidla), nebo jako bylo za doby,\nkdy panstvo mohlo našeho Jana Husa upáliti.\nJest ovšem pravda, že takové prostředky\nku získávání moci světské černým pánům vyrval\npokrok, ale to není daleko ještě znamením toho,\nže by tím bylo nebezpečenství černé již úplně\npominulo.\nNaopak: u nás v českých krajinách za po-\nsledních let klerikalismus rozšířil se tím povážli-\nvěji, že stalo se to v době, kdy přece ve školství",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r001-l072",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "442fea8e-e289-4943-8875-c39a00fe709b",
+     "order": 30,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "i v životě veřejném mnoho a snad nejvíce uči-\nněno bylo pro pravé pokrokové hnutí. Nedejme\nse klamati okolností, že ten neb onen o kleri-\nkálním hnutí málo víme, neboť dnešní klerikali-\nsmus jako symbol největšího zpátečnictví je tím\nnebezpečnější, že pracuje potají a při tom tak\núlisně, jako snad žádná jiná strana na světě!\nTo můžeme viděti přece nejlépe při oslavách\nMistra Jana Husa. Co se už namluvilo a podniklo\nproti těmto oslavám se strany klerikálů! Jak zu-\nřili, když se jednalo o to, že Husův pomník má\nstáti na staroměstském náměstí! Ale jméno Hu-\nsovo bylo a je v lidu příliš velké, aby jeho pa-\nmátce mohl ublížiti nějaký vliv shora nebo ně-\njaké štvaní mezi neuvědomělým lidem, který na-\nlézá se dosud ve vleku černých pánů.\nKlerikálové jako chytráci to pochopili. Oni",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r001-l128",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "e035ce14-d468-46fd-953b-6bbc478cb4c9",
+     "order": 31,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "pochopili také, že by si štvaním proti Hu-\nsovi prolomili půdu pod nohama, že by\nsami sebe očernili v očích prostého lidu,\nkterý ve velkost svého miláčka kostnického již\nod staletí věří! Proto v poslední době nejenom\nustali od veřejné agitace proti Husovým oslavám\n— spokojujíce se tu a tam broukáním svých\nplátků — nýbrž oni jdou tak daleko, že za-\nčasté i Husa chválí a jeho oslavu schvalují — —\nByly jsme letos svědky toho, jak známý za-\npřísáhlý klerikál sám na oslavu Husovu osvětlil\nokna, v hostinci pak s farizejským úsměvem\nvynášel do nebe Mistrovy cnosti a zásluhy. Ale\nto byla pouhá slova, která byla sice na jazyku,\nale nebyla uvnitř v srdci, neboť tam pravil hlas\nvnitřní opravdově, bez falše:\nÓ, kdybych já mohl ty oslavy Husovy zni-\nčiti, kdybych mohl zničiti i celou paměť Husovu!“",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r001-l178",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "11dab260-66d5-4ef7-a251-fbfc65bd58b0",
+     "order": 32,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "A takovými jsou dnes všichni kleri-\nkálové, kteří na oko Husa chválí. Jsou zvláště\nnebezpečnými právě proto, že tímto falšovaným\nuznáním mohou u mnohé dobré duše vzbuditi\ndojem, že jsou těmi nejhodnějšími lidmi na světě\nV tom právě spočívá dnešní „černé ne-\nbezpečenství“, že klerikálové užívají pro roz-\nšíření své moci těch nejchytřejších zbraní, jaké\nkdy měli: jsou na oko skroušenými, cnostnými,\nv nitru jich však má svůj domov závist, msta,\nšpatnost.\n\nOni na oko přijímají do svého programu\npokrokové zásady — jako na př. křesťansko-so-\ncialní strana věci socialní — oni se exponují na\noko pro věci národní, oni dovedou na oko\ndokonce i ctíti Husa, ale ve skutečnosti chtí\nse tím vším zdáti pouze hezkými před těmi,\nkteré by chtěli míti za sebou!\nV tom je právě to největší nebezpečenství,",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r001-l231",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "dd86ee8d-6a3d-42c6-9687-abe2cb81bab9",
+     "order": 33,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "neboť také ještě dnes přes všechnu pokročilost\nje dost lidí, kteří nedovedou rozeznati pozlátko\nod zlata. A ještě více je těch, kteří jdou úplně\nbez přesvědčení jako berani za klerikály jenom\nproto, že jim kyne z toho — výděleček.\nKlerikalismus ve svém dnešním vývoji je\nživen hlavně nesvárem mezi pokrokovými stranami.\nKdyby tento nesvár utichnul aspoň tenkráte, je-\ndná-li se o klerikalismus, bylo by po tomto\ndávno veta! Dávno by opravdovým snahám lidské\nspolečnosti nebyly házeny klacky pod nohy, dávno\nby zaniklo licoměrnictví, které je na světě jenom\nklerikalismu vlastní\nPryč s ním!\n\nZ dějin živnosten. - čtenářské\njednoty v Karlíně 1843—1903.\n(Pokračování.)\nOslava padesátiletého trvání. V slav-\nnostním výboru zasedali pp.: Antonín Polák co\npředseda, Jan Pelíšek co místopředseda, Otakar",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r006-l022",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "06a3056d-56ac-44ef-bee7-4869a4d9d199",
+     "order": 34,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Hejtmánek co jednatel, J. Mošna co pokladník.\nDále Josef Svoboda, Václav Nedvěd, Matěj Kubrycht,\nJan Zalabák, Jan Dmíšek, Václav Rudovský, Bo-\nhumil Petráček, František Plaček, Václav Kadlec,\nFrantišek Kureš, František Šenták, Václav Škába,\nKarel Heřman, František Deport. Adolf Schulz,\nFrantišek Skokan, Čeněk Pavlíček, Antonín Bu-\nsínský, Josef Beránek, Frant. Novák, Václav Salát,\nJosef Obermajer, Josef Mayer, Jaroslav Jelínek,\nJosef Couk, František Brümmer, Jan Deport, Alois\nJeřábek, Josef Milčínský, Karel Sýkora a Jan\nZáhora.\nSlavnostní valně hromadě byl přítomen říšský\nposlanec prof. dr. Josef Kaizel a zemský poslanec\ndr. Jan Kučera. Akademii přítomen byl opětně\nprof. dr. Kaizl, starosta města Karlína p. J. To-\npinka a jiné četné deputace.\nČestnými členy jmenováni pp.: Josef Anýž,\nJUDr. Josef Herold, Jan Rudle a Josef Svoboda.",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r005-l090",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "b939a8fb-83f2-40ee-ae0a-3bfa17abd388",
+     "order": 35,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Roku 1894 dne 15. února přednášel\nJUDr. Josef Kaizl o domovském právu.\nDne 29. března přednášel Ph. C. Josef\nHodek o námluvě a svatbě u starých Řeků.\nV měsíci září súčastnila se jednota pohřbu\nvynikajícího vlastence Vojty Náprstka. Na místě\nvěnce věnováno 5 zl. na postavení pomníku mistra\nJana Husi.\nRoku 1895 dne 3. ledna přednášel Ph.\nDr. Rudolf Dvořák, m. profesor na české uni-\nversitě o původu písma.\nDne 14. února vyslechl v členské schůzi\npřítomné řemeslníky a živnostníky Dr. Josef Kaizl\na uvolil se stížnosti a přání jich na kompetentních\nmístech tlumočiti. K tomu dlužno poznamenati, že\nstalo se tak na podnět samého dra. Kaizla.\nDne 18. dubna ve výborové schůzi pou-\nkazováno na zubožený stav řemeslníků a živnost-\nníků v Karlíně. Proto vysláni pp. Dmíšek a Hej-",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r004-l150",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "9d890005-0434-4413-b061-981ab3e0ef8d",
+     "order": 36,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "tmánek k starostovi p. Topinkovi se žádostí o\nzjednání nápravy, rovněž učiněny kroky cestou\npísemnou u městské rady. Odpověď na to zněla\npříznivě.\nDne 9. května zvedly se hlasy proti za-\nmýšlenému zvýšení vodného ze 3 na 5% a po-\nukázáno k tomu, že tím utrpělo by nejvíce řeme-\nslnictvo a malé živnostnictvo, kdežto velké prů-\nmyslové podniky by k tomu poměrně jen nepatrně\npřispěly.\nDne 22. května přednášel MUDr. Otta\nHaněl o Národopisné výstavě českoslovanské.\nDne 16. června připojila se „Jednota“ ke\nkrokům obchodního gremia karlínského za pří-\nčinou zamezení podomního obchodu.\nDne 18. září uspořádala „Jednota“ společně\ns jinými sdruženími hromadnou návštěvu Národo-\npisné výstavy. Při té příležitosti věnováno „Ústř.\nMatici Školské“ v hotovosti 30 zl.\n\nporotou nevinným a odsouzen pouze pro přestupek\nproti mravopočestnosti dle § 516. na tři měsíce\ndo vězení.",
+     "fullRunLayoutStart": {
+      "pageId": "c19c0ef2-b2cf-4ebf-896c-691f56ed50fc",
+      "lineId": "r004-l207",
+      "offset": 0,
+      "match": "exact"
+     }
+    },
+    {
+     "id": "48b31491-764e-4933-8e3b-e08ed1d07c11",
+     "order": 37,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Černé nebezpečí.\n(Několik slov po Husových oslavách.)\n\nlépe řečeno, budou chtít při nejostřejší tonině zů-\nstati. Máme o tom trpké zkušenosti a víme tudíž\ntaké dobře, že často upuštěno bylo od prudkého\nboje na pouhopouhý slib se strany druhé, a za\nvýmluvu užíváno bylo jednak ohledu prý na bez-\núspěšnost obstrukce, jednak ohledu na státní zájem,\njako by náš český program pro nás měl důležitost\naž ve druhé řadě. Uvidíme, co se z těch dnešních\nnejistot letos vyklube. Kdyby Mladočeši v boji\nustoupili, pak jsme přesvědčeni, že jejich éra je\nta tam . . . !\nVe znamení vysvědčení. Studenti, studentíci,\nžáčkové, školáci — v tyto dny docílili toho, po\nčem často, bohužel touží více nežli po škole: dostanou\nvysvědčení a nastoupí „odpočinek“. Záčkové byli\nsnad odjakživa stejní: většina jich měla radši",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "9da6d61b-ad9c-4f55-b070-6d1ed50810c2",
+     "order": 38,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "prázdno než-li školu. Teprve jako dospělý člověk\npozná, co se mu za dětství vlastně nelíbilo, a rád,\nkdyby to bylo možno, z praktického života a mno-\nhonásobných starostí, jaké ukládá dnešní život,\nby se zase vrátil do „nenáviděné“ školy. A dnešní\nmládež jest ještě horší, než bývala mládež druhdy,\načkoli není již tolik překážek a obtíží, kolik jich\nbývalo za naší paměti, a ačkoli život, přeplněný\nnezaměstnanci a konkurencí kandidátů, vyžaduje\nzřejmě toho, aby si každý osvojil ve škole znalostí\na vědomstí co nejvíce. Jaké výsledky vykazuje\nv tom směru letošní rok, nevíme a také není\nv těchto listech místa k tomu, abychom se podobným\npaedagogickým úvahám šíře věnovali. Tolik však\nmůžeme podotknouti, že dnešní mládež na úkor\nvědění a ideálním snahám věnuje se sportu tou",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "2e61d5a0-dc3e-4162-a442-04f50136f6e9",
+     "order": 39,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "měrou, v jaké míře my starší jsme ho nikdy\nnepoznali. Vliv sportu je patrný i na vysvědčeních,\nkteré si naše děti právě přinášejí neb co nevidět\npřinesou ze školy domů.\n„Opomenutí“.... O Körbrovi se píše, že\npojede se podívat co nejdříve do Haliče. Mnsíme\nto bratrskému národu polskému nesmírně záviděti....\nProč nepřijede také k nám do Čech, aby si dů-\nkladně prohlédnul při nejmenším aspoň Prahu\na její předměstí? Ó, co by tu viděl rozkoše!\nKdyž u nás byl naposledy s císařem, to na to ani\nneměl času. A nebylo to u nás ještě daleko ani\ntak pěkné, jako je to teď, kdy nám „vládne“\npan Körber už pět let. Je sice letní, tak zvaná\nmrtvá saisona, ale pro pana Körbra by se tady\nuž nějaká zábava našla. V nejhorším případě mohl\nby si klidně usednouti do stinné zahrady pražského",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "92ef6387-b130-4fed-8ea6-c92af03b6f34",
+     "order": 40,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "kasina, kde by nalezl tolik upřimných přátel ....\nKdyby byly v době jeho přítomnosti zrovna prázd-\nniny, je jisto, že by se buršové aspoň na chvíli\nk vůli němu z nich vytrhli a sjeli se sem, neboť\nvděčnost sama by jim už kázala, aby se mu\npřišli osobně poděkovat na místo, kde stojí, sedí\na někdy také zmoženi leží pod stolem a pod\nochranou jeho Excelence. Amšl by měl v ty dny\njistě vyprodáno, neboť kde jaký člověk by chtěl\nspatřiti Körbrovu tvář, a jeho Excelence vrátila\nby se odtud šťastna, jak šťastnou nemůže jí učiniti\nžádná jiná země rakouská, ani Halič nevyjímaje....\nPichl do vosího hnízda. Na štěstí jsou\nv Rakousku také ještě země, kde při nejlepší vůli\nnelze užiti německých úřadníků, kterým slovanské\nřeči nevoní a proto se jim také neučí. Taková\nzemě je na příklad Dalmacie. Proto ne z lásky",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "675b457f-5789-4cea-839b-a0c0f535bc70",
+     "order": 41,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "k Slovanům, nýbrž ze železné nutnosti vydal mi-\nnistr vyučování dr. šl. Hartel výnos, že absolventi\nprávnické fakulty v Záhřebě mohou na vídeňské\nuniversitě skládati přísné zkoušky z rakouského\nstátního práva v řeči mateřské. Tím píchl\novšem do vosího hnízda a němečtí studenti ve\nVídni proti výnosu protestovali. Na proti tomu\nmanifestovali čeští a slovanští studující v Praze,\nže stanovisko ministra vyučování jest úplně správné.\nVídeňáci mají patrně strach, aby se jim jejich\nuniversita nepochorvátštila. Ubozí Němci!\nZe Svatováclavské záložny. Nejvyšší soudní\ndvůr rozhodl, že považovati se má za člena, kdo\nzapsal se do matriky vlastnoručně jako člen.\ntřeba při podpisu ostatní rubriky nebyly vyplněny.\nZároveň rozhodnuto, že repartice schodku (300 K\nna jeden podíl) jest žalovatelná a může se soudně\nvymáhati. Učiní tedy členové dobře, chtějí-li se\nuvarovati útrat, když dobrovolně repartici zaplatí\na se záložnou po dobrém se vyrovnají.\nZavraždění Barbory Smrčkovy, jež svého\nčasu způsobilo velikou sensaci, octlo se před porotou\nv minulých dnech. Domnělý vrah, František Zima,\nač proti němu svědčilo mnoho okolností, uznán",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "b0264b76-22b4-4fd4-8437-0709db28af40",
+     "order": 42,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Rusofilci pojednávají dneska o žlutém ne-\nbezpečenství, nacionalisté říkají zase sociálně-de-\nmokratickým stranám nebezpečí červené, ale to\nobojí — byť to nebylo bez významu, nemá pro\nnás význam tak hluboký a smutný zároveň jako\nnebezpečí černé. Každý ví, že tím nemyslíme nic\njiného, než-li klerikalismus.\nCo tento klerikalismus se svým „zbožným“\nučením a životem nadělal již v lidstvu škody,\no tom mohou býti a také byly napsány celé dě-\njepisy. Ve středověku kláštery na oko pěstovaly\nvědu, ve skutečnosti však celá černá moc kleri-\nkalismu směřovala vždy jen a jen k utužení a\nrozšíření světského panství. „Mé království není\nz tohoto světa .. .“, řekl sice ten, jemuž do-\nmnívají se „naši“ klerikálové jíti v šlépějích, ale\noni sami, kdyby každý z nich měl několik párů",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "65c9af34-bf42-4f31-9840-edf1e5105021",
+     "order": 43,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "rukou, všemi přičiňovali by se pouze o svůj\nhmotný zisk a o urvání nadvlády a moci\nnad spolubližními.\nVšeobecně má se za to, že „černé nebez-\npečí“ není již daleko tak velké, jako bývalo\ndruhdy, jako bylo na příklad v době, kdy mělo\npo ruce dokonce i inkvisici, kteroužto mohli své\nspolubližní a bratry v Kristu trýzniti způsobem\nnejděsnějším (jak to dokazují starobylá, zachovaná\nna naše časy mučidla), nebo jako bylo za doby,\nkdy panstvo mohlo našeho Jana Husa upáliti.\nJest ovšem pravda, že takové prostředky\nku získávání moci světské černým pánům vyrval\npokrok, ale to není daleko ještě znamením toho,\nže by tím bylo nebezpečenství černé již úplně\npominulo.\nNaopak: u nás v českých krajinách za po-\nsledních let klerikalismus rozšířil se tím povážli-\nvěji, že stalo se to v době, kdy přece ve školství",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "d73d127e-5f79-4fb9-b659-f871705bbefc",
+     "order": 44,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "i v životě veřejném mnoho a snad nejvíce uči-\nněno bylo pro pravé pokrokové hnutí. Nedejme\nse klamati okolností, že ten neb onen o kleri-\nkálním hnutí málo víme, neboť dnešní klerikali-\nsmus jako symbol největšího zpátečnictví je tím\nnebezpečnější, že pracuje potají a při tom tak\núlisně, jako snad žádná jiná strana na světě!\nTo můžeme viděti přece nejlépe při oslavách\nMistra Jana Husa. Co se už namluvilo a podniklo\nproti těmto oslavám se strany klerikálů! Jak zu-\nřili, když se jednalo o to, že Husův pomník má\nstáti na staroměstském náměstí! Ale jméno Hu-\nsovo bylo a je v lidu příliš velké, aby jeho pa-\nmátce mohl ublížiti nějaký vliv shora nebo ně-\njaké štvaní mezi neuvědomělým lidem, který na-\nlézá se dosud ve vleku černých pánů.\nKlerikálové jako chytráci to pochopili. Oni",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "54a5dece-b4dc-4d38-89a0-1f7257733189",
+     "order": 45,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "pochopili také, že by si štvaním proti Hu-\nsovi prolomili půdu pod nohama, že by\nsami sebe očernili v očích prostého lidu,\nkterý ve velkost svého miláčka kostnického již\nod staletí věří! Proto v poslední době nejenom\nustali od veřejné agitace proti Husovým oslavám\n— spokojujíce se tu a tam broukáním svých\nplátků — nýbrž oni jdou tak daleko, že za-\nčasté i Husa chválí a jeho oslavu schvalují — —\nByly jsme letos svědky toho, jak známý za-\npřísáhlý klerikál sám na oslavu Husovu osvětlil\nokna, v hostinci pak s farizejským úsměvem\nvynášel do nebe Mistrovy cnosti a zásluhy. Ale\nto byla pouhá slova, která byla sice na jazyku,\nale nebyla uvnitř v srdci, neboť tam pravil hlas\nvnitřní opravdově, bez falše:\nÓ, kdybych já mohl ty oslavy Husovy zni-\nčiti, kdybych mohl zničiti i celou paměť Husovu!“",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "ca2610b3-cf02-479a-a5df-a72baa3e7cab",
+     "order": 46,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "A takovými jsou dnes všichni kleri-\nkálové, kteří na oko Husa chválí. Jsou zvláště\nnebezpečnými právě proto, že tímto falšovaným\nuznáním mohou u mnohé dobré duše vzbuditi\ndojem, že jsou těmi nejhodnějšími lidmi na světě\nV tom právě spočívá dnešní „černé ne-\nbezpečenství“, že klerikálové užívají pro roz-\nšíření své moci těch nejchytřejších zbraní, jaké\nkdy měli: jsou na oko skroušenými, cnostnými,\nv nitru jich však má svůj domov závist, msta,\nšpatnost.\n\nOni na oko přijímají do svého programu\npokrokové zásady — jako na př. křesťansko-so-\ncialní strana věci socialní — oni se exponují na\noko pro věci národní, oni dovedou na oko\ndokonce i ctíti Husa, ale ve skutečnosti chtí\nse tím vším zdáti pouze hezkými před těmi,\nkteré by chtěli míti za sebou!\nV tom je právě to největší nebezpečenství,",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "32edd314-300f-4f28-beef-00efb7f97e40",
+     "order": 47,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "neboť také ještě dnes přes všechnu pokročilost\nje dost lidí, kteří nedovedou rozeznati pozlátko\nod zlata. A ještě více je těch, kteří jdou úplně\nbez přesvědčení jako berani za klerikály jenom\nproto, že jim kyne z toho — výděleček.\nKlerikalismus ve svém dnešním vývoji je\nživen hlavně nesvárem mezi pokrokovými stranami.\nKdyby tento nesvár utichnul aspoň tenkráte, je-\ndná-li se o klerikalismus, bylo by po tomto\ndávno veta! Dávno by opravdovým snahám lidské\nspolečnosti nebyly házeny klacky pod nohy, dávno\nby zaniklo licoměrnictví, které je na světě jenom\nklerikalismu vlastní\nPryč s ním!\n\nZ dějin živnosten. - čtenářské\njednoty v Karlíně 1843—1903.\n(Pokračování.)\nOslava padesátiletého trvání. V slav-\nnostním výboru zasedali pp.: Antonín Polák co\npředseda, Jan Pelíšek co místopředseda, Otakar",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "58cb5a22-832a-4e25-a40d-9b52f8fa5167",
+     "order": 48,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Hejtmánek co jednatel, J. Mošna co pokladník.\nDále Josef Svoboda, Václav Nedvěd, Matěj Kubrycht,\nJan Zalabák, Jan Dmíšek, Václav Rudovský, Bo-\nhumil Petráček, František Plaček, Václav Kadlec,\nFrantišek Kureš, František Šenták, Václav Škába,\nKarel Heřman, František Deport. Adolf Schulz,\nFrantišek Skokan, Čeněk Pavlíček, Antonín Bu-\nsínský, Josef Beránek, Frant. Novák, Václav Salát,\nJosef Obermajer, Josef Mayer, Jaroslav Jelínek,\nJosef Couk, František Brümmer, Jan Deport, Alois\nJeřábek, Josef Milčínský, Karel Sýkora a Jan\nZáhora.\nSlavnostní valně hromadě byl přítomen říšský\nposlanec prof. dr. Josef Kaizel a zemský poslanec\ndr. Jan Kučera. Akademii přítomen byl opětně\nprof. dr. Kaizl, starosta města Karlína p. J. To-\npinka a jiné četné deputace.\nČestnými členy jmenováni pp.: Josef Anýž,\nJUDr. Josef Herold, Jan Rudle a Josef Svoboda.",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "8717acce-5b87-4748-b845-ab2ca6b2855a",
+     "order": 49,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "Roku 1894 dne 15. února přednášel\nJUDr. Josef Kaizl o domovském právu.\nDne 29. března přednášel Ph. C. Josef\nHodek o námluvě a svatbě u starých Řeků.\nV měsíci září súčastnila se jednota pohřbu\nvynikajícího vlastence Vojty Náprstka. Na místě\nvěnce věnováno 5 zl. na postavení pomníku mistra\nJana Husi.\nRoku 1895 dne 3. ledna přednášel Ph.\nDr. Rudolf Dvořák, m. profesor na české uni-\nversitě o původu písma.\nDne 14. února vyslechl v členské schůzi\npřítomné řemeslníky a živnostníky Dr. Josef Kaizl\na uvolil se stížnosti a přání jich na kompetentních\nmístech tlumočiti. K tomu dlužno poznamenati, že\nstalo se tak na podnět samého dra. Kaizla.\nDne 18. dubna ve výborové schůzi pou-\nkazováno na zubožený stav řemeslníků a živnost-\nníků v Karlíně. Proto vysláni pp. Dmíšek a Hej-",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "16390f5f-c906-47c4-92f2-24f97e0c381f",
+     "order": 50,
+     "fromPage": 1,
+     "toPage": 1,
+     "text": "tmánek k starostovi p. Topinkovi se žádostí o\nzjednání nápravy, rovněž učiněny kroky cestou\npísemnou u městské rady. Odpověď na to zněla\npříznivě.\nDne 9. května zvedly se hlasy proti za-\nmýšlenému zvýšení vodného ze 3 na 5% a po-\nukázáno k tomu, že tím utrpělo by nejvíce řeme-\nslnictvo a malé živnostnictvo, kdežto velké prů-\nmyslové podniky by k tomu poměrně jen nepatrně\npřispěly.\nDne 22. května přednášel MUDr. Otta\nHaněl o Národopisné výstavě českoslovanské.\nDne 16. června připojila se „Jednota“ ke\nkrokům obchodního gremia karlínského za pří-\nčinou zamezení podomního obchodu.\nDne 18. září uspořádala „Jednota“ společně\ns jinými sdruženími hromadnou návštěvu Národo-\npisné výstavy. Při té příležitosti věnováno „Ústř.\nMatici Školské“ v hotovosti 30 zl.\n\nporotou nevinným a odsouzen pouze pro přestupek\nproti mravopočestnosti dle § 516. na tři měsíce\ndo vězení.",
+     "fullRunLayoutStart": null
+    }
+   ]
+  },
+  {
+   "documentId": "00246353-3566-4e72-80a6-4019d8f94d59",
+   "library": "svkos",
+   "title": "Freudenthaler Zeitung: unabhängige deutsche Zeitung für Stadt und Land. 19. 98",
+   "yearIssued": 1922,
+   "case": "Stored chunks from another, older OCR (Fraktur with long s) than this PAGE XML: none can be anchored.",
+   "sourcePageOrders": [
+    0
+   ],
+   "pages": [
+    {
+     "pageId": "2bf645b6-cadd-11e3-bfdd-001b63bd97ba",
+     "label": "[1]",
+     "pageType": "TitlePage"
+    }
+   ],
+   "chunks": [
+    {
+     "id": "f47a5e46-ab57-4047-89d5-780337da7ae2",
+     "order": 0,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "ine Rüdmarke beigelegt wird. Einfendungen ohne Unterſchrift\n—\n\nUnabhängige deutsche Zeitung fur Stadt und Land.\n\ngen\nkliche\nren\n\nFreudenthal, 7. 12, 1922.\nvijite abgestattet wurde, um eben, wie der Minister=\ngernen und ihn ertragen muß. Man spannt die Nerven\nnicht wundern dürfen, wenn die ununterbrochene iß-\nahtung der deutschen Gefühle einmal Vergeltung\ntig muſtergültig verwaltet und die deutschen Bauern\nMan kann aljo neugierig ſein, was die vom Herrn\nnifterialrat Dr. Schiller hat den Freudenthalern gele=\nWir wifen nicht, inwieweit die Ueberprüfung der\n5eller nur 10 Heller gegeben werden, daß die neuen\n\nrücht verbreitet, daß die Differenzen zwiſchen dem Mi-\nDr. Benež genannt: Ackerbauminister Dr. Hodza.\n\nDas Neuejte.\nſtattfinden werden.\nDas franzöſiſche Kriegsministerium beschäftigt 1400\nBerjonen.",
+     "fullRunLayoutStart": null
+    },
+    {
+     "id": "cc50733e-b1e7-473c-b586-2c81311917c9",
+     "order": 1,
+     "fromPage": 0,
+     "toPage": 0,
+     "text": "Zudetengebiet.\ndurch die Gemeinden.\nkörper mit dem Size in Zeplit-Schönau verlautbart,\npflichtet sind, ihnen ober die Wahl der ſprachlichen\nzirkverwaltungen zugegangen ſind, ist anzunehmen.\ndiejer Angelegenheit entsprechend aufklären zu wollen\n\nFreitag bei Mann-Thiel eine Verſammlung, die nach\n\ntenſchaft während des Streiks war diszipliniert und\nzurüchaltend. Den jüdiſchen Zeitungen war kein\ngehend über das Zahlenverhältnis der Studenten an\nStudenten 1600 gestreift haben, haben die Gegner die\nFrechheit gehabt, von einem Zerror der Minderheit zu\nſprechen. Die deutſche Studentenſchaft forderte von den\nBorſizende dankte dem Redner für die ausgezeichneten\nLusführungen. — Herr Magifter Hübner erflärte im\ngern beiſtehen. In heutiger Zeit gehören alle Deutsch-\n\nSchlußkurſe vom 6. Dezember:\nReichsmark in Brag\n.\n.",
+     "fullRunLayoutStart": null
+    }
+   ]
+  }
+ ]
+}

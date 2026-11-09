@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 import { apiToken, deleteAddedAttributes, ensureLoggedIn, fixture, useViewport } from './support'
 
@@ -9,12 +9,15 @@ import { apiToken, deleteAddedAttributes, ensureLoggedIn, fixture, useViewport }
 // overwritten), and the attribute filters match exact values and "not assigned". A single-valued
 // attribute's picker closes once the choice is saved; values kept after a retag to a tag the
 // attribute does not apply to are greyed, marked and cleared like any others (#530 review).
+// Several attributes can be shown side by side, each column edited on its own; showing them
+// changes no filter, selection, sort or open row, and a phone scrolls them sideways (#537).
 
 const chronicles = fixture.collection('chronicles')
 const base = `/api/user_collections/${chronicles.id}`
 const rows = (page: Page) => page.getByTestId('kwic-row')
 const row = (page: Page, text: string) => rows(page).filter({ has: page.locator('.kwic__key', { hasText: text }) })
-const cell = (page: Page, text: string) => row(page, text).getByTestId('kwic-attribute')
+const cell = (page: Page, text: string, attributeId?: string) => row(page, text)
+  .locator(attributeId ? `[data-testid="kwic-attribute"][data-attribute-id="${attributeId}"]` : '[data-testid="kwic-attribute"]')
 const picker = (page: Page) => page.getByTestId('attribute-value-picker')
 const dialog = (page: Page) => page.getByRole('dialog')
 
@@ -35,6 +38,16 @@ async function createRole (request: APIRequestContext) {
       tag_ids: [fixture.tag('person').id],
       values: [{ label: 'statesman' }, { label: 'chronicler' }, { label: 'Unknown', kind: 'unknown' }]
     }
+  })
+  expect(created.ok()).toBe(true)
+  return await created.json() as { id: string, values: { id: string, label: string }[] }
+}
+
+/** An attribute for every tag. */
+async function createForAllTags (request: APIRequestContext, name: string, cardinality: 'single' | 'multi', labels: string[]) {
+  const created = await request.post(`${base}/attributes`, {
+    headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
+    data: { name, cardinality, all_tags: true, values: labels.map(label => ({ label })) }
   })
   expect(created.ok()).toBe(true)
   return await created.json() as { id: string, values: { id: string, label: string }[] }
@@ -70,7 +83,7 @@ test('a row is classified in the attribute column and in the sidebar, and filter
 
   // No column until one is chosen.
   await expect(page.getByTestId('kwic-attribute')).toHaveCount(0)
-  await choose(page, 'concordance-show-attribute', 'Role')
+  await toggleOption(page, 'concordance-show-attribute', 'Role')
   await expect(page.getByTestId('kwic-attribute')).toHaveCount(4)
   // Proposals and a tag the attribute does not apply to cannot take values.
   await expect(cell(page, 'Lhoty').getByTestId('kwic-attribute-edit')).toHaveCount(0)
@@ -113,7 +126,7 @@ test('a selection is assigned in one batch, reported per annotation, without ove
   const novak = fixture.span('novak_manual').id
   await useViewport(page, 'wide')
   await openWorkspace(page)
-  await choose(page, 'concordance-show-attribute', 'Role')
+  await toggleOption(page, 'concordance-show-attribute', 'Role')
   await page.getByTestId('select-all-matches').click()
   await expect(page.getByTestId('concordance-selected')).toHaveText('4 selected')
 
@@ -158,6 +171,115 @@ test('a selection is assigned in one batch, reported per annotation, without ove
   await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesmanchronicler')
 })
 
+test('several attribute columns are shown side by side and edited one by one, changing nothing else', async ({ page, request }) => {
+  const role = await createRole(request)
+  const place = await createForAllTags(request, 'Place type', 'single', ['town', 'village'])
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  await choose(page, 'concordance-sort', 'Annotated text')
+  const order = await rows(page).locator('.kwic__key').allTextContents()
+  await row(page, 'Brně').getByRole('checkbox').click()
+  await row(page, 'Jan Novák').click()
+  await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
+
+  // Shown in the collection's order (by name), whatever order they are chosen in.
+  await toggleOption(page, 'concordance-show-attribute', 'Role')
+  await toggleOption(page, 'concordance-show-attribute', 'Place type')
+  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
+  await expect(page.getByTestId('concordance-show-attribute')).toContainText('Place type, Role')
+  // Each option says its state itself; its checkbox is only a picture of it, not a tab stop.
+  await page.getByTestId('concordance-show-attribute').click()
+  await expect(page.getByRole('option', { name: 'Role', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('listbox').getByRole('checkbox')).toHaveCount(0)
+  await expect(page.getByRole('listbox').locator('.q-checkbox[tabindex="-1"][aria-hidden="true"]')).toHaveCount(2)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('listbox')).toHaveCount(0)
+  await expect(page.getByTestId('kwic-attribute')).toHaveCount(8)
+  // Nothing else changed: same rows in the same order, the check, the open row.
+  await expect(rows(page).locator('.kwic__key')).toHaveText(order)
+  await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
+  await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
+  await expect(page.getByTestId('annotation-context')).toBeVisible()
+  // The checked and the open row keep their colours, also in the sticky annotation cell.
+  await expect(row(page, 'Brně')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
+  await expect(row(page, 'Brně').locator('.kwic__key')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
+  await expect(row(page, 'Jan Novák')).toHaveCSS('background-color', 'rgb(255, 248, 214)')
+  await expect(row(page, 'Lhoty')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+
+  // Each column assigns its own attribute.
+  await cell(page, 'Jan Novák', place.id).getByTestId('kwic-attribute-edit').click()
+  await picker(page).getByText('town', { exact: true }).click()
+  await expect(cell(page, 'Jan Novák', place.id).getByTestId('attribute-chips')).toHaveText('town')
+  await expect(picker(page)).toHaveCount(0)
+  await expect(cell(page, 'Jan Novák', role.id)).toContainText('Assign')
+  await cell(page, 'Jan Novák', role.id).getByTestId('kwic-attribute-edit').click()
+  await picker(page).getByText('chronicler', { exact: true }).click()
+  await expect(cell(page, 'Jan Novák', role.id).getByTestId('attribute-chips')).toHaveText('chronicler')
+  await closePicker(page)
+  await expect(cell(page, 'Jan Novák', place.id).getByTestId('attribute-chips')).toHaveText('town')
+  await expect(cell(page, 'Brně', place.id)).toContainText('Assign')
+  // As saved, and as the sidebar shows them.
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const listed = await request.get(`${base}/annotations`, { headers, params: { annotation_id: fixture.span('novak_manual').id } })
+  expect((await listed.json()).rows[0].attributes).toEqual({ [place.id]: [place.values[0]!.id], [role.id]: [role.values[1]!.id] })
+  await expect(page.getByTestId('annotation-attributes')).toContainText('town')
+  await expect(page.getByTestId('annotation-attributes')).toContainText('chronicler')
+
+  // Kept on return from the document, like the rest of the workspace.
+  await page.getByTestId('chunk-context').getByRole('link', { name: 'Open in document' }).click()
+  await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
+  await page.getByRole('link', { name: 'Back to annotations' }).click()
+  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
+
+  // Hiding one changes nothing else either.
+  await toggleOption(page, 'concordance-show-attribute', 'Role')
+  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type'])
+  await expect(rows(page).locator('.kwic__key')).toHaveText(order)
+  await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
+})
+
+test('on a phone several attribute columns scroll sideways under the annotation', async ({ page, request }) => {
+  await createRole(request)
+  await createForAllTags(request, 'Place type', 'single', ['town', 'village'])
+  await createForAllTags(request, 'Stance', 'single', ['for', 'against'])
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const kwic = page.getByTestId('kwic')
+  const overflow = () => kwic.evaluate(el => el.scrollWidth - el.clientWidth)
+  await toggleOption(page, 'concordance-show-attribute', 'Role')
+  // One column fits, as before.
+  await expect.poll(overflow).toBeLessThanOrEqual(0)
+  await toggleOption(page, 'concordance-show-attribute', 'Place type')
+  await toggleOption(page, 'concordance-show-attribute', 'Stance')
+  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role', 'Stance'])
+  await expect.poll(overflow).toBeGreaterThan(0)
+  // The page itself does not scroll sideways.
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+
+  await kwic.evaluate(el => { el.scrollLeft = el.scrollWidth })
+  const scrollLeft = () => kwic.evaluate(el => el.scrollLeft)
+  await expect.poll(scrollLeft).toBeGreaterThan(0)
+  /** Where an element's left and right edges are, from the list's left edge. */
+  const edges = async (locator: Locator) => {
+    const [list, box] = await Promise.all([kwic.boundingBox(), locator.boundingBox()])
+    return { left: box!.x - list!.x, right: box!.x + box!.width - list!.x - list!.width }
+  }
+  const key = row(page, 'Jan Novák').locator('.kwic__key')
+  // The annotation stays in view next to the checkbox; the last column has come into view.
+  await expect.poll(async () => (await edges(key)).left).toBeGreaterThanOrEqual(0)
+  await expect.poll(async () => (await edges(key)).left).toBeLessThan(40)
+  await expect(key).toBeVisible()
+  await expect.poll(async () => (await edges(page.getByTestId('kwic-attribute-head').last())).right).toBeLessThanOrEqual(1)
+
+  // Moving between rows by keyboard keeps the sideways scroll.
+  const scrolled = await scrollLeft()
+  await rows(page).first().evaluate(el => (el as HTMLElement).focus({ preventScroll: true }))
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await expect(rows(page).nth(2)).toBeFocused()
+  await expect.poll(scrollLeft).toBe(scrolled)
+})
+
 test('a single-valued choice closes its picker once saved, in the column and in the sidebar', async ({ page, request }) => {
   const created = await request.post(`${base}/attributes`, {
     headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
@@ -166,7 +288,7 @@ test('a single-valued choice closes its picker once saved, in the column and in 
   expect(created.ok()).toBe(true)
   await useViewport(page, 'wide')
   await openWorkspace(page)
-  await choose(page, 'concordance-show-attribute', 'Place type')
+  await toggleOption(page, 'concordance-show-attribute', 'Place type')
 
   await cell(page, 'Brně').getByTestId('kwic-attribute-edit').click()
   await picker(page).getByText('town', { exact: true }).click()
@@ -201,7 +323,7 @@ test('values kept after a retag are greyed and marked, and a batch Clear removes
   try {
     await useViewport(page, 'wide')
     await openWorkspace(page)
-    await choose(page, 'concordance-show-attribute', 'Role')
+    await toggleOption(page, 'concordance-show-attribute', 'Role')
     const kept = cell(page, 'Jan Novák')
     await expect(kept).toContainText('statesman')
     await expect(kept.getByTestId('attribute-chips-inapplicable')).toBeVisible()

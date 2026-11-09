@@ -68,101 +68,16 @@
         The corpus holds no documents.
       </p>
 
-      <div v-else class="corpus-overview__grid" :class="{ 'corpus-overview__grid--stale': loading }" :aria-busy="loading">
-        <q-card flat bordered class="dimension-card dimension-card--wide" data-testid="corpus-years">
-          <q-card-section>
-            <h2 class="dimension-card__title">Publication year</h2>
-            <template v-if="overview.publicationYear.available">
-              <p class="dimension-card__coverage">{{ coverageText(overview.publicationYear.unknownCount ?? 0, 'a publication year') }}</p>
-              <PublicationTimeline
-                v-if="overview.publicationYear.years?.length"
-                :distribution="overview.publicationYear"
-                @apply-period="applyPeriod"
-                @view="(view) => (timelineView = view)"
-              />
-              <p v-else class="dimension-card__note">No document of these has a valid publication year.</p>
-            </template>
-            <p v-else class="dimension-card__unavailable" role="note">{{ unavailableText('publication years') }}</p>
-          </q-card-section>
-        </q-card>
-
-        <q-card flat bordered class="dimension-card dimension-card--wide" data-testid="corpus-heatmap">
-          <q-card-section>
-            <h2 class="dimension-card__title">Publication period × source library</h2>
-            <template v-if="overview.libraries.available && overview.publicationYear.available">
-              <p class="dimension-card__note">
-                Which libraries the documents of each period come from, in raw document counts. Counted on request, for the
-                same documents as the rest of the page.
-              </p>
-              <q-btn
-                v-if="!showHeatmap" outline no-caps color="primary" icon="grid_on" label="Show documents per library and period"
-                data-testid="heatmap-show" @click="showHeatmap = true"
-              />
-              <LibraryHeatmap
-                v-else-if="overview.publicationYear.years?.length && timelineView"
-                :filters="overview.filters" :view="timelineView"
-              />
-              <p v-else class="dimension-card__note">No document of these has a valid publication year.</p>
-            </template>
-            <p v-else class="dimension-card__unavailable" role="note">
-              {{ unavailableText(overview.libraries.available ? 'publication years' : 'source libraries') }}
-            </p>
-          </q-card-section>
-        </q-card>
-
-        <q-card
-          v-for="dimension in categories"
-          :key="dimension.key"
-          flat
-          bordered
-          class="dimension-card"
-          :data-testid="`corpus-${dimension.key}`"
-        >
-          <q-card-section>
-            <h2 class="dimension-card__title">{{ dimension.title }}</h2>
-            <template v-if="dimension.distribution.available">
-              <p class="dimension-card__coverage">{{ coverageText(dimension.distribution.unknownCount ?? 0, dimension.subject) }}</p>
-              <p v-if="dimension.note" class="dimension-card__note">{{ dimension.note }}</p>
-              <VegaChart :spec="dimension.spec" :label="`Bar chart of documents per ${dimension.axis.toLowerCase()}; the table below lists the same counts.`" />
-              <q-expansion-item dense dense-toggle switch-toggle-side :label="`Table: documents per ${dimension.axis.toLowerCase()}`" class="dimension-card__table">
-                <q-markup-table flat dense separator="horizontal" class="count-table">
-                  <caption class="sr-only">Documents per {{ dimension.axis.toLowerCase() }}</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col" class="text-left">{{ dimension.axis }}</th>
-                      <th scope="col" class="text-left">Stored value</th>
-                      <th scope="col" class="text-right">Documents</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in dimension.rows" :key="row.key" :class="`count-table__${row.kind}`">
-                      <th scope="row" class="text-left text-weight-regular">{{ row.label }}</th>
-                      <td class="text-left"><code v-if="row.kind === 'value'">{{ row.key }}</code><span v-else>—</span></td>
-                      <td class="text-right">{{ formatCount(row.count) }}</td>
-                    </tr>
-                  </tbody>
-                </q-markup-table>
-              </q-expansion-item>
-            </template>
-            <p v-else class="dimension-card__unavailable" role="note">{{ unavailableText(dimension.subjectPlural) }}</p>
-          </q-card-section>
-        </q-card>
-      </div>
+      <DocumentDistributions v-else :distributions="overview" :loading="loading" @apply-filter="applyFilter" />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from 'vue'
-import type { CategoryDistribution } from 'src/generated/api'
-import VegaChart from 'src/shared/visualization/VegaChart.vue'
+import { computed, onMounted } from 'vue'
 import CorpusFilters from './CorpusFilters.vue'
-import LibraryHeatmap from './LibraryHeatmap.vue'
-import PublicationTimeline from './PublicationTimeline.vue'
-import {
-  categoryBarSpec, categoryRows, coverage, filterGroups, isUnfiltered, languageLabel, libraryLabel, withoutFilter
-} from './corpusOverview'
-import type { YearWindow } from './timeline'
+import DocumentDistributions from './DocumentDistributions.vue'
+import { filterGroups, isUnfiltered, withChartFilter, withoutFilter, type ChartFilter } from './corpusOverview'
 import { useCorpusOverview } from './useCorpusOverview'
 
 const { distributions: overview, corpus, filters, loading, slow, error, invalid, load, retry } = useCorpusOverview()
@@ -174,58 +89,14 @@ const groups = computed(() => overview.value ? filterGroups(overview.value.filte
 const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
 
-const total = computed(() => overview.value?.totalDocuments ?? 0)
-
-/** The timeline's shown window and bin width; the heatmap shows the same periods. */
-const timelineView = shallowRef<{ window: YearWindow, width: number } | null>(null)
-/** The heatmap is counted only once asked for; it then stays shown for other filters. */
-const showHeatmap = ref(false)
-
 /**
- * Restricts the counted documents to a period of the timeline, keeping the other filters. Like
- * a removed chip, built on the filters requested last, not on the counted ones shown: a change
- * made while counting must not undo the previous one (#548).
+ * Restricts the counted documents to a clicked year bin, library or language, or the shown
+ * period, replacing that dimension's filter and keeping the others (#620). Like a removed chip,
+ * built on the filters requested last, not on the counted ones shown: a change made while
+ * counting must not undo the previous one (#548).
  */
-function applyPeriod (period: YearWindow) {
-  void load({ ...filters.value, yearMin: period.start, yearMax: period.end })
-}
-
-interface CategoryDimension {
-  key: string
-  title: string
-  axis: string
-  subject: string
-  subjectPlural: string
-  note?: string
-  distribution: CategoryDistribution
-  rows: ReturnType<typeof categoryRows>
-  spec: ReturnType<typeof categoryBarSpec>
-}
-
-const categories = computed<CategoryDimension[]>(() => {
-  const data = overview.value
-  if (!data) return []
-  const dimension = (key: string, title: string, axis: string, subject: string, subjectPlural: string,
-    distribution: CategoryDistribution, label: (v: string) => string, note?: string): CategoryDimension => {
-    const rows = categoryRows(distribution, label)
-    return { key, title, axis, subject, subjectPlural, note, distribution, rows, spec: categoryBarSpec(rows, axis) }
-  }
-  return [
-    dimension('libraries', 'Source library', 'Library', 'a source library', 'source libraries', data.libraries, libraryLabel),
-    dimension('languages', 'Document language', 'Language', 'a language', 'document languages', data.languages, languageLabel,
-      'The language recorded in the bibliographic metadata of each document, not detected from its text.')
-  ]
-})
-
-function coverageText (unknown: number, subject: string): string {
-  const c = coverage(unknown, total.value)
-  return `${formatCount(c.known)} of ${formatCount(total.value)} documents (${c.percent} %) have ${subject}; ` +
-    `${formatCount(c.unknown)} unknown.`
-}
-
-function unavailableText (subjectPlural: string): string {
-  return `Not available: this corpus database does not record ${subjectPlural} in a form that can be counted, ` +
-    'so documents are not broken down by them (this is not a count of zero).'
+function applyFilter (filter: ChartFilter) {
+  void load(withChartFilter(filters.value, filter))
 }
 
 onMounted(() => load())
@@ -299,8 +170,7 @@ onMounted(() => load())
   color: #4a5568;
 }
 
-.corpus-overview__summary--stale,
-.corpus-overview__grid--stale {
+.corpus-overview__summary--stale {
   opacity: 0.55;
   transition: opacity 0.2s;
 }
@@ -318,73 +188,6 @@ onMounted(() => load())
 
 .summary-card__text {
   margin: 4px 0;
-}
-
-.corpus-overview__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.dimension-card {
-  border-radius: 12px;
-  min-width: 0;
-}
-
-.dimension-card--wide {
-  grid-column: 1 / -1;
-}
-
-.dimension-card__title {
-  font-size: 1.15rem;
-  font-weight: 600;
-  line-height: 1.3;
-  margin: 0 0 4px;
-}
-
-.dimension-card__coverage,
-.dimension-card__note {
-  color: #4a5568;
-  margin: 0 0 8px;
-}
-
-.dimension-card__note {
-  font-size: 0.85rem;
-}
-
-.dimension-card__unavailable {
-  background: #fff8e1;
-  border-radius: 8px;
-  padding: 12px;
-  margin: 8px 0 0;
-}
-
-.dimension-card__table {
-  margin-top: 8px;
-}
-
-.count-table {
-  max-width: 560px;
-}
-
-.count-table__other th,
-.count-table__unknown th {
-  font-style: italic;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-@media (max-width: 1023px) {
-  .corpus-overview__grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 599px) {

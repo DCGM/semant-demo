@@ -80,6 +80,71 @@ test('recent searches', async ({ page }, testInfo) => {
   await save(page, testInfo, 'search-history-newer-version')
 })
 
+test('search documents: filter-only and ranked results, Load more and states (#606, #607)', async ({ page }, testInfo) => {
+  // A first page of two, so Load more and the coverage line show with the small fixture corpus.
+  await page.route('**/api/search/documents', async (route) => {
+    const body = route.request().postDataJSON()
+    await route.continue({ postData: JSON.stringify(body.offset === 0 ? { ...body, limit: 2 } : body) })
+  })
+  await page.goto('/#/search?chunk_languages=ces')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('document-result-open')).toHaveCount(2)
+  await expect(page.getByTestId('search-load-more')).toBeVisible()
+  await page.getByTestId('search-coverage').click() // closes the recent searches the field offers
+  // No right sidebar: the Summary panel serves passages only.
+  await save(page, testInfo, 'search-documents')
+
+  await page.getByTestId('search-load-more').click()
+  await expect(page.getByTestId('document-result-open')).toHaveCount(3)
+  await save(page, testInfo, 'search-documents-all')
+
+  // Ranked by a text query (#607): the title match first, each document with its best passage.
+  await page.goto('/#/search?q=Lhota&chunk_languages=ces&mode=documents')
+  await expect(page.getByTestId('document-result-evidence').first()).toBeVisible()
+  await page.getByTestId('search-coverage').click()
+  await save(page, testInfo, 'search-documents-ranked')
+
+  await page.goto('/#/search?chunk_classifications=communicative_mode:narration&year_min=1900')
+  await expect(page.getByTestId('search-empty')).toBeVisible()
+  await page.getByTestId('search-empty').click()
+  await save(page, testInfo, 'search-documents-empty')
+})
+
+test('search passages: applied filters, coverage, Load more, pending and empty states (#605)', async ({ page }, testInfo) => {
+  // Pages of three, so Load more and the coverage line show with the small fixture corpus.
+  await page.route('**/api/search/passages', async (route) => {
+    await route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), limit: 3 }) })
+  })
+  await page.goto('/#/search?q=Lhota&chunk_languages=ces&year_max=1950')
+  await closePhoneNavigation(page)
+  await expect(page.locator('#result-1')).toBeVisible()
+  await expect(page.getByTestId('search-load-more')).toBeVisible()
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'search-passages')
+
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Brno')
+  await expect(page.getByTestId('search-pending')).toBeVisible()
+  await save(page, testInfo, 'search-passages-pending')
+
+  await page.goto('/#/search?chunk_languages=ces&mode=passages')
+  await expect(page.getByTestId('search-needs-query')).toBeVisible()
+  await page.getByTestId('search-needs-query').click() // closes the recent searches the field offers
+  await expect(page.getByTestId('search-history')).toHaveCount(0)
+  await save(page, testInfo, 'search-passages-needs-query')
+
+  await page.goto('/#/search?q=Lhota&chunk_classifications=complexity:expert&chunk_languages=zxx')
+  await expect(page.getByTestId('search-empty')).toBeVisible()
+  await save(page, testInfo, 'search-passages-empty')
+
+  await page.unroute('**/api/search/passages')
+  await page.route('**/api/search/passages', (route) => route.fulfill({
+    status: 422, json: { detail: 'Passages cannot be filtered by complexity: this corpus database is not recorded.' }
+  }))
+  await page.goto('/#/search?q=Brno')
+  await expect(page.getByTestId('search-error')).toBeVisible()
+  await save(page, testInfo, 'search-passages-error')
+})
+
 test('search vector selection', async ({ page }, testInfo) => {
   // The browser-test profile configures two search vectors (#217).
   await page.goto('/#/search')
@@ -489,18 +554,37 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await page.reload() // without the sign-in notification
     await closePhoneNavigation(page)
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
+    // Two columns side by side (#537).
     await page.getByTestId('concordance-show-attribute').click()
     await page.getByRole('option', { name: 'Role', exact: true }).click()
+    await page.getByRole('option', { name: 'Place type', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('listbox')).toHaveCount(0)
     const novak = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
-    await novak.getByTestId('kwic-attribute-edit').click()
+    const role = novak.locator(`[data-testid="kwic-attribute"][data-attribute-id="${(await created.json()).id}"]`)
+    const placeType = novak.locator(`[data-testid="kwic-attribute"][data-attribute-id="${(await place.json()).id}"]`)
     const picker = page.getByTestId('attribute-value-picker')
+    await placeType.getByTestId('kwic-attribute-edit').click()
+    await picker.getByText('town', { exact: true }).click()
+    await expect(placeType.getByTestId('attribute-chips')).toHaveText('town')
+    await expect(picker).toHaveCount(0)
+    await role.getByTestId('kwic-attribute-edit').click()
     await picker.getByText('statesman', { exact: true }).click()
-    await expect(novak.getByTestId('attribute-chips')).toHaveText('statesman')
+    await expect(role.getByTestId('attribute-chips')).toHaveText('statesman')
     await picker.getByText('witness', { exact: true }).click()
-    await expect(novak.getByTestId('attribute-chips')).toHaveText('statesmanwitness')
+    await expect(role.getByTestId('attribute-chips')).toHaveText('statesmanwitness')
     await expect(page.locator('.q-menu')).not.toHaveClass(/q-transition/)
     await save(page, testInfo, 'attribute-assign-column')
     await page.keyboard.press('Escape')
+    // A list narrower than its columns scrolls sideways under the checkbox and annotation (#537).
+    const kwic = page.getByTestId('kwic')
+    if (await kwic.evaluate(el => el.scrollWidth > el.clientWidth)) {
+      await expect(page.getByTestId('attribute-value-picker')).toHaveCount(0)
+      await kwic.evaluate(el => { el.scrollLeft = el.scrollWidth })
+      await page.mouse.move(0, 0)
+      await save(page, testInfo, 'attribute-assign-column-scrolled')
+      await kwic.evaluate(el => { el.scrollLeft = 0 })
+    }
 
     await page.getByTestId('select-all-matches').click()
     await page.getByTestId('assign-attribute').click()
@@ -517,7 +601,7 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await page.mouse.move(0, 0)
     await save(page, testInfo, 'attribute-assign-result')
 
-    await novak.click()
+    await novak.locator('.kwic__key').click() // not on an attribute cell, which edits instead
     await expect(page.getByTestId('annotation-attributes')).toBeVisible()
     await expectRightSidebarIn(page)
     await expectSidebarsOpen(page, testInfo)
@@ -705,4 +789,96 @@ test('scan viewer', async ({ page }, testInfo) => {
     return !!el && el.getAnimations().length === 0
   })
   await save(page, testInfo, 'scan-viewer-zoomed')
+})
+
+test('public document', async ({ page }, testInfo) => {
+  // The public document view (#545): a deep-linked word of the gazette, exact on its scan, the
+  // metadata in the sidebar; on a phone the text, then the scan.
+  const gazette = fixture.document('gazette')
+  const passage = fixture.chunk('gazette_1')
+  const word = passage.text.indexOf('hostila')
+  await page.goto(`/#/documents/${gazette.id}?chunk=${passage.id}&start=${word}&end=${word + 7}&from=search`)
+  await page.reload() // a fresh page: the phone's navigation drawer starts as an overlay
+  await closePhoneNavigation(page)
+  await expect(page.locator('.is-active-passage')).toHaveText('hostila')
+  if (testInfo.project.name !== 'phone') {
+    await expect(page.locator('polygon.scan-highlight')).toHaveCount(1)
+    await page.getByRole('listitem', { name: 'Document' }).click()
+    await expectRightSidebarIn(page)
+  }
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'public-document')
+  if (testInfo.project.name === 'phone') {
+    await page.getByTestId('workspace-mode').getByRole('button', { name: 'Scan', exact: true }).click()
+    await expect(page.locator('polygon.scan-highlight')).toHaveCount(1)
+    await save(page, testInfo, 'public-document-scan')
+  }
+})
+
+test('collection document with its scan', async ({ page }, testInfo) => {
+  // The collection's document view (#545): annotations and tools as before, the scan beside the
+  // text, a scan line's text marked.
+  await ensureLoggedIn(page, 'owner')
+  await page.reload()
+  const collection = fixture.collection('chronicles')
+  const chronicle = fixture.document('chronicle')
+  await page.goto(`/#/collections/${collection.id}/documents/${chronicle.id}/v1?page=5e3a0000-0000-4000-8000-0000000d1f01`)
+  await closePhoneNavigation(page)
+  await expect(page.locator('.chunk-annotator').first()).toBeVisible()
+  // With both sidebars open (narrow) and on a phone the workspace has room for one view only.
+  if (testInfo.project.name === 'wide') {
+    const line = (await page.locator('polygon.scan-line[data-line-id="r002-l002"]').boundingBox())!
+    await page.mouse.click(line.x + line.width / 2, line.y + line.height / 2)
+    await expect(page.locator('.is-active-passage').first()).toBeVisible()
+  }
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'collection-document-scan')
+  if (testInfo.project.name === 'narrow') {
+    await page.getByTestId('workspace-mode').getByRole('button', { name: 'Scan', exact: true }).click()
+    await expect(page.getByTestId('scan-overlay')).toBeAttached()
+    await save(page, testInfo, 'collection-document-scan-only')
+  }
+})
+
+test('explore visualizations', async ({ page }, testInfo) => {
+  // #618: the Visualizations view of filters without a text query (no right sidebar panel here).
+  await page.goto('/#/search?year_max=1950&chunk_languages=ces&view=visualizations')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('charts-total')).toHaveText('2')
+  await expect(page.getByTestId('corpus-years').locator('svg').first()).toBeVisible()
+  await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'explore-visualizations')
+  await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-visualizations-full-${testInfo.project.name}.png`, fullPage: true })
+})
+
+test('explore visualizations of a text query, a chart filter and a data table (#620)', async ({ page }, testInfo) => {
+  await page.goto('/#/search?q=Lhota&view=visualizations')
+  await closePhoneNavigation(page)
+  await expect(page.getByTestId('charts-total')).toHaveText('7')
+  await expect(page.getByTestId('results-years').locator('svg').first()).toBeVisible()
+  await expect(page.getByTestId('results-languages').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'explore-ranked-passages')
+  await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-ranked-passages-full-${testInfo.project.name}.png`, fullPage: true })
+
+  // A clicked 1851 bar: the year filter applied, a new search and its counts.
+  await page.getByTestId('results-years').locator('[aria-roledescription="bar"][aria-label*="Click to filter by 1851"]').first().click()
+  await expect(page.getByTestId('charts-total')).toHaveText('3')
+  await save(page, testInfo, 'explore-ranked-filtered')
+
+  // The language data table opened: exact counts and the bars' filters for the keyboard.
+  await page.getByTestId('results-languages-table').getByText(/^Show data table/).click()
+  await expect(page.getByTestId('results-languages-table').locator('.q-expansion-item__content')).not.toHaveAttribute('style', /height/)
+  await page.getByTestId('results-languages-filter-ces').scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'explore-ranked-table')
+
+  // A bounded ranking of documents.
+  await page.route('**/api/search/documents', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    await route.fulfill({ response, json: { ...body, ranked: body.ranked.slice(0, 2), bounded: true, total_count: null } })
+  })
+  await page.goto('/#/search?q=Lhota&mode=documents&view=visualizations')
+  await expect(page.getByTestId('charts-ranking')).toContainText('Bounded')
+  await expect(page.getByTestId('results-years').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'explore-ranked-documents-bounded')
 })

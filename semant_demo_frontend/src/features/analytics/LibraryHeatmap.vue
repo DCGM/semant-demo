@@ -33,7 +33,7 @@
         />
         <q-expansion-item
           dense dense-toggle switch-toggle-side class="library-heatmap__table"
-          :label="`Table: documents per library and period (${binsName(view.width)})`"
+          :label="`Show data table (documents per library and period, ${binsName(view.width)})`"
         >
           <div class="library-heatmap__scroll">
             <q-markup-table flat dense separator="cell" class="heatmap-table">
@@ -85,15 +85,18 @@
  * whose late answer is ignored; leaving aborts the request in flight.
  */
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import type { DocumentFilters, LibraryYearDistribution } from 'src/generated/api'
+import type { ChunkFilters, DocumentFilters, LibraryYearDistribution } from 'src/generated/api'
 import { apiErrorMessage, isAbortError, useApi } from 'src/shared/api'
 import VegaChart from 'src/shared/visualization/VegaChart.vue'
+import { hasChunkFilters } from './corpusOverview'
 import { heatmapRows, heatmapSpec, heatmapTableRows } from './libraryHeatmap'
 import { binsName, widthName, type YearWindow } from './timeline'
 
 const props = defineProps<{
   /** The filters of the counts shown on the page. */
   filters: DocumentFilters
+  /** The chunk filters of those counts (per dimension, #529), if any. */
+  chunkFilters?: ChunkFilters
   /** The timeline's shown window and bin width. */
   view: { window: YearWindow, width: number }
 }>()
@@ -116,7 +119,8 @@ async function load () {
   error.value = null
   try {
     const result = await api.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(
-      { corpusDistributionsRequest: { filters: props.filters } }, { signal: current.signal })
+      { corpusDistributionsRequest: { filters: props.filters, ...(hasChunkFilters(props.chunkFilters) ? { chunkFilters: props.chunkFilters } : {}) } },
+      { signal: current.signal })
     if (controller !== current) return
     data.value = result
   } catch (e) {
@@ -134,7 +138,7 @@ async function load () {
   }
 }
 
-watch(() => props.filters, load, { immediate: true })
+watch(() => [props.filters, props.chunkFilters], load, { immediate: true })
 onBeforeUnmount(() => {
   controller?.abort()
   controller = null

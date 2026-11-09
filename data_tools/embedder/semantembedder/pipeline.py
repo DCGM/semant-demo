@@ -1,12 +1,12 @@
 import asyncio
 import re
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from classconfig import ConfigurableMixin, CreatableMixin, ConfigurableValue, ConfigurableSubclassFactory
 from tqdm import tqdm
 
-from .db import get_async_client, ensure_named_vector_exists
+from .db import get_async_client, ensure_named_vector_exists, named_vector_exists
 # Import embedders to register their subclasses for ConfigurableSubclassFactory
 from .embedders import Embedder, VLLMEmbedder
 
@@ -17,6 +17,8 @@ class PipelineStats:
     already_filled: int = 0  # records that already have the vector
     empty: int = 0  # records whose rendered input text is empty
     embedded: int = 0  # records whose vector was written in this run
+    missing: int = 0  # check only: records without the vector that a run would embed
+    refused: Optional[str] = None  # check only: why a run would be refused before embedding anything
     dimension: Optional[int] = None
 
     # current state of the records in the pipeline (for monitoring of utilization and bottlenecks)
@@ -197,6 +199,79 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             await self.embedder.close()
             print("Weaviate connection closed.")
 
+    def check(self) -> PipelineStats:
+        """Count what a run would do, without embedding or writing anything."""
+        return asyncio.run(self.check_async())
+
+    async def check_async(self) -> PipelineStats:
+        """Count the records a run would embed; read-only (no schema change, no embedding requests).
+
+        When a run would be refused (the vector is missing and ``create_vector`` is disabled), the counts
+        are still collected and ``refused`` says why.
+
+        It reads every record with the target vector, like a run, so it costs the same scan. ``max_records``
+        is not applied: the counts cover the whole collection.
+        """
+        stats = PipelineStats()
+        async with get_async_client(
+            host=self.weaviate_host,
+            port=self.weaviate_port,
+            grpc_port=self.weaviate_grpc_port,
+            headers=self.weaviate_headers,
+            api_key=self.weaviate_api_key
+        ) as client:
+            exists = await named_vector_exists(client, self.collection, self.vector_name)
+            if not exists:
+                missing_vector = f"Named vector '{self.vector_name}' does not exist in collection '{self.collection}'"
+                if self.create_vector:
+                    print(f"{missing_vector}; a run would create it (create_vector).")
+                else:
+                    stats.refused = f"{missing_vector} and create_vector is disabled."
+                    print(f"{missing_vector}; a run would be refused (create_vector is disabled).")
+            collection = client.collections.use(self.collection)
+            print(f"Checking collection '{self.collection}' (vector '{self.vector_name}'), nothing is written...")
+            async for objects in self._scan(collection, include_vector=exists):
+                stats.scanned += len(objects)
+                for obj in objects:
+                    if self._input_of(obj, stats) is not None:
+                        stats.missing += 1
+        print(f"Check finished. {stats.scanned} records: {stats.missing} without the vector (a run would embed them), "
+              f"{stats.already_filled} already had the vector, {stats.empty} with empty input.")
+        if self.max_records and stats.missing > self.max_records:
+            print(f"A run embeds at most max_records={self.max_records} of them.")
+        return stats
+
+    async def _scan(self, collection, include_vector: bool = True,
+                    done: Callable[[], bool] = lambda: False) -> AsyncIterator[list]:
+        """Read the collection with a cursor, ``scan_batch_size`` records per request, until ``done()``."""
+        last_uuid = None
+        while not done():
+            response = await self._with_retries(
+                lambda: collection.query.fetch_objects(
+                    limit=self.scan_batch_size,
+                    after=last_uuid,
+                    include_vector=[self.vector_name] if include_vector else False,
+                    return_properties=self.return_properties
+                ),
+                f"Scanning records after {last_uuid}"
+            )
+            if not response.objects:
+                return
+            last_uuid = response.objects[-1].uuid
+            yield response.objects
+
+    def _input_of(self, obj, stats: PipelineStats) -> Optional[str]:
+        """The text to embed for a record, or None (counted) when it has the vector or an empty input."""
+        if (obj.vector or {}).get(self.vector_name):
+            stats.already_filled += 1
+            return None
+        database_record = {k: (v if v is not None else "") for k, v in obj.properties.items()}
+        text = self.embedder.render(database_record)
+        if not text.strip():
+            stats.empty += 1
+            return None
+        return text
+
     async def _with_retries(self, operation: Callable[[], Awaitable[Any]], description: str) -> Any:
         """Run a database operation, retrying it in case of failure.
 
@@ -224,39 +299,17 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         max_rec = self.max_records or 0
         enqueued = 0
         pending_uuids, pending_texts = [], []
-        last_uuid = None
 
-        while max_rec <= 0 or enqueued < max_rec:
-            response = await self._with_retries(
-                lambda: collection.query.fetch_objects(
-                    limit=self.scan_batch_size,
-                    after=last_uuid,
-                    include_vector=[self.vector_name],
-                    return_properties=self.return_properties
-                ),
-                f"Scanning records after {last_uuid}"
-            )
-
-            if not response.objects:
-                break
-
-            last_uuid = response.objects[-1].uuid
-            stats.scanned += len(response.objects)
+        async for objects in self._scan(collection, done=lambda: max_rec > 0 and enqueued >= max_rec):
+            stats.scanned += len(objects)
             done_without_embedding = 0
 
-            for obj in response.objects:
+            for obj in objects:
                 if max_rec > 0 and enqueued >= max_rec:
                     break
 
-                if (obj.vector or {}).get(self.vector_name):
-                    stats.already_filled += 1
-                    done_without_embedding += 1
-                    continue
-
-                database_record = {k: (v if v is not None else "") for k, v in obj.properties.items()}
-                text = self.embedder.render(database_record)
-                if not text.strip():
-                    stats.empty += 1
+                text = self._input_of(obj, stats)
+                if text is None:
                     done_without_embedding += 1
                     continue
 

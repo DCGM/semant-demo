@@ -7,7 +7,8 @@
  * charts and the tables are drawn from the same rows.
  */
 import type { VisualizationSpec } from 'vega-embed'
-import type { CategoryDistribution, DocumentFilters } from 'src/generated/api'
+import type { CategoryDistribution, ChunkFilters, DocumentFilters } from 'src/generated/api'
+import { unitNoun, type CountUnit } from './timeline'
 
 export type RowKind = 'value' | 'other' | 'unknown'
 
@@ -66,6 +67,26 @@ export function categoryRows (distribution: CategoryDistribution, label: (value:
   return rows
 }
 
+/**
+ * A clicked chart category as a document filter (#620): a publication-year bin or period, a
+ * source library, or a document's bibliographic language (`DocumentFilters.languages`, also
+ * when the chart counts passages). Unknown and Other have no filter and are not clickable.
+ */
+export type ChartFilter =
+  | { dimension: 'years', start: number, end: number }
+  | { dimension: 'libraries' | 'languages', value: string }
+
+/** The filters with `filter` in place of its own dimension; the other dimensions are kept. */
+export function withChartFilter<T extends { yearMin?: number | null, yearMax?: number | null, libraries?: string[], languages?: string[] }> (
+  filters: T, filter: ChartFilter
+): T {
+  if (filter.dimension === 'years') return { ...filters, yearMin: filter.start, yearMax: filter.end }
+  return { ...filters, [filter.dimension]: [filter.value] }
+}
+
+/** Whether a row of a category chart can be applied as a filter. */
+export const isFilterableRow = (row: { kind: RowKind, count: number }) => row.kind === 'value' && row.count > 0
+
 export type FilterKey = 'years' | 'title' | 'libraries' | 'languages'
 type ListKey = Exclude<FilterKey, 'years'>
 
@@ -86,6 +107,12 @@ const LISTS: Record<ListKey, { field: 'titleContains' | 'libraries' | 'languages
   title: { field: 'titleContains', label: 'Title contains', name: (v) => v },
   libraries: { field: 'libraries', label: 'Library', name: libraryLabel },
   languages: { field: 'languages', label: 'Language', name: languageLabel }
+}
+
+/** Whether any chunk filter is set (a document then needs, per filter, a chunk with one of its values). */
+export function hasChunkFilters (filters: ChunkFilters | null | undefined): boolean {
+  if (!filters) return false
+  return (filters.languages?.length ?? 0) > 0 || Object.values(filters.classifications ?? {}).some(values => values.length > 0)
 }
 
 /** True when the filters select every document. */
@@ -134,17 +161,24 @@ const SCHEMA = 'https://vega.github.io/schema/vega-lite/v6.json'
 const BAR_STEP = 22
 const COLORS = { value: '#1976d2', other: '#78909c', unknown: '#b0bec5' }
 
-/** Documents per value as horizontal bars in row order; Other and Unknown are named on the axis. */
-export function categoryBarSpec (rows: CategoryRow[], title: string): VisualizationSpec {
+/**
+ * Documents (or passages) per value as horizontal bars in row order; Other and Unknown are named
+ * on the axis. `filterable`: a value's bar is highlighted under the pointer and its tooltip says
+ * that a click applies it as a filter (the page handles the click, `VegaChart` `itemClick`).
+ */
+export function categoryBarSpec (rows: CategoryRow[], title: string, unit: CountUnit = 'documents', filterable = false): VisualizationSpec {
+  const counted = unitNoun(unit, 2, true)
+  const action = (row: CategoryRow) => (isFilterableRow(row) ? `Click to filter by ${row.label}` : 'Not available as a filter')
   return {
     $schema: SCHEMA,
-    data: { values: rows.map((row, order) => ({ ...row, order })) },
+    data: { values: rows.map((row, order) => ({ ...row, order, ...(filterable ? { action: action(row) } : {}) })) },
     // A fixed height (not a step): the chart is fitted to its container's width.
     height: Math.max(rows.length, 1) * BAR_STEP,
+    ...(filterable ? { params: [{ name: 'hover', select: { type: 'point', on: 'pointerover', clear: 'pointerout', fields: ['key'] } }] } : {}),
     mark: { type: 'bar', tooltip: true },
     encoding: {
       y: { field: 'label', type: 'nominal', title, sort: { field: 'order', order: 'ascending' }, axis: { labelLimit: 180 } },
-      x: { field: 'count', type: 'quantitative', title: 'Documents', axis: { format: ',d', tickMinStep: 1 } },
+      x: { field: 'count', type: 'quantitative', title: counted, axis: { format: ',d', tickMinStep: 1 } },
       color: {
         field: 'kind',
         type: 'nominal',
@@ -153,8 +187,12 @@ export function categoryBarSpec (rows: CategoryRow[], title: string): Visualizat
       },
       tooltip: [
         { field: 'label', type: 'nominal', title },
-        { field: 'count', type: 'quantitative', title: 'Documents', format: ',d' }
-      ]
+        { field: 'count', type: 'quantitative', title: counted, format: ',d' },
+        ...(filterable ? [{ field: 'action', type: 'nominal', title: 'Filter' }] : [])
+      ],
+      ...(filterable
+        ? { opacity: { condition: { test: "datum.kind === 'value' && vlSelectionTest('hover_store', datum)", value: 0.7 }, value: 1 } }
+        : {})
     }
   }
 }

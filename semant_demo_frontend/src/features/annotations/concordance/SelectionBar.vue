@@ -209,6 +209,7 @@ import { QBtn, QIcon, QSpace, QSpinner, QTooltip } from 'quasar'
 import { ReviewAction, type Attribute, type Tag } from 'src/generated/api'
 import { assignReportHasProblems, assignReportSummary } from 'src/features/attributes/assignment'
 import type { AssignReport } from 'src/features/attributes/attributeAssignStore'
+import { plural } from 'src/shared/plural'
 import ReviewTagMenu from './ReviewTagMenu.vue'
 import type { ChangeKind, ReportAction, ReviewReport, UndoableChange } from './annotationReviewStore'
 
@@ -291,7 +292,8 @@ const reportText = computed(() => {
   const r = props.report
   if (!r) return ''
   const uncertain = r.failed.filter(f => f.uncertain).length
-  const parts = [`${PAST[r.action]} ${r.saved.length} of ${r.target}.`]
+  // The headline ends with a noun so the next count does not run into it (#531).
+  const parts = [`${PAST[r.action]} ${r.saved.length} of ${plural(r.target, 'annotation')}.`]
   if (r.failed.length - uncertain) parts.push(`${r.failed.length - uncertain} failed.`)
   if (uncertain) parts.push(`${uncertain} uncertain (the server did not confirm; they may have been saved).`)
   if (r.conflicts.length) {

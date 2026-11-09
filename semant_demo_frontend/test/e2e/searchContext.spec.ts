@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { appendResultCopies, editSearchResults, fixture, goToResultsPage, search, useViewport } from './support'
+import { appendResultCopies, editSearchResults, fixture, search, useViewport } from './support'
 
 // A search result in its document context (#244): the "Document" panel of the right
 // sidebar reads a bounded passage of the public corpus around the hit and highlights it.
@@ -57,7 +57,7 @@ test('double-clicking a result shows it highlighted in its document', async ({ p
   await expect(page.getByTestId('right-sidebar-title')).toHaveText('Summary')
 })
 
-test('Focus on result restores its page; unknown chunks fail safely', async ({ page }) => {
+test('Focus on result brings the result back into view; unknown chunks fail safely', async ({ page }) => {
   await useViewport(page, 'narrow')
   await editSearchResults(page, (body) => appendResultCopies(body, 1)) // copies are unknown chunks
   await search(page, 'Lhota')
@@ -67,16 +67,14 @@ test('Focus on result restores its page; unknown chunks fail safely', async ({ p
   await expect(match(page)).toBeVisible()
 
   // Browse elsewhere in the results, then come back.
-  await goToResultsPage(page, 2)
-  await expect(page.locator('#result-11')).toBeVisible()
-  await expect(result).toHaveCount(0)
+  await page.locator('#result-11').scrollIntoViewIfNeeded()
+  await expect(result).not.toBeInViewport()
   await panel(page).getByRole('button', { name: 'Focus on result' }).click()
   await expect(result).toBeVisible()
   await expect(result).toHaveClass(/citation-target-highlight/)
   await expect(result).toBeInViewport()
 
   // A result whose chunk does not exist (deleted meanwhile) shows an error, not other text.
-  await goToResultsPage(page, 2)
   await page.locator('#result-11').getByRole('button', { name: /in its document$/ }).click()
   await expect(panel(page).getByRole('alert')).toContainText('no longer available')
   await expect(panel(page).locator('.chunk-context__chunk')).toHaveCount(0)

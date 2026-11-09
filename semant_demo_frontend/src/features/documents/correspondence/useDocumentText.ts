@@ -1,21 +1,17 @@
 import { ref, shallowRef } from 'vue'
-import type { DocumentChunk } from 'src/generated/api'
 import { apiErrorMessage, isAbortError, useApi } from 'src/shared/api'
+import { positioned, readPageChunks, type PositionedChunk } from './pageChunks'
+
+export type { PositionedChunk } from './pageChunks'
 
 // The chunks of a public document that the paired text/scan view shows (#544): a bounded,
 // growing set read around what the reader opens (a chunk, a page) and extended on request,
 // never the whole document. Reads are public corpus data (#541, docs/PAGE_LAYOUT.md); none
 // depends on a collection. Gaps between the chunks read are left for the owner to show.
 
-/** A chunk with its place in the document (chunks without an `order` are not shown). */
-export type PositionedChunk = DocumentChunk & { order: number }
-
 const WINDOW_BEFORE = 2
 const WINDOW_AFTER = 4
 const EXTEND = 5
-/** Chunks per page read (the API's maximum), and further reads for a page with more. */
-const PAGE_LIMIT = 50
-const PAGE_FOLLOW_READS = 3
 /** Pages tried from the start for the first text of a document opened without a target. */
 const START_PAGES = 8
 
@@ -25,9 +21,6 @@ export interface PageRead {
   complete: boolean
   failed: boolean
 }
-
-const positioned = (chunks: DocumentChunk[]): PositionedChunk[] =>
-  chunks.filter((c): c is PositionedChunk => typeof c.order === 'number')
 
 export function useDocumentText (documentId: () => string) {
   const api = useApi().default
@@ -87,37 +80,16 @@ export function useDocumentText (documentId: () => string) {
     return chunks.value.find(c => c.id === chunkId) ?? null
   }
 
-  /**
-   * The chunks whose page range includes page `order` (the manifest position), read once per
-   * page and merged; their stored page ranges are coarse (one chunk too many, never too few).
-   * A page with more chunks than one read returns is continued with `/adjacent`, at most
-   * `PAGE_FOLLOW_READS` times; `complete` is false when chunks of the page may remain unread.
-   */
+  /** The chunks of page `order` (`readPageChunks`), read once per page and merged. */
   function pageChunks (order: number): Promise<PageRead> {
     let pending = pageReads.get(order)
     if (!pending) {
       const mine = generation
-      const covers = (c: PositionedChunk) => c.fromPage <= order && order <= c.toPage
       pending = (async (): Promise<PageRead> => {
-        const first = await read(() => api.readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet({
-          documentId: documentId(), page: order, limit: PAGE_LIMIT
-        }), 'The text of this page could not be loaded.')
-        if (!first) return { chunks: [], complete: false, failed: true }
-        const found = positioned(first.chunks)
-        let complete = !first.hasMore
-        for (let i = 0; !complete && i < PAGE_FOLLOW_READS && found.length; i++) {
-          const more = await read(() => api.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet({
-            documentId: documentId(), chunkId: found[found.length - 1].id, direction: 'after', limit: PAGE_LIMIT
-          }), 'The text of this page could not be loaded.')
-          if (!more) break
-          const next = positioned(more.chunks)
-          found.push(...next.filter(covers))
-          // Chunks are in document order: one starting after the page, or the end of the
-          // document, ends the page's chunks.
-          complete = next.length < PAGE_LIMIT || next.some(c => c.fromPage > order)
-        }
-        if (mine === generation) merge(found)
-        return { chunks: found, complete, failed: false }
+        const found = await read(() => readPageChunks(api, documentId(), order), 'The text of this page could not be loaded.')
+        if (!found) return { chunks: [], complete: false, failed: true }
+        if (mine === generation) merge(found.chunks)
+        return { ...found, failed: false }
       })().then((result) => {
         // A failed read is tried again next time.
         if (result.failed && pageReads.get(order) === pending) pageReads.delete(order)

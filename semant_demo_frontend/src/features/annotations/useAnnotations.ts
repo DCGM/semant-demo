@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { useTagSpansStore } from './tagSpansStore'
 import { SpanType, TagSpan, CollectionChunk } from 'src/generated/api'
-import { anchorAtStart, knownChunksInOrder, localRange, projectSpan, reuseIfSameReferences } from './spanOffsets'
+import { anchorAtStart, cutAtGap, knownChunksInOrder, localRange, projectSpan, reuseIfSameReferences } from './spanOffsets'
 import { createContextGuard, errorStatus } from 'src/shared/api'
 
 // ── Types ──────────────────────────────────────────────
@@ -278,6 +278,24 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
 
     previousAllProjectedSpansByChunkId = next
     return next
+  })
+
+  /**
+   * The orders of the known chunks after which an annotation (not a declined one) runs into a
+   * gap whose chunks are not known: it is shown only up to there. A gap read like the initial
+   * load's (`useChunkWindow`) has none; a large one opened by showing a distant page may.
+   */
+  const cutAtGapOrders = computed(() => {
+    const known = allKnownChunks.value
+    const orders = new Set<number>()
+    known.forEach((chunk, index) => {
+      for (const span of spansByChunkId.value[chunk.id] ?? []) {
+        if (span.type === SpanType.neg) continue
+        const at = cutAtGap(known, index, span.end)
+        if (at !== null) orders.add(known[at].order)
+      }
+    })
+    return orders
   })
 
   /**
@@ -617,6 +635,7 @@ export function useAnnotations(chunksRef: () => CollectionChunk[], hiddenChunksR
     getLocalSelection,
     getProjectedSpans,
     getAllProjectedSpans,
+    cutAtGapOrders,
 
     // CRUD
     applyToSelection,

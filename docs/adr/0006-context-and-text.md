@@ -1,9 +1,11 @@
 # ADR 0006 - Shared context, source text, and optional image alignment
 
-Status: search-chat scope and line-level roadmap agreed; detailed context/geometry
-contracts remain implementation proposals.
-Date: 2026-10-07. Q3 and Q5 clarified; replaces the earlier whole-query alternative
-and page-only starting recommendation.
+Status: search-chat scope agreed; line-level text/scan correspondence implemented and
+validated on real material (#351, #546); detailed context contracts and polygon fields
+remain proposals.
+Date: 2026-10-07; line-level correspondence updated 2026-11-04 (#546). Q3 and Q5
+clarified; replaces the earlier whole-query alternative and page-only starting
+recommendation.
 
 ## Context
 
@@ -70,6 +72,19 @@ Uncertain, ambiguous, or unavailable matches must be visible rather than present
 The page layout files and chunk-start anchors from PERO PAGE XML that this mapping uses
 (#351) are described in [PAGE_LAYOUT.md](../PAGE_LAYOUT.md).
 
+**As implemented (#351).** The mapping is in the frontend (`correspondence/layoutMap.ts`).
+The only stored inputs are one layout file per page (the lines that make the canonical text,
+with baselines and estimated word starts, made offline from PERO PAGE XML) and, per chunk,
+the optional `layoutStart` (page, line, UTF-16 offset, `exact`/`approximate`); no line
+table, text ranges or polygons are stored. Text offsets stay the existing half-open UTF-16
+chunk offsets. A map is exact only when the walk from an exact anchor reproduces every
+character of the stored chunk text; otherwise whole lines are shown and marked approximate,
+and a chunk without an anchor is text only. Positions within a line are estimates
+(proportional word starts), never presented as character positions. On the 32 documents of
+the shared test store, 88.5 % of the stored chunks anchor exactly, 2.5 % approximately;
+the rest are mostly chunks not made from the current PAGE XML. Measurements, limitations and
+the real-page regression fixtures: [PAGE_LAYOUT.md](../PAGE_LAYOUT.md#validation-on-real-material-546).
+
 Later, chunks, tag annotations, or NER occurrences may carry **optional lists of polygons**.
 Geometry is derived location information, not a replacement for stable IDs and text ranges.
 A future contract should identify the page and coordinate system for each polygon, support
@@ -83,8 +98,10 @@ source-location conventions rather than inventing a separate coordinate model.
 
 ## Deferred decisions
 
-Choose frontend-only versus persisted alignment, polygon field details, and the mapping
-algorithm with real ALTO examples during viewer work. They are not blockers for cleanup.
+Frontend-only versus persisted alignment and the mapping algorithm were chosen during the
+viewer work (#351, above): frontend mapping from stored chunk-start anchors, validated on real
+PERO PAGE XML and stored chunks (#546). Polygon fields for chunks, annotations or NER
+occurrences remain deferred; they are not blockers for cleanup.
 
 Q6, chat-history persistence/sharing, remains deferred; preserve existing
 request-scoped behavior until a separate feature is approved. Persistent history

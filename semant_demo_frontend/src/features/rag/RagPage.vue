@@ -203,6 +203,7 @@
         :loading="sourceContext.loading"
         :extending="sourceContext.extending"
         :error="sourceContext.error"
+        :open-link="sourceContext.target ? documentLink(sourceContext.target.documentId, { chunkId: sourceContext.target.chunkId, from: 'chat' }) : null"
         :target-label="chatSources.documentSource.value?.label ?? null"
         return-label="Return to cited passage"
         @extend="sourceContext.extend"
@@ -214,7 +215,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, onUpdated, watch } from 'vue'
+import { ref, nextTick, onMounted, onUpdated, watch } from 'vue'
 import { marked } from 'marked'
 import { useQuasar } from 'quasar'
 import { SearchType, type RagChatMessage, type RagRouteConfig, type SearchResultChunk } from 'src/generated/api'
@@ -223,6 +224,8 @@ import { useUserStore } from 'src/features/auth/userStore'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
+import { whileShown } from 'src/shared/whileShown'
+import { documentLink } from 'src/features/documents/workspace/documentLink'
 import ChatSourcesPanel from './ChatSourcesPanel.vue'
 import { citedChunkId, useChatSources } from './useChatSources'
 const $q = useQuasar() // notifications
@@ -305,12 +308,13 @@ async function loadRagConfigs () {
 
 onMounted(() => {
   loadRagConfigs()
-  document.addEventListener('mousedown', handleClickOutside)
 })
 
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside)
-})
+// Kept alive while a cited document is shown: the listener only while shown.
+whileShown(
+  () => document.addEventListener('mousedown', handleClickOutside),
+  () => document.removeEventListener('mousedown', handleClickOutside)
+)
 // ----------------------Main chat-----------------------------
 
 // The conversation: resetting it starts a new one, and answers (RAG, explanations) still

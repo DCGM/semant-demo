@@ -193,10 +193,36 @@ python -m semant_demo.maintenance.page_import anchors --check check_after.json -
 - **`assets`** writes only files, and reads the chunks read-only from the configured Weaviate.
   Per document, in input order, it runs the converter (#540) against the stored chunks, then
   per page:
-  - writes the layout file when it differs;
-  - copies the original scan byte for byte when the stored copy is missing or of another
-    size (the source must decode as a JPEG; otherwise `corrupt_image`);
-  - makes a JPEG thumbnail (at most 256 px wide) when it is missing or older than its scan.
+  - makes the stored scan, a **derived viewing JPEG**, from the original source JPEG with the
+    fixed import profile v1 (below). The originals stay in source storage, and a stored scan
+    is never derived again from itself. The source must decode as a JPEG; otherwise
+    `corrupt_image`;
+  - writes the layout file, its pixel geometry scaled to the stored scan, when it differs;
+  - makes a JPEG thumbnail (at most 256 px wide) from the stored scan when it is missing or
+    older than the scan.
+
+  **Import profile v1** (`page_import/scan_profile.py`, #594). The 10th percentile (linear
+  interpolation) of the layout lines' `above + below` heights, in original pixels; lines
+  without valid heights are ignored. Below 20 px keeps the original size; from 20 px the scan
+  is reduced so the percentile becomes 18 px, at most 3 times in each dimension
+  (`reduction = min(3, h10 / 18)`; aspect ratio kept, never enlarged). These values were set
+  on 2026-11-04 instead of the issue's first proposal (24 px / 22 px). Lanczos resampling, then
+  JPEG quality 85 with `optimize`, also for pages kept at their size and pages without usable
+  heights (`image_no_heights`). The layout's `image` size, baselines, heights and word starts are
+  scaled to the stored JPEG's integer size (rounded; baselines clamped to the image). Ids, text,
+  order, chunk text, offsets and anchors are unchanged: anchors are verified on the original
+  PAGE geometry before scaling. A page without a stored scan keeps the PAGE geometry. A page
+  whose PAGE XML has no valid image size (`unknown_layout_size`) cannot have its geometry
+  scaled, so its scan keeps the source's size and is only re-encoded. To change
+  the profile, edit it there (and its `version`) and run `assets` again: every scan, layout and
+  thumbnail is made again from the originals.
+
+  **When a scan is made again.** `scans.json` next to the manifest (never served) records per
+  page the source (path, size, modification time), the profile, the line-height percentile and
+  the layout size it was made from, and the stored file's size and pixel size. A scan is kept
+  untouched when all of them match; otherwise (also for scans stored by the import before #594,
+  which kept the original) it is made again. A source that is missing or unreadable keeps the
+  earlier stored scan, and the layout follows that scan.
 
   The manifest (what actually exists) and the anchor plan (`anchors.jsonl`: chunk id, a hash
   of the stored text, `layoutStart` or null with a reason) come last. Thumbnails need Pillow,
@@ -206,7 +232,8 @@ python -m semant_demo.maintenance.page_import anchors --check check_after.json -
   - it writes only differing anchors (`set`), and clears anchors the plan no longer verifies
     (`clear`). Each write is a merge of `layoutStart` alone, then read back;
   - it skips chunks whose text changed since the plan (`text_changed`) and refuses a plan whose
-    parameters differ from the manifest's;
+    parameters differ from the manifest's. A skipped chunk keeps its stored anchor, which the
+    viewer then shows as approximate, until `assets` is run again for its document (#593);
   - `--write` declares `Chunks.layoutStart` when it is missing (an additive schema change).
 - **Resuming.** Both steps are simply run again with the same arguments and a new report
   name. Files are replaced atomically, so an interrupted page leaves no partial file;
@@ -216,17 +243,46 @@ python -m semant_demo.maintenance.page_import anchors --check check_after.json -
 - **Reports.** `REPORT` holds the totals and is replaced after every document;
   `REPORT.documents.jsonl` has one line per document. They cover:
   - anchors per match level and reason;
-  - scans copied, kept, missing, corrupt or unreadable, and missing PAGE XML;
+  - scans resized, unresized (re-encoded at their size), kept, replaced, missing, corrupt,
+    unreadable or failed (`image_derive_failed`), pages without usable heights, and missing
+    PAGE XML;
+  - per page the original and stored pixel size, bytes, line-height percentile and reduction
+    (`scans` in the document line); in the totals the bytes and pixels of sources and stored
+    scans (`image_source_bytes`, `image_output_bytes`, `..._pixels`) and their ratios
+    (`imageBytesRatio`, `imagePixelsRatio`); the profile (`scanProfile`) in the header;
   - line-id problems and other converter warnings;
   - the page fields compared with the anchors (`start_page_id_differs`, `from_page_differs`,
     `outside_page_range`). These are **reported, never repaired** (decision on #542).
 
   `assets` exits 0 when every document was imported; `anchors` exits 0 when nothing is left
   to write and no chunk text changed.
-- **Disk sizing.** About 1.1 MB per page scan (up to ~5 MB), 10 KB per layout file and 25 KB
-  per thumbnail; the assets are regenerable and need no backup. The documents' pages must be
+- **Disk sizing.** The original scans are about 1.1 MB per page (up to ~5 MB); the stored scans
+  are smaller (read `imageBytesRatio` of the report), plus 10 KB per layout file and 25 KB per
+  thumbnail. The assets are regenerable and need no backup. The deployed stores are on the
+  ZFS pool: `/mnt/zfs1/semant_demo_page_assets/test` (all test instances, mounted read-only by
+  `docker-compose.app-test.yml`) and `/mnt/zfs1/semant_demo_page_assets/production`
+  ([deploy/README](../deploy/README.md#page-asset-store-594)).
+- **Browser cache after a re-import.** Scans and thumbnails are served with
+  `Cache-Control: max-age=86400` under unchanged URLs (versioned URLs are #595), while layout
+  files are revalidated. For up to a day a browser can show an old scan with the new layout's
+  geometry (misaligned lines). Check a re-import in a fresh browser profile, or wait a day
+  before visual acceptance. The documents' pages must be
   in the mirror and their files mounted; scans under paths that are not mounted are
   `missing_image`.
+- **Verifying a run.** After `anchors --write`, `anchors --check` must exit 0 (nothing left to
+  write, no changed text). Read the anchor totals of the `assets` report per document: most
+  documents anchor every chunk exactly; a document with many `not_found`/`too_different`
+  chunks usually has stored chunks made from another OCR or a page list that repeats pages,
+  not a matcher fault (compare a stored chunk with `page_layout` output for the same pages;
+  #591). Many `missing_image` pages under one path usually mean an unmounted share: mount it
+  and run `assets` again. The expected numbers and the limitations are in
+  [PAGE_LAYOUT.md](PAGE_LAYOUT.md#validation-on-real-material-546). To confirm that a write
+  changed nothing but `layoutStart`, compare an export of the objects' properties and vectors
+  before and after on the rehearsal copy.
+- **Prerequisites.** `page_order` needs the PostgreSQL driver and a `postgresql+psycopg://`
+  DSN (as for `metadata_sync`, above); a plain `postgresql://` DSN asks for `psycopg2`, which
+  is not installed. On 32 documents (1,565 pages) `assets` took 80 s and 220 MB of memory,
+  reading the sources over the network share; `anchors --write` took a few seconds.
 - **Safety.** Follow the rules above for the `--write` step (endpoint, authorization,
   backup). The `assets` step writes to the asset directory only. Rehearse on a disposable
   copy first; record the results on the issue or PR.
@@ -603,16 +659,32 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
     it is recorded as given and not checked.
   - `--check` takes neither, nor `--bulk` or `--batch`.
 - Reported documents and invalid lines go to `CHECKPOINT.manifest.jsonl`.
+- A write run lists the input documents whose chunks are all stored in `CHECKPOINT.documents.txt`
+  (one document id per line, the format of `metadata_sync --document-ids` and
+  `page_order --document-ids`), appended after each page; the summary gives its path and count.
+  - Listed: `new` and `append` documents after their writes are read back, `replayed` ones, and a
+    `blocked` document once a rerun finishes it. Rejected documents are never listed; a check
+    writes no list.
+  - `replayed` documents are listed because a document written just before an interruption is
+    `replayed` in the resumed run. A document stored before the import and repeated in its input
+    is listed too; `metadata_sync` treats it like any other document (empty values filled,
+    `library` and `public` following the mirror row), and its report shows any change before
+    `--apply`.
+  - A page repeated after an interruption may list a document twice; both readers ignore the
+    repetition. A line cut off by a killed run is removed when the run resumes.
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
 **Afterwards**, as separate commands:
 
-1. `metadata_sync` fills the new documents' metadata.
+1. `metadata_sync --report REPORT --document-ids CHECKPOINT.documents.txt`, then
+   `--apply REPORT`, fills the new documents' metadata (`--sync` takes no document list).
 2. `chunk_year --write` copies their year to the chunks.
-3. `chunk_titles --write` generates the new chunks' titles; after `metadata_sync`, since it uses
-   the document titles ([Chunk titles](#chunk-titles-chunk_titles-575)).
-4. `data_tools/embedder` computes the `Qwen3_Embedding_0_6B` vectors; until then the new chunks
-   are missing from vector and hybrid search.
+3. `chunk_titles --write` generates the new chunks' titles (every untitled chunk; no document
+   list); after `metadata_sync`, since it uses the document titles
+   ([Chunk titles](#chunk-titles-chunk_titles-575)).
+4. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
+   vectors; until then the new chunks are missing from vector and hybrid search. `--check`
+   counts the chunks still without the vector, read-only.
 
 The import does none of this, nor anything to existing annotations: their positions stay valid,
 and context near the former document end keeps its old right boundary.
