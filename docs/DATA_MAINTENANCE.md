@@ -606,8 +606,9 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
 **Afterwards**, as separate commands. An arrow means that a step uses the result of the
-previous one; dashed steps have no safe command yet. Run the steps one at a time, since
-`chunk_year` and `chunk_summaries` expect nothing else to write chunks.
+previous one; steps without an arrow between them are independent, and dashed steps have no
+safe command yet. `chunk_year` and `chunk_summaries` expect nothing else to write chunks, so
+do not run them alongside the embedder or another chunk writer.
 
 ```mermaid
 flowchart LR
@@ -622,6 +623,13 @@ flowchart LR
 
 1. `metadata_sync --report REPORT --document-ids CHECKPOINT.documents.txt`, then
    `--apply REPORT`, fills the new documents' metadata (`--sync` takes no document list).
+   The import creates the documents without `library`, so give the report an evidence-backed
+   source: `--infer-library-from-pages` (from the chunks' `start_page_id`), a verified
+   `--library-map`, or `--infer-library-from-mirror` for documents without page evidence;
+   otherwise every new document is `unresolved`. Check the unresolved entries and sample the
+   inferred libraries (`--inferred FILE`) before `--apply`, which refuses unresolved documents
+   unless `--accept-incomplete` is given
+   ([`metadata_sync`](#kramerius-metadata-sync-metadata_sync-257)).
 2. `chunk_year --write` copies their year to the chunks (a full scan); it needs the metadata.
 3. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
    vectors; until then the new chunks are missing from vector and hybrid search. `--check`
@@ -633,8 +641,11 @@ flowchart LR
    `weaviate_utils/generate_text_chunk_titles/update_database.py` rewrites `order` too
    ([#575](https://github.com/DCGM/semant-demo/issues/575)). Until then the new chunks have
    neither.
-5. `chunk_summaries --write` last: until it runs, the new documents have no summaries and match
-   no chunk filter. It is a full-corpus pass; run it again after the classification.
+5. `chunk_summaries --write` is the final pass, after the classification, since it summarizes
+   the chunks' classifications. Until it runs, the new documents have no summaries and match no
+   chunk filter. A run before the classification (e.g. for the language filter) is only interim:
+   the import is not complete while the classification and the titles are pending. It is a
+   full-corpus pass.
 
 `page_order --document-ids CHECKPOINT.documents.txt` exports the new documents' page lists.
 Scans and anchors for newly imported documents are not covered yet: `page_import` was built for
