@@ -16,7 +16,7 @@ from semant_demo.adapters.weaviate.chunk_titles import ChunkState
 from semant_demo.maintenance import chunk_titles
 from semant_demo.maintenance.chunk_titles import (
     FEATURE, InvalidTitle, Refused, Selection, UsageTotals, clean_title, exit_code, generate_title, language_key,
-    messages, plan, provenance, read_id_file, read_uuids,
+    messages, plan, provenance, read_id_file,
 )
 from tests.corpus import load_corpus
 from tests.fake_providers import create_fake_provider_app
@@ -162,23 +162,9 @@ def test_id_files(tmp_path):
     text = tmp_path / "documents.txt"
     text.write_text(f"# new documents\n{DOC}\n\n{OTHER}  # second\n")
     assert read_id_file(text) == [DOC, OTHER]
-    binary = tmp_path / "run.json.titled.uuids"
-    binary.write_bytes(DOC.bytes + OTHER.bytes + CHUNK.bytes[:5])   # an interrupted append
-    assert read_id_file(binary) == read_uuids(binary) == [DOC, OTHER]
     text.write_text("not-a-uuid\n")
     with pytest.raises(Refused, match="documents.txt:1"):
         read_id_file(text)
-
-
-def test_uuids_append_repairs_an_interrupted_record_and_reads_its_tail(tmp_path):
-    path = tmp_path / "run.json.titled.uuids"
-    chunk_titles._append_uuids(path, [DOC, OTHER])
-    with path.open("ab") as file:
-        file.write(CHUNK.bytes[:7])
-    chunk_titles._repair_uuids(path)
-    assert path.stat().st_size == 32 and read_uuids(path) == [DOC, OTHER]
-    assert chunk_titles._uuids_tail(path, 1) == {OTHER}
-    assert chunk_titles._uuids_tail(path, 5) == {DOC, OTHER}
 
 
 async def test_generate_title_through_the_gateway():
@@ -265,9 +251,8 @@ def test_shipped_catalogs_serve_the_feature(name, provider, endpoint):
     assert (origin["max_input_tokens"], origin["max_output_tokens"]) == (4096, 512)
 
 
-def result(mode="write", done=True, to_retry=0, titles_to_write=0, **counts):
-    return {"mode": mode, "done": done, "to_retry": to_retry, "titles_to_write": titles_to_write,
-            "counts": chunk_titles._counts() | counts}
+def result(mode="write", complete=True, **counts):
+    return {"mode": mode, "complete": complete, "counts": chunk_titles._counts() | counts}
 
 
 @pytest.mark.parametrize("summary, code", [
@@ -277,9 +262,9 @@ def result(mode="write", done=True, to_retry=0, titles_to_write=0, **counts):
     (result(generate=2, written=1, deferred_no_document_title=1), 1),
     (result(generate=1, model_failed=1), 1),
     (result(empty_text=1), 1),
-    (result(done=False), 1),
-    (result(to_retry=1), 1),
-    (result(titles_to_write=1), 1),
+    (result(complete=False, generate=1, written=1), 1),   # stopped by --limit
+    (result(invalid_output=1), 1),
+    (result(write_failed=1), 1),
 ])
 def test_exit_code(summary, code):
     assert exit_code(summary) == code
@@ -288,18 +273,22 @@ def test_exit_code(summary, code):
 def test_the_parser_requires_a_models_config_and_reads_selections(tmp_path):
     parser = chunk_titles._parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["--check", "c.json"])
+        parser.parse_args(["--check"])
     ids = tmp_path / "chunks.txt"
     ids.write_text(f"{CHUNK}\n")
-    args = parser.parse_args(["--check", "c.json", "--models-config", "m.yaml", "--documents", str(DOC),
+    args = parser.parse_args(["--check", "--models-config", "m.yaml", "--documents", str(DOC),
                               "--chunks-from", str(ids)])
     assert chunk_titles.selection_from(args) == Selection(True, (DOC,), (CHUNK,))
-    args = parser.parse_args(["--check", "c.json", "--models-config", "m.yaml"])
-    assert chunk_titles.selection_from(args) == Selection()
+    args = parser.parse_args(["--check", "--models-config", "m.yaml"])
+    assert chunk_titles.selection_from(args) == Selection() and args.check and not args.write
+    args = parser.parse_args(["--write", "--models-config", "m.yaml", "--after", str(CHUNK), "--limit", "5"])
+    assert (args.after, args.limit, args.report) == (CHUNK, 5, None)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--check", "--write", "--models-config", "m.yaml"])
 
 
 @pytest.mark.parametrize("option", ["--limit", "--concurrency"])
 @pytest.mark.parametrize("value", ["0", "-1"])
 def test_the_parser_refuses_a_limit_or_concurrency_below_one(option, value):
     with pytest.raises(SystemExit):   # a concurrency of 0 would wait forever
-        chunk_titles._parser().parse_args(["--check", "c.json", "--models-config", "m.yaml", option, value])
+        chunk_titles._parser().parse_args(["--check", "--models-config", "m.yaml", option, value])

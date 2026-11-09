@@ -5,23 +5,25 @@ document, and chunks of documents without one are deferred (below).
 
 Check (read-only, no model calls)::
 
-    python -m semant_demo.maintenance.chunk_titles --check check.json --models-config MODELS.yaml [SELECTION]
+    python -m semant_demo.maintenance.chunk_titles --check --models-config MODELS.yaml [SELECTION]
 
 Write::
 
-    python -m semant_demo.maintenance.chunk_titles --write write.json --confirm-endpoint HOST:PORT \\
-        --models-config MODELS.yaml [SELECTION] [--concurrency 8] [--limit N] [--tier TIER] \\
-        [--allow-missing-document-title] [--regenerate]
+    python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:PORT \\
+        --models-config MODELS.yaml [SELECTION] [--limit N] [--after ID] [--report FILE] \\
+        [--concurrency 8] [--tier TIER] [--allow-missing-document-title] [--regenerate]
 
-Selection: without options, every chunk of the store without a title (read in id order,
-pages of 100; only the id, title, language and document reference). ``--documents ID ...``,
-``--documents-from FILE`` (one document UUID per line; ``#`` starts a comment),
-``--chunks ID ...`` and ``--chunks-from FILE`` (the same text format, or a ``.uuids`` file of
-an earlier run, below) select explicitly; they may be combined (the union of the chunks).
-An explicit selection is resolved to its sorted chunk ids at the start of every run. The
-default needs no document list after an import and also finds chunks added by other means; on
-a store with older untitled chunks (#87) it covers them too, so read its size from ``--check``
-and bound a run with ``--limit``.
+The store is the state: a chunk with a non-empty ``title`` is done, an untitled one is
+selected again by the next run. Nothing else is kept between runs: an interrupted run or a
+failed chunk is taken up by running the command again (a few titles may be generated again).
+
+Selection: without options, every chunk of the store without a title, whichever way it was
+added (read in id order, pages of 100; only the id, title, language and document reference;
+the title is checked here, not by a filter). ``--documents ID ...``, ``--documents-from FILE``
+(one document UUID per line; ``#`` starts a comment), ``--chunks ID ...`` and ``--chunks-from
+FILE`` (the same format) narrow it explicitly; they may be combined (the union of the
+chunks), and are resolved to sorted chunk ids at the start of every run. On a store with
+older untitled chunks (#87) the default covers them too: read its size from ``--check``.
 
 Each selected chunk is planned as:
 
@@ -32,6 +34,12 @@ Each selected chunk is planned as:
   run, or Kramerius has none); ``--allow-missing-document-title`` generates it without one;
 * ``no_document``, ``missing_document``, ``several_documents``: reported, left as it is;
 * ``absent``: an explicitly selected chunk id that does not exist.
+
+``--limit N`` bounds the chunks planned ``generate`` in this run (the model calls of a write);
+titled, deferred and reported chunks are passed over without counting. The run stops at the
+first chunk beyond the limit and reports ``next_after``, the last chunk it examined: a later
+run with ``--after`` that id continues from there, past chunks that keep failing; a run
+without ``--after`` starts from the beginning and tries them again.
 
 The model comes from ``--models-config``, a model tier catalog (the format of
 ``configs/llm_models.yaml``) that declares the ``chunk_titles`` feature, e.g.
@@ -48,39 +56,27 @@ The prompt (``PROMPT_VERSION``) asks for a heading (a noun phrase, not a sentenc
 ``language`` is a single known code (``LANGUAGE_NAMES``). It does not alter a reply: a reply is
 the answer alone (the provider separates a model's thinking: ``thinking`` of an Ollama tier, a
 vLLM server's reasoning parser); it is cleaned (quotes around the whole title and markdown
-removed) and refused as ``invalid_output`` when empty, on several lines, longer than ``MAX_TITLE_WORDS`` words or
-``MAX_TITLE_CHARS`` characters; a model call is tried ``ATTEMPTS`` times (``model_failed``).
-Chunks with an empty text are ``empty_text``. Nothing but a valid title is ever written.
+removed) and refused as ``invalid_output`` when empty, on several lines, longer than
+``MAX_TITLE_WORDS`` words or ``MAX_TITLE_CHARS`` characters; a model call is tried ``ATTEMPTS``
+times (``model_failed``). Chunks with an empty text are ``empty_text``. Nothing but a valid
+title is ever written.
 
 Writing is a merge of ``title`` alone (text, order, positions, references, vectors and other
-properties are kept) and every written page is read back. The schema is never changed: a
-store whose chunks do not declare ``title`` as ``text`` is refused.
+properties are kept) and every written page is read back (``write_failed`` when the stored
+title differs). The schema is never changed: a store whose chunks do not declare ``title`` as
+``text`` is refused.
 
-The checkpoint (JSON, replaced atomically) holds the endpoint, the collections, the mode, the
-selection (its size and SHA-256), the options, the provenance of the run (prompt version and
-SHA-256, feature, tier, provider, model, endpoint of the model, the catalog's path and SHA-256),
-the cursor, the counts, the languages of the examined chunks (one value, ``(mixed)`` or
-``(unknown)``), the model usage (calls, tokens, cost) and the ids to retry (failed generation,
-invalid output, failed write), which a rerun retries first, each once per run (one that fails
-again is left for the next run; a failed write is retried with its recorded title, unless the
-chunk was deleted or titled by another writer since). The manifest lines of a page are saved in
-the checkpoint before they are appended, so an interruption neither loses nor repeats one. Generated
-titles are recorded in the checkpoint before they are written, so an interrupted or failed write
-is completed on resume without new model calls. A finished checkpoint is refused, as is one of another endpoint, collection,
-mode, selection, option set or provenance: a new run needs a new file name. Every reported
-chunk gets a line in ``CHECKPOINT.manifest.jsonl`` (its id, status and reason; never text or
-titles).
+The summary (printed as JSON, and written to ``--report FILE`` with the list of reported and
+failed chunks: id, status, reason; never text or titles) holds the endpoint, the collections,
+the mode, the selection, the options, the provenance of the run (prompt version and SHA-256,
+feature, tier, provider, model, endpoint of the model, the catalog's path and SHA-256), the
+times, ``complete`` and ``next_after``, the counts, the languages of the examined chunks (one
+value, ``(mixed)`` or ``(unknown)``) and the model usage (calls, tokens, cost).
 
-``CHECKPOINT.titled.uuids`` lists the ids of the chunks whose title this run wrote and read
-back: raw 16-byte UUIDs, appended after each verified page (a partial last record left by an
-interruption is dropped). Read it with ``read_uuids`` or
-``numpy.fromfile(path, dtype="V16")``; it is accepted by ``--chunks-from`` (with
-``--regenerate`` to redo one run's titles). The checkpoint gives the provenance of every id in it.
-
-Exit code 0 only when the selection is complete: a check with nothing to generate, or a write
-with every selected chunk titled; 1 when anything is to generate (check), deferred, reported
-or left to retry; 2 when refused (missing collection or ``title`` property, unconfirmed
-endpoint, unresolvable model catalog or missing provider setting, a checkpoint of another run).
+Exit code 0 only when the selection is complete: scanned to its end with nothing to generate
+(check) or every selected chunk titled (write); 1 when the limit stopped the run or anything
+was deferred, reported or failed; 2 when refused (missing collection or ``title`` property,
+unconfirmed endpoint, unresolvable model catalog or missing provider setting).
 Run while nothing else writes chunk titles.
 
 The Weaviate endpoint comes from ``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` /
@@ -93,7 +89,6 @@ import asyncio
 import bisect
 import hashlib
 import json
-import os
 import sys
 import time
 from collections.abc import Callable
@@ -140,7 +135,7 @@ LANGUAGE_NAMES = {"ces": "Czech", "slk": "Slovak", "deu": "German", "eng": "Engl
 EXCERPT_LANGUAGE = "the language of the excerpt"
 
 PAGE_SIZE = 100
-"""Chunks examined per page; the cursor is saved after each page."""
+"""Chunks examined per page."""
 CONCURRENCY = 8
 ATTEMPTS = 3
 """Tries of a store read or write, and of a model call (a failed or invalid reply)."""
@@ -148,15 +143,14 @@ BACKOFF = 2.0
 QUERY_TIMEOUT = 600
 MAX_TITLE_WORDS = 20
 MAX_TITLE_CHARS = 200
-UUID_BYTES = 16
 MIXED, UNKNOWN = "(mixed)", "(unknown)"
 
 PLANNED = ("has_title", "generate")
 REPORTED = ("deferred_no_document_title", "no_document", "missing_document", "several_documents", "absent",
             "empty_text", "too_large")
-"""Left as they are and listed in the manifest; a later run plans them again."""
-RETRIED = ("model_failed", "invalid_output", "write_failed")
-"""Kept in the checkpoint and retried first when the same command runs again."""
+"""Left as they are and reported; a later run plans them again."""
+FAILED = ("model_failed", "invalid_output", "write_failed")
+"""Left untitled and reported; a later run over them tries again."""
 USAGE_KEYS = ("calls", "failed_calls", "input_tokens", "output_tokens", "cost_usd", "unknown_cost_calls")
 
 
@@ -236,7 +230,7 @@ def clean_title(reply: str) -> str:
     return title
 
 
-# ---- selection and files -------------------------------------------------------------------
+# ---- selection and output ------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class Selection:
@@ -254,24 +248,8 @@ class Selection:
         return {"kind": "explicit", "documents": len(documents), "chunks": len(chunks), "sha256": digest}
 
 
-def titled_path(checkpoint: Path) -> Path:
-    return checkpoint.with_name(checkpoint.name + ".titled.uuids")
-
-
-def manifest_path(checkpoint: Path) -> Path:
-    return checkpoint.with_name(checkpoint.name + ".manifest.jsonl")
-
-
-def read_uuids(path: Path) -> list[UUID]:
-    """The ids of a ``.uuids`` file (raw 16-byte UUIDs); a partial last record is ignored."""
-    data = path.read_bytes()
-    return [UUID(bytes=data[i:i + UUID_BYTES]) for i in range(0, len(data) - len(data) % UUID_BYTES, UUID_BYTES)]
-
-
 def read_id_file(path: Path) -> list[UUID]:
-    """The ids of a ``.uuids`` file, or of a text file with one UUID per line (``#`` comments)."""
-    if path.suffix == ".uuids":
-        return read_uuids(path)
+    """The ids of a text file with one UUID per line (``#`` starts a comment)."""
     ids = []
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = line.split("#", 1)[0].strip()
@@ -281,39 +259,6 @@ def read_id_file(path: Path) -> list[UUID]:
             except ValueError:
                 raise Refused(f"{path}:{number}: not a UUID") from None
     return ids
-
-
-def _repair_uuids(path: Path) -> None:
-    """Drop a partial last record left by an interrupted append."""
-    if path.exists():
-        size = path.stat().st_size
-        if size % UUID_BYTES:
-            with path.open("r+b") as file:
-                file.truncate(size - size % UUID_BYTES)
-
-
-def _uuids_tail(path: Path, records: int) -> set[UUID]:
-    if not path.exists() or records <= 0:
-        return set()
-    with path.open("rb") as file:
-        file.seek(max(0, path.stat().st_size - records * UUID_BYTES))
-        data = file.read()
-    return {UUID(bytes=data[i:i + UUID_BYTES]) for i in range(0, len(data) - len(data) % UUID_BYTES, UUID_BYTES)}
-
-
-def _append_uuids(path: Path, ids: list[UUID]) -> None:
-    if ids:
-        with path.open("ab") as file:
-            file.write(b"".join(i.bytes for i in ids))
-            file.flush()
-            os.fsync(file.fileno())
-
-
-def _write_json(path: Path, data: Any) -> None:
-    """Replace the file atomically, so a crash leaves the previous checkpoint."""
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
 
 
 def _now() -> str:
@@ -439,57 +384,37 @@ async def generate_title(llm: LlmGateway, prompt: list[dict[str, str]], *, tier:
 # ---- the run -------------------------------------------------------------------------------
 
 def _counts() -> dict[str, int]:
-    return {"examined": 0, **{key: 0 for key in (*PLANNED, *REPORTED, *RETRIED)}, "written": 0}
+    return {"examined": 0, **{key: 0 for key in (*PLANNED, *REPORTED, *FAILED)}, "written": 0}
 
 
 class _Run:
-    def __init__(self, client: WeaviateAsyncClient, llm: LlmGateway, state: dict[str, Any], checkpoint: Path, *,
-                 chunks: str, documents: str, with_language: bool, with_document_title: bool, write: bool,
-                 tier: str | None, concurrency: int, usage: UsageTotals | None, progress: Callable[[str], None]):
-        self.client, self.llm, self.state, self.checkpoint = client, llm, state, checkpoint
-        self.chunks, self.documents = chunks, documents
+    def __init__(self, client: WeaviateAsyncClient, llm: LlmGateway, *, chunks: str, documents: str,
+                 with_language: bool, with_document_title: bool, write: bool, tier: str | None, concurrency: int,
+                 regenerate: bool, allow_missing_document_title: bool, limit: int | None):
+        self.client, self.llm, self.chunks, self.documents = client, llm, chunks, documents
         self.with_language, self.with_document_title = with_language, with_document_title
-        self.write, self.tier, self.concurrency, self.progress = write, tier, concurrency, progress
-        self.usage, self.usage_base = usage, dict(state["usage"])
-        self.counts: dict[str, int] = state["counts"]
+        self.write, self.tier, self.concurrency, self.limit = write, tier, concurrency, limit
+        self.regenerate, self.allow_missing_document_title = regenerate, allow_missing_document_title
+        self.counts = _counts()
+        self.languages: dict[str, int] = {}
+        self.reported: list[dict[str, Any]] = []
+        self.taken = 0
+        self.last: UUID | None = None
         self.document_titles: dict[UUID, Any] = {}
         self.missing_documents: set[UUID] = set()
         limits = llm.catalog.policy(FEATURE).limits
         self.context_size = limits.max_input_tokens + limits.max_output_tokens
-        self.manifest, self.titled = manifest_path(checkpoint), titled_path(checkpoint)
 
-    def save(self) -> None:
-        if self.usage is not None:
-            self.state["usage"] = {key: self.usage_base[key] + self.usage.totals[key] for key in USAGE_KEYS}
-        self.state["updated"] = _now()
-        _write_json(self.checkpoint, self.state)
-
-    def log(self, lines: list[dict[str, Any]]) -> None:
-        """Save the checkpoint with these manifest lines, then append them: an interruption
-        neither loses nor repeats a line (``append_manifest`` completes it on resume)."""
-        self.state["manifest_lines"] = lines
-        self.save()
-        self.append_manifest()
-
-    def append_manifest(self) -> None:
-        """Append the checkpoint's pending manifest lines after the size it recorded, dropping
-        lines appended before an interruption that the checkpoint did not record."""
-        lines, size = self.state["manifest_lines"], self.state["manifest_size"]
-        if self.manifest.exists() and self.manifest.stat().st_size > size:
-            with self.manifest.open("r+b") as file:
-                file.truncate(size)
-        if lines:
-            with self.manifest.open("ab") as file:
-                file.write("".join(json.dumps(line) + "\n" for line in lines).encode("utf-8"))
-                size = file.tell()
-        self.state["manifest_size"], self.state["manifest_lines"] = size, []
+    def report(self, chunk_id: UUID, status: str, reason: str | None = None, documents: tuple[UUID, ...] = ()) -> None:
+        self.counts[status] += 1
+        self.reported.append({"id": str(chunk_id), "status": status, **({"reason": reason} if reason else {}),
+                              **({"document_ids": [str(i) for i in documents]} if documents else {})})
 
     async def titles_of(self, chunks: list[store.ChunkState]) -> dict[UUID, Any]:
         """The titles of the documents of the chunks that may get a title (untitled, or all with
         ``--regenerate``); a document found missing is not queried again in this run."""
-        regenerate = self.state["regenerate"]
         wanted = sorted({c.document_ids[0] for c in chunks if len(c.document_ids) == 1
-                         and (regenerate or text_value(c.title) is None)}
+                         and (self.regenerate or text_value(c.title) is None)}
                         - set(self.document_titles) - self.missing_documents)
         if wanted:
             found = await _retrying(lambda: store.read_document_titles(
@@ -498,18 +423,17 @@ class _Run:
             self.missing_documents.update(set(wanted) - set(found))
         return self.document_titles
 
-    async def generate(self, chunks: list[tuple[store.ChunkState, str | None]]) -> tuple[dict[UUID, str], list]:
-        """Titles generated for the planned chunks, and the chunks that got none with their status and reason."""
+    async def generate(self, chunks: list[tuple[store.ChunkState, str | None]]) -> dict[UUID, str]:
+        """Titles generated for the planned chunks; the chunks that got none are reported."""
         ids = [chunk.id for chunk, _ in chunks]
         texts = await _retrying(lambda: store.read_texts(self.client, self.chunks, ids))
         titles: dict[UUID, str] = {}
-        failures: list[tuple[store.ChunkState, str, str | None]] = []
 
         async def one(item: tuple[store.ChunkState, str | None]) -> None:
             chunk, document_title = item
             text = text_value(texts.get(chunk.id))
             if text is None:
-                failures.append((chunk, "absent" if chunk.id not in texts else "empty_text", None))
+                self.report(chunk.id, "absent" if chunk.id not in texts else "empty_text")
                 return
             language = language_key(chunk.language)
             hint = None if language in (MIXED, UNKNOWN) else language
@@ -518,22 +442,12 @@ class _Run:
             if status == "generated":
                 titles[chunk.id] = value
             else:
-                failures.append((chunk, status, value))
+                self.report(chunk.id, status, value)
         await _gather(chunks, self.concurrency, one)
-        return titles, failures
+        return titles
 
-    def record_failures(self, failures: list) -> list[dict[str, Any]]:
-        lines = []
-        for chunk, status, reason in failures:
-            self.counts[status] += 1
-            if status in RETRIED:
-                self.state["retry"][str(chunk.id)] = status
-            lines.append({"id": str(chunk.id), "status": status, **({"reason": reason} if reason else {})})
-        return lines
-
-    async def flush(self) -> None:
-        """Write the titles recorded in the checkpoint, read them back and record the verified ones."""
-        titles = {UUID(i): t for i, t in self.state["in_flight"].items()}
+    async def store_titles(self, titles: dict[UUID, str]) -> None:
+        """Write the titles and read them back; a title not stored is ``write_failed``."""
         if not titles:
             return
         errors: dict[UUID, str] = {}
@@ -543,114 +457,61 @@ class _Run:
                 await _retrying(lambda: store.set_chunk_title(self.client, self.chunks, chunk_id, titles[chunk_id]))
             except Exception as e:  # the write may or may not have happened; the read back decides
                 errors[chunk_id] = f"{type(e).__name__}: {e}"
-        await _gather(list(titles), self.concurrency, write)
+        await _gather(sorted(titles), self.concurrency, write)
         try:
             stored = await _retrying(lambda: store.read_chunks(self.client, self.chunks, list(titles), False))
         except Exception as e:
             stored = {}
             errors.update({i: f"read back failed: {type(e).__name__}: {e}" for i in titles if i not in errors})
-        verified = []
-        for chunk_id, title in titles.items():
-            if stored.get(chunk_id) is not None and stored[chunk_id].title == title:
-                verified.append(chunk_id)
-                errors.pop(chunk_id, None)
-            elif chunk_id not in errors:
-                errors[chunk_id] = "the stored title differs on read back" if chunk_id in stored else "absent on read back"
-        # Ids appended before an interruption (the last records) are not appended again.
-        recorded = _uuids_tail(self.titled, len(titles))
-        _append_uuids(self.titled, sorted(i for i in verified if i not in recorded))
-        self.counts["written"] += len(verified)
-        lines = []
-        for chunk_id, reason in sorted(errors.items()):
-            self.counts["write_failed"] += 1
-            self.state["retry"][str(chunk_id)] = "write_failed"
-            self.state["unwritten"][str(chunk_id)] = titles[chunk_id]   # retried without a new model call
-            lines.append({"id": str(chunk_id), "status": "write_failed", "reason": reason})
-        self.state["in_flight"] = {}
-        self.log(lines)
+        for chunk_id in sorted(titles):
+            if chunk_id in stored and stored[chunk_id].title == titles[chunk_id]:
+                self.counts["written"] += 1
+            else:
+                self.report(chunk_id, "write_failed", errors.get(chunk_id) or (
+                    "the stored title differs on read back" if chunk_id in stored else "absent on read back"))
 
-    async def process(self, chunks: list[store.ChunkState]) -> list[dict[str, Any]]:
-        """Plan the chunks (counted) and, when writing, generate the titles of the planned ones
-        into ``in_flight``; returns the manifest lines."""
-        state = self.state
-        titles = await self.titles_of(chunks)
-        planned, lines = [], []
-        for chunk in chunks:
-            action, document_title = plan(chunk, titles, regenerate=state["regenerate"],
-                                          allow_missing_document_title=state["allow_missing_document_title"])
+    async def page(self, items: list[tuple[UUID, store.ChunkState | None]]) -> bool:
+        """Plan the chunks in id order and, when writing, title the planned ones; False when the
+        limit stopped the page before its end (``last`` is then the last chunk examined)."""
+        titles = await self.titles_of([chunk for _, chunk in items if chunk is not None])
+        planned: list[tuple[store.ChunkState, str | None]] = []
+        whole = True
+        for chunk_id, chunk in items:
+            if chunk is None:
+                action, document_title = "absent", None
+            else:
+                action, document_title = plan(chunk, titles, regenerate=self.regenerate,
+                                              allow_missing_document_title=self.allow_missing_document_title)
+            if action == "generate":
+                if self.limit is not None and self.taken >= self.limit:
+                    whole = False
+                    break
+                self.taken += 1
+            self.last = chunk_id
             self.counts["examined"] += 1
-            self.counts[action] += 1
-            key = language_key(chunk.language)
-            state["languages"][key] = state["languages"].get(key, 0) + 1
+            if chunk is not None:
+                key = language_key(chunk.language)
+                self.languages[key] = self.languages.get(key, 0) + 1
             if action in REPORTED:
-                lines.append({"id": str(chunk.id), "status": action,
-                              "document_ids": [str(i) for i in chunk.document_ids]})
-            elif action == "generate" and self.write:
-                planned.append((chunk, document_title))
-        if planned:
-            generated, failures = await self.generate(planned)
-            lines += self.record_failures(failures)
-            state["in_flight"] = {str(i): t for i, t in sorted(generated.items())}
-        return lines
-
-    async def retry(self, limit: int | None = None) -> int:
-        """Process again the ids an earlier run left to retry (their earlier failure is no longer
-        counted), each once: an id that fails again is left for the next run. A failed write is
-        retried with its recorded title, without a model call, unless the chunk no longer exists
-        (``absent``) or got another title since (``has_title``; replaced only with
-        ``--regenerate``). Returns the number of ids taken."""
-        pending = sorted(self.state["retry"])[:limit]
-        for start in range(0, len(pending), PAGE_SIZE):
-            batch, to_write = pending[start:start + PAGE_SIZE], {}
-            for chunk_id in batch:
-                self.counts[self.state["retry"].pop(chunk_id)] -= 1
-            unwritten = {i: self.state["unwritten"].pop(i) for i in batch if i in self.state["unwritten"]}
-            ids = [UUID(i) for i in batch]
-            stored = await _retrying(lambda: store.read_chunks(self.client, self.chunks, ids, self.with_language))
-            titles = await self.titles_of([c for c in stored.values() if str(c.id) not in unwritten])
-            planned, lines = [], []
-            for chunk_id in ids:
-                chunk = stored.get(chunk_id)
-                if chunk is None:
-                    self.counts["absent"] += 1
-                    lines.append({"id": str(chunk_id), "status": "absent"})
-                    continue
-                recorded = unwritten.get(str(chunk_id))
-                if recorded is not None:
-                    current = text_value(chunk.title)
-                    if current is not None and current != recorded and not self.state["regenerate"]:
-                        self.counts["has_title"] += 1
-                        lines.append({"id": str(chunk_id), "status": "has_title",
-                                      "reason": "titled by another writer since the failed write"})
-                    else:
-                        to_write[str(chunk_id)] = recorded
-                    continue
-                action, document_title = plan(chunk, titles, regenerate=self.state["regenerate"],
-                                              allow_missing_document_title=self.state["allow_missing_document_title"])
-                if action == "generate":
+                self.report(chunk_id, action, documents=chunk.document_ids if chunk else ())
+            else:
+                self.counts[action] += 1
+                if action == "generate" and self.write:
                     planned.append((chunk, document_title))
-                elif action in REPORTED:
-                    self.counts[action] += 1
-                    lines.append({"id": str(chunk_id), "status": action})
-            generated: dict[UUID, str] = {}
-            if planned:
-                generated, failures = await self.generate(planned)
-                lines += self.record_failures(failures)
-            self.state["in_flight"] = to_write | {str(i): t for i, t in sorted(generated.items())}
-            self.log(lines)
-            await self.flush()
-        return len(pending)
+        if planned:
+            await self.store_titles(await self.generate(planned))
+        return whole
 
 
-async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGateway, *, checkpoint: Path,
-              endpoint: str, write: bool, models_config: Path, selection: Selection = Selection(),
-              tier: str | None = None, regenerate: bool = False, allow_missing_document_title: bool = False,
-              limit: int | None = None, concurrency: int = CONCURRENCY, usage: UsageTotals | None = None,
+async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGateway, *, endpoint: str, write: bool,
+              models_config: Path, selection: Selection = Selection(), tier: str | None = None,
+              regenerate: bool = False, allow_missing_document_title: bool = False, limit: int | None = None,
+              after: UUID | None = None, concurrency: int = CONCURRENCY, usage: UsageTotals | None = None,
               progress: Callable[[str], None] = _progress) -> dict[str, Any]:
-    """One pass over the selection (see the module docstring); returns the summary. Raises
-    ``Refused`` before writing when a collection or ``Chunks.title`` is missing, the model
-    catalog cannot serve the feature, ``--regenerate`` lacks an explicit selection or the
-    checkpoint belongs to another run."""
+    """One pass over the selection (see the module docstring); returns the summary, with the
+    reported chunks under ``reported_chunks``. Raises ``Refused`` before writing when a
+    collection or ``Chunks.title`` is missing, the model catalog cannot serve the feature or
+    ``--regenerate`` lacks an explicit selection."""
     if regenerate and not selection.explicit:
         raise Refused("--regenerate needs an explicit selection (--documents, --chunks or their files)")
     chunks = await resolve_collection(client, names.chunks_collection_name)
@@ -666,76 +527,50 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGatew
     document_types = await store.declared_types(client, documents)
     origin = provenance(llm, tier, models_config)
 
-    identity = {"endpoint": endpoint, "chunks": chunks, "documents": documents, "mode": "write" if write else "check",
-                "selection": selection.identity(), "regenerate": regenerate,
-                "allow_missing_document_title": allow_missing_document_title, "provenance": origin}
-    if checkpoint.exists():
-        state = json.loads(checkpoint.read_text(encoding="utf-8"))
-        state.setdefault("unwritten", {})
-        state.setdefault("manifest_lines", [])
-        if "manifest_size" not in state:
-            manifest = manifest_path(checkpoint)
-            state["manifest_size"] = manifest.stat().st_size if manifest.exists() else 0
-        differing = sorted(key for key, value in identity.items() if state.get(key) != value)
-        if differing:
-            raise Refused(f"The checkpoint {checkpoint} has a different {', '.join(differing)}; use a new checkpoint")
-        if state["done"] and not state["retry"] and not state["in_flight"]:
-            raise Refused(f"The checkpoint {checkpoint} belongs to a finished run; give a new checkpoint file name")
-        progress(f"Resuming {checkpoint}: after {state['after']}, {len(state['retry'])} to retry, "
-                 f"{len(state['in_flight'])} titles to write")
-    else:
-        state = {**identity, "started": _now(), "after": None, "done": False, "retry": {}, "in_flight": {}, "unwritten": {},
-                 "manifest_size": 0, "manifest_lines": [],
-                 "counts": _counts(), "languages": {}, "usage": {key: 0 for key in USAGE_KEYS}}
-        _write_json(checkpoint, state)
-    _repair_uuids(titled_path(checkpoint))
-
-    work = _Run(client, llm, state, checkpoint, chunks=chunks, documents=documents,
+    summary: dict[str, Any] = {
+        "endpoint": endpoint, "chunks": chunks, "documents": documents, "mode": "write" if write else "check",
+        "selection": selection.identity(), "regenerate": regenerate,
+        "allow_missing_document_title": allow_missing_document_title, "limit": limit,
+        "after": str(after) if after else None, "provenance": origin, "started": _now()}
+    work = _Run(client, llm, chunks=chunks, documents=documents,
                 with_language=chunk_types.get(store.LANGUAGE) in ("text", "text[]"),
                 with_document_title=document_types.get(store.TITLE) == "text", write=write, tier=tier,
-                concurrency=concurrency, usage=usage, progress=progress)
-    started = time.monotonic()
-    work.append_manifest()   # lines recorded before an interruption
-    await work.flush()   # titles generated before an interruption: written without new model calls
-    examined = await work.retry(limit)
-
+                concurrency=concurrency, regenerate=regenerate,
+                allow_missing_document_title=allow_missing_document_title, limit=limit)
     selected = None
     if selection.explicit:
         selected = await _resolve(client, chunks, selection, concurrency)
         progress(f"Selected {len(selected)} chunks")
-    while not state["done"] and (limit is None or examined < limit):
-        size = PAGE_SIZE if limit is None else min(PAGE_SIZE, limit - examined)
-        after = UUID(state["after"]) if state["after"] else None
-        lines: list[dict[str, Any]] = []
+    started, cursor, complete = time.monotonic(), after, False
+    while True:
         if selected is None:
-            page = await _retrying(lambda: store.read_chunk_page(client, chunks, after, size, work.with_language))
-            last = page[-1].id if page else None
-            state["done"] = len(page) < size
+            page = await _retrying(lambda: store.read_chunk_page(client, chunks, cursor, PAGE_SIZE, work.with_language))
+            items = [(chunk.id, chunk) for chunk in page]
+            end = len(page) < PAGE_SIZE
         else:
-            start = 0 if after is None else bisect.bisect_right(selected, after)
-            ids = selected[start:start + size]
+            start = 0 if cursor is None else bisect.bisect_right(selected, cursor)
+            ids = selected[start:start + PAGE_SIZE]
             stored = await _retrying(lambda: store.read_chunks(client, chunks, ids, work.with_language))
-            page = [stored[i] for i in ids if i in stored]
-            for missing in (i for i in ids if i not in stored):
-                work.counts["absent"] += 1
-                lines.append({"id": str(missing), "status": "absent"})
-            last = ids[-1] if ids else None
-            state["done"] = start + size >= len(selected)
-        lines += await work.process(page)
-        examined += len(page) if selected is None else len(ids)   # an absent id counts toward --limit
-        if last is not None:
-            state["after"] = str(last)
-        work.log(lines)
-        await work.flush()
-        seconds = max(time.monotonic() - started, 1e-3)
-        counts = work.counts
+            items = [(i, stored.get(i)) for i in ids]
+            end = start + PAGE_SIZE >= len(selected)
+        whole = await work.page(items)
+        cursor = work.last
+        counts, seconds = work.counts, max(time.monotonic() - started, 1e-3)
         progress(f"examined {counts['examined']} " + " ".join(
-            f"{key} {counts[key]}" for key in (*PLANNED, *REPORTED, *RETRIED, "written") if counts[key])
-            + f" to retry {len(state['retry'])} after {state['after']} ({examined / seconds:.1f}/s this run)")
+            f"{key} {counts[key]}" for key in (*PLANNED, *REPORTED, *FAILED, "written") if counts[key])
+            + f" after {cursor} ({counts['examined'] / seconds:.1f}/s)")
+        if not whole:
+            break
+        if end:
+            complete = True
+            break
 
-    state["finished"] = _now()
-    work.save()
-    return summary(state, checkpoint)
+    if usage is not None:
+        summary["usage"] = dict(usage.totals)
+    return summary | {
+        "finished": _now(), "complete": complete, "next_after": None if complete else str(cursor) if cursor else None,
+        "counts": work.counts, "languages": work.languages, "reported": len(work.reported),
+        "reported_chunks": work.reported}
 
 
 async def _resolve(client: WeaviateAsyncClient, chunks: str, selection: Selection, concurrency: int) -> list[UUID]:
@@ -748,22 +583,11 @@ async def _resolve(client: WeaviateAsyncClient, chunks: str, selection: Selectio
     return sorted(ids)
 
 
-def summary(state: dict[str, Any], checkpoint: Path) -> dict[str, Any]:
-    keys = ("endpoint", "chunks", "documents", "mode", "selection", "regenerate", "allow_missing_document_title",
-            "provenance", "after", "done", "counts", "languages", "usage")
-    return {key: state[key] for key in keys} | {
-        "to_retry": len(state["retry"]), "titles_to_write": len(state["in_flight"]),
-        "checkpoint": str(checkpoint), "manifest": str(manifest_path(checkpoint)),
-        "titled": str(titled_path(checkpoint))}
-
-
 def exit_code(result: dict[str, Any]) -> int:
-    """0 only for a complete selection: nothing to generate (check), deferred, reported or
-    left to retry."""
+    """0 only for a complete selection: scanned to its end with nothing to generate (check),
+    deferred, reported or failed."""
     counts = result["counts"]
-    if not result["done"] or result["to_retry"] or result["titles_to_write"]:
-        return 1
-    if any(counts[key] for key in (*REPORTED, *RETRIED)):
+    if not result["complete"] or any(counts[key] for key in (*REPORTED, *FAILED)):
         return 1
     if result["mode"] == "check" and counts["generate"]:
         return 1
@@ -780,10 +604,8 @@ def _positive(value: str) -> int:
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = p.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--check", type=Path, metavar="CHECKPOINT",
-                      help="plan the selection without model calls or writes; resumes a checkpoint")
-    mode.add_argument("--write", type=Path, metavar="CHECKPOINT",
-                      help="generate and write the titles; resumes a checkpoint")
+    mode.add_argument("--check", action="store_true", help="plan the selection without model calls or writes")
+    mode.add_argument("--write", action="store_true", help="generate and write the titles")
     p.add_argument("--confirm-endpoint", metavar="HOST:PORT", help="with --write: the configured Weaviate endpoint")
     p.add_argument("--models-config", type=Path, required=True, metavar="MODELS.yaml",
                    help="model tier catalog declaring the chunk_titles feature")
@@ -791,13 +613,15 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--documents", type=UUID, nargs="+", default=[], metavar="ID", help="select these documents' chunks")
     p.add_argument("--documents-from", type=Path, metavar="FILE", help="select the chunks of the documents listed")
     p.add_argument("--chunks", type=UUID, nargs="+", default=[], metavar="ID", help="select these chunks")
-    p.add_argument("--chunks-from", type=Path, metavar="FILE", help="select the chunks listed (text or .uuids)")
+    p.add_argument("--chunks-from", type=Path, metavar="FILE", help="select the chunks listed")
     p.add_argument("--regenerate", action="store_true", help="also replace existing titles (explicit selection only)")
     p.add_argument("--allow-missing-document-title", action="store_true",
                    help="generate titles of chunks whose document has no title, without it")
-    p.add_argument("--limit", type=_positive,
-                   help="at most this many chunks examined in this run (absent selected ids and retries of "
-                        "an earlier run included)")
+    p.add_argument("--limit", type=_positive, help="at most this many chunks to title in this run")
+    p.add_argument("--after", type=UUID, metavar="ID",
+                   help="start after this chunk id (the next_after of an earlier run)")
+    p.add_argument("--report", type=Path, metavar="FILE",
+                   help="also write the summary, with the reported and failed chunks, to this JSON file")
     p.add_argument("--concurrency", type=_positive, default=CONCURRENCY, help=f"parallel model calls and writes "
                                                                          f"(default {CONCURRENCY})")
     return p
@@ -834,18 +658,19 @@ async def _main(argv: list[str]) -> int:
     print(f"Weaviate endpoint: {endpoint}", file=sys.stderr)
     client = await connect_weaviate(config, query_timeout=QUERY_TIMEOUT)
     try:
-        result = await run(client, config.collectionNames, llm, checkpoint=args.write or args.check,
-                           endpoint=endpoint, write=bool(args.write), models_config=args.models_config,
-                           selection=selection, tier=args.tier, regenerate=args.regenerate,
-                           allow_missing_document_title=args.allow_missing_document_title, limit=args.limit,
-                           concurrency=args.concurrency, usage=usage)
-        print(json.dumps(result, indent=2))
-        return exit_code(result)
+        result = await run(client, config.collectionNames, llm, endpoint=endpoint, write=args.write,
+                           models_config=args.models_config, selection=selection, tier=args.tier,
+                           regenerate=args.regenerate, allow_missing_document_title=args.allow_missing_document_title,
+                           limit=args.limit, after=args.after, concurrency=args.concurrency, usage=usage)
     except Refused as e:
         print(e, file=sys.stderr)
         return 2
     finally:
         await client.close()
+    if args.report:
+        args.report.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(json.dumps({key: value for key, value in result.items() if key != "reported_chunks"}, indent=2))
+    return exit_code(result)
 
 
 if __name__ == "__main__":

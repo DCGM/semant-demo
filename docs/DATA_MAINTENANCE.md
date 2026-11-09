@@ -274,10 +274,10 @@ tell the two cases apart). It is independent of `chunk_year`, the embeddings (th
 `text`), the classification and `chunk_summaries`.
 
 ```bash
-python -m semant_demo.maintenance.chunk_titles --check check.json \
+python -m semant_demo.maintenance.chunk_titles --check \
     --models-config semant_demo/configs/chunk_titles_ollama.yaml
-python -m semant_demo.maintenance.chunk_titles --write write.json --confirm-endpoint HOST:PORT \
-    --models-config semant_demo/configs/chunk_titles_ollama.yaml
+python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:PORT \
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml --limit 10000 --report titles.json
 ```
 
 - **Model.** `--models-config` is required: a tier catalog declaring the `chunk_titles` feature.
@@ -295,31 +295,38 @@ python -m semant_demo.maintenance.chunk_titles --write write.json --confirm-endp
   application's paid tiers by default; doing so needs authorization for that run. Both modes
   check the catalog and the provider settings before anything else, without a model call;
   `--check` makes no model calls at all.
+- **The store is the state.** A chunk with a non-empty `title` is done; an untitled chunk is
+  selected again by the next run. Nothing else is kept between runs (no checkpoint): an
+  interrupted run, a failed model call, an invalid reply or a failed write is taken up by running
+  the command again, which may generate a few titles again.
 - **Selection.** By default every chunk without a title, whichever way it was added: a pass over
   all chunks in id order that checks the stored title in the command (no filter on `title`,
   which the `word` tokenization of production's `Chunks.title` refuses for an empty value). No
   document list is needed after an import ([#596](https://github.com/DCGM/semant-demo/issues/596)).
   On a store with older untitled chunks (the backlog,
   [#87](https://github.com/DCGM/semant-demo/issues/87)) the default covers them too: read the
-  selection size from `--check` first and bound a run with `--limit`. `--documents`/
-  `--documents-from FILE` (one id per line) and `--chunks`/`--chunks-from` optionally narrow
-  the selection; `--regenerate` (explicit selection only) also replaces existing titles.
-  Chunks that have a title are otherwise skipped, so a rerun makes no model calls. If a
-  per-chunk marker of completed stages is introduced
+  selection size from `--check` first. `--documents`/`--documents-from FILE` (one id per line)
+  and `--chunks`/`--chunks-from` optionally narrow the selection; `--regenerate` (explicit
+  selection only) also replaces existing titles. Chunks that have a title are otherwise skipped,
+  so a rerun makes no model calls. If a per-chunk marker of completed stages is introduced
   ([#590](https://github.com/DCGM/semant-demo/issues/590)), the default may select by it
   instead.
+- **Bounded runs.** `--limit N` counts only the chunks to title (the model calls); titled,
+  deferred and reported chunks are passed over. The run stops before the first chunk beyond the
+  limit and reports `next_after`, the last chunk it examined. Continue with `--after` that id:
+  successive bounded runs then walk the store, and chunks that keep failing do not take the
+  limit of every run. A run without `--after` starts from the beginning and tries the failed
+  chunks again.
 - **Writes.** A merge of `title` alone, read back per page; the schema is never changed (a store
-  without `Chunks.title` is refused). Invalid replies (empty, several lines, too long) and failed
-  calls are never written; they are retried first when the same command runs again, once per
-  run (a chunk that keeps failing stays in the checkpoint for the next run). A failed write is
-  retried with its recorded title, without a new model call, unless the chunk was deleted
-  (`absent`) or got another title since (kept, `has_title`, unless `--regenerate`). `--limit`
-  counts the retries and, with an explicit selection, its absent ids.
-- **Records.** The checkpoint holds the run's provenance once (prompt version and hash, model,
-  catalog and its hash), the counts (also per chunk language) and the model usage.
-  `CHECKPOINT.titled.uuids` lists every chunk whose title the run wrote (raw 16-byte UUIDs);
-  `--chunks-from` accepts it, so `--regenerate` can redo exactly one run's titles. Keep both
-  with the run records.
+  without `Chunks.title` is refused). Invalid replies (empty, several lines, too long), failed
+  calls and failed writes are never written as titles: they are reported and the chunk stays
+  untitled.
+- **Summary and exit code.** The summary (stdout, JSON) holds the run's provenance (prompt
+  version and hash, model, catalog and its hash), `complete`, `next_after`, the counts (also per
+  chunk language) and the model usage. `--report FILE` also writes it with the reported and
+  failed chunks (id, status, reason; never text or titles). Exit 0 only when the selection was
+  scanned to its end and every selected chunk has a title (a check: nothing to title); 1 when
+  the limit stopped the run or a chunk was deferred, reported or failed; 2 when refused.
 
 The older export-based scripts in `weaviate_utils/generate_text_chunk_titles/` (#80) were
 retired: they rewrote `order` and changed the schema.

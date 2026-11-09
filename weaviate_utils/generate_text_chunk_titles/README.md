@@ -8,11 +8,11 @@ Generate chunk titles with the maintenance command instead:
 
 ```bash
 cd semant_demo_backend
-python -m semant_demo.maintenance.chunk_titles --check check.json \
+python -m semant_demo.maintenance.chunk_titles --check \
     --models-config semant_demo/configs/chunk_titles_ollama.yaml
 ```
 
-It writes only `Chunks.title`, never changes the schema, and is resumable. Its prompt is the
+It writes only `Chunks.title`, never changes the schema, and a rerun takes up what is left untitled. Its prompt is the
 one these scripts used (`chunk-title-v1`). See
 [DATA_MAINTENANCE.md](../../docs/DATA_MAINTENANCE.md#chunk-titles-chunk_titles-575) and
 `python -m semant_demo.maintenance.chunk_titles --help`. The removed scripts are in the git
