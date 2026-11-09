@@ -605,14 +605,41 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
     repetition. A line cut off by a killed run is removed when the run resumes.
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
-**Afterwards**, as separate commands:
+**Afterwards**, as separate commands. An arrow means that a step uses the result of the
+previous one; dashed steps have no safe command yet. Run the steps one at a time, since
+`chunk_year` and `chunk_summaries` expect nothing else to write chunks.
+
+```mermaid
+flowchart LR
+  ingest["chunk_ingest --write"] --> meta["metadata_sync<br/>--document-ids"]
+  meta --> year["chunk_year"]
+  meta -.->|"#575"| titles["titles (planned)"]
+  ingest --> emb["data_tools/embedder"]
+  ingest -.->|"#590"| cls["classification (planned)"]
+  ingest --> sum["chunk_summaries"]
+  cls -.-> sum
+```
 
 1. `metadata_sync --report REPORT --document-ids CHECKPOINT.documents.txt`, then
    `--apply REPORT`, fills the new documents' metadata (`--sync` takes no document list).
-2. `chunk_year --write` copies their year to the chunks.
+2. `chunk_year --write` copies their year to the chunks (a full scan); it needs the metadata.
 3. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
    vectors; until then the new chunks are missing from vector and hybrid search. `--check`
-   counts the chunks still without the vector, read-only.
+   counts the chunks still without the vector, read-only. The flag confirms the host and port,
+   not the collection: check `collection` in the config too.
+4. The classification and the titles have no safe command for new chunks on a populated store
+   yet: `data_tools/meta_data_enrichment` cannot select only them and overwrites existing
+   values ([#590](https://github.com/DCGM/semant-demo/issues/590)), and
+   `weaviate_utils/generate_text_chunk_titles/update_database.py` rewrites `order` too
+   ([#575](https://github.com/DCGM/semant-demo/issues/575)). Until then the new chunks have
+   neither.
+5. `chunk_summaries --write` last: until it runs, the new documents have no summaries and match
+   no chunk filter. It is a full-corpus pass; run it again after the classification.
+
+`page_order --document-ids CHECKPOINT.documents.txt` exports the new documents' page lists.
+Scans and anchors for newly imported documents are not covered yet: `page_import` was built for
+the existing corpus (#542), and its production import has open questions
+([#591](https://github.com/DCGM/semant-demo/issues/591)).
 
 The import does none of this, nor anything to existing annotations: their positions stay valid,
 and context near the former document end keeps its old right boundary.

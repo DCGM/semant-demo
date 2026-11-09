@@ -102,10 +102,13 @@ stored, is not lost), and a ``blocked`` document once a rerun finishes it. Rejec
 documents are never listed. A page repeated after an interruption may list a document twice;
 both readers ignore the repetition. A check writes no list.
 
-Afterwards run ``metadata_sync`` (document metadata; ``--report --document-ids`` with the list,
-then ``--apply``), then ``chunk_year`` (the year on the
-new chunks) and ``data_tools/embedder`` (their vectors; until then they are missing from
-vector and hybrid search), see ``docs/DATA_MAINTENANCE.md``.
+Afterwards, one at a time (``docs/DATA_MAINTENANCE.md``, *Chunk import*): ``metadata_sync``
+(document metadata; ``--report --document-ids`` with the list, then ``--apply``), then
+``chunk_year`` (the year on the new chunks); ``data_tools/embedder`` (their vectors; until
+then they are missing from vector and hybrid search); ``chunk_summaries`` last (until then
+the new documents match no chunk filter). The classification and the titles have no safe
+command for new chunks yet (#590, #575). ``page_order --document-ids`` takes the list too;
+scans and anchors for new documents are not covered yet (#542, #591).
 
 Exit code 0 when the pass is complete and nothing was rejected, invalid or blocked; 1
 otherwise; 2 when refused (endpoint, backup, schema, checkpoint) or an input file changed.
@@ -839,7 +842,8 @@ def summary(state: dict[str, Any], checkpoint: Path) -> dict[str, Any]:
         "invalid_lines": len(state["invalid_lines"]), "blocked": len(state["blocked"]),
         "runs": state.get("runs", []),
         "checkpoint": str(checkpoint), "manifest": str(manifest_path(checkpoint)), **listed,
-        "next": "metadata_sync, then chunk_year and data_tools/embedder (docs/DATA_MAINTENANCE.md)"}
+        "next": "metadata_sync --document-ids, then chunk_year; data_tools/embedder; chunk_summaries last "
+                "(docs/DATA_MAINTENANCE.md)"}
 
 
 def exit_code(result: dict[str, Any]) -> int:
