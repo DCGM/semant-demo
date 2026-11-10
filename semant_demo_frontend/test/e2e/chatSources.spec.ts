@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { answerChat, askChat, chatSource, closePhoneNavigation, fixture, sidebarPanelButton, useViewport } from './support'
+import { answerChat, askChat, chatSource, fixture, sidebarPanelButton, useViewport } from './support'
 
 // The chat assistant's sources in the right sidebar (#246): the Sources panel lists every
 // source chunk of the conversation once, labelled S1, S2... as the citations in the answers;
@@ -24,7 +24,6 @@ const scrollY = (page: Page) => page.evaluate(() => window.scrollY)
 
 async function openChat (page: Page) {
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
 }
 
 // Answer 1 cites its doc 2 twice; answer 2 cites the same chunk (its own doc 2) again and a
