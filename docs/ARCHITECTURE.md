@@ -385,7 +385,7 @@ asks for it only when the heatmap is opened, and it is not cached. Measured on 2
 throwaway Weaviate 1.40.1 with 300,002 synthetic documents from `make dev-add-documents` (4
 libraries; median of 5 warm runs): unfiltered 1.25 s (the distributions alone 1.0 s), filtered
 0.15–0.85 s, 5 concurrent unfiltered requests 3.7 s. With more libraries the per-library counts
-take longer, in rounds of 4; the reproducible benchmark is #494. The distributions with chunk filters (Explore Visualizations, #618), measured read-only on the production store on 2026-11-08 (59,008 documents with chunk-value summaries; median of 3 warm runs): unfiltered 0.48 s, a year range 0.28 s, chunk language `ces` 0.37 s, `ces` and narration 0.32 s, a year range with three chunk filters 0.13 s; 5 concurrent `ces` and narration requests 1.4 s.
+take longer, in rounds of 4. These figures come from a one-off script; no benchmark was committed (#494), as the production measurements below cover the real corpus. The distributions with chunk filters (Explore Visualizations, #618), measured read-only on the production store on 2026-11-08 (59,008 documents with chunk-value summaries; median of 3 warm runs): unfiltered 0.48 s, a year range 0.28 s, chunk language `ces` 0.37 s, `ces` and narration 0.32 s, a year range with three chunk filters 0.13 s; 5 concurrent `ces` and narration requests 1.4 s.
 
 `POST /api/analytics/results/distributions` (#619; public, a collection needs read access)
 counts a *ranked search result* instead of the corpus: exactly the ids a text query's Documents
