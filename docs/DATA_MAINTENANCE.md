@@ -497,9 +497,9 @@ chunk still needs classification: `UNPROCESSED` on every chunk that
 [`chunk_ingest`](#chunk-import-chunk_ingest-313) inserts, the classifier's model/version
 identifier once the chunk is classified. Chunks stored before the property was declared have
 no value and are never selected for classification: declaring it rewrites no chunk, so it needs
-no backup. Older chunks with missing classifications stay in the backlog of
-[#87](https://github.com/DCGM/semant-demo/issues/87); marking them `UNPROCESSED` would be a
-separate, explicit step.
+no backup. A read-only pass over production on 2026-11-10 found no chunk with a missing
+classification field, so no existing chunk needs marking; marking chunks `UNPROCESSED` later
+would be a separate, explicit step.
 
 ```bash
 python -m semant_demo.maintenance.classification_provenance_schema           # read-only check
