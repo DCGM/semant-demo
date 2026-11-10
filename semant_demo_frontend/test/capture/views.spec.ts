@@ -774,7 +774,7 @@ test('public document', async ({ page }, testInfo) => {
   const passage = fixture.chunk('gazette_1')
   const word = passage.text.indexOf('hostila')
   await page.goto(`/#/documents/${gazette.id}?chunk=${passage.id}&start=${word}&end=${word + 7}&from=search`)
-  await page.reload() // a fresh page: the phone's navigation drawer starts as an overlay
+  await page.reload() // a fresh page
   await expect(page.locator('.is-active-passage')).toHaveText('hostila')
   if (testInfo.project.name !== 'phone') {
     await expect(page.locator('polygon.scan-highlight')).toHaveCount(1)

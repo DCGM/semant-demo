@@ -52,7 +52,6 @@ test('the helpers work on a phone, where navigation is an overlay', async ({ pag
   await useViewport(page, 'phone')
 
   await ensureLoggedIn(page, 'owner')
-  await page.reload()
   await logOut(page)
 
   expect(await storedToken(page)).toBeNull()
