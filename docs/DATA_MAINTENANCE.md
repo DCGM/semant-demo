@@ -372,7 +372,10 @@ python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:P
   limit and reports `next_after`, the last chunk it examined. Continue with `--after` that id:
   successive bounded runs then walk the store, and chunks that keep failing do not take the
   limit of every run. A run without `--after` starts from the beginning and tries the failed
-  chunks again.
+  chunks again. The exit code of an `--after` run covers only the rest of the selection, so the
+  last bounded run can exit 0 while a chunk that failed in an earlier one is still untitled.
+  Finish with one `--check` without `--after` and `--limit`: it exits 0 only when every
+  selected chunk has a title; otherwise run `--write` again without `--after`.
 - **Writes.** A merge of `title` alone, read back per page; the schema is never changed (a store
   without `Chunks.title` is refused). Invalid replies (empty, several lines, too long), failed
   calls and failed writes are never written as titles: they are reported and the chunk stays
