@@ -124,7 +124,8 @@ semant_demo_backend/semant_demo/
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),
                           document_cleanup (audit, then gated delete of documents without chunks),
                           chunk_year, chunk_summary_schema and chunk_summaries (documents' chunk-value
-                          summaries, #529), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
+                          summaries, #529), classification_provenance_schema (chunks' classification
+                          status, #590), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
                           page_order (read-only export of documents' ordered page lists from the Kramerius mirror, #571),
                           page_layout (offline PAGE XML -> page layout files and chunk-start anchors, #540;
                           [PAGE_LAYOUT.md](PAGE_LAYOUT.md)),
@@ -821,7 +822,9 @@ search filters on is copied to the chunks, and checked, by
 `python -m semant_demo.maintenance.chunk_year` (#153). The documents' chunk-value summaries
 used by document-level chunk filters are declared by
 `python -m semant_demo.maintenance.chunk_summary_schema` and recomputed for the whole
-database by `python -m semant_demo.maintenance.chunk_summaries` (#529).
+database by `python -m semant_demo.maintenance.chunk_summaries` (#529). The chunks'
+classification status (`classification_provenance`, `UNPROCESSED` on imported chunks) is
+declared by `python -m semant_demo.maintenance.classification_provenance_schema` (#590).
 
 ## Historical material
 

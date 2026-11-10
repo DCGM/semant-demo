@@ -215,6 +215,12 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 - `start_page_id` — UUID of the first page
 - `ner_*` — named entity arrays extracted by NER (Persons, Temporal, Address, Geographical, Institution, Media, Cultural artifacts)
 - classifications (`text[]`, e.g. `communicative_mode`, `style`, `subject_domain`) — written by `data_tools/meta_data_enrichment`; the properties named in `features/search/filters.py::TASK_CLASSES` are search filters and are returned as a hit's `metadata` ([SEARCH_FILTERS](SEARCH_FILTERS.md#5-classifications-on-search-hits))
+- `classification_provenance` (`text`, `field` tokenization, filterable) — the classification
+  status (#590): `UNPROCESSED` on every chunk `chunk_ingest` inserts, the classifier's
+  model/version identifier once classified, absent on chunks stored before the property was
+  declared (never selected for classification). Declared by `classification_provenance_schema`
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-classification-status-classification_provenance_schema-590));
+  `chunk_ingest` refuses a store without it.
 - `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
   `yearIssued`, absent when the document has none; the search's year filters use it, not the
   document reference (#153). It is not maintained by document writes or chunk ingestion:
