@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
-import { closePhoneNavigation, fixture, isPassageSearch, useViewport } from './support'
+import { fixture, isPassageSearch, useViewport } from './support'
 
 // The Search page evolving into Explore Results (#605, #606, #607): draft and applied criteria, the
 // applied search in the URL (reload, Back/Forward, shared links), Passages and Documents loaded
@@ -18,7 +18,6 @@ const hash = (page: Page) => decodeURIComponent(new URL(page.url()).hash).replac
 
 async function openSearch (page: Page, path = '/#/search') {
   await page.goto(path)
-  await closePhoneNavigation(page)
 }
 
 /** Runs the query in the field (Enter) and waits for its first result; returns its request. */
