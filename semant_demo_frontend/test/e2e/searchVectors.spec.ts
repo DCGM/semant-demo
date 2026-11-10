@@ -66,7 +66,6 @@ test('a search from the URL waits for the vectors, then uses its vector or leave
   page.on('request', (r) => { if (isPassageSearch(r.url(), r.method())) searches.push(r) })
 
   await page.goto(`/#/search?q=${encodeURIComponent(QUERY)}&vector=fake-small`)
-  await closePhoneNavigation(page)
   // The filters are loaded once their widgets show: a search not waiting for the vectors
   // would have been sent by now.
   await page.getByRole('button', { name: 'Search filters' }).click()
