@@ -11,13 +11,13 @@ import { useChunksStore } from 'src/features/documents/chunksStore'
 import { useCollectionStatsStore } from 'src/features/user_collections/collectionStatsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import { endSession, onStoredTokenChange, onUnauthorized } from 'src/shared/api'
-import { forgetUserScopedQueries } from 'src/shared/query'
+import { forgetUserQueries } from 'src/shared/query'
 
 /**
  * Forgets everything loaded for the signed-in user: collections, documents, tags, attributes,
  * annotations (also the annotation workspace with its selection, review and attribute assignments), statistics and running AI suggestion runs. Requests still under way
- * for that user are ignored when they answer. Cached user-scoped queries (`userScopedKey`)
- * are dropped too.
+ * for that user are ignored when they answer. Cached queries are dropped too, all but
+ * those marked shared (`SHARED_QUERY`).
  */
 export function clearUserScopedState (): void {
   endSession()
@@ -30,7 +30,7 @@ export function clearUserScopedState (): void {
   useDocumentsStore().clear()
   useCollectionStatsStore().clear()
   useUserCollectionsStore().clear()
-  forgetUserScopedQueries()
+  forgetUserQueries()
 }
 
 /**

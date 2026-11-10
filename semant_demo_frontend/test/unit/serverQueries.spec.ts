@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, effectScope, h } from 'vue'
-import { QueryClient, useQuery, VueQueryPlugin } from '@tanstack/vue-query'
+import { onlineManager, QueryClient, useQuery, VueQueryPlugin } from '@tanstack/vue-query'
 
-import { SEARCH_VECTORS_FRESH_MS, useSearchVectors } from 'src/features/search/useSearchVectors'
+import { SEARCH_VECTORS_KEY, useSearchVectors } from 'src/features/search/useSearchVectors'
 import { createAppQueryClient, queryClient, userScopedKey } from 'src/shared/query'
 import { useSessionScope } from 'src/app/session'
 import { useUserStore } from 'src/features/auth/userStore'
 
 // Server-state queries (#630, #631): the app's query client and its defaults, the cached
-// search vectors, and the session boundary for user-scoped queries.
+// search vectors, and the session boundary, which keeps only queries marked shared.
 
 const getVectors = vi.fn()
 
@@ -49,7 +49,7 @@ describe('search vectors', () => {
     vi.useRealTimers()
   })
 
-  it('serves pages asking at once with one request, and later visits within the hour from it', async () => {
+  it('serves pages asking at once with one request, and later visits until a reload from it', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     getVectors.mockResolvedValue(VECTORS)
     const first = mountWith(client)
@@ -60,20 +60,14 @@ describe('search vectors', () => {
     expect([first.text(), second.text()]).toEqual(['fake-default,fake-small', 'fake-default,fake-small'])
     first.unmount()
     second.unmount()
-    vi.setSystemTime(Date.now() + SEARCH_VECTORS_FRESH_MS - 1000)
+    vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000) // a day later, the tab still open
     const later = mountWith(client)
     await flushPromises()
     expect(later.text()).toBe('fake-default,fake-small')
     expect(getVectors).toHaveBeenCalledTimes(1)
-
-    later.unmount()
-    vi.setSystemTime(Date.now() + 2000)
-    mountWith(client)
-    await flushPromises()
-    expect(getVectors).toHaveBeenCalledTimes(2)
   })
 
-  it('reports a failed load without retrying it, and asks again on the next visit', async () => {
+  it('reports a failed load without retrying it, and a page mounting the query anew asks again', async () => {
     getVectors.mockRejectedValueOnce(new Error('503')).mockResolvedValue(VECTORS)
     const page = mountWith(client)
     await flushPromises()
@@ -90,6 +84,22 @@ describe('search vectors', () => {
 })
 
 describe('app query defaults', () => {
+  afterEach(() => {
+    onlineManager.setOnline(true)
+  })
+
+  it('sends a request also after the browser reported being offline, and lets it fail', async () => {
+    const client = createAppQueryClient()
+    getVectors.mockReset().mockRejectedValue(new TypeError('Failed to fetch'))
+    onlineManager.setOnline(false)
+    const page = mountWith(client)
+    await flushPromises()
+
+    expect(getVectors).toHaveBeenCalledTimes(1)
+    expect(page.text()).toBe('failed')
+    client.clear()
+  })
+
   it('does not refetch a stale query when the tab regains focus or the connection returns', async () => {
     const client = createAppQueryClient()
     const read = vi.fn().mockResolvedValue('answer')
@@ -123,7 +133,7 @@ describe('session boundary', () => {
     queryClient.clear()
   })
 
-  it('drops the previous user\'s queries on sign-out, also an answer still under way, and keeps shared ones', async () => {
+  it('drops every query not marked shared on sign-out, also an answer still under way', async () => {
     const scope = effectScope()
     scope.run(useSessionScope)
     const user = useUserStore()
@@ -132,7 +142,11 @@ describe('session boundary', () => {
 
     const statsKey = userScopedKey('u1', 'collection-stats', 'A')
     queryClient.setQueryData(statsKey, { documents: 3 })
-    queryClient.setQueryData(['search', 'vectors'], VECTORS)
+    // A user-dependent read whose key forgot the user: dropped all the same.
+    queryClient.setQueryData(['collections'], [{ id: 'A' }])
+    getVectors.mockReset().mockResolvedValue(VECTORS)
+    const searchPage = mountWith(queryClient) // the real search-vector query, marked shared
+    await flushPromises()
     let answerLate: (value: unknown) => void = () => undefined
     const membersKey = userScopedKey('u1', 'collection-members', 'A')
     const loadingMembers = queryClient.fetchQuery({ queryKey: membersKey, queryFn: () => new Promise((resolve) => { answerLate = resolve }) })
@@ -144,8 +158,11 @@ describe('session boundary', () => {
     await loadingMembers
 
     expect(queryClient.getQueryData(statsKey)).toBeUndefined()
+    expect(queryClient.getQueryData(['collections'])).toBeUndefined()
     expect(queryClient.getQueryData(membersKey)).toBeUndefined()
-    expect(queryClient.getQueryData(['search', 'vectors'])).toEqual(VECTORS)
+    expect(queryClient.getQueryData(SEARCH_VECTORS_KEY)).toEqual(VECTORS)
+    expect(searchPage.text()).toBe('fake-default,fake-small')
+    searchPage.unmount()
     scope.stop()
   })
 })
