@@ -218,6 +218,8 @@ export async function answerGuestQuota (page: Page, used: number): Promise<Date>
 export async function askChat (page: Page, question: string): Promise<void> {
   const input = page.getByPlaceholder('Vaše otázka?')
   const answers = page.locator('.message-bubble')
+  // The page renders its greeting with the input: count only once the chat has rendered.
+  await expect(input).toBeEnabled()
   const before = await answers.count()
   await input.fill(question)
   await input.press('Enter')

@@ -223,6 +223,7 @@ describe('MainLayout navigation', () => {
     // Quasar installs its Screen plugin once per file and afterwards follows the window only
     // on (debounced) resize events, so a width set for one test is resized into it.
     function resizeWindow (width: number) {
+      // Switches to real timers afterwards: call it only from tests on real timers.
       vi.useFakeTimers()
       try {
         window.innerWidth = width
@@ -234,7 +235,7 @@ describe('MainLayout navigation', () => {
     }
 
     const menuButton = (wrapper: Awaited<ReturnType<typeof mountLayout>>['wrapper']) =>
-      wrapper.find('button[aria-label$="navigation"]')
+      wrapper.find('button[aria-label="Show navigation"], button[aria-label="Hide navigation"]')
 
     it('keeps the navigation closed at phone width', async () => {
       resizeWindow(375)
