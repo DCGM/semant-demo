@@ -382,8 +382,12 @@ python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:P
   untitled.
 - **Summary and exit code.** The summary (stdout, JSON) holds the run's provenance (prompt
   version and hash, model, catalog and its hash), `complete`, `next_after`, the counts (also per
-  chunk language) and the model usage. `--report FILE` also writes it with the reported and
-  failed chunks (id, status, reason; never text or titles). Exit 0 only when the selection was
+  chunk language) and the model usage. `--report FILE` also writes it to `FILE` at the end of
+  the run, and the reported and failed chunks (id, status, reason, document ids; never text or
+  titles) to `FILE` with the suffix `.chunks.jsonl` (`titles.json`: `titles.chunks.jsonl`),
+  one JSON line each as they occur. The run keeps only their counts, so its memory does not
+  grow with a large deferred backlog. A run that did not finish leaves no summary file, and the
+  lines written so far stay. Exit 0 only when the selection was
   scanned to its end and every selected chunk has a title (a check: nothing to title); 1 when
   the limit stopped the run or a chunk was deferred, reported or failed; 2 when refused.
 

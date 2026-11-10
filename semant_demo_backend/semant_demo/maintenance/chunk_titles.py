@@ -66,12 +66,15 @@ properties are kept) and every written page is read back (``write_failed`` when 
 title differs). The schema is never changed: a store whose chunks do not declare ``title`` as
 ``text`` is refused.
 
-The summary (printed as JSON, and written to ``--report FILE`` with the list of reported and
-failed chunks: id, status, reason; never text or titles) holds the endpoint, the collections,
+The summary (printed as JSON, and written to ``--report FILE`` at the end of the run) holds the endpoint, the collections,
 the mode, the selection, the options, the provenance of the run (prompt version and SHA-256,
 feature, tier, provider, model, endpoint of the model, the catalog's path and SHA-256), the
 times, ``complete`` and ``next_after``, the counts, the languages of the examined chunks (one
-value, ``(mixed)`` or ``(unknown)``) and the model usage (calls, tokens, cost).
+value, ``(mixed)`` or ``(unknown)``) and the model usage (calls, tokens, cost). With
+``--report FILE``, the reported and failed chunks (id, status, reason, document ids; never text
+or titles) are written as they occur, one JSON line each, to ``FILE`` with the suffix
+``.chunks.jsonl``; the run keeps only their counts, so its memory does not grow with them. The
+summary file is removed when a run starts, so a run that did not finish leaves none.
 
 Exit code 0 only when the selection is complete: scanned to its end with nothing to generate
 (check) or every selected chunk titled (write); 1 when the limit stopped the run or anything
@@ -390,14 +393,15 @@ def _counts() -> dict[str, int]:
 class _Run:
     def __init__(self, client: WeaviateAsyncClient, llm: LlmGateway, *, chunks: str, documents: str,
                  with_language: bool, with_document_title: bool, write: bool, tier: str | None, concurrency: int,
-                 regenerate: bool, allow_missing_document_title: bool, limit: int | None):
+                 regenerate: bool, allow_missing_document_title: bool, limit: int | None,
+                 reported: Callable[[dict[str, Any]], None]):
         self.client, self.llm, self.chunks, self.documents = client, llm, chunks, documents
         self.with_language, self.with_document_title = with_language, with_document_title
         self.write, self.tier, self.concurrency, self.limit = write, tier, concurrency, limit
         self.regenerate, self.allow_missing_document_title = regenerate, allow_missing_document_title
         self.counts = _counts()
         self.languages: dict[str, int] = {}
-        self.reported: list[dict[str, Any]] = []
+        self.reported = reported
         self.taken = 0
         self.last: UUID | None = None
         self.document_titles: dict[UUID, Any] = {}
@@ -407,8 +411,8 @@ class _Run:
 
     def report(self, chunk_id: UUID, status: str, reason: str | None = None, documents: tuple[UUID, ...] = ()) -> None:
         self.counts[status] += 1
-        self.reported.append({"id": str(chunk_id), "status": status, **({"reason": reason} if reason else {}),
-                              **({"document_ids": [str(i) for i in documents]} if documents else {})})
+        self.reported({"id": str(chunk_id), "status": status, **({"reason": reason} if reason else {}),
+                       **({"document_ids": [str(i) for i in documents]} if documents else {})})
 
     async def titles_of(self, chunks: list[store.ChunkState]) -> dict[UUID, Any]:
         """The titles of the documents of the chunks that may get a title (untitled, or all with
@@ -507,9 +511,10 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGatew
               models_config: Path, selection: Selection = Selection(), tier: str | None = None,
               regenerate: bool = False, allow_missing_document_title: bool = False, limit: int | None = None,
               after: UUID | None = None, concurrency: int = CONCURRENCY, usage: UsageTotals | None = None,
-              progress: Callable[[str], None] = _progress) -> dict[str, Any]:
-    """One pass over the selection (see the module docstring); returns the summary, with the
-    reported chunks under ``reported_chunks``. Raises ``Refused`` before writing when a
+              progress: Callable[[str], None] = _progress,
+              reported: Callable[[dict[str, Any]], None] = lambda line: None) -> dict[str, Any]:
+    """One pass over the selection (see the module docstring); returns the summary. Each reported
+    or failed chunk is passed to ``reported`` when it occurs, and only counted here. Raises ``Refused`` before writing when a
     collection or ``Chunks.title`` is missing, the model catalog cannot serve the feature or
     ``--regenerate`` lacks an explicit selection."""
     if regenerate and not selection.explicit:
@@ -536,7 +541,7 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGatew
                 with_language=chunk_types.get(store.LANGUAGE) in ("text", "text[]"),
                 with_document_title=document_types.get(store.TITLE) == "text", write=write, tier=tier,
                 concurrency=concurrency, regenerate=regenerate,
-                allow_missing_document_title=allow_missing_document_title, limit=limit)
+                allow_missing_document_title=allow_missing_document_title, limit=limit, reported=reported)
     selected = None
     if selection.explicit:
         selected = await _resolve(client, chunks, selection, concurrency)
@@ -569,8 +574,8 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGatew
         summary["usage"] = dict(usage.totals)
     return summary | {
         "finished": _now(), "complete": complete, "next_after": None if complete else str(cursor) if cursor else None,
-        "counts": work.counts, "languages": work.languages, "reported": len(work.reported),
-        "reported_chunks": work.reported}
+        "counts": work.counts, "languages": work.languages,
+        "reported": sum(work.counts[key] for key in (*REPORTED, *FAILED))}
 
 
 async def _resolve(client: WeaviateAsyncClient, chunks: str, selection: Selection, concurrency: int) -> list[UUID]:
@@ -621,10 +626,16 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--after", type=UUID, metavar="ID",
                    help="start after this chunk id (the next_after of an earlier run)")
     p.add_argument("--report", type=Path, metavar="FILE",
-                   help="also write the summary, with the reported and failed chunks, to this JSON file")
+                   help="also write the summary to this JSON file, and the reported and failed chunks "
+                        "to FILE with the suffix .chunks.jsonl (one JSON line each, written as they occur)")
     p.add_argument("--concurrency", type=_positive, default=CONCURRENCY, help=f"parallel model calls and writes "
                                                                          f"(default {CONCURRENCY})")
     return p
+
+
+def chunks_report(summary: Path) -> Path:
+    """The JSON Lines file of the reported and failed chunks next to the summary ``--report FILE``."""
+    return summary.with_suffix(".chunks.jsonl")
 
 
 def selection_from(args: argparse.Namespace) -> Selection:
@@ -653,23 +664,36 @@ async def _main(argv: list[str]) -> int:
     except (Refused, LlmConfigurationError, OSError) as e:
         print(e, file=sys.stderr)
         return 2
+    lines = None
+    if args.report:
+        try:
+            args.report.unlink(missing_ok=True)
+            lines = chunks_report(args.report).open("w", encoding="utf-8")
+        except OSError as e:
+            print(e, file=sys.stderr)
+            return 2
     usage = UsageTotals()
     llm = LlmGateway(catalog, ProviderSettings.from_config(config), usage)
     print(f"Weaviate endpoint: {endpoint}", file=sys.stderr)
-    client = await connect_weaviate(config, query_timeout=QUERY_TIMEOUT)
+    client = None
     try:
+        client = await connect_weaviate(config, query_timeout=QUERY_TIMEOUT)
         result = await run(client, config.collectionNames, llm, endpoint=endpoint, write=args.write,
                            models_config=args.models_config, selection=selection, tier=args.tier,
                            regenerate=args.regenerate, allow_missing_document_title=args.allow_missing_document_title,
-                           limit=args.limit, after=args.after, concurrency=args.concurrency, usage=usage)
+                           limit=args.limit, after=args.after, concurrency=args.concurrency, usage=usage,
+                           reported=(lambda line: lines.write(json.dumps(line) + "\n")) if lines else lambda line: None)
     except Refused as e:
         print(e, file=sys.stderr)
         return 2
     finally:
-        await client.close()
+        if lines:
+            lines.close()
+        if client is not None:
+            await client.close()
     if args.report:
         args.report.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(json.dumps({key: value for key, value in result.items() if key != "reported_chunks"}, indent=2))
+    print(json.dumps(result, indent=2))
     return exit_code(result)
 
 

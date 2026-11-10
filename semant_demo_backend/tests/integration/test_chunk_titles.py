@@ -71,8 +71,11 @@ async def titles(seeded_store, names, provider, models_config, **options):
     llm = LlmGateway(ModelCatalog.load(models_config),
                      ProviderSettings(ollama_base_url="http://fake/ollama", max_retries=0), usage,
                      http_transport=provider)
-    return await chunk_titles.run(seeded_store, names, llm, endpoint="test", models_config=models_config,
-                                  usage=usage, progress=quiet, **options)
+    lines: list[dict] = []
+    result = await chunk_titles.run(seeded_store, names, llm, endpoint="test", models_config=models_config,
+                                    usage=usage, progress=quiet, reported=lines.append, **options)
+    assert result["reported"] == len(lines)
+    return result | {"reported_chunks": lines}  # the lines streamed during the run, for the assertions
 
 
 @pytest.fixture

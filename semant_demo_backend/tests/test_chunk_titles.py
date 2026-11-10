@@ -287,6 +287,68 @@ def test_the_parser_requires_a_models_config_and_reads_selections(tmp_path):
         parser.parse_args(["--check", "--write", "--models-config", "m.yaml"])
 
 
+class _Client:
+    async def close(self):
+        pass
+
+
+@pytest.fixture
+def no_store(monkeypatch, tmp_path):
+    """``_main`` with the store connection faked and a valid model catalog; returns its argv start."""
+    from semant_demo.adapters.weaviate import client
+    async def connect(config, **kwargs):
+        return _Client()
+    monkeypatch.setattr(client, "connect_weaviate", connect)
+    models = tmp_path / "models.yaml"
+    models.write_text(json.dumps(catalog()))
+    return ["--check", "--models-config", str(models)]
+
+
+async def test_the_report_streams_reported_chunks_and_writes_the_summary_at_the_end(no_store, tmp_path, monkeypatch,
+                                                                                     capsys):
+    line = {"id": str(CHUNK), "status": "deferred_no_document_title", "document_ids": [str(DOC)]}
+    async def run(*args, reported, **kwargs):
+        reported(line)
+        assert not report.exists()  # an earlier summary is removed when the run starts
+        counts = {key: 0 for key in (*chunk_titles.REPORTED, *chunk_titles.FAILED, "generate")}
+        return {"complete": True, "mode": "check", "counts": counts | {"deferred_no_document_title": 1},
+                "reported": 1}
+    monkeypatch.setattr(chunk_titles, "run", run)
+    report = tmp_path / "titles.json"
+    report.write_text("{}")
+
+    assert await chunk_titles._main([*no_store, "--report", str(report)]) == 1
+
+    assert chunk_titles.chunks_report(report) == tmp_path / "titles.chunks.jsonl"
+    assert [json.loads(text) for text in (tmp_path / "titles.chunks.jsonl").read_text().splitlines()] == [line]
+    assert json.loads(report.read_text())["reported"] == 1
+    assert json.loads(capsys.readouterr().out)["reported"] == 1
+
+
+async def test_an_interrupted_run_keeps_the_chunks_reported_so_far_and_leaves_no_summary(no_store, tmp_path,
+                                                                                          monkeypatch):
+    async def run(*args, reported, **kwargs):
+        reported({"id": str(CHUNK), "status": "model_failed", "reason": "ResponseError"})
+        raise KeyboardInterrupt
+    monkeypatch.setattr(chunk_titles, "run", run)
+    report = tmp_path / "titles.json"
+    report.write_text("{}")
+
+    with pytest.raises(KeyboardInterrupt):
+        await chunk_titles._main([*no_store, "--report", str(report)])
+
+    assert not report.exists()
+    assert json.loads((tmp_path / "titles.chunks.jsonl").read_text())["status"] == "model_failed"
+
+
+async def test_an_unwritable_report_is_refused_before_the_store_is_read(no_store, tmp_path, monkeypatch):
+    async def run(*args, **kwargs):
+        raise AssertionError("never run")
+    monkeypatch.setattr(chunk_titles, "run", run)
+
+    assert await chunk_titles._main([*no_store, "--report", str(tmp_path / "missing" / "titles.json")]) == 2
+
+
 @pytest.mark.parametrize("option", ["--limit", "--concurrency"])
 @pytest.mark.parametrize("value", ["0", "-1"])
 def test_the_parser_refuses_a_limit_or_concurrency_below_one(option, value):
