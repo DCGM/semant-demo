@@ -1,4 +1,4 @@
-import { QueryClient, type QueryKey } from '@tanstack/vue-query'
+import { QueryClient, type Query, type QueryKey } from '@tanstack/vue-query'
 
 /**
  * Server-state cache (TanStack Vue Query, #630) for conventional reads. Requests still go
@@ -35,8 +35,8 @@ export const queryClient = createAppQueryClient()
 
 /**
  * The `meta` of a query whose answer is the same for every user and every session
- * (configuration such as the search vectors): the only queries kept at the session
- * boundary ({@link forgetUserQueries}).
+ * (configuration such as the search vectors): the only queries kept as they are at the
+ * session boundary ({@link forgetUserQueries}).
  */
 export const SHARED_QUERY = { shared: true } as const
 
@@ -51,12 +51,24 @@ export function userScopedKey (userId: string, ...key: readonly unknown[]): Quer
   return ['user', userId, ...key]
 }
 
+const isUserQuery = (query: Query): boolean => query.meta?.shared !== true
+
 /**
- * Drops every query not marked {@link SHARED_QUERY} (sign-out, another user, also from
- * another tab; `clearUserScopedState`): their cached answers, and requests still under way,
- * which are cancelled and whose answers are then not kept. Safe by default: a query that
- * forgets to say how it depends on the user is dropped, not served to the next one.
+ * Forgets what was loaded for the previous session (sign-in, sign-out, another user, also
+ * from another tab; `useSessionScope`), for every query not marked {@link SHARED_QUERY}.
+ * Safe by default: a query that forgets to say how it depends on the user is not served
+ * to the next one.
+ *
+ * - A query nobody shows is dropped, with a request still under way (cancelled, its answer
+ *   not kept).
+ * - A query still shown (a kept-alive page, the layout; also one disabled meanwhile) is
+ *   reset: its observers lose the old answer at once, and an enabled one is asked again
+ *   under the new session. Dropping it would leave them showing the old answer, or loading
+ *   forever when a request was cancelled.
+ * - Finished mutations are dropped with their variables, answers and errors.
  */
 export function forgetUserQueries (client: QueryClient = queryClient): void {
-  client.removeQueries({ predicate: (query) => query.meta?.shared !== true })
+  client.removeQueries({ predicate: (query) => isUserQuery(query) && query.getObserversCount() === 0 })
+  void client.resetQueries({ predicate: isUserQuery })
+  client.getMutationCache().clear()
 }

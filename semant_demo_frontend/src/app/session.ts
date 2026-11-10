@@ -16,8 +16,8 @@ import { forgetUserQueries } from 'src/shared/query'
 /**
  * Forgets everything loaded for the signed-in user: collections, documents, tags, attributes,
  * annotations (also the annotation workspace with its selection, review and attribute assignments), statistics and running AI suggestion runs. Requests still under way
- * for that user are ignored when they answer. Cached queries are dropped too, all but
- * those marked shared (`SHARED_QUERY`).
+ * for that user are ignored when they answer. Cached queries not marked shared are
+ * forgotten too (`forgetUserQueries`).
  */
 export function clearUserScopedState (): void {
   endSession()
@@ -36,8 +36,10 @@ export function clearUserScopedState (): void {
 /**
  * Clears user-scoped state when the signed-in user signs out or another user signs in.
  * Restoring the session at startup (no user -> user) keeps what pages already loaded
- * with the stored token. A 401 answer to a request sent with the current token (expired
- * or revoked) signs the user out locally; answers for an earlier token are ignored.
+ * with the stored token in the stores; cached queries are forgotten on every change of
+ * user, signing in from no user included (`forgetUserQueries`). A 401 answer to a request
+ * sent with the current token (expired or revoked) signs the user out locally; answers
+ * for an earlier token are ignored.
  * Signing in, out or into another account in another browser tab is followed here too:
  * the old user's data is cleared and protected routes are left (`router/authGuard.ts`);
  * a new token of the same user (signed in again or renewed) keeps the session.
@@ -77,5 +79,8 @@ export function useSessionScope (): void {
   })
   watch(() => userStore.getUserId, (userId, previousUserId) => {
     if (previousUserId && userId !== previousUserId) clearUserScopedState()
+    // Signing in (or restoring the session at startup): cached queries were answered for no
+    // user, or not yet for this one, and are asked again; the stores keep what they loaded.
+    else if (userId !== previousUserId) forgetUserQueries()
   })
 }
