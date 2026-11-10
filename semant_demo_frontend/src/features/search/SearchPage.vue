@@ -544,8 +544,8 @@ const pending = computed(() => !sameCriteria(draftCriteria.value, applied.value.
 
 // Search vectors (GET /api/search/vectors): null in the request means the server's default,
 // so choosing the default again sends no explicit selection.
-// One cached answer per tab (useSearchVectors); a failed load offers no choice and searches
-// use the server's default.
+// One cached answer per tab until a reload (useSearchVectors); a failed load offers no choice
+// and searches use the server's default.
 const searchVectors = useSearchVectors()
 const availableVectors = computed<SearchVectorInfo[]>(() => searchVectors.data.value?.vectors ?? [])
 const defaultVector = computed<string | null>(() => searchVectors.data.value?.defaultVector ?? null)
