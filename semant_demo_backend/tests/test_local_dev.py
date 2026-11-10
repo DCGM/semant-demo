@@ -332,6 +332,51 @@ def test_add_documents_rejects_a_count_out_of_range(count):
     assert exit_info.value.code == 2
 
 
+class _DocumentsCollection:
+    """``Documents`` with ``library`` declared: stores inserted ids and records, for each
+    insert, how many documents the generator had produced by then."""
+
+    def __init__(self, produced: list[int]):
+        self.ids, self.produced, self.inserts = set(), produced, []
+        self.config = SimpleNamespace(get=self._config)
+        self.query = SimpleNamespace(fetch_objects=self._fetch)
+        self.data = SimpleNamespace(insert_many=self._insert_many)
+
+    async def _config(self):
+        return SimpleNamespace(properties=[SimpleNamespace(name="library")])
+
+    async def _fetch(self, filters, limit, return_properties):
+        return SimpleNamespace(objects=[SimpleNamespace(uuid=uuid) for uuid in self.ids])
+
+    async def _insert_many(self, objects):
+        self.inserts.append((len(objects), self.produced[0]))
+        self.ids.update(o.uuid for o in objects)
+        return SimpleNamespace(has_errors=False)
+
+
+@pytest.mark.parametrize(("count", "outliers", "batches"), [(9, False, [4, 4, 1]), (10, True, [4, 4, 4])])
+def test_add_documents_takes_one_batch_at_a_time_from_the_generator(monkeypatch, count, outliers, batches):
+    from tests import synthetic_documents as generator
+
+    original, produced = generator.synthetic_documents, [0]
+
+    def counted(count, outliers):
+        for document in original(count, outliers):
+            produced[0] += 1
+            yield document
+
+    monkeypatch.setattr(generator, "synthetic_documents", counted)
+    monkeypatch.setattr(local_dev, "ADD_BATCH_SIZE", 4)
+    documents = _DocumentsCollection(produced)
+    client = SimpleNamespace(collections=SimpleNamespace(get=lambda name: documents))
+
+    assert asyncio.run(local_dev.add_documents(client, count, outliers)) == sum(batches)
+    # Each batch is written before the next one is generated.
+    assert documents.inserts == [(size, sum(batches[:i + 1])) for i, size in enumerate(batches)]
+    assert documents.ids == {uuid for uuid, _ in original(count, outliers)}
+    assert asyncio.run(local_dev.add_documents(client, count, outliers)) == 0
+
+
 def test_reset_without_confirmation_changes_nothing(profile, use_client):
     client = use_client(_Client({MARKER_COLLECTION: [_dev_marker()], "Chunks": [{}]}))
     _sqlite(profile.sqlite_path)

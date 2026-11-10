@@ -62,8 +62,10 @@ reseeds it.
 (`tests/synthetic_documents.py`): years 1600–2000, mostly 1850–1940; the libraries `mzk`,
 `nkp`, `svkhk` and `vkol`; the languages `ces`, its alias `cze`, `deu`, `lat` and `slk`; Czech,
 German and Latin titles; and some values missing. It also adds the two outliers of the real
-corpus, the years 311 and 2879, unless `OUTLIERS=no`. A larger `COUNT` (at most 1,000,000)
-gives a corpus for measuring aggregates; 2,000 documents take a few seconds. The fixture schema
+corpus, the years 311 and 2879, unless `OUTLIERS=no`. Runs only add: `OUTLIERS=no` (or a
+smaller `COUNT`) does not remove documents an earlier run added, so run `make dev-reset` first
+to compare without them. A larger `COUNT` (at most 1,000,000) gives a corpus for measuring
+aggregates; 2,000 documents take a few seconds, generated one batch at a time. The fixture schema
 declares `library` as production does (`text`, `field` tokenization, #496); an older store
 without it gets it declared the same way first.
 

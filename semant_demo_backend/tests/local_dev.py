@@ -528,24 +528,27 @@ ADD_BATCH_SIZE = 1000
 async def add_documents(client, count: int, outliers: bool) -> int:
     """Insert the synthetic documents that are not stored yet and return how many were added.
     Declares ``Documents.library`` first when the store lacks it, as production has it
-    (``field`` tokenization). Batches are written one after another: a failure keeps the
-    earlier ones, and running again adds the rest."""
+    (``field`` tokenization). Batches are taken from the generator and written one after
+    another, so only one batch is held at a time: a failure keeps the earlier ones, and running
+    again adds the rest."""
+    from itertools import islice
+
     from weaviate.classes.data import DataObject
     from weaviate.classes.query import Filter
 
     from semant_demo.adapters.weaviate.document_metadata import add_text_property
     from semant_demo.config import Config
-    from tests.synthetic_documents import synthetic_documents
+    from tests.synthetic_documents import synthetic_documents, synthetic_total
 
     names = Config(environ={}).collectionNames
     documents = client.collections.get(names.document_collection_name)
     if "library" not in {p.name for p in (await documents.config.get()).properties}:
         await add_text_property(client, names, "library")
         _say("declared Documents.library (text, field tokenization)")
-    pending = list(synthetic_documents(count, outliers))
-    added = 0
-    for start in range(0, len(pending), ADD_BATCH_SIZE):
-        batch = pending[start:start + ADD_BATCH_SIZE]
+    total = synthetic_total(count, outliers)
+    pending = synthetic_documents(count, outliers)
+    added = checked = batches = 0
+    while batch := list(islice(pending, ADD_BATCH_SIZE)):
         stored = await documents.query.fetch_objects(
             filters=Filter.by_id().contains_any([uuid for uuid, _ in batch]), limit=len(batch), return_properties=[])
         existing = {o.uuid for o in stored.objects}
@@ -556,12 +559,16 @@ async def add_documents(client, count: int, outliers: bool) -> int:
                 raise RuntimeError(f"Adding documents failed after {added} were added (running again adds the "
                                    f"rest): {list(result.errors.values())[:3]}")
             added += len(new)
-        if len(pending) > 10 * ADD_BATCH_SIZE and (start // ADD_BATCH_SIZE) % 10 == 9:
-            _say(f"{start + len(batch)} of {len(pending)} documents checked, {added} added")
+        checked += len(batch)
+        batches += 1
+        if total > 10 * ADD_BATCH_SIZE and batches % 10 == 0:
+            _say(f"{checked} of {total} documents checked, {added} added")
     return added
 
 
 async def cmd_add_documents(profile: Profile, count: int, outliers: bool) -> int:
+    from tests.synthetic_documents import synthetic_total
+
     client = await connect(profile)
     try:
         state = await weaviate_state(client)
@@ -570,7 +577,7 @@ async def cmd_add_documents(profile: Profile, count: int, outliers: bool) -> int
         if not state.owned:
             raise Refused("The development stores are not initialized (make dev-up).")
         _require_ready(state)
-        requested = count + (2 if outliers else 0)
+        requested = synthetic_total(count, outliers)
         added = await add_documents(client, count, outliers)
     finally:
         await client.close()
