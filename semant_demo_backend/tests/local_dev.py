@@ -540,12 +540,12 @@ async def add_documents(client, count: int, outliers: bool) -> int:
     from semant_demo.config import Config
     from tests.synthetic_documents import synthetic_documents, synthetic_total
 
+    total = synthetic_total(count, outliers)  # a count out of range is refused before any write
     names = Config(environ={}).collectionNames
     documents = client.collections.get(names.document_collection_name)
     if "library" not in {p.name for p in (await documents.config.get()).properties}:
         await add_text_property(client, names, "library")
         _say("declared Documents.library (text, field tokenization)")
-    total = synthetic_total(count, outliers)
     pending = synthetic_documents(count, outliers)
     added = checked = batches = 0
     while batch := list(islice(pending, ADD_BATCH_SIZE)):
