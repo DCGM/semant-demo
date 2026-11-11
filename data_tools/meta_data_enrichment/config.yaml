@@ -3,7 +3,8 @@ weaviate_port: 8080 # Weaviate HTTP/REST port
 weaviate_grpc_port: 50051 # Weaviate gRPC port (required for client v4)
 weaviate_api_key: # Authentication API Key for Weaviate instance
 weaviate_headers: # Additional HTTP headers (e.g. API keys for third-party vectorizers)
-collection: MetaDataEnrichmentTest # Name of the Weaviate collection to enrich
+collection: MetaDataEnrichmentTest # Name of the Weaviate collection (or alias) to classify; the default is the test collection of --create-test-collection
+provenance: mmbert-multitask-2026-10-20 # Model/version identifier written to classification_provenance; this one names the converted mmBERT multitask model of 2026-10-20. Change it whenever the model changes
 field_tasks: # Mapping of Weaviate property names (keys) to their classification task names (values)
   communicative_mode: communicative_mode
   complexity: complexity
@@ -21,9 +22,10 @@ field_tasks: # Mapping of Weaviate property names (keys) to their classification
   subject_domain: subject_domain
   temporal_reference_frame: temporal_reference_frame
   textual_stance: textual_stance
-filters: # List of query filters.
+filters: # List of query filters that further narrow the UNPROCESSED chunks; never on a mapped field or classification_provenance.
 batch_size: 32 # Number of records to fetch per batch
 max_records: # Maximum total records to process (None or 0 for unlimited)
+max_consecutive_failures: 10 # Stop after this many consecutive chunks failed (e.g. an unreachable model); they stay UNPROCESSED
 max_retries: 5 # Maximum number of retries for database updates in case of connection errors
 retry_delay: 10.0 # Delay in seconds between retries
 model: # Model configuration (local HF transformers, OpenAI-compatible API, or PyTorch Lightning)
