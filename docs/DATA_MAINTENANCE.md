@@ -318,6 +318,82 @@ answers year-filtered searches with an error), and again after ingesting chunks 
 document years (for example after `metadata_sync`) until ingestion keeps the copy itself
 ([#313](https://github.com/DCGM/semant-demo/issues/313)).
 
+## Chunk titles (`chunk_titles`, #575)
+
+Generates a short title (the prompt asks for a heading, a noun phrase of at most 10 words, in
+the excerpt's language, which it names when the chunk's language code is known; a reply over
+20 words is refused) for chunks without one and writes only `Chunks.title`. **Run
+it after `chunk_ingest` and `metadata_sync`:** the prompt uses the title of the chunk's document, and chunks of documents without a title are deferred
+(`deferred_no_document_title`, exit 1) until a later run, or generated without it with
+`--allow-missing-document-title` (for documents Kramerius has no title for; the command cannot
+tell the two cases apart). It is independent of `chunk_year`, the embeddings (they use only
+`text`), the classification and `chunk_summaries`.
+
+```bash
+python -m semant_demo.maintenance.chunk_titles --check \
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml
+python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:PORT \
+    --models-config semant_demo/configs/chunk_titles_ollama.yaml --limit 10000 --report titles.json
+```
+
+- **Model.** `--models-config` is required: a tier catalog declaring the `chunk_titles` feature.
+  `configs/chunk_titles_ollama.yaml` uses the self-hosted `qwen3.5:9b` at the first `OLLAMA_URLS`
+  endpoint; `configs/chunk_titles_vllm.yaml` a vLLM server through its OpenAI-compatible API (set
+  its `base_url` and served `model`; `OPENAI_API_KEY` is sent to that server, so give it the
+  server's key, never another provider's). The command reads only the model's answer and never
+  parses its thinking (the format differs between models): the provider separates it. An Ollama
+  tier sets `thinking: off` or `separate` (the shipped file: `off`); a vLLM server runs a
+  thinking model with its `--reasoning-parser` or with thinking off (the catalog cannot switch
+  it per request, [#585](https://github.com/DCGM/semant-demo/issues/585)), and with a
+  `--max-model-len` of at least `max_input_tokens + max_output_tokens`. Thinking left in the
+  answer is refused as `invalid_output`. Copy either file for another model. The
+  application's `llm_models.yaml` does not declare the feature, so a run never uses the
+  application's paid tiers by default; doing so needs authorization for that run. Both modes
+  check the catalog and the provider settings before anything else, without a model call;
+  `--check` makes no model calls at all.
+- **The store is the state.** A chunk with a non-empty `title` is done; an untitled chunk is
+  selected again by the next run. Nothing else is kept between runs (no checkpoint): an
+  interrupted run, a failed model call, an invalid reply or a failed write is taken up by running
+  the command again, which may generate a few titles again.
+- **Selection.** By default every chunk without a title, whichever way it was added: a pass over
+  all chunks in id order that checks the stored title in the command (no filter on `title`,
+  which the `word` tokenization of production's `Chunks.title` refuses for an empty value). No
+  document list is needed after an import ([#596](https://github.com/DCGM/semant-demo/issues/596)).
+  On a store with older untitled chunks (the backlog,
+  [#87](https://github.com/DCGM/semant-demo/issues/87)) the default covers them too: read the
+  selection size from `--check` first. `--documents`/`--documents-from FILE` (one id per line)
+  and `--chunks`/`--chunks-from` optionally narrow the selection; `--regenerate` (explicit
+  selection only) also replaces existing titles. Chunks that have a title are otherwise skipped,
+  so a rerun makes no model calls. If a per-chunk marker of completed stages is introduced
+  ([#590](https://github.com/DCGM/semant-demo/issues/590)), the default may select by it
+  instead.
+- **Bounded runs.** `--limit N` counts only the chunks to title (the model calls); titled,
+  deferred and reported chunks are passed over. The run stops before the first chunk beyond the
+  limit and reports `next_after`, the last chunk it examined. Continue with `--after` that id:
+  successive bounded runs then walk the store, and chunks that keep failing do not take the
+  limit of every run. A run without `--after` starts from the beginning and tries the failed
+  chunks again. The exit code of an `--after` run covers only the rest of the selection, so the
+  last bounded run can exit 0 while a chunk that failed in an earlier one is still untitled.
+  Finish with one `--check` without `--after` and `--limit`: it exits 0 only when every
+  selected chunk has a title; otherwise run `--write` again without `--after`.
+- **Writes.** A merge of `title` alone, read back per page; the schema is never changed (a store
+  without `Chunks.title` is refused). Invalid replies (empty, several lines, too long), failed
+  calls and failed writes are never written as titles: they are reported and the chunk stays
+  untitled.
+- **Summary and exit code.** The summary (stdout, JSON) holds the run's provenance (prompt
+  version and hash, model, catalog and its hash), `complete`, `next_after`, the counts (also per
+  chunk language) and the model usage. `--report FILE` also writes it to `FILE` at the end of
+  the run, and the reported and failed chunks (id, status, reason, document ids; never text or
+  titles) to `FILE` with the suffix `.chunks.jsonl` (`titles.json`: `titles.chunks.jsonl`),
+  one JSON line each as they occur. The run keeps only their counts, so its memory does not
+  grow with a large deferred backlog. A run that did not finish leaves no summary file, and the
+  lines written so far stay. Exit 0 only when the selection was
+  scanned to its end and every selected chunk has a title (a check: nothing to title); 1 when
+  the limit stopped the run or a chunk was deferred, reported or failed; 2 when refused.
+
+The older export-based scripts in `weaviate_utils/generate_text_chunk_titles/` (#80) were
+retired: they rewrote `order` and changed the schema.
+
 ## Document chunk-value summaries (`chunk_summary_schema`, `chunk_summaries`, #529)
 
 Document browsing and Analytics apply chunk filters (chunk language, classifications) per
@@ -490,13 +566,41 @@ positions only when `Chunks` declares them at startup (`bootstrap.detect_chunk_p
 Record counts, reported documents and the backup id on the issue. A development store seeded
 before #463 is completed by the same command, or by `make dev-reset`.
 
+## Chunk classification status (`classification_provenance_schema`, #590)
+
+`Chunks.classification_provenance` (`text`, `field` tokenization, filterable) says whether a
+chunk still needs classification: `UNPROCESSED` on every chunk that
+[`chunk_ingest`](#chunk-import-chunk_ingest-313) inserts, the classifier's model/version
+identifier once the chunk is classified. Chunks stored before the property was declared have
+no value and are never selected for classification: declaring it rewrites no chunk, so it needs
+no backup. A read-only pass over production on 2026-11-10 found no chunk with a missing
+classification field, so no existing chunk needs marking; marking chunks `UNPROCESSED` later
+would be a separate, explicit step.
+
+```bash
+python -m semant_demo.maintenance.classification_provenance_schema           # read-only check
+python -m semant_demo.maintenance.classification_provenance_schema --apply --confirm-endpoint HOST:PORT
+```
+
+- `--apply` adds the property to the collection behind the alias (Weaviate adds properties only
+  by the collection's name, not through an alias) and is repeatable. A property already declared
+  differently (another type, tokenization or filter index) is refused before anything is added;
+  it needs a separate, reviewed migration.
+- Exit code 0 when the property is declared as expected, 1 when the check finds it missing, 2
+  when refused.
+- Run it once before the first chunk import into a store: `chunk_ingest` refuses a store without
+  the property.
+
 ## Chunk import (`chunk_ingest`, #313)
 
 The one supported way to add text chunks: append-only, into the **existing** collections. It
 only inserts absent `Chunks` objects and, before the first chunk of a new document, an absent
 `Documents` object without properties. It never updates or deletes an existing object and
 only reads the schema (a missing collection, property or type is refused before any write;
-the schema itself is #128).
+the schema itself is #128). Every inserted chunk gets `classification_provenance=UNPROCESSED`;
+both modes refuse a store without that property, so declare it first
+([`classification_provenance_schema`](#chunk-classification-status-classification_provenance_schema-590)).
+The status is not compared with the input: a chunk classified since its import still replays.
 
 ```bash
 python -m semant_demo.maintenance.chunk_ingest --check check.json chunks/             # read-only plan
@@ -614,7 +718,7 @@ do not run them alongside the embedder or another chunk writer.
 flowchart LR
   ingest["chunk_ingest --write"] --> meta["metadata_sync<br/>--document-ids"]
   meta --> year["chunk_year"]
-  meta -.->|"#575"| titles["titles (planned)"]
+  meta --> titles["chunk_titles"]
   ingest --> emb["data_tools/embedder"]
   ingest -.->|"#590"| cls["classification (planned)"]
   ingest --> sum["chunk_summaries"]
@@ -631,22 +735,24 @@ flowchart LR
    unless `--accept-incomplete` is given
    ([`metadata_sync`](#kramerius-metadata-sync-metadata_sync-257)).
 2. `chunk_year --write` copies their year to the chunks (a full scan); it needs the metadata.
-3. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
+3. `chunk_titles --write` generates the new chunks' titles (every untitled chunk; no document
+   list); after `metadata_sync`, since it uses the document titles
+   ([Chunk titles](#chunk-titles-chunk_titles-575)).
+4. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
    vectors; until then the new chunks are missing from vector and hybrid search. `--check`
    counts the chunks still without the vector, read-only. The flag confirms the host and port,
    not the collection: check `collection` in the config too.
-4. The classification and the titles have no safe command for new chunks on a populated store
-   yet: `data_tools/meta_data_enrichment` cannot select the chunks without a classification
-   (a filter on a field it writes is refused) and overwrites existing values
-   ([#590](https://github.com/DCGM/semant-demo/issues/590)), and
-   `weaviate_utils/generate_text_chunk_titles/update_database.py` rewrites `order` too
-   ([#575](https://github.com/DCGM/semant-demo/issues/575)). Until then the new chunks have
-   neither.
-5. `chunk_summaries --write` is the final pass, after the classification, since it summarizes
+5. The classification has no safe command for new chunks on a populated store yet. The import
+   marks them `classification_provenance=UNPROCESSED`
+   ([status](#chunk-classification-status-classification_provenance_schema-590)), but
+   `data_tools/meta_data_enrichment` never changes that status, so a classified chunk would stay
+   `UNPROCESSED`, and it overwrites existing values
+   ([#590](https://github.com/DCGM/semant-demo/issues/590)). Until then the new chunks have no
+   classification.
+6. `chunk_summaries --write` is the final pass, after the classification, since it summarizes
    the chunks' classifications. Until it runs, the new documents have no summaries and match no
    chunk filter. A run before the classification (e.g. for the language filter) is only interim:
-   the import is not complete while the classification and the titles are pending. It is a
-   full-corpus pass.
+   the import is not complete while the classification is pending. It is a full-corpus pass.
 
 `page_order --document-ids CHECKPOINT.documents.txt` exports the new documents' page lists.
 Scans and anchors for newly imported documents are not covered yet: `page_import` was built for
@@ -657,12 +763,15 @@ The import does none of this, nor anything to existing annotations: their positi
 and context near the former document end keeps its old right boundary.
 
 Procedure on a shared store (authorized per task):
-1. Back up.
-2. Stop other chunk writers.
-3. Run `--check` and review the plan and the manifest.
-4. Run `--write`.
-5. Run `--check` again with a new checkpoint (expect `replayed` only).
-6. Run the follow-up commands.
+1. Once per store, before its first import: `classification_provenance_schema --apply`
+   ([status](#chunk-classification-status-classification_provenance_schema-590)); otherwise
+   `--check` and `--write` are refused.
+2. Back up.
+3. Stop other chunk writers.
+4. Run `--check` and review the plan and the manifest.
+5. Run `--write`.
+6. Run `--check` again with a new checkpoint (expect `replayed` only).
+7. Run the follow-up commands.
 
 Record the counts and the backup id on the issue.
 

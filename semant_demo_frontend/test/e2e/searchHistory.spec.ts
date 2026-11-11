@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
-import { closePhoneNavigation, ensureLoggedIn, isPassageSearch, logOut, search, useViewport } from './support'
+import { ensureLoggedIn, isPassageSearch, logOut, search, useViewport } from './support'
 
 // Recent searches under the Search page's query field (#558): kept in this browser, one
 // history per signed-in user and one for signed-out use, run again with their criteria.
@@ -18,7 +18,6 @@ function nextSearch (page: Page): Promise<Request> {
 async function openSearchPage (page: Page) {
   await page.goto('/#/search')
   await page.reload()
-  await closePhoneNavigation(page)
 }
 
 /**
