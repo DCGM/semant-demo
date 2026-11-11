@@ -30,6 +30,7 @@ from semant_demo.routes.dependencies import get_documents, get_llm, get_search_b
     get_user_collections
 from semant_demo.routes.streaming import OperationStreamingResponse
 from semant_demo.users.auth import current_active_optional_user, current_active_user
+from semant_demo.users.models import User
 
 exp_router = APIRouter()
 
@@ -66,7 +67,6 @@ async def chat_about_document(collection_id: str, document_id: str, body: Contex
     operation = llm.operation(service.FEATURE, budget)
     await operation.admit()
     return OperationStreamingResponse(_ndjson(chat.events(llm, operation)), operation, _NDJSON_MEDIA_TYPE)
-    return StreamingResponse(_ndjson(chat.events(llm, operation)), media_type=_NDJSON_MEDIA_TYPE)
 
 
 @exp_router.post(
@@ -99,4 +99,4 @@ async def chat_about_search_results(body: SearchChatRequest,
         raise HTTPException(status_code=413, detail=str(e))
     operation = llm.operation(service.FEATURE, budget)
     await operation.admit()
-    return StreamingResponse(_ndjson(chat.events(llm, operation)), media_type=_NDJSON_MEDIA_TYPE)
+    return OperationStreamingResponse(_ndjson(chat.events(llm, operation)), operation, _NDJSON_MEDIA_TYPE)

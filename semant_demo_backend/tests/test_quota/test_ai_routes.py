@@ -359,10 +359,16 @@ async def post_and_leave(app, path: str, body: dict, headers: dict, *, spec_vers
     return sent
 
 
-async def chat_request(ai, feature: str) -> tuple[str, dict, dict]:
-    """Path, body and headers of a span chat or document chat request of a new account."""
+async def chat_request(ai, route: str) -> tuple[str, dict, dict]:
+    """Path, body and headers of a span, document or search chat request of a new account."""
     account, headers = await ai.account()
-    if feature == "span_chat":
+    if route == "search_chat":
+        hits = [hit("Jan Novák byl kronikář."), hit("Obec měla školu.")]
+        ai.app.dependency_overrides[get_search_backends] = lambda: search_backends(FakeChunks(hits))
+        return ("/api/search/chat", {"question": "Kdo psal kroniku?", "history": [],
+                                     "chunk_ids": [str(h.id) for h in hits], "criteria": {"text_query": "kronika"}},
+                headers)
+    if route == "span_chat":
         store = span_store(account.id)
         ai.app.dependency_overrides[get_annotation_store] = lambda: store
         return "/api/ai/discuss_span", discuss_body(store), headers
@@ -374,13 +380,15 @@ async def chat_request(ai, feature: str) -> tuple[str, dict, dict]:
 
 
 ASGI_SPECS = pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
-CHATS = pytest.mark.parametrize("feature", ["span_chat", "context_chat"])
+# The route and the feature of its operation.
+CHATS = pytest.mark.parametrize(("route", "feature"), [
+    ("span_chat", "span_chat"), ("document_chat", "context_chat"), ("search_chat", "context_chat")])
 
 
 @ASGI_SPECS
 @CHATS
-async def test_a_chat_left_before_its_stream_starts_releases_its_reservation(ai, feature, spec_version):
-    path, body, headers = await chat_request(ai, feature)
+async def test_a_chat_left_before_its_stream_starts_releases_its_reservation(ai, route, feature, spec_version):
+    path, body, headers = await chat_request(ai, route)
 
     sent = await post_and_leave(ai.app, path, body, headers, spec_version=spec_version)
 
@@ -394,8 +402,8 @@ async def test_a_chat_left_before_its_stream_starts_releases_its_reservation(ai,
 
 @ASGI_SPECS
 @CHATS
-async def test_a_chat_left_mid_stream_closes_the_provider_stream_and_settles(ai, feature, spec_version):
-    path, body, headers = await chat_request(ai, feature)
+async def test_a_chat_left_mid_stream_closes_the_provider_stream_and_settles(ai, route, feature, spec_version):
+    path, body, headers = await chat_request(ai, route)
 
     sent = await post_and_leave(ai.app, path, body, headers, spec_version=spec_version, after_first_chunk=True)
 
