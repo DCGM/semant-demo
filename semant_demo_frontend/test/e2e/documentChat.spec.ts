@@ -23,7 +23,7 @@ test('an answer cites only the chunks in the collection, and a citation scrolls 
   const popover = page.locator('.annotation-popover')
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 
-  await sidebarPanelButton(page, 'Chat').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
   await ask(page, 'Co se stalo v obci?')
 
   // Only chronicle_3 is in "newspapers": one passage.
@@ -38,7 +38,7 @@ test('an answer cites only the chunks in the collection, and a citation scrolls 
 test('a follow-up sends the earlier turns with their cited chunk ids, never source text, and keeps the S labels', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'Chat').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
 
   await ask(page, 'O čem je dokument?')
   // chronicle_1 and chronicle_2, not chronicle_3: [doc2] is chronicle_2.
@@ -67,14 +67,14 @@ test('a follow-up sends the earlier turns with their cited chunk ids, never sour
 test('switching documents starts an empty conversation and clears the typed question', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'Chat').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
   await ask(page, 'O čem je dokument?')
   await expect(answers(page)).toHaveCount(1)
   // A question typed but not sent is not carried over to the other document.
   await page.getByLabel('Ask about this document').fill('Nedokončená otázka')
 
   await openDocument(page, 'chronicles', 'letters')
-  await sidebarPanelButton(page, 'Chat').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
 
   await expect(page.getByTestId('chat-question')).toHaveCount(0)
   await expect(answers(page)).toHaveCount(0)
