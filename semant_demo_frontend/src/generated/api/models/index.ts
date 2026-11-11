@@ -116,6 +116,7 @@ export * from './RankingDescription';
 export * from './RankingScope';
 export * from './ResultMember';
 export * from './ReviewAction';
+export * from './SearchChatRequest';
 export * from './SearchCriteria';
 export * from './SearchFilter';
 export * from './SearchFilterInput';

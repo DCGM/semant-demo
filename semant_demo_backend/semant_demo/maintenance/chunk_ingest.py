@@ -1,10 +1,14 @@
 """Import text chunks from JSONL into the existing collections, append-only (#313).
 
 The one supported way to add chunks. The only writes are inserting an absent ``Chunks``
-object (with its text, order, document reference, the source fields below and its
-absolute position, #463) and, before the first chunk of a new document, inserting an
-absent ``Documents`` object without properties. Nothing existing is ever updated or
-deleted, and the schema is only read: it is the importer of #128's read-only contract.
+object (with its text, order, document reference, the source fields below, its
+absolute position, #463, and ``classification_provenance=UNPROCESSED``, #590) and, before
+the first chunk of a new document, inserting an absent ``Documents`` object without
+properties. Nothing existing is ever updated or deleted, and the schema is only read: it is
+the importer of #128's read-only contract. Both modes refuse a ``Chunks`` collection without
+``classification_provenance`` (declare it with ``classification_provenance_schema``), so
+that no new chunk misses classification. The status is not compared with the input: a
+chunk classified since its import still replays.
 
 Check (read-only, the default)::
 
@@ -131,9 +135,11 @@ import numpy as np
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.weaviate import chunk_ingest as store
+from semant_demo.adapters.weaviate import classification_provenance as provenance
 from semant_demo.adapters.weaviate.chunk_positions import (
     PROPERTY_TYPES as POSITION_TYPES, OrderStats, count_chunks, order_stats,
 )
+from semant_demo.adapters.weaviate.chunk_summaries import declared_properties
 from semant_demo.adapters.weaviate.document_cleanup import filesystem_backups, resolve_collection
 from semant_demo.adapters.weaviate.documents import POSITION_PROPERTIES
 from semant_demo.adapters.weaviate.names import CollectionNames
@@ -393,6 +399,12 @@ def _expected_properties(chunk: InputChunk, position: ChunkPosition) -> dict[str
             **{name: getattr(position, attr) for name, attr in POSITION_PROPERTIES.items()}}
 
 
+def _insert_properties(chunk: InputChunk, position: ChunkPosition) -> dict[str, Any]:
+    """What an insert writes: the compared properties and the classification status
+    (``UNPROCESSED``, #590), which is not compared: a chunk classified since still replays."""
+    return {**_expected_properties(chunk, position), provenance.PROPERTY: provenance.UNPROCESSED}
+
+
 def matches(stored: store.StoredChunk, chunk: InputChunk, position: ChunkPosition | None) -> str | None:
     """Why a stored chunk differs from the input chunk (and the expected position), None if equal."""
     if stored.document != chunk.document:
@@ -489,6 +501,10 @@ async def preflight(client: WeaviateAsyncClient, names: CollectionNames) -> Targ
                 if declared.properties.get(n) != t]
     problems += [f"{n} is {declared.properties[n]}, expected {t}" for n, t in SOURCE_FIELDS.items()
                  if n in declared.properties and declared.properties[n] != t]
+    state = provenance.status(await declared_properties(client, chunks))
+    if state != "present":
+        problems.append(f"{provenance.PROPERTY} is {state}, expected {json.dumps(vars(provenance.EXPECTED))} "
+                        "(declare it with classification_provenance_schema --apply, #590)")
     targets = declared.references.get("document")
     if targets != (documents,):
         problems.append(f"the document reference targets {targets}, expected ({documents},)")
@@ -564,7 +580,7 @@ async def write(client: WeaviateAsyncClient, target: Target, plan_: Plan) -> Out
         return outcome
     document = plan_.inserts[0][0].document
     for chunk, position in plan_.inserts:
-        properties = _expected_properties(chunk, position)
+        properties = _insert_properties(chunk, position)
         try:
             await store.insert_chunk(client, target.chunks, chunk.id, document, properties)
         except store.AlreadyExists:
@@ -601,7 +617,7 @@ async def write_bulk(client: WeaviateAsyncClient, target: Target, plans: dict[UU
         round_ = [(d, *queue[0]) for d, queue in pending.items()][:batch]
         try:
             errors = await store.insert_chunks(client, target.chunks, [
-                (chunk.id, d, _expected_properties(chunk, position)) for d, chunk, position in round_])
+                (chunk.id, d, _insert_properties(chunk, position)) for d, chunk, position in round_])
         except Exception as e:  # uncertain: what arrived is decided by the read-back
             errors = {chunk.id: f"{type(e).__name__}: {e}" for _, chunk, _ in round_}
         try:

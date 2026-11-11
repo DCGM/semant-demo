@@ -105,7 +105,8 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
         return JSONResponse(status_code=409, content=jsonable_encoder(exc.body()))
     app.add_exception_handler(EditConflictError, edit_conflict)
 
-    # A definition that annotations still use cannot be deleted (#331).
+    # A definition that annotations still use cannot be deleted (#331); a change affecting
+    # annotations waits for confirmation (ConfirmationRequiredError, a subclass, #568).
     async def in_use(request: Request, exc: InUseError) -> JSONResponse:
         return JSONResponse(status_code=409, content=exc.body())
     app.add_exception_handler(InUseError, in_use)

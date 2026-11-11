@@ -11,6 +11,7 @@ All URIs are relative to *http://localhost*
 | [**browseDocumentsApiDocumentsBrowseGet**](DefaultApi.md#browsedocumentsapidocumentsbrowseget) | **GET** /api/documents/browse | Browse Documents |
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost**](DefaultApi.md#chataboutdocumentapiusercollectionscollectioniddocumentsdocumentidchatpost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/chat | Chat About Document |
+| [**chatAboutSearchResultsApiSearchChatPost**](DefaultApi.md#chataboutsearchresultsapisearchchatpost) | **POST** /api/search/chat | Chat About Search Results |
 | [**corpusDistributionsApiAnalyticsCorpusDistributionsPost**](DefaultApi.md#corpusdistributionsapianalyticscorpusdistributionspost) | **POST** /api/analytics/corpus/distributions | Corpus Distributions |
 | [**corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost**](DefaultApi.md#corpuslibraryyearsapianalyticscorpuslibraryyearspost) | **POST** /api/analytics/corpus/library-years | Corpus Library Years |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
@@ -661,6 +662,82 @@ example().catch(console.error);
 | **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
 | **413** | The question and the document\&#39;s first passage do not fit the input limit. |  -  |
 | **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## chatAboutSearchResultsApiSearchChatPost
+
+> chatAboutSearchResultsApiSearchChatPost(searchChatRequest)
+
+Chat About Search Results
+
+Streams an answer to &#x60;&#x60;question&#x60;&#x60; about the search results &#x60;&#x60;chunk_ids&#x60;&#x60; only (#245): they are read again under the search\&#39;s &#x60;&#x60;criteria&#x60;&#x60; and collection, and those the search could not have returned are left out. Signed-out users may ask about public results under the daily AI allowance. The client sends the earlier turns and never source text.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ChatAboutSearchResultsApiSearchChatPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // SearchChatRequest
+    searchChatRequest: ...,
+  } satisfies ChatAboutSearchResultsApiSearchChatPostRequest;
+
+  try {
+    const data = await api.chatAboutSearchResultsApiSearchChatPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **searchChatRequest** | [SearchChatRequest](SearchChatRequest.md) |  | |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
+| **401** | The search is in a user collection and the caller is not signed in. |  -  |
+| **404** | None of the search results can be read any more, or the collection is not readable. |  -  |
+| **422** | A filter of the criteria is not available in this corpus database. |  -  |
+| **413** | The question and the first search result do not fit the input limit. |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -5648,6 +5725,8 @@ example().catch(console.error);
 > SummaryResponse summarizeApiSummarizeSummaryTypePost(summaryType, searchResponse, length)
 
 Summarize
+
+A summary of the search results. A failed generation answers 200 with the configured fallback text and &#x60;&#x60;failed&#x60;&#x60;; a refusal by the server (e.g. 413 for an input above the feature\&#39;s limit) answers with its status and safe message.
 
 ### Example
 
