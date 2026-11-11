@@ -83,10 +83,10 @@ export interface ChatAnswer {
   error?: string
 }
 
-interface Turn {
+interface Turn<S extends ChatScope> {
   /** The question as shown and sent (trimmed). */
   prompt: string
-  scope: ChatScope
+  scope: S
   history: ChatTurn[]
   reply: ChatMessage
   isCurrent: () => boolean
@@ -212,7 +212,7 @@ export interface ScopedChatOptions {
   keepOnScopeChange?: boolean
 }
 
-export function useScopedChat (scope: () => ChatScope | null, options: ScopedChatOptions = {}) {
+export function useScopedChat<S extends ChatScope> (scope: () => S | null, options: ScopedChatOptions = {}) {
   const messages = ref<ChatMessage[]>([])
   const streaming = ref(false)
   /** The scope changed since the shown conversation; the next question starts a new one. */
@@ -268,7 +268,7 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
    * one place for the scope-change reset, the abort, the guard against late events and the
    * error message, shared by questions and summaries.
    */
-  async function runTurn (text: string, answer: (turn: Turn) => Promise<void>): Promise<void> {
+  async function runTurn (text: string, answer: (turn: Turn<S>) => Promise<void>): Promise<void> {
     const prompt = text.trim()
     const current = scope()
     if (!prompt || !current || streaming.value) return
@@ -348,11 +348,11 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
 
   /**
    * A summary of the current scope as the conversation's next answer (the summary is the
-   * chat's answer to `prompt`, e.g. "Summarize (short)"). The page's summary route makes it;
+   * chat's answer to `prompt`, e.g. "Summarize briefly"). The page's summary route makes it;
    * its `[docN]` citations become sources like a streamed answer's, so a follow-up question
    * sends them back as the turn's chunk ids.
    */
-  async function summarize (prompt: string, run: (scope: ChatScope, signal: AbortSignal) => Promise<ChatAnswer>): Promise<void> {
+  async function summarize (prompt: string, run: (scope: S, signal: AbortSignal) => Promise<ChatAnswer>): Promise<void> {
     await runTurn(prompt, async ({ scope: current, reply, isCurrent, signal }) => {
       const answer = await run(current, signal)
       if (!isCurrent() || reply.status !== 'streaming') return

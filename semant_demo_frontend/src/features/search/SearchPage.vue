@@ -765,13 +765,12 @@ const SEARCH_CHAT_QUESTIONS = [
  * failed generation (the route's fallback text, `failed`) is a failed answer.
  */
 function summarizeResults (length: SummaryLength) {
-  const search = passages.results.value
-  const subset = [...searchChatResults.value]
-  void searchChat.summarize(summaryPrompt(length), async (_scope, signal): Promise<ChatAnswer> => {
-    if (!search || !subset.length) throw new Error('No results to summarize.')
-    const query = search.query.criteria.textQuery ?? ''
-    const data = await api.summarizeApiSummarizeSummaryTypePost(
-      { summaryType: 'results', searchResponse: asSearchResponse(query, search.timeSpent, subset), length }, { signal })
+  void searchChat.summarize(summaryPrompt(length), async (scope, signal): Promise<ChatAnswer> => {
+    // The scope's results, in its (result) order.
+    const ids = new Set(scope.chunkIds)
+    const subset = results.value.filter(result => ids.has(result.id))
+    const searchResponse = asSearchResponse(scope.criteria.textQuery ?? '', passages.results.value?.timeSpent ?? 0, subset)
+    const data = await api.summarizeApiSummarizeSummaryTypePost({ summaryType: 'results', searchResponse, length }, { signal })
     if (data.failed) return { text: '', sources: [], error: data.summary }
     return {
       text: data.summary,

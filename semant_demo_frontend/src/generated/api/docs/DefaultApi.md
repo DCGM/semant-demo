@@ -5726,6 +5726,8 @@ example().catch(console.error);
 
 Summarize
 
+A summary of the search results. A failed generation answers 200 with the configured fallback text and &#x60;&#x60;failed&#x60;&#x60;; a refusal by the server (e.g. 413 for an input above the feature\&#39;s limit) answers with its status and safe message.
+
 ### Example
 
 ```ts
