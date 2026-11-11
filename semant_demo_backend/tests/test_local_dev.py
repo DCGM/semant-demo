@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse
+from uuid import UUID
 
 import pytest
 import yaml
@@ -330,6 +331,103 @@ def test_add_documents_rejects_a_count_out_of_range(count):
         local_dev.main(["add-documents", "--count", count])
 
     assert exit_info.value.code == 2
+
+
+class _DocumentsCollection:
+    """``Documents`` with ``library`` declared: answers an existence check with only the
+    stored ids it asks about (at most ``limit``), records the ids each check asked about
+    and, for each insert, how many documents the generator had produced by then."""
+
+    def __init__(self, produced: list[int], stored=()):
+        self.ids, self.produced, self.asked, self.inserts = set(map(str, stored)), produced, [], []
+        self.config = SimpleNamespace(get=self._config)
+        self.query = SimpleNamespace(fetch_objects=self._fetch)
+        self.data = SimpleNamespace(insert_many=self._insert_many)
+
+    async def _config(self):
+        return SimpleNamespace(properties=[SimpleNamespace(name="library")])
+
+    async def _fetch(self, filters, limit, return_properties):
+        asked = [str(uuid) for uuid in filters.value]
+        self.asked.append(asked)
+        found = [uuid for uuid in asked if uuid in self.ids][:limit]
+        return SimpleNamespace(objects=[SimpleNamespace(uuid=UUID(uuid)) for uuid in found])
+
+    async def _insert_many(self, objects):
+        self.inserts.append((len(objects), self.produced[0]))
+        self.ids.update(str(o.uuid) for o in objects)
+        return SimpleNamespace(has_errors=False)
+
+
+def _counted_generator(monkeypatch):
+    """Counts the documents the generator has produced; returns the unwrapped generator
+    and the count."""
+    from tests import synthetic_documents as generator
+
+    original, produced = generator.synthetic_documents, [0]
+
+    def counted(count, outliers):
+        for document in original(count, outliers):
+            produced[0] += 1
+            yield document
+
+    monkeypatch.setattr(generator, "synthetic_documents", counted)
+    return original, produced
+
+
+def _documents_client(documents):
+    return SimpleNamespace(collections=SimpleNamespace(get=lambda name: documents))
+
+
+@pytest.mark.parametrize(("count", "outliers", "batches"), [(9, False, [4, 4, 1]), (10, True, [4, 4, 4])])
+def test_add_documents_takes_one_batch_at_a_time_from_the_generator(monkeypatch, count, outliers, batches):
+    original, produced = _counted_generator(monkeypatch)
+    monkeypatch.setattr(local_dev, "ADD_BATCH_SIZE", 4)
+    documents = _DocumentsCollection(produced)
+    client = _documents_client(documents)
+    expected = [str(uuid) for uuid, _ in original(count, outliers)]
+
+    assert asyncio.run(local_dev.add_documents(client, count, outliers)) == sum(batches)
+    # Each batch is written before the next one is generated, and checked by its own ids.
+    assert documents.inserts == [(size, sum(batches[:i + 1])) for i, size in enumerate(batches)]
+    assert documents.ids == set(expected)
+    bounds = [sum(batches[:i]) for i in range(len(batches) + 1)]
+    assert documents.asked == [expected[start:end] for start, end in zip(bounds, bounds[1:])]
+    assert asyncio.run(local_dev.add_documents(client, count, outliers)) == 0
+
+
+def test_add_documents_adds_only_the_documents_not_stored_yet(monkeypatch):
+    original, produced = _counted_generator(monkeypatch)
+    monkeypatch.setattr(local_dev, "ADD_BATCH_SIZE", 4)
+    expected = [uuid for uuid, _ in original(10, False)]
+    documents = _DocumentsCollection(produced, stored=[expected[1], expected[5], expected[6]])
+
+    assert asyncio.run(local_dev.add_documents(_documents_client(documents), 10, outliers=False)) == 7
+    assert [size for size, _ in documents.inserts] == [3, 2, 2]
+    assert documents.ids == set(map(str, expected))
+
+
+def test_add_documents_reports_progress_of_the_requested_total(monkeypatch):
+    _, produced = _counted_generator(monkeypatch)
+    monkeypatch.setattr(local_dev, "ADD_BATCH_SIZE", 2)
+    said = []
+    monkeypatch.setattr(local_dev, "_say", said.append)
+    documents = _DocumentsCollection(produced)
+
+    # 43 documents and 2 outliers in 23 batches of 2: progress after every 10th batch.
+    assert asyncio.run(local_dev.add_documents(_documents_client(documents), 43, outliers=True)) == 45
+
+    assert said == ["20 of 45 documents checked, 20 added", "40 of 45 documents checked, 40 added"]
+
+
+def test_add_documents_refuses_a_count_out_of_range_before_any_write():
+    async def no_schema_read():
+        pytest.fail("the schema was read")
+
+    documents = SimpleNamespace(config=SimpleNamespace(get=no_schema_read))
+
+    with pytest.raises(ValueError, match="count must be between"):
+        asyncio.run(local_dev.add_documents(_documents_client(documents), -1, outliers=False))
 
 
 def test_reset_without_confirmation_changes_nothing(profile, use_client):

@@ -1,0 +1,36 @@
+# Model catalog for chunk title generation (#575): pass it to
+#   python -m semant_demo.maintenance.chunk_titles --models-config semant_demo/configs/chunk_titles_ollama.yaml
+# The application's catalog (llm_models.yaml) does not declare chunk_titles, so a run uses
+# a model only when its catalog is given explicitly. Copy this file to use another model.
+#
+# The self-hosted model of the historical title batch (#80). The endpoint is the first of
+# OLLAMA_URLS unless the tier sets base_url. The prices are an accounting rate of zero,
+# not a bill.
+#
+# thinking: off asks the model for the title without reasoning first (a short task, and the
+# reasoning tokens would count against max_output_tokens). With separate it reasons, and
+# Ollama returns the reasoning apart from the answer in the model's own format; the command
+# reads the answer only. Leave the option out only for a model that cannot think: Ollama
+# refuses it for such a model, and a thinking model without it leaves its thinking in the
+# answer, which is refused (invalid_output).
+tiers:
+  tiny:
+    provider: ollama
+    model: qwen3.5:9b
+    thinking: "off"
+    price_basis: local_rate
+    input_price: 0
+    output_price: 0
+features:
+  chunk_titles:
+    default: tiny
+    allowed: [tiny]
+    limits:
+      # A title of at most 10 words; headroom for a model's reasoning (with thinking:
+      # separate it counts against this limit too).
+      max_output_tokens: 512
+      # One chunk (about 1,000 characters with the default chunking, #540), the document
+      # title and the prompt. A larger input is refused before sending (too_large), never
+      # truncated; Ollama gets a context of max_input_tokens + max_output_tokens.
+      max_input_tokens: 4096
+      max_calls: 1

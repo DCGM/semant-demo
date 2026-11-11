@@ -1,6 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import {
-  annotation, answerChat, apiToken, deleteAddedAttributes, deleteAddedSpans, answerGuestQuota, askChat, chatSource, closePhoneNavigation, ensureLoggedIn, fixture, search, selectText,
+  annotation, answerChat, apiToken, deleteAddedAttributes, deleteAddedSpans, answerGuestQuota, askChat, chatSource, ensureLoggedIn, fixture, search, selectText,
   sidebarPanelButton
 } from '../e2e/support'
 
@@ -56,7 +56,6 @@ test('recent searches', async ({ page }, testInfo) => {
   await search(page, 'Kronika obce Lhota a jejích obyvatel v dlouhém dotazu, který se nevejde na jeden řádek')
 
   await page.reload() // an empty page without the sign-in notification
-  await closePhoneNavigation(page)
   await input.click()
   await expect(page.getByTestId('search-history-entry')).toHaveCount(3)
   await save(page, testInfo, 'search-history') // no results yet, so no right sidebar
@@ -74,7 +73,6 @@ test('recent searches', async ({ page }, testInfo) => {
     localStorage.setItem(key, JSON.stringify({ ...JSON.parse(localStorage.getItem(key) ?? '{}'), criteriaVersion: 99 }))
   })
   await page.reload()
-  await closePhoneNavigation(page)
   await input.click()
   await expect(page.getByTestId('search-history-reload')).toBeVisible()
   await save(page, testInfo, 'search-history-newer-version')
@@ -87,7 +85,6 @@ test('search documents: filter-only and ranked results, Load more and states (#6
     await route.continue({ postData: JSON.stringify(body.offset === 0 ? { ...body, limit: 2 } : body) })
   })
   await page.goto('/#/search?chunk_languages=ces')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('document-result-open')).toHaveCount(2)
   await expect(page.getByTestId('search-load-more')).toBeVisible()
   await page.getByTestId('search-coverage').click() // closes the recent searches the field offers
@@ -116,7 +113,6 @@ test('search passages: applied filters, coverage, Load more, pending and empty s
     await route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), limit: 3 }) })
   })
   await page.goto('/#/search?q=Lhota&chunk_languages=ces&year_max=1950')
-  await closePhoneNavigation(page)
   await expect(page.locator('#result-1')).toBeVisible()
   await expect(page.getByTestId('search-load-more')).toBeVisible()
   await expectSidebarsOpen(page, testInfo)
@@ -148,7 +144,6 @@ test('search passages: applied filters, coverage, Load more, pending and empty s
 test('search vector selection', async ({ page }, testInfo) => {
   // The browser-test profile configures two search vectors (#217).
   await page.goto('/#/search')
-  await closePhoneNavigation(page)
   await page.getByRole('combobox', { name: 'Search query' }).fill('Lhota')
   await page.getByRole('button', { name: 'Search filters' }).click()
   const select = page.getByTestId('search-vector-select')
@@ -170,7 +165,6 @@ test('document view', async ({ page }, testInfo) => {
   await page.reload() // without the sign-in notification
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expect(page.locator('.gutter-item')).toHaveCount(2)
-  await closePhoneNavigation(page)
   await expectSidebarsOpen(page, testInfo)
   await save(page, testInfo, 'document-view')
 })
@@ -180,7 +174,6 @@ test('document view - summary panel (#249)', async ({ page }, testInfo) => {
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
   await page.reload() // without the sign-in notification
   await expect(annotation(page, 'novak_manual')).toBeVisible()
-  await closePhoneNavigation(page)
   await expectSidebarsOpen(page, testInfo)
   // On phone the right sidebar is a closed overlay by default; open it to reach the panel.
   if (testInfo.project.name === 'phone') {
@@ -198,7 +191,6 @@ test('document view - popover, bulk bar and create-tag dialog (#379)', async ({ 
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
   await page.reload() // without the sign-in notification
   await expect(page.locator('.gutter-item')).toHaveCount(2)
-  await closePhoneNavigation(page)
   await expectSidebarsOpen(page, testInfo)
 
   // The chunk gutter starts hidden; its checkboxes select chunks for the bulk bar.
@@ -233,7 +225,6 @@ test('annotation workspace (#329)', async ({ page, request }, testInfo) => {
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
     await expect(page.getByTestId('kwic-row')).toHaveCount(8)
     await page.getByTestId('kwic-row').nth(3).getByRole('checkbox').click()
     await save(page, testInfo, 'annotation-workspace')
@@ -256,7 +247,6 @@ test('annotation workspace review (#459)', async ({ page, request }, testInfo) =
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
     await page.getByTestId('concordance-status-pos').click()
     await expect(page.getByTestId('kwic-row')).toHaveCount(2)
@@ -312,7 +302,6 @@ test('annotation provenance and edit conflicts (#460)', async ({ page, request }
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${collectionId}/annotations`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
 
     // Created by the owner, then retagged by the shared annotator.
     await patch(created.id, { tagId: fixture.tag('place').id }, 'annotator')
@@ -365,7 +354,6 @@ test('annotation boundary editing and undo (#461)', async ({ page, request }, te
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${collectionId}/annotations`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
     await page.locator(`[data-testid="kwic-row"][data-annotation-id="${brno.id}"]`).click()
     await expectRightSidebarIn(page)
     await expectSidebarsOpen(page, testInfo)
@@ -459,7 +447,6 @@ test('collection attributes (#331, #506, #522)', async ({ page, request }, testI
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/attributes`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
     await expect(page.getByTestId('attribute')).toHaveCount(3)
     await save(page, testInfo, 'attributes')
 
@@ -513,7 +500,6 @@ test('attribute name taken (#331)', async ({ page, request }, testInfo) => {
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/attributes`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
     await page.getByTestId('attribute-create').click()
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Name').fill('role')
@@ -552,7 +538,6 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
     // Two columns side by side (#537).
     await page.getByTestId('concordance-show-attribute').click()
@@ -644,7 +629,6 @@ test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/tags`)
     await page.reload() // without the sign-in notification
-    await closePhoneNavigation(page)
     const dialog = page.getByRole('dialog')
     const toggle = (name: string) => dialog.getByTestId('tag-applicable-attribute').filter({ hasText: name }).getByRole('switch')
 
@@ -672,7 +656,6 @@ test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }
 test('corpus overview', async ({ page }, testInfo) => {
   await withLibraries(page)
   await page.goto('/#/corpus')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('corpus-libraries').locator('svg').first()).toBeVisible()
   await save(page, testInfo, 'corpus-overview')
 })
@@ -680,7 +663,6 @@ test('corpus overview', async ({ page }, testInfo) => {
 test('corpus overview filtered, with timeline and heatmap', async ({ page }, testInfo) => {
   await withLibraries(page)
   await page.goto('/#/corpus')
-  await closePhoneNavigation(page)
   await page.getByTestId('filter-title').fill('kronika')
   await page.getByTestId('filter-title').press('Enter')
   await page.getByTestId('filter-title').fill('dopisy')
@@ -695,7 +677,6 @@ test('corpus overview filtered, with timeline and heatmap', async ({ page }, tes
 
 test('corpus overview without libraries', async ({ page }, testInfo) => {
   await page.goto('/#/corpus')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
   await page.getByTestId('corpus-libraries').scrollIntoViewIfNeeded()
   await save(page, testInfo, 'corpus-overview-unavailable')
@@ -713,7 +694,6 @@ test('chat sources', async ({ page }, testInfo) => {
     }
   ])
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
   await askChat(page, 'What happened in Lhota?')
   await askChat(page, 'What is in the gazette?')
   // One click on a citation selects its source: expanded in the list, all its citations marked.
@@ -734,7 +714,6 @@ test('chat sources', async ({ page }, testInfo) => {
 // and a refused chat question (the allowance answered by the test, see answerGuestQuota).
 test('ai allowance details', async ({ page }, testInfo) => {
   await page.goto('/#/search')
-  await closePhoneNavigation(page)
   await page.getByRole('button', { name: /^AI allowance:/ }).click()
   await expect(page.getByTestId('quota-details')).toBeVisible()
   await expect(page.locator('.q-menu')).toHaveCSS('opacity', '1') // faded in
@@ -744,7 +723,6 @@ test('ai allowance details', async ({ page }, testInfo) => {
 test('ai allowance near the limit', async ({ page }, testInfo) => {
   await answerGuestQuota(page, 0.21)
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('quota-banner')).toBeVisible()
   await save(page, testInfo, 'ai-allowance-near-limit')
 })
@@ -763,7 +741,6 @@ test('ai allowance used up', async ({ page }, testInfo) => {
     }
   }))
   await page.goto('/#/rag')
-  await closePhoneNavigation(page)
   const input = page.getByPlaceholder('Vaše otázka?')
   await input.fill('What happened in Lhota?')
   await input.press('Enter')
@@ -776,7 +753,6 @@ test('scan viewer', async ({ page }, testInfo) => {
   // a zoomed page; the synthetic page fixtures of the profile.
   const chronicle = fixture.document('chronicle')
   await page.goto(`/#/preview/scan/${chronicle.id}?page=5e3a0000-0000-4000-8000-0000000d1f01`)
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('scan-overlay')).toBeAttached()
   await page.getByTestId('scan-viewport').focus()
   for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown')
@@ -798,8 +774,7 @@ test('public document', async ({ page }, testInfo) => {
   const passage = fixture.chunk('gazette_1')
   const word = passage.text.indexOf('hostila')
   await page.goto(`/#/documents/${gazette.id}?chunk=${passage.id}&start=${word}&end=${word + 7}&from=search`)
-  await page.reload() // a fresh page: the phone's navigation drawer starts as an overlay
-  await closePhoneNavigation(page)
+  await page.reload() // a fresh page
   await expect(page.locator('.is-active-passage')).toHaveText('hostila')
   if (testInfo.project.name !== 'phone') {
     await expect(page.locator('polygon.scan-highlight')).toHaveCount(1)
@@ -823,7 +798,6 @@ test('collection document with its scan', async ({ page }, testInfo) => {
   const collection = fixture.collection('chronicles')
   const chronicle = fixture.document('chronicle')
   await page.goto(`/#/collections/${collection.id}/documents/${chronicle.id}/v1?page=5e3a0000-0000-4000-8000-0000000d1f01`)
-  await closePhoneNavigation(page)
   await expect(page.locator('.chunk-annotator').first()).toBeVisible()
   // With both sidebars open (narrow) and on a phone the workspace has room for one view only.
   if (testInfo.project.name === 'wide') {
@@ -843,7 +817,6 @@ test('collection document with its scan', async ({ page }, testInfo) => {
 test('explore visualizations', async ({ page }, testInfo) => {
   // #618: the Visualizations view of filters without a text query (no right sidebar panel here).
   await page.goto('/#/search?year_max=1950&chunk_languages=ces&view=visualizations')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('charts-total')).toHaveText('2')
   await expect(page.getByTestId('corpus-years').locator('svg').first()).toBeVisible()
   await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
@@ -853,7 +826,6 @@ test('explore visualizations', async ({ page }, testInfo) => {
 
 test('explore visualizations of a text query, a chart filter and a data table (#620)', async ({ page }, testInfo) => {
   await page.goto('/#/search?q=Lhota&view=visualizations')
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('charts-total')).toHaveText('7')
   await expect(page.getByTestId('results-years').locator('svg').first()).toBeVisible()
   await expect(page.getByTestId('results-languages').locator('svg').first()).toBeVisible()

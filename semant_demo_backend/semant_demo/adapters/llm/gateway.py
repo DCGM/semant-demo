@@ -87,6 +87,11 @@ class LlmGateway:
         """The model ``feature`` gets for ``tier`` (its default when ``None``); raises if not permitted."""
         return self.catalog.resolve(feature, tier, requires)
 
+    def missing_setting(self, feature: str, tier: str | None = None) -> str | None:
+        """The provider setting (e.g. ``OPENAI_API_KEY``) whose absence would refuse the
+        feature's calls on ``tier``, None when nothing is missing; makes no call."""
+        return self._missing_setting(self.tier_model(feature, tier))
+
     def chat_model(self, feature: str, *, tier: str | None = None, temperature: float | None = None,
                    max_tokens: int | None = None, context_size: int | None = None,
                    requires: Iterable[Capability] = ()) -> BaseChatModel:
@@ -189,9 +194,11 @@ class LlmGateway:
             client_kwargs: dict[str, Any] = {"timeout": providers.timeout_seconds}
             if self._http_transport is not None:
                 client_kwargs["transport"] = self._http_transport
+            # Ollama separates the thinking itself (the reply's content is the answer alone).
+            reasoning = {"separate": True, "off": False}.get(model.thinking or "")
             return ChatOllama(model=model.model, base_url=model.base_url or providers.ollama_base_url,
                               temperature=temperature, num_predict=max_tokens, num_ctx=context_size,
-                              client_kwargs=client_kwargs, callbacks=[usage])
+                              reasoning=reasoning, client_kwargs=client_kwargs, callbacks=[usage])
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(model=model.model,
                                       google_api_key=SecretStr(providers.google_api_key or _UNSET_KEY),

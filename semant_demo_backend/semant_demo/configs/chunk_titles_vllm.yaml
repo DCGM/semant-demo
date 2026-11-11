@@ -1,0 +1,41 @@
+# Model catalog for chunk title generation (#575) with a vLLM server: pass it to
+#   python -m semant_demo.maintenance.chunk_titles --models-config semant_demo/configs/chunk_titles_vllm.yaml
+# The same feature as chunk_titles_ollama.yaml, through vLLM's OpenAI-compatible API.
+#
+# Set base_url and model to the server's address and served model name before a run. The
+# tier's base_url is used instead of OPENAI_API_URL, so a run never reaches another
+# OpenAI-compatible provider. OPENAI_API_KEY must be set and is sent to this server: give it
+# the server's --api-key (any value when it has none), never another provider's key.
+#
+# The server is configured outside this repository, and its settings matter here:
+# * thinking: the command reads the answer (content) only and never parses thinking, whose
+#   format differs between models. Run a thinking model (Qwen3.5) with vLLM's
+#   --reasoning-parser for its family, which returns the reasoning apart from the answer, or
+#   with thinking off on the server (e.g. --default-chat-template-kwargs
+#   '{"enable_thinking": false}'; check that the server's version supports it). This catalog
+#   cannot switch it off per request (#585). Reasoning tokens count against
+#   max_output_tokens; thinking left in the answer is refused (invalid_output), never written;
+# * context: the server's --max-model-len must hold max_input_tokens + max_output_tokens
+#   (the context of Ollama is set per request, of vLLM only on the server).
+# The prices are an accounting rate of zero, not a bill.
+tiers:
+  tiny:
+    provider: openai
+    base_url: http://localhost:8000/v1
+    model: Qwen/Qwen3.5-9B
+    price_basis: local_rate
+    input_price: 0
+    output_price: 0
+features:
+  chunk_titles:
+    default: tiny
+    allowed: [tiny]
+    limits:
+      # A title of at most 10 words; headroom for a model's reasoning, which counts
+      # against this limit.
+      max_output_tokens: 512
+      # One chunk (about 1,000 characters with the default chunking, #540), the document
+      # title and the prompt. A larger input is refused before sending (too_large), never
+      # truncated.
+      max_input_tokens: 4096
+      max_calls: 1

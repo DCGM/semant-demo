@@ -130,6 +130,23 @@ test('back arrows go to the parent page without changing the navigation drawer',
   await expect(page.getByRole('link', { name: /^Back to/ })).toHaveCount(0)
 })
 
+// #271: below the breakpoint the navigation is an overlay that starts closed on first load.
+test('on a phone, the navigation starts closed on first load and opens from the header', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await page.goto('/#/search')
+  await expect(page.getByRole('button', { name: 'User menu' })).toBeVisible() // the layout has mounted
+
+  const showNavigation = page.getByRole('button', { name: 'Show navigation' })
+  await expect(showNavigation).toHaveAttribute('aria-expanded', 'false')
+  await expect(drawer(page)).toBeHidden()
+  await expect(page.locator('.q-drawer__backdrop:not(.hidden)')).toHaveCount(0)
+
+  await showNavigation.click()
+  await expect(drawer(page)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Hide navigation' })).toHaveAttribute('aria-expanded', 'true')
+  await expect(drawerItem(page, 'Document search')).toBeInViewport()
+})
+
 test('on a phone, back arrows navigate and leave the overlay navigation closed', async ({ page }) => {
   const collection = fixture.collection('chronicles')
   await ensureLoggedIn(page, 'owner')
