@@ -734,9 +734,10 @@ example().catch(console.error);
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
-| **404** | None of the search results can be read any more. |  -  |
+| **401** | The search is in a user collection and the caller is not signed in. |  -  |
+| **404** | None of the search results can be read any more, or the collection is not readable. |  -  |
+| **422** | A filter of the criteria is not available in this corpus database. |  -  |
 | **413** | The question and the first search result do not fit the input limit. |  -  |
-| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

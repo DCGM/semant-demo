@@ -62,10 +62,11 @@ stays with the page and its feature composables.
 
 Notes on the implementation:
 
-- The first panel registered becomes the active one, and a panel registered later does not
-  replace it. Panels registered in the same tick (mounting together) register in Vue's mount
-  order, not in template order, so among them the lowest `order` wins unless one is chosen
-  meanwhile (`select`/`activate`).
+- Until a panel is chosen (`select`/`activate`: a click on the rail, the page, or a kept-alive
+  page restoring its panel), the active panel is the one with the lowest `order`, whatever
+  order the panels registered in (Vue mounts them in its own order, not in template order).
+  A chosen panel stays active when other panels register; when the active panel goes, the
+  lowest-ordered one left becomes the default again.
 - `register()` returns the function that removes exactly that registration. A second panel
   with an id that is already registered is refused with a warning, and removing it does
   not remove the first one.

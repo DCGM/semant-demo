@@ -25,7 +25,7 @@ import logging
 import re
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, TypeVar
 from uuid import UUID
 
 from semant_demo.adapters.llm.gateway import OperationScope
@@ -116,14 +116,18 @@ def cited_sources(answer: str, chunks: Sequence[DocumentChunk]) -> list[ChatSour
     return sources
 
 
-class Framing(Protocol):
+ChunkT = TypeVar("ChunkT", bound=DocumentChunk)
+ChunkT_contra = TypeVar("ChunkT_contra", bound=DocumentChunk, contravariant=True)
+
+
+class Framing(Protocol[ChunkT_contra]):
     """How a scope's chunks are put before the model: the system prompt, one chunk as a
     labelled passage, and the last user message around the passages. ``too_large`` is the
     413 message when not even the question and the first chunk fit."""
     system_prompt: str
     too_large: str
 
-    def passage(self, number: int, chunk: DocumentChunk) -> str: ...
+    def passage(self, number: int, chunk: ChunkT_contra) -> str: ...
 
     def question(self, passages: str, used: int, total: int, question: str) -> str: ...
 
@@ -210,7 +214,7 @@ def _exchanges(history: Sequence[ChatTurn]) -> list[tuple[ChatTurn, ChatTurn]]:
             if turn.role == "user" and following.role == "assistant"]
 
 
-def fit_request(framing: Framing, chunks: Sequence[DocumentChunk], request: ContextChatRequest,
+def fit_request(framing: Framing[ChunkT], chunks: Sequence[ChunkT], request: ContextChatRequest,
                 max_input_tokens: int) -> PreparedChat:
     """The model input for ``request`` about ``chunks`` (in scope order) within
     ``max_input_tokens`` (ADR 0012): the question and as many leading chunks as fit come
@@ -221,7 +225,7 @@ def fit_request(framing: Framing, chunks: Sequence[DocumentChunk], request: Cont
     # Everything but the passages, with the longest form of the partial-coverage note.
     fixed = len(framing.system_prompt) + len(framing.question("", len(chunks), len(chunks) + 1, request.question))
 
-    used: list[DocumentChunk] = []
+    used: list[ChunkT] = []
     passages_size = 0
     for chunk in chunks:
         size = len(framing.passage(len(used) + 1, chunk))

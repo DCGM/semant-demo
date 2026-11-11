@@ -8,11 +8,12 @@ import { ContextChatRequestToJSON, SearchChatRequestToJSON, type ChatTurn, type 
  * page owns the scope and passes it in: a document of a collection (#248) or search
  * results (#245).
  *
- * The conversation lives in memory only. A change of the search scope stops a running answer
- * and keeps the conversation with `scopeChanged` set, so the panel can say what the next
- * question is about; that question then starts an empty conversation (ADR 0012 decision 1).
- * Another document is another page: its conversation starts empty at once, as do unmount and
- * *New conversation*. A late event of an old request never reaches a newer conversation.
+ * The conversation lives in memory only. A scope change stops a running answer. With
+ * `keepOnScopeChange` (Search, ADR 0012 decision 1) the conversation stays with `scopeChanged`
+ * set, so the panel can say what the next question is about, and that question starts an
+ * empty conversation. Without it (another document is another page) the conversation starts
+ * empty at once, as on unmount and *New conversation*. A late event of an old request never
+ * reaches a newer conversation.
  *
  * Each answer is streamed as NDJSON events (`delta`, `sources`, `end` or `error`, see
  * `features/chat/schemas.py`). Its `[docN]` citations are numbered per request; the
@@ -166,7 +167,12 @@ export function historyTurns (messages: ChatMessage[]): ChatTurn[] {
   return turns.slice(-MAX_HISTORY_TURNS)
 }
 
-export function useScopedChat (scope: () => ChatScope | null) {
+export interface ScopedChatOptions {
+  /** Keep the conversation, marked `scopeChanged`, until the next question after a scope change. */
+  keepOnScopeChange?: boolean
+}
+
+export function useScopedChat (scope: () => ChatScope | null, options: ScopedChatOptions = {}) {
   const messages = ref<ChatMessage[]>([])
   const streaming = ref(false)
   /** The scope changed since the shown conversation; the next question starts a new one. */
@@ -190,9 +196,9 @@ export function useScopedChat (scope: () => ChatScope | null) {
     scopeChanged.value = false
   }
 
-  /** ADR 0012 decision 1: the old search conversation stays visible until the next question. */
+  /** ADR 0012 decision 1: with `keepOnScopeChange` the old conversation stays visible until the next question. */
   function changeScope () {
-    if (!messages.value.length || scope()?.kind === 'document') {
+    if (!options.keepOnScopeChange || !messages.value.length) {
       reset()
       return
     }

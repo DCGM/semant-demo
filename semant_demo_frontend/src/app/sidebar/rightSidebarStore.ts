@@ -27,11 +27,10 @@ interface RegisteredPanel {
 export const useRightSidebarStore = defineStore('rightSidebar', () => {
   const panels = ref<RegisteredPanel[]>([])
   const activePanelId = ref<string | null>(null)
-  // The first panel registered becomes active, and one registered later never replaces it.
-  // Panels registered in the same tick (mounting together) register in Vue's mount order,
-  // not in `order`, so until the tick ends the lowest `order` among them wins, unless a panel
-  // was chosen meanwhile (`select`/`activate`).
-  let choosingDefault = false
+  // Until a panel is chosen (`select`/`activate`: the user, the page or a kept-alive page
+  // restoring its panel), the active panel is the default one: the lowest `order` among the
+  // registered panels, whatever order they registered in (Vue mounts panels in its own order).
+  let activeIsDefault = true
   const open = ref(false)
   const miniState = ref(false)
   // element the panels teleport their content into; set by the shell once mounted
@@ -57,11 +56,10 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     }
     const owner = Symbol(panel.id)
     panels.value.push({ panel, owner })
-    if (activePanelId.value === null) {
-      choosingDefault = true
-      queueMicrotask(() => { choosingDefault = false })
+    if (activePanelId.value === null || activeIsDefault) {
+      activePanelId.value = sortedPanels.value[0].id
+      activeIsDefault = true
     }
-    if (choosingDefault) activePanelId.value = sortedPanels.value[0].id
     return () => unregister(owner)
   }
 
@@ -71,6 +69,7 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     panels.value = panels.value.filter(p => p.owner !== owner)
     if (activePanelId.value === removed.panel.id) {
       activePanelId.value = sortedPanels.value[0]?.id ?? null
+      activeIsDefault = true
     }
     if (!hasPanels.value) {
       // the state is not remembered between pages
@@ -82,7 +81,7 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
   function select (id: string) {
     if (!panels.value.some(p => p.panel.id === id)) return
     activePanelId.value = id
-    choosingDefault = false
+    activeIsDefault = false
   }
 
   // brings the panel to front and makes sure it is visible
