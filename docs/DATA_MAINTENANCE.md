@@ -566,13 +566,41 @@ positions only when `Chunks` declares them at startup (`bootstrap.detect_chunk_p
 Record counts, reported documents and the backup id on the issue. A development store seeded
 before #463 is completed by the same command, or by `make dev-reset`.
 
+## Chunk classification status (`classification_provenance_schema`, #590)
+
+`Chunks.classification_provenance` (`text`, `field` tokenization, filterable) says whether a
+chunk still needs classification: `UNPROCESSED` on every chunk that
+[`chunk_ingest`](#chunk-import-chunk_ingest-313) inserts, the classifier's model/version
+identifier once the chunk is classified. Chunks stored before the property was declared have
+no value and are never selected for classification: declaring it rewrites no chunk, so it needs
+no backup. A read-only pass over production on 2026-11-10 found no chunk with a missing
+classification field, so no existing chunk needs marking; marking chunks `UNPROCESSED` later
+would be a separate, explicit step.
+
+```bash
+python -m semant_demo.maintenance.classification_provenance_schema           # read-only check
+python -m semant_demo.maintenance.classification_provenance_schema --apply --confirm-endpoint HOST:PORT
+```
+
+- `--apply` adds the property to the collection behind the alias (Weaviate adds properties only
+  by the collection's name, not through an alias) and is repeatable. A property already declared
+  differently (another type, tokenization or filter index) is refused before anything is added;
+  it needs a separate, reviewed migration.
+- Exit code 0 when the property is declared as expected, 1 when the check finds it missing, 2
+  when refused.
+- Run it once before the first chunk import into a store: `chunk_ingest` refuses a store without
+  the property.
+
 ## Chunk import (`chunk_ingest`, #313)
 
 The one supported way to add text chunks: append-only, into the **existing** collections. It
 only inserts absent `Chunks` objects and, before the first chunk of a new document, an absent
 `Documents` object without properties. It never updates or deletes an existing object and
 only reads the schema (a missing collection, property or type is refused before any write;
-the schema itself is #128).
+the schema itself is #128). Every inserted chunk gets `classification_provenance=UNPROCESSED`;
+both modes refuse a store without that property, so declare it first
+([`classification_provenance_schema`](#chunk-classification-status-classification_provenance_schema-590)).
+The status is not compared with the input: a chunk classified since its import still replays.
 
 ```bash
 python -m semant_demo.maintenance.chunk_ingest --check check.json chunks/             # read-only plan
