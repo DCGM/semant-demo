@@ -151,10 +151,10 @@ class SearchFraming:
     system_prompt: str = SEARCH_PROMPT
     too_large: str = "The question and the first search result are too large for the language model."
 
-    def passage(self, number: int, chunk: DocumentChunk) -> str:
-        document = getattr(chunk, "document_object", None)
-        title = (document.title if document else None) or "untitled"
-        year = f", {document.yearIssued}" if document and document.yearIssued else ""
+    def passage(self, number: int, chunk: SearchResultChunk) -> str:
+        document = chunk.document_object
+        title = document.title or "untitled"
+        year = f", {document.yearIssued}" if document.yearIssued else ""
         return f"[doc{number}] ({title}{year}) {chunk.text}\n"
 
     def question(self, passages: str, used: int, total: int, question: str) -> str:

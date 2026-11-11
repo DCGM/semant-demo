@@ -1,7 +1,7 @@
 
 # SearchChatRequest
 
-A question about search results (#245). ``chunk_ids`` are the results the page chose (the selected ones, or all loaded ones), in result order; ``criteria`` and ``user_collection_id`` are those of the search. The server reads the passages again under them, so an id the search could not have returned is left out (ADR 0006).
+A question about search results (#245). ``chunk_ids`` are the results the page chose (the first ``MAX_SEARCH_CHAT_RESULTS`` selected or loaded ones), in result order; ``criteria`` and ``user_collection_id`` are those of the search. The server reads the passages again under them, so an id the search could not have returned is left out (ADR 0006).
 
 ## Properties
 

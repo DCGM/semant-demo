@@ -446,8 +446,9 @@
         :messages="searchChat.messages.value"
         :streaming="searchChat.streaming.value"
         :scope-label="searchChatScopeLabel"
+        :disabled="!searchChatScope"
         :scope-changed="searchChat.scopeChanged.value"
-        :scope-changed-text="`The results changed. Your next question starts a new conversation, ${searchChatScopeText}.`"
+        :scope-changed-text="searchChatScope ? `The results changed. Your next question starts a new conversation, ${searchChatScopeText}.` : 'The results changed. Your next question starts a new conversation.'"
         empty-text="Ask a question about these search results. Answers cite them as S1, S2…; click one to show the result and open it in the Document panel."
         input-label="Ask about these results"
         :coverage-text="(coverage) => `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} results.`"
@@ -501,7 +502,7 @@ import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vu
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
-import { useScopedChat, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
+import { MAX_SEARCH_CHAT_RESULTS, useScopedChat, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
 import { plural } from 'src/shared/plural'
 import SearchResultCard from './SearchResultCard.vue'
 import DocumentResultCard from './DocumentResultCard.vue'
@@ -741,13 +742,14 @@ function setSelected (chunkId: string, selected: boolean) {
 // Summarization (right sidebar): works on the loaded results or the selected ones
 const searchSummary = reactive(useSearchSummary(searchContext, selectedResults))
 
-// Chat (right sidebar, #245, ADR 0012): about the selected results, or all loaded ones. A new
-// search, Load more or a selection change is a new scope: the panel keeps the old conversation
-// with a notice, and the next question starts a new one.
-const searchChatResults = computed(() => {
+// Chat (right sidebar, #245, ADR 0012): about the first MAX_SEARCH_CHAT_RESULTS of the selected
+// results, or of the loaded ones. A new search or a selection change is a new scope: the panel
+// keeps the old conversation with a notice, and the next question starts a new one.
+const searchChatCandidates = computed(() => {
   const selected = new Set(selectedResults.value)
   return selected.size ? results.value.filter(result => selected.has(result.id)) : results.value
 })
+const searchChatResults = computed(() => searchChatCandidates.value.slice(0, MAX_SEARCH_CHAT_RESULTS))
 const searchChatScope = computed<SearchChatScope | null>(() => {
   const current = passages.results.value
   if (!current || !searchChatResults.value.length) return null
@@ -760,10 +762,14 @@ const searchChatScope = computed<SearchChatScope | null>(() => {
 })
 const searchChatScopeText = computed(() => {
   const count = searchChatResults.value.length
-  if (selectedResults.value.length) return `about ${plural(count, 'selected result')}`
+  const total = searchChatCandidates.value.length
+  const kind = selectedResults.value.length ? 'selected' : 'loaded'
+  if (total > count) return `about the first ${count} of ${total} ${kind} results`
+  if (kind === 'selected') return `about ${plural(count, 'selected result')}`
   return count === 1 ? 'about the one loaded result' : `about all ${count} loaded results`
 })
-const searchChatScopeLabel = computed(() => `Asking ${searchChatScopeText.value}`)
+const searchChatScopeLabel = computed(() =>
+  searchChatScope.value ? `Asking ${searchChatScopeText.value}` : 'Waiting for the search results…')
 const searchChat = useScopedChat(() => searchChatScope.value)
 
 /** A citation shows its result and opens it in the Document panel; it never changes the selection (the scope). */
@@ -863,6 +869,8 @@ watch(
       // user's collections.
       passages.cancel()
       documents.cancel()
+      // The conversation may quote the previous user's collections.
+      searchChat.reset()
       selectedResults.value = []
       draftCollection.value = null
       appliedCollection.value = null

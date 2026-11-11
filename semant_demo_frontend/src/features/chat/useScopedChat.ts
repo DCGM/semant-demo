@@ -8,11 +8,11 @@ import { ContextChatRequestToJSON, SearchChatRequestToJSON, type ChatTurn, type 
  * page owns the scope and passes it in: a document of a collection (#248) or search
  * results (#245).
  *
- * The conversation lives in memory only. A scope change stops a running answer and keeps
- * the conversation with `scopeChanged` set, so the panel can say what the next question is
- * about; that question then starts an empty conversation (ADR 0012 decision 1). Unmount and
- * *New conversation* start an empty one at once. A late event of an old request never
- * reaches a newer conversation.
+ * The conversation lives in memory only. A change of the search scope stops a running answer
+ * and keeps the conversation with `scopeChanged` set, so the panel can say what the next
+ * question is about; that question then starts an empty conversation (ADR 0012 decision 1).
+ * Another document is another page: its conversation starts empty at once, as do unmount and
+ * *New conversation*. A late event of an old request never reaches a newer conversation.
  *
  * Each answer is streamed as NDJSON events (`delta`, `sources`, `end` or `error`, see
  * `features/chat/schemas.py`). Its `[docN]` citations are numbered per request; the
@@ -92,6 +92,8 @@ type ChatEvent =
 export const MAX_HISTORY_TURNS = 40
 /** Longest question the backend takes (`MAX_QUESTION_CHARS`, `features/chat/schemas.py`). */
 export const MAX_QUESTION_CHARS = 4000
+/** Most search results one question is about (`MAX_SEARCH_CHAT_RESULTS` of the backend). */
+export const MAX_SEARCH_CHAT_RESULTS = 20
 const CITATION = /\[doc([1-9][0-9]*)]/g
 const FAILED = 'The assistant could not answer.'
 const INTERRUPTED = 'The answer was interrupted.'
@@ -188,9 +190,9 @@ export function useScopedChat (scope: () => ChatScope | null) {
     scopeChanged.value = false
   }
 
-  /** ADR 0012 decision 1: the old conversation stays visible until the next question. */
+  /** ADR 0012 decision 1: the old search conversation stays visible until the next question. */
   function changeScope () {
-    if (!messages.value.length) {
+    if (!messages.value.length || scope()?.kind === 'document') {
       reset()
       return
     }

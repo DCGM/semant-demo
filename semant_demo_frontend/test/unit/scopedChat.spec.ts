@@ -168,18 +168,15 @@ describe('useScopedChat', () => {
       .toEqual(['So far', 'stopped', false])
   })
 
-  it('keeps the conversation on a scope change until the next question, which starts a new one the old answer cannot reach', async () => {
+  it('starts an empty conversation on another document, and the old answer cannot reach it', async () => {
     const { chat, documentId } = mountChat()
     const old = chat.ask('About d1')
-    await flush()
-    streams[0].push({ event: 'delta', text: 'So far' })
     await flush()
 
     documentId.value = 'd2'
     await nextTick()
-    // ADR 0012 decision 1: stopped, still shown, marked as about the old scope.
-    expect(chat.messages.value.map(m => [m.text, m.status])).toEqual([['About d1', 'done'], ['So far', 'stopped']])
-    expect([chat.streaming.value, chat.scopeChanged.value]).toEqual([false, true])
+    expect(chat.messages.value).toEqual([])
+    expect([chat.streaming.value, chat.scopeChanged.value]).toEqual([false, false])
 
     const current = chat.ask('About d2')
     await flush()
@@ -193,22 +190,11 @@ describe('useScopedChat', () => {
     streams[1].close()
     await current
     expect(requests[1].url).toMatch(/\/documents\/d2\/chat$/)
-    expect((requests[1].body as { history: unknown[] }).history).toEqual([])
     expect(chat.messages.value.map(m => m.text)).toEqual(['About d2', 'answer about d2'])
-    expect(chat.scopeChanged.value).toBe(false)
   })
 
-  it('starts empty on a scope change while nothing was asked', async () => {
-    const { chat, documentId } = mountChat()
-
-    documentId.value = 'd2'
-    await nextTick()
-
-    expect([chat.messages.value, chat.scopeChanged.value]).toEqual([[], false])
-  })
-
-  it('asks about search results by id under the search criteria, and a new selection is a new scope', async () => {
-    const chunkIds = ref<string[]>(['r1', 'r2', 'r3'])
+  function mountSearchChat (ids: string[]) {
+    const chunkIds = ref(ids)
     const scope = effectScope()
     const chat = scope.run(() => useScopedChat((): SearchChatScope => ({
       kind: 'search',
@@ -216,6 +202,49 @@ describe('useScopedChat', () => {
       criteria: { textQuery: 'fire', documentFilters: { languages: ['ces'] } },
       userCollectionId: 'c1'
     })))!
+    return { chat, chunkIds, scope }
+  }
+
+  it('keeps a search conversation on a scope change until the next question, which starts a new one the old answer cannot reach', async () => {
+    const { chat, chunkIds } = mountSearchChat(['r1', 'r2'])
+    const old = chat.ask('About r1, r2')
+    await flush()
+    streams[0].push({ event: 'delta', text: 'So far' })
+    await flush()
+
+    chunkIds.value = ['r2']
+    await nextTick()
+    // ADR 0012 decision 1: stopped, still shown, marked as about the old scope.
+    expect(chat.messages.value.map(m => [m.text, m.status])).toEqual([['About r1, r2', 'done'], ['So far', 'stopped']])
+    expect([chat.streaming.value, chat.scopeChanged.value]).toEqual([false, true])
+
+    const current = chat.ask('About r2')
+    await flush()
+    streams[0].push({ event: 'delta', text: 'late answer' })
+    streams[0].close()
+    await old
+    expect(chat.streaming.value).toBe(true)
+
+    streams[1].push({ event: 'delta', text: 'answer about r2' })
+    streams[1].push({ event: 'end', coverage: 'all', used_chunks: 1, total_chunks: 1 })
+    streams[1].close()
+    await current
+    expect(requests[1].body).toMatchObject({ chunk_ids: ['r2'], history: [] })
+    expect(chat.messages.value.map(m => m.text)).toEqual(['About r2', 'answer about r2'])
+    expect(chat.scopeChanged.value).toBe(false)
+  })
+
+  it('starts empty on a search scope change while nothing was asked', async () => {
+    const { chat, chunkIds } = mountSearchChat(['r1'])
+
+    chunkIds.value = ['r2']
+    await nextTick()
+
+    expect([chat.messages.value, chat.scopeChanged.value]).toEqual([[], false])
+  })
+
+  it('asks about search results by id under the search criteria, and a new selection is a new scope', async () => {
+    const { chat, chunkIds, scope } = mountSearchChat(['r1', 'r2', 'r3'])
 
     const first = chat.ask('What burned?')
     await flush()
@@ -234,7 +263,7 @@ describe('useScopedChat', () => {
       user_collection_id: 'c1'
     })
 
-    // Load more (or another search) is a new scope too.
+    // Other results (another search) are a new scope too.
     chunkIds.value = ['r1', 'r2', 'r3', 'r4']
     await nextTick()
     expect([chat.messages.value.length, chat.scopeChanged.value]).toEqual([2, true])

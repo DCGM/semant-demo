@@ -84,7 +84,7 @@
         color="primary"
         icon="send"
         aria-label="Send the question"
-        :disable="!draft.trim()"
+        :disable="disabled || !draft.trim()"
         data-testid="chat-send"
         @click="send"
       />
@@ -107,6 +107,8 @@ const props = withDefaults(defineProps<{
   streaming: boolean
   /** What the next question is about, e.g. "Asking about this document". */
   scopeLabel: string
+  /** Nothing to ask about yet (e.g. search results still loading): the question cannot be sent. */
+  disabled?: boolean
   /** The scope changed since the shown conversation (`useScopedChat().scopeChanged`). */
   scopeChanged?: boolean
   /** Shown while `scopeChanged`: what the next question, in a new conversation, is about. */
@@ -116,6 +118,7 @@ const props = withDefaults(defineProps<{
   /** The note under an answer based on only a part of the scope. */
   coverageText?: CoverageText
 }>(), {
+  disabled: false,
   scopeChanged: false,
   scopeChangedText: '',
   emptyText: 'Ask a question about this document. Answers cite its passages as S1, S2…; click one to show it in the text.',
@@ -136,7 +139,7 @@ const listRef = ref<HTMLElement | null>(null)
 
 function send () {
   const question = draft.value.trim()
-  if (!question || props.streaming) return
+  if (!question || props.streaming || props.disabled) return
   emit('ask', question)
   draft.value = ''
 }
