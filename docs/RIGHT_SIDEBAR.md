@@ -159,6 +159,11 @@ import NotesPanel from 'src/features/notes/NotesPanel.vue'
 
 `label`, `icon`, `order` and `busy` follow the props; `id` is fixed when the panel mounts.
 
+The default slot gets `visible`: whether the content can be seen now (its page is shown, it
+is the active panel and the sidebar is open, not a rail). A tool that does layout work such
+as scrolling waits for it, as hidden content does not scroll (`v-slot="{ visible }"`, passed to
+`ChunkContextPanel`).
+
 To show a tool only in some situations, use `v-if` on `RightSidebarPanel`. For example,
 the search page shows AI Chat only while there are results or a search is running:
 
@@ -285,7 +290,9 @@ another document, or a passage whose read failed, starts from nothing. The panel
 target of the same document from its side, so earlier text moves up and later text down: a
 target more than a screen away, or on the wrong side after the passage was replaced, is first
 put about a screen away (instantly), then scrolled to smoothly (`contextScroll.ts`;
-`prefers-reduced-motion` scrolls without animation). `extend()` reads only the neighbours of the passage's edge chunk with
+`prefers-reduced-motion` scrolls without animation). A request to show the target waits
+until the panel is `visible` and laid out (the next frame), so reopening a loaded result
+behind another tab or in a closed overlay still brings it into view. `extend()` reads only the neighbours of the passage's edge chunk with
 `GET /api/documents/{document_id}/chunks/{chunk_id}/adjacent?direction=before|after&limit=5`
 (chunks and `has_more`; no document metadata or count). Both need the chunk to belong to the
 document (404 otherwise) and read at most 50 chunks per side. At most 60 chunks are kept;

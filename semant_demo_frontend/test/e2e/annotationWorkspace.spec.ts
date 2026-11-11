@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport } from './support'
+import { animatedPart, longDocument, recordScroll } from './longDocument'
 
 // The collection's annotation workspace (#329): one aligned line per annotation (KWIC),
 // filters, distinct selection and source context in the shared right sidebar, and the
@@ -134,6 +135,124 @@ test('switching between annotations of one document keeps the passage in place',
   await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Prahy')
   await expect(panel(page).getByTestId('chunk-context-header')).toContainText(fixture.document('letters').properties.title)
   expect(windowReads).toHaveLength(2)
+})
+
+test.describe('switching annotations of one long document', () => {
+  // #493: the motion shows whether the other annotation is earlier or later, and a long
+  // distance is jumped over instead of animated. The chronicle is answered as 40 long
+  // paragraphs (longDocument): Jan Novák in paragraph 2, Brně further on.
+  const novak = fixture.chunk('chronicle_1').id
+  const brno = fixture.chunk('chronicle_2').id
+  const mark = (page: Page) => panel(page).getByTestId('chunk-context-mark')
+
+  /** At most one instant jump, and the animated rest covers less than a screen. */
+  function expectShortMotion (trace: number[], screen: number, direction: 1 | -1) {
+    const steps = trace.slice(1).map((top, i) => top - trace[i])
+    expect(steps.filter(step => Math.abs(step) > screen / 2).length, `one jump at most: ${trace.join(' ')}`).toBeLessThanOrEqual(1)
+    const { from, to } = animatedPart(trace, screen / 2)
+    expect(Math.sign(to - from), `animated ${direction > 0 ? 'down' : 'up'}: ${trace.join(' ')}`).toBe(direction)
+    expect(Math.abs(to - from), `only the lead-in is animated: ${trace.join(' ')}`).toBeLessThan(screen)
+  }
+
+  test('within the shown passage: later scrolls down, earlier up, far apart jumps', async ({ page }) => {
+    const reads = await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 20 } })
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    await row(page, 'Jan Novák').click()
+    await expect(mark(page)).toHaveText('Jan Novák')
+    // Read on until Brně is in the passage (paragraphs 0–25).
+    for (let i = 0; i < 4; i++) {
+      await panel(page).getByRole('button', { name: 'Show later text' }).click()
+      await expect(panel(page).getByRole('button', { name: 'Show later text' })).toBeEnabled()
+    }
+    await expect(panel(page).locator(`[data-chunk-id="${brno}"]`)).toHaveCount(1)
+    const screen = await (await recordScroll(panel(page))).height()
+    // Back at Jan Novák (extending left the passage at its end).
+    await mark(page).evaluate(el => el.scrollIntoView({ block: 'center' }))
+    await expect(mark(page)).toBeInViewport()
+
+    let trace = await recordScroll(panel(page))
+    await row(page, 'Brně').click()
+    await expect(mark(page)).toHaveText('Brně')
+    let path = await trace.stop()
+    expect(path[path.length - 1], 'Brně is far below').toBeGreaterThan(path[0] + screen)
+    expectShortMotion(path, screen, 1)
+    await expect(mark(page)).toBeInViewport()
+
+    trace = await recordScroll(panel(page))
+    await row(page, 'Jan Novák').click()
+    await expect(mark(page)).toHaveText('Jan Novák')
+    path = await trace.stop()
+    expect(path[path.length - 1]).toBeLessThan(path[0] - screen)
+    expectShortMotion(path, screen, -1)
+    await expect(mark(page)).toBeInViewport()
+    expect(reads.window, 'no passage read within the shown passage').toBe(1)
+  })
+
+  test('outside the shown passage: the old text stays while loading, the new one comes in from its side', async ({ page }) => {
+    const reads = await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 30 }, delay: 800 })
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    await row(page, 'Jan Novák').click()
+    await expect(mark(page)).toHaveText('Jan Novák')
+    const screen = await (await recordScroll(panel(page))).height()
+
+    let trace = await recordScroll(panel(page))
+    await row(page, 'Brně').click()
+    // The previous passage (paragraphs 0–5) stays while paragraphs 27–33 load.
+    await expect(panel(page).getByTestId('chunk-context-reloading')).toBeVisible()
+    await expect(panel(page).locator('.chunk-context__chunk').first()).toContainText('[Paragraph 0]')
+    await expect(panel(page)).not.toContainText('Loading the document…')
+    await expect(panel(page).getByRole('button', { name: 'Show later text' })).toBeDisabled()
+    await expect(mark(page)).toHaveText('Brně')
+    await expect(panel(page).getByTestId('chunk-context-reloading')).toHaveCount(0)
+    let path = await trace.stop()
+    expectShortMotion(path, screen, 1)
+    await expect(mark(page)).toBeInViewport()
+
+    trace = await recordScroll(panel(page))
+    await row(page, 'Jan Novák').click()
+    await expect(mark(page)).toHaveText('Jan Novák')
+    path = await trace.stop()
+    expectShortMotion(path, screen, -1)
+    await expect(mark(page)).toBeInViewport()
+    expect(reads.window).toBe(3)
+  })
+
+  test('an annotation at the end of a tall paragraph is scrolled into view', async ({ page }) => {
+    // Regression: the panel showed the start of a tall paragraph, its annotation below the screen.
+    await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 30 }, lead: { [brno]: 12 } })
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    await row(page, 'Jan Novák').click()
+    await expect(mark(page)).toHaveText('Jan Novák')
+    await row(page, 'Brně').click()
+    await expect(mark(page)).toHaveText('Brně')
+    const tall = await panel(page).locator(`[data-chunk-id="${brno}"]`).evaluate(el => el.getBoundingClientRect().height)
+    expect(tall, 'the paragraph is taller than the screen').toBeGreaterThan(1000)
+    await expect(mark(page)).toBeInViewport()
+  })
+
+  test('with reduced motion the passage moves at once', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 20 } })
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    await row(page, 'Jan Novák').click()
+    await expect(mark(page)).toHaveText('Jan Novák')
+    for (let i = 0; i < 4; i++) {
+      await panel(page).getByRole('button', { name: 'Show later text' }).click()
+      await expect(panel(page).getByRole('button', { name: 'Show later text' })).toBeEnabled()
+    }
+    await mark(page).evaluate(el => el.scrollIntoView({ block: 'center' }))
+
+    const trace = await recordScroll(panel(page))
+    await row(page, 'Brně').click()
+    await expect(mark(page)).toHaveText('Brně')
+    const path = await trace.stop()
+    expect(path, `one step: ${path.join(' ')}`).toHaveLength(2)
+    await expect(mark(page)).toBeInViewport()
+  })
 })
 
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {

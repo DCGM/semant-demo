@@ -172,6 +172,9 @@ const props = withDefaults(defineProps<{
   /** The full document view at the target (#545, workspace/documentLink.ts); no link by default. */
   openLink?: RouteLocationRaw | null
   emptyText?: string
+  /** Whether the panel can be seen now (e.g. its sidebar tab is active and open): a request
+   * to show the target waits until it is, as scrolling hidden content does nothing. */
+  visible?: boolean
 }>(), {
   hasBefore: false,
   hasAfter: false,
@@ -184,7 +187,8 @@ const props = withDefaults(defineProps<{
   targetName: 'Matched passage',
   highlight: null,
   openLink: null,
-  emptyText: 'Nothing selected.'
+  emptyText: 'Nothing selected.',
+  visible: true
 })
 
 const emit = defineEmits<{
@@ -280,9 +284,12 @@ function directionTo (documentId: string | undefined, order: number | null | und
   return Math.sign(order - lastScrolled.order) as -1 | 0 | 1
 }
 
-watch(() => [props.focusRequest, props.loading, targetLoaded.value] as const, async ([, loading, loaded]) => {
-  if (loading || !loaded || !scrollPending) return
+watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visible] as const, async ([, loading, loaded, visible]) => {
+  if (loading || !loaded || !visible || !scrollPending) return
   await nextTick()
+  // A panel just made visible is laid out in the next frame.
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  if (!props.visible || !scrollPending) return
   const el = props.targetChunkId ? chunkEls.get(props.targetChunkId) : undefined
   if (!el) return
   scrollPending = false
@@ -294,11 +301,14 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value] as const, as
   lastScrolled = documentId && order != null && props.targetChunkId
     ? { documentId, chunkId: props.targetChunkId, order }
     : null
-  // Clear of the sticky header; a match taller than half the screen shows from its start.
+  // A marked range (an annotation) is what is shown, not its chunk: in a long chunk the
+  // chunk's start can be a screen away from it. Clear of the sticky header; a target
+  // taller than half the screen shows from its start.
+  const target = el.querySelector<HTMLElement>('[data-testid="chunk-context-mark"]') ?? el
   const inset = (headerEl.value?.offsetHeight ?? 0) + 8
-  el.style.scrollMarginTop = `${inset}px`
-  const tall = el.getBoundingClientRect().height > window.innerHeight / 2
-  scrollToTarget(el, direction, tall, inset, replaced)
+  target.style.scrollMarginTop = `${inset}px`
+  const tall = target.getBoundingClientRect().height > window.innerHeight / 2
+  scrollToTarget(target, direction, tall, inset, replaced)
 }, { immediate: true })
 </script>
 

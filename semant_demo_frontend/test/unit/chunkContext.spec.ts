@@ -346,16 +346,21 @@ describe('ChunkContextPanel', () => {
   const document = { id: 'doc-1', title: 'Kronika', author: ['Jan Novák'], yearIssued: 1921 }
   let scroll: ReturnType<typeof vi.fn>
   let scrolled: Element[] // the elements scrolled into view, in order
+  let originalRaf: typeof globalThis.requestAnimationFrame
 
   beforeEach(() => {
     // jsdom has no scrollIntoView.
     scrolled = []
     scroll = vi.fn(function (this: Element) { scrolled.push(this) })
     HTMLElement.prototype.scrollIntoView = scroll
+    // The panel scrolls in the frame after it is laid out; here at once (flushPromises).
+    originalRaf = globalThis.requestAnimationFrame
+    globalThis.requestAnimationFrame = (frame: FrameRequestCallback) => { void Promise.resolve().then(() => frame(performance.now())); return 0 }
   })
 
   afterEach(() => {
     delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
+    globalThis.requestAnimationFrame = originalRaf
   })
 
   function mountPanel (props: Record<string, unknown> = {}) {
@@ -428,6 +433,31 @@ describe('ChunkContextPanel', () => {
     await wrapper.setProps({ chunks: [chunk(2), ...chunks] })
     await flushPromises()
     expect(scroll).toHaveBeenCalledTimes(2)
+  })
+
+  it('scrolls to the marked range, not to the start of its chunk', async () => {
+    // Regression: in a long chunk an annotation at its end stayed below the screen.
+    const wrapper = mountPanel({ highlight: { chunkId: 'doc-1-c4', start: 10, end: 11 } })
+    await flushPromises()
+    expect(scrolled.at(-1)).toBe(wrapper.get('[data-testid="chunk-context-mark"]').element)
+  })
+
+  it('waits with a focus request until the panel is visible', async () => {
+    // Review of #628: reopening a loaded target is immediate, so it can land while the
+    // Document tab is hidden; the scroll must wait for it to be shown.
+    const wrapper = mountPanel({ visible: false })
+    await flushPromises()
+    expect(scroll).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ visible: true })
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(1)
+
+    // Hidden again, then shown: no new request, so no scroll.
+    await wrapper.setProps({ visible: false })
+    await wrapper.setProps({ visible: true })
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(1)
   })
 
   it('offers extension, return and retry as events', async () => {
