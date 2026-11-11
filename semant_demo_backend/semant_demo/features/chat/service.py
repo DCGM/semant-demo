@@ -264,10 +264,7 @@ async def prepare_document_chat(documents: DocumentRepository, collections: User
     collection. Raises ``LlmInputTooLarge`` (413) when even the first chunk does not fit."""
     detail = await documents_service.read_chunks_in_collection(documents, collections, user, document_id,
                                                                 collection_id)
-    chunks = sorted((chunk for chunk in detail.chunks if chunk.in_user_collection),
-                    key=lambda chunk: (chunk.order is None, chunk.order))
-    if not chunks:
-        raise NotFoundError("The document has no passages in this collection.")
+    chunks = documents_service.chunks_in_collection(detail)
     limits = llm.catalog.policy(FEATURE).limits
     return fit_request(DocumentFraming(detail.document.title), chunks, request, limits.max_input_tokens)
 

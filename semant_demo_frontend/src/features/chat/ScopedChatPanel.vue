@@ -55,29 +55,47 @@
       </template>
     </div>
 
-    <div v-if="summaryLength" class="row items-center no-wrap q-gutter-x-sm q-mt-sm" data-testid="chat-summary-controls">
-      <q-btn
-        outline no-caps
-        color="secondary"
-        icon="summarize"
-        :label="summarizeLabel"
-        :disable="streaming || disabled"
-        data-testid="chat-summarize"
-        @click="emit('summarize')"
-      />
-      <q-select
-        :model-value="summaryLength"
-        :options="SUMMARY_LENGTH_OPTIONS"
-        label="Length"
+    <!-- Suggested messages: the summaries always, the page's questions while nothing was asked. -->
+    <div
+      v-if="summaries || shownQuestions.length"
+      class="row q-gutter-xs q-mt-sm suggested-messages"
+      role="group"
+      aria-label="Suggested messages"
+      data-testid="chat-suggestions"
+    >
+      <template v-if="summaries">
+        <q-chip
+          v-for="option in SUMMARY_LENGTH_OPTIONS"
+          :key="option.value"
+          clickable
+          outline
+          dense
+          color="secondary"
+          icon="summarize"
+          role="button"
+          :aria-disabled="streaming || disabled"
+          :disable="streaming || disabled"
+          data-testid="chat-summarize"
+          @click="emit('summarize', option.value)"
+        >
+          {{ summaryPrompt(option.value) }}
+        </q-chip>
+      </template>
+      <q-chip
+        v-for="question in shownQuestions"
+        :key="question"
+        clickable
+        outline
         dense
-        outlined
-        emit-value
-        map-options
-        class="col"
-        :disable="streaming"
-        data-testid="chat-summary-length"
-        @update:model-value="emit('update:summaryLength', $event)"
-      />
+        color="primary"
+        role="button"
+        :aria-disabled="streaming || disabled"
+        :disable="streaming || disabled"
+        data-testid="chat-suggested-question"
+        @click="emit('ask', question)"
+      >
+        {{ question }}
+      </q-chip>
     </div>
 
     <div class="row items-end no-wrap q-gutter-x-sm q-mt-sm">
@@ -118,10 +136,10 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
 import type { SummaryLength } from 'src/generated/api'
-import { SUMMARY_LENGTH_OPTIONS } from 'src/shared/summaryLength'
+import { SUMMARY_LENGTH_OPTIONS, summaryPrompt } from 'src/shared/summaryLength'
 import { chatTokens, MAX_QUESTION_CHARS, type ChatCoverage, type ChatMessage, type ChatSource } from './useScopedChat'
 
 // Props-in/events-out only (docs/RIGHT_SIDEBAR.md section 3): the page owns
@@ -144,12 +162,13 @@ const props = withDefaults(defineProps<{
   inputLabel?: string
   /** The note under an answer based on only a part of the scope. */
   coverageText?: CoverageText
-  /** With a length, the panel offers *Summarize* (a summary of the scope as the next answer). */
-  summaryLength?: SummaryLength | null
-  summarizeLabel?: string
+  /** Offer *Summarize briefly / in detail*: a summary of the scope as the next answer. */
+  summaries?: boolean
+  /** Questions suggested while the conversation is empty (or its scope changed). */
+  suggestedQuestions?: readonly string[]
 }>(), {
-  summaryLength: null,
-  summarizeLabel: 'Summarize',
+  summaries: false,
+  suggestedQuestions: () => [],
   disabled: false,
   scopeChanged: false,
   scopeChangedText: '',
@@ -164,11 +183,12 @@ const emit = defineEmits<{
   stop: []
   cite: [source: ChatSource]
   'new-conversation': []
-  summarize: []
-  'update:summaryLength': [value: SummaryLength]
+  summarize: [length: SummaryLength]
 }>()
 
 const draft = ref('')
+const shownQuestions = computed(() =>
+  (!props.messages.length || props.scopeChanged) ? props.suggestedQuestions : [])
 const listRef = ref<HTMLElement | null>(null)
 
 function send () {
@@ -234,6 +254,18 @@ watch(() => {
 }
 
 .chat-message--assistant {
+  padding: 2px 0;
+}
+
+/* A long suggested question wraps inside the panel instead of running past its edge. */
+.suggested-messages .q-chip {
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+}
+
+.suggested-messages :deep(.q-chip__content) {
+  white-space: normal;
   padding: 2px 0;
 }
 </style>

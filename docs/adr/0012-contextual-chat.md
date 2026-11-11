@@ -47,7 +47,7 @@ the backend. Already in place:
    - Scope: the selected results if any are checked, otherwise all retrieved results of the
      current search. The panel always says which ("Asking about 3 selected results",
      "Asking about all 50 loaded results").
-   - "All results" are the results loaded on the page, as Summary uses them, not the whole
+   - "All results" are the results loaded on the page, not the whole
      ranking behind *Load more* (maintainer, 2026-11-11). For now a question is about at most
      the first 20 of them (the first page), or of the selected ones, and the panel says so
      ("Asking about the first 20 of 35 selected results"); *Load more* therefore does not
@@ -60,10 +60,11 @@ the backend. Already in place:
      silently (ADR 0006).
    - **Summary is part of the chat** (maintainer, 2026-11-11; this replaces "the Summary
      panel stays a separate tool" with a *Discuss in chat* action). One *AI Chat* panel on
-     Search and in the document reader: *Summarize* (with its Length option) summarizes
-     exactly the chat's scope, and the summary is the conversation's answer to
-     "Summarize (short)", its citations the answer's sources, so follow-up questions ask
-     about it. The summary scopes Focused/Broader/Extensive are gone; the document summary
+     Search and in the document reader: the suggested messages *Summarize briefly* and
+     *Summarize in detail* (always shown) summarize exactly the chat's scope, and the
+     summary is the conversation's answer to that message, its citations the answer's
+     sources, so follow-up questions ask about it. Each page also suggests a few questions
+     of its own while the conversation is empty. The summary scopes Focused/Broader/Extensive are gone; the document summary
      covers only the document's chunks in the collection, as the chat does (ADR 0006).
    - Signed-out users may use it under the daily AI allowance and its warnings, like Summary
      and the Chat assistant.

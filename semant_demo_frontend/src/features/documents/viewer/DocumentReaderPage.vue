@@ -456,10 +456,10 @@ watch(highlightedAutoSpanId, (spanId) => {
   }
 })
 
-// A clicked citation in the document Summary or Chat panel (siblings of this route inside
-// DocumentViewLayout) scrolls the reader to the cited chunk, loading it into the displayed
-// window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — a citation can
-// point anywhere in the document, but the reader only displays a bounded window by default. This
+// A clicked citation in the AI Chat panel (a summary or an answer; a sibling of this route
+// inside DocumentViewLayout) scrolls the reader to the cited chunk, loading it into the
+// displayed window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — the
+// reader only displays a bounded window by default. This
 // is otherwise an orthogonal, read-only navigation action: it must not touch
 // annotations/tagEditing state (no selection clearing, no popover changes, no span
 // highlight changes) or navigate, only scroll/load — so tag-editing state in progress is left

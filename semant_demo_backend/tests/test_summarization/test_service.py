@@ -39,6 +39,18 @@ async def test_results_summary_uses_the_search_summary_tier():
     assert feature == "search_summary" and "[doc1] Jan Novák byl kronikář." in messages[1]["content"]
 
 
+async def test_a_failed_results_summary_is_flagged_with_the_fallback_text():
+    def fail(messages):
+        raise RuntimeError("provider down")
+
+    summarize = summarizer(FakeLlm(fail))
+    response = await service.summarize(summarize, "results", results("Jan Novák byl kronikář."))
+    succeeded = await service.summarize(summarizer(FakeLlm("Souhrn [doc1].")), "results", results("Text."))
+
+    assert (response.failed, response.summary) == (True, summarize.gen_results_summary_error_summary)
+    assert succeeded.failed is False
+
+
 async def test_only_results_summaries_exist():
     with pytest.raises(InvalidRequestError, match="Unknown summary type: titles"):
         await service.summarize(summarizer(FakeLlm()), "titles", results())

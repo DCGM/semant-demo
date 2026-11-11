@@ -44,7 +44,7 @@ test('double-clicking a result shows it highlighted in its document', async ({ p
 
   // The AI Chat panel still works next to it.
   await page.getByRole('listitem', { name: 'AI Chat' }).click()
-  await page.getByRole('button', { name: 'Summarize results' }).click()
+  await page.getByRole('button', { name: 'Summarize briefly' }).click()
   await expect(page.getByTestId('chat-answer')).toContainText('Fake summary of')
 
   // A new search closes the old result's context.

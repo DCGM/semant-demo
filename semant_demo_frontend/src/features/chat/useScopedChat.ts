@@ -71,14 +71,21 @@ export interface ChatMessage {
   coverage?: ChatCoverage
 }
 
-/** An answer that was not streamed (a summary): its text, the chunks its `[docN]` cite and its coverage. */
+/**
+ * An answer that was not streamed (a summary): its text, the chunks its `[docN]` cite and
+ * its coverage, or `error` when it failed (the answer then shows only the error and is not
+ * sent back as history).
+ */
 export interface ChatAnswer {
   text: string
   sources: Omit<ChatSource, 'label'>[]
   coverage?: ChatCoverage
+  error?: string
 }
 
 interface Turn {
+  /** The question as shown and sent (trimmed). */
+  prompt: string
   scope: ChatScope
   history: ChatTurn[]
   reply: ChatMessage
@@ -261,7 +268,8 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
    * one place for the scope-change reset, the abort, the guard against late events and the
    * error message, shared by questions and summaries.
    */
-  async function runTurn (prompt: string, answer: (turn: Turn) => Promise<void>): Promise<void> {
+  async function runTurn (text: string, answer: (turn: Turn) => Promise<void>): Promise<void> {
+    const prompt = text.trim()
     const current = scope()
     if (!prompt || !current || streaming.value) return
     if (scopeChanged.value) reset()
@@ -277,7 +285,7 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
     streaming.value = true
 
     try {
-      await answer({ scope: current, history, reply, isCurrent, signal: controller.signal })
+      await answer({ prompt, scope: current, history, reply, isCurrent, signal: controller.signal })
       if (isCurrent() && reply.status === 'streaming') {
         reply.status = 'interrupted'
         reply.error = INTERRUPTED
@@ -307,8 +315,7 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
   }
 
   async function ask (text: string): Promise<void> {
-    await runTurn(text.trim(), async ({ scope: current, history, reply, isCurrent, signal }) => {
-      const question = text.trim()
+    await runTurn(text, async ({ prompt: question, scope: current, history, reply, isCurrent, signal }) => {
       const request = chatRequest(current, question, history)
       await postNdjson(request.path, request.body, {
         signal,
@@ -349,6 +356,11 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
     await runTurn(prompt, async ({ scope: current, reply, isCurrent, signal }) => {
       const answer = await run(current, signal)
       if (!isCurrent() || reply.status !== 'streaming') return
+      if (answer.error) {
+        reply.error = answer.error
+        reply.status = 'error'
+        return
+      }
       reply.text = answer.text
       reply.sources = labelled(answer.sources)
       reply.coverage = answer.coverage

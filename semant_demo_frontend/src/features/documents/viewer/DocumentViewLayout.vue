@@ -52,8 +52,8 @@
         :streaming="documentChat.streaming.value"
         scope-label="Asking about this document's passages in the collection"
         empty-text="Summarize this document or ask a question about it. Answers cite its passages as S1, S2…; click one to show it in the text."
-        summarize-label="Summarize document"
-        v-model:summary-length="documentSummaryLength"
+        summaries
+        :suggested-questions="DOCUMENT_CHAT_QUESTIONS"
         @summarize="summarizeDocument"
         @ask="documentChat.ask"
         @stop="documentChat.stop"
@@ -99,7 +99,7 @@ import { citeInReader } from 'src/features/documents/readerCitation'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
 import useScopedChat, { citedSources, type ChatAnswer, type ChatScope } from 'src/features/chat/useScopedChat'
 import { useApi } from 'src/shared/api'
-import { SUMMARY_LENGTH_DEFAULT, summaryPrompt } from 'src/shared/summaryLength'
+import { summaryPrompt } from 'src/shared/summaryLength'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import DocumentHeader from 'src/features/documents/workspace/DocumentHeader.vue'
 import { documentLink } from 'src/features/documents/workspace/documentLink'
@@ -138,10 +138,12 @@ const collectionUnavailable = ref(false)
 // Summaries are the chat's answers (#245): only the document's chunks in the collection, the
 // chat's scope; a long document's summary of its first chunks says so as partial coverage.
 const api = useApi().default
-const documentSummaryLength = ref<SummaryLength>(SUMMARY_LENGTH_DEFAULT)
+const DOCUMENT_CHAT_QUESTIONS = [
+  'Who are the people and places mentioned, and what is their role?',
+  'When and where does this take place?'
+]
 
-function summarizeDocument() {
-  const length = documentSummaryLength.value
+function summarizeDocument(length: SummaryLength) {
   void documentChat.summarize(summaryPrompt(length), async (scope: ChatScope, signal): Promise<ChatAnswer> => {
     if (scope.kind !== 'document') throw new Error('Not a document scope.')
     const data = await api.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(

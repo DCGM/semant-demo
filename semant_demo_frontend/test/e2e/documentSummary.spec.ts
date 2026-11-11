@@ -10,7 +10,7 @@ import { apiToken, chunkText, ensureLoggedIn, fixture, openDocument, sidebarPane
 // (ADR 0006).
 
 const answers = (page: Page) => page.getByTestId('chat-answer')
-const summarize = (page: Page) => page.getByRole('button', { name: 'Summarize document' })
+const summarize = (page: Page) => page.getByRole('button', { name: 'Summarize briefly' })
 // The summary request with any query string (it carries the length level, #360).
 const SUMMARY_URL = /\/documents\/[^/]+\/summary(\?|$)/
 
@@ -30,7 +30,7 @@ test('summarizing shows citations, and the AI Chat panel (switching to it, Summa
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 
   await summarize(page).click()
-  await expect(page.getByTestId('chat-question')).toHaveText('Summarize (short)')
+  await expect(page.getByTestId('chat-question')).toHaveText('Summarize briefly')
   await expect(answers(page)).toHaveText('Fake summary of 1 passage(s); last [S1].')
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 
@@ -57,10 +57,62 @@ test('the summary covers only the chunks in the collection, and a follow-up asks
   await page.getByLabel('Ask about this document').fill('A dál?')
   await page.getByRole('button', { name: 'Send the question' }).click()
   expect((await followUp).postDataJSON().history).toEqual([
-    { role: 'user', text: 'Summarize (short)', chunk_ids: [] },
+    { role: 'user', text: 'Summarize briefly', chunk_ids: [] },
     { role: 'assistant', text: 'Fake summary of 2 passage(s); last [doc1].', chunk_ids: [fixture.chunk('chronicle_2').id] }
   ])
   await expect(answers(page)).toHaveCount(2)
+})
+
+test('a citation to a chunk outside the displayed window loads it on demand and scrolls to it', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  // In "chronicles" only chronicle_1 and chronicle_2 are displayed; chronicle_3 (order 2) is
+  // not loaded. A stubbed summary cites it, so the reader must load it
+  // (useChunkWindow.loadUntil, #358 review) before scrolling, not leave a dead link.
+  await openDocument(page, 'chronicles', 'chronicle')
+  await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+  await expect(chunkText(page, 'chronicle_3')).toHaveCount(0)
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await page.route(SUMMARY_URL, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      document_id: fixture.document('chronicle').id,
+      summary: 'Later [doc2].',
+      citations: [
+        { chunk_id: fixture.chunk('chronicle_1').id, order: 0, from_page: 1, to_page: 1 },
+        { chunk_id: fixture.chunk('chronicle_3').id, order: 2, from_page: 2, to_page: 2 }
+      ],
+      time_spent: 1,
+      total_chunks: 2,
+      summarized_chunks: 2,
+      truncated: false
+    })
+  }))
+
+  await summarize(page).click()
+  await answers(page).getByRole('link', { name: '[S1]' }).click()
+
+  await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+  await expect(chunkText(page, 'chronicle_2')).toBeVisible()
+  await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
+})
+
+test('the suggested questions are offered while nothing was asked', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Chat').click()
+  const questions = page.getByTestId('chat-suggested-question')
+  await expect(questions).toHaveText([
+    'Who are the people and places mentioned, and what is their role?',
+    'When and where does this take place?'
+  ])
+
+  await questions.last().click()
+
+  await expect(page.getByTestId('chat-question')).toHaveText('When and where does this take place?')
+  await expect(answers(page)).toHaveText('Fake summary of 2 passage(s); last [S1].')
+  await expect(questions).toHaveCount(0)
+  await expect(summarize(page)).toBeVisible()
 })
 
 test('a generation failure shows an error, not a summary that quietly used the fallback text', async ({ page }) => {
@@ -164,19 +216,15 @@ test('a user without collection read access cannot request a document summary', 
   expect(response.status()).toBe(404)
 })
 
-test('the chosen length level is sent with the summary request (#360)', async ({ page }) => {
+test('Summarize in detail sends the detailed length level (#360)', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Chat').click()
-  const length = page.getByTestId('chat-summary-length')
-  await expect(length).toContainText('Short')
 
-  await length.click()
-  await page.getByRole('option', { name: 'Detailed' }).click()
   const request = page.waitForRequest(SUMMARY_URL)
-  await summarize(page).click()
+  await page.getByRole('button', { name: 'Summarize in detail' }).click()
 
   expect(new URL((await request).url()).searchParams.get('length')).toBe('detailed')
-  await expect(page.getByTestId('chat-question')).toHaveText('Summarize (detailed)')
+  await expect(page.getByTestId('chat-question')).toHaveText('Summarize in detail')
   await expect(answers(page)).toHaveText('Fake summary of 2 passage(s); last [S1].')
 })
