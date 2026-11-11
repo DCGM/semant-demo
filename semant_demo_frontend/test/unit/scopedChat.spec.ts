@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref } from 'vue'
 
-import useScopedChat, { chatTokens, historyTurns, type ChatMessage, type ChatSource } from 'src/features/chat/useScopedChat'
+import useScopedChat, { chatTokens, historyTurns, type ChatMessage, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
 import { muteConsole } from './console'
 
-// Document chat (#248, ADR 0012): the composable's stream handling, history and scope.
+// Document chat (#248) and Search chat (#245), ADR 0012: the composable's stream handling,
+// history and scope.
 
 const encoder = new TextEncoder()
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -167,15 +168,18 @@ describe('useScopedChat', () => {
       .toEqual(['So far', 'stopped', false])
   })
 
-  it('starts an empty conversation on another document, and the old answer cannot reach it', async () => {
+  it('keeps the conversation on a scope change until the next question, which starts a new one the old answer cannot reach', async () => {
     const { chat, documentId } = mountChat()
     const old = chat.ask('About d1')
+    await flush()
+    streams[0].push({ event: 'delta', text: 'So far' })
     await flush()
 
     documentId.value = 'd2'
     await nextTick()
-    expect(chat.messages.value).toEqual([])
-    expect(chat.streaming.value).toBe(false)
+    // ADR 0012 decision 1: stopped, still shown, marked as about the old scope.
+    expect(chat.messages.value.map(m => [m.text, m.status])).toEqual([['About d1', 'done'], ['So far', 'stopped']])
+    expect([chat.streaming.value, chat.scopeChanged.value]).toEqual([false, true])
 
     const current = chat.ask('About d2')
     await flush()
@@ -189,7 +193,61 @@ describe('useScopedChat', () => {
     streams[1].close()
     await current
     expect(requests[1].url).toMatch(/\/documents\/d2\/chat$/)
+    expect((requests[1].body as { history: unknown[] }).history).toEqual([])
     expect(chat.messages.value.map(m => m.text)).toEqual(['About d2', 'answer about d2'])
+    expect(chat.scopeChanged.value).toBe(false)
+  })
+
+  it('starts empty on a scope change while nothing was asked', async () => {
+    const { chat, documentId } = mountChat()
+
+    documentId.value = 'd2'
+    await nextTick()
+
+    expect([chat.messages.value, chat.scopeChanged.value]).toEqual([[], false])
+  })
+
+  it('asks about search results by id under the search criteria, and a new selection is a new scope', async () => {
+    const chunkIds = ref<string[]>(['r1', 'r2', 'r3'])
+    const scope = effectScope()
+    const chat = scope.run(() => useScopedChat((): SearchChatScope => ({
+      kind: 'search',
+      chunkIds: chunkIds.value,
+      criteria: { textQuery: 'fire', documentFilters: { languages: ['ces'] } },
+      userCollectionId: 'c1'
+    })))!
+
+    const first = chat.ask('What burned?')
+    await flush()
+    streams[0].push({ event: 'delta', text: 'A mill [doc2].' })
+    streams[0].push({ event: 'sources', sources: [wireSource(2, 'r2')] })
+    streams[0].push({ event: 'end', coverage: 'all', used_chunks: 3, total_chunks: 3 })
+    streams[0].close()
+    await first
+
+    expect(requests[0].url).toMatch(/\/search\/chat$/)
+    expect(requests[0].body).toEqual({
+      question: 'What burned?',
+      history: [],
+      chunk_ids: ['r1', 'r2', 'r3'],
+      criteria: { text_query: 'fire', document_filters: { languages: ['ces'] } },
+      user_collection_id: 'c1'
+    })
+
+    // Load more (or another search) is a new scope too.
+    chunkIds.value = ['r1', 'r2', 'r3', 'r4']
+    await nextTick()
+    expect([chat.messages.value.length, chat.scopeChanged.value]).toEqual([2, true])
+
+    chunkIds.value = ['r2']
+    await nextTick()
+    const second = chat.ask('And here?')
+    await flush()
+    expect(requests[1].body).toMatchObject({ chunk_ids: ['r2'], history: [] })
+    expect(chat.messages.value.map(m => m.text)).toEqual(['And here?', ''])
+    streams[1].close()
+    await second
+    scope.stop()
   })
 
   it('drops the conversation when its owner unmounts', async () => {

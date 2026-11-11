@@ -62,6 +62,10 @@ stays with the page and its feature composables.
 
 Notes on the implementation:
 
+- The first panel registered becomes the active one, and a panel registered later does not
+  replace it. Panels registered in the same tick (mounting together) register in Vue's mount
+  order, not in template order, so among them the lowest `order` wins unless one is chosen
+  meanwhile (`select`/`activate`).
 - `register()` returns the function that removes exactly that registration. A second panel
   with an id that is already registered is refused with a warning, and removing it does
   not remove the first one.
@@ -192,6 +196,7 @@ rightSidebar.activate('search-summary')
 | `open` | Whether the drawer is open (toggled by the button in the header). |
 | `miniState` | Whether only the icon rail is shown. |
 | `activate(id)` | Shows the given registered panel, opens the sidebar and leaves the mini state. |
+| `select(id)` | Shows the given registered panel without opening the sidebar (a kept-alive page restoring its active panel). |
 | `toggleOpen()`, `toggleMiniState()` | Toggle the open and mini states. |
 | `register(panel)` (returns its removal function), `targetEl` | Used internally by `RightSidebarPanel` and `RightSidebar`. Pages should not call them. |
 
@@ -217,6 +222,7 @@ the new request's loading state.
 | Page | Panel id | Component | Description |
 |------|----------|-----------|-------------|
 | Search (`features/search/SearchPage.vue`) | `search-summary` | `features/search/SearchSummaryPanel.vue` | Summarization of the current search results (focused: first 3, broader: first 10, extensive: all, selected: the selected results). Citations move the user to the cited result. Logic in `features/search/useSearchSummary.ts`. |
+| Search (`features/search/SearchPage.vue`) | `search-chat` | `features/chat/ScopedChatPanel.vue` | Chat about the search results (#245, ADR 0012): the selected results if any are checked, otherwise all loaded results; the panel says which. A new search, *Load more* or a selection change is a new scope: a running answer stops, the old conversation stays with a notice saying what the next question is about, and that question starts a new conversation. Citations (`S1`, `S2`…) show the cited result (scrolled to and highlighted, on wide screens) and open it in the Document panel; they never change the selection. Registered with the Summary panel (order 0.5, so Summary stays the default). Logic in `features/chat/useScopedChat.ts` (search scope). |
 | Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year, *Open document* (the full public document view with its scans at the result, #545: `/documents/:id?chunk=&from=search`, whose back link returns to the same search) and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
 | Document view (`features/documents/viewer/DocumentViewLayout.vue`) | `document-tags` | `features/annotations/DocumentTagsPanel.vue` | The collection's tags: create/edit, show/hide, step through their annotations, manual order, search. Ctrl+F focuses the search while this is the active panel (it opens a closed sidebar); otherwise the browser's find is left alone. |
 | Document view | `document-ai` | `features/annotations/AiAssistPanel.vue` | AI annotation suggestions (`fill`, `busy` while a document or selection run is under way). Auto spans are shown in the text only while this is the active panel; suggestion cards and spans highlight each other. *Suggest tags* on a text selection activates it. Leaving the view cancels running requests; saved suggestions stay. |

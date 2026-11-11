@@ -432,6 +432,32 @@
       />
     </RightSidebarPanel>
 
+    <!-- fill: the conversation scrolls; the question input stays in view -->
+    <RightSidebarPanel
+      v-if="results.length || passages.loading.value"
+      id="search-chat"
+      label="Chat"
+      icon="forum"
+      :order="0.5"
+      :busy="searchChat.streaming.value"
+      fill
+    >
+      <ScopedChatPanel
+        :messages="searchChat.messages.value"
+        :streaming="searchChat.streaming.value"
+        :scope-label="searchChatScopeLabel"
+        :scope-changed="searchChat.scopeChanged.value"
+        :scope-changed-text="`The results changed. Your next question starts a new conversation, ${searchChatScopeText}.`"
+        empty-text="Ask a question about these search results. Answers cite them as S1, S2…; click one to show the result and open it in the Document panel."
+        input-label="Ask about these results"
+        :coverage-text="(coverage) => `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} results.`"
+        @ask="searchChat.ask"
+        @stop="searchChat.stop"
+        @cite="showChatSource"
+        @new-conversation="searchChat.reset"
+      />
+    </RightSidebarPanel>
+
     <!-- Registered once a result is opened, so the Summary stays the default panel. -->
     <RightSidebarPanel v-if="contextResultNumber !== null" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
       <ChunkContextPanel
@@ -464,7 +490,7 @@ import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
+import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, toSearchCriteria, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
@@ -474,6 +500,9 @@ import { withChartFilter, type ChartFilter } from 'src/features/analytics/corpus
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
 import { useSearchSummary } from './useSearchSummary'
 import SearchSummaryPanel from './SearchSummaryPanel.vue'
+import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
+import { useScopedChat, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
+import { plural } from 'src/shared/plural'
 import SearchResultCard from './SearchResultCard.vue'
 import DocumentResultCard from './DocumentResultCard.vue'
 import { escapeClearsSelection } from './resultLayout'
@@ -711,6 +740,44 @@ function setSelected (chunkId: string, selected: boolean) {
 
 // Summarization (right sidebar): works on the loaded results or the selected ones
 const searchSummary = reactive(useSearchSummary(searchContext, selectedResults))
+
+// Chat (right sidebar, #245, ADR 0012): about the selected results, or all loaded ones. A new
+// search, Load more or a selection change is a new scope: the panel keeps the old conversation
+// with a notice, and the next question starts a new one.
+const searchChatResults = computed(() => {
+  const selected = new Set(selectedResults.value)
+  return selected.size ? results.value.filter(result => selected.has(result.id)) : results.value
+})
+const searchChatScope = computed<SearchChatScope | null>(() => {
+  const current = passages.results.value
+  if (!current || !searchChatResults.value.length) return null
+  return {
+    kind: 'search',
+    chunkIds: searchChatResults.value.map(result => result.id),
+    criteria: toSearchCriteria(current.query.criteria),
+    userCollectionId: current.query.userCollectionId
+  }
+})
+const searchChatScopeText = computed(() => {
+  const count = searchChatResults.value.length
+  if (selectedResults.value.length) return `about ${plural(count, 'selected result')}`
+  return count === 1 ? 'about the one loaded result' : `about all ${count} loaded results`
+})
+const searchChatScopeLabel = computed(() => `Asking ${searchChatScopeText.value}`)
+const searchChat = useScopedChat(() => searchChatScope.value)
+
+/** A citation shows its result and opens it in the Document panel; it never changes the selection (the scope). */
+async function showChatSource (source: ChatSource) {
+  const index = results.value.findIndex(result => result.id === source.chunkId)
+  if (index < 0) {
+    Notify.create({ message: `Source S${source.label} is not among the loaded results.`, position: 'top', color: 'warning' })
+    return
+  }
+  const opening = viewContext(results.value[index], index + 1)
+  // On narrow screens the sidebar covers the results; the Document panel shows the result there.
+  if ($q.screen.gt.sm) await jumpToResult(index + 1)
+  await opening
+}
 
 // Citations
 const highlightedDocNumber = ref<number | null>(null)

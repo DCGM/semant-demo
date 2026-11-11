@@ -14,10 +14,18 @@
       />
     </div>
 
+    <div
+      v-if="scopeChanged && scopeChangedText"
+      class="text-caption text-warning q-mb-sm"
+      role="status"
+      data-testid="chat-scope-changed"
+    >
+      <q-icon name="info" size="16px" class="q-mr-xs" />
+      {{ scopeChangedText }}
+    </div>
+
     <div ref="listRef" class="chat-messages col" role="log" aria-live="polite">
-      <div v-if="!messages.length" class="text-caption text-grey-7">
-        Ask a question about this document. Answers cite its passages as S1, S2…; click one to show it in the text.
-      </div>
+      <div v-if="!messages.length" class="text-caption text-grey-7">{{ emptyText }}</div>
       <template v-for="(message, index) in messages" :key="index">
         <div v-if="message.role === 'user'" class="chat-message chat-message--user q-mb-sm" data-testid="chat-question">
           {{ message.text }}
@@ -39,7 +47,7 @@
             data-testid="chat-coverage"
           >
             <q-icon name="warning" size="16px" class="q-mr-xs" />
-            Based on the first {{ message.coverage.usedChunks }} of {{ message.coverage.totalChunks }} passages of the document.
+            {{ coverageText(message.coverage) }}
           </div>
           <div v-if="message.status === 'stopped'" class="text-caption text-grey-7 q-mt-xs">Stopped.</div>
           <div v-if="message.error" class="text-negative text-body2 q-mt-xs" role="alert">{{ message.error }}</div>
@@ -56,7 +64,7 @@
         dense
         outlined
         :maxlength="MAX_QUESTION_CHARS"
-        label="Ask about this document"
+        :label="inputLabel"
         :input-style="{ maxHeight: '8em' }"
         data-testid="chat-input"
         @keydown.enter.exact="onEnter"
@@ -87,16 +95,34 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
-import { chatTokens, MAX_QUESTION_CHARS, type ChatMessage, type ChatSource } from './useScopedChat'
+import { chatTokens, MAX_QUESTION_CHARS, type ChatCoverage, type ChatMessage, type ChatSource } from './useScopedChat'
 
 // Props-in/events-out only (docs/RIGHT_SIDEBAR.md section 3): the page owns
 // useScopedChat() and its scope and passes the conversation here.
-const props = defineProps<{
+type CoverageText = (coverage: ChatCoverage) => string
+
+// The wording defaults to the document scope (#248); other scopes pass their own.
+const props = withDefaults(defineProps<{
   messages: ChatMessage[]
   streaming: boolean
   /** What the next question is about, e.g. "Asking about this document". */
   scopeLabel: string
-}>()
+  /** The scope changed since the shown conversation (`useScopedChat().scopeChanged`). */
+  scopeChanged?: boolean
+  /** Shown while `scopeChanged`: what the next question, in a new conversation, is about. */
+  scopeChangedText?: string
+  emptyText?: string
+  inputLabel?: string
+  /** The note under an answer based on only a part of the scope. */
+  coverageText?: CoverageText
+}>(), {
+  scopeChanged: false,
+  scopeChangedText: '',
+  emptyText: 'Ask a question about this document. Answers cite its passages as S1, S2…; click one to show it in the text.',
+  inputLabel: 'Ask about this document',
+  coverageText: (coverage: ChatCoverage) =>
+    `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} passages of the document.`
+})
 
 const emit = defineEmits<{
   ask: [question: string]
