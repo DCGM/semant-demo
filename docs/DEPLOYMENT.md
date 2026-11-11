@@ -206,6 +206,7 @@ If unset, `quasar.config.js` uses `http://localhost:8000`, which only suits loca
 | `CORPUS_OVERVIEW_MAX_AGE` | `600` | Seconds the computed unfiltered corpus counts (`/api/analytics/corpus/overview`, and `/api/analytics/corpus/distributions` without filters) are served again before they are recomputed; `0` computes them on every request; filtered counts are never cached |
 | `FEEDBACK_LOG_PATH` | `semant_demo/feedback.log.jsonl` | JSONL file receiving in-app feedback. An empty value means the default. Deployed instances use `/app/feedback/feedback.log.jsonl`, a host directory mounted from the instance data ([deploy/README](../deploy/README.md#in-app-feedback-storage)) |
 | `FEEDBACK_WEBHOOK_URL` | empty | Optional webhook that also receives in-app feedback |
+| `MCP_ENABLED` | `false` | Serve the public read-only MCP endpoint at `/mcp` (#635); `MCP_ALLOWED_HOSTS`, `MCP_ALLOWED_ORIGINS`, `MCP_TOOL_TIMEOUT_SECONDS` (`30`) and `MCP_MAX_CONCURRENT_SEARCHES` (`4`) bound it ([MCP.md](MCP.md#endpoint-and-configuration)) |
 | `OTEL_ENABLED`, `OTEL_*`, `DEPLOYMENT_ENVIRONMENT` | off | Telemetry export; see [OBSERVABILITY.md](OBSERVABILITY.md#runtime-configuration) |
 
 A tier whose provider has no key refuses calls before sending them. `PRODUCTION` is read but
