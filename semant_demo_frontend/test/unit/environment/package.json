@@ -1,0 +1,11 @@
+{
+  "name": "vitest-environment-jsdom-timers",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vitest's jsdom environment that ends a test file's timers with it (#551); see index.js",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  }
+}
