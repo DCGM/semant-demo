@@ -55,6 +55,31 @@
       </template>
     </div>
 
+    <div v-if="summaryLength" class="row items-center no-wrap q-gutter-x-sm q-mt-sm" data-testid="chat-summary-controls">
+      <q-btn
+        outline no-caps
+        color="secondary"
+        icon="summarize"
+        :label="summarizeLabel"
+        :disable="streaming || disabled"
+        data-testid="chat-summarize"
+        @click="emit('summarize')"
+      />
+      <q-select
+        :model-value="summaryLength"
+        :options="SUMMARY_LENGTH_OPTIONS"
+        label="Length"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="col"
+        :disable="streaming"
+        data-testid="chat-summary-length"
+        @update:model-value="emit('update:summaryLength', $event)"
+      />
+    </div>
+
     <div class="row items-end no-wrap q-gutter-x-sm q-mt-sm">
       <q-input
         v-model="draft"
@@ -95,6 +120,8 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
+import type { SummaryLength } from 'src/generated/api'
+import { SUMMARY_LENGTH_OPTIONS } from 'src/shared/summaryLength'
 import { chatTokens, MAX_QUESTION_CHARS, type ChatCoverage, type ChatMessage, type ChatSource } from './useScopedChat'
 
 // Props-in/events-out only (docs/RIGHT_SIDEBAR.md section 3): the page owns
@@ -117,7 +144,12 @@ const props = withDefaults(defineProps<{
   inputLabel?: string
   /** The note under an answer based on only a part of the scope. */
   coverageText?: CoverageText
+  /** With a length, the panel offers *Summarize* (a summary of the scope as the next answer). */
+  summaryLength?: SummaryLength | null
+  summarizeLabel?: string
 }>(), {
+  summaryLength: null,
+  summarizeLabel: 'Summarize',
   disabled: false,
   scopeChanged: false,
   scopeChangedText: '',
@@ -132,6 +164,8 @@ const emit = defineEmits<{
   stop: []
   cite: [source: ChatSource]
   'new-conversation': []
+  summarize: []
+  'update:summaryLength': [value: SummaryLength]
 }>()
 
 const draft = ref('')

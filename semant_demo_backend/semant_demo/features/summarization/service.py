@@ -16,7 +16,7 @@ from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.adapters.llm.usage import LlmRequestRefused, OperationBudget
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.core.errors import InvalidRequestError
+from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.documents import service as documents_service
 from semant_demo.features.search.schemas import SearchResponse
 from semant_demo.features.summarization.base import SearchResultsSummarizer
@@ -117,7 +117,7 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
                              length: SummaryLength | None = None) -> DocumentSummaryResponse:
     """
     A summary of the current document of ``collection_id`` (#249), with citations to the
-    chunks it was built from.
+    chunks it was built from: only the document's chunks in the collection (ADR 0006).
 
     Authorization and chunk access go entirely through
     ``features.documents.service.read_chunks_in_collection`` (collection-read access, then
@@ -138,7 +138,11 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
     start_time = time.time()
     detail = await documents_service.read_chunks_in_collection(documents, collections, user, document_id,
                                                                 collection_id)
-    chunks = sorted(detail.chunks, key=lambda chunk: (chunk.order is None, chunk.order))
+    # Only the document's chunks in the collection (ADR 0006), the same scope as document chat.
+    chunks = sorted((chunk for chunk in detail.chunks if chunk.in_user_collection),
+                    key=lambda chunk: (chunk.order is None, chunk.order))
+    if not chunks:
+        raise NotFoundError("The document has no passages in this collection.")
     truncated = chunks[:document_summarizer.chunk_limit]
     # gen_document_summary calls the model exactly once here, so a single slot — not the
     # list-of-failures accumulator the multi-part search summarizer needs — is enough to carry

@@ -21,10 +21,8 @@ test('a signed-out user asks about all loaded results, and a citation shows its 
   await useViewport(page, 'narrow')
   await search(page, 'Lhota')
   const count = await page.locator('.search-result').count()
-  // Summary stays the default panel.
-  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Summary')
-
-  await sidebarPanelButton(page, 'Chat').click()
+  // AI Chat is the default panel.
+  await expect(page.getByTestId('right-sidebar-title')).toHaveText('AI Chat')
   await expect(scope(page)).toHaveText(count === 1 ? 'Asking about the one loaded result' : `Asking about all ${count} loaded results`)
   const request = page.waitForRequest(CHAT_URL)
   await ask(page, 'Co se stalo v Lhotě?')
@@ -46,7 +44,7 @@ test('a signed-out user asks about all loaded results, and a citation shows its 
 test('selecting results is a new scope: the old conversation stays with a notice until the next question', async ({ page }) => {
   await useViewport(page, 'narrow')
   await search(page, 'Lhota')
-  await sidebarPanelButton(page, 'Chat').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
   await ask(page, 'O čem jsou výsledky?')
   await expect(answers(page)).toHaveCount(1)
   await expect(notice(page)).toHaveCount(0)

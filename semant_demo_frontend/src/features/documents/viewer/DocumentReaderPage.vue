@@ -420,7 +420,7 @@ function scrollToSpan(chunkId: string, start: number, end: number) {
   textPane.value?.scrollToRange({ chunkId, start, end })
 }
 
-// A document-summary citation (#249) is whole-chunk granularity, with no offset within the
+// An AI Chat citation (a summary or an answer, #249/#248) is whole-chunk granularity, with no offset within the
 // chunk to find a text segment for, so this scrolls to the chunk itself.
 function scrollToChunk(chunkId: string) {
   textPane.value?.scrollToChunk(chunkId)

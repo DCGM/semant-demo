@@ -71,6 +71,21 @@ export interface ChatMessage {
   coverage?: ChatCoverage
 }
 
+/** An answer that was not streamed (a summary): its text, the chunks its `[docN]` cite and its coverage. */
+export interface ChatAnswer {
+  text: string
+  sources: Omit<ChatSource, 'label'>[]
+  coverage?: ChatCoverage
+}
+
+interface Turn {
+  scope: ChatScope
+  history: ChatTurn[]
+  reply: ChatMessage
+  isCurrent: () => boolean
+  signal: AbortSignal
+}
+
 export type ChatCitationToken = { type: 'citation', source: ChatSource }
 export type ChatToken = TextToken | ChatCitationToken
 
@@ -138,6 +153,24 @@ export function chatTokens (message: ChatMessage): ChatToken[] {
     const source = byCitation.get(number)
     return source ? { source } : null
   }).filter(token => token.type === 'citation' || !/^\[doc[1-9][0-9]*]$/.test(token.value)) as ChatToken[]
+}
+
+/**
+ * The sources of a summary's `[docN]` citations, `candidates[N - 1]` being `[docN]`, in the
+ * order of their first citation; numbers without a candidate are left out (as the server's
+ * `cited_sources` does for a streamed answer).
+ */
+export function citedSources (text: string, candidates: readonly Omit<ChatSource, 'citation' | 'label'>[]): Omit<ChatSource, 'label'>[] {
+  const sources: Omit<ChatSource, 'label'>[] = []
+  const seen = new Set<number>()
+  for (const match of text.matchAll(CITATION)) {
+    const number = Number(match[1])
+    const candidate = candidates[number - 1]
+    if (seen.has(number) || !candidate) continue
+    seen.add(number)
+    sources.push({ ...candidate, citation: number })
+  }
+  return sources
 }
 
 /**
@@ -223,14 +256,18 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
     return value
   }
 
-  async function ask (text: string): Promise<void> {
-    const question = text.trim()
+  /**
+   * Adds a question and its answer to the conversation and runs `answer` to fill the reply:
+   * one place for the scope-change reset, the abort, the guard against late events and the
+   * error message, shared by questions and summaries.
+   */
+  async function runTurn (prompt: string, answer: (turn: Turn) => Promise<void>): Promise<void> {
     const current = scope()
-    if (!question || !current || streaming.value) return
+    if (!prompt || !current || streaming.value) return
     if (scopeChanged.value) reset()
 
     const history = historyTurns(messages.value)
-    messages.value.push({ role: 'user', text: question, sources: [], status: 'done' })
+    messages.value.push({ role: 'user', text: prompt, sources: [], status: 'done' })
     messages.value.push({ role: 'assistant', text: '', sources: [], status: 'streaming' })
     // The reactive proxy, so the stream's changes render.
     const reply = messages.value[messages.value.length - 1]
@@ -240,34 +277,7 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
     streaming.value = true
 
     try {
-      const request = chatRequest(current, question, history)
-      await postNdjson(request.path, request.body, {
-        signal: controller.signal,
-        onValue: (value) => {
-          if (!isCurrent() || reply.status !== 'streaming') return
-          const event = value as ChatEvent
-          if (event.event === 'delta') {
-            reply.text += event.text
-          } else if (event.event === 'sources') {
-            reply.sources = event.sources.map(source => ({
-              citation: source.citation,
-              chunkId: source.chunk_id,
-              documentId: source.document_id,
-              order: source.order,
-              fromPage: source.from_page,
-              toPage: source.to_page,
-              label: label(source.chunk_id)
-            }))
-          } else if (event.event === 'end') {
-            reply.coverage = { coverage: event.coverage, usedChunks: event.used_chunks, totalChunks: event.total_chunks }
-            reply.status = 'done'
-          } else if (event.event === 'error') {
-            reply.error = event.message || FAILED
-            reply.status = 'error'
-          }
-        },
-        onInvalid: (line, e) => console.warn('useScopedChat: malformed NDJSON line', line, e)
-      })
+      await answer({ scope: current, history, reply, isCurrent, signal: controller.signal })
       if (isCurrent() && reply.status === 'streaming') {
         reply.status = 'interrupted'
         reply.error = INTERRUPTED
@@ -275,7 +285,8 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
     } catch (e: unknown) {
       if (isCurrent() && !isAbortError(e)) {
         console.error('Chat request failed', e)
-        // 401/404, 413 and a refusal for the daily AI allowance (429) come before the stream.
+        // 401/404, 413 and a refusal for the daily AI allowance (429) come before the stream;
+        // a failed summary is a 502 with a safe message.
         const message = await aiErrorMessage(e, FAILED)
         if (isCurrent()) {
           reply.error = message
@@ -291,6 +302,60 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
     }
   }
 
+  function labelled (sources: readonly Omit<ChatSource, 'label'>[]): ChatSource[] {
+    return sources.map(source => ({ ...source, label: label(source.chunkId) }))
+  }
+
+  async function ask (text: string): Promise<void> {
+    await runTurn(text.trim(), async ({ scope: current, history, reply, isCurrent, signal }) => {
+      const question = text.trim()
+      const request = chatRequest(current, question, history)
+      await postNdjson(request.path, request.body, {
+        signal,
+        onValue: (value) => {
+          if (!isCurrent() || reply.status !== 'streaming') return
+          const event = value as ChatEvent
+          if (event.event === 'delta') {
+            reply.text += event.text
+          } else if (event.event === 'sources') {
+            reply.sources = labelled(event.sources.map(source => ({
+              citation: source.citation,
+              chunkId: source.chunk_id,
+              documentId: source.document_id,
+              order: source.order,
+              fromPage: source.from_page,
+              toPage: source.to_page
+            })))
+          } else if (event.event === 'end') {
+            reply.coverage = { coverage: event.coverage, usedChunks: event.used_chunks, totalChunks: event.total_chunks }
+            reply.status = 'done'
+          } else if (event.event === 'error') {
+            reply.error = event.message || FAILED
+            reply.status = 'error'
+          }
+        },
+        onInvalid: (line, e) => console.warn('useScopedChat: malformed NDJSON line', line, e)
+      })
+    })
+  }
+
+  /**
+   * A summary of the current scope as the conversation's next answer (the summary is the
+   * chat's answer to `prompt`, e.g. "Summarize (short)"). The page's summary route makes it;
+   * its `[docN]` citations become sources like a streamed answer's, so a follow-up question
+   * sends them back as the turn's chunk ids.
+   */
+  async function summarize (prompt: string, run: (scope: ChatScope, signal: AbortSignal) => Promise<ChatAnswer>): Promise<void> {
+    await runTurn(prompt, async ({ scope: current, reply, isCurrent, signal }) => {
+      const answer = await run(current, signal)
+      if (!isCurrent() || reply.status !== 'streaming') return
+      reply.text = answer.text
+      reply.sources = labelled(answer.sources)
+      reply.coverage = answer.coverage
+      reply.status = 'done'
+    })
+  }
+
   watch(() => scopeKey(scope()), changeScope)
   onScopeDispose(reset)
 
@@ -299,6 +364,7 @@ export function useScopedChat (scope: () => ChatScope | null, options: ScopedCha
     streaming: computed(() => streaming.value),
     scopeChanged: computed(() => scopeChanged.value),
     ask,
+    summarize,
     stop,
     reset
   }

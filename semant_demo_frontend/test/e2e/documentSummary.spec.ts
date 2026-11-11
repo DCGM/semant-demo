@@ -1,123 +1,111 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { apiToken, chunkText, ensureLoggedIn, fixture, openDocument, sidebarPanelButton } from './support'
 
-// Document summary in the unified sidebar (#249). The e2e profile's fake Ollama answers
-// "Fake summary of N passage(s); last [docN]." for the [docN]-labelled chunks it was sent
-// (tests/fake_providers.py::fake_chat_answer), so the document's chunk count and the last
-// citation are both deterministic. The fixture "chronicle" document has 3 chunks in document
+// Document summary as an answer in the AI Chat panel (#249, #245). The e2e profile's fake
+// LLM answers "Fake summary of N passage(s); last [docN]." for the [docN]-labelled chunks it
+// was sent (tests/fake_providers.py::fake_chat_answer), so the chunk count and the last
+// citation are deterministic. The fixture "chronicle" document has 3 chunks in document
 // order: chronicle_1, chronicle_2 (members of "chronicles"), chronicle_3 (member of
-// "newspapers" only) — the summary always covers all 3 regardless of which collection it is
-// requested from (read_chunks_in_collection returns the whole document), but the reader only
-// *displays* a collection's member chunks by default.
+// "newspapers" only). Like the chat, the summary covers only the chunks in the collection
+// (ADR 0006).
 
-const summary = (page: import('@playwright/test').Page) => page.getByTestId('document-summary')
+const answers = (page: Page) => page.getByTestId('chat-answer')
+const summarize = (page: Page) => page.getByRole('button', { name: 'Summarize document' })
 // The summary request with any query string (it carries the length level, #360).
 const SUMMARY_URL = /\/documents\/[^/]+\/summary(\?|$)/
 
-test('summarizing shows citations, and interacting with the summary sidebar (switching to it, Summarize, a citation) never discards an open annotation popover', async ({ page }) => {
+test('summarizing shows citations, and the AI Chat panel (switching to it, Summarize, a citation) never discards an open annotation popover', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
-  // chronicle_3 (order 2, the last of the 3 chunks) is the only member of "newspapers",
-  // so it is the chunk already displayed and also the one the fake always cites last.
+  // chronicle_3 is the only member of "newspapers": the one passage summarized and cited.
   await openDocument(page, 'newspapers', 'chronicle')
   await expect(chunkText(page, 'chronicle_3')).toBeVisible()
 
-  // Open the annotation popover of the fixture span on this chunk *before* touching the
-  // Summary panel at all, mirroring review feedback: switching to the Summary panel,
-  // clicking Summarize, and clicking a citation must each leave an open popover alone —
-  // none of them are "outside" the editing context, even though the document-level
-  // click-outside handler would otherwise treat them that way (DocumentReaderPage.vue's
-  // onClickOutside exempts the whole right sidebar).
+  // Switching to the panel, Summarize and a citation must each leave an open popover alone
+  // (DocumentReaderPage.vue's onClickOutside exempts the whole right sidebar).
   await page.locator('.gutter-item').first().click()
   const popover = page.locator('.annotation-popover')
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 
-  await sidebarPanelButton(page, 'Summary').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
-  await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
+  await summarize(page).click()
+  await expect(page.getByTestId('chat-question')).toHaveText('Summarize (short)')
+  await expect(answers(page)).toHaveText('Fake summary of 1 passage(s); last [S1].')
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 
-  await summary(page).getByRole('link', { name: '[3]' }).click()
+  await answers(page).getByRole('link', { name: '[S1]' }).click()
 
-  // A read-only navigation action: the chunk is (still) in view and the popover opened
-  // before any of this is still untouched — no selection clearing, no popover changes.
   await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
 })
 
-test('a citation to a chunk outside the displayed window loads it on demand and scrolls to it', async ({ page }) => {
+test('the summary covers only the chunks in the collection, and a follow-up asks about it', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
-  // In "chronicles", only chronicle_1 and chronicle_2 (order 0, 1) are members and
-  // displayed by default; chronicle_3 (order 2) is not loaded. The summary still covers
-  // all 3 chunks of the document, so its last citation ([doc3]) targets a chunk the reader
-  // is not currently showing — useChunkWindow.loadUntil must load it (#358 review) rather
-  // than leaving the citation a silent dead link.
   await openDocument(page, 'chronicles', 'chronicle')
-  await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+  await sidebarPanelButton(page, 'AI Chat').click()
+
+  await summarize(page).click()
+  // chronicle_1 and chronicle_2, not chronicle_3 (only in "newspapers").
+  await expect(answers(page)).toHaveText('Fake summary of 2 passage(s); last [S1].')
+  await answers(page).getByRole('link', { name: '[S1]' }).click()
+  await expect(chunkText(page, 'chronicle_2')).toBeInViewport()
   await expect(chunkText(page, 'chronicle_3')).toHaveCount(0)
 
-  await sidebarPanelButton(page, 'Summary').click()
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
-  await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
-
-  await summary(page).getByRole('link', { name: '[3]' }).click()
-
-  // The previously-unloaded chunk is now displayed and scrolled into view; the chunks
-  // already shown are unaffected.
-  await expect(chunkText(page, 'chronicle_1')).toBeVisible()
-  await expect(chunkText(page, 'chronicle_2')).toBeVisible()
-  await expect(chunkText(page, 'chronicle_3')).toBeVisible()
-  await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
+  // The summary is an earlier answer: its cited chunk goes back as the turn's chunk id.
+  const followUp = page.waitForRequest(/\/documents\/[^/]+\/chat$/)
+  await page.getByLabel('Ask about this document').fill('A dál?')
+  await page.getByRole('button', { name: 'Send the question' }).click()
+  expect((await followUp).postDataJSON().history).toEqual([
+    { role: 'user', text: 'Summarize (short)', chunk_ids: [] },
+    { role: 'assistant', text: 'Fake summary of 2 passage(s); last [doc1].', chunk_ids: [fixture.chunk('chronicle_2').id] }
+  ])
+  await expect(answers(page)).toHaveCount(2)
 })
 
 test('a generation failure shows an error, not a summary that quietly used the fallback text', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'Summary').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
 
   // The real backend only fails like this when the LLM provider is unreachable/misconfigured
-  // (not reproducible against the deterministic fake); simulate the 502 contract at the
-  // network layer to verify the panel shows it as an error, not a successful summary card.
+  // (not reproducible against the deterministic fake); simulate the 502 contract.
   await page.route(SUMMARY_URL, (route) => route.fulfill({
     status: 502,
     contentType: 'application/json',
     body: JSON.stringify({ detail: 'The document could not be summarized.' })
   }))
 
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
+  await summarize(page).click()
 
   // Scoped to the panel: the sign-in notification is also role="alert".
-  await expect(page.locator('.document-summary-panel').getByRole('alert')).toHaveText('The document could not be summarized.')
-  await expect(summary(page)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Summarize Document' })).toBeVisible()
+  await expect(answers(page).getByRole('alert')).toHaveText('The document could not be summarized.')
+  await expect(answers(page).getByRole('link')).toHaveCount(0)
+  await expect(summarize(page)).toBeEnabled()
 })
 
 test('switching documents drops a summary of the previous one', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'Summary').click()
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
-  await expect(summary(page)).toBeVisible()
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await summarize(page).click()
+  await expect(answers(page)).toHaveCount(1)
 
   // "letters" is another document of the same collection.
   await openDocument(page, 'chronicles', 'letters')
-  await sidebarPanelButton(page, 'Summary').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
 
-  await expect(summary(page)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Summarize Document' })).toBeVisible()
+  await expect(answers(page)).toHaveCount(0)
+  await expect(summarize(page)).toBeVisible()
 })
 
-test('a long summary stays below the Summarize button, scrolling on its own, instead of wrapping beside it', async ({ page }) => {
+test('a long summary scrolls in the conversation while Summarize and the question input stay in view', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'Summary').click()
+  await sidebarPanelButton(page, 'AI Chat').click()
 
-  // The fake LLM's canned reply is always short, so a long, realistic summary (one that
-  // overflows the sidebar's fixed "fill" height) needs a stubbed response: this exact shape
-  // regressed once (#358) into wrapping sideways next to the button instead of scrolling
-  // below it, because the panel's root inherited Quasar's .column default flex-wrap.
-  const longSummary = Array.from({ length: 20 }, (_, i) =>
+  // The fake LLM's canned reply is always short; a realistic long summary needs a stub.
+  const longSummary = Array.from({ length: 30 }, (_, i) =>
     `Sentence number ${i + 1} of a long document summary, long enough that the whole thing overflows the sidebar's height [doc1].`
   ).join(' ')
   await page.route(SUMMARY_URL, (route) => route.fulfill({
@@ -134,18 +122,36 @@ test('a long summary stays below the Summarize button, scrolling on its own, ins
     })
   }))
 
-  const summarizeButton = page.getByRole('button', { name: 'Summarize Document' })
-  await summarizeButton.click()
-  await expect(summary(page)).toBeVisible()
+  await summarize(page).click()
+  await expect(answers(page)).toContainText('Sentence number 30')
 
-  const buttonBox = await summarizeButton.boundingBox()
-  const summaryBox = await summary(page).boundingBox()
-  if (!buttonBox || !summaryBox) throw new Error('expected both the button and the summary card to have a layout box')
+  await expect(summarize(page)).toBeInViewport()
+  await expect(page.getByLabel('Ask about this document')).toBeInViewport()
+  const list = page.locator('.chat-messages')
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+})
 
-  // Stacked (the card starts at or below the button's bottom), not side by side.
-  expect(summaryBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height - 1)
-  // Same column (the card doesn't start to the right of the button).
-  expect(summaryBox.x).toBeLessThanOrEqual(buttonBox.x + 1)
+test('a partial summary of a long document says so', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await page.route(SUMMARY_URL, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      document_id: fixture.document('chronicle').id,
+      summary: 'Part [doc1].',
+      citations: [{ chunk_id: fixture.chunk('chronicle_1').id, order: 0, from_page: 1, to_page: 1 }],
+      time_spent: 1,
+      total_chunks: 55,
+      summarized_chunks: 40,
+      truncated: true
+    })
+  }))
+
+  await summarize(page).click()
+
+  await expect(page.getByTestId('chat-coverage')).toHaveText('Based on the first 40 of 55 passages of the document.')
 })
 
 test('a user without collection read access cannot request a document summary', async ({ request }) => {
@@ -161,20 +167,16 @@ test('a user without collection read access cannot request a document summary', 
 test('the chosen length level is sent with the summary request (#360)', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
-  await sidebarPanelButton(page, 'Summary').click()
-  const length = page.getByTestId('document-summary-length')
+  await sidebarPanelButton(page, 'AI Chat').click()
+  const length = page.getByTestId('chat-summary-length')
   await expect(length).toContainText('Short')
 
   await length.click()
   await page.getByRole('option', { name: 'Detailed' }).click()
   const request = page.waitForRequest(SUMMARY_URL)
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
+  await summarize(page).click()
 
   expect(new URL((await request).url()).searchParams.get('length')).toBe('detailed')
-  await expect(summary(page)).toContainText('Fake summary of 3 passage(s); last [3].')
-
-  // Another length no longer matches the shown summary.
-  await length.click()
-  await page.getByRole('option', { name: 'Short' }).click()
-  await expect(summary(page)).toHaveCount(0)
+  await expect(page.getByTestId('chat-question')).toHaveText('Summarize (detailed)')
+  await expect(answers(page)).toHaveText('Fake summary of 2 passage(s); last [S1].')
 })
