@@ -118,6 +118,9 @@ semant_demo_backend/semant_demo/
     llm/                  the one gateway for backend LLM calls: models (tier catalog and
                           feature policy), gateway (metered LangChain chat models, complete,
                           stream, FeatureChat), usage (token/cost records)
+  mcp/                    public read-only MCP endpoint at /mcp (#635, [MCP.md](MCP.md)): server (five tools
+                          adapting the search and document services as an anonymous user; mount, lifespan),
+                          schemas (the tools' citation-oriented answers); off unless MCP_ENABLED
   routes/                 dependencies.py (DI from AppResources), streaming.py (streamed AI replies,
                           closed and settled however the response ends), router registration
   configs/                YAML: llm_models, search_summarizer, document_summarizer, search_filters, rag/ (RAG configurations)
@@ -263,7 +266,8 @@ but not change membership, metadata or sharing. Public corpus reads (`GET /api/d
 chunk and its extension), search
 without collection and tags, the corpus overview `/api/analytics/corpus/overview` and
 `/api/analytics/corpus/distributions`, and `/api/analytics/results/distributions` without a
-collection) need no login. RAG, `/api/summarize/results` and
+collection) need no login, and so do the five read-only tools of the MCP endpoint `/mcp`, which
+call the same services anonymously ([MCP.md](MCP.md), off unless `MCP_ENABLED`). RAG, `/api/summarize/results` and
 `/api/question` are public too and call LLM providers with client-supplied text, within the
 caller's daily AI allowance (guest or account, [below](#daily-llm-allowances-featuresquota-adapterssqlquotapy)).
 
