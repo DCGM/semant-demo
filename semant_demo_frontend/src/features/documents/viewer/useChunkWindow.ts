@@ -229,7 +229,7 @@ export function useChunkWindow (
   }
 
   // ── Load exactly the chunks between the window and a target order (#249) ──
-  // Used to jump to a document-summary citation whose chunk isn't displayed yet: unlike
+  // Used to jump to an AI Chat citation (#249, #248) whose chunk isn't displayed yet: unlike
   // loadAllNeighbours/loadAllChunks, this loads only up to targetOrder (bounded by how far it
   // is from the current window), not the rest of the document in that direction. A target
   // order that falls *inside* the displayed range (a partial-membership gap) delegates to the

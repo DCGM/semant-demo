@@ -556,24 +556,47 @@ async def test_one_failed_record_does_not_cost_the_records_of_the_other_annotati
 async def test_consecutive_changes_of_one_annotation_are_recorded_in_order(store, spans, definitions, monkeypatch):
     attribute = await define(store)
     author, narrator = attribute.values
+    # Ordered by events, not timing (#634): the first change is recorded only once the second
+    # assignment waits for the annotation (or has finished, should it not wait at all).
     record = definitions.record_changes
-    first = True
+    lock = spans.lock
+    first_recording, second_waiting = asyncio.Event(), asyncio.Event()
 
-    async def slow_first(cid, changes):
-        nonlocal first
-        if first:
-            first = False
-            await asyncio.sleep(0.05)
+    async def record_once_the_second_waits(cid, changes):
+        if not first_recording.is_set():
+            first_recording.set()
+            await second_waiting.wait()
         await record(cid, changes)
-    monkeypatch.setattr(definitions, "record_changes", slow_first)
-    a = service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.replace, [author]))
-    b = service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.replace, [narrator],
-                                                                   {APPROVED: 1}))
+    monkeypatch.setattr(definitions, "record_changes", record_once_the_second_waits)
+    monkeypatch.setattr(spans, "lock", lambda sid: ReportsWaiting(lock(sid), second_waiting))
+
+    a = asyncio.create_task(service.assign_attributes(
+        store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.replace, [author])))
+    a.add_done_callback(lambda _: first_recording.set())
+    await first_recording.wait()
+    b = asyncio.create_task(service.assign_attributes(
+        store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.replace, [narrator], {APPROVED: 1})))
+    b.add_done_callback(lambda _: second_waiting.set())
     first_result, second_result = await asyncio.gather(a, b)
 
     history = await definitions.read_changes(COLLECTION, APPROVED)
     assert (first_result.outcome.value, second_result.outcome.value) == ("complete", "complete")
     assert [(ids(c.previous), ids(c.current)) for c in history] == [([], [author.id]), ([author.id], [narrator.id])]
+
+
+class ReportsWaiting:
+    """An annotation's lock that sets ``waiting`` when a caller finds it held and has to wait."""
+
+    def __init__(self, lock: asyncio.Lock, waiting: asyncio.Event):
+        self._lock, self._waiting = lock, waiting
+
+    async def __aenter__(self):
+        if self._lock.locked():
+            self._waiting.set()
+        await self._lock.acquire()
+
+    async def __aexit__(self, *exc):
+        self._lock.release()
 
 
 def ids(values):

@@ -44,7 +44,7 @@ All files are in `semant_demo_frontend/src`.
 | `app/sidebar/RightSidebar.vue` | The sidebar shell (`q-drawer`). Placed once in `app/MainLayout.vue`. Knows nothing about the individual pages. |
 | `app/sidebar/RightSidebarPanel.vue` | Wrapper a page uses to add a tool to the sidebar. |
 | `app/sidebar/rightSidebarStore.ts` | Pinia store with the shell state only: registered panels, active panel, open and mini states, the element panels render into. |
-| `features/<feature>/` | The tools themselves, next to the feature they belong to, e.g. `features/search/SearchSummaryPanel.vue`. |
+| `features/<feature>/` | The tools themselves, next to the feature they belong to, e.g. `features/chat/ScopedChatPanel.vue`. |
 
 The store holds no feature or business state (results, summaries, documents). That state
 stays with the page and its feature composables.
@@ -62,6 +62,11 @@ stays with the page and its feature composables.
 
 Notes on the implementation:
 
+- Until a panel is chosen (`select`/`activate`: a click on the rail, the page, or a kept-alive
+  page restoring its panel), the active panel is the one with the lowest `order`, whatever
+  order the panels registered in (Vue mounts them in its own order, not in template order).
+  A chosen panel stays active when other panels register; when the active panel goes, the
+  lowest-ordered one left becomes the default again.
 - `register()` returns the function that removes exactly that registration. A second panel
   with an id that is already registered is refused with a warning, and removing it does
   not remove the first one.
@@ -113,7 +118,7 @@ const emit = defineEmits<{
 ```
 
 Keep larger logic (API calls, state) in a composable of the feature, as done for the
-search summary in `features/search/useSearchSummary.ts`. Network calls go through the
+contextual chat in `features/chat/useScopedChat.ts`. Network calls go through the
 shared transport (`src/shared/api`: generated client via `useApi()`, NDJSON streams via
 `postNdjson()`); do not configure another client. Give the work the context it belongs to
 and drop answers that arrive after the context changed (see section 5).
@@ -155,10 +160,10 @@ import NotesPanel from 'src/features/notes/NotesPanel.vue'
 `label`, `icon`, `order` and `busy` follow the props; `id` is fixed when the panel mounts.
 
 To show a tool only in some situations, use `v-if` on `RightSidebarPanel`. For example,
-the search page shows the summary only while there are results or a search is running:
+the search page shows AI Chat only while there are results or a search is running:
 
 ```vue
-<RightSidebarPanel v-if="results.length || loading" id="search-summary" label="Summary" icon="auto_awesome">
+<RightSidebarPanel v-if="results.length || loading" id="search-chat" label="AI Chat" icon="forum">
 ```
 
 If no panel remains registered, the whole sidebar is hidden.
@@ -177,7 +182,7 @@ Bringing a panel to front from the page:
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 
 const rightSidebar = useRightSidebarStore()
-rightSidebar.activate('search-summary')
+rightSidebar.activate('search-chat')
 ```
 
 ## 4. Store API
@@ -192,20 +197,21 @@ rightSidebar.activate('search-summary')
 | `open` | Whether the drawer is open (toggled by the button in the header). |
 | `miniState` | Whether only the icon rail is shown. |
 | `activate(id)` | Shows the given registered panel, opens the sidebar and leaves the mini state. |
+| `select(id)` | Shows the given registered panel without opening the sidebar (a kept-alive page restoring its active panel). |
 | `toggleOpen()`, `toggleMiniState()` | Toggle the open and mini states. |
 | `register(panel)` (returns its removal function), `targetEl` | Used internally by `RightSidebarPanel` and `RightSidebar`. Pages should not call them. |
 
 ## 5. Context of a tool
 
 A tool works on an explicit context its page passes in, never on a wider one it finds by
-itself. For search results this is `SearchResultsContext` (`features/search/searchResults.ts`):
-the response of one search, as retrieved, with an `id` that changes with every new search.
-`selectResults(context, scope)` picks the results a tool works on: the first N, all of
-them, or exactly the selected ones. It never reruns the query or adds unselected results,
-and an empty selection is reported, not widened. Hits keep their source references (chunk
-id, document id, page ids); their text is display text, not the canonical text annotation
-offsets refer to. Search chat takes the same input; the scope, history and API rules of the
-Search, collection and document chats are in [ADR 0012](adr/0012-contextual-chat.md).
+itself. On Search, AI Chat's scope (questions and summaries alike) is the first 20 of the
+selected results, or of the loaded ones when none is selected (`SearchPage.vue`,
+`searchChatScope`): it never reruns the query or adds unselected results. Hits keep their
+source references (chunk id, document id, page ids); their text is display text, not the
+canonical text annotation offsets refer to (`asSearchResponse` in
+`features/search/searchResults.ts` passes them to the summary route). The scope, history and
+API rules of the Search, collection and document chats are in
+[ADR 0012](adr/0012-contextual-chat.md).
 
 Requests belong to their context: when the page's context changes (a new search) or a new
 request supersedes an old one, the old request is aborted and its late answer is dropped
@@ -216,12 +222,11 @@ the new request's loading state.
 
 | Page | Panel id | Component | Description |
 |------|----------|-----------|-------------|
-| Search (`features/search/SearchPage.vue`) | `search-summary` | `features/search/SearchSummaryPanel.vue` | Summarization of the current search results (focused: first 3, broader: first 10, extensive: all, selected: the selected results). Citations move the user to the cited result. Logic in `features/search/useSearchSummary.ts`. |
-| Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year, *Open document* (the full public document view with its scans at the result, #545: `/documents/:id?chunk=&from=search`, whose back link returns to the same search) and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so Summary stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
+| Search (`features/search/SearchPage.vue`) | `search-chat` | `features/chat/ScopedChatPanel.vue` | **AI Chat**, the default panel: summaries of and questions about the search results in one conversation (#245, ADR 0012). Suggested messages above the input: *Summarize briefly* / *Summarize in detail* (the length levels, #360), always shown, summarize exactly the chat's scope through `POST /api/summarize/results`; the summary is the conversation's answer to that message, with its citations as sources, so a follow-up question asks about it (a failed generation, the route's fallback text with `failed`, is a failed answer left out of the history). While the conversation is empty, two suggested questions ("What do these results have in common?", "Which people, places and dates appear in these results?") are offered too. The scope: the first 20 of the selected results if any are checked, otherwise of the loaded results; the panel says which (and waits, with sending disabled, while a search loads). A new search or a selection change is a new scope: a running answer stops, the old conversation stays with a notice saying what the next question is about, and that question starts a new conversation. Signing out or another user clears it. Citations (`S1`, `S2`…) show the cited result (scrolled to and highlighted, on wide screens) and open it in the Document panel; they never change the selection. Logic in `features/chat/useScopedChat.ts` (search scope). |
+| Search (`features/search/SearchPage.vue`) | `search-context` | `features/documents/ChunkContextPanel.vue` | One result in its document (#244): opened by a result's *View in document* button or a double-click on the card (not on its checkbox). A header that stays at the top while the text scrolls holds the document title, year, *Open document* (the full public document view with its scans at the result, #545: `/documents/:id?chunk=&from=search`, whose back link returns to the same search) and *Focus on result*, which restores the result's page, scrolls to it and highlights it (and closes the overlay on narrow screens). Below it, a bounded passage around the hit with the hit highlighted and *Show earlier/later text*. Opening a result, also the same one again, scrolls the hit back into view. The panel is registered only once a result is opened (so AI Chat stays the default panel); a new search clears and removes it. Logic in `features/documents/useChunkContext.ts`; see below. |
 | Document view (`features/documents/viewer/DocumentViewLayout.vue`) | `document-tags` | `features/annotations/DocumentTagsPanel.vue` | The collection's tags: create/edit, show/hide, step through their annotations, manual order, search. Ctrl+F focuses the search while this is the active panel (it opens a closed sidebar); otherwise the browser's find is left alone. |
 | Document view | `document-ai` | `features/annotations/AiAssistPanel.vue` | AI annotation suggestions (`fill`, `busy` while a document or selection run is under way). Auto spans are shown in the text only while this is the active panel; suggestion cards and spans highlight each other. *Suggest tags* on a text selection activates it. Leaving the view cancels running requests; saved suggestions stay. |
-| Document view | `document-summary` | `features/documents/DocumentSummaryPanel.vue` | Summary of the current document (#249; `fill`, `busy` while a summary request is under way): a *Summarize Document* / *Cancel* control, the generated text with `[docN]`-style citations (each a link to its source chunk), and a "Partial summary — first N of M chunks" notice when the document was truncated to the configured `chunk_limit`. A failed generation shows an error line, not a summary quietly built from the server's fallback text (the backend answers 502, not 200, on failure). Logic in `features/documents/useDocumentSummary.ts`, a module-scope singleton like `useAiAssistance` (see below), since a citation click must reach the document reader, a sibling route. The summary is not persisted: changing document/collection or leaving the view drops it, the same `reset()` wiring `AiAssistPanel` uses. |
-| Document view | `document-chat` | `features/chat/ScopedChatPanel.vue` | Chat about the current document (#248, [ADR 0012](adr/0012-contextual-chat.md); `fill`, `busy` while an answer streams): questions answered only from the document's chunks in the collection, streamed, with citations labelled `S1`, `S2`... per conversation (a click scrolls the reader to the chunk like a summary citation), a "Based on the first N of M passages" notice when the document did not fit, *Stop* and *New conversation*. The conversation is in memory only: another document or collection, or leaving the view, starts an empty one and stops a running answer. Logic in `features/chat/useScopedChat.ts`, owned by `DocumentViewLayout` with the scope `{ kind: 'document', collectionId, documentId }`; Search (#245) and collection chat (#247) are to reuse it. |
+| Document view | `document-chat` | `features/chat/ScopedChatPanel.vue` | **AI Chat** about the current document (#248, #249, [ADR 0012](adr/0012-contextual-chat.md); `fill`, `busy` while an answer runs): the *Summarize briefly / in detail* suggested messages (always shown) and questions, in one conversation, both only about the document's chunks in the collection; while it is empty, two suggested questions about the people, places and time of the document too. The summary (`POST …/documents/{id}/summary`) is the answer to its message; a summary of only the first `chunk_limit` chunks shows the "Based on the first N of the M passages in the collection" notice, and a failed generation (502) shows its error, never the server's fallback text. Questions are streamed, with citations labelled `S1`, `S2`... per conversation (a click scrolls the reader to the chunk like a summary citation), a "Based on the first N of the M passages in the collection" notice when the document did not fit, *Stop* and *New conversation*. The conversation is in memory only: another document or collection, or leaving the view, starts an empty one and stops a running answer. Logic in `features/chat/useScopedChat.ts`, owned by `DocumentViewLayout` with the scope `{ kind: 'document', collectionId, documentId }`; Search (#245) and collection chat (#247) are to reuse it. |
 | Chat assistant (`features/rag/RagPage.vue`) | `chat-sources` | `features/rag/ChatSourcesPanel.vue` | All source chunks of the conversation (#246), in order of first appearance and once per chunk id, labelled `S1`, `S2`... The answers show their citations with these labels: each answer's own `[doc N]` is mapped to its `sources[N-1]` chunk and that chunk's label (`[S2]`, the same label wherever the chunk is cited again); a citation without such a source stays as written. The raw answer text, history and explanation input are unchanged. One click on a citation or a source selects it: the Sources panel opens, scrolls to it and shows its full stored text (the other sources are collapsed), and every citation of it in the conversation is marked; the conversation is not scrolled. A double click (or *View document*) opens it in the Document panel. An answer's *Sources* link shows the list at its first source. Registered once the conversation has sources. |
 | Chat assistant | `chat-source-context` | `features/documents/ChunkContextPanel.vue` | The selected source highlighted in its document, with its label (`targetLabel`), the same viewer as `search-context`, with *Open document* (`?from=chat`: back to the same conversation, #545). The selection and its marks stay while the document is navigated; *Return to cited passage* brings the cited chunk back into view (reloading it if extending dropped it). Selecting another source, resetting the conversation or another account closes it. A citation in an explanation selects its source and closes the explanation (the modal would cover the sidebar). On a phone the first tap on a citation opens the Sources overlay, so the document is opened from the list there. State in `features/rag/useChatSources.ts` (by chunk id); the citation marks are set on the rendered links, so selecting does not re-render the answer under a double click. |
 | Collection annotations (`features/annotations/concordance/CollectionAnnotationsPage.vue`) | `annotation-context` | `features/documents/ChunkContextPanel.vue` | The annotation of a concordance row in its document (#329), opened by clicking the row or Enter on it (checking its box does not open it). The header adds the tag, status, the full annotated text and *Open in document*; the exact span is marked in the passage (`highlight`, also across chunks). *Focus on annotation* brings the row back into view (closing the overlay on narrow screens). Viewing context never changes the selection or the query. Registered once a row is opened; reopened on return from the document view. |
@@ -233,15 +238,15 @@ panels get the collection and document ids through props; the annotation, tag na
 and AI state they share with the reader stays in the annotation composables, not in the
 sidebar store.
 
-#### Summary and chat citation → reader navigation (#249, #248)
+#### AI Chat citation → reader navigation (#249, #248)
 
-`DocumentViewLayout` (the page, not the panel) owns `useDocumentSummary()` and wires the
-panel's `summarize`/`cancel`/`cite` events to it, following the usual page→tool props /
-tool→page events convention; `cite(chunkId, order)` calls `citeInReader` of
-`features/documents/readerCitation.ts` (the Chat panel's `cite` does the same), which sets its
+`DocumentViewLayout` (the page, not the panel) owns `useScopedChat()` and wires the
+panel's `summarize`/`ask`/`cite` events to it, following the usual page→tool props /
+tool→page events convention; `cite` calls `citeInReader(chunkId, order)` of
+`features/documents/readerCitation.ts`, which sets its
 module-scope `requestedCitation` ref (`{ chunkId, order, token }`, the counter so clicking the same
 citation twice still re-triggers; `order` is the cited chunk's position in the document, from
-`DocumentSummaryCitation.order`). `DocumentReaderPage.vue`, a sibling route with no
+the answer's source). `DocumentReaderPage.vue`, a sibling route with no
 prop/event path to the panel, watches that same singleton ref (the same cross-component
 pattern `useAiAssistance().highlightedAutoSpanId` uses for span highlighting).
 
@@ -258,13 +263,13 @@ exactly as it was. If the chunk still can't be found afterwards (a malformed cit
 `order` missing), `scrollToChunk` is a silent, documented no-op — a narrow fallback, not the
 primary behavior.
 
-Interacting with the right sidebar at all — switching to the Summary panel, clicking
-*Summarize Document*, or clicking a citation — must not discard an open annotation popover
+Interacting with the right sidebar at all — switching to the AI Chat panel, clicking
+*Summarize document*, or clicking a citation — must not discard an open annotation popover
 either (#358 review): `DocumentReaderPage.vue`'s `onClickOutside` (the handler that dismisses
 the popover on a click outside the editing context)
 exempts any click inside `.q-drawer--right`, the same way it already exempts the popover, the
 document text and a Quasar dialog opened from the popover. This covers every panel (Tags, AI
-assist, Document, Summary, Chat), not just Summary, since switching to any of them is equally not
+Tagging, AI Chat, Document), since switching to any of them is equally not
 "abandoning" an edit.
 
 ### Document context (`features/documents/`)

@@ -31,6 +31,12 @@ export interface SummaryResponse {
      * @memberof SummaryResponse
      */
     timeSpent: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof SummaryResponse
+     */
+    failed?: boolean;
 }
 
 /**
@@ -54,6 +60,7 @@ export function SummaryResponseFromJSONTyped(json: any, ignoreDiscriminator: boo
         
         'summary': json['summary'],
         'timeSpent': json['time_spent'],
+        'failed': json['failed'] == null ? undefined : json['failed'],
     };
 }
 
@@ -70,6 +77,7 @@ export function SummaryResponseToJSONTyped(value?: SummaryResponse | null, ignor
         
         'summary': value['summary'],
         'time_spent': value['timeSpent'],
+        'failed': value['failed'],
     };
 }
 
