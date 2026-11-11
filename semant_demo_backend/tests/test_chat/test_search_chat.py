@@ -8,7 +8,7 @@ import pytest
 from semant_demo.adapters.llm.usage import LlmInputTooLarge
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.chat import service
-from semant_demo.features.chat.schemas import ChatTurn, SearchChatRequest
+from semant_demo.features.chat.schemas import MAX_SEARCH_CHAT_RESULTS, ChatTurn, SearchChatRequest
 from semant_demo.features.documents.criteria import ChunkFilters, DocumentFilters, SearchCriteria
 from semant_demo.features.user_collections.access import AuthenticationRequired
 from tests.fakes import FakeOperation
@@ -159,3 +159,11 @@ def test_the_request_needs_results_and_takes_no_unknown_fields():
         SearchChatRequest(question="?", chunk_ids=[], criteria=SearchCriteria())
     with pytest.raises(ValueError):
         SearchChatRequest(question="?", chunk_ids=[uuid4()], criteria=SearchCriteria(), sources=["text"])
+
+
+def test_a_question_is_about_at_most_the_first_page_of_results():
+    ids = [uuid4() for _ in range(MAX_SEARCH_CHAT_RESULTS + 1)]
+
+    assert len(SearchChatRequest(question="?", chunk_ids=ids[:-1], criteria=SearchCriteria()).chunk_ids) == 20
+    with pytest.raises(ValueError):
+        SearchChatRequest(question="?", chunk_ids=ids, criteria=SearchCriteria())

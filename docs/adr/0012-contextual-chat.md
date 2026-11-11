@@ -48,7 +48,10 @@ the backend. Already in place:
      current search. The panel always says which ("Asking about 3 selected results",
      "Asking about all 50 loaded results").
    - "All results" are the results loaded on the page, as Summary uses them, not the whole
-     ranking behind *Load more* (maintainer, 2026-11-11). *Load more* is a scope change too.
+     ranking behind *Load more* (maintainer, 2026-11-11). For now a question is about at most
+     the first 20 of them (the first page), or of the selected ones, and the panel says so
+     ("Asking about the first 20 of 35 selected results"); *Load more* therefore does not
+     change the scope.
    - A citation shows its result and opens it in the Document panel; it never selects the
      result, which would change the scope.
    - Any selection change is a scope change (decision 1), including unchecking the last
