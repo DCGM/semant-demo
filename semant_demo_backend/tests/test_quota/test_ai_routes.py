@@ -35,7 +35,7 @@ from tests.fake_providers import create_fake_provider_app
 from tests.test_llm.test_features import AGENT_PARAMS, hit
 from tests.test_llm.test_gateway import CountingTransport
 from tests.test_quota.test_ledger import call
-from tests.test_search_service import backends as search_backends
+from tests.test_search_service import FakeChunks, backends as search_backends
 from tests.test_span_chat import COLLECTION as SPAN_COLLECTION, FakeStore, span
 from tests.test_summarization import test_document_service as documents
 from tests import test_suggestions as suggestion_fakes
@@ -405,6 +405,28 @@ async def test_a_chat_left_mid_stream_closes_the_provider_stream_and_settles(ai,
     assert ai.rows("SELECT outcome FROM llm_quota_call") == [("cancelled",)]
     status = await ai.status(headers)
     assert status["reserved_usd"] == 0 and status["charged_usd"] > 0
+async def test_search_chat_streams_for_a_guest_about_the_chosen_results_and_is_settled(ai):
+    hits = [hit("Jan Novák byl kronikář."), hit("Obec měla školu."), hit("Jiný odstavec.")]
+    ai.app.dependency_overrides[get_search_backends] = lambda: search_backends(FakeChunks(hits))
+    body = {"question": "Kdo psal kroniku?", "history": [], "chunk_ids": [str(hits[2].id), str(hits[0].id)],
+            "criteria": {"text_query": "kronika"}}
+    guest = await ai.guest()
+
+    answered = await ai.client.post("/api/search/chat", json=body)
+    gone = await ai.client.post("/api/search/chat", json={**body, "chunk_ids": [str(UUID(int=1))]})
+    private = await ai.client.post("/api/search/chat", json={**body, "user_collection_id": str(SPAN_COLLECTION)})
+    await ai.exhaust(guest)
+    refused = await ai.client.post("/api/search/chat", json=body)
+
+    assert answered.status_code == 200, answered.text
+    events = [json.loads(line) for line in answered.text.splitlines()]
+    assert "".join(e["text"] for e in events if e["event"] == "delta") == "Fake summary of 2 passage(s); last [doc2]."
+    assert [(s["citation"], s["chunk_id"]) for s in events[-2]["sources"]] == [(2, str(hits[0].id))]
+    assert events[-1] == {"event": "end", "coverage": "all", "used_chunks": 2, "total_chunks": 2}
+    assert (gone.status_code, private.status_code) == (404, 401)
+    assert_refused(refused, "guest")
+    assert len(ai.provider.paths) == 1
+    assert ai.rows("SELECT status FROM llm_quota_operation WHERE feature = 'context_chat'") == [("settled",)]
 
 
 def test_ai_routes_declare_the_429_and_search_does_not(tmp_path):
@@ -414,7 +436,7 @@ def test_ai_routes_declare_the_429_and_search_does_not(tmp_path):
                  "/api/ai/discuss_span", "/api/ai/suggest_spans/thorough", "/api/ai/suggest_spans/optimized",
                  "/api/ai/suggest_spans/selection",
                  "/api/user_collections/{collection_id}/documents/{document_id}/summary",
-                 "/api/user_collections/{collection_id}/documents/{document_id}/chat"):
+                 "/api/user_collections/{collection_id}/documents/{document_id}/chat", "/api/search/chat"):
         refused = paths[path]["post"]["responses"]["429"]
         assert refused["content"]["application/json"]["schema"]["$ref"].endswith("/QuotaExhaustedResponse")
         assert "Retry-After" in refused["headers"]

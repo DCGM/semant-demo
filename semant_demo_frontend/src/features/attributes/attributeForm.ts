@@ -1,6 +1,7 @@
 import {
   ValueKind, type Attribute, type AttributeValue, type PatchAttributeValue, type PostAttributeValue, type Tag
 } from 'src/generated/api'
+import { plural } from 'src/shared/plural'
 
 /** Limits of the backend (`features/attributes/schemas.py`). */
 export const MAX_NAME = 200
@@ -152,4 +153,16 @@ export function tagApplicabilityChanges (attributes: Attribute[], tagId: string 
   return attributes
     .filter(a => !a.retired && !a.allTags && a.id in wanted && wanted[a.id] !== appliesToTag(a, tagId))
     .map(attribute => ({ attribute, add: !!wanted[attribute.id] }))
+}
+
+/** The warning shown before a narrowing of an attribute's tags is confirmed (#568): values on
+ * `affected` annotations (a count of annotations, not of values) would stop applying.
+ * `shown` is the number shown before, when the server counted another one since. */
+export function narrowingWarning (affected: number, shown: number | null = null): string {
+  const changed = shown !== null && shown !== affected
+    ? `The number of affected annotations changed from ${shown} since it was shown. `
+    : ''
+  return `${changed}This changes whether existing values apply on ${plural(affected, 'annotation')}. ` +
+    'No values are deleted: they stay on the annotations, marked as not applying, take no new ' +
+    'values, can be removed, and apply again if the tags are widened again.'
 }

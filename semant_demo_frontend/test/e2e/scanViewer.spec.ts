@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
-import { closePhoneNavigation, fixture, useViewport } from './support'
+import { fixture, useViewport } from './support'
 
 // The scan viewer (#543) on its preview page, with the synthetic page fixtures of the
 // browser-test profile (semant_demo_backend/tests/page_fixtures.py): line overlays stay on
@@ -22,7 +22,6 @@ const position = (page: Page) => page.getByTestId('page-position')
 
 async function openScan (page: Page, documentId: string, pageId?: string) {
   await page.goto(`/#/preview/scan/${documentId}${pageId ? `?page=${pageId}` : ''}`)
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('document-image-pane')).toBeVisible()
 }
 

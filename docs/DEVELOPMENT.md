@@ -62,8 +62,11 @@ reseeds it.
 (`tests/synthetic_documents.py`): years 1600–2000, mostly 1850–1940; the libraries `mzk`,
 `nkp`, `svkhk` and `vkol`; the languages `ces`, its alias `cze`, `deu`, `lat` and `slk`; Czech,
 German and Latin titles; and some values missing. It also adds the two outliers of the real
-corpus, the years 311 and 2879, unless `OUTLIERS=no`. A larger `COUNT` (at most 1,000,000)
-gives a corpus for measuring aggregates; 2,000 documents take a few seconds. The fixture schema
+corpus, the years 311 and 2879, unless `OUTLIERS=no`. Runs only add: `OUTLIERS=no` (or a
+smaller `COUNT`) does not remove documents an earlier run added. Comparing without them needs
+`make dev-reset` first, which discards all local development data ([Lifecycle, reset and safety](#2-lifecycle-reset-and-safety)). A larger
+`COUNT` (at most 1,000,000; generated one batch at a time, so memory stays flat) gives a corpus
+for measuring aggregates; 2,000 documents take a few seconds. The fixture schema
 declares `library` as production does (`text`, `field` tokenization, #496); an older store
 without it gets it declared the same way first.
 
@@ -300,6 +303,9 @@ The Make targets call `scripts/e2e-dev.sh start|test|capture|rebuild|restart|sta
 - **Data.** Specs clean up what they create, so one seeded profile serves many runs. If a
   test fails half-way (or you click around in the profile) and leaves data behind,
   `make e2e-dev-restart` reseeds the fixture corpus.
+- **Result cards.** A passage card's title is the chunk's title (e.g. "Požár"); its document's
+  title appears under it as **Source**. Document cards show the document title. Match
+  passages by id or by their Source, not by the document title in the heading.
 - **Display.** The script runs headless Chromium without `DISPLAY` (unless `--headed`,
   `--debug` or `--ui` is passed): with a forwarded X display (`ssh -X`) Chromium otherwise
   waits ~25 s for its first frame at every browser launch. `make test-e2e` unsets it too.

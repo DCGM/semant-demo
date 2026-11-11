@@ -30,7 +30,13 @@ async def summarize(search_response: SearchResponse, summary_type: str,
                     summarizer: TemplatedSearchResultsSummarizer = Depends(get_summarizer),
                     current_user: User | None = Depends(current_active_optional_user),
                     budget: AllowanceBudget = Depends(get_allowance_budget)) -> SummaryResponse:
-    return await service.summarize(summarizer, summary_type, search_response, budget, length)
+    """A summary of the search results. A failed generation answers 200 with the configured
+    fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the
+    feature's limit) answers with its status and safe message."""
+    try:
+        return await service.summarize(summarizer, summary_type, search_response, budget, length)
+    except service.SummaryRefused as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
 
 
 @exp_router.post(

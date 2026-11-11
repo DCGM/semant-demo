@@ -250,7 +250,8 @@
           <div class="results-header__title">
             <div class="text-h5 text-weight-medium">{{ mode === 'documents' ? 'Documents' : 'Passages' }}</div>
             <div v-if="view === 'visualizations'" class="text-caption text-grey-7" data-testid="charts-unit">
-              {{ mode === 'documents' ? 'Charts of the matching documents.' : 'Charts of the matching passages.' }}
+              <template v-if="applied.criteria.textQuery">{{ mode === 'documents' ? 'Charts of the ranked documents of this search.' : 'Charts of the ranked passages of this search.' }}</template>
+              <template v-else>{{ mode === 'documents' ? 'Charts of the matching documents.' : 'Charts of the matching passages.' }}</template>
             </div>
             <div v-else-if="resultsState === 'results'" class="text-caption text-grey-7" data-testid="search-coverage">
               {{ coverage }} Search completed in {{ timeSpent.toFixed(2) }}s.
@@ -283,8 +284,11 @@
           :slow="charts.slow.value"
           :error="charts.error.value"
           :invalid="charts.invalid.value"
+          :ranked="rankedState"
           @retry="charts.retry"
-          @apply-period="applyPeriod"
+          @retry-ranked="resultCharts.retry"
+          @retry-search="runApplied({ force: true })"
+          @apply-filter="applyChartFilter"
           @show-documents="chooseMode('documents')"
         />
 
@@ -414,21 +418,37 @@
 
     </div>
 
-    <RightSidebarPanel v-if="results.length || passages.loading.value" id="search-summary" label="Summary" icon="summarize">
-      <SearchSummaryPanel
-        :tokens="searchSummary.tokens"
-        :time-spent="searchSummary.timeSpent"
-        v-model:length="searchSummary.length"
-        v-model:scope="searchSummary.scope"
-        :error="searchSummary.error"
-        :loading="searchSummary.summarizing"
-        :disable="!results.length"
-        @summarize="searchSummary.summarize"
-        @cite="jumpToResult"
+    <!-- AI Chat: summaries and questions about the results in one conversation (#245).
+         fill: the conversation scrolls; the controls and the question input stay in view -->
+    <RightSidebarPanel
+      v-if="results.length || passages.loading.value"
+      id="search-chat"
+      label="AI Chat"
+      icon="forum"
+      :busy="searchChat.streaming.value"
+      fill
+    >
+      <ScopedChatPanel
+        :messages="searchChat.messages.value"
+        :streaming="searchChat.streaming.value"
+        :scope-label="searchChatScopeLabel"
+        :disabled="!searchChatScope"
+        :scope-changed="searchChat.scopeChanged.value"
+        :scope-changed-text="searchChatScopeChangedText"
+        empty-text="Summarize these search results or ask a question about them. Answers cite them as S1, S2…; click one to show the result and open it in the Document panel."
+        input-label="Ask about these results"
+        summaries
+        :suggested-questions="SEARCH_CHAT_QUESTIONS"
+        :coverage-text="(coverage) => `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} results.`"
+        @ask="searchChat.ask"
+        @stop="searchChat.stop"
+        @cite="showChatSource"
+        @new-conversation="searchChat.reset"
+        @summarize="summarizeResults"
       />
     </RightSidebarPanel>
 
-    <!-- Registered once a result is opened, so the Summary stays the default panel. -->
+    <!-- Registered once a result is opened, so AI Chat stays the default panel. -->
     <RightSidebarPanel v-if="contextResultNumber !== null" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
       <ChunkContextPanel
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
@@ -454,25 +474,28 @@
 import { storeToRefs } from 'pinia'
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QBtnToggle, QCard, QCardSection, QSeparator, QSelect, QRange, QItem, QItemSection, QItemLabel, QBanner, QSpinner, QTabs, QTab, Notify, useQuasar } from 'quasar'
-import { SearchType, WriteOutcome, type SearchFilter, type SearchVectorInfo } from 'src/generated/api'
+import { SearchType, WriteOutcome, type SearchFilter, type SearchVectorInfo, type SummaryLength } from 'src/generated/api'
 import { captureSession, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
+import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, toSearchCriteria, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
 import { chartsAvailability, useExploreCharts } from 'src/features/explore/useExploreCharts'
+import { documentPopulation, passagePopulation, useResultCharts, type RankedChartsState, type RankedPopulation } from 'src/features/explore/useResultCharts'
+import { withChartFilter, type ChartFilter } from 'src/features/analytics/corpusOverview'
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
-import type { YearWindow } from 'src/features/analytics/timeline'
-import { useSearchSummary } from './useSearchSummary'
-import SearchSummaryPanel from './SearchSummaryPanel.vue'
+import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
+import { citedSources, MAX_SEARCH_CHAT_RESULTS, useScopedChat, type ChatAnswer, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
+import { summaryPrompt } from 'src/shared/summaryLength'
+import { plural } from 'src/shared/plural'
 import SearchResultCard from './SearchResultCard.vue'
 import DocumentResultCard from './DocumentResultCard.vue'
 import { escapeClearsSelection } from './resultLayout'
-import type { SearchResultsContext } from './searchResults'
+import { asSearchResponse } from './searchResults'
 import {
   criteriaChips, criteriaOfFilterValues, filterTarget, formatFilterLabel, historyFiltersOf, intervalBounds,
   nominalValuesOf, offeredCriteria, withNominalValues, withYearRange, yearRangeOf, type CriterionChip, type IntervalValue
@@ -495,8 +518,10 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 // Passages (`POST /api/search/passages`) for a text query, and Documents (`POST /api/search/documents`)
 // for filters alone (#606) or ranked by a text query (#607), each loaded page by page. The
 // Visualizations view (#618) charts the same applied criteria: for Documents without a text
-// query, every matching document (`useExploreCharts`). Switching between the views searches or
-// counts again only when the shown ones are of other criteria.
+// query, every matching document (`useExploreCharts`); for a text query, exactly the results its
+// search ranked (`useResultCharts`, #620). Clicking a chart category applies it as a filter (a new
+// search). Switching between the views searches or counts again only when the shown ones are of
+// other criteria.
 
 const api = useApi().default
 
@@ -582,12 +607,6 @@ const hasMore = computed(() => {
   if (mode.value === 'documents') return documents.results.value ? hasMoreDocuments(documents.results.value) : false
   return passages.results.value ? hasMorePassages(passages.results.value) : false
 })
-const searchContext = computed<SearchResultsContext | null>(() => {
-  const current = passages.results.value
-  return current
-    ? { id: current.id, query: current.query.criteria.textQuery ?? '', results: current.items, timeSpent: current.timeSpent }
-    : null
-})
 const selectedResults = ref<string[]>([])
 const targetCollectionId = ref<string | null>(null)
 
@@ -599,6 +618,40 @@ const isIdleLocation = (location: ExploreLocation) =>
 const view = computed<ExploreView>(() => applied.value.view ?? 'results')
 const charts = useExploreCharts()
 const chartsShown = computed(() => chartsAvailability(applied.value.criteria, mode.value, appliedCollection.value))
+
+// Charts of a text query's results (#620): the counts of the ranking the Results hold.
+const resultCharts = useResultCharts()
+const activeLoading = computed(() => (mode.value === 'documents' ? documents.loading.value : passages.loading.value))
+
+/** The ranking of the applied text query in the shown mode, once its search answered. */
+const rankedPopulation = computed<RankedPopulation | null>(() => {
+  const location = applied.value
+  if (!location.criteria.textQuery) return null
+  const population = mode.value === 'documents'
+    ? (documents.results.value ? documentPopulation(documents.results.value) : null)
+    : (passages.results.value ? passagePopulation(passages.results.value) : null)
+  // Results of other criteria (a search not run yet) are never charted as these.
+  const same = population && criteriaKey(population.criteria) === criteriaKey(location.criteria) &&
+    population.vector === location.vector && population.userCollectionId === appliedCollection.value
+  return same ? population : null
+})
+watch([rankedPopulation, view], ([population, shown]) => {
+  if (population && shown === 'visualizations') void resultCharts.show(population)
+})
+const rankedCurrent = computed(() => !!rankedPopulation.value && resultCharts.population.value?.key === rankedPopulation.value.key)
+const rankedState = computed<RankedChartsState>(() => {
+  const counts = rankedCurrent.value ? resultCharts.distributions.value : null
+  const vector = counts?.ranking.vector ?? null
+  return {
+    searching: activeLoading.value,
+    searchError: activeError.value,
+    counts,
+    slow: resultCharts.slow.value,
+    error: rankedCurrent.value ? resultCharts.error.value : null,
+    invalid: rankedCurrent.value && resultCharts.invalid.value,
+    vectorName: vector ? (availableVectors.value.find(v => v.id === vector)?.name ?? vector) : null
+  }
+})
 
 /**
  * What the results area shows: passage cards (`results`), document cards (`documents`) or a
@@ -644,14 +697,14 @@ function chooseView (chosen: ExploreView) {
 }
 
 /**
- * Applies a timeline period as the publication-year filter, keeping the other criteria; the
- * draft gets the same years and keeps its other changes.
+ * Applies a clicked chart category (a year bin, a library, a document language) as the filter
+ * of its dimension, keeping the other criteria, mode, vector and collection: a new search, whose
+ * ranking and counts may differ. The draft gets the same filter and keeps its other changes.
  */
-function applyPeriod (period: YearWindow) {
-  const years = { yearMin: period.start, yearMax: period.end }
+function applyChartFilter (filter: ChartFilter) {
   const criteria = applied.value.criteria
-  draftFilters.value = normalizeCriteria({ ...draftFilters.value, documentFilters: { ...draftFilters.value.documentFilters, ...years } })
-  void explore.apply({ ...applied.value, criteria: normalizeCriteria({ ...criteria, documentFilters: { ...criteria.documentFilters, ...years } }) })
+  draftFilters.value = normalizeCriteria({ ...draftFilters.value, documentFilters: withChartFilter(draftFilters.value.documentFilters, filter) })
+  void explore.apply({ ...applied.value, criteria: normalizeCriteria({ ...criteria, documentFilters: withChartFilter(criteria.documentFilters, filter) }) })
 }
 
 function clearSelection () {
@@ -668,8 +721,82 @@ function setSelected (chunkId: string, selected: boolean) {
   selectedResults.value = selected ? [...others, chunkId] : others
 }
 
-// Summarization (right sidebar): works on the loaded results or the selected ones
-const searchSummary = reactive(useSearchSummary(searchContext, selectedResults))
+// Chat (right sidebar, #245, ADR 0012): about the first MAX_SEARCH_CHAT_RESULTS of the selected
+// results, or of the loaded ones. A new search or a selection change is a new scope: the panel
+// keeps the old conversation with a notice, and the next question starts a new one.
+const searchChatCandidates = computed(() => {
+  const selected = new Set(selectedResults.value)
+  return selected.size ? results.value.filter(result => selected.has(result.id)) : results.value
+})
+const searchChatResults = computed(() => searchChatCandidates.value.slice(0, MAX_SEARCH_CHAT_RESULTS))
+const searchChatScope = computed<SearchChatScope | null>(() => {
+  const current = passages.results.value
+  if (!current || !searchChatResults.value.length) return null
+  return {
+    kind: 'search',
+    chunkIds: searchChatResults.value.map(result => result.id),
+    criteria: toSearchCriteria(current.query.criteria),
+    userCollectionId: current.query.userCollectionId
+  }
+})
+const searchChatScopeText = computed(() => {
+  const count = searchChatResults.value.length
+  const total = searchChatCandidates.value.length
+  const kind = selectedResults.value.length ? 'selected' : 'loaded'
+  if (total > count) return `about the first ${count} of ${total} ${kind} results`
+  if (kind === 'selected') return `about ${plural(count, 'selected result')}`
+  return count === 1 ? 'about the one loaded result' : `about all ${count} loaded results`
+})
+const searchChatScopeLabel = computed(() =>
+  searchChatScope.value ? `Asking ${searchChatScopeText.value}` : 'Waiting for the search results…')
+const searchChatScopeChangedText = computed(() => {
+  const next = searchChatScope.value ? `, ${searchChatScopeText.value}` : ''
+  return `The results changed. Your next question starts a new conversation${next}.`
+})
+const searchChat = useScopedChat(() => searchChatScope.value, { keepOnScopeChange: true })
+const SEARCH_CHAT_QUESTIONS = [
+  'What do these results have in common?',
+  'Which people, places and dates appear in these results?'
+]
+
+/**
+ * A summary of exactly the chat's results (the selected ones, or the first loaded), as the
+ * conversation's next answer: `/api/summarize` numbers them [doc1]... in result order. A
+ * failed generation (the route's fallback text, `failed`) is a failed answer.
+ */
+function summarizeResults (length: SummaryLength) {
+  void searchChat.summarize(summaryPrompt(length), async (scope, signal): Promise<ChatAnswer> => {
+    // The scope's results, in its (result) order.
+    const ids = new Set(scope.chunkIds)
+    const subset = results.value.filter(result => ids.has(result.id))
+    const searchResponse = asSearchResponse(scope.criteria.textQuery ?? '', passages.results.value?.timeSpent ?? 0, subset)
+    const data = await api.summarizeApiSummarizeSummaryTypePost({ summaryType: 'results', searchResponse, length }, { signal })
+    if (data.failed) return { text: '', sources: [], error: data.summary }
+    return {
+      text: data.summary,
+      sources: citedSources(data.summary, subset.map(result => ({
+        chunkId: result.id,
+        documentId: result.document,
+        order: result.order ?? null,
+        fromPage: result.fromPage,
+        toPage: result.toPage
+      })))
+    }
+  })
+}
+
+/** A citation shows its result and opens it in the Document panel; it never changes the selection (the scope). */
+async function showChatSource (source: ChatSource) {
+  const index = results.value.findIndex(result => result.id === source.chunkId)
+  if (index < 0) {
+    Notify.create({ message: `Source S${source.label} is not among the loaded results.`, position: 'top', color: 'warning' })
+    return
+  }
+  const opening = viewContext(results.value[index], index + 1)
+  // On narrow screens the sidebar covers the results; the Document panel shows the result there.
+  if ($q.screen.gt.sm) await jumpToResult(index + 1)
+  await opening
+}
 
 // Citations
 const highlightedDocNumber = ref<number | null>(null)
@@ -755,6 +882,8 @@ watch(
       // user's collections.
       passages.cancel()
       documents.cancel()
+      // The conversation may quote the previous user's collections.
+      searchChat.reset()
       selectedResults.value = []
       draftCollection.value = null
       appliedCollection.value = null
@@ -1095,7 +1224,9 @@ async function runApplied ({ force = false } = {}) {
     return
   }
 
-  if (location.view === 'visualizations') {
+  // A text query's charts count the ranking of its search: searched as for Results (#620).
+  const ranked = chartsAvailability(location.criteria, effectiveMode(location), appliedCollection.value) === 'ranked'
+  if (location.view === 'visualizations' && !ranked) {
     // The Results are searched when shown; a search of other criteria is not finished meanwhile.
     if (resultsKeyOf(location) !== resultsKey) {
       passages.cancel()
@@ -1110,6 +1241,7 @@ async function runApplied ({ force = false } = {}) {
   const key = resultsKeyOf(location)
   if (!force && key === resultsKey && resultsCurrent(location)) return
   resultsKey = key
+  resultCharts.clear()
 
   if (effectiveMode(location) === 'documents') {
     passages.cancel()

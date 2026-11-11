@@ -96,6 +96,19 @@ async def test_embeddings_are_deterministic(fake_client):
     assert len(fake_embedding("Lhota")) == FAKE_EMBEDDING_DIM
 
 
+async def test_chunk_title_requests_get_a_distinct_deterministic_title(fake_client):
+    def request(excerpt: str) -> dict:
+        return {"model": "fake", "stream": False, "messages": [
+            {"role": "system", "content": "Respond only with the title."},
+            {"role": "user", "content": f"Original Document Title:\nKronika\n\nExcerpt Text:\n{excerpt}"}]}
+
+    first = await fake_client.post("/ollama/api/chat", json=request("Požár v roce 1850 zničil obec."))
+    second = await fake_client.post("/openai/v1/chat/completions", json=request("Café Slavia hostila setkání."))
+
+    assert first.json()["message"]["content"] == "Požár v roce 1850"
+    assert second.json()["choices"][0]["message"]["content"] == "Café Slavia hostila setkání."
+
+
 async def test_unfaked_provider_routes_fail_visibly(fake_client):
     response = await fake_client.post("/v1/chat/completions", json={})
 

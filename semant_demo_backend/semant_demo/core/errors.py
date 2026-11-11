@@ -2,7 +2,7 @@
 
 ``create_app`` maps them to HTTP responses (``NotFoundError`` -> 404,
 ``InvalidRequestError`` -> 400, ``ServiceUnavailableError`` -> 503, ``IncompleteWriteError`` -> 500,
-``EditConflictError`` and ``InUseError`` -> 409 with a structured body).
+``EditConflictError``, ``InUseError`` and ``ConfirmationRequiredError`` -> 409 with a structured body).
 Other storage/SDK failures are not wrapped: they propagate and become 500 responses.
 """
 
@@ -68,3 +68,17 @@ class InUseError(Exception):
 
     def body(self) -> dict:
         return {"detail": self.detail, "affected": self.affected}
+
+
+class ConfirmationRequiredError(InUseError):
+    """A change would affect annotations and the caller has not confirmed it, or confirmed it for
+    another number of annotations (#568): nothing was changed. ``create_app`` answers 409 with
+    ``detail``, ``affected`` (how many annotations, counted now) and ``confirm`` (what to confirm,
+    e.g. ``narrowing``); sending the change again with that number confirms it."""
+
+    def __init__(self, detail: str, affected: int, confirm: str):
+        super().__init__(detail, affected)
+        self.confirm = confirm
+
+    def body(self) -> dict:
+        return {**super().body(), "confirm": self.confirm}

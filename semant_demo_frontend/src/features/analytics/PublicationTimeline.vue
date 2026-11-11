@@ -35,36 +35,54 @@
       />
     </div>
     <p class="timeline__hint">
-      Drag across the chart to zoom into a period. Zooming changes only this chart; applying the period as a filter
-      restricts every count on the page.
+      Click a bar to filter by its years; drag across the chart to zoom into a period. Zooming changes only this chart;
+      <template v-if="searches">a filter starts a new search, whose results and counts may differ from these.</template>
+      <template v-else>a filter restricts every count on the page.</template>
     </p>
 
     <div @pointerup="zoomToSelection">
       <VegaChart
         :spec="spec"
         :signals="['period']"
-        :label="`Bar chart of documents per ${widthName(width)} from ${windowLabel}; the table below lists the same counts.`"
+        :clickable="isFilterableBin"
+        :label="`Bar chart of ${unit} per ${widthName(width)} from ${windowLabel}; the table below lists the same counts.`"
         @signal="onSignal"
+        @item-click="(datum) => emit('applyPeriod', binYears(Number(datum.start)))"
       />
     </div>
 
     <q-expansion-item
       dense dense-toggle switch-toggle-side class="timeline__table"
-      :label="`Table: documents per ${widthName(width)}, ${windowLabel}`"
+      :label="`Show data table (${unit} per ${widthName(width)}, ${windowLabel})`"
+      data-testid="timeline-table"
     >
       <q-markup-table flat dense separator="horizontal" class="count-table">
-        <caption class="sr-only">Documents per {{ widthName(width) }} of publication, {{ windowLabel }}</caption>
-        <thead><tr><th scope="col" class="text-left">Publication years</th><th scope="col" class="text-right">Documents</th></tr></thead>
+        <caption class="sr-only">{{ unitNoun(unit, 2, true) }} per {{ widthName(width) }} of publication, {{ windowLabel }}</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="text-left">Publication years</th>
+            <th scope="col" class="text-right">{{ unitNoun(unit, 2, true) }}</th>
+            <th scope="col" class="text-right"><span class="sr-only">Filter</span></th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="row in rows" :key="row.key" :class="`count-table__${row.kind}`">
             <th scope="row" class="text-left text-weight-regular">
               {{ row.label }}<span v-if="row.note" class="text-grey-7"> — {{ row.note }}</span>
             </th>
             <td class="text-right">{{ formatCount(row.count) }}</td>
+            <td class="text-right">
+              <q-btn
+                v-if="row.kind === 'bin' && row.count > 0" dense flat no-caps color="primary" label="Filter"
+                :aria-label="`Filter by the years ${row.label}`"
+                :data-testid="`timeline-filter-${row.key}`" @click="emit('applyPeriod', binYears(Number(row.key.slice(4))))"
+              />
+            </td>
           </tr>
           <tr class="count-table__unknown">
             <th scope="row" class="text-left text-weight-regular">Unknown or invalid year</th>
             <td class="text-right">{{ formatCount(distribution.unknownCount ?? 0) }}</td>
+            <td />
           </tr>
         </tbody>
       </q-markup-table>
@@ -83,11 +101,18 @@ import type { PublicationYearCounts } from 'src/generated/api'
 import VegaChart from 'src/shared/visualization/VegaChart.vue'
 import {
   alignWindow, binWidthFor, binsName, fullRange, mainRange, outside, panWindow, selectedWindow, timelineBins,
-  timelineRows, timelineSpec, widthName, zoomWindow, MIN_SPAN, type Outside, type YearWindow
+  timelineRows, timelineSpec, unitNoun, widthName, zoomWindow, MIN_SPAN, type CountUnit, type Outside, type YearWindow
 } from './timeline'
 
-const props = defineProps<{ distribution: PublicationYearCounts }>()
+const props = withDefaults(defineProps<{
+  distribution: PublicationYearCounts
+  /** What is counted (#620: a search's Passages results count passages). */
+  unit?: CountUnit
+  /** A filter starts a new search (a text query's charts), said in the hint. */
+  searches?: boolean
+}>(), { unit: 'documents', searches: false })
 const emit = defineEmits<{
+  /** These years (inclusive) as the publication-year filter: the shown period or a clicked bin. */
   applyPeriod: [period: YearWindow]
   /** The shown window and bin width, whenever they change (other views follow the timeline). */
   view: [view: { window: YearWindow, width: number }]
@@ -112,8 +137,17 @@ const width = computed(() => binWidthFor(view.value))
 const shown = computed(() => alignWindow(view.value, width.value))
 const bins = computed(() => timelineBins(years.value, shown.value, width.value))
 const out = computed(() => outside(years.value, shown.value))
-const rows = computed(() => timelineRows(bins.value, width.value, out.value))
-const spec = computed(() => timelineSpec(bins.value, width.value, shown.value))
+const rows = computed(() => timelineRows(bins.value, width.value, out.value, props.unit))
+const spec = computed(() => timelineSpec(bins.value, width.value, shown.value, props.unit))
+/** A bin with counts can be applied as a filter (a click on its bar or its table row). */
+const isFilterableBin = (datum: Record<string, unknown>) => Number(datum.count) > 0 && typeof datum.endExclusive === 'number'
+
+/** The years of the bin starting at `start`: the whole bin, as counted, within valid years. */
+function binYears (start: number): YearWindow {
+  const bin = bins.value.find(b => b.start === start)
+  const end = bin ? bin.endExclusive - 1 : start
+  return { start: Math.max(1, start), end: Math.min(currentYear, end) }
+}
 
 watch([shown, width], () => emit('view', { window: shown.value, width: width.value }), { immediate: true })
 
@@ -140,7 +174,7 @@ const hiddenText = computed(() => {
   const describe = (o: Outside, where: string) => {
     if (!o.count) return null
     const named = o.years.length ? ` (${o.years.length === 1 ? 'year' : 'years'} ${o.years.join(', ')})` : ''
-    return `${formatCount(o.count)} ${o.count === 1 ? 'document' : 'documents'} ${where}${named}`
+    return `${formatCount(o.count)} ${unitNoun(props.unit, o.count)} ${where}${named}`
   }
   return [describe(out.value.before, `before ${shown.value.start}`), describe(out.value.after, `after ${shown.value.end}`)]
     .filter(Boolean).join('; ')
@@ -217,6 +251,12 @@ function zoomToSelection () {
 
 .count-table {
   max-width: 560px;
+}
+
+/* Long gap labels wrap, so the Inspect column stays inside a phone-wide card. */
+.count-table :deep(th),
+.count-table :deep(td) {
+  white-space: normal;
 }
 
 .count-table__gap th,

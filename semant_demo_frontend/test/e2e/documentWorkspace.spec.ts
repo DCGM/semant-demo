@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import {
-  answerChat, askChat, chatSource, chunkText, closePhoneNavigation, ensureLoggedIn, fixture, search, useViewport
+  answerChat, askChat, chatSource, chunkText, ensureLoggedIn, fixture, search, useViewport
 } from './support'
 
 // The paired document workspace (#545): the public document view (`/documents/:id`) and the
@@ -54,7 +54,6 @@ async function clickLine (page: Page, lineId: string) {
 
 async function open (page: Page, documentId: string, query = '') {
   await page.goto(`/#/documents/${documentId}${query}`)
-  await closePhoneNavigation(page)
   await expect(workspace(page)).toBeAttached()
 }
 
@@ -255,7 +254,6 @@ test.describe('the public document view', () => {
     // The link keeps the view; a narrow screen has no room for both.
     await useViewport(page, 'phone')
     await page.reload()
-    await closePhoneNavigation(page)
     await expect(workspace(page)).toHaveAttribute('data-mode', 'scan')
     await expect(modes(page).getByRole('button', { name: 'Text and scan' })).toHaveCount(0)
     await modes(page).getByRole('button', { name: 'Text', exact: true }).click()
@@ -434,7 +432,6 @@ test.describe('the layout of the document views (#600)', () => {
     await ensureLoggedIn(page, 'owner')
     await page.setViewportSize({ width: 390, height: 400 })
     await page.goto(`/#/collections/${chronicles.id}/documents/${chronicle.id}/v1?view=text`)
-    await closePhoneNavigation(page)
     await expect(chunkText(page, 'chronicle_1')).toBeVisible()
     const text = page.getByTestId('workspace-text')
     await expect.poll(() => text.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
@@ -464,7 +461,7 @@ test.describe('from Search and Chat and back', () => {
     await expect(page).toHaveURL(new RegExp(`/documents/${chronicle.id}\\?chunk=${target.id}&from=search`))
     await expect(chunk(page, 'chronicle_2')).toBeVisible()
     await expect(overlay(page)).toHaveAttribute('data-layout-page-id', PAGE_1)
-    await expect(page.getByRole('listitem', { name: 'Summary' })).toHaveCount(0)
+    await expect(page.getByRole('listitem', { name: 'AI Chat' })).toHaveCount(0)
 
     // Back: the same results, the opened result still in its panel.
     await page.getByRole('link', { name: 'Back to search results' }).click()
@@ -490,7 +487,6 @@ test.describe('from Search and Chat and back', () => {
     await useViewport(page, 'wide')
     await answerChat(page, [{ rag_answer: 'The arrival [doc 1].', sources: [chatSource('chronicle_3')] }])
     await page.goto('/#/rag')
-    await closePhoneNavigation(page)
     await askChat(page, 'Who arrived?')
     await page.locator('.message-bubble').getByRole('link', { name: '[S1]' }).dblclick()
     await page.getByTestId('chunk-context').getByTestId('chunk-context-open').click()
@@ -517,7 +513,7 @@ test.describe('the collection document view', () => {
     await expect(chunkText(page, 'chronicle_3')).toBeVisible()
     // Annotations and the collection's panels are as before.
     await expect(chunkText(page, 'chronicle_1').locator('.text-segment.is-tagged').first()).toBeVisible()
-    for (const name of ['Tags', 'AI Tagging', 'Summary', 'Document']) {
+    for (const name of ['Tags', 'AI Tagging', 'AI Chat', 'Document']) {
       await expect(page.getByRole('listitem', { name })).toHaveCount(1)
     }
 

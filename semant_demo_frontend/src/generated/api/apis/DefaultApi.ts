@@ -86,6 +86,7 @@ import type {
   RagRouteConfig,
   RankedResultsDistributions,
   RankedResultsDistributionsRequest,
+  SearchChatRequest,
   SearchFiltersResponse,
   SearchRequest,
   SearchResponse,
@@ -247,6 +248,8 @@ import {
     RankedResultsDistributionsToJSON,
     RankedResultsDistributionsRequestFromJSON,
     RankedResultsDistributionsRequestToJSON,
+    SearchChatRequestFromJSON,
+    SearchChatRequestToJSON,
     SearchFiltersResponseFromJSON,
     SearchFiltersResponseToJSON,
     SearchRequestFromJSON,
@@ -331,6 +334,10 @@ export interface ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumen
     collectionId: string;
     documentId: string;
     contextChatRequest: ContextChatRequest;
+}
+
+export interface ChatAboutSearchResultsApiSearchChatPostRequest {
+    searchChatRequest: SearchChatRequest;
 }
 
 export interface CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest {
@@ -901,6 +908,30 @@ export interface DefaultApiInterface {
      * Chat About Document
      */
     chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for chatAboutSearchResultsApiSearchChatPost without sending the request
+     * @param {SearchChatRequest} searchChatRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    chatAboutSearchResultsApiSearchChatPostRequestOpts(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Streams an answer to ``question`` about the search results ``chunk_ids`` only (#245): they are read again under the search\'s ``criteria`` and collection, and those the search could not have returned are left out. Signed-out users may ask about public results under the daily AI allowance. The client sends the earlier turns and never source text.
+     * @summary Chat About Search Results
+     * @param {SearchChatRequest} searchChatRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    chatAboutSearchResultsApiSearchChatPostRaw(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Streams an answer to ``question`` about the search results ``chunk_ids`` only (#245): they are read again under the search\'s ``criteria`` and collection, and those the search could not have returned are left out. Signed-out users may ask about public results under the daily AI allowance. The client sends the earlier turns and never source text.
+     * Chat About Search Results
+     */
+    chatAboutSearchResultsApiSearchChatPost(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
@@ -2642,7 +2673,7 @@ export interface DefaultApiInterface {
     summarizeApiSummarizeSummaryTypePostRequestOpts(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * 
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * @summary Summarize
      * @param {string} summaryType 
      * @param {SearchResponse} searchResponse 
@@ -2654,6 +2685,7 @@ export interface DefaultApiInterface {
     summarizeApiSummarizeSummaryTypePostRaw(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>>;
 
     /**
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * Summarize
      */
     summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse>;
@@ -3392,6 +3424,59 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost(requestParameters: ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPostRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for chatAboutSearchResultsApiSearchChatPost without sending the request
+     */
+    async chatAboutSearchResultsApiSearchChatPostRequestOpts(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['searchChatRequest'] == null) {
+            throw new runtime.RequiredError(
+                'searchChatRequest',
+                'Required parameter "searchChatRequest" was null or undefined when calling chatAboutSearchResultsApiSearchChatPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/search/chat`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: SearchChatRequestToJSON(requestParameters['searchChatRequest']),
+        };
+    }
+
+    /**
+     * Streams an answer to ``question`` about the search results ``chunk_ids`` only (#245): they are read again under the search\'s ``criteria`` and collection, and those the search could not have returned are left out. Signed-out users may ask about public results under the daily AI allowance. The client sends the earlier turns and never source text.
+     * Chat About Search Results
+     */
+    async chatAboutSearchResultsApiSearchChatPostRaw(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.chatAboutSearchResultsApiSearchChatPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Streams an answer to ``question`` about the search results ``chunk_ids`` only (#245): they are read again under the search\'s ``criteria`` and collection, and those the search could not have returned are left out. Signed-out users may ask about public results under the daily AI allowance. The client sends the earlier turns and never source text.
+     * Chat About Search Results
+     */
+    async chatAboutSearchResultsApiSearchChatPost(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.chatAboutSearchResultsApiSearchChatPostRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -7269,6 +7354,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * Summarize
      */
     async summarizeApiSummarizeSummaryTypePostRaw(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>> {
@@ -7279,6 +7365,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * Summarize
      */
     async summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse> {
