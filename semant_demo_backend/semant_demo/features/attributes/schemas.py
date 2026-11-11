@@ -106,6 +106,10 @@ class PatchAttribute(BaseModel):
     remove_tag_ids: list[UUID] | None = Field(default=None, max_length=500)
     """Tags to take out of the selected tags, like ``add_tag_ids``; the last one leaves no tag."""
     retired: bool | None = None
+    confirm_affected: int | None = Field(default=None, ge=0)
+    """Confirms a narrowing of the tags that makes values on this many annotations stop applying
+    (#568): the number a refusal (409 with ``confirm`` ``narrowing``) reported. Values are kept;
+    a narrowing that affects another number is refused again with the new one."""
 
     @model_validator(mode="after")
     def check_any(self) -> "PatchAttribute":

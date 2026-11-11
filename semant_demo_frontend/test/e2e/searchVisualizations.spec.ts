@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
-import { closePhoneNavigation, ensureLoggedIn, isPassageSearch, logOut, useViewport } from './support'
+import { ensureLoggedIn, isPassageSearch, logOut, useViewport } from './support'
 
 // Explore Visualizations (#618, #620): a Results | Visualizations switch on the Search page over the
 // same applied criteria and results mode, in the URL and history. Without a text query the charts
@@ -35,7 +35,6 @@ function countRequests (page: Page) {
 
 async function openSearch (page: Page, path: string) {
   await page.goto(path)
-  await closePhoneNavigation(page)
 }
 
 for (const viewport of ['wide', 'phone'] as const) {

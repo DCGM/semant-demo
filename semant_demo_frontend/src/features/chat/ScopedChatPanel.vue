@@ -14,10 +14,18 @@
       />
     </div>
 
+    <div
+      v-if="scopeChanged && scopeChangedText"
+      class="text-caption text-warning q-mb-sm"
+      role="status"
+      data-testid="chat-scope-changed"
+    >
+      <q-icon name="info" size="16px" class="q-mr-xs" />
+      {{ scopeChangedText }}
+    </div>
+
     <div ref="listRef" class="chat-messages col" role="log" aria-live="polite">
-      <div v-if="!messages.length" class="text-caption text-grey-7">
-        Ask a question about this document. Answers cite its passages as S1, S2…; click one to show it in the text.
-      </div>
+      <div v-if="!messages.length" class="text-caption text-grey-7">{{ emptyText }}</div>
       <template v-for="(message, index) in messages" :key="index">
         <div v-if="message.role === 'user'" class="chat-message chat-message--user q-mb-sm" data-testid="chat-question">
           {{ message.text }}
@@ -39,12 +47,55 @@
             data-testid="chat-coverage"
           >
             <q-icon name="warning" size="16px" class="q-mr-xs" />
-            Based on the first {{ message.coverage.usedChunks }} of {{ message.coverage.totalChunks }} passages of the document.
+            {{ coverageText(message.coverage) }}
           </div>
           <div v-if="message.status === 'stopped'" class="text-caption text-grey-7 q-mt-xs">Stopped.</div>
           <div v-if="message.error" class="text-negative text-body2 q-mt-xs" role="alert">{{ message.error }}</div>
         </div>
       </template>
+    </div>
+
+    <!-- Suggested messages: the summaries always, the page's questions while nothing was asked. -->
+    <div
+      v-if="summaries || shownQuestions.length"
+      class="row q-gutter-xs q-mt-sm suggested-messages"
+      role="group"
+      aria-label="Suggested messages"
+      data-testid="chat-suggestions"
+    >
+      <template v-if="summaries">
+        <q-chip
+          v-for="length in SUMMARY_LENGTHS"
+          :key="length"
+          clickable
+          outline
+          dense
+          color="secondary"
+          icon="summarize"
+          role="button"
+          :aria-disabled="streaming || disabled"
+          :disable="streaming || disabled"
+          data-testid="chat-summarize"
+          @click="emit('summarize', length)"
+        >
+          {{ summaryPrompt(length) }}
+        </q-chip>
+      </template>
+      <q-chip
+        v-for="question in shownQuestions"
+        :key="question"
+        clickable
+        outline
+        dense
+        color="primary"
+        role="button"
+        :aria-disabled="streaming || disabled"
+        :disable="streaming || disabled"
+        data-testid="chat-suggested-question"
+        @click="emit('ask', question)"
+      >
+        {{ question }}
+      </q-chip>
     </div>
 
     <div class="row items-end no-wrap q-gutter-x-sm q-mt-sm">
@@ -56,7 +107,7 @@
         dense
         outlined
         :maxlength="MAX_QUESTION_CHARS"
-        label="Ask about this document"
+        :label="inputLabel"
         :input-style="{ maxHeight: '8em' }"
         data-testid="chat-input"
         @keydown.enter.exact="onEnter"
@@ -76,7 +127,7 @@
         color="primary"
         icon="send"
         aria-label="Send the question"
-        :disable="!draft.trim()"
+        :disable="disabled || !draft.trim()"
         data-testid="chat-send"
         @click="send"
       />
@@ -85,32 +136,64 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
-import { chatTokens, MAX_QUESTION_CHARS, type ChatMessage, type ChatSource } from './useScopedChat'
+import type { SummaryLength } from 'src/generated/api'
+import { SUMMARY_LENGTHS, summaryPrompt } from 'src/shared/summaryLength'
+import { chatTokens, MAX_QUESTION_CHARS, type ChatCoverage, type ChatMessage, type ChatSource } from './useScopedChat'
 
 // Props-in/events-out only (docs/RIGHT_SIDEBAR.md section 3): the page owns
 // useScopedChat() and its scope and passes the conversation here.
-const props = defineProps<{
+type CoverageText = (coverage: ChatCoverage) => string
+
+// The wording defaults to the document scope (#248); other scopes pass their own.
+const props = withDefaults(defineProps<{
   messages: ChatMessage[]
   streaming: boolean
   /** What the next question is about, e.g. "Asking about this document". */
   scopeLabel: string
-}>()
+  /** Nothing to ask about yet (e.g. search results still loading): the question cannot be sent. */
+  disabled?: boolean
+  /** The scope changed since the shown conversation (`useScopedChat().scopeChanged`). */
+  scopeChanged?: boolean
+  /** Shown while `scopeChanged`: what the next question, in a new conversation, is about. */
+  scopeChangedText?: string
+  emptyText?: string
+  inputLabel?: string
+  /** The note under an answer based on only a part of the scope. */
+  coverageText?: CoverageText
+  /** Offer *Summarize briefly / in detail*: a summary of the scope as the next answer. */
+  summaries?: boolean
+  /** Questions suggested while the conversation is empty (or its scope changed). */
+  suggestedQuestions?: readonly string[]
+}>(), {
+  summaries: false,
+  suggestedQuestions: () => [],
+  disabled: false,
+  scopeChanged: false,
+  scopeChangedText: '',
+  emptyText: 'Ask a question about this document. Answers cite its passages as S1, S2…; click one to show it in the text.',
+  inputLabel: 'Ask about this document',
+  coverageText: (coverage: ChatCoverage) =>
+    `Based on the first ${coverage.usedChunks} of the ${coverage.totalChunks} passages in the collection.`
+})
 
 const emit = defineEmits<{
   ask: [question: string]
   stop: []
   cite: [source: ChatSource]
   'new-conversation': []
+  summarize: [length: SummaryLength]
 }>()
 
 const draft = ref('')
+const shownQuestions = computed(() =>
+  (!props.messages.length || props.scopeChanged) ? props.suggestedQuestions : [])
 const listRef = ref<HTMLElement | null>(null)
 
 function send () {
   const question = draft.value.trim()
-  if (!question || props.streaming) return
+  if (!question || props.streaming || props.disabled) return
   emit('ask', question)
   draft.value = ''
 }
@@ -171,6 +254,18 @@ watch(() => {
 }
 
 .chat-message--assistant {
+  padding: 2px 0;
+}
+
+/* A long suggested question wraps inside the panel instead of running past its edge. */
+.suggested-messages .q-chip {
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+}
+
+.suggested-messages :deep(.q-chip__content) {
+  white-space: normal;
   padding: 2px 0;
 }
 </style>

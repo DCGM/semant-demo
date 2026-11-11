@@ -7,13 +7,18 @@ text, then ``sources`` and ``end``, or an ``error`` that ends the stream. A stre
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from semant_demo.features.documents.criteria import SearchCriteria
 
 MAX_HISTORY_TURNS = 40
 """Earlier turns a request may carry (20 questions and answers); older ones are left out
 by the client. The server drops more of the oldest when they do not fit the input limit."""
 MAX_TURN_CHARS = 20000
 MAX_QUESTION_CHARS = 4000
+MAX_SEARCH_CHAT_RESULTS = 20
+"""Most search results one Search chat question is about (#245; the first page of a passage
+search): the page asks about the first of the selected or loaded results."""
 
 
 class ChatTurn(BaseModel):
@@ -31,6 +36,18 @@ class ChatTurn(BaseModel):
 class ContextChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
     history: list[ChatTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+
+
+class SearchChatRequest(ContextChatRequest):
+    """A question about search results (#245). ``chunk_ids`` are the results the page chose
+    (the first ``MAX_SEARCH_CHAT_RESULTS`` selected or loaded ones), in result order; ``criteria`` and
+    ``user_collection_id`` are those of the search. The server reads the passages again
+    under them, so an id the search could not have returned is left out (ADR 0006)."""
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_ids: list[UUID] = Field(min_length=1, max_length=MAX_SEARCH_CHAT_RESULTS)
+    criteria: SearchCriteria
+    user_collection_id: str | None = None
 
 
 class ChatSource(BaseModel):

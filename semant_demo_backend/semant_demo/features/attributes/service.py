@@ -28,7 +28,7 @@ from uuid import UUID
 
 from semant_demo.adapters.sql.attributes import AttributeRepository, StaleRevision
 from semant_demo.adapters.weaviate.writes import step_failure
-from semant_demo.core.errors import EditConflictError, InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
+from semant_demo.core.errors import ConfirmationRequiredError, EditConflictError, InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.core.outcomes import StepFailure, outcome_of
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.features.annotations.service import ATTRIBUTES_NOT_ENABLED as NOT_ENABLED
@@ -52,6 +52,8 @@ SCOPE_ATTEMPTS = 3
 """Times a change of an attribute's tags is computed again when someone else changed the attribute
 in between, before it is refused."""
 SCOPE_CONFLICT = "The attribute kept being changed by someone else; nothing was saved. Try again."
+NARROWING = "narrowing"
+"""What a ``ConfirmationRequiredError`` of a narrowing of the tags asks to confirm (#568)."""
 USAGE_UNKNOWN = "Could not check which annotations hold these values; nothing was changed. Try again later."
 
 
@@ -107,16 +109,19 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
                            patch: PatchAttribute) -> Attribute:
     """Renames, describes, retires or changes the tags of an attribute; ids of assigned values
     are untouched, so no annotation is rewritten. Narrowing the applicable tags (All tags to
-    selected tags or to none, or leaving out a selected tag) of an attribute that annotations
-    hold values of is refused (``InUseError``, 409, with the number of annotations affected):
-    those values would stop being applicable. Removing the last selected tag leaves the
-    attribute with no tag, never All tags (#522).
+    selected tags or to none, or leaving out a selected tag) so that values held by annotations
+    stop applying needs ``confirm_affected`` with the number of those annotations (#568);
+    without it, or with another number, it is refused (``ConfirmationRequiredError``, 409, with
+    the number counted now) and nothing changes. Values that already did not apply (after a
+    retag) are not counted. The values are kept and apply again when their tag does (#500).
+    When the number cannot be counted the narrowing is refused (503). Removing the last selected
+    tag leaves the attribute with no tag, never All tags (#522).
 
     ``add_tag_ids``/``remove_tag_ids`` change only those tags of the tags selected when the
     change is written (#516); an attribute for all tags takes neither (400), its scope is
     changed with ``all_tags``. Every change is written only on the revision it was computed
     from (one that leaves the tags alone keeps them as read): when someone else changed the
-    attribute in between, it is computed again (and checked again), and after
+    attribute in between, it is computed again (and counted again), and after
     ``SCOPE_ATTEMPTS`` such races it is refused (``EditConflictError``, 409) rather than written
     over another change."""
     grant = await access.require_attribute_definition_edit(store.annotations.collections, user, collection_id)
@@ -128,11 +133,10 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
         current = await _read(store, grant.collection_id, aid)
         all_tags, tag_ids = _scope_after(current, patch)
         unchanged = all_tags == current.all_tags and tag_ids == current.tag_ids
-        if not all_tags and (current.all_tags or not set(current.tag_ids) <= set(tag_ids)):
-            used = await _usage(store, grant, current.id, outside_tags=tag_ids)
-            if used:
-                raise InUseError(f"{used} annotations with values of this attribute have a tag outside the new "
-                                 "applicable tags; change or remove those values first.", used)
+        affected = await _newly_inapplicable(store, grant, current, all_tags, tag_ids)
+        if affected and patch.confirm_affected != affected:
+            raise ConfirmationRequiredError(_narrowing_message(affected, patch.confirm_affected), affected,
+                                            NARROWING)
         scoped = patch.model_copy(update={"all_tags": all_tags, "tag_ids": tag_ids,
                                           "add_tag_ids": None, "remove_tag_ids": None})
         if unchanged and all(v is None for v in (patch.name, patch.description, patch.retired)):
@@ -146,6 +150,28 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
             raise _attribute_not_found()
         return updated
     raise EditConflictError(SCOPE_CONFLICT, (await _read(store, grant.collection_id, aid)).model_dump(mode="json"))
+
+
+async def _newly_inapplicable(store: AttributeStore, grant, current: Attribute, all_tags: bool,
+                              tag_ids: list[UUID]) -> int:
+    """Annotations holding values of the attribute that apply now and would not apply with
+    ``(all_tags, tag_ids)``: from All tags, those with a tag outside ``tag_ids``; from selected
+    tags, those with a tag left out. Widening or keeping the tags affects none."""
+    if all_tags:
+        return 0
+    if current.all_tags:
+        return await _usage(store, grant, current.id, outside_tags=tag_ids)
+    kept = set(tag_ids)
+    removed = [t for t in current.tag_ids if t not in kept]
+    return await _usage(store, grant, current.id, within_tags=removed) if removed else 0
+
+
+def _narrowing_message(affected: int, confirmed: int | None) -> str:
+    """A plain summary for API callers; the UI words the warning itself (``narrowingWarning``)."""
+    annotations = "1 annotation" if affected == 1 else f"{affected} annotations"
+    changed = "" if confirmed is None else f"The number changed from {confirmed}. "
+    return (f"{changed}Values on {annotations} would stop applying (they are kept); nothing was changed. "
+            f"Confirm with confirm_affected {affected}.")
 
 
 def _scope_after(current: Attribute, patch: PatchAttribute) -> tuple[bool, list[UUID]]:
@@ -166,7 +192,7 @@ def _scope_after(current: Attribute, patch: PatchAttribute) -> tuple[bool, list[
 
 
 async def _usage(store: AttributeStore, grant, attribute_id: UUID, value_id: UUID | None = None,
-                 outside_tags: list[UUID] | None = None) -> int:
+                 outside_tags: list[UUID] | None = None, within_tags: list[UUID] | None = None) -> int:
     """Annotations holding values of the attribute (of the value). None without the attribute
     properties; when startup could not tell whether they exist, or the count fails, the guarded
     change is refused (503) rather than let through unchecked."""
@@ -175,7 +201,7 @@ async def _usage(store: AttributeStore, grant, attribute_id: UUID, value_id: UUI
         return 0
     try:
         return await spans.count_attribute_use(await use_tenant(store.annotations, grant), attribute_id, value_id,
-                                               outside_tags)
+                                               outside_tags=outside_tags, within_tags=within_tags)
     except Exception as exc:
         logger.warning("Could not count the annotations holding values of attribute %s: %s",
                        attribute_id, type(exc).__name__)

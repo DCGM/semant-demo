@@ -238,7 +238,8 @@ const userStore = useUserStore()
 const rightSidebar = useRightSidebarStore()
 const $q = useQuasar()
 
-const leftDrawerOpen = ref(true)
+// Starts closed: show-if-above opens it above the breakpoint, below it stays on demand.
+const leftDrawerOpen = ref(false)
 const showLogin = ref(false)
 const showRegister = ref(false)
 const showUserInfo = ref(false)
