@@ -71,7 +71,10 @@ async def chat_about_document(collection_id: str, document_id: str, body: Contex
     "/api/search/chat",
     response_class=StreamingResponse,
     responses={**QUOTA_EXHAUSTED_RESPONSES,
-               404: {"description": "None of the search results can be read any more."},
+               401: {"description": "The search is in a user collection and the caller is not signed in."},
+               404: {"description": "None of the search results can be read any more, or the collection is not "
+                                    "readable."},
+               422: {"description": "A filter of the criteria is not available in this corpus database."},
                413: {"description": "The question and the first search result do not fit the input limit."}},
 )
 async def chat_about_search_results(body: SearchChatRequest,

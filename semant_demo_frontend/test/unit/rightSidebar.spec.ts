@@ -12,40 +12,31 @@ const panel = (id: string, order = 0) => ({ id, label: `Label ${id}`, icon: 'sta
 describe('rightSidebarStore', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
-  it('shows the first registered panel and falls back when it goes', async () => {
+  it('shows the lowest order until a panel is chosen, and falls back when the active one goes', () => {
     const sidebar = useRightSidebarStore()
     expect(sidebar.hasPanels).toBe(false)
 
-    const removeSummary = sidebar.register(panel('summary', 1))
-    await Promise.resolve() // registered later, not together with it
-    const removeNotes = sidebar.register(panel('notes', 0))
-    expect(sidebar.sortedPanels.map((p) => p.id)).toEqual(['notes', 'summary'])
-    expect(sidebar.activePanelId).toBe('summary') // the first one stays active
+    // Panels register in Vue's mount order, not in `order` (Search's Chat mounts before Summary).
+    const removeChat = sidebar.register(panel('chat', 0.5))
+    const removeSummary = sidebar.register(panel('summary', 0))
+    expect(sidebar.sortedPanels.map((p) => p.id)).toEqual(['summary', 'chat'])
+    expect(sidebar.activePanelId).toBe('summary')
 
     removeSummary()
-    expect(sidebar.activePanelId).toBe('notes')
-    removeNotes()
+    expect(sidebar.activePanelId).toBe('chat')
+    removeChat()
     expect([sidebar.hasPanels, sidebar.activePanelId]).toEqual([false, null])
   })
 
-  it('shows the lowest order among panels registered in the same tick, unless one is chosen', async () => {
+  it('keeps a chosen panel when a lower-ordered one registers later', () => {
     const sidebar = useRightSidebarStore()
+    sidebar.register(panel('a', 0))
+    sidebar.register(panel('b', 1))
 
-    // Panels mounting together register in mount order, not in `order` (Search's Summary and Chat).
-    sidebar.register(panel('chat', 0.5))
-    sidebar.register(panel('summary', 0))
-    expect(sidebar.activePanelId).toBe('summary')
-    await Promise.resolve()
-    sidebar.register(panel('first', -1)) // a later panel never replaces it
-    expect(sidebar.activePanelId).toBe('summary')
+    sidebar.select('b') // the user, the page, or a kept-alive page restoring its active panel
+    sidebar.register(panel('c', -1))
 
-    setActivePinia(createPinia())
-    const restored = useRightSidebarStore()
-    restored.register(panel('a', 0))
-    restored.register(panel('b', 1))
-    restored.select('b') // a kept-alive page restoring its active panel
-    restored.register(panel('c', -1))
-    expect([restored.activePanelId, restored.open]).toEqual(['b', false])
+    expect([sidebar.activePanelId, sidebar.open]).toEqual(['b', false])
   })
 
   it('refuses a duplicate id without letting the duplicate remove the original', () => {

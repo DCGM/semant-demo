@@ -201,7 +201,7 @@ describe('useScopedChat', () => {
       chunkIds: chunkIds.value,
       criteria: { textQuery: 'fire', documentFilters: { languages: ['ces'] } },
       userCollectionId: 'c1'
-    })))!
+    }), { keepOnScopeChange: true }))!
     return { chat, chunkIds, scope }
   }
 

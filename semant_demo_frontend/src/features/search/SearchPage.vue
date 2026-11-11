@@ -448,7 +448,7 @@
         :scope-label="searchChatScopeLabel"
         :disabled="!searchChatScope"
         :scope-changed="searchChat.scopeChanged.value"
-        :scope-changed-text="searchChatScope ? `The results changed. Your next question starts a new conversation, ${searchChatScopeText}.` : 'The results changed. Your next question starts a new conversation.'"
+        :scope-changed-text="searchChatScopeChangedText"
         empty-text="Ask a question about these search results. Answers cite them as S1, S2…; click one to show the result and open it in the Document panel."
         input-label="Ask about these results"
         :coverage-text="(coverage) => `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} results.`"
@@ -770,7 +770,11 @@ const searchChatScopeText = computed(() => {
 })
 const searchChatScopeLabel = computed(() =>
   searchChatScope.value ? `Asking ${searchChatScopeText.value}` : 'Waiting for the search results…')
-const searchChat = useScopedChat(() => searchChatScope.value)
+const searchChatScopeChangedText = computed(() => {
+  const next = searchChatScope.value ? `, ${searchChatScopeText.value}` : ''
+  return `The results changed. Your next question starts a new conversation${next}.`
+})
+const searchChat = useScopedChat(() => searchChatScope.value, { keepOnScopeChange: true })
 
 /** A citation shows its result and opens it in the Document panel; it never changes the selection (the scope). */
 async function showChatSource (source: ChatSource) {
