@@ -313,14 +313,14 @@ describe('useScopedChat', () => {
       const { chat } = mountChat()
       let scopeSeen: unknown
 
-      await chat.summarize('Summarize (short)', async (scope) => {
+      await chat.summarize('Summarize briefly', async (scope) => {
         scopeSeen = scope
         return summary('A fire [doc2].', { coverage: 'part', usedChunks: 40, totalChunks: 55 })
       })
 
       expect(scopeSeen).toEqual({ kind: 'document', collectionId: 'c1', documentId: 'd1' })
       expect(chat.messages.value.map(m => [m.role, m.text, m.status])).toEqual([
-        ['user', 'Summarize (short)', 'done'], ['assistant', 'A fire [doc2].', 'done']])
+        ['user', 'Summarize briefly', 'done'], ['assistant', 'A fire [doc2].', 'done']])
       expect(chat.messages.value[1].sources.map(s => [s.chunkId, s.label])).toEqual([['c2', 1]])
       expect(chat.messages.value[1].coverage).toEqual({ coverage: 'part', usedChunks: 40, totalChunks: 55 })
       expect(chat.streaming.value).toBe(false)
@@ -328,7 +328,7 @@ describe('useScopedChat', () => {
       const followUp = chat.ask('Why?')
       await flush()
       expect((requests[0].body as { history: unknown[] }).history).toEqual([
-        { role: 'user', text: 'Summarize (short)', chunk_ids: [] },
+        { role: 'user', text: 'Summarize briefly', chunk_ids: [] },
         { role: 'assistant', text: 'A fire [doc1].', chunk_ids: ['c2'] }
       ])
       streams[0].close()
@@ -340,16 +340,26 @@ describe('useScopedChat', () => {
       const { chat } = mountChat()
       const failed = new ResponseError(new Response(JSON.stringify({ detail: 'The summary could not be generated.' }), { status: 502 }))
 
-      await chat.summarize('Summarize (short)', () => Promise.reject(failed))
+      await chat.summarize('Summarize briefly', () => Promise.reject(failed))
 
       expect([chat.messages.value[1].status, chat.messages.value[1].error]).toEqual(['error', 'The summary could not be generated.'])
+    })
+
+    it('shows a summary that failed with a fallback as an error and leaves it out of the history', async () => {
+      const { chat } = mountChat()
+
+      await chat.summarize('Summarize briefly', async () => ({ text: '', sources: [], error: 'The summary could not be generated.' }))
+
+      expect([chat.messages.value[1].status, chat.messages.value[1].error, chat.messages.value[1].text])
+        .toEqual(['error', 'The summary could not be generated.', ''])
+      expect(historyTurns(chat.messages.value)).toEqual([])
     })
 
     it('stop aborts the summary request and keeps the conversation usable', async () => {
       const { chat } = mountChat()
       let aborted = false
 
-      const running = chat.summarize('Summarize (short)', (_scope, signal) => new Promise((_resolve, reject) => {
+      const running = chat.summarize('Summarize briefly', (_scope, signal) => new Promise((_resolve, reject) => {
         signal.addEventListener('abort', () => { aborted = true; reject(new DOMException('aborted', 'AbortError')) })
       }))
       await flush()
@@ -365,7 +375,7 @@ describe('useScopedChat', () => {
       const { chat, documentId } = mountChat()
       let finish!: (answer: ChatAnswer) => void
 
-      const running = chat.summarize('Summarize (short)', () => new Promise(resolve => { finish = resolve }))
+      const running = chat.summarize('Summarize briefly', () => new Promise(resolve => { finish = resolve }))
       await flush()
       documentId.value = 'd2'
       await nextTick()

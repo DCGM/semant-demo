@@ -181,7 +181,7 @@ test('document view - AI Chat panel with a summary (#249, #245)', async ({ page 
   }
 
   await sidebarPanelButton(page, 'AI Chat').click()
-  await page.getByRole('button', { name: 'Summarize document' }).click()
+  await page.getByRole('button', { name: 'Summarize briefly' }).click()
   await expect(page.getByTestId('chat-answer').getByRole('link').first()).toBeVisible()
   await save(page, testInfo, 'document-view-summary')
 })

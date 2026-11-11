@@ -437,8 +437,8 @@
         :scope-changed-text="searchChatScopeChangedText"
         empty-text="Summarize these search results or ask a question about them. Answers cite them as S1, S2…; click one to show the result and open it in the Document panel."
         input-label="Ask about these results"
-        summarize-label="Summarize results"
-        v-model:summary-length="searchSummaryLength"
+        summaries
+        :suggested-questions="SEARCH_CHAT_QUESTIONS"
         :coverage-text="(coverage) => `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} results.`"
         @ask="searchChat.ask"
         @stop="searchChat.stop"
@@ -489,13 +489,13 @@ import { documentPopulation, passagePopulation, useResultCharts, type RankedChar
 import { withChartFilter, type ChartFilter } from 'src/features/analytics/corpusOverview'
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
-import { citedSources, MAX_SEARCH_CHAT_RESULTS, useScopedChat, type ChatAnswer, type ChatScope, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
-import { SUMMARY_LENGTH_DEFAULT, summaryPrompt } from 'src/shared/summaryLength'
+import { citedSources, MAX_SEARCH_CHAT_RESULTS, useScopedChat, type ChatAnswer, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
+import { summaryPrompt } from 'src/shared/summaryLength'
 import { plural } from 'src/shared/plural'
 import SearchResultCard from './SearchResultCard.vue'
 import DocumentResultCard from './DocumentResultCard.vue'
 import { escapeClearsSelection } from './resultLayout'
-import { asSearchResponse, type SearchResultsContext } from './searchResults'
+import { asSearchResponse } from './searchResults'
 import {
   criteriaChips, criteriaOfFilterValues, filterTarget, formatFilterLabel, historyFiltersOf, intervalBounds,
   nominalValuesOf, offeredCriteria, withNominalValues, withYearRange, yearRangeOf, type CriterionChip, type IntervalValue
@@ -606,12 +606,6 @@ const documentOrder = computed(() => (documents.results.value ? documentOrderLab
 const hasMore = computed(() => {
   if (mode.value === 'documents') return documents.results.value ? hasMoreDocuments(documents.results.value) : false
   return passages.results.value ? hasMorePassages(passages.results.value) : false
-})
-const searchContext = computed<SearchResultsContext | null>(() => {
-  const current = passages.results.value
-  return current
-    ? { id: current.id, query: current.query.criteria.textQuery ?? '', results: current.items, timeSpent: current.timeSpent }
-    : null
 })
 const selectedResults = ref<string[]>([])
 const targetCollectionId = ref<string | null>(null)
@@ -760,22 +754,25 @@ const searchChatScopeChangedText = computed(() => {
   return `The results changed. Your next question starts a new conversation${next}.`
 })
 const searchChat = useScopedChat(() => searchChatScope.value, { keepOnScopeChange: true })
-const searchSummaryLength = ref<SummaryLength>(SUMMARY_LENGTH_DEFAULT)
+const SEARCH_CHAT_QUESTIONS = [
+  'What do these results have in common?',
+  'Which people, places and dates appear in these results?'
+]
 
 /**
  * A summary of exactly the chat's results (the selected ones, or the first loaded), as the
- * conversation's next answer: `/api/summarize` numbers them [doc1]... in result order.
+ * conversation's next answer: `/api/summarize` numbers them [doc1]... in result order. A
+ * failed generation (the route's fallback text, `failed`) is a failed answer.
  */
-function summarizeResults () {
-  const length = searchSummaryLength.value
-  void searchChat.summarize(summaryPrompt(length), async (scope: ChatScope, signal): Promise<ChatAnswer> => {
-    const context = searchContext.value
-    const ids = scope.kind === 'search' ? scope.chunkIds : []
-    const byId = new Map(results.value.map(result => [result.id, result]))
-    const subset = ids.map(id => byId.get(id)).filter(result => result !== undefined)
-    if (!context || !subset.length) throw new Error('No results to summarize.')
+function summarizeResults (length: SummaryLength) {
+  const search = passages.results.value
+  const subset = [...searchChatResults.value]
+  void searchChat.summarize(summaryPrompt(length), async (_scope, signal): Promise<ChatAnswer> => {
+    if (!search || !subset.length) throw new Error('No results to summarize.')
+    const query = search.query.criteria.textQuery ?? ''
     const data = await api.summarizeApiSummarizeSummaryTypePost(
-      { summaryType: 'results', searchResponse: asSearchResponse(context, subset), length }, { signal })
+      { summaryType: 'results', searchResponse: asSearchResponse(query, search.timeSpent, subset), length }, { signal })
+    if (data.failed) return { text: '', sources: [], error: data.summary }
     return {
       text: data.summary,
       sources: citedSources(data.summary, subset.map(result => ({

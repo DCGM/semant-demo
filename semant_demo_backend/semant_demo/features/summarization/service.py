@@ -16,7 +16,7 @@ from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.adapters.llm.usage import LlmRequestRefused, OperationBudget
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.core.errors import InvalidRequestError, NotFoundError
+from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.documents import service as documents_service
 from semant_demo.features.search.schemas import SearchResponse
 from semant_demo.features.summarization.base import SearchResultsSummarizer
@@ -78,15 +78,17 @@ async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
     """The summary of ``summary_type`` of the results; only ``results`` is supported.
 
     ``length`` is the length level (#360); None uses the configured default. A failed
-    generation returns the summarizer's configured fallback text.
+    generation returns the summarizer's configured fallback text with ``failed`` set.
     """
     start_time = time.time()
     if summary_type != "results":
         raise InvalidRequestError(f"Unknown summary type: {summary_type}")
+    failures: list[str] = []
     async with summarizer.operation(budget):
         summary = await summarizer.gen_results_summary(search_response.search_request.query,
-                                                       search_response.results, length=length)
-    return SummaryResponse(summary=summary, time_spent=time.time() - start_time)
+                                                       search_response.results, on_error=failures.append,
+                                                       length=length)
+    return SummaryResponse(summary=summary, time_spent=time.time() - start_time, failed=bool(failures))
 
 
 async def answer_question(llm: LlmGateway, question: str, search_response: SearchResponse,
@@ -139,10 +141,7 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
     detail = await documents_service.read_chunks_in_collection(documents, collections, user, document_id,
                                                                 collection_id)
     # Only the document's chunks in the collection (ADR 0006), the same scope as document chat.
-    chunks = sorted((chunk for chunk in detail.chunks if chunk.in_user_collection),
-                    key=lambda chunk: (chunk.order is None, chunk.order))
-    if not chunks:
-        raise NotFoundError("The document has no passages in this collection.")
+    chunks = documents_service.chunks_in_collection(detail)
     truncated = chunks[:document_summarizer.chunk_limit]
     # gen_document_summary calls the model exactly once here, so a single slot — not the
     # list-of-failures accumulator the multi-part search summarizer needs — is enough to carry
