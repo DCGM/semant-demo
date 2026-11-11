@@ -27,6 +27,11 @@ interface RegisteredPanel {
 export const useRightSidebarStore = defineStore('rightSidebar', () => {
   const panels = ref<RegisteredPanel[]>([])
   const activePanelId = ref<string | null>(null)
+  // The first panel registered becomes active, and one registered later never replaces it.
+  // Panels registered in the same tick (mounting together) register in Vue's mount order,
+  // not in `order`, so until the tick ends the lowest `order` among them wins, unless a panel
+  // was chosen meanwhile (`select`/`activate`).
+  let choosingDefault = false
   const open = ref(false)
   const miniState = ref(false)
   // element the panels teleport their content into; set by the shell once mounted
@@ -53,8 +58,10 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     const owner = Symbol(panel.id)
     panels.value.push({ panel, owner })
     if (activePanelId.value === null) {
-      activePanelId.value = sortedPanels.value[0].id
+      choosingDefault = true
+      queueMicrotask(() => { choosingDefault = false })
     }
+    if (choosingDefault) activePanelId.value = sortedPanels.value[0].id
     return () => unregister(owner)
   }
 
@@ -71,10 +78,17 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     }
   }
 
+  // shows the panel without opening the sidebar; a panel registered later no longer replaces it
+  function select (id: string) {
+    if (!panels.value.some(p => p.panel.id === id)) return
+    activePanelId.value = id
+    choosingDefault = false
+  }
+
   // brings the panel to front and makes sure it is visible
   function activate (id: string) {
     if (!panels.value.some(p => p.panel.id === id)) return
-    activePanelId.value = id
+    select(id)
     open.value = true
     miniState.value = false
   }
@@ -96,6 +110,7 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     miniState,
     targetEl,
     register,
+    select,
     activate,
     toggleOpen,
     toggleMiniState

@@ -7,7 +7,10 @@ text, then ``sources`` and ``end``, or an ``error`` that ends the stream. A stre
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from semant_demo.config import MAX_PASSAGES_LIMIT
+from semant_demo.features.documents.criteria import SearchCriteria
 
 MAX_HISTORY_TURNS = 40
 """Earlier turns a request may carry (20 questions and answers); older ones are left out
@@ -31,6 +34,18 @@ class ChatTurn(BaseModel):
 class ContextChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
     history: list[ChatTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
+
+
+class SearchChatRequest(ContextChatRequest):
+    """A question about search results (#245). ``chunk_ids`` are the results the page chose
+    (the selected ones, or all loaded ones), in result order; ``criteria`` and
+    ``user_collection_id`` are those of the search. The server reads the passages again
+    under them, so an id the search could not have returned is left out (ADR 0006)."""
+    model_config = ConfigDict(extra="forbid")
+
+    chunk_ids: list[UUID] = Field(min_length=1, max_length=MAX_PASSAGES_LIMIT)
+    criteria: SearchCriteria
+    user_collection_id: str | None = None
 
 
 class ChatSource(BaseModel):

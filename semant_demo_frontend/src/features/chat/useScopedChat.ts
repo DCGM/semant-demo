@@ -1,15 +1,18 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { aiErrorMessage, createContextGuard, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
 import { tokenizeCitations, type TextToken } from 'src/shared/citationTokens'
-import { ContextChatRequestToJSON, type ChatTurn } from 'src/generated/api'
+import { ContextChatRequestToJSON, SearchChatRequestToJSON, type ChatTurn, type SearchCriteria } from 'src/generated/api'
 
 /**
  * Contextual chat in the right sidebar (ADR 0012). One composable for every scope; the
- * page owns the scope and passes it in. Only the document scope (#248) exists so far.
+ * page owns the scope and passes it in: a document of a collection (#248) or search
+ * results (#245).
  *
- * The conversation lives in memory only. A scope change, unmount or *New conversation*
- * stops a running answer and starts an empty conversation (another document is another
- * page, ADR 0012 decision 1); a late event of the old request never reaches it.
+ * The conversation lives in memory only. A scope change stops a running answer and keeps
+ * the conversation with `scopeChanged` set, so the panel can say what the next question is
+ * about; that question then starts an empty conversation (ADR 0012 decision 1). Unmount and
+ * *New conversation* start an empty one at once. A late event of an old request never
+ * reaches a newer conversation.
  *
  * Each answer is streamed as NDJSON events (`delta`, `sources`, `end` or `error`, see
  * `features/chat/schemas.py`). Its `[docN]` citations are numbered per request; the
@@ -23,7 +26,19 @@ export interface DocumentChatScope {
   documentId: string
 }
 
-export type ChatScope = DocumentChatScope
+/**
+ * Search results (#245): `chunkIds` are the selected results, or all loaded ones, in result
+ * order; `criteria` and `userCollectionId` are those of the search, under which the server
+ * reads them again.
+ */
+export interface SearchChatScope {
+  kind: 'search'
+  chunkIds: readonly string[]
+  criteria: SearchCriteria
+  userCollectionId: string | null
+}
+
+export type ChatScope = DocumentChatScope | SearchChatScope
 
 export interface ChatSource {
   /** The answer's `[docN]` number. */
@@ -81,12 +96,33 @@ const CITATION = /\[doc([1-9][0-9]*)]/g
 const FAILED = 'The assistant could not answer.'
 const INTERRUPTED = 'The answer was interrupted.'
 
-function chatPath (scope: ChatScope): string {
-  return `/user_collections/${encodeURIComponent(scope.collectionId)}/documents/${encodeURIComponent(scope.documentId)}/chat`
+/** The route and body of a question about `scope` (generated request models, so a schema change breaks the type check here). */
+function chatRequest (scope: ChatScope, question: string, history: ChatTurn[]): { path: string, body: unknown } {
+  if (scope.kind === 'search') {
+    return {
+      path: '/search/chat',
+      body: SearchChatRequestToJSON({
+        question,
+        history,
+        chunkIds: [...scope.chunkIds],
+        criteria: scope.criteria,
+        userCollectionId: scope.userCollectionId
+      })
+    }
+  }
+  return {
+    path: `/user_collections/${encodeURIComponent(scope.collectionId)}/documents/${encodeURIComponent(scope.documentId)}/chat`,
+    body: ContextChatRequestToJSON({ question, history })
+  }
 }
 
-function scopeKey (scope: ChatScope | null): string {
-  return scope ? `${scope.kind}:${scope.collectionId}:${scope.documentId}` : ''
+/** What the conversation is about: the same key, the same scope. */
+export function scopeKey (scope: ChatScope | null): string {
+  if (!scope) return ''
+  if (scope.kind === 'search') {
+    return `search:${scope.userCollectionId ?? ''}:${JSON.stringify(scope.criteria)}:${scope.chunkIds.join(',')}`
+  }
+  return `document:${scope.collectionId}:${scope.documentId}`
 }
 
 /**
@@ -131,6 +167,8 @@ export function historyTurns (messages: ChatMessage[]): ChatTurn[] {
 export function useScopedChat (scope: () => ChatScope | null) {
   const messages = ref<ChatMessage[]>([])
   const streaming = ref(false)
+  /** The scope changed since the shown conversation; the next question starts a new one. */
+  const scopeChanged = ref(false)
   const conversation = createContextGuard()
   let labels = new Map<string, number>()
   let abort: AbortController | null = null
@@ -147,6 +185,18 @@ export function useScopedChat (scope: () => ChatScope | null) {
     conversation.enter()
     messages.value = []
     labels = new Map()
+    scopeChanged.value = false
+  }
+
+  /** ADR 0012 decision 1: the old conversation stays visible until the next question. */
+  function changeScope () {
+    if (!messages.value.length) {
+      reset()
+      return
+    }
+    stop()
+    conversation.enter()
+    scopeChanged.value = true
   }
 
   /** Stops the running answer; what arrived so far stays. */
@@ -169,6 +219,7 @@ export function useScopedChat (scope: () => ChatScope | null) {
     const question = text.trim()
     const current = scope()
     if (!question || !current || streaming.value) return
+    if (scopeChanged.value) reset()
 
     const history = historyTurns(messages.value)
     messages.value.push({ role: 'user', text: question, sources: [], status: 'done' })
@@ -181,8 +232,8 @@ export function useScopedChat (scope: () => ChatScope | null) {
     streaming.value = true
 
     try {
-      // The generated request model, so a schema change breaks the type check here.
-      await postNdjson(chatPath(current), ContextChatRequestToJSON({ question, history }), {
+      const request = chatRequest(current, question, history)
+      await postNdjson(request.path, request.body, {
         signal: controller.signal,
         onValue: (value) => {
           if (!isCurrent() || reply.status !== 'streaming') return
@@ -232,13 +283,13 @@ export function useScopedChat (scope: () => ChatScope | null) {
     }
   }
 
-  // Another document or collection is another page: its chat starts empty.
-  watch(() => scopeKey(scope()), reset)
+  watch(() => scopeKey(scope()), changeScope)
   onScopeDispose(reset)
 
   return {
     messages: computed(() => messages.value),
     streaming: computed(() => streaming.value),
+    scopeChanged: computed(() => scopeChanged.value),
     ask,
     stop,
     reset

@@ -46,7 +46,11 @@ the backend. Already in place:
 3. **Search chat (#245)**
    - Scope: the selected results if any are checked, otherwise all retrieved results of the
      current search. The panel always says which ("Asking about 3 selected results",
-     "Asking about all 50 results").
+     "Asking about all 50 loaded results").
+   - "All results" are the results loaded on the page, as Summary uses them, not the whole
+     ranking behind *Load more* (maintainer, 2026-11-11). *Load more* is a scope change too.
+   - A citation shows its result and opens it in the Document panel; it never selects the
+     result, which would change the scope.
    - Any selection change is a scope change (decision 1), including unchecking the last
      selected result: the notice then says the next question is about all results. The
      scope never changes without that notice and a new conversation, so nothing widens
