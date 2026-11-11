@@ -316,10 +316,11 @@ async def test_document_chat_streams_an_answer_admitted_after_authorization_and_
     assert ai.rows("SELECT status FROM llm_quota_operation WHERE feature = 'context_chat'") == [("settled",)]
 
 
-async def post_and_leave(app, path: str, body: dict, headers: dict) -> list[dict]:
-    """POST ``body`` as a client that disconnects once it sent the request, while the
-    response start is being sent (as uvicorn, ASGI 2.3, sees it): Starlette cancels the
-    response before it pulls the first chunk. Returns the messages sent."""
+async def post_and_leave(app, path: str, body: dict, headers: dict, *, after_first_chunk: bool = False) -> list[dict]:
+    """POST ``body`` as a client that disconnects once it sent the request, as uvicorn
+    (ASGI 2.3) sees it: while the response start is being sent, so Starlette cancels the
+    response before it pulls the first chunk, or ``after_first_chunk`` while that chunk is
+    being sent, with the body suspended at its first ``yield``. Returns the messages sent."""
     data = json.dumps(body).encode()
     scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}, "http_version": "1.1", "method": "POST",
              "scheme": "http", "server": ("test", 80), "client": ("127.0.0.1", 1234), "root_path": "",
@@ -328,14 +329,20 @@ async def post_and_leave(app, path: str, body: dict, headers: dict) -> list[dict
                          (b"content-length", str(len(data)).encode()),
                          *((name.lower().encode(), value.encode()) for name, value in headers.items())]}
     incoming = iter([{"type": "http.request", "body": data, "more_body": False}])
+    left = asyncio.Event()
     sent: list[dict] = []
 
     async def receive() -> dict:
-        return next(incoming, {"type": "http.disconnect"})
+        if (message := next(incoming, None)) is not None:
+            return message
+        await left.wait()
+        return {"type": "http.disconnect"}
 
     async def send(message: dict) -> None:
         sent.append(message)
-        if message["type"] == "http.response.start":
+        if (message["type"] == "http.response.body" and message.get("body")) if after_first_chunk \
+                else message["type"] == "http.response.start":
+            left.set()
             await asyncio.sleep(0)
 
     await app(scope, receive, send)
@@ -375,6 +382,39 @@ async def test_a_document_chat_left_before_its_stream_starts_releases_its_reserv
     assert_released(ai, sent, "context_chat")
     status = await ai.status(headers)
     assert (status["reserved_usd"], status["charged_usd"]) == (0, 0)
+
+
+def assert_settled_mid_stream(ai, sent: list[dict], feature: str) -> None:
+    """A reply was streamed and the operation was settled after the client left."""
+    assert any(m["type"] == "http.response.body" and m.get("body") for m in sent)
+    assert ai.rows("SELECT feature, status FROM llm_quota_operation") == [(feature, "settled")]
+
+
+async def test_a_span_chat_left_mid_stream_settles_its_operation(ai):
+    account, headers = await ai.account()
+    store = span_store(account.id)
+    ai.app.dependency_overrides[get_annotation_store] = lambda: store
+
+    sent = await post_and_leave(ai.app, "/api/ai/discuss_span", discuss_body(store), headers, after_first_chunk=True)
+
+    assert_settled_mid_stream(ai, sent, "span_chat")
+    status = await ai.status(headers)
+    assert status["reserved_usd"] == 0 and status["charged_usd"] > 0
+
+
+async def test_a_document_chat_left_mid_stream_settles_its_operation(ai):
+    account, headers = await ai.account()
+    collections, chunks = summary_stores(account.id)
+    ai.app.dependency_overrides[get_user_collections] = lambda: collections
+    ai.app.dependency_overrides[get_documents] = lambda: chunks
+    path = f"/api/user_collections/{documents.COLLECTION}/documents/{documents.DOCUMENT}/chat"
+
+    sent = await post_and_leave(ai.app, path, {"question": "Kdo psal kroniku?", "history": []}, headers,
+                                after_first_chunk=True)
+
+    assert_settled_mid_stream(ai, sent, "context_chat")
+    status = await ai.status(headers)
+    assert status["reserved_usd"] == 0 and status["charged_usd"] > 0
 
 
 def test_ai_routes_declare_the_429_and_search_does_not(tmp_path):

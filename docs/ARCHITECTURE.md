@@ -118,7 +118,8 @@ semant_demo_backend/semant_demo/
     llm/                  the one gateway for backend LLM calls: models (tier catalog and
                           feature policy), gateway (metered LangChain chat models, complete,
                           stream, FeatureChat), usage (token/cost records)
-  routes/                 dependencies.py (DI from AppResources), router registration
+  routes/                 dependencies.py (DI from AppResources), streaming.py (streamed AI replies,
+                          closed and settled however the response ends), router registration
   configs/                YAML: llm_models, search_summarizer, document_summarizer, search_filters, rag/ (RAG configurations)
   users/                  FastAPI Users: model, manager, auth routers, schemas; routes (user search)
   maintenance/            chunk_tag_audit, metadata_sync (reviewed report and apply, or single-pass sync),

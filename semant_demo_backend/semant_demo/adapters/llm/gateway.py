@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Iterable, Sequence
+from contextlib import suppress
 from contextvars import Token
 from dataclasses import dataclass
 from functools import cache
@@ -242,7 +243,8 @@ class OperationScope:
         operation, self._operation = self._operation, None
         if operation is None:
             return
-        current_llm_operation.reset(self._token)
+        with suppress(ValueError):
+            current_llm_operation.reset(self._token)
         self.gateway.recorder.record_operation(operation)
         if self._admitted:
             await self.gateway._settle(self.budget, self._admission, operation)

@@ -214,6 +214,28 @@ async def test_releasing_an_operation_never_entered_settles_it_with_no_calls(tra
     assert len(transport.paths) == 1
 
 
+async def test_an_operation_left_in_another_context_than_entered_is_settled(transport, ledger, tmp_path):
+    llm = gateway(transport, catalog=catalog(reserve_usd=0.03))
+    operation = llm.operation("chat", budget(ledger))
+
+    async def stream():
+        async with operation:
+            await llm.complete("chat", messages())
+            yield b"chunk"
+
+    body = stream()
+
+    async def first_chunk():
+        return await anext(body)
+
+    await asyncio.create_task(first_chunk())  # entered in the task's copied context
+    await body.aclose()  # left here, as a response closes its body after a disconnect
+    await llm.wait_for_settlements()
+
+    assert (await totals(ledger)).reserved_micro_usd == 0
+    assert rows(tmp_path / "quota.db", "SELECT status FROM llm_quota_operation") == [("settled",)]
+
+
 async def test_releasing_an_operation_never_admitted_does_nothing(transport, ledger, tmp_path):
     llm = gateway(transport, catalog=catalog())
 
