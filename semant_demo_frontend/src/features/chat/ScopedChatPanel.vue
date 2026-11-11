@@ -65,8 +65,8 @@
     >
       <template v-if="summaries">
         <q-chip
-          v-for="option in SUMMARY_LENGTH_OPTIONS"
-          :key="option.value"
+          v-for="length in SUMMARY_LENGTHS"
+          :key="length"
           clickable
           outline
           dense
@@ -76,9 +76,9 @@
           :aria-disabled="streaming || disabled"
           :disable="streaming || disabled"
           data-testid="chat-summarize"
-          @click="emit('summarize', option.value)"
+          @click="emit('summarize', length)"
         >
-          {{ summaryPrompt(option.value) }}
+          {{ summaryPrompt(length) }}
         </q-chip>
       </template>
       <q-chip
@@ -139,7 +139,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import CitedSummaryText from 'src/shared/ui/CitedSummaryText.vue'
 import type { SummaryLength } from 'src/generated/api'
-import { SUMMARY_LENGTH_OPTIONS, summaryPrompt } from 'src/shared/summaryLength'
+import { SUMMARY_LENGTHS, summaryPrompt } from 'src/shared/summaryLength'
 import { chatTokens, MAX_QUESTION_CHARS, type ChatCoverage, type ChatMessage, type ChatSource } from './useScopedChat'
 
 // Props-in/events-out only (docs/RIGHT_SIDEBAR.md section 3): the page owns
@@ -175,7 +175,7 @@ const props = withDefaults(defineProps<{
   emptyText: 'Ask a question about this document. Answers cite its passages as S1, S2…; click one to show it in the text.',
   inputLabel: 'Ask about this document',
   coverageText: (coverage: ChatCoverage) =>
-    `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} passages of the document.`
+    `Based on the first ${coverage.usedChunks} of the ${coverage.totalChunks} passages in the collection.`
 })
 
 const emit = defineEmits<{

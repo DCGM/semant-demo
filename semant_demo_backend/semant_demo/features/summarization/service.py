@@ -70,6 +70,7 @@ class SafeLlmFailure(Exception):
 
 QuestionFailed = SafeLlmFailure
 DocumentSummaryFailed = SafeLlmFailure
+SummaryRefused = SafeLlmFailure
 
 
 async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
@@ -78,16 +79,21 @@ async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
     """The summary of ``summary_type`` of the results; only ``results`` is supported.
 
     ``length`` is the length level (#360); None uses the configured default. A failed
-    generation returns the summarizer's configured fallback text with ``failed`` set.
+    generation returns the summarizer's configured fallback text with ``failed`` set; a
+    refusal by the server (input too large, provider not configured, call limit) raises
+    :class:`SummaryRefused` with its safe message and status instead.
     """
     start_time = time.time()
     if summary_type != "results":
         raise InvalidRequestError(f"Unknown summary type: {summary_type}")
     failures: list[str] = []
-    async with summarizer.operation(budget):
-        summary = await summarizer.gen_results_summary(search_response.search_request.query,
-                                                       search_response.results, on_error=failures.append,
-                                                       length=length)
+    try:
+        async with summarizer.operation(budget):
+            summary = await summarizer.gen_results_summary(search_response.search_request.query,
+                                                           search_response.results, on_error=failures.append,
+                                                           length=length, raise_refusals=True)
+    except LlmRequestRefused as e:
+        raise SummaryRefused.of(e, str(e)) from e
     return SummaryResponse(summary=summary, time_spent=time.time() - start_time, failed=bool(failures))
 
 

@@ -97,7 +97,7 @@ import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import useTagSpans from 'src/features/annotations/useTagSpans'
 import { citeInReader } from 'src/features/documents/readerCitation'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
-import useScopedChat, { citedSources, type ChatAnswer, type ChatScope } from 'src/features/chat/useScopedChat'
+import useScopedChat, { citedSources, type ChatAnswer, type DocumentChatScope } from 'src/features/chat/useScopedChat'
 import { useApi } from 'src/shared/api'
 import { summaryPrompt } from 'src/shared/summaryLength'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
@@ -128,7 +128,7 @@ const aiAssist = useAiAssistance()
 const tagSpans = useTagSpans()
 // Document chat (#248): one in-memory conversation per document; it starts empty on
 // another document or collection and is dropped when the view unmounts.
-const documentChat = useScopedChat(() => ({
+const documentChat = useScopedChat((): DocumentChatScope => ({
   kind: 'document', collectionId: props.collectionId, documentId: props.documentId
 }))
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
@@ -144,8 +144,7 @@ const DOCUMENT_CHAT_QUESTIONS = [
 ]
 
 function summarizeDocument(length: SummaryLength) {
-  void documentChat.summarize(summaryPrompt(length), async (scope: ChatScope, signal): Promise<ChatAnswer> => {
-    if (scope.kind !== 'document') throw new Error('Not a document scope.')
+  void documentChat.summarize(summaryPrompt(length), async (scope, signal): Promise<ChatAnswer> => {
     const data = await api.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(
       { collectionId: scope.collectionId, documentId: scope.documentId, length }, { signal })
     return {

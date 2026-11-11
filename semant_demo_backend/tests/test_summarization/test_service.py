@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from semant_demo.adapters.llm.usage import LlmNotConfigured
+from semant_demo.adapters.llm.usage import LlmInputTooLarge, LlmNotConfigured
 from semant_demo.config import SCRIPT_PATH
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.documents.schemas import Document
@@ -49,6 +49,18 @@ async def test_a_failed_results_summary_is_flagged_with_the_fallback_text():
 
     assert (response.failed, response.summary) == (True, summarize.gen_results_summary_error_summary)
     assert succeeded.failed is False
+
+
+@pytest.mark.parametrize("refusal, status", [(LlmInputTooLarge("The results are too large for the language model."), 413),
+                                             (LlmNotConfigured("OPENAI_API_KEY is not configured on the server"), 502)])
+async def test_a_refused_results_summary_raises_its_safe_message_and_status(refusal, status):
+    def refuse(messages):
+        raise refusal
+
+    with pytest.raises(service.SummaryRefused) as raised:
+        await service.summarize(summarizer(FakeLlm(refuse)), "results", results("Text."))
+
+    assert (str(raised.value), raised.value.status_code) == (str(refusal), status)
 
 
 async def test_only_results_summaries_exist():

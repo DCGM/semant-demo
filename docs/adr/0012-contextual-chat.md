@@ -152,8 +152,9 @@ the backend. Already in place:
 ### Frontend
 
 - `features/chat/`: one composable `useScopedChat(scope)` and one `ScopedChatPanel.vue`,
-  used by all three pages. The page owns the scope (`SearchResultsContext` plus selection,
-  `collectionId`, `collectionId` + `documentId`) and passes it in.
+  used by all three pages. The page owns the scope (Search: the chosen results' ids with the
+  search's criteria and collection; `collectionId`; `collectionId` + `documentId`) and passes
+  it in.
 - A scope change, a new question replacing a running one, or unmount aborts the request
   through `createContextGuard()`; a late event cannot reach the new conversation. After a
   scope change the panel keeps the old messages with the notice of decision 1.

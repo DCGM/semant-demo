@@ -2673,7 +2673,7 @@ export interface DefaultApiInterface {
     summarizeApiSummarizeSummaryTypePostRequestOpts(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * 
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * @summary Summarize
      * @param {string} summaryType 
      * @param {SearchResponse} searchResponse 
@@ -2685,6 +2685,7 @@ export interface DefaultApiInterface {
     summarizeApiSummarizeSummaryTypePostRaw(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>>;
 
     /**
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * Summarize
      */
     summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse>;
@@ -7353,6 +7354,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * Summarize
      */
     async summarizeApiSummarizeSummaryTypePostRaw(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SummaryResponse>> {
@@ -7363,6 +7365,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * A summary of the search results. A failed generation answers 200 with the configured fallback text and ``failed``; a refusal by the server (e.g. 413 for an input above the feature\'s limit) answers with its status and safe message.
      * Summarize
      */
     async summarizeApiSummarizeSummaryTypePost(requestParameters: SummarizeApiSummarizeSummaryTypePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SummaryResponse> {

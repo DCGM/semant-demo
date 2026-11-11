@@ -203,7 +203,7 @@ test('a partial summary of a long document says so', async ({ page }) => {
 
   await summarize(page).click()
 
-  await expect(page.getByTestId('chat-coverage')).toHaveText('Based on the first 40 of 55 passages of the document.')
+  await expect(page.getByTestId('chat-coverage')).toHaveText('Based on the first 40 of the 55 passages in the collection.')
 })
 
 test('a user without collection read access cannot request a document summary', async ({ request }) => {
