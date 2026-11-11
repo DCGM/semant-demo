@@ -75,7 +75,9 @@ class FakeOperation:
         self.events.append("exit")
 
     async def release(self) -> None:
-        self.events.append("release")
+        # As OperationScope: only an operation admitted and never entered is released.
+        if "admit" in self.events and "enter" not in self.events:
+            self.events.append("release")
 
 
 class FakeStreamingChat:

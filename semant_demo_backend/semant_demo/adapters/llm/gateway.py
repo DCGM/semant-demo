@@ -19,8 +19,8 @@ LLM use case runs its calls in such an operation.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterable, Sequence
-from contextlib import suppress
+from collections.abc import AsyncGenerator, Iterable, Sequence
+from contextlib import aclosing
 from contextvars import Token
 from dataclasses import dataclass
 from functools import cache
@@ -140,17 +140,18 @@ class LlmGateway:
         return message_text(reply.content)
 
     async def stream(self, feature: str, messages: Sequence[Message], *, tier: str | None = None,
-                     temperature: float | None = None, max_tokens: int | None = None) -> AsyncIterator[str]:
+                     temperature: float | None = None, max_tokens: int | None = None) -> AsyncGenerator[str, None]:
         """Yield the reply's text deltas. A stream abandoned by its consumer is recorded as cancelled."""
         tier_model = self.tier_model(feature, tier)
         # A model per stream, so abandoning it cannot touch the runs of other requests.
         usage = self._usage(feature, tier_model)
         model = self._build(feature, tier_model, usage, temperature, self._output_limit(feature, max_tokens), None)
         try:
-            async for chunk in model.astream(list(messages)):
-                text = message_text(chunk.content)
-                if text:
-                    yield text
+            async with aclosing(model.astream(list(messages))) as chunks:
+                async for chunk in chunks:
+                    text = message_text(chunk.content)
+                    if text:
+                        yield text
         finally:
             usage.abandon_runs()
 
@@ -233,9 +234,12 @@ class OperationScope:
         current = current_llm_operation.get()
         if current is not None:
             return current
+        if self._entered:
+            # Its admission is settled or about to be: calls run now would not be charged.
+            raise RuntimeError(f"LLM operation of {self.feature} entered after it was entered or released")
         await self.admit()
         self._entered = True
-        self._operation = LlmOperation(self.feature, self.gateway.catalog.policy(self.feature).limits.max_calls)
+        self._operation = self._new_operation()
         self._token = current_llm_operation.set(self._operation)
         return self._operation
 
@@ -243,8 +247,7 @@ class OperationScope:
         operation, self._operation = self._operation, None
         if operation is None:
             return
-        with suppress(ValueError):
-            current_llm_operation.reset(self._token)
+        current_llm_operation.reset(self._token)
         self.gateway.recorder.record_operation(operation)
         if self._admitted:
             await self.gateway._settle(self.budget, self._admission, operation)
@@ -255,9 +258,12 @@ class OperationScope:
         if not self._admitted or self._entered:
             return
         self._entered = True
-        operation = LlmOperation(self.feature, self.gateway.catalog.policy(self.feature).limits.max_calls)
-        self.gateway.recorder.record_operation(operation)
+        operation = self._new_operation()
+        self.gateway.recorder.record_operation(operation, released=True)
         await self.gateway._settle(self.budget, self._admission, operation)
+
+    def _new_operation(self) -> LlmOperation:
+        return LlmOperation(self.feature, self.gateway.catalog.policy(self.feature).limits.max_calls)
 
 
 async def _settle_logged(budget: OperationBudget, admission: Any, operation: LlmOperation) -> None:
@@ -323,10 +329,11 @@ class FeatureChat:
     def operation(self, budget: OperationBudget | None = None) -> OperationScope:
         return self.llm.operation(self.feature, budget)
 
-    async def stream(self, instructions: str, messages: list[dict[str, str]]) -> AsyncIterator[str]:
-        async for delta in self.llm.stream(self.feature, [{"role": "system", "content": instructions}, *messages],
-                                           temperature=self.temperature, max_tokens=self.max_tokens):
-            yield delta
+    async def stream(self, instructions: str, messages: list[dict[str, str]]) -> AsyncGenerator[str, None]:
+        async with aclosing(self.llm.stream(self.feature, [{"role": "system", "content": instructions}, *messages],
+                                            temperature=self.temperature, max_tokens=self.max_tokens)) as deltas:
+            async for delta in deltas:
+                yield delta
 
 
 def message_text(content: str | list[Any]) -> str:

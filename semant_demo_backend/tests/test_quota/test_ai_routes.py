@@ -25,6 +25,7 @@ from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 from semant_demo.features.quota.service import QuotaPrincipal
 from semant_demo.features.search.service import SUMMARY_QUOTA_WARNING
 from semant_demo.main import create_app
+from semant_demo.opentelemetry import UnhandledRequestError
 from semant_demo.routes.dependencies import get_annotation_store, get_documents, get_search_backends, \
     get_topicer, get_user_collections
 from tests.app_support import make_test_config, offline_weaviate
@@ -316,15 +317,18 @@ async def test_document_chat_streams_an_answer_admitted_after_authorization_and_
     assert ai.rows("SELECT status FROM llm_quota_operation WHERE feature = 'context_chat'") == [("settled",)]
 
 
-async def post_and_leave(app, path: str, body: dict, headers: dict, *, after_first_chunk: bool = False) -> list[dict]:
-    """POST ``body`` as a client that disconnects once it sent the request, as uvicorn
-    (ASGI 2.3) sees it: while the response start is being sent, so Starlette cancels the
-    response before it pulls the first chunk, or ``after_first_chunk`` while that chunk is
-    being sent, with the body suspended at its first ``yield``. Returns the messages sent."""
+async def post_and_leave(app, path: str, body: dict, headers: dict, *, spec_version: str = "2.3",
+                         after_first_chunk: bool = False) -> list[dict]:
+    """POST ``body`` as a client that disconnects once it sent the request: while the
+    response start is being sent, or ``after_first_chunk`` while the first body chunk is,
+    so that write never completes. Before ASGI spec 2.4 (uvicorn) Starlette sees the
+    disconnect from ``receive`` and cancels the response, which streams in a task of its
+    own; from 2.4 on the write fails with ``OSError`` and Starlette raises
+    ``ClientDisconnect``. No timing is involved. Returns the messages sent."""
     data = json.dumps(body).encode()
-    scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}, "http_version": "1.1", "method": "POST",
-             "scheme": "http", "server": ("test", 80), "client": ("127.0.0.1", 1234), "root_path": "",
-             "path": path, "raw_path": path.encode(), "query_string": b"",
+    scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": spec_version}, "http_version": "1.1",
+             "method": "POST", "scheme": "http", "server": ("test", 80), "client": ("127.0.0.1", 1234),
+             "root_path": "", "path": path, "raw_path": path.encode(), "query_string": b"",
              "headers": [(b"host", b"test"), (b"content-type", b"application/json"),
                          (b"content-length", str(len(data)).encode()),
                          *((name.lower().encode(), value.encode()) for name, value in headers.items())]}
@@ -340,79 +344,65 @@ async def post_and_leave(app, path: str, body: dict, headers: dict, *, after_fir
 
     async def send(message: dict) -> None:
         sent.append(message)
-        if (message["type"] == "http.response.body" and message.get("body")) if after_first_chunk \
-                else message["type"] == "http.response.start":
-            left.set()
-            await asyncio.sleep(0)
+        if after_first_chunk and not (message["type"] == "http.response.body" and message.get("body")):
+            return
+        left.set()
+        if spec_version >= "2.4":
+            raise OSError("client disconnected")
+        await asyncio.Event().wait()  # the client is gone: the write never completes
 
-    await app(scope, receive, send)
+    try:
+        await app(scope, receive, send)
+    except UnhandledRequestError as e:
+        assert (spec_version, str(e)) == ("2.4", "ClientDisconnect")  # as the request middleware reports it
     await app.state.resources.llm.wait_for_settlements()
     return sent
 
 
-def assert_released(ai, sent: list[dict], feature: str) -> None:
-    """The admitted operation was settled with no calls and no reply was streamed."""
+async def chat_request(ai, feature: str) -> tuple[str, dict, dict]:
+    """Path, body and headers of a span chat or document chat request of a new account."""
+    account, headers = await ai.account()
+    if feature == "span_chat":
+        store = span_store(account.id)
+        ai.app.dependency_overrides[get_annotation_store] = lambda: store
+        return "/api/ai/discuss_span", discuss_body(store), headers
+    collections, chunks = summary_stores(account.id)
+    ai.app.dependency_overrides[get_user_collections] = lambda: collections
+    ai.app.dependency_overrides[get_documents] = lambda: chunks
+    return (f"/api/user_collections/{documents.COLLECTION}/documents/{documents.DOCUMENT}/chat",
+            {"question": "Kdo psal kroniku?", "history": []}, headers)
+
+
+ASGI_SPECS = pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
+CHATS = pytest.mark.parametrize("feature", ["span_chat", "context_chat"])
+
+
+@ASGI_SPECS
+@CHATS
+async def test_a_chat_left_before_its_stream_starts_releases_its_reservation(ai, feature, spec_version):
+    path, body, headers = await chat_request(ai, feature)
+
+    sent = await post_and_leave(ai.app, path, body, headers, spec_version=spec_version)
+
     assert not any(m["type"] == "http.response.body" and m.get("body") for m in sent)
     assert ai.provider.paths == []
     assert ai.rows("SELECT feature, status, charged_micro_usd FROM llm_quota_operation") == [(feature, "settled", 0)]
     assert ai.rows("SELECT count(*) FROM llm_quota_call") == [(0,)]
-
-
-async def test_a_span_chat_left_before_its_stream_starts_releases_its_reservation(ai):
-    account, headers = await ai.account()
-    store = span_store(account.id)
-    ai.app.dependency_overrides[get_annotation_store] = lambda: store
-
-    sent = await post_and_leave(ai.app, "/api/ai/discuss_span", discuss_body(store), headers)
-
-    assert_released(ai, sent, "span_chat")
     status = await ai.status(headers)
     assert (status["reserved_usd"], status["charged_usd"]) == (0, 0)
 
 
-async def test_a_document_chat_left_before_its_stream_starts_releases_its_reservation(ai):
-    account, headers = await ai.account()
-    collections, chunks = summary_stores(account.id)
-    ai.app.dependency_overrides[get_user_collections] = lambda: collections
-    ai.app.dependency_overrides[get_documents] = lambda: chunks
-    path = f"/api/user_collections/{documents.COLLECTION}/documents/{documents.DOCUMENT}/chat"
+@ASGI_SPECS
+@CHATS
+async def test_a_chat_left_mid_stream_closes_the_provider_stream_and_settles(ai, feature, spec_version):
+    path, body, headers = await chat_request(ai, feature)
 
-    sent = await post_and_leave(ai.app, path, {"question": "Kdo psal kroniku?", "history": []}, headers)
+    sent = await post_and_leave(ai.app, path, body, headers, spec_version=spec_version, after_first_chunk=True)
 
-    assert_released(ai, sent, "context_chat")
-    status = await ai.status(headers)
-    assert (status["reserved_usd"], status["charged_usd"]) == (0, 0)
-
-
-def assert_settled_mid_stream(ai, sent: list[dict], feature: str) -> None:
-    """A reply was streamed and the operation was settled after the client left."""
     assert any(m["type"] == "http.response.body" and m.get("body") for m in sent)
     assert ai.rows("SELECT feature, status FROM llm_quota_operation") == [(feature, "settled")]
-
-
-async def test_a_span_chat_left_mid_stream_settles_its_operation(ai):
-    account, headers = await ai.account()
-    store = span_store(account.id)
-    ai.app.dependency_overrides[get_annotation_store] = lambda: store
-
-    sent = await post_and_leave(ai.app, "/api/ai/discuss_span", discuss_body(store), headers, after_first_chunk=True)
-
-    assert_settled_mid_stream(ai, sent, "span_chat")
-    status = await ai.status(headers)
-    assert status["reserved_usd"] == 0 and status["charged_usd"] > 0
-
-
-async def test_a_document_chat_left_mid_stream_settles_its_operation(ai):
-    account, headers = await ai.account()
-    collections, chunks = summary_stores(account.id)
-    ai.app.dependency_overrides[get_user_collections] = lambda: collections
-    ai.app.dependency_overrides[get_documents] = lambda: chunks
-    path = f"/api/user_collections/{documents.COLLECTION}/documents/{documents.DOCUMENT}/chat"
-
-    sent = await post_and_leave(ai.app, path, {"question": "Kdo psal kroniku?", "history": []}, headers,
-                                after_first_chunk=True)
-
-    assert_settled_mid_stream(ai, sent, "context_chat")
+    # The provider stream was closed before the settlement, which counts its call as cancelled.
+    assert ai.rows("SELECT outcome FROM llm_quota_call") == [("cancelled",)]
     status = await ai.status(headers)
     assert status["reserved_usd"] == 0 and status["charged_usd"] > 0
 
@@ -469,14 +459,16 @@ async def test_suggestions_are_refused_before_streaming_for_an_exhausted_account
     assert provider.calls == [] and world.log == []
 
 
+@ASGI_SPECS
 @pytest.mark.parametrize("mode", ["thorough", "optimized", "selection"])
-async def test_a_suggestion_run_left_before_its_stream_starts_releases_its_reservation(ai, mode):
+async def test_a_suggestion_run_left_before_its_stream_starts_releases_its_reservation(ai, mode, spec_version):
     account, headers = await ai.account()
     world = suggestion_world(account.id)
     provider = suggestion_fakes.FakeProvider(world)
     use_suggestion_fakes(ai, world, provider)
 
-    sent = await post_and_leave(ai.app, f"/api/ai/suggest_spans/{mode}", suggestion_bodies(world)[mode], headers)
+    sent = await post_and_leave(ai.app, f"/api/ai/suggest_spans/{mode}", suggestion_bodies(world)[mode], headers,
+                                spec_version=spec_version)
 
     assert not any(m["type"] == "http.response.body" and m.get("body") for m in sent)
     assert provider.calls == [] and world.log == []

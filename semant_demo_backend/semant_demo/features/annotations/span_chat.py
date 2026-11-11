@@ -13,7 +13,8 @@ through the repositories; the provider is injected (``adapters/llm/gateway.Featu
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
@@ -62,7 +63,7 @@ _FOLLOWING_CHUNKS = 8
 
 
 class ChatProvider(Protocol):
-    def stream(self, instructions: str, messages: list[dict[str, str]]) -> AsyncIterator[str]: ...
+    def stream(self, instructions: str, messages: list[dict[str, str]]) -> AsyncGenerator[str, None]: ...
 
 
 def _format_metadata(doc: Document | None) -> str:
@@ -255,8 +256,9 @@ class SpanDiscussion:
         instructions = f"{SYSTEM_PROMPT}\n\n---\n\n{context_block}"
         turns = [{"role": m.role, "content": m.content}
                  for m in _truncate_history(self.messages, self.history_limit)]
-        async for delta in self.provider.stream(instructions, turns):
-            yield delta
+        async with aclosing(self.provider.stream(instructions, turns)) as deltas:
+            async for delta in deltas:
+                yield delta
 
 
 async def prepare_discussion(store: AnnotationStore, user: Principal | None, request: DiscussSpanRequest,

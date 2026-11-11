@@ -15,6 +15,7 @@ disconnects, before the stream starts too.
 from __future__ import annotations
 
 import logging
+from contextlib import aclosing
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends
@@ -49,8 +50,9 @@ def _ndjson(event: SpanChatDelta) -> bytes:
 async def _stream(discussion: SpanDiscussion, operation: OperationScope) -> AsyncGenerator[bytes, None]:
     async with operation:
         try:
-            async for delta in discussion.deltas():
-                yield _ndjson(SpanChatDelta(delta=delta))
+            async with aclosing(discussion.deltas()) as deltas:
+                async for delta in deltas:
+                    yield _ndjson(SpanChatDelta(delta=delta))
         except Exception as e:
             # Provider and storage errors may echo the conversation or credentials; a server
             # refusal (e.g. a conversation above the input limit) has a safe message.
