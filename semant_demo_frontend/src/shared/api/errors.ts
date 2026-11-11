@@ -54,6 +54,19 @@ export function errorStatus (err: unknown): number | null {
   return null
 }
 
+/** The JSON body of a failed request from either client, or null (none, not JSON, network error). */
+export async function errorBody (err: unknown): Promise<unknown> {
+  if (err instanceof ApiError) return err.body
+  if (err instanceof ResponseError) {
+    try {
+      return await err.response.clone().json()
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 /**
  * A message for the user: the backend's `detail` when it sent one, otherwise `fallback`.
  * Reads the generated client's `ResponseError` body without consuming it for other readers.
