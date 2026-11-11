@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref } from 'vue'
 
-import useScopedChat, { chatTokens, historyTurns, type ChatMessage, type ChatSource } from 'src/features/chat/useScopedChat'
+import { ResponseError } from 'src/generated/api'
+import useScopedChat, { chatTokens, citedSources, historyTurns, type ChatAnswer, type ChatMessage, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
 import { muteConsole } from './console'
 
-// Document chat (#248, ADR 0012): the composable's stream handling, history and scope.
+// Document chat (#248) and Search chat (#245), ADR 0012: the composable's stream handling,
+// history and scope.
 
 const encoder = new TextEncoder()
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -38,6 +40,15 @@ describe('chatTokens', () => {
       { type: 'text', value: ' b ' },
       { type: 'text', value: '.' }
     ])
+  })
+})
+
+describe('citedSources', () => {
+  const candidate = (chunkId: string) => ({ chunkId, documentId: 'd1', order: 1, fromPage: 1, toPage: 1 })
+
+  it('maps [docN] to the Nth candidate in order of first citation, leaving out unknown numbers', () => {
+    expect(citedSources('B [doc2], A [doc1], again [doc2], none [doc9].', [candidate('a'), candidate('b')]))
+      .toEqual([{ ...candidate('b'), citation: 2 }, { ...candidate('a'), citation: 1 }])
   })
 })
 
@@ -175,7 +186,7 @@ describe('useScopedChat', () => {
     documentId.value = 'd2'
     await nextTick()
     expect(chat.messages.value).toEqual([])
-    expect(chat.streaming.value).toBe(false)
+    expect([chat.streaming.value, chat.scopeChanged.value]).toEqual([false, false])
 
     const current = chat.ask('About d2')
     await flush()
@@ -192,6 +203,92 @@ describe('useScopedChat', () => {
     expect(chat.messages.value.map(m => m.text)).toEqual(['About d2', 'answer about d2'])
   })
 
+  function mountSearchChat (ids: string[]) {
+    const chunkIds = ref(ids)
+    const scope = effectScope()
+    const chat = scope.run(() => useScopedChat((): SearchChatScope => ({
+      kind: 'search',
+      chunkIds: chunkIds.value,
+      criteria: { textQuery: 'fire', documentFilters: { languages: ['ces'] } },
+      userCollectionId: 'c1'
+    }), { keepOnScopeChange: true }))!
+    return { chat, chunkIds, scope }
+  }
+
+  it('keeps a search conversation on a scope change until the next question, which starts a new one the old answer cannot reach', async () => {
+    const { chat, chunkIds } = mountSearchChat(['r1', 'r2'])
+    const old = chat.ask('About r1, r2')
+    await flush()
+    streams[0].push({ event: 'delta', text: 'So far' })
+    await flush()
+
+    chunkIds.value = ['r2']
+    await nextTick()
+    // ADR 0012 decision 1: stopped, still shown, marked as about the old scope.
+    expect(chat.messages.value.map(m => [m.text, m.status])).toEqual([['About r1, r2', 'done'], ['So far', 'stopped']])
+    expect([chat.streaming.value, chat.scopeChanged.value]).toEqual([false, true])
+
+    const current = chat.ask('About r2')
+    await flush()
+    streams[0].push({ event: 'delta', text: 'late answer' })
+    streams[0].close()
+    await old
+    expect(chat.streaming.value).toBe(true)
+
+    streams[1].push({ event: 'delta', text: 'answer about r2' })
+    streams[1].push({ event: 'end', coverage: 'all', used_chunks: 1, total_chunks: 1 })
+    streams[1].close()
+    await current
+    expect(requests[1].body).toMatchObject({ chunk_ids: ['r2'], history: [] })
+    expect(chat.messages.value.map(m => m.text)).toEqual(['About r2', 'answer about r2'])
+    expect(chat.scopeChanged.value).toBe(false)
+  })
+
+  it('starts empty on a search scope change while nothing was asked', async () => {
+    const { chat, chunkIds } = mountSearchChat(['r1'])
+
+    chunkIds.value = ['r2']
+    await nextTick()
+
+    expect([chat.messages.value, chat.scopeChanged.value]).toEqual([[], false])
+  })
+
+  it('asks about search results by id under the search criteria, and a new selection is a new scope', async () => {
+    const { chat, chunkIds, scope } = mountSearchChat(['r1', 'r2', 'r3'])
+
+    const first = chat.ask('What burned?')
+    await flush()
+    streams[0].push({ event: 'delta', text: 'A mill [doc2].' })
+    streams[0].push({ event: 'sources', sources: [wireSource(2, 'r2')] })
+    streams[0].push({ event: 'end', coverage: 'all', used_chunks: 3, total_chunks: 3 })
+    streams[0].close()
+    await first
+
+    expect(requests[0].url).toMatch(/\/search\/chat$/)
+    expect(requests[0].body).toEqual({
+      question: 'What burned?',
+      history: [],
+      chunk_ids: ['r1', 'r2', 'r3'],
+      criteria: { text_query: 'fire', document_filters: { languages: ['ces'] } },
+      user_collection_id: 'c1'
+    })
+
+    // Other results (another search) are a new scope too.
+    chunkIds.value = ['r1', 'r2', 'r3', 'r4']
+    await nextTick()
+    expect([chat.messages.value.length, chat.scopeChanged.value]).toEqual([2, true])
+
+    chunkIds.value = ['r2']
+    await nextTick()
+    const second = chat.ask('And here?')
+    await flush()
+    expect(requests[1].body).toMatchObject({ chunk_ids: ['r2'], history: [] })
+    expect(chat.messages.value.map(m => m.text)).toEqual(['And here?', ''])
+    streams[1].close()
+    await second
+    scope.stop()
+  })
+
   it('drops the conversation when its owner unmounts', async () => {
     const { chat, scope } = mountChat()
     const asking = chat.ask('Q')
@@ -203,6 +300,90 @@ describe('useScopedChat', () => {
     await asking
 
     expect([chat.messages.value, chat.streaming.value]).toEqual([[], false])
+  })
+
+  describe('summarize', () => {
+    const summary = (text: string, coverage?: ChatAnswer['coverage']): ChatAnswer => ({
+      text,
+      sources: [{ citation: 2, chunkId: 'c2', documentId: 'd1', order: 2, fromPage: 1, toPage: 1 }],
+      coverage
+    })
+
+    it('adds the summary as an answer with its sources and coverage, and a follow-up carries them', async () => {
+      const { chat } = mountChat()
+      let scopeSeen: unknown
+
+      await chat.summarize('Summarize briefly', async (scope) => {
+        scopeSeen = scope
+        return summary('A fire [doc2].', { coverage: 'part', usedChunks: 40, totalChunks: 55 })
+      })
+
+      expect(scopeSeen).toEqual({ kind: 'document', collectionId: 'c1', documentId: 'd1' })
+      expect(chat.messages.value.map(m => [m.role, m.text, m.status])).toEqual([
+        ['user', 'Summarize briefly', 'done'], ['assistant', 'A fire [doc2].', 'done']])
+      expect(chat.messages.value[1].sources.map(s => [s.chunkId, s.label])).toEqual([['c2', 1]])
+      expect(chat.messages.value[1].coverage).toEqual({ coverage: 'part', usedChunks: 40, totalChunks: 55 })
+      expect(chat.streaming.value).toBe(false)
+
+      const followUp = chat.ask('Why?')
+      await flush()
+      expect((requests[0].body as { history: unknown[] }).history).toEqual([
+        { role: 'user', text: 'Summarize briefly', chunk_ids: [] },
+        { role: 'assistant', text: 'A fire [doc1].', chunk_ids: ['c2'] }
+      ])
+      streams[0].close()
+      await followUp
+    })
+
+    it('shows a failed summary\'s safe message', async () => {
+      muteConsole('error')
+      const { chat } = mountChat()
+      const failed = new ResponseError(new Response(JSON.stringify({ detail: 'The summary could not be generated.' }), { status: 502 }))
+
+      await chat.summarize('Summarize briefly', () => Promise.reject(failed))
+
+      expect([chat.messages.value[1].status, chat.messages.value[1].error]).toEqual(['error', 'The summary could not be generated.'])
+    })
+
+    it('shows a summary that failed with a fallback as an error and leaves it out of the history', async () => {
+      const { chat } = mountChat()
+
+      await chat.summarize('Summarize briefly', async () => ({ text: '', sources: [], error: 'The summary could not be generated.' }))
+
+      expect([chat.messages.value[1].status, chat.messages.value[1].error, chat.messages.value[1].text])
+        .toEqual(['error', 'The summary could not be generated.', ''])
+      expect(historyTurns(chat.messages.value)).toEqual([])
+    })
+
+    it('stop aborts the summary request and keeps the conversation usable', async () => {
+      const { chat } = mountChat()
+      let aborted = false
+
+      const running = chat.summarize('Summarize briefly', (_scope, signal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => { aborted = true; reject(new DOMException('aborted', 'AbortError')) })
+      }))
+      await flush()
+      expect(chat.streaming.value).toBe(true)
+      chat.stop()
+      await running
+
+      expect([aborted, chat.messages.value[1].status, chat.messages.value[1].error, chat.streaming.value])
+        .toEqual([true, 'stopped', undefined, false])
+    })
+
+    it('drops a late summary after the document changed', async () => {
+      const { chat, documentId } = mountChat()
+      let finish!: (answer: ChatAnswer) => void
+
+      const running = chat.summarize('Summarize briefly', () => new Promise(resolve => { finish = resolve }))
+      await flush()
+      documentId.value = 'd2'
+      await nextTick()
+      finish(summary('Late [doc2].'))
+      await running
+
+      expect([chat.messages.value, chat.streaming.value]).toEqual([[], false])
+    })
   })
 
   it('explains a refusal for the daily AI allowance', async () => {

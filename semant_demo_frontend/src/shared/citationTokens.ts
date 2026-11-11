@@ -3,10 +3,7 @@ export interface TextToken { type: 'text'; value: string }
 
 /**
  * Splits `text` into alternating text and citation tokens around `[docN]` markers — the
- * citation convention both the search-results and document summarizers use (#358 review:
- * `useSearchSummary.parseSummaryTokens` and `useDocumentSummary.parseDocumentSummaryTokens`
- * had near-identical copies of this loop, differing only in how a matched number resolves
- * into a citation).
+ * citation convention of the summarizers and the contextual chat (`features/chat`).
  *
  * `resolveCitation` turns a matched citation number into that citation token's extra fields.
  * A `null` result renders the marker as plain text instead of a citation with nothing behind

@@ -66,7 +66,7 @@ test('a guest of a frontend on another origin keeps one guest cookie, and its AI
 
   // The path only: the request carries the length level as a query parameter (#360).
   const summary = page.waitForResponse((r) => r.url().split('?')[0] === `${baseURL}/api/summarize/results`)
-  await page.getByRole('button', { name: 'Summarize Results' }).click()
+  await page.getByRole('button', { name: 'Summarize briefly' }).click()
   expect((await summary).status()).toBe(200)
   // The allowance is read again after the AI operation.
   const quota = async () => await statuses.at(-1)?.json() as { principal: string, used_usd: number } | undefined

@@ -88,7 +88,7 @@ test('search documents: filter-only and ranked results, Load more and states (#6
   await expect(page.getByTestId('document-result-open')).toHaveCount(2)
   await expect(page.getByTestId('search-load-more')).toBeVisible()
   await page.getByTestId('search-coverage').click() // closes the recent searches the field offers
-  // No right sidebar: the Summary panel serves passages only.
+  // No right sidebar: the AI Chat panel serves passages only.
   await save(page, testInfo, 'search-documents')
 
   await page.getByTestId('search-load-more').click()
@@ -169,7 +169,7 @@ test('document view', async ({ page }, testInfo) => {
   await save(page, testInfo, 'document-view')
 })
 
-test('document view - summary panel (#249)', async ({ page }, testInfo) => {
+test('document view - AI Chat panel with a summary (#249, #245)', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
   await page.reload() // without the sign-in notification
@@ -180,9 +180,9 @@ test('document view - summary panel (#249)', async ({ page }, testInfo) => {
     await page.getByRole('button', { name: 'Toggle sidebar' }).click()
   }
 
-  await sidebarPanelButton(page, 'Summary').click()
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
-  await expect(page.getByTestId('document-summary')).toBeVisible()
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await page.getByRole('button', { name: 'Summarize briefly' }).click()
+  await expect(page.getByTestId('chat-answer').getByRole('link').first()).toBeVisible()
   await save(page, testInfo, 'document-view-summary')
 })
 
