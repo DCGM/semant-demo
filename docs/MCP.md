@@ -17,8 +17,8 @@ not), tags, annotations, AI generation or writes, and needs no account.
   stateless, JSON answers (MCP SDK `mcp` 1.30, protocol 2025-11-25 and the versions it
   negotiates). It is a route of the backend application (`semant_demo/mcp/`) and shares its
   startup and shutdown; it is registered before the static frontend mount, so the frontend
-  and `/api` are unaffected and the existing reverse proxy (Traefik routes the whole host to the
-  app) needs no change. The REST API and its OpenAPI schema do not change.
+  and `/api` are unaffected. Traefik routes the host to the app; a separate router for `/mcp`
+  only adds the rate limit below. The REST API and its OpenAPI schema do not change.
 - **Off by default.** `MCP_ENABLED=true` enables it. While disabled, `/mcp` is 404.
 
 | Variable | Default | Description |
@@ -104,7 +104,9 @@ the page list), `unavailable_filter` (a filter this corpus database cannot answe
   Weaviate is the configured query embedding of `hybrid`/`vector` searches.
 - Host and Origin are validated by the MCP SDK's transport security (above); HTTPS is terminated
   by the reverse proxy. Timeouts and the search concurrency limit protect the store and the
-  embedding service; per-client rate limiting, if needed, belongs in the proxy.
+  embedding service. Traefik limits `/mcp` per client IP to an average of 60 requests per
+  minute with bursts of 30 and answers 429 above it; the rest of the host is not limited
+  ([DEPLOYMENT.md](DEPLOYMENT.md#production-considerations)).
 - Each call logs one `MCP tool call completed` record with `mcp.tool`, `mcp.outcome`,
   `mcp.duration_ms`, `mcp.limit` and `mcp.results.count`, never queries or text
   ([OBSERVABILITY.md](OBSERVABILITY.md#add-a-log-field)); failures log the exception class.
