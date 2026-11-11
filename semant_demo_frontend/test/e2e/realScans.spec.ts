@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { expect, test, type Page } from '@playwright/test'
 
-import { closePhoneNavigation, useViewport } from './support'
+import { useViewport } from './support'
 
 // The scan viewer (#543) on real scans (#546): two downscaled pages of the real-page
 // fixtures (semant_demo_backend/tests/real_pages.py) and the page files the converter made
@@ -72,7 +72,6 @@ const image = (page: Page) => page.locator('img.scan-view__image')
 async function openScan (page: Page, documentId: string) {
   const pageId = await serveDocument(page, documentId)
   await page.goto(`/#/preview/scan/${documentId}?page=${pageId}`)
-  await closePhoneNavigation(page)
   await expect(page.getByTestId('document-image-pane')).toBeVisible()
   return pageId
 }

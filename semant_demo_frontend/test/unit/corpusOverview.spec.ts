@@ -13,6 +13,7 @@ import { loadEmbed } from 'src/shared/visualization/loadEmbed'
 vi.mock('src/shared/visualization/loadEmbed', () => ({ loadEmbed: vi.fn() }))
 
 type SignalHandler = (name: string, value: unknown) => void
+type ViewEventHandler = (event: { clientX: number, clientY: number }, item: { datum?: Record<string, unknown> } | null) => void
 
 /**
  * Drawings made through the mocked vega-embed; `fail` makes the next ones fail. With `held`,
@@ -22,7 +23,7 @@ type SignalHandler = (name: string, value: unknown) => void
 const embedded = {
   calls: [] as {
     element: HTMLElement, spec: Record<string, unknown>, options: unknown,
-    finalize: ReturnType<typeof vi.fn>, finish: () => void, signals: Map<string, SignalHandler>
+    finalize: ReturnType<typeof vi.fn>, finish: () => void, signals: Map<string, SignalHandler>, events: Map<string, ViewEventHandler>
   }[],
   fail: false,
   held: false
@@ -37,15 +38,20 @@ function resetEmbed () {
     const el = element as HTMLElement
     const finalize = vi.fn()
     const signals = new Map<string, SignalHandler>()
+    const events = new Map<string, ViewEventHandler>()
     let finish = () => undefined as void
     const finished = new Promise<void>((resolve) => { finish = resolve })
-    embedded.calls.push({ element: el, spec: spec as Record<string, unknown>, options, finalize, finish, signals })
+    embedded.calls.push({ element: el, spec: spec as Record<string, unknown>, options, finalize, finish, signals, events })
     if (embedded.held) await finished
     // vega-embed clears and fills the element it is given.
     el.innerHTML = `<svg data-mark="${String((spec as { mark?: unknown }).mark)}"></svg>`
     const view = {
       addSignalListener (name: string, handler: SignalHandler) {
         signals.set(name, handler)
+        return view
+      },
+      addEventListener (type: string, handler: ViewEventHandler) {
+        events.set(type, handler)
         return view
       }
     }
@@ -54,6 +60,12 @@ function resetEmbed () {
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+/** Plays a press, an optional movement and a click on a mark of `datum` in a drawing. */
+function clickMark (call: (typeof embedded.calls)[number], datum: Record<string, unknown> | null, moveBy = 0) {
+  call.events.get('mousedown')?.({ clientX: 10, clientY: 10 }, datum ? { datum } : null)
+  call.events.get('click')?.({ clientX: 10 + moveBy, clientY: 10 }, datum ? { datum } : null)
+}
 
 const NO_FILTERS = { year_min: null, year_max: null, title_contains: [], libraries: [], languages: [] }
 const LIBRARIES = { available: true, values: [{ value: 'mzk', count: 6 }, { value: 'nkp', count: 1 }], other_count: 0, unknown_count: 3 }
@@ -245,6 +257,23 @@ describe('VegaChart', () => {
     expect([...embedded.calls[0].signals.keys()]).toEqual(['period'])
   })
 
+  it('reports a click on an accepted mark, not a drag or other marks, and shows those marks as clickable', async () => {
+    const wrapper = mount(VegaChart, {
+      props: { spec: { mark: 'bar' }, label: 'Chart', clickable: (datum: Record<string, unknown>) => datum.kind === 'value' }
+    })
+    await flush()
+    const [call] = embedded.calls
+    clickMark(call, { kind: 'value', key: 'mzk' })
+    clickMark(call, { kind: 'value', key: 'nkp' }, 20) // a drag, e.g. an interval selection
+    clickMark(call, { kind: 'unknown', key: 'x' })
+    clickMark(call, null)
+    expect(wrapper.emitted('itemClick')).toEqual([[{ kind: 'value', key: 'mzk' }]])
+    call.events.get('mousemove')?.({ clientX: 0, clientY: 0 }, { datum: { kind: 'value' } })
+    expect(call.element.style.cursor).toBe('pointer')
+    call.events.get('mousemove')?.({ clientX: 0, clientY: 0 }, { datum: { kind: 'unknown' } })
+    expect(call.element.style.cursor).toBe('')
+  })
+
   it('says so when the chart cannot be drawn', async () => {
     embedded.fail = true
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -339,14 +368,19 @@ describe('CorpusOverviewPage', () => {
     const years = wrapper.get('[data-testid="corpus-years"]')
     expect(years.text()).toContain('7 of 10 documents (70 %) have a publication year; 3 unknown.')
     // The main range 1900–1919 in single years; long empty periods as one row.
+    // Each table offers a filter for the rows that have one (#620): not gaps, Other or Unknown.
     expect(tableText(wrapper, 'corpus-years')).toEqual([
-      ['1900–1904 — no documents (5 years)', '0'], ['1905', '4'], ['1906–1909 — no documents (4 years)', '0'],
-      ['1910', '2'], ['1911–1918 — no documents (8 years)', '0'], ['1919', '1'], ['Unknown or invalid year', '3']
+      ['1900–1904 — no documents (5 years)', '0', ''], ['1905', '4', 'Filter'], ['1906–1909 — no documents (4 years)', '0', ''],
+      ['1910', '2', 'Filter'], ['1911–1918 — no documents (8 years)', '0', ''], ['1919', '1', 'Filter'], ['Unknown or invalid year', '3', '']
     ])
     const languages = wrapper.get('[data-testid="corpus-languages"]')
     expect(languages.text()).toContain('8 of 10 documents (80 %) have a language; 2 unknown.')
     expect(tableText(wrapper, 'corpus-languages')).toEqual([
-      ['Czech (ces)', 'ces', '5'], ['Czech (cze)', 'cze', '2'], ['Other values', '—', '1'], ['Unknown', '—', '2']
+      ['Czech (ces)', 'ces', '5', 'Filter'], ['Czech (cze)', 'cze', '2', 'Filter'], ['Other values', '—', '1', ''], ['Unknown', '—', '2', '']
+    ])
+    // The tables are collapsed behind "Show data table"; the charts are the primary view.
+    expect(wrapper.findAll('.q-expansion-item').map(e => [e.text().replace('arrow_drop_down', '').split(')')[0], e.classes('q-expansion-item--expanded')])).toEqual([
+      ['Show data table (documents per year, 1900–1919', false], ['Show data table (documents per language', false]
     ])
     // Two charts: years and languages; the library is unavailable, and so is the heatmap.
     expect(wrapper.findAll('.vega-chart__canvas').map(c => c.attributes('aria-label'))).toEqual([
@@ -615,6 +649,27 @@ describe('CorpusOverviewPage', () => {
     expect(requests[2].body).toEqual({ filters: { year_min: 1900, year_max: 1919, title_contains: ['brno'], libraries: [], languages: [] } })
   })
 
+  it('applies a clicked language bar or a table row as the filter of its dimension, keeping the other filters', async () => {
+    const wrapper = await loadedPage()
+    await wrapper.get('[data-testid="filter-title"]').setValue('brno')
+    await submit(wrapper)
+    await answer(overviewBody({ filters: { ...NO_FILTERS, title_contains: ['brno'] } }))
+
+    const bars = embedded.calls.filter(c => JSON.stringify(c.spec).includes('"title":"Language"')).at(-1)!
+    // Unknown and Other are not filters: their bars do nothing.
+    clickMark(bars, { key: '\u0000unknown', kind: 'unknown', count: 2 })
+    clickMark(bars, { key: 'ces', kind: 'value', count: 5 })
+    await flush()
+    expect(requests.map(r => r.body)).toHaveLength(3)
+    expect(requests[2].body).toEqual({ filters: { title_contains: ['brno'], libraries: [], languages: ['ces'] } })
+
+    // The data table's Filter replaces the language, as a second click would.
+    await wrapper.get('[data-testid="corpus-languages-filter-cze"]').trigger('click')
+    await flush()
+    expect(requests[3].body).toEqual({ filters: { title_contains: ['brno'], libraries: [], languages: ['cze'] } })
+    expect(wrapper.find('[data-testid="corpus-languages-filter-\u0000unknown"]').exists()).toBe(false)
+  })
+
   it('applies the period shown in the timeline keeping a title still being counted', async () => {
     const wrapper = await loadedPage()
     await wrapper.get('[data-testid="filter-title"]').setValue('brno')
@@ -756,6 +811,18 @@ describe('PublicationTimeline', () => {
     await wrapper.get('.vega-chart').trigger('pointerup')
     await flush()
     expect(windowText(wrapper)).toBe('1690–1700 · single years')
+  })
+
+  it('applies a clicked bin or a table row as its years; a drag zooms and applies nothing', async () => {
+    const wrapper = mountTimeline()
+    await flush()
+    const drawing = embedded.calls[embedded.calls.length - 1]
+    clickMark(drawing, { start: 1600, endExclusive: 1605, count: 2 })
+    clickMark(drawing, { start: 1605, endExclusive: 1610, count: 0 }) // an empty bin
+    clickMark(drawing, { start: 1690, endExclusive: 1695, count: 3 }, 30)
+    await wrapper.get('[data-testid="timeline-filter-bin-1785"]').trigger('click')
+    expect(wrapper.emitted('applyPeriod')).toEqual([[{ start: 1600, end: 1604 }], [{ start: 1785, end: 1789 }]])
+    expect(wrapper.find('[data-testid="timeline-filter-bin-1605"]').exists()).toBe(false)
   })
 
   it('applies the shown period, at most up to the current year', async () => {

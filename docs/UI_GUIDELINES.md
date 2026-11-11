@@ -46,9 +46,60 @@ product decisions justify another rule.
   where practical; support direct links to meaningful views.
 - Make controls usable by keyboard and touch. Give icon-only actions accessible labels;
   do not rely on hover tooltips for essential meaning.
+- When a table has more columns than a narrow screen fits, give its key columns minimum widths
+  and let the table scroll sideways in its own container, never the page; keep what identifies
+  a row (its checkbox and key column) in view while scrolling (the annotation concordance, #537).
 - Check layouts and interaction states at the relevant desktop and phone widths, following
-  the [UI change checklist](../CONTRIBUTING.md#ui-change-checklist).
+  the [UI change checklist](#ui-change-checklist).
 
 Document deliberate exceptions in the relevant PR. Add new guidelines only when an
 interaction decision is broadly reusable; feature-specific behavior belongs with that
 feature's requirements or documentation.
+
+## UI change checklist
+
+Applies to meaningful UI changes: layout, components, responsive behavior, interaction or
+visible states. Match inspection to likely impact, not a fixed quota. Backend/nonvisual
+work, documentation and trivial cosmetic edits need no checklist; a small localized
+styling change needs only a spot-check. Explain omitted evidence when reviewers might
+expect it. Browser-test requirements remain in
+[CONTRIBUTING](../CONTRIBUTING.md#4-testing-contract).
+
+1. **Inspect before the first push/review.** For new views, shared layouts or responsive
+   changes, check wide desktop, constrained desktop (both sidebars open where present)
+   and phone. For local interaction/styling changes, inspect only affected states and
+   widths. `make e2e-dev-capture` provides 1920x1000, 1280x900 and 390x844 fixtures; pass
+   a spec to capture the changed state ([capture guide](DEVELOPMENT.md#fast-browser-test-loop)).
+2. **Attach proportionate evidence.** Use before/after or final screenshots, or a short
+   recording, of changed states (selected, expanded, empty, signed out, etc.), not just
+   the default view. Name relevant states/contexts not captured. Only synthetic/fixture
+   data, and only captures you actually made; unaffected widths need no screenshots.
+3. **Review what applies.** Check card/title/metadata alignment, wrapping/overflow, long
+   titles and narrow toolbars, selected/hover/focus states, authorization/ownership-gated
+   controls, keyboard/touch interaction and direct links/reloads. This is a review aid,
+   not a requirement to add browser tests for every visual check.
+4. **Report verification honestly.** State actual commands/results and any outstanding
+   full `make test-e2e` run; targeted specs do not replace required final validation.
+
+### Screenshot uploads
+
+Check `gh --version` and `gh auth status` first. The upload commands require GitHub CLI
+2.99 or newer; agents should ask for an update rather than improvise an upload mechanism.
+If uploading fails, report the blocker and ask the user to upload in the browser. Do not
+set up external hosting such as gists.
+
+```bash
+gh pr edit <N> --attach './shot.png#What the screenshot shows'
+gh pr comment <N> --attach './shot.png#What the screenshot shows'
+```
+
+The first appends to the description; the second adds a comment. Repeat `--attach` for
+multiple files and give each descriptive alt text after `#`. To place images in a body
+file (for example, in a table), write `![alt](./shot.png)` and pass
+`-F body.md --attach ./shot.png`; paths are rewritten to uploaded assets. Verify rendering:
+`gh pr view <N> --json body` should contain `github.com/user-attachments/...` URLs.
+
+New UI issues use the [UI change template](../.github/ISSUE_TEMPLATE/ui-change.md): requested
+behavior, appearance, target widths, an existing reference image if available, and
+non-goals. Words or a rough sketch suffice; pixel-perfect mockups are not required, and
+nonvisual bugs need none of this.

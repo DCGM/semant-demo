@@ -211,10 +211,20 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 
 - **Named vectors** — pre-computed embeddings; the deployed store holds only `Qwen3_Embedding_0_6B` (Qwen/Qwen3-Embedding-0.6B, 1,024 dimensions, #385). The former `default` vector (`BAAI/bge-multilingual-gemma2`) was dropped ([audit](WEAVIATE_AUDIT_2026-10-17.md))
 - `text` — the full chunk text (also used for BM25)
+- `title` (`text`) — a short generated title of the chunk, shown on search hits and searched by
+  BM25 with the other text properties. Chunk ingestion writes none: `python -m
+  semant_demo.maintenance.chunk_titles` generates and writes it
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-titles-chunk_titles-575), #575)
 - `from_page` / `to_page` — page range in the source document
 - `start_page_id` — UUID of the first page
 - `ner_*` — named entity arrays extracted by NER (Persons, Temporal, Address, Geographical, Institution, Media, Cultural artifacts)
 - classifications (`text[]`, e.g. `communicative_mode`, `style`, `subject_domain`) — written by `data_tools/meta_data_enrichment`; the properties named in `features/search/filters.py::TASK_CLASSES` are search filters and are returned as a hit's `metadata` ([SEARCH_FILTERS](SEARCH_FILTERS.md#5-classifications-on-search-hits))
+- `classification_provenance` (`text`, `field` tokenization, filterable) — the classification
+  status (#590): `UNPROCESSED` on every chunk `chunk_ingest` inserts, the classifier's
+  model/version identifier once classified, absent on chunks stored before the property was
+  declared (never selected for classification). Declared by `classification_provenance_schema`
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-classification-status-classification_provenance_schema-590));
+  `chunk_ingest` refuses a store without it.
 - `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
   `yearIssued`, absent when the document has none; the search's year filters use it, not the
   document reference (#153). It is not maintained by document writes or chunk ingestion:
@@ -567,8 +577,9 @@ New chunks are added by the append-only import
   first chunk it inserts an empty `Documents` object.
 - **What it never does.** It never changes the schema or an existing object, and writes no document
   metadata, `yearIssued`, vectors or annotations.
-- **Afterwards.** `metadata_sync` fills the documents, `chunk_year` the chunk years and
-  `data_tools/embedder` the `Qwen3_Embedding_0_6B` vectors.
+- **Afterwards.** `metadata_sync` fills the documents, `chunk_year` the chunk years,
+  `chunk_titles` (after `metadata_sync`) the chunk titles and `data_tools/embedder` the
+  `Qwen3_Embedding_0_6B` vectors.
 
 The input format, the plan per document and the procedure are in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313). The former

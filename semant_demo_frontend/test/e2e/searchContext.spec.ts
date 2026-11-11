@@ -15,8 +15,8 @@ const match = (page: Page) => panel(page).locator('[aria-current="true"]')
 test('double-clicking a result shows it highlighted in its document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await search(page, 'Lhota')
-  // Summary stays the default panel; Document appears once a result is opened.
-  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Summary')
+  // AI Chat stays the default panel; Document appears once a result is opened.
+  await expect(page.getByTestId('right-sidebar-title')).toHaveText('AI Chat')
   await expect(page.getByRole('listitem', { name: 'Document' })).toHaveCount(0)
   const result = card(page, chronicle[1].text)
 
@@ -42,10 +42,10 @@ test('double-clicking a result shows it highlighted in its document', async ({ p
   await expect(match(page)).toHaveText(new RegExp(letters.text))
   await expect(panel(page)).not.toContainText(chronicleTitle)
 
-  // The Summary panel still works next to it.
-  await page.getByRole('listitem', { name: 'Summary' }).click()
-  await page.getByRole('button', { name: 'Summarize Results' }).click()
-  await expect(page.getByTestId('search-summary')).toContainText('Fake summary of')
+  // The AI Chat panel still works next to it.
+  await page.getByRole('listitem', { name: 'AI Chat' }).click()
+  await page.getByRole('button', { name: 'Summarize briefly' }).click()
+  await expect(page.getByTestId('chat-answer')).toContainText('Fake summary of')
 
   // A new search closes the old result's context.
   await page.getByRole('listitem', { name: 'Document' }).click()
@@ -54,7 +54,7 @@ test('double-clicking a result shows it highlighted in its document', async ({ p
   await expect(page.locator('#result-1')).toBeVisible()
   await expect(panel(page)).toHaveCount(0)
   await expect(page.getByRole('listitem', { name: 'Document' })).toHaveCount(0)
-  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Summary')
+  await expect(page.getByTestId('right-sidebar-title')).toHaveText('AI Chat')
 })
 
 test('Focus on result brings the result back into view; unknown chunks fail safely', async ({ page }) => {

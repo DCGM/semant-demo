@@ -122,6 +122,14 @@ def synthetic_document(n: int) -> dict:
     return {key: value for key, value in properties.items() if value is not None}
 
 
+def synthetic_total(count: int, outliers: bool) -> int:
+    """How many documents ``synthetic_documents(count, outliers)`` yields; rejects a
+    ``count`` out of range as it does, but at once."""
+    if not 0 <= count <= MAX_COUNT:
+        raise ValueError(f"count must be between 0 and {MAX_COUNT}")
+    return count + (len(_OUTLIERS) if outliers else 0)
+
+
 def synthetic_documents(count: int, outliers: bool) -> Iterator[tuple[UUID, dict]]:
     """``count`` generated documents, then (with ``outliers``) the two outlier years."""
     if not 0 <= count <= MAX_COUNT:

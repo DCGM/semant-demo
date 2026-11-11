@@ -16,7 +16,8 @@ from semant_demo.features.documents.criteria import (
     AnyOf, CategoryIn, ChunkFilters, ContainsWords, DocumentFilters, NumberRange, SearchCriteria)
 from semant_demo.features.search.filters import TASK_CLASSES, InvalidSearchFilterError, generate_default_filters
 from semant_demo.features.search.schemas import (
-    ChunkQuery, FieldCondition, Op, PassageSearchRequest, SearchFilterInput, SearchRequest, SearchType, TagFilter,
+    ChunkQuery, FieldCondition, Op, PassageReadRequest, PassageSearchRequest, SearchFilterInput, SearchRequest,
+    SearchType, TagFilter,
     SearchResultChunk,
 )
 from semant_demo.features.search.service import SearchBackends
@@ -51,7 +52,8 @@ class FakeTags:
 class FakeChunks:
     def __init__(self, hits=None):
         self.queries: list[ChunkQuery] = []
-        self.read: list[list] = []
+        self.read: list[tuple[list, ChunkQuery]] = []
+        self.out_of_scope: set = set()
         self.hits = hits if hits is not None else [hit("Roz-\ndělené\nřádky")]
 
     async def search(self, query):
@@ -63,10 +65,12 @@ class FakeChunks:
         self.queries.append(query)
         return [h.id for h in self.hits[:query.limit]]
 
-    async def read_hits(self, ids):
-        self.read.append(list(ids))
+    async def read_hits(self, ids, scope):
+        """The stored hits among ``ids`` in that order; those in ``out_of_scope`` are left
+        out, as the store leaves out the chunks that do not match ``scope``."""
+        self.read.append((list(ids), scope))
         by_id = {h.id: h for h in self.hits}
-        return [by_id[i].model_copy() for i in ids if i in by_id]
+        return [by_id[i].model_copy() for i in ids if i in by_id and i not in self.out_of_scope]
 
 
 class FakeEmbeddings:
@@ -561,7 +565,7 @@ async def test_the_results_limit_is_not_reported_without_per_result_generation()
 
 
 ############################
-# Passages (#605)          #
+# Passages (#605, #611)    #
 ############################
 
 class RankedChunks(FakeChunks):
@@ -579,31 +583,33 @@ async def passages(req, retrieval_limit=1000, chunks=None, user=OWNER, definitio
     return await service.search_passages(backends(chunks), user, req, definitions, retrieval_limit)
 
 
-@pytest.mark.parametrize("count, offset, limit, retrieval_limit, page, expected", [
-    # (stored matches, offset, page size, retrieval limit, returned texts, (next_offset, has_more, bounded, total))
-    (5, 0, 2, 100, [0, 1], (2, True, False, 5)),             # coverage is known from the first page
-    (5, 2, 2, 100, [2, 3], (4, True, False, 5)),
-    (5, 4, 2, 100, [4], (None, False, False, 5)),
-    (4, 2, 2, 100, [2, 3], (None, False, False, 4)),         # ended exactly at the page end
-    (5, 0, 3, 3, [0, 1, 2], (None, False, True, None)),      # the limit cut it: bounded
-    (5, 2, 3, 4, [2, 3], (None, False, True, None)),         # a page never reaches past the limit
-    (3, 0, 5, 3, [0, 1, 2], (None, False, False, 3)),        # exactly the limit, nothing beyond
-    (0, 0, 5, 100, [], (None, False, False, 0)),
+def read_request(ids, text="Novák", **kwargs) -> PassageReadRequest:
+    return PassageReadRequest(ids=ids, criteria=SearchCriteria(text_query=text, **kwargs.pop("criteria", {})), **kwargs)
+
+
+@pytest.mark.parametrize("count, limit, retrieval_limit, page, expected", [
+    # (stored matches, first page size, retrieval limit, returned texts, (ranked, bounded, total))
+    (5, 2, 100, [0, 1], (5, False, 5)),             # the whole ranking is known from the first page
+    (2, 5, 100, [0, 1], (2, False, 2)),
+    (5, 3, 3, [0, 1, 2], (3, True, None)),          # the limit cut it: bounded
+    (5, 5, 4, [0, 1, 2, 3], (4, True, None)),       # a page never reaches past the limit
+    (3, 5, 3, [0, 1, 2], (3, False, 3)),            # exactly the limit, nothing beyond
+    (0, 5, 100, [], (0, False, 0)),
 ])
-async def test_passage_pages_are_slices_of_one_ranking_up_to_the_retrieval_limit(
-        count, offset, limit, retrieval_limit, page, expected):
+async def test_a_passage_search_ranks_once_and_reads_only_its_first_page(count, limit, retrieval_limit, page, expected):
     chunks = RankedChunks(count)
 
-    response = await passages(passages_request(offset=offset, limit=limit), retrieval_limit, chunks)
+    response = await passages(passages_request(limit=limit), retrieval_limit, chunks)
 
     assert [r.text for r in response.items] == [f"passage {i}" for i in page]
-    assert (response.next_offset, response.has_more, response.bounded, response.total_count) == expected
-    assert (response.offset, response.retrieval_limit) == (offset, retrieval_limit)
-    # Every page ranks the same population (one more than the limit, to tell whether it is
-    # cut there) and reads only its own passages in full.
+    assert response.ranked_ids == [h.id for h in chunks.hits[:expected[0]]]
+    assert (len(response.ranked_ids), response.bounded, response.total_count) == expected
+    assert (response.read_count, response.retrieval_limit) == (len(page), retrieval_limit)
+    # One ranking of one more than the limit (to tell whether it is cut there); only the first
+    # page is read in full, under the ranking's own restrictions.
     [query] = chunks.queries
     assert query.limit == retrieval_limit + 1
-    assert chunks.read == [[chunks.hits[i].id for i in page]]
+    assert chunks.read == [([chunks.hits[i].id for i in page], query)]
 
 
 @pytest.mark.parametrize("count, bounded, total", [(MAX_QUERY_RESULTS, True, None), (MAX_PASSAGES_LIMIT, False, MAX_PASSAGES_LIMIT)])
@@ -612,35 +618,34 @@ async def test_the_largest_retrieval_limit_ranks_at_most_the_query_maximum(count
     # pass Weaviate's QUERY_MAXIMUM_RESULTS, so the largest limit is one below it.
     chunks = RankedChunks(count)
 
-    first = await passages(passages_request(limit=100), MAX_PASSAGES_LIMIT, chunks)
-    last = await passages(passages_request(offset=MAX_PASSAGES_LIMIT - 1, limit=100), MAX_PASSAGES_LIMIT, chunks)
+    response = await passages(passages_request(limit=100), MAX_PASSAGES_LIMIT, chunks)
 
-    assert [query.limit for query in chunks.queries] == [MAX_QUERY_RESULTS, MAX_QUERY_RESULTS]
-    assert (first.bounded, first.total_count, last.bounded, last.total_count) == (bounded, total, bounded, total)
-    assert [r.text for r in last.items] == [f"passage {MAX_PASSAGES_LIMIT - 1}"]
-    assert (last.has_more, last.next_offset) == (False, None)
+    assert [query.limit for query in chunks.queries] == [MAX_QUERY_RESULTS]
+    assert (response.bounded, response.total_count, len(response.ranked_ids)) == (bounded, total, MAX_PASSAGES_LIMIT)
+    assert response.ranked_ids[-1] == chunks.hits[MAX_PASSAGES_LIMIT - 1].id
 
 
 async def test_a_passage_gone_before_its_page_is_read_is_left_out_of_it():
     chunks = RankedChunks(3)
-    gone = chunks.hits[1]
-
-    async def read_without_gone(ids):
-        return [h for h in await FakeChunks.read_hits(chunks, ids) if h.id != gone.id]
-    chunks.read_hits = read_without_gone
+    chunks.out_of_scope = {chunks.hits[1].id}
 
     response = await passages(passages_request(limit=3), chunks=chunks)
     assert [r.text for r in response.items] == ["passage 0", "passage 2"]
-    assert (response.total_count, response.has_more) == (3, False)
+    assert (response.total_count, response.read_count, len(response.ranked_ids)) == (3, 3, 3)
 
 
-async def test_an_offset_at_the_retrieval_limit_is_refused_before_retrieval():
-    chunks, embeddings = FakeChunks(), FakeEmbeddings()
+async def test_a_passage_ranked_twice_is_in_the_ranking_once():
+    chunks = RankedChunks(3)
+    ranked = [chunks.hits[i].id for i in (0, 1, 0, 2, 1)]
 
-    with pytest.raises(InvalidRequestError, match="At most 10 passages"):
-        await service.search_passages(backends(chunks, embeddings), OWNER,
-                                      passages_request(offset=10, type="hybrid"), DEFINITIONS, 10)
-    assert chunks.queries == [] and embeddings.calls == []
+    async def ranked_with_repeats(query):
+        return ranked
+    chunks.ranked_ids = ranked_with_repeats
+
+    response = await passages(passages_request(limit=2), chunks=chunks)
+    assert response.ranked_ids == [h.id for h in chunks.hits]
+    assert [r.text for r in response.items] == ["passage 0", "passage 1"]
+    assert response.total_count == 3
 
 
 @pytest.mark.parametrize("text", [None, "", "   "])
@@ -706,3 +711,57 @@ async def test_passages_of_a_readable_collection_are_searched_in_it():
 
     [query] = chunks.queries
     assert query.collection_id == COLLECTION and query.tags is None
+
+
+async def test_later_pages_read_ranked_ids_under_the_search_restrictions_without_ranking_again():
+    # #611: Load more reads the next ranked ids; it never ranks or embeds.
+    chunks, embeddings = RankedChunks(5), FakeEmbeddings()
+    ids = [chunks.hits[i].id for i in (3, 1, 4)]
+    criteria = {"document_filters": DocumentFilters(year_min=1850),
+                "chunk_filters": ChunkFilters(languages=["CES"])}
+
+    response = await service.read_passages(
+        backends(chunks, embeddings), SHARED,
+        read_request(ids, criteria=criteria, user_collection_id=str(COLLECTION)), DEFINITIONS)
+
+    assert [r.text for r in response.items] == ["passage 3", "passage 1", "passage 4"]  # the requested order
+    assert chunks.queries == [] and embeddings.calls == []
+    [(read, scope)] = chunks.read
+    assert read == ids
+    # The restrictions of the search's ranking: its collection and every criteria predicate.
+    assert scope.collection_id == COLLECTION and scope.tags is None and scope.conditions == ()
+    assert scope.document_conditions == (NumberRange("yearIssued", 1850, None),)
+    assert [(c.prop, c.values) for c in scope.chunk_conditions] == [("language", ("ces",))]
+
+
+async def test_a_later_page_leaves_out_ids_outside_the_search_and_repeats():
+    chunks = RankedChunks(4)
+    a, b, c, d = (h.id for h in chunks.hits)
+    chunks.out_of_scope = {b}  # another collection, a deleted chunk or one no longer matching
+    unknown = uuid4()
+
+    response = await service.read_passages(backends(chunks), None, read_request([a, b, unknown, a, d]), DEFINITIONS)
+
+    assert [r.text for r in response.items] == ["passage 0", "passage 3"]
+    assert chunks.read[0][0] == [a, b, unknown, d]
+
+
+@pytest.mark.parametrize("user, error", [(None, AuthenticationRequired), (OTHER, NotFoundError)])
+async def test_a_later_page_of_an_unreadable_collection_is_refused_before_reading(user, error):
+    # Access is checked again: a collection shared earlier may be unshared since the search.
+    chunks = RankedChunks(2)
+
+    with pytest.raises(error):
+        await service.read_passages(backends(chunks), user,
+                                    read_request([chunks.hits[0].id], user_collection_id=str(COLLECTION)), DEFINITIONS)
+    assert chunks.read == []
+
+
+async def test_a_later_page_rejects_unconfigured_chunk_filters_before_reading():
+    chunks = RankedChunks(2)
+
+    with pytest.raises(InvalidRequestError, match="'trivial' is not a valid option"):
+        await service.read_passages(backends(chunks), OWNER, read_request(
+            [chunks.hits[0].id], criteria={"chunk_filters": ChunkFilters(classifications={"complexity": ["trivial"]})}),
+            DEFINITIONS)
+    assert chunks.read == []

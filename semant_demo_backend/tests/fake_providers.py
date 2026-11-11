@@ -26,6 +26,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from semant_demo.maintenance.chunk_titles import EXCERPT_BLOCK, LANGUAGE_BLOCK
 from tests.corpus import Corpus
 from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
 
@@ -74,12 +75,29 @@ def fake_provider_environ(config_dir: Path, fake_url: str, fake_port: int) -> di
     }
 
 
+FAKE_THINKING = "The request asks for an answer.\nI will give it on one line."
+"""The reasoning of a fake Ollama model asked to think; never part of the answer."""
+
+TITLE_EXCERPT = EXCERPT_BLOCK.split("{text}")[0]
+"""Marks a chunk title request: the excerpt block of maintenance/chunk_titles.py's prompt."""
+TITLE_INSTRUCTION = "\n\n" + LANGUAGE_BLOCK.split("{language}")[0]
+"""Ends the excerpt of a chunk title request: the language instruction that follows it."""
+
+
+def fake_title(excerpt: str) -> str:
+    """The deterministic title of a chunk title request: the excerpt's first four words."""
+    return " ".join(excerpt.split()[:4])
+
+
 def fake_chat_answer(messages: list[dict[str, Any]]) -> str:
     """Names how many ``[docN]`` passages the last user message holds and cites the last
     one, so a test can tell which subset of results was sent (citations are numbered per
-    prompt). The system prompt is ignored: it shows example labels."""
+    prompt). The system prompt is ignored: it shows example labels. A chunk title request
+    gets ``fake_title`` of its excerpt."""
     user_messages = [m for m in messages if m.get("role") == "user"]
     prompt = str(user_messages[-1].get("content", "")) if user_messages else ""
+    if TITLE_EXCERPT in prompt:
+        return fake_title(prompt.split(TITLE_EXCERPT, 1)[1].rsplit(TITLE_INSTRUCTION, 1)[0])
     labels = sorted({int(n) for n in re.findall(r"\[doc ?([1-9][0-9]*)]", prompt)})
     if not labels:
         return "Fake summary without passages."
@@ -245,10 +263,15 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
                  if _reports_usage(body) else {})
         last = {"model": body.get("model", ""), "created_at": "2026-01-01T00:00:00Z", "done": True,
                 "done_reason": "stop", "message": {"role": "assistant", "content": ""}, **usage}
+        # Asked to think (``think``), the model reasons first; Ollama returns it apart from the answer.
+        thinking = {"thinking": FAKE_THINKING} if body.get("think") is True else {}
         if not body.get("stream", True):
-            return {**last, "message": {"role": "assistant", "content": answer}}
+            return {**last, "message": {"role": "assistant", "content": answer, **thinking}}
 
         async def lines():
+            if thinking:
+                yield json.dumps({"model": body.get("model", ""), "created_at": "2026-01-01T00:00:00Z",
+                                  "done": False, "message": {"role": "assistant", "content": "", **thinking}}) + "\n"
             for piece in _pieces(answer):
                 yield json.dumps({"model": body.get("model", ""), "created_at": "2026-01-01T00:00:00Z",
                                   "done": False, "message": {"role": "assistant", "content": piece}}) + "\n"

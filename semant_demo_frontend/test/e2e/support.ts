@@ -45,24 +45,6 @@ const userMenu = (page: Page) => page.getByRole('button', { name: 'User menu' })
 async function openApp (page: Page): Promise<void> {
   if (!page.url().startsWith('http')) await page.goto('/')
   await expect(userMenu(page), 'the app layout (User menu) did not render').toBeVisible()
-  await closePhoneNavigation(page)
-}
-
-/**
- * Workaround for #271 in one place; delete it with the fix. On a phone the navigation
- * drawer opens as an overlay when the app loads (a route change closes it) and covers the
- * header. Taps beside it, as a user would. The drawer state is set when the layout mounts,
- * so after the User menu has rendered it is known.
- */
-export async function closePhoneNavigation (page: Page): Promise<void> {
-  const viewport = page.viewportSize()
-  await expect(userMenu(page)).toBeVisible()
-  if (!viewport || viewport.width >= 1024) return // drawers are overlays below Quasar's breakpoint
-  const backdrop = page.locator('.q-drawer__backdrop:not(.hidden)')
-  if (await backdrop.count() === 0) return
-  await backdrop.first().click({ position: { x: viewport.width - 20, y: viewport.height / 2 } })
-  await expect(backdrop).toHaveCount(0)
-  await expect(page.locator('.q-drawer--left')).not.toBeInViewport() // slid out, not mid-animation
 }
 
 /** The user of the token the page stores, or null when it stores none or a rejected one. */
@@ -131,16 +113,15 @@ export async function logOut (page: Page): Promise<void> {
  */
 export async function search (page: Page, query: string): Promise<void> {
   await page.goto('/#/search')
-  await closePhoneNavigation(page)
   // The query field is a combobox: it offers the recent searches (#558).
   await page.getByRole('combobox', { name: 'Search query' }).fill(query)
   await page.keyboard.press('Enter')
   await expect(page.locator('#result-1'), `no results for "${query}"`).toBeVisible()
 }
 
-export type SearchResponse = { items: { id: string, text: string }[], has_more: boolean, next_offset: number | null }
+export type SearchResponse = { items: { id: string, text: string }[], ranked_ids: string[], read_count: number }
 
-/** Whether a request is a passage search (`POST /api/search/passages`, the Search page's results). */
+/** Whether a request is a passage search (`POST /api/search/passages`, the Search page's ranking and first page; not Load more). */
 export const isPassageSearch = (url: string, method: string): boolean =>
   new URL(url).pathname.endsWith('/api/search/passages') && method === 'POST'
 
@@ -237,6 +218,8 @@ export async function answerGuestQuota (page: Page, used: number): Promise<Date>
 export async function askChat (page: Page, question: string): Promise<void> {
   const input = page.getByPlaceholder('Vaše otázka?')
   const answers = page.locator('.message-bubble')
+  // The page renders its greeting with the input: count only once the chat has rendered.
+  await expect(input).toBeEnabled()
   const before = await answers.count()
   await input.fill(question)
   await input.press('Enter')

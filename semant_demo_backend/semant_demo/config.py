@@ -62,6 +62,15 @@ class Config:
         self.SEARCH_PASSAGES_LIMIT = int(env.get("SEARCH_PASSAGES_LIMIT", 1000))
         if not 1 <= self.SEARCH_PASSAGES_LIMIT <= MAX_PASSAGES_LIMIT:
             raise ValueError(f"SEARCH_PASSAGES_LIMIT must be from 1 to {MAX_PASSAGES_LIMIT}.")
+        # Documents for a text query (POST /api/search/documents, #607): the most documents
+        # matching by metadata, and the most chunks ranked to find the documents matching by text,
+        # one search retrieves; technical bounds, reported in every answer. Each query reads one
+        # more, within Weaviate's QUERY_MAXIMUM_RESULTS.
+        self.SEARCH_DOCUMENTS_METADATA_LIMIT = int(env.get("SEARCH_DOCUMENTS_METADATA_LIMIT", 1000))
+        self.SEARCH_DOCUMENTS_CHUNK_LIMIT = int(env.get("SEARCH_DOCUMENTS_CHUNK_LIMIT", 2000))
+        for name in ("SEARCH_DOCUMENTS_METADATA_LIMIT", "SEARCH_DOCUMENTS_CHUNK_LIMIT"):
+            if not 1 <= getattr(self, name) <= MAX_PASSAGES_LIMIT:
+                raise ValueError(f"{name} must be from 1 to {MAX_PASSAGES_LIMIT}.")
 
         self.GOOGLE_API_KEY = env.get("GOOGLE_API_KEY", "")
 

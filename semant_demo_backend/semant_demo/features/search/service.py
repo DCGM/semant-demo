@@ -17,14 +17,22 @@ Filters: the shared search criteria (``document_filters``, ``chunk_filters``;
 ``features/documents/criteria.py``) or, for existing clients, the older ``filters`` and
 ``min_year``/``max_year``/``language`` fields; a request mixing them is refused. Chunk filters
 must all hold on the returned chunk (same-chunk), and document filters on its document.
+
+Documents (``search_documents``, #606, #607): the filters decide which documents are eligible
+(chunk filters per dimension, on the documents' chunk-value summaries); a text query ranks them,
+metadata matches first, then by their best chunk, which need not satisfy the chunk filters.
 """
+import asyncio
 import logging
 from dataclasses import dataclass
 from functools import partial
 from time import time
-from typing import Awaitable, Callable, Protocol
+from collections.abc import Sequence
+from typing import Any, Awaitable, Callable, Protocol
+from uuid import UUID
 
 from semant_demo.adapters.llm.usage import OperationBudget
+from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -33,13 +41,17 @@ from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 from semant_demo.features.quota.service import QuotaExhausted
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
+from semant_demo.features.documents import service as document_service
 from semant_demo.features.documents.criteria import (
-    ChunkFilters, Condition, DocumentFilters, chunk_conditions, document_conditions, validate_chunk_filters)
+    ChunkFilters, ChunkVocabulary, Condition, DocumentFilters, SearchCriteria, chunk_conditions, document_conditions,
+    validate_chunk_filters)
 from semant_demo.features.search.filters import (
     InvalidSearchFilterError, chunk_vocabulary, parse_and_validate_search_filters)
 from semant_demo.features.search.schemas import (
-    ChunkQuery, FieldCondition, Op, PassageSearchRequest, PassageSearchResponse, SearchFiltersResponse, SearchRequest,
-    SearchResponse, SearchType, TagFilter,
+    ChunkQuery, DocumentHit, DocumentReadRequest, DocumentReadResponse, DocumentRetrieval, DocumentSearchRequest,
+    DocumentSearchResponse, FieldCondition, RankedDocument, Op, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse,
+    SearchFiltersResponse, SearchRequest,
+    SearchResponse, SearchResultChunk, SearchType, TagFilter,
 )
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
 
@@ -162,47 +174,33 @@ async def search(backends: SearchBackends, summarizer: Summarizer, user: Princip
 async def search_passages(backends: SearchBackends, user: Principal | None, request: PassageSearchRequest,
                           filter_definitions: SearchFiltersResponse | None, retrieval_limit: int,
                           ) -> PassageSearchResponse:
-    """One page of the passages (#605), with access, vector selection and filter validation
-    as in ``retrieve``.
+    """A passage search (#605, #611): its ranking, once, and its first page; access, vector
+    selection and filter validation as in ``retrieve``.
 
-    Every page is a slice of one ranking: the ids of the best ``retrieval_limit`` passages
-    (one more, to tell whether the limit cut the ranking), read without properties; only the
-    page's passages are then read in full. A page is never ranked on its own, because
-    Weaviate's hybrid ranking depends on the limit and hybrid ``offset`` does not reach past
-    its first results (measured on 1.40.1), which would skip or repeat passages between pages.
-    An offset at or past the limit is refused (``InvalidRequestError``). Passages whose chunk is
-    gone or has no document by the time the page is read are left out of it.
+    The ranking is the ids of the best ``retrieval_limit`` passages (one more, to tell whether
+    the limit cut it), read without properties; only the first ``request.limit`` of them are
+    read in full. Later pages are slices of these ids (``read_passages``), never rankings of
+    their own: Weaviate's hybrid ranking depends on the limit and hybrid ``offset`` does not
+    reach past its first results (measured on 1.40.1), which would skip or repeat passages, and
+    ranking again for every page repeats the costliest step. Passages whose chunk is gone or
+    has no document by the time they are read are left out of the page.
     """
     start = time()
-    if request.offset >= retrieval_limit:
-        raise InvalidRequestError(f"At most {retrieval_limit} passages are retrieved for one search; "
-                                  f"the offset must be below that.")
     criteria = request.criteria
-    normalized, query, vector = await _authorized_query(backends, user, SearchRequest(
-        query=criteria.text_query or "",
-        limit=retrieval_limit + 1,
-        type=request.type,
-        hybrid_search_alpha=request.hybrid_search_alpha,
-        vector=request.vector,
-        user_collection_id=request.user_collection_id,
-        document_filters=criteria.document_filters,
-        chunk_filters=criteria.chunk_filters,
-        tag_uuids=[], positive=False, automatic=False,
-        search_title_generate=False, search_summary_generate=False, search_results_summary_generate=False,
-    ), filter_definitions)
-    ranked = await backends.chunks.ranked_ids(query)
+    normalized, query, vector = await _passage_query(
+        backends, user, criteria, request.user_collection_id, filter_definitions, limit=retrieval_limit + 1,
+        type=request.type, hybrid_search_alpha=request.hybrid_search_alpha, vector=request.vector)
+    ranked = list(dict.fromkeys(await backends.chunks.ranked_ids(query)))  # each once, in rank order
     bounded = len(ranked) > retrieval_limit
     ranked = ranked[:retrieval_limit]
-    end = min(request.offset + request.limit, len(ranked))
-    items = await backends.chunks.read_hits(ranked[request.offset:end])
+    read_count = min(request.limit, len(ranked))
+    items = await backends.chunks.read_hits(ranked[:read_count], query)
     for item in items:
         item.text = display_text(item.text)
-    has_more = end < len(ranked)
     return PassageSearchResponse(
+        ranked_ids=ranked,
         items=items,
-        offset=request.offset,
-        next_offset=end if has_more else None,
-        has_more=has_more,
+        read_count=read_count,
         retrieval_limit=retrieval_limit,
         bounded=bounded,
         total_count=None if bounded else len(ranked),
@@ -211,6 +209,246 @@ async def search_passages(backends: SearchBackends, user: Principal | None, requ
         vector=None if request.type == SearchType.text else vector.id,
         time_spent=time() - start,
     )
+
+
+async def read_passages(backends: SearchBackends, user: Principal | None, request: PassageReadRequest,
+                        filter_definitions: SearchFiltersResponse | None) -> PassageReadResponse:
+    """Passages of an earlier passage search by id (#611): a later page of its ``ranked_ids``.
+
+    The ids come from the client, so nothing about them is trusted: access to the collection
+    is checked again, the criteria are validated again, and the passages are read under the
+    same restrictions (collection, document and same-chunk filters) as the search's ranking.
+    An id the search could not have returned, also one of a deleted chunk or one that no
+    longer matches, is left out. Nothing is ranked or embedded.
+    """
+    start = time()
+    items = await read_search_hits(backends, user, request.ids, request.criteria, request.user_collection_id,
+                                   filter_definitions)
+    return PassageReadResponse(items=items, time_spent=time() - start)
+
+
+async def read_search_hits(backends: SearchBackends, user: Principal | None, ids: Sequence[UUID],
+                           criteria: SearchCriteria, user_collection_id: str | None,
+                           filter_definitions: SearchFiltersResponse | None) -> list[SearchResultChunk]:
+    """The passages among ``ids`` (from a client) that a passage search of ``criteria`` in
+    ``user_collection_id`` could return, in the order of ``ids``, each once, with display
+    text: access to the collection and the criteria are checked again and the chunks are
+    read under the search's own restrictions; the others are left out. Nothing is ranked or
+    embedded. Used for a later page of a search (#611) and the Search chat's scope (#245)."""
+    unique = list(dict.fromkeys(ids))
+    _, query, _ = await _passage_query(backends, user, criteria, user_collection_id, filter_definitions,
+                                       limit=max(len(unique), 1), type=SearchType.text)
+    items = await backends.chunks.read_hits(unique, query)
+    for item in items:
+        item.text = display_text(item.text)
+    return items
+
+
+async def passage_document_values(backends: SearchBackends, user: Principal | None, ids: list[UUID],
+                                  criteria: SearchCriteria, user_collection_id: str | None,
+                                  filter_definitions: SearchFiltersResponse | None, properties: list[str],
+                                  ) -> tuple[SearchCriteria, list[tuple[UUID, UUID, dict[str, Any]]]]:
+    """The passages among ``ids`` that a passage search of ``criteria`` could return, each with
+    its document's id and stored ``properties`` (Analytics of the ranked passages, #619), and the
+    normalized criteria. As ``read_passages``: the ids come from the client, so access to the
+    collection and the criteria are checked again and the chunks are read under the search's own
+    restrictions (collection, document and same-chunk filters); the others are left out, in the
+    order of ``ids``. No text, vector or ranking."""
+    normalized, query, _ = await _passage_query(backends, user, criteria, user_collection_id, filter_definitions,
+                                                limit=max(len(ids), 1), type=SearchType.text)
+    values = await backends.chunks.document_values(ids, query, properties)
+    return criteria.model_copy(update={"document_filters": normalized.document_filters,
+                                       "chunk_filters": normalized.chunk_filters}), values
+
+
+@dataclass(frozen=True)
+class DocumentLimits:
+    """The technical bounds of document search (``config.py``)."""
+    browse: int
+    """Most documents a search without a text query can page through (``QUERY_MAXIMUM_RESULTS``)."""
+    metadata: int
+    """``SEARCH_DOCUMENTS_METADATA_LIMIT``."""
+    chunks: int
+    """``SEARCH_DOCUMENTS_CHUNK_LIMIT``."""
+
+
+async def search_documents(documents: DocumentRepository, backends: SearchBackends, user: Principal | None,
+                           request: DocumentSearchRequest, vocabulary: ChunkVocabulary,
+                           limits: DocumentLimits) -> DocumentSearchResponse:
+    """Documents matching search criteria (#606, #607), with what the result covers.
+
+    The filters decide which documents are eligible, as for document browsing and Analytics
+    (``documents.service.browse_scope``): document filters on the document, chunk filters per
+    dimension on its chunk-value summaries. Without a text query those are the results, paged in
+    a stable order (``_browse_documents``); with one, they are ranked (``_rank_documents``).
+    """
+    start = time()
+    criteria = request.criteria
+    chunk_filters = criteria.chunk_filters
+    if not chunk_filters.is_empty():
+        chunk_filters = validate_chunk_filters(chunk_filters, vocabulary)
+    criteria = criteria.model_copy(update={"chunk_filters": chunk_filters})
+    if criteria.text_query is None:
+        response = await _browse_documents(documents, backends.collections, user, request, criteria, vocabulary,
+                                           limits.browse)
+    else:
+        response = await _rank_documents(documents, backends, user, request, criteria, vocabulary, limits)
+    response.time_spent = time() - start
+    return response
+
+
+async def _browse_documents(documents: DocumentRepository, collections: UserCollectionRepository,
+                            user: Principal | None, request: DocumentSearchRequest, criteria: SearchCriteria,
+                            vocabulary: ChunkVocabulary, retrieval_limit: int) -> DocumentSearchResponse:
+    """Without a text query (#606): one page in a stable order (``documents.service.browse_by_year``),
+    with the exact number of matching documents. Only the first ``retrieval_limit`` documents in
+    that order can be read (Weaviate's ``QUERY_MAXIMUM_RESULTS``): a page past it is refused, and
+    ``bounded`` says when more match."""
+    if request.offset + request.limit > retrieval_limit:
+        raise InvalidRequestError(
+            f"Only the first {retrieval_limit} matching documents can be listed; narrow the filters to reach others.")
+    page = await document_service.browse_by_year(
+        documents, collections, user, request.user_collection_id, filters=criteria.document_filters,
+        chunk_filters=criteria.chunk_filters, vocabulary=vocabulary, limit=request.limit, offset=request.offset)
+    end = request.offset + request.limit
+    return DocumentSearchResponse(
+        items=[DocumentHit(document=document) for document in page.items],
+        offset=request.offset,
+        next_offset=end if end < min(page.total_count, retrieval_limit) else None,
+        total_count=page.total_count,
+        eligible_count=page.total_count,
+        retrieval_limit=retrieval_limit,
+        bounded=page.total_count > retrieval_limit,
+        order="year_asc",
+        criteria=criteria,
+        time_spent=0,
+    )
+
+
+async def _rank_documents(documents: DocumentRepository, backends: SearchBackends, user: Principal | None,
+                          request: DocumentSearchRequest, criteria: SearchCriteria, vocabulary: ChunkVocabulary,
+                          limits: DocumentLimits) -> DocumentSearchResponse:
+    """A text query (#607): one ranking of distinct eligible documents, and its first page.
+
+    Eligibility restricts both retrievals inside the query, before any limit applies; the text
+    query only ranks. First the documents whose metadata holds every word of the query, by BM25
+    relevance (``DocumentRepository.metadata_ranked_ids``, at most ``limits.metadata``). Then the
+    other eligible documents in the order of their best chunk in the chunk ranking (BM25, vector or
+    hybrid, as for passages): the best ``limits.chunks`` chunks of eligible documents, whatever
+    the chunk filters say of the chunk itself (``ChunkSearchRepository.ranked_documents``), each
+    document where it first appears. No score fusion. Both read one more than their limit, to tell
+    whether it cut them; then ``total_count`` is unknown. A ranking of chunks rather than
+    Weaviate's ``group_by``, which does not group BM25 or hybrid results by a reference (1.40.1).
+    Later pages are slices of the ranking (``read_documents``), never rankings of their own, as
+    for passages (#611).
+    """
+    vector = backends.vectors.resolve(request.vector)
+    scope, conditions = await document_service.browse_scope(
+        backends.collections, user, request.user_collection_id, criteria.document_filters, criteria.chunk_filters,
+        vocabulary)
+    text = criteria.text_query or ""
+    chunk_query = ChunkQuery(
+        text=text, mode=request.type, limit=limits.chunks + 1, alpha=request.hybrid_search_alpha,
+        document_collection_id=scope, document_conditions=tuple(conditions),
+        vector=await _embed_text(vector, request.type, text),
+        target_vector=None if request.type == SearchType.text else vector.target_vector)
+    eligible, metadata_ids, chunk_hits = await asyncio.gather(
+        documents.count(scope, conditions),
+        documents.metadata_ranked_ids(text, limits.metadata + 1, scope, conditions),
+        backends.chunks.ranked_documents(chunk_query))
+    metadata_bounded = len(metadata_ids) > limits.metadata
+    # Cut by the raw hits: a chunk without a document reference still counts towards the limit.
+    chunk_bounded = len(chunk_hits) > limits.chunks
+    chunk_hits = chunk_hits[:limits.chunks]
+    best_chunk: dict[UUID, UUID] = {}
+    for chunk_id, document_id in chunk_hits:
+        if document_id is not None:
+            best_chunk.setdefault(document_id, chunk_id)
+    metadata = list(dict.fromkeys(metadata_ids[:limits.metadata]))
+    matched = set(metadata)
+    ranked = [RankedDocument(id=d, match="metadata", chunk_id=best_chunk.get(d)) for d in metadata]
+    ranked += [RankedDocument(id=d, match="text", chunk_id=c) for d, c in best_chunk.items() if d not in matched]
+    bounded = metadata_bounded or chunk_bounded
+    read_count = min(request.limit, len(ranked))
+    items = await _read_ranked(documents, backends.chunks, ranked[:read_count], scope, conditions)
+    return DocumentSearchResponse(
+        items=items,
+        offset=0,
+        next_offset=None,
+        total_count=None if bounded else len(ranked),
+        eligible_count=eligible,
+        retrieval_limit=limits.metadata + limits.chunks,
+        bounded=bounded,
+        order="metadata_then_text",
+        ranked=ranked,
+        read_count=read_count,
+        retrieval=DocumentRetrieval(
+            metadata_limit=limits.metadata, metadata_bounded=metadata_bounded, chunk_limit=limits.chunks,
+            chunk_bounded=chunk_bounded, ranked_chunks=len(chunk_hits), type=request.type,
+            vector=None if request.type == SearchType.text else vector.id),
+        criteria=criteria,
+        time_spent=0,
+    )
+
+
+async def read_documents(documents: DocumentRepository, backends: SearchBackends, user: Principal | None,
+                         request: DocumentReadRequest, vocabulary: ChunkVocabulary) -> DocumentReadResponse:
+    """Documents of an earlier text-query document search by their ranking entries (#607): a later
+    page of its ``ranked``. The entries come from the client, so nothing about them is trusted:
+    access and the criteria are checked again, and documents and chunks are read under the
+    search's eligibility (``_read_ranked``). Nothing is ranked or embedded."""
+    start = time()
+    criteria = request.criteria
+    scope, conditions = await document_service.browse_scope(
+        backends.collections, user, request.user_collection_id, criteria.document_filters, criteria.chunk_filters,
+        vocabulary)
+    items = await _read_ranked(documents, backends.chunks, request.ranked, scope, conditions)
+    return DocumentReadResponse(items=items, time_spent=time() - start)
+
+
+async def _read_ranked(documents: DocumentRepository, chunks: ChunkSearchRepository, entries: list[RankedDocument],
+                       scope: UUID | None, conditions: list[Condition]) -> list[DocumentHit]:
+    """The ranked documents that are (still) eligible, in the order of ``entries``, each once,
+    with their evidence chunk: read only among the chunks of eligible documents and kept only when
+    it belongs to the entry's document; a chunk gone meanwhile leaves the document without one."""
+    first: dict[UUID, RankedDocument] = {}
+    for entry in entries:
+        first.setdefault(entry.id, entry)
+    entries = list(first.values())
+    found = await documents.read_eligible([entry.id for entry in entries], scope, conditions)
+    chunk_ids = [entry.chunk_id for entry in entries if entry.chunk_id is not None and entry.id in found]
+    hits = await chunks.read_hits(chunk_ids, ChunkQuery(
+        text="", mode=SearchType.text, limit=len(chunk_ids), document_collection_id=scope,
+        document_conditions=tuple(conditions)))
+    by_id = {hit.id: hit for hit in hits}
+    items = []
+    for entry in entries:
+        document = found.get(entry.id)
+        if document is None:
+            continue
+        chunk = by_id.get(entry.chunk_id) if entry.chunk_id is not None else None
+        if chunk is not None and chunk.document != entry.id:
+            chunk = None
+        if chunk is not None:
+            chunk.text = display_text(chunk.text)
+        items.append(DocumentHit(document=document, match=entry.match, chunk=chunk))
+    return items
+
+
+async def _passage_query(backends: SearchBackends, user: Principal | None, criteria: SearchCriteria,
+                         user_collection_id: str | None, filter_definitions: SearchFiltersResponse | None,
+                         limit: int, **options) -> tuple[SearchRequest, ChunkQuery, SearchVector]:
+    """``_authorized_query`` for the criteria of a passage search: no tags, no summaries."""
+    return await _authorized_query(backends, user, SearchRequest(
+        query=criteria.text_query or "",
+        limit=limit,
+        user_collection_id=user_collection_id,
+        document_filters=criteria.document_filters,
+        chunk_filters=criteria.chunk_filters,
+        tag_uuids=[], positive=False, automatic=False,
+        search_title_generate=False, search_summary_generate=False, search_results_summary_generate=False,
+        **options,
+    ), filter_definitions)
 
 
 def public_retriever(backends: SearchBackends, vector: str | None = None) -> Retriever:
@@ -278,11 +516,16 @@ def filter_conditions(request: SearchRequest,
 
 
 async def _embed(vector: SearchVector, request: SearchRequest) -> list[float] | None:
-    if request.type == SearchType.text:
-        return None
-    if request.is_hyde:
+    if request.is_hyde and request.type != SearchType.text:
         return await vector.embedder.embed_document(request.query)
-    return await vector.embedder.embed_query(request.query)
+    return await _embed_text(vector, request.type, request.query)
+
+
+async def _embed_text(vector: SearchVector, mode: SearchType, text: str) -> list[float] | None:
+    """The query embedding of vector and hybrid search; None for text search."""
+    if mode == SearchType.text:
+        return None
+    return await vector.embedder.embed_query(text)
 
 
 def display_text(text: str) -> str:

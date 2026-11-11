@@ -87,6 +87,26 @@ describe('confirmation before a large AI run', () => {
     globalThis.fetch = originalFetch
   })
 
+  const progress = () => ({ dialogs: dialogs.length, requests: requested.length })
+
+  // A step that asks or runs waits (up to a second) for that outcome rather than a fixed
+  // number of flushes, which under load were not always enough (#637): a new confirmation
+  // dialog, or a new request whose run has ended (a run started while another one is
+  // running does nothing).
+  async function untilAskedOrRan (before: ReturnType<typeof progress>) {
+    const done = () => dialogs.length > before.dialogs ||
+      (requested.length > before.requests && !useAiAssistance().isRunning.value)
+    const deadline = Date.now() + 1000
+    while (!done() && Date.now() < deadline) await flushPromises()
+    if (!done()) throw new Error('The AI run neither asked for confirmation nor ran to its end')
+  }
+
+  async function confirm (dialog: (typeof dialogs)[number]) {
+    const before = progress()
+    dialog.ok()
+    await untilAskedOrRan(before)
+  }
+
   async function runAi (tags: number, mode: 'optimized' | 'thorough' = 'optimized') {
     const wrapper = mount(AiAssistPanel, {
       props: { collectionId: 'c1', documentId: 'd1' },
@@ -94,8 +114,9 @@ describe('confirmation before a large AI run', () => {
     })
     if (mode === 'thorough') await wrapper.findAll('.q-radio')[1].trigger('click')
     for (const checkbox of wrapper.findAll('.ai-tag-checkbox').slice(0, tags)) await checkbox.trigger('click')
+    const before = progress()
     await wrapper.findAll('button').find((b) => b.text().includes('Run AI'))!.trigger('click')
-    await flushPromises()
+    await untilAskedOrRan(before)
     return wrapper
   }
 
@@ -110,8 +131,7 @@ describe('confirmation before a large AI run', () => {
 
   it('starts the run once confirmed', async () => {
     await runAi(2)
-    dialogs[0].ok()
-    await flushPromises()
+    await confirm(dialogs[0])
 
     expect(requested).toEqual([expect.stringMatching(/\/ai\/suggest_spans\/optimized$/)])
   })
@@ -153,8 +173,7 @@ describe('confirmation before a large AI run', () => {
     await runAi(1, 'thorough')
     expect(requested).toEqual([])
 
-    dialogs[0].ok()
-    await flushPromises()
+    await confirm(dialogs[0])
     expect(requested).toEqual([expect.stringMatching(/\/ai\/suggest_spans\/thorough$/)])
   })
 

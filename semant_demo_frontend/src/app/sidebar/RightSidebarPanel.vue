@@ -67,7 +67,7 @@ onMounted(add)
 onActivated(() => {
   add()
   shown.value = true
-  if (wasActive) sidebar.activePanelId = props.id
+  if (wasActive) sidebar.select(props.id)
 })
 
 onDeactivated(() => {
