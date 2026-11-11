@@ -1,8 +1,9 @@
 from typing import Any, Dict, List, Optional
 import weaviate
 from weaviate.auth import AuthApiKey
-from weaviate.classes.config import Property, DataType
+from weaviate.classes.config import Property, DataType, Tokenization
 from weaviate.classes.query import Filter
+from weaviate.exceptions import WeaviateUnsupportedFeatureError
 
 def get_client(
     host: str = "localhost",
@@ -37,57 +38,52 @@ def get_client(
     )
 
 
-def ensure_property_exists(
-    client: weaviate.WeaviateClient,
-    collection_name: str,
-    prop_name: str,
-    prop_type: str
-) -> None:
-    """Ensure a property exists in the collection schema, creating it on the fly if needed.
-    
-    Args:
-        client: The WeaviateClient.
-        collection_name: Name of the collection.
-        prop_name: Name of the property.
-        prop_type: Datatype (e.g. text, int, number, boolean, date).
-    """
-    if not client.collections.exists(collection_name):
-        raise ValueError(f"Collection '{collection_name}' does not exist in Weaviate database.")
-        
-    collection = client.collections.get(collection_name)
-    schema_config = collection.config.get()
-    
-    existing_properties = {prop.name: prop for prop in schema_config.properties}
-    if prop_name in existing_properties:
-        if existing_properties[prop_name].data_type.value == prop_type:
-            return
-        else:
-            raise ValueError(f"Property '{prop_name}' has different data_type in Weaviate database. {existing_properties[prop_name].data_type.value = }, {prop_type = }")
-        
-    print(f"Property '{prop_name}' is missing in collection '{collection_name}'. Creating on the fly...")
-    
-    type_mapping = {
-        "text": DataType.TEXT,
-        "int": DataType.INT,
-        "number": DataType.NUMBER,
-        "boolean": DataType.BOOL,
-        "date": DataType.DATE,
-        "text[]": DataType.TEXT_ARRAY,
-        "int[]": DataType.INT_ARRAY,
-        "number[]": DataType.NUMBER_ARRAY,
-        "boolean[]": DataType.BOOL_ARRAY,
-    }
-    
-    data_type = type_mapping.get(prop_type.lower())
-    if not data_type:
-        raise ValueError(
-            f"Unsupported property type '{prop_type}'. "
-            f"Supported: {list(type_mapping.keys())}"
-        )
-        
-    prop_obj = Property(name=prop_name, data_type=data_type)
-    collection.config.add_property(prop_obj)
-    print(f"Successfully created property '{prop_name}' with type '{data_type}' in collection '{collection_name}'.")
+PROVENANCE = "classification_provenance"
+"""The chunk's classification status (#590): ``UNPROCESSED`` until classified, then the
+configured model/version identifier. Declared by the backend's
+``classification_provenance_schema``; this tool never declares it on a real store."""
+UNPROCESSED = "UNPROCESSED"
+TEST_COLLECTION = "MetaDataEnrichmentTest"
+
+
+class Refused(ValueError):
+    """The store or the configuration does not allow a run; nothing was written."""
+
+
+def resolve_collection(client: weaviate.WeaviateClient, name: str) -> str:
+    """The collection an alias points to, or ``name`` itself (schema reads need the real name)."""
+    try:
+        alias = client.alias.get(alias_name=name)
+    except WeaviateUnsupportedFeatureError:  # before Weaviate 1.32: no aliases
+        alias = None
+    return alias.collection if alias else name
+
+
+def check_schema(client: weaviate.WeaviateClient, collection_name: str, fields: List[str]) -> str:
+    """Refuse (``Refused``) a missing collection, a missing or non-``text[]`` mapped field and a
+    missing or differently declared ``classification_provenance`` (``text``, ``field``
+    tokenization, filterable). Reads the schema only; returns the resolved collection name."""
+    resolved = resolve_collection(client, collection_name)
+    if not client.collections.exists(resolved):
+        raise Refused(f"Collection '{collection_name}' does not exist in the Weaviate database.")
+    declared = {p.name: p for p in client.collections.get(resolved).config.get().properties}
+    problems = []
+    for name in fields:
+        prop = declared.get(name)
+        if prop is None:
+            problems.append(f"field '{name}' is not declared")
+        elif prop.data_type.value != "text[]":
+            problems.append(f"field '{name}' is {prop.data_type.value}, expected text[]")
+    prop = declared.get(PROVENANCE)
+    if prop is None:
+        problems.append(f"'{PROVENANCE}' is not declared (declare it with the backend's "
+                        "classification_provenance_schema --apply)")
+    elif (prop.data_type.value, prop.tokenization.value if prop.tokenization else None,
+          bool(prop.index_filterable)) != ("text", "field", True):
+        problems.append(f"'{PROVENANCE}' is not declared as text with field tokenization, filterable")
+    if problems:
+        raise Refused(f"Collection '{resolved}': " + "; ".join(problems) + ". The schema is never changed by a run.")
+    return resolved
 
 
 def build_weaviate_filters(filters_list: List[Dict[str, Any]]) -> Optional[Any]:
@@ -149,37 +145,42 @@ def build_weaviate_filters(filters_list: List[Dict[str, Any]]) -> Optional[Any]:
     return Filter.all_of(weaviate_filters)
 
 
-def create_test_collection(client: weaviate.WeaviateClient) -> None:
-    """Create the MetaDataEnrichmentTest collection in Weaviate and populate it with 10 Czech historical records.
-    
+def create_test_collection(client: weaviate.WeaviateClient, fields: List[str], replace: bool = False,
+                           collection_name: str = TEST_COLLECTION) -> None:
+    """Create the MetaDataEnrichmentTest collection and populate it with 10 Czech historical records.
+
+    The collection declares ``language``, ``text``, the mapped ``fields`` (``text[]``) and
+    ``classification_provenance`` as the backend's schema command does; every record is
+    ``UNPROCESSED``, so a run selects all of them.
+
     Args:
         client: The WeaviateClient.
+        fields: The mapped classification fields (the keys of ``field_tasks``).
+        replace: Delete an existing collection of that name first. Without it, an existing
+            collection is refused (``Refused``) and left unchanged.
+        collection_name: Name of the created collection.
     """
-    collection_name = "MetaDataEnrichmentTest"
-    
-    # 1. Delete if it already exists to guarantee idempotency
     if client.collections.exists(collection_name):
-        print(f"Collection '{collection_name}' already exists. Deleting it to create a fresh one...")
+        if not replace:
+            raise Refused(f"Collection '{collection_name}' already exists. It was left unchanged; "
+                          f"use --force to delete it and create it again.")
+        print(f"Collection '{collection_name}' already exists. Deleting it (--force) to create a fresh one...")
         client.collections.delete(collection_name)
-        
-    # 2. Create the collection
+
     print(f"Creating collection '{collection_name}'...")
-    
-    # Weaviate automatically converts property names starting with uppercase letters to lowercase.
-    # We declare properties "language", and "text" to match user requirements.
-    properties = [
-        Property(name="language", data_type=DataType.TEXT),
-        Property(name="text", data_type=DataType.TEXT),
-    ]
-    
     client.collections.create(
         name=collection_name,
-        properties=properties
+        properties=[
+            Property(name="language", data_type=DataType.TEXT),
+            Property(name="text", data_type=DataType.TEXT),
+            *(Property(name=name, data_type=DataType.TEXT_ARRAY) for name in fields),
+            Property(name=PROVENANCE, data_type=DataType.TEXT, tokenization=Tokenization.FIELD,
+                     index_filterable=True, index_searchable=False),
+        ]
     )
-    
-    # 3. Populate it with 10 records
+
     print("Populating collection with 10 Czech historical records...")
-    
+
     records = [
         {
             "language": "ces",
@@ -224,8 +225,8 @@ def create_test_collection(client: weaviate.WeaviateClient) -> None:
     ]
     
     collection = client.collections.get(collection_name)
-    with collection.batch.dynamic() as batch:
-        for record in records:
-            batch.add_object(properties=record)
-            
+    response = collection.data.insert_many([{**record, PROVENANCE: UNPROCESSED} for record in records])
+    if response.has_errors:
+        raise RuntimeError(f"Failed to insert test records: {response.errors}")
+
     print(f"Successfully created and populated collection '{collection_name}' with {len(records)} records.")

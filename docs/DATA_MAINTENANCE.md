@@ -591,6 +591,40 @@ python -m semant_demo.maintenance.classification_provenance_schema --apply --con
 - Run it once before the first chunk import into a store: `chunk_ingest` refuses a store without
   the property.
 
+## Chunk classification (`data_tools/meta_data_enrichment`, #590)
+
+The offline classifier fills the classification fields of the chunks that await
+classification. It is a standalone tool with its own YAML configuration and model
+([README](../data_tools/meta_data_enrichment/README.md)), not a backend command.
+
+```bash
+cd data_tools/meta_data_enrichment
+python run.py config.yaml --check                                 # read-only: what a run would select
+python run.py config.yaml --confirm-endpoint HOST:PORT            # classify
+```
+
+- **Selection:** only chunks whose `classification_provenance` is `UNPROCESSED` (optionally
+  narrowed by the config's `filters`). Chunks without a value and chunks already classified are
+  never selected.
+- **Writes:** per chunk, only the mapped fields it is missing (absent, `null` or `[]`), and
+  only when every one of them got a valid result (a non-empty list of the task's labels),
+  together with `classification_provenance` = the config's `provenance` identifier, in one
+  update. Existing non-empty values are never overwritten. A chunk that fails is not written
+  and stays `UNPROCESSED`; running the command again retries it. No checkpoint: the status is
+  the state.
+- **Model identity:** `provenance` is required (`mmbert-multitask-2026-10-20` for the converted
+  model of 2026-10-20) and must change with the model. It is not checked against the model; the
+  run summary records the model's fingerprint (SHA-256 of the local model's files, or the API
+  endpoint, model name and prompt hashes). Keep the summary with the run's record on the issue.
+- **Refusals (exit 2, nothing written):** a `--confirm-endpoint` other than the configured
+  endpoint, an invalid configuration, a missing collection, a missing or non-`text[]` mapped
+  field, a missing or differently declared `classification_provenance` (the schema is never
+  changed), a filter on a written field, a mapped task the model has no classes for.
+- **Stop:** after `max_consecutive_failures` failed chunks in a row (e.g. an unreachable model).
+- Exit code 0 when nothing selected is left `UNPROCESSED`, 1 when chunks remain, 2 when refused.
+- The model runs where the config says (a local GPU model or an OpenAI-compatible endpoint):
+  a run on a shared store, and the choice of the model, are authorized per task.
+
 ## Chunk import (`chunk_ingest`, #313)
 
 The one supported way to add text chunks: append-only, into the **existing** collections. It

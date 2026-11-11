@@ -1,6 +1,7 @@
 import abc
 import asyncio
 import functools
+import hashlib
 import json
 import os
 from typing import Annotated, Literal, Optional
@@ -132,7 +133,7 @@ class Model(ConfigurableMixin, CreatableMixin, abc.ABC):
         return False
 
     @abc.abstractmethod
-    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
+    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, Optional[list[str]]]:
         """Perform classification for the given tasks on the database record.
         
         Args:
@@ -140,11 +141,20 @@ class Model(ConfigurableMixin, CreatableMixin, abc.ABC):
             tasks: List of task names to classify.
             
         Returns:
-            Dictionary mapping each task name to its predicted class string.
+            Dictionary mapping each task name to its predicted labels; a task that could not be
+            classified maps to None or is absent.
         """
         pass
 
-    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, list[str]]]:
+    @abc.abstractmethod
+    def labels(self, task: str) -> Optional[list[str]]:
+        """The valid labels of ``task``, or None when the model does not know the task."""
+
+    @abc.abstractmethod
+    def fingerprint(self) -> dict:
+        """What identifies the model actually run (files, endpoint, prompts), for the run summary."""
+
+    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, Optional[list[str]]]]:
         """Perform classification for the given tasks on a batch of database records.
         
         Args:
@@ -152,9 +162,18 @@ class Model(ConfigurableMixin, CreatableMixin, abc.ABC):
             tasks: List of task names to classify.
             
         Returns:
-            List of dictionaries mapping each task name to its predicted class string.
+            List of dictionaries mapping each task name to its predicted labels (None or absent
+            when the task could not be classified).
         """
         return [self.generate(record, tasks) for record in database_records]
+
+
+def file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 class APIModel(Model):
@@ -218,15 +237,15 @@ class APIModel(Model):
             self._loop.close()
         return False
 
-    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
+    def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, Optional[list[str]]]:
         return self.generate_batch([database_record], tasks)[0]
 
-    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, list[str]]]:
+    def generate_batch(self, database_records: list[dict[str, str]], tasks: list[str]) -> list[dict[str, Optional[list[str]]]]:
         return self._loop.run_until_complete(self._generate_batch_async(database_records, tasks))
 
     async def _generate_batch_async(
         self, database_records: list[dict[str, str]], tasks: list[str]
-    ) -> list[dict[str, list[str]]]:
+    ) -> list[dict[str, Optional[list[str]]]]:
         res_list = [{} for _ in database_records]
         jobs = []
         for i, record in enumerate(database_records):
@@ -243,12 +262,24 @@ class APIModel(Model):
             res_list[i][task] = cls_value
         return res_list
 
-    async def _classify_one(self, database_record: dict[str, str], task: str) -> list[str]:
+    def labels(self, task: str) -> Optional[list[str]]:
+        return list(self.task_classes[task]) if task in self.task_classes and task in self.task_templates else None
+
+    def fingerprint(self) -> dict:
+        return {"cls": type(self).__name__, "base_url": self.base_url, "model_name": self.model_name,
+                "temperature": self.temperature, "max_tokens": self.max_tokens,
+                "task_prompts_sha256": {task: file_sha256(path) for task, path in sorted(self.task_prompts.items())},
+                "task_classes_sha256": hashlib.sha256(
+                    json.dumps(self.task_classes, sort_keys=True).encode()).hexdigest()}
+
+    async def _classify_one(self, database_record: dict[str, str], task: str) -> Optional[list[str]]:
+        """The labels, or None when the prompt fails to render, the request fails or the model
+        refuses (never ``[]``, which a writer could store as an empty classification)."""
         try:
             prompt = self.task_templates[task].render(**database_record)
         except TemplateError as e:
             print(f"Warning: Failed to render prompt template for task '{task}': {e}. Skipping.")
-            return []
+            return None
 
         response_model = build_structured_output_model(task, tuple(self.task_classes[task]))
 
@@ -263,12 +294,12 @@ class APIModel(Model):
                 )
         except openai.OpenAIError as e:
             print(f"Warning: API request for task '{task}' failed: {e}. Skipping.")
-            return []
+            return None
 
         message = completion.choices[0].message
         if message.refusal:
             print(f"Warning: Task '{task}' request was refused by the model: {message.refusal}")
-            return []
+            return None
 
         return message.parsed.cls
 
@@ -347,6 +378,18 @@ class LocalHFClassifierModel(Model):
         py_model.eval()
 
         self._model = py_model
+
+    def labels(self, task: str) -> Optional[list[str]]:
+        self._init_model()
+        classes = self.task_classes.get(task)
+        return [str(c) for c in classes] if classes is not None and task in self._model.heads else None
+
+    def fingerprint(self) -> dict:
+        files = sorted(name for name in os.listdir(self.model_path)
+                       if os.path.isfile(os.path.join(self.model_path, name)))
+        return {"cls": type(self).__name__, "model_path": os.path.abspath(self.model_path),
+                "input_prompt": self.input_prompt, "threshold": self.threshold,
+                "files_sha256": {name: file_sha256(os.path.join(self.model_path, name)) for name in files}}
 
     def generate(self, database_record: dict[str, str], tasks: list[str]) -> dict[str, list[str]]:
         return self.generate_batch([database_record], tasks)[0]
