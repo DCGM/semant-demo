@@ -89,8 +89,9 @@
     </div>
 
     <!-- Registered once a row is opened. -->
-    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
+    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1" v-slot="{ visible }">
       <ChunkContextPanel
+        :visible="visible"
         ref="panel"
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
         :document="chunkContext.document"

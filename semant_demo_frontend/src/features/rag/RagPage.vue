@@ -192,8 +192,9 @@
     </RightSidebarPanel>
 
     <!-- Registered once a source is opened in its document, so Sources stays the default panel. -->
-    <RightSidebarPanel v-if="chatSources.documentSource.value" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
+    <RightSidebarPanel v-if="chatSources.documentSource.value" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1" v-slot="{ visible }">
       <ChunkContextPanel
+        :visible="visible"
         :target-chunk-id="sourceContext.target?.chunkId ?? null"
         :document="sourceContext.document"
         :chunks="sourceContext.chunks"

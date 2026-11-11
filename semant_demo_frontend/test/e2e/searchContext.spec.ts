@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { appendResultCopies, editSearchResults, fixture, search, useViewport } from './support'
+import { longDocument, recordScroll } from './longDocument'
 
 // A search result in its document context (#244): the "Document" panel of the right
 // sidebar reads a bounded passage of the public corpus around the hit and highlights it.
@@ -91,4 +92,48 @@ test('on a phone the context is an overlay and Focus on result closes it', async
   await panel(page).getByRole('button', { name: 'Focus on result' }).click()
   await expect(page.locator('.q-drawer--right')).toBeHidden()
   await expect(page.locator('#result-1')).toBeInViewport()
+})
+
+test.describe('reopening a shown result while its Document panel is hidden', () => {
+  // Review of #628: reopening a loaded result needs no read, so it is immediate; the scroll
+  // to it must still happen once the Document panel is shown. The chronicle is answered as
+  // 40 long paragraphs (longDocument), the result in paragraph 20.
+  const hit = chronicle[1]
+  const open = (page: Page) => card(page, hit.text).getByRole('button', { name: /in its document$/ }).click()
+
+  test('behind another sidebar tab', async ({ page }) => {
+    const reads = await longDocument(page, { length: 40, placed: { [hit.id]: 20 } })
+    await useViewport(page, 'narrow')
+    await search(page, 'Lhota')
+    await open(page)
+    await expect(match(page)).toBeInViewport()
+
+    // Read elsewhere in the passage, look at another tab, then open the same result again.
+    await (await recordScroll(panel(page))).scrollTo(0)
+    await expect(match(page)).not.toBeInViewport()
+    await page.getByRole('listitem', { name: 'AI Chat' }).click()
+    await expect(page.getByTestId('right-sidebar-title')).toHaveText('AI Chat')
+    await open(page)
+
+    await expect(page.getByTestId('right-sidebar-title')).toHaveText('Document')
+    await expect(match(page)).toBeInViewport()
+    expect(reads.window, 'the shown passage is not read again').toBe(1)
+  })
+
+  test('in a closed overlay on a phone', async ({ page }) => {
+    const reads = await longDocument(page, { length: 40, placed: { [hit.id]: 20 } })
+    await useViewport(page, 'phone')
+    await search(page, 'Lhota')
+    await open(page)
+    await expect(match(page)).toBeInViewport()
+
+    await (await recordScroll(panel(page))).scrollTo(0)
+    await expect(match(page)).not.toBeInViewport()
+    await page.getByRole('button', { name: 'Close sidebar' }).click()
+    await expect(page.locator('.q-drawer--right')).toBeHidden()
+    await open(page)
+
+    await expect(match(page)).toBeInViewport()
+    expect(reads.window).toBe(1)
+  })
 })
