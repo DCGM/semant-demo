@@ -418,27 +418,13 @@
 
     </div>
 
-    <RightSidebarPanel v-if="results.length || passages.loading.value" id="search-summary" label="Summary" icon="summarize">
-      <SearchSummaryPanel
-        :tokens="searchSummary.tokens"
-        :time-spent="searchSummary.timeSpent"
-        v-model:length="searchSummary.length"
-        v-model:scope="searchSummary.scope"
-        :error="searchSummary.error"
-        :loading="searchSummary.summarizing"
-        :disable="!results.length"
-        @summarize="searchSummary.summarize"
-        @cite="jumpToResult"
-      />
-    </RightSidebarPanel>
-
-    <!-- fill: the conversation scrolls; the question input stays in view -->
+    <!-- AI Chat: summaries and questions about the results in one conversation (#245).
+         fill: the conversation scrolls; the controls and the question input stay in view -->
     <RightSidebarPanel
       v-if="results.length || passages.loading.value"
       id="search-chat"
-      label="Chat"
+      label="AI Chat"
       icon="forum"
-      :order="0.5"
       :busy="searchChat.streaming.value"
       fill
     >
@@ -449,17 +435,20 @@
         :disabled="!searchChatScope"
         :scope-changed="searchChat.scopeChanged.value"
         :scope-changed-text="searchChatScopeChangedText"
-        empty-text="Ask a question about these search results. Answers cite them as S1, S2…; click one to show the result and open it in the Document panel."
+        empty-text="Summarize these search results or ask a question about them. Answers cite them as S1, S2…; click one to show the result and open it in the Document panel."
         input-label="Ask about these results"
+        summarize-label="Summarize results"
+        v-model:summary-length="searchSummaryLength"
         :coverage-text="(coverage) => `Based on the first ${coverage.usedChunks} of ${coverage.totalChunks} results.`"
         @ask="searchChat.ask"
         @stop="searchChat.stop"
         @cite="showChatSource"
         @new-conversation="searchChat.reset"
+        @summarize="summarizeResults"
       />
     </RightSidebarPanel>
 
-    <!-- Registered once a result is opened, so the Summary stays the default panel. -->
+    <!-- Registered once a result is opened, so AI Chat stays the default panel. -->
     <RightSidebarPanel v-if="contextResultNumber !== null" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
       <ChunkContextPanel
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
@@ -485,7 +474,7 @@
 import { storeToRefs } from 'pinia'
 import { ref, computed, onMounted, nextTick, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
 import { QPage, QForm, QInput, QBtn, QBtnToggle, QCard, QCardSection, QSeparator, QSelect, QRange, QItem, QItemSection, QItemLabel, QBanner, QSpinner, QTabs, QTab, Notify, useQuasar } from 'quasar'
-import { SearchType, WriteOutcome, type SearchFilter, type SearchVectorInfo } from 'src/generated/api'
+import { SearchType, WriteOutcome, type SearchFilter, type SearchVectorInfo, type SummaryLength } from 'src/generated/api'
 import { captureSession, useApi } from 'src/shared/api'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
@@ -499,15 +488,14 @@ import { chartsAvailability, useExploreCharts } from 'src/features/explore/useEx
 import { documentPopulation, passagePopulation, useResultCharts, type RankedChartsState, type RankedPopulation } from 'src/features/explore/useResultCharts'
 import { withChartFilter, type ChartFilter } from 'src/features/analytics/corpusOverview'
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
-import { useSearchSummary } from './useSearchSummary'
-import SearchSummaryPanel from './SearchSummaryPanel.vue'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
-import { MAX_SEARCH_CHAT_RESULTS, useScopedChat, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
+import { citedSources, MAX_SEARCH_CHAT_RESULTS, useScopedChat, type ChatAnswer, type ChatScope, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
+import { SUMMARY_LENGTH_DEFAULT, summaryPrompt } from 'src/shared/summaryLength'
 import { plural } from 'src/shared/plural'
 import SearchResultCard from './SearchResultCard.vue'
 import DocumentResultCard from './DocumentResultCard.vue'
 import { escapeClearsSelection } from './resultLayout'
-import type { SearchResultsContext } from './searchResults'
+import { asSearchResponse, type SearchResultsContext } from './searchResults'
 import {
   criteriaChips, criteriaOfFilterValues, filterTarget, formatFilterLabel, historyFiltersOf, intervalBounds,
   nominalValuesOf, offeredCriteria, withNominalValues, withYearRange, yearRangeOf, type CriterionChip, type IntervalValue
@@ -739,9 +727,6 @@ function setSelected (chunkId: string, selected: boolean) {
   selectedResults.value = selected ? [...others, chunkId] : others
 }
 
-// Summarization (right sidebar): works on the loaded results or the selected ones
-const searchSummary = reactive(useSearchSummary(searchContext, selectedResults))
-
 // Chat (right sidebar, #245, ADR 0012): about the first MAX_SEARCH_CHAT_RESULTS of the selected
 // results, or of the loaded ones. A new search or a selection change is a new scope: the panel
 // keeps the old conversation with a notice, and the next question starts a new one.
@@ -775,6 +760,34 @@ const searchChatScopeChangedText = computed(() => {
   return `The results changed. Your next question starts a new conversation${next}.`
 })
 const searchChat = useScopedChat(() => searchChatScope.value, { keepOnScopeChange: true })
+const searchSummaryLength = ref<SummaryLength>(SUMMARY_LENGTH_DEFAULT)
+
+/**
+ * A summary of exactly the chat's results (the selected ones, or the first loaded), as the
+ * conversation's next answer: `/api/summarize` numbers them [doc1]... in result order.
+ */
+function summarizeResults () {
+  const length = searchSummaryLength.value
+  void searchChat.summarize(summaryPrompt(length), async (scope: ChatScope, signal): Promise<ChatAnswer> => {
+    const context = searchContext.value
+    const ids = scope.kind === 'search' ? scope.chunkIds : []
+    const byId = new Map(results.value.map(result => [result.id, result]))
+    const subset = ids.map(id => byId.get(id)).filter(result => result !== undefined)
+    if (!context || !subset.length) throw new Error('No results to summarize.')
+    const data = await api.summarizeApiSummarizeSummaryTypePost(
+      { summaryType: 'results', searchResponse: asSearchResponse(context, subset), length }, { signal })
+    return {
+      text: data.summary,
+      sources: citedSources(data.summary, subset.map(result => ({
+        chunkId: result.id,
+        documentId: result.document,
+        order: result.order ?? null,
+        fromPage: result.fromPage,
+        toPage: result.toPage
+      })))
+    }
+  })
+}
 
 /** A citation shows its result and opens it in the Document panel; it never changes the selection (the scope). */
 async function showChatSource (source: ChatSource) {

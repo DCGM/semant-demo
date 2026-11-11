@@ -58,11 +58,13 @@ the backend. Already in place:
      selected result: the notice then says the next question is about all results. The
      scope never changes without that notice and a new conversation, so nothing widens
      silently (ADR 0006).
-   - The **Summary panel stays** a separate tool. A *Discuss in chat* action on a summary
-     starts a chat whose scope is exactly the results the summary was made from (its first
-     3, first 10, all or selected results), with the summary as its first assistant
-     message. Its citations keep pointing to the same chunks. Changing the selection
-     afterwards is a scope change as above.
+   - **Summary is part of the chat** (maintainer, 2026-11-11; this replaces "the Summary
+     panel stays a separate tool" with a *Discuss in chat* action). One *AI Chat* panel on
+     Search and in the document reader: *Summarize* (with its Length option) summarizes
+     exactly the chat's scope, and the summary is the conversation's answer to
+     "Summarize (short)", its citations the answer's sources, so follow-up questions ask
+     about it. The summary scopes Focused/Broader/Extensive are gone; the document summary
+     covers only the document's chunks in the collection, as the chat does (ADR 0006).
    - Signed-out users may use it under the daily AI allowance and its warnings, like Summary
      and the Chat assistant.
 4. **Document chat (#248)**

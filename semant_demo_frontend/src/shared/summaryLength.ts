@@ -10,3 +10,9 @@ export const SUMMARY_LENGTH_OPTIONS: { label: string, value: SummaryLength }[] =
 ]
 
 export const SUMMARY_LENGTH_DEFAULT: SummaryLength = SummaryLength.short
+
+/** The conversation's question for a summary of this length, e.g. "Summarize (short)". */
+export function summaryPrompt (length: SummaryLength): string {
+  const option = SUMMARY_LENGTH_OPTIONS.find(o => o.value === length)
+  return `Summarize (${(option?.label ?? length).toLowerCase()})`
+}
