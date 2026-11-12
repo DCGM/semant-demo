@@ -4,7 +4,7 @@ weaviate_grpc_port: 50051 # Weaviate gRPC port (required for client v4)
 weaviate_api_key: # Authentication API Key for Weaviate instance
 weaviate_headers: # Additional HTTP headers (e.g. API keys for third-party vectorizers)
 collection: MetaDataEnrichmentTest # Name of the Weaviate collection (or alias) to classify; the default is the test collection of --create-test-collection
-provenance: mmbert-multitask-2026-10-20 # Model/version identifier written to classification_provenance; this one names the converted mmBERT multitask model of 2026-10-20. Change it whenever the model changes
+provenance: mmbert-multitask-2026-07-15 # Model/version identifier written to classification_provenance; this one names the converted mmBERT multitask model by its earliest known copy (2026-07-15). Change it whenever the model changes
 field_tasks: # Mapping of Weaviate property names (keys) to their classification task names (values)
   communicative_mode: communicative_mode
   complexity: complexity

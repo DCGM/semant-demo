@@ -75,7 +75,8 @@ tasks. An existing `MetaDataEnrichmentTest` collection is refused and left uncha
 `provenance` is required and is written to `classification_provenance` of every classified
 chunk. It identifies the model and its version, so change it whenever the model, its classes
 or its prompts change. `UNPROCESSED` and empty values are refused. The shipped `config.yaml`
-uses `mmbert-multitask-2026-10-20`, the converted mmBERT multitask model of 2026-10-20.
+uses `mmbert-multitask-2026-07-15`, the converted mmBERT multitask model named by its
+earliest known copy (2026-07-15).
 
 The identifier is not checked against the model. The run summary therefore records what
 actually ran (`model`): for `LocalHFClassifierModel` the SHA-256 of every file in

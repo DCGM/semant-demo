@@ -612,10 +612,11 @@ python run.py config.yaml --confirm-endpoint HOST:PORT            # classify
   update. Existing non-empty values are never overwritten. A chunk that fails is not written
   and stays `UNPROCESSED`; running the command again retries it. No checkpoint: the status is
   the state.
-- **Model identity:** `provenance` is required (`mmbert-multitask-2026-10-20` for the converted
-  model of 2026-10-20) and must change with the model. It is not checked against the model; the
-  run summary records the model's fingerprint (SHA-256 of the local model's files, or the API
-  endpoint, model name and prompt hashes). Keep the summary with the run's record on the issue.
+- **Model identity:** `provenance` is required (`mmbert-multitask-2026-07-15` for the converted
+  model, named by its earliest known copy) and must change with the model. It is not checked
+  against the model; the run summary records the model's fingerprint (SHA-256 of the local
+  model's files, or the API endpoint, model name and prompt hashes). Keep the summary with
+  the run's record on the issue.
 - **Refusals (exit 2, nothing written):** a `--confirm-endpoint` other than the configured
   endpoint, an invalid configuration, a missing collection, a missing or non-`text[]` mapped
   field, a missing or differently declared `classification_provenance` (the schema is never

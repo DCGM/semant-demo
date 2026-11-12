@@ -91,7 +91,7 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
     )
     provenance: str = ConfigurableValue(
         desc="Model/version identifier written to classification_provenance of every classified chunk "
-             "(e.g. mmbert-multitask-2026-10-20). Required; change it whenever the model changes. "
+             "(e.g. mmbert-multitask-2026-07-15). Required; change it whenever the model changes. "
              "UNPROCESSED is refused",
         user_default=None,
         validator=valid_provenance
