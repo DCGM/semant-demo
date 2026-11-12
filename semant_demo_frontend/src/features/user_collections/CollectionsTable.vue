@@ -44,40 +44,54 @@
     </template>
     <template #body-cell-actions="tableProps">
       <q-td :props="tableProps">
-        <div v-if="isOwned(tableProps.row)" class="row no-wrap items-center q-gutter-xs" @click.stop>
+        <div class="row no-wrap items-center q-gutter-xs" @click.stop>
           <q-btn
             flat
             dense
             round
-            icon="share"
+            icon="download"
             color="primary"
-            aria-label="Share collection"
-            @click="emit('share', tableProps.row)"
+            aria-label="Export collection"
+            :disable="exportRequesting"
+            @click="exportCollections([tableProps.row.id])"
           >
-            <q-tooltip>Share collection</q-tooltip>
+            <q-tooltip>Export: all annotations with the text of their passages, as a ZIP of JSON files</q-tooltip>
           </q-btn>
-          <q-btn
-            flat
-            dense
-            round
-            icon="edit"
-            color="primary"
-            aria-label="Edit collection"
-            @click="emit('edit', tableProps.row)"
-          />
-          <q-btn
-            flat
-            dense
-            round
-            icon="delete"
-            color="negative"
-            aria-label="Delete collection"
-            @click="emit('delete', tableProps.row)"
-          />
+          <template v-if="isOwned(tableProps.row)">
+            <q-btn
+              flat
+              dense
+              round
+              icon="share"
+              color="primary"
+              aria-label="Share collection"
+              @click="emit('share', tableProps.row)"
+            >
+              <q-tooltip>Share collection</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
+              icon="edit"
+              color="primary"
+              aria-label="Edit collection"
+              @click="emit('edit', tableProps.row)"
+            />
+            <q-btn
+              flat
+              dense
+              round
+              icon="delete"
+              color="negative"
+              aria-label="Delete collection"
+              @click="emit('delete', tableProps.row)"
+            />
+          </template>
+          <q-icon v-else name="group" color="grey-6" size="sm">
+            <q-tooltip>Shared with you by {{ tableProps.row.owner }}; only the owner can share, edit or delete it.</q-tooltip>
+          </q-icon>
         </div>
-        <q-icon v-else name="group" color="grey-6" size="sm" @click.stop>
-          <q-tooltip>Shared with you by {{ tableProps.row.owner }}; only the owner can share, edit or delete it.</q-tooltip>
-        </q-icon>
       </q-td>
     </template>
     <template #body-cell-color="tableProps">
