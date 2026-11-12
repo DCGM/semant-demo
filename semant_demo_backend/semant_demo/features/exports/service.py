@@ -6,7 +6,9 @@ so an export is requested in two steps: ``request_export`` checks read access to
 collection and issues a one-time ticket (a random token, valid for ``TICKET_SECONDS``);
 ``open_export`` redeems it, checks access again and returns the stream. Tickets and running
 exports live in this process (``ExportRegistry``; the backend runs as one process). A user has
-at most one running export; requesting a new ticket replaces the user's unused one.
+at most one ticket and one running export: a new request replaces the unused ticket and ends a
+running export (whose download then fails), so a paused or stalled download never locks the
+user out.
 
 Memory stays flat whatever the size: annotations are read through the tenant's cursor and
 chunks per document, both written to the ZIP in batches. The export is not a snapshot:
@@ -16,6 +18,7 @@ so an interrupted download is an invalid ZIP rather than a plausible partial dat
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -33,9 +36,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.adapters.sql.users import UserLookup
-from semant_demo.core.errors import BusyError, NotFoundError
+from semant_demo.core.errors import NotFoundError
 from semant_demo.features.annotations import attribute_codec as codec
+from semant_demo.features.annotations.schemas import AnnotationChunk
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.features.annotations.source import ChunkSource, run_after
 from semant_demo.features.documents.positions import text_length
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
@@ -48,8 +53,6 @@ TICKET_SECONDS = 60
 DOWNLOAD_PATH = "/api/exports/collections/{token}"
 _BATCH = 500
 """Annotations or chunks written to the ZIP at a time."""
-_LOOKAHEAD = 8
-"""Following chunk orders read at once when an annotation continues past the collection's chunks."""
 NOTES = ("Not a snapshot: annotations changed while the export ran may appear in either state; "
          "exported_at is when it started. Offsets are UTF-16 code units from the start of the "
          "annotation's chunk; an annotation may continue into the following chunks of its document "
@@ -67,46 +70,58 @@ class ExportTicket:
     expires_at: float
 
 
+class RunningExport:
+    """A user's export whose download has started; ``cancel`` (set by the response) ends it."""
+
+    def __init__(self, user_id: UUID):
+        self.user_id = user_id
+        self.cancel: Callable[[], None] | None = None
+
+
 class ExportRegistry:
-    """One-time download tickets and the users whose export is running (this process only)."""
+    """One-time download tickets and the running export of each user (this process only)."""
 
     def __init__(self, ttl_seconds: float = TICKET_SECONDS, clock: Callable[[], float] = time.monotonic):
         self.ttl_seconds = ttl_seconds
         self.clock = clock
         self._tickets: dict[str, ExportTicket] = {}
-        self._running: set[UUID] = set()
+        self._running: dict[UUID, RunningExport] = {}
 
     def _purge(self) -> None:
         now = self.clock()
         for token in [t for t, ticket in self._tickets.items() if ticket.expires_at <= now]:
             del self._tickets[token]
 
-    def _refuse_if_running(self, user_id: UUID) -> None:
-        if user_id in self._running:
-            raise BusyError("An export of yours is still running. Wait until its download finishes.")
+    def _end_running(self, user_id: UUID) -> None:
+        run = self._running.pop(user_id, None)
+        if run is not None and run.cancel is not None:
+            logger.info("Ending a running collection export: the user started another one")
+            run.cancel()
 
     def issue(self, user_id: UUID, collection_ids: list[UUID]) -> str:
-        """A new ticket; replaces the user's unused one. ``BusyError`` while an export runs."""
-        self._refuse_if_running(user_id)
+        """A new ticket; replaces the user's unused one and ends the user's running export."""
         self._purge()
+        self._end_running(user_id)
         for token in [t for t, ticket in self._tickets.items() if ticket.user_id == user_id]:
             del self._tickets[token]
         token = secrets.token_urlsafe(32)
         self._tickets[token] = ExportTicket(user_id, tuple(collection_ids), self.clock() + self.ttl_seconds)
         return token
 
-    def redeem(self, token: str) -> ExportTicket:
-        """Use the ticket up and mark its user's export running (``release`` ends it)."""
+    def redeem(self, token: str) -> tuple[ExportTicket, RunningExport]:
+        """Use the ticket up and record its user's export as running (``release`` ends it)."""
         self._purge()
         ticket = self._tickets.pop(token, None)
         if ticket is None:
             raise NotFoundError("This export link is unknown, used or expired. Start the export again.")
-        self._refuse_if_running(ticket.user_id)
-        self._running.add(ticket.user_id)
-        return ticket
+        self._end_running(ticket.user_id)
+        run = self._running[ticket.user_id] = RunningExport(ticket.user_id)
+        return ticket, run
 
-    def release(self, user_id: UUID) -> None:
-        self._running.discard(user_id)
+    def release(self, run: RunningExport) -> None:
+        """The export ended; a newer export of the same user stays recorded."""
+        if self._running.get(run.user_id) is run:
+            del self._running[run.user_id]
 
     def running(self, user_id: UUID) -> bool:
         return user_id in self._running
@@ -140,7 +155,10 @@ class _Summary:
     annotations: int = 0
     chunks: int = 0
     missing_chunks: int = 0
-    """Chunks annotations refer to that no longer exist (their annotations cannot be cut)."""
+    """Chunks annotations start on that no longer exist (their annotations cannot be cut)."""
+    broken_continuations: int = 0
+    """Chunks with an annotation ending past a gap, a duplicate order or the document's end
+    (cut only up to there)."""
     people: set[UUID] = field(default_factory=set)
 
 
@@ -218,7 +236,7 @@ async def _zip(sources: ExportSources, user_id: UUID, collections: list[Collecti
         summaries.append(summary)
         with archive.open(name, "w", force_zip64=True) as entry:
             async for fragment in _collection_json(sources, summary):
-                await asyncio.to_thread(entry.write, fragment.encode("utf-8"))
+                await _write(entry, fragment.encode("utf-8"))
                 if data := sink.take():
                     yield data
         if data := sink.take():
@@ -226,6 +244,19 @@ async def _zip(sources: ExportSources, user_id: UUID, collections: list[Collecti
     archive.writestr("manifest.json", _json(await _manifest(sources, user_id, summaries, started), indent=2))
     archive.close()
     yield sink.take()
+
+
+async def _write(entry, data: bytes) -> None:
+    """Compress ``data`` into the ZIP entry in a worker thread. When the export is cancelled
+    meanwhile, the thread is waited for before the cancellation goes on, so closing the entry
+    never races the thread's write."""
+    write = asyncio.ensure_future(asyncio.to_thread(entry.write, data))
+    try:
+        await asyncio.shield(write)
+    except asyncio.CancelledError:
+        with contextlib.suppress(Exception):
+            await write
+        raise
 
 
 async def _manifest(sources: ExportSources, user_id: UUID, summaries: list[_Summary], started: datetime) -> dict:
@@ -238,7 +269,8 @@ async def _manifest(sources: ExportSources, user_id: UUID, summaries: list[_Summ
                         "username": user.username if user else None},
         "collections": [{"id": s.collection.id, "name": s.collection.name, "file": s.file,
                          "annotations": s.annotations, "chunks": s.chunks,
-                         "missing_chunks": s.missing_chunks} for s in summaries],
+                         "missing_chunks": s.missing_chunks,
+                         "broken_continuations": s.broken_continuations} for s in summaries],
         "notes": NOTES,
     }
 
@@ -316,62 +348,56 @@ async def _collection_json(sources: ExportSources, summary: _Summary) -> AsyncIt
     yield '],"people":' + _json(await _people(sources, collection_id, summary.people)) + "}"
 
 
-@dataclass(frozen=True)
-class _Chunk:
-    id: UUID
-    order: int
-    text: str
-
-
 async def _chunks(sources: ExportSources, collection_id: UUID, anchors: dict[UUID, tuple[UUID | None, int]],
                   summary: _Summary) -> AsyncIterator[list[dict]]:
     """Per document (in a list, in order): the collection's chunks, then the anchor chunks of
     annotations that are not in the collection and the following chunks annotations continue
-    into, ``in_collection`` false."""
+    into, ``in_collection`` false. The following chunks are those the span checks accept
+    (``ChunkSource.covering`` and its consecutive run): an annotation whose end lies past a gap,
+    a duplicate order or the document's end is counted in ``broken_continuations``, not
+    guessed."""
     store = sources.store
+    source = ChunkSource(store.documents)
+    # Anchors stored before spans named their document: read them now (by id, in batches).
+    undocumented = await store.documents.read_chunk_texts(
+        [chunk_id for chunk_id, (document_id, _) in anchors.items() if document_id is None])
     by_document: dict[UUID, dict[UUID, int]] = {}
     for chunk_id, (document_id, end) in anchors.items():
-        if document_id is None:  # stored before spans named their document
-            chunk = await store.documents.read_chunk_text(chunk_id)
-            if chunk is None or chunk.document_id is None:
-                summary.missing_chunks += 1
-                continue
-            document_id = chunk.document_id
+        document_id = document_id or (undocumented[chunk_id].document_id if chunk_id in undocumented else None)
+        if document_id is None:
+            summary.missing_chunks += 1
+            continue
         by_document.setdefault(document_id, {})[chunk_id] = end
 
     documents = [d.id for d in await store.collections.read_all_documents(collection_id)]
     linked = set(documents)
     for document_id in documents + [d for d in by_document if d not in linked]:
-        in_collection = (await store.collections.read_all_chunks_by_document(document_id, collection_id)
-                         if document_id in linked else [])
-        out: dict[UUID, tuple[_Chunk, bool]] = {c.id: (_Chunk(c.id, c.order, c.text), True) for c in in_collection}
-        by_order = {chunk.order: chunk for chunk, _ in out.values()}
-
-        async def at_order(order: int) -> _Chunk | None:
-            if order not in by_order:
-                for c in await store.documents.read_chunk_texts_in_range(document_id, order, order + _LOOKAHEAD):
-                    by_order.setdefault(c.order, _Chunk(c.id, c.order, c.text))
-            return by_order.get(order)
-
-        for chunk_id, end in by_document.get(document_id, {}).items():
+        members = (await store.collections.read_chunk_texts_in_collection(document_id, collection_id)
+                   if document_id in linked else [])
+        out: dict[UUID, tuple[AnnotationChunk, bool]] = {c.id: (c, True) for c in members}
+        ends = by_document.get(document_id, {})
+        outside = [i for i in ends if i not in out and i not in undocumented]
+        known = {**{i: c for i, c in undocumented.items() if i in ends},
+                 **(await store.documents.read_chunk_texts(outside) if outside else {})}
+        for chunk_id, end in ends.items():
             if chunk_id in out:
                 anchor = out[chunk_id][0]
+            elif chunk_id in known:
+                anchor = known[chunk_id]
+                out[chunk_id] = (anchor, False)
             else:
-                read = await store.documents.read_chunk_text(chunk_id)
-                if read is None:
-                    summary.missing_chunks += 1
-                    continue
-                anchor = _Chunk(read.id, read.order, read.text)
-                out[anchor.id] = (anchor, False)
-                by_order.setdefault(anchor.order, anchor)
-            covered, order = text_length(anchor.text), anchor.order
-            while covered < end:
-                order += 1
-                following = await at_order(order)
-                if following is None:
+                summary.missing_chunks += 1
+                continue
+            covered = text_length(anchor.text)
+            if covered >= end:
+                continue
+            for chunk in run_after(anchor, (await source.covering(anchor, end))[1:]):
+                out.setdefault(chunk.id, (chunk, False))
+                covered += text_length(chunk.text)
+                if covered >= end:
                     break
-                out.setdefault(following.id, (following, False))
-                covered += text_length(following.text)
+            if covered < end:
+                summary.broken_continuations += 1
 
         yield [{"id": chunk.id, "document_id": document_id, "order": chunk.order, "text": chunk.text,
                 "in_collection": member}

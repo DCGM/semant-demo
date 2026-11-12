@@ -56,6 +56,9 @@ def _to_text_chunk(obj, document_id: UUID) -> DocumentChunk:
     return DocumentChunk(**{**chunk_properties(obj.properties), "id": obj.uuid, "document": document_id})
 
 
+ID_BATCH = 200
+"""Ids per query of reads by many ids."""
+
 POSITION_PROPERTIES = {"startChar": "start_char", "startWord": "start_word", "wordOpenAtStart": "word_open_at_start"}
 """``Chunks`` properties of a chunk's absolute position in its document (#463), by field of
 ``AnnotationChunk`` / ``ChunkPosition``."""
@@ -150,6 +153,20 @@ class DocumentRepository:
             chunk_id, return_properties=self._text_properties(),
             return_references=[QueryReference(link_on="document", return_properties=[])])
         return _to_chunk_text(obj) if obj is not None else None
+
+    async def read_chunk_texts(self, chunk_ids: list[UUID]) -> dict[UUID, AnnotationChunk]:
+        """The existing chunks among ``chunk_ids`` with their document, order, text and position,
+        read in batches of ``ID_BATCH``."""
+        chunks: dict[UUID, AnnotationChunk] = {}
+        ids = list(dict.fromkeys(chunk_ids))
+        for first in range(0, len(ids), ID_BATCH):
+            batch = ids[first:first + ID_BATCH]
+            response = await self._chunks().query.fetch_objects(
+                filters=Filter.by_id().contains_any(batch), limit=len(batch),
+                return_properties=self._text_properties(),
+                return_references=[QueryReference(link_on="document", return_properties=[])])
+            chunks.update({o.uuid: _to_chunk_text(o) for o in response.objects})
+        return chunks
 
     async def _read_orders(self, document_id: UUID, first: int, last: int, **query) -> list:
         """The document's chunk objects with ``first <= order <= last``, sorted by order;

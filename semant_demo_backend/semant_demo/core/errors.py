@@ -2,7 +2,6 @@
 
 ``create_app`` maps them to HTTP responses (``NotFoundError`` -> 404,
 ``InvalidRequestError`` -> 400, ``ServiceUnavailableError`` -> 503, ``IncompleteWriteError`` -> 500,
-``BusyError`` -> 409 with ``detail``,
 ``EditConflictError``, ``InUseError`` and ``ConfirmationRequiredError`` -> 409 with a structured body).
 Other storage/SDK failures are not wrapped: they propagate and become 500 responses.
 """
@@ -18,11 +17,6 @@ class InvalidRequestError(Exception):
 
 class ServiceUnavailableError(Exception):
     """An external service the request needs could not be reached or gave an unusable answer."""
-
-
-class BusyError(Exception):
-    """The request conflicts with an operation of the same user that is still running (e.g. a
-    second collection export, #656): nothing was started."""
 
 
 class IncompleteWriteError(Exception):

@@ -1974,7 +1974,7 @@ example().catch(console.error);
 
 Download Collection Export
 
-Downloads the export a ticket from &#x60;&#x60;POST /api/exports/collections&#x60;&#x60; names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable, 409 while another export of the user is running.
+Downloads the export a ticket from &#x60;&#x60;POST /api/exports/collections&#x60;&#x60; names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
 
 ### Example
 
@@ -4853,7 +4853,7 @@ example().catch(console.error);
 
 Request Collection Export
 
-Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for &#x60;&#x60;expires_in&#x60;&#x60; seconds. 409 while another export of the user is running.
+Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for &#x60;&#x60;expires_in&#x60;&#x60; seconds. Ends the user\&#39;s running export, if any (one per user).
 
 ### Example
 

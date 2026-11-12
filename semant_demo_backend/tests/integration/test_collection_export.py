@@ -60,7 +60,7 @@ async def test_export_holds_every_annotation_and_the_text_to_cut_it(api_client, 
     data = json.loads(archive.read(entry["file"]))
     assert set(data) == {"metadata", "tags", "attributes", "annotations", "chunks", "people"}
     assert (entry["annotations"], entry["chunks"]) == (len(data["annotations"]), len(data["chunks"]))
-    assert entry["missing_chunks"] == 0
+    assert (entry["missing_chunks"], entry["broken_continuations"]) == (0, 0)
     assert data["metadata"]["id"] == chronicles
     assert {t["id"] for t in data["tags"]} == {ids.tag["person"], ids.tag["place"]}
 

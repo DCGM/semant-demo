@@ -349,8 +349,17 @@ class SpanRepository:
         return [*_PROPERTIES, *(["editVersion"] if self.provenance else []),
                 *(["attributeVersion"] if self.attributes else [])]
 
-    def _row_properties(self) -> list[str]:
-        return [*_ROW, *(_PROVENANCE if self.provenance else []), *(_ATTRIBUTES if self.attributes else [])]
+    def _row_properties(self, base: list[str] = _ROW) -> list[str]:
+        """``base`` and the optional property groups the collection holds (provenance, attributes)."""
+        return [*base, *(_PROVENANCE if self.provenance else []), *(_ATTRIBUTES if self.attributes else [])]
+
+    async def _iterate(self, collection_id: UUID, properties: list[str]):
+        """Every span object of the collection (cursor order, no 10k limit); nothing when the
+        collection has no tenant."""
+        if not await self.tenant_exists(collection_id):
+            return
+        async for obj in self._tenant(collection_id).iterator(return_properties=properties):
+            yield obj
 
     def _collection(self):
         return self.client.collections.get(self.collectionNames.annotation_collection_name)
@@ -634,9 +643,7 @@ class SpanRepository:
     async def iterate_rows(self, collection_id: UUID):
         """Every span of the collection with its revision and derived data (cursor order;
         nothing when the collection has no tenant)."""
-        if not await self.tenant_exists(collection_id):
-            return
-        async for obj in self._tenant(collection_id).iterator(return_properties=self._row_properties()):
+        async for obj in self._iterate(collection_id, self._row_properties()):
             yield to_row(obj)
 
     async def iterate_stored(self, collection_id: UUID):
@@ -645,11 +652,7 @@ class SpanRepository:
         type, AI reason and confidence, ``revision``, provenance and attribute values when the
         collection holds them). Cursor order, no 10k limit; nothing when the collection has no
         tenant."""
-        if not await self.tenant_exists(collection_id):
-            return
-        properties = [*_STORED, *(_PROVENANCE if self.provenance else []),
-                      *(_ATTRIBUTES if self.attributes else [])]
-        async for obj in self._tenant(collection_id).iterator(return_properties=properties):
+        async for obj in self._iterate(collection_id, self._row_properties(_STORED)):
             yield {"id": UUID(str(obj.uuid)), **obj.properties}
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],
