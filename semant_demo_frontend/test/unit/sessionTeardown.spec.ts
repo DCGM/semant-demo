@@ -245,12 +245,13 @@ describe('document chats kept in the browser (ADR 0012)', () => {
     return store
   }
 
-  it('signing out forgets only that user\'s, also for a session not verified yet', () => {
-    void signedIn(userA).logout()
+  it('signing out forgets only that user\'s, also for a session not verified yet', async () => {
+    answers['/api/auth/jwt/logout'] = () => new Response(null, { status: 204 })
+    await signedIn(userA).logout()
     expect([loadConversation(keyOf('uA')), loadConversation(keyOf('uB'))]).toEqual([null, kept])
 
     localStorage.clear()
-    void signedIn(null).logout()
+    await signedIn(null).logout() // not verified: no server request
     expect([loadConversation(keyOf('uA')), loadConversation(keyOf('uB'))]).toEqual([null, kept])
   })
 
