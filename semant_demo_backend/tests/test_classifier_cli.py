@@ -154,7 +154,7 @@ def test_a_config_without_a_valid_provenance_is_refused(monkeypatch, tmp_path, s
 
 
 def test_valid_provenance():
-    assert valid_provenance("mmbert-multitask-2026-10-20")
+    assert valid_provenance("mmbert-multitask-2026-07-15")
     assert not any(valid_provenance(v) for v in (None, "", "UNPROCESSED", " x", 3))
 
 
