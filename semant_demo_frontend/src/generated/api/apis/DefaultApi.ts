@@ -1411,7 +1411,7 @@ export interface DefaultApiInterface {
     downloadCollectionExportApiExportsCollectionsTokenGetRequestOpts(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable, 409 while another export of the user is running.
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
      * @summary Download Collection Export
      * @param {string} token 
      * @param {*} [options] Override http request option.
@@ -1421,7 +1421,7 @@ export interface DefaultApiInterface {
     downloadCollectionExportApiExportsCollectionsTokenGetRaw(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable, 409 while another export of the user is running.
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
      * Download Collection Export
      */
     downloadCollectionExportApiExportsCollectionsTokenGet(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -2488,7 +2488,7 @@ export interface DefaultApiInterface {
     requestCollectionExportApiExportsCollectionsPostRequestOpts(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. 409 while another export of the user is running.
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
      * @summary Request Collection Export
      * @param {CollectionExportRequest} collectionExportRequest 
      * @param {*} [options] Override http request option.
@@ -2498,7 +2498,7 @@ export interface DefaultApiInterface {
     requestCollectionExportApiExportsCollectionsPostRaw(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionExportTicket>>;
 
     /**
-     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. 409 while another export of the user is running.
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
      * Request Collection Export
      */
     requestCollectionExportApiExportsCollectionsPost(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionExportTicket>;
@@ -4602,7 +4602,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable, 409 while another export of the user is running.
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
      * Download Collection Export
      */
     async downloadCollectionExportApiExportsCollectionsTokenGetRaw(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4613,7 +4613,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable, 409 while another export of the user is running.
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
      * Download Collection Export
      */
     async downloadCollectionExportApiExportsCollectionsTokenGet(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -6958,7 +6958,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. 409 while another export of the user is running.
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
      * Request Collection Export
      */
     async requestCollectionExportApiExportsCollectionsPostRaw(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionExportTicket>> {
@@ -6969,7 +6969,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. 409 while another export of the user is running.
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
      * Request Collection Export
      */
     async requestCollectionExportApiExportsCollectionsPost(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionExportTicket> {

@@ -1,11 +1,12 @@
 import { ref } from 'vue'
 import { Notify } from 'quasar'
-import { apiErrorMessage, errorStatus, startDownload, useApi } from 'src/shared/api'
+import { apiErrorMessage, startDownload, useApi } from 'src/shared/api'
 
 /**
  * Export of whole collections (#656, docs/EXPORT_FORMAT.md): every annotation of the chosen
  * collections with the text of their chunks, as one ZIP of JSON. The backend checks access
  * and returns a one-time download path; the browser's download manager then saves the ZIP.
+ * A user has one running export: starting another ends the earlier download.
  */
 export function useCollectionExport () {
   const requesting = ref(false)
@@ -27,10 +28,11 @@ export function useCollectionExport () {
       })
       return true
     } catch (err) {
-      const fallback = errorStatus(err) === 409
-        ? 'An export of yours is still running. Wait until its download finishes.'
-        : 'The export could not be started.'
-      Notify.create({ type: 'negative', position: 'top', message: await apiErrorMessage(err, fallback) })
+      Notify.create({
+        type: 'negative',
+        position: 'top',
+        message: await apiErrorMessage(err, 'The export could not be started.')
+      })
       return false
     } finally {
       requesting.value = false
