@@ -343,8 +343,9 @@ export function useScopedChat<S extends ChatScope> (scope: () => S | null, optio
         streaming.value = false
       }
       // Kept once the answer has ended (also stopped or failed); one cut off by another
-      // scope or unmount is not, so the saved conversation keeps its earlier turns.
-      if (isCurrent() && storageKey) saveConversation(storageKey, messages.value)
+      // scope or unmount is not, so the saved conversation keeps its earlier turns. Nor is
+      // one that ends after sign-out or an account switch, before the watcher clears it.
+      if (isCurrent() && storageKey && currentStorageKey() === storageKey) saveConversation(storageKey, messages.value)
     }
   }
 

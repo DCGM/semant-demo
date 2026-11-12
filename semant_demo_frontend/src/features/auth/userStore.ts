@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { UserRead } from 'src/generated/api'
 import { clearAuthToken, errorStatus, getAuthToken, setAuthToken, tokenSubject, useApi } from 'src/shared/api'
+import { forgetStoredConversations } from 'src/features/chat/chatStorage'
 
 // The restore of a stored token in flight, shared by everyone who waits for that token.
 let restoring: { token: string, promise: Promise<void> } | null = null
@@ -67,11 +68,14 @@ export const useUserStore = defineStore('user', {
      * old session (or its data) on screen. The server logout of a verified session is then
      * sent best effort with the old token named explicitly (never the current token, which
      * may already be another account's); the returned promise reports only that request.
-     * A session awaiting verification ends without asking the server.
+     * A session awaiting verification ends without asking the server. The user's document
+     * chats kept in this browser are forgotten (also those of a session not verified yet, by
+     * its token's user); a session that merely expires (`forgetSession`) keeps them.
      */
     logout (): Promise<void> {
       const token = this.token
       const verified = !!this.user
+      forgetStoredConversations(this.user?.id ?? (token ? tokenSubject(token) : null))
       this.forgetSession()
       if (!token || !verified) return Promise.resolve()
       return useApi().auth.authJwtLogoutApiAuthJwtLogoutPost({ headers: { Authorization: `Bearer ${token}` } })
