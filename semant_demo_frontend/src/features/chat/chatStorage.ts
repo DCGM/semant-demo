@@ -86,17 +86,27 @@ function prefixOf (key: string): string {
 }
 
 /**
- * Removes every user's expired or malformed conversations (a user who never signs in again
- * keeps none past the limit) and keeps the newest `MAX_STORED_CONVERSATIONS` of the user
- * `prefix` belongs to; `keep` is never removed. Returns that user's others, oldest first.
+ * When a stored value was saved, read from its start (`saveConversation` writes `savedAt`
+ * first), so pruning never parses whole conversations; null when it cannot be read.
+ */
+function savedAtOf (raw: string | null): number | null {
+  const match = raw === null ? null : /^\{"savedAt":(\d+)[,}]/.exec(raw)
+  return match ? Number(match[1]) : null
+}
+
+/**
+ * Removes every user's expired conversations (a user who never signs in again keeps none
+ * past the limit) and those without a readable `savedAt`, and keeps the newest
+ * `MAX_STORED_CONVERSATIONS` of the user `prefix` belongs to; `keep` is never removed.
+ * Returns that user's others, oldest first. The messages are checked only on load.
  */
 function prune (prefix: string, keep: string): string[] {
   const live: { key: string, savedAt: number }[] = []
   for (const key of storedKeys(PREFIX)) {
     if (key === keep) continue
-    const stored = parse(readStored(key))
-    if (!stored || expired(stored)) removeStored(key)
-    else if (key.startsWith(prefix)) live.push({ key, savedAt: stored.savedAt })
+    const savedAt = savedAtOf(readStored(key))
+    if (savedAt === null || Date.now() - savedAt > MAX_AGE_MS) removeStored(key)
+    else if (key.startsWith(prefix)) live.push({ key, savedAt })
   }
   live.sort((a, b) => b.savedAt - a.savedAt)
   for (const { key } of live.slice(MAX_STORED_CONVERSATIONS - 1)) removeStored(key)

@@ -89,6 +89,22 @@ describe('chatStorage', () => {
     expect(loadConversation(key('d2'))).not.toBeNull()
   })
 
+  it('reads only the start of the other stored values when pruning', () => {
+    saveConversation(key('d1'), conversation('Q1'))
+    expect(localStorage.getItem(key('d1'))).toMatch(/^\{"savedAt":\d+,"messages":/)
+    localStorage.setItem(key('d2'), '{"messages":[]}')
+    localStorage.setItem(key('d3'), JSON.stringify({ savedAt: Date.now(), messages: 'not checked here' }))
+    const parse = vi.spyOn(JSON, 'parse')
+
+    saveConversation(key('d4'), conversation('Q4'))
+
+    expect(parse).not.toHaveBeenCalled()
+    expect(localStorage.getItem(key('d2'))).toBeNull() // no readable savedAt
+    expect(localStorage.getItem(key('d3'))).not.toBeNull() // dropped when loaded
+    expect(loadConversation(key('d3'))).toBeNull()
+    expect(loadConversation(key('d1'))).not.toBeNull()
+  })
+
   it('drops another user\'s expired conversations on any save', () => {
     saveConversation(key('d1', 'u2'), conversation('Old'))
     vi.advanceTimersByTime(10 * DAY)
