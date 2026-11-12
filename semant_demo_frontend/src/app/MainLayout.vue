@@ -222,6 +222,7 @@ import semantLogo from 'src/assets/semant-logo.png'
 import { computed, ref, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useUserStore } from 'src/features/auth/userStore'
+import { forgetStoredConversations } from 'src/features/chat/chatStorage'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import RightSidebar from 'src/app/sidebar/RightSidebar.vue'
 import LoginDialog from 'src/features/auth/LoginDialog.vue'
@@ -229,7 +230,7 @@ import RegisterDialog from 'src/features/auth/RegisterDialog.vue'
 import UserInfoDialog from 'src/features/auth/UserInfoDialog.vue'
 import QuotaIndicator from 'src/features/quota/QuotaIndicator.vue'
 import QuotaBanner from 'src/features/quota/QuotaBanner.vue'
-import { errorStatus } from 'src/shared/api'
+import { errorStatus, tokenSubject } from 'src/shared/api'
 import { isKept, keptLocation } from 'src/router/keptPages'
 
 const drawerMiniState = ref(false)
@@ -317,9 +318,12 @@ async function retrySession () {
 // Signing out ends the session here at once (userStore.logout), so the signed-out UI never
 // waits for the server. The backend's JWT logout revokes nothing; when it fails (offline,
 // server error) the user is also told the server did not confirm it, without an unhandled
-// rejection. A request that never answers simply never adds that warning.
+// rejection. A request that never answers simply never adds that warning. The user's document
+// chats kept in this browser are forgotten too, also for a session not verified yet (by its
+// token's user); an expired session keeps them.
 function handleLogout () {
   userMenuOpen.value = false
+  forgetStoredConversations(userStore.getUserId ?? (userStore.token ? tokenSubject(userStore.token) : null))
   const confirmation = userStore.logout()
   $q.notify({ type: 'info', message: 'You have been logged out.', position: 'top', timeout: 3000 })
   confirmation.catch((error: unknown) => {
