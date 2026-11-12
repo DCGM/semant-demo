@@ -26,3 +26,17 @@ export function removeStored (key: string): void {
     // Storage unavailable — there is nothing to remove.
   }
 }
+
+/** The stored keys starting with `prefix`; none when storage is unavailable. */
+export function storedKeys (prefix: string): string[] {
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(prefix)) keys.push(key)
+    }
+    return keys
+  } catch {
+    return []
+  }
+}

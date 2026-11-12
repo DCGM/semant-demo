@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { apiToken, chunkText, ensureLoggedIn, fixture, openDocument, sidebarPanelButton } from './support'
+import { apiToken, chunkText, ensureLoggedIn, fixture, logOut, openDocument, sidebarPanelButton } from './support'
 
 // Document chat in the right sidebar (#248, ADR 0012). The e2e profile's fake LLM answers
 // "Fake summary of N passage(s); last [docN]." for the [docN]-labelled passages of the last
@@ -79,6 +79,46 @@ test('switching documents starts an empty conversation and clears the typed ques
   await expect(page.getByTestId('chat-question')).toHaveCount(0)
   await expect(answers(page)).toHaveCount(0)
   await expect(page.getByLabel('Ask about this document')).toHaveValue('')
+})
+
+test('the conversation is kept in the browser: back after a reload, forgotten by New conversation and by signing out', async ({ page }) => {
+  // ADR 0012 decision 1 (maintainer, 2026-11-12): per signed-in user and document.
+  const storedChats = () => page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('semant.chat.')).length)
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await ask(page, 'O čem je dokument?')
+  await expect(answers(page)).toHaveText('Fake summary of 2 passage(s); last [S1].')
+
+  await page.reload()
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await expect(page.getByTestId('chat-question')).toHaveText('O čem je dokument?')
+  await expect(answers(page)).toHaveText('Fake summary of 2 passage(s); last [S1].')
+
+  // A follow-up continues the kept conversation.
+  const request = page.waitForRequest(CHAT_URL)
+  await ask(page, 'A dál?')
+  expect((await request).postDataJSON().history).toHaveLength(2)
+  await expect(answers(page)).toHaveCount(2)
+
+  await page.getByTestId('chat-new-conversation').click()
+  await page.reload()
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await expect(page.getByLabel('Ask about this document')).toBeVisible()
+  await expect(answers(page)).toHaveCount(0)
+  expect(await storedChats()).toBe(0)
+
+  await ask(page, 'O čem je dokument?')
+  await expect(answers(page)).toHaveCount(1)
+  expect(await storedChats()).toBe(1)
+  await logOut(page)
+  expect(await storedChats()).toBe(0)
+
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await expect(page.getByLabel('Ask about this document')).toBeVisible()
+  await expect(answers(page)).toHaveCount(0)
 })
 
 test('a user without collection read access cannot chat about its document', async ({ request }) => {
