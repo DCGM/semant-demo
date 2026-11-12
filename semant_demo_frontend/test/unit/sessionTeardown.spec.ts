@@ -10,6 +10,7 @@ import { useUserCollectionsStore } from 'src/features/user_collections/userColle
 import { useSessionScope } from 'src/app/session'
 import { installAuthGuard } from 'src/router/authGuard'
 import { getAuthToken, setAuthToken, tokenSubject } from 'src/shared/api'
+import { documentChatKey, loadConversation, saveConversation } from 'src/features/chat/chatStorage'
 import MainLayout from 'src/app/MainLayout.vue'
 import RagPage from 'src/features/rag/RagPage.vue'
 import RightSidebar from 'src/app/sidebar/RightSidebar.vue'
@@ -227,6 +228,35 @@ describe('session changes in another tab', () => {
     await flushPromises()
 
     expect(store.user?.id).toBe('uA')
+  })
+})
+
+describe('document chats kept in the browser (ADR 0012)', () => {
+  const keyOf = (userId: string) => documentChatKey(userId, { kind: 'document', collectionId: 'c1', documentId: 'd1' })
+  const kept = [{ role: 'user' as const, text: 'Q', sources: [], status: 'done' as const }]
+
+  function signedIn (user: typeof userA | null) {
+    const store = useUserStore()
+    setAuthToken(jwt('uA'))
+    store.token = jwt('uA')
+    store.user = user as never
+    saveConversation(keyOf('uA'), kept)
+    saveConversation(keyOf('uB'), kept)
+    return store
+  }
+
+  it('signing out forgets only that user\'s, also for a session not verified yet', () => {
+    void signedIn(userA).logout()
+    expect([loadConversation(keyOf('uA')), loadConversation(keyOf('uB'))]).toEqual([null, kept])
+
+    localStorage.clear()
+    void signedIn(null).logout()
+    expect([loadConversation(keyOf('uA')), loadConversation(keyOf('uB'))]).toEqual([null, kept])
+  })
+
+  it('an expired session keeps them', () => {
+    signedIn(userA).forgetSession()
+    expect(loadConversation(keyOf('uA'))).toEqual(kept)
   })
 })
 

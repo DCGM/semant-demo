@@ -60,19 +60,20 @@ describe('chatStorage', () => {
     expect(loadConversation(key('d2'))).toBeNull()
   })
 
-  it('brings an answer saved while streaming back as interrupted', () => {
-    saveConversation(key('d1'), conversation('Q1', 'streaming'))
-    expect(loadConversation(key('d1'))?.[1].status).toBe('interrupted')
-  })
-
   it('drops a value that is not a conversation', () => {
-    localStorage.setItem(key('d1'), '{not json')
-    localStorage.setItem(key('d2'), JSON.stringify({ savedAt: Date.now(), messages: [{ role: 'system', text: 'x', sources: [], status: 'done' }] }))
+    const stored = (messages: unknown[]) => JSON.stringify({ savedAt: Date.now(), messages })
+    const malformed = {
+      d1: '{not json',
+      d2: stored([{ role: 'system', text: 'x', sources: [], status: 'done' }]),
+      d3: stored(conversation('Q', 'streaming')), // never saved while an answer streams
+      d4: stored([{ ...conversation('Q')[1], coverage: {} }])
+    }
+    for (const [documentId, value] of Object.entries(malformed)) localStorage.setItem(key(documentId), value)
 
-    expect(loadConversation(key('d1'))).toBeNull()
-    expect(loadConversation(key('d2'))).toBeNull()
-    expect(localStorage.getItem(key('d1'))).toBeNull()
-    expect(localStorage.getItem(key('d2'))).toBeNull()
+    for (const documentId of Object.keys(malformed)) {
+      expect(loadConversation(key(documentId)), documentId).toBeNull()
+      expect(localStorage.getItem(key(documentId)), documentId).toBeNull()
+    }
   })
 
   it(`drops a conversation unused for more than ${STORED_CONVERSATION_DAYS} days`, () => {
@@ -86,6 +87,18 @@ describe('chatStorage', () => {
     expect(loadConversation(key('d1'))).toBeNull()
     expect(localStorage.getItem(key('d1'))).toBeNull()
     expect(loadConversation(key('d2'))).not.toBeNull()
+  })
+
+  it('drops another user\'s expired conversations on any save', () => {
+    saveConversation(key('d1', 'u2'), conversation('Old'))
+    vi.advanceTimersByTime(10 * DAY)
+    saveConversation(key('d2', 'u2'), conversation('Newer'))
+    vi.advanceTimersByTime(STORED_CONVERSATION_DAYS * DAY - 5 * DAY)
+
+    saveConversation(key('d1'), conversation('Q1'))
+
+    expect(localStorage.getItem(key('d1', 'u2'))).toBeNull()
+    expect(localStorage.getItem(key('d2', 'u2'))).not.toBeNull()
   })
 
   it(`keeps the ${MAX_STORED_CONVERSATIONS} most recently used conversations of a user`, () => {
@@ -123,6 +136,18 @@ describe('chatStorage', () => {
     expect(loadConversation(key('d1'))).toBeNull()
     expect(loadConversation(key('d2'))).not.toBeNull()
     expect(loadConversation(key('d3'))).not.toBeNull()
+  })
+
+  it('keeps no older copy when even the room made is not enough', () => {
+    saveConversation(key('d1'), conversation('Q1'))
+    vi.advanceTimersByTime(1000)
+    saveConversation(key('d2'), conversation('Q2'))
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+
+    saveConversation(key('d2'), [...conversation('Q2'), ...conversation('Q3')])
+
+    expect(loadConversation(key('d1'))).toBeNull() // made room, still not enough
+    expect(loadConversation(key('d2'))).toBeNull() // not the shorter copy
   })
 
   it('does nothing when storage is unavailable', () => {

@@ -11,11 +11,14 @@ export function readStored (key: string): string | null {
   }
 }
 
-export function writeStored (key: string, value: string): void {
+/** Whether the value was stored (false when storage is unavailable or full). */
+export function writeStored (key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value)
+    return true
   } catch {
     // Storage unavailable — the choice just won't persist.
+    return false
   }
 }
 

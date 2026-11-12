@@ -487,6 +487,21 @@ describe('useScopedChat', () => {
       expect(chat.messages.value.map(m => m.text)).toEqual(['Q1', 'A1 [doc1]'])
     })
 
+    it('saves nothing for the old user when an answer ends after sign-out', async () => {
+      const { chat, userId } = mountKeptChat()
+      await answerWith(chat, 'Q1', 'A1', 'k1')
+      const asking = chat.ask('Q2')
+      await flush()
+
+      userId.value = null
+      streams[1].push({ event: 'delta', text: 'A2' })
+      streams[1].push({ event: 'end', coverage: 'all', used_chunks: 1, total_chunks: 1 })
+      streams[1].close()
+      await asking
+
+      expect(loadConversation(keyOf('d1'))).toHaveLength(2)
+    })
+
     it('keeps nothing without a storage key', async () => {
       const { chat } = mountChat()
       await answerWith(chat, 'Q', 'A', 'k1')
