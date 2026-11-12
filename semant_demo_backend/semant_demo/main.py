@@ -20,7 +20,8 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
+from semant_demo.mcp import server as mcp_server
 from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.routes import export_router
 from semant_demo.users.auth import auth_router, register_router, users_router
@@ -42,7 +43,11 @@ async def lifespan(app: FastAPI):
         resources.rag = rag_factory(global_config=app_config, configs_path=app_config.RAG_CONFIGS_PATH,
                                     llm=resources.llm)
 
-        yield
+        async with AsyncExitStack() as stack:
+            if app_config.MCP_ENABLED:
+                # The public MCP endpoint's session manager shares the application lifespan (#635).
+                await stack.enter_async_context(mcp_server.serve(app))
+            yield
     finally:
         #shutdown all dependencies, also after a failed startup
         app.state.resources = None
@@ -89,6 +94,10 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
     async def health():
         return {"status": "ok"}
 
+    if app_config.MCP_ENABLED:
+        # Public read-only MCP endpoint (#635, docs/MCP.md), before the catch-all static mount.
+        mcp_server.mount(app)
+
     # Raised by collection access checks (features/user_collections/access.py, its
     # ResourceNotFound is a NotFoundError) and by repositories/services (core/errors.py).
     for exc_type, status_code in ((AuthenticationRequired, 401), (NotFoundError, 404), (AccessDenied, 403),
@@ -105,7 +114,8 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
         return JSONResponse(status_code=409, content=jsonable_encoder(exc.body()))
     app.add_exception_handler(EditConflictError, edit_conflict)
 
-    # A definition that annotations still use cannot be deleted (#331).
+    # A definition that annotations still use cannot be deleted (#331); a change affecting
+    # annotations waits for confirmation (ConfirmationRequiredError, a subclass, #568).
     async def in_use(request: Request, exc: InUseError) -> JSONResponse:
         return JSONResponse(status_code=409, content=exc.body())
     app.add_exception_handler(InUseError, in_use)

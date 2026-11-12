@@ -27,3 +27,5 @@ opentelemetry-instrumentation-logging
 opentelemetry-instrumentation-system-metrics
 httpx
 anyio
+# Public read-only MCP endpoint (#635): the official SDK (FastMCP, Streamable HTTP).
+mcp

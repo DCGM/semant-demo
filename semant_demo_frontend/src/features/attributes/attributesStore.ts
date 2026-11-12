@@ -2,17 +2,25 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import type { Attribute, PatchAttribute, PatchAttributeValue, PostAttribute, PostAttributeValue } from 'src/generated/api'
-import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus } from 'src/shared/api'
+import { apiErrorMessage, captureSession, createContextGuard, createScope, errorBody, errorStatus } from 'src/shared/api'
 import { useAttributesRepository } from './useAttributesRepository'
 import { KIND_LABELS, specialValue, type SpecialKind } from './attributeForm'
 
-/** A refused or failed definition write, with the backend's message (e.g. the number of
- * annotations a narrowing of the tags affects, for a 409). */
+/** A refused or failed definition write, with the backend's message. `toConfirm` is set when a
+ * narrowing of the tags waits for confirmation (#568): the number of annotations whose values
+ * would stop applying, to send back as `confirmAffected`. */
 export class AttributeWriteError extends Error {
-  constructor (message: string, readonly status: number | null) {
+  constructor (message: string, readonly status: number | null, readonly toConfirm: number | null = null) {
     super(message)
     this.name = 'AttributeWriteError'
   }
+}
+
+/** The number of annotations a 409 asks to confirm a narrowing for, or null. */
+function narrowingToConfirm (status: number | null, body: unknown): number | null {
+  if (status !== 409 || typeof body !== 'object' || body === null) return null
+  const { confirm, affected } = body as { confirm?: unknown, affected?: unknown }
+  return confirm === 'narrowing' && typeof affected === 'number' ? affected : null
 }
 
 const byName = (a: Attribute, b: Attribute) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
@@ -99,7 +107,9 @@ export const useAttributesStore = defineStore('attributes', () => {
       if (inScope() && inSession() && scope.key === collectionId) apply(result)
       return result
     } catch (e) {
-      throw new AttributeWriteError(await apiErrorMessage(e, fallback), errorStatus(e))
+      const status = errorStatus(e)
+      throw new AttributeWriteError(await apiErrorMessage(e, fallback), status,
+        narrowingToConfirm(status, await errorBody(e)))
     }
   }
 
