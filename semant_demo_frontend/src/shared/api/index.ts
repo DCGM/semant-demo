@@ -4,6 +4,7 @@ export { getAuthToken, setAuthToken, clearAuthToken, authHeaders, onUnauthorized
 export { useApi, createApiClients, type ApiClients } from './client'
 export { ApiError, apiErrorMessage, errorBody, errorStatus, isAbortError } from './errors'
 export { postNdjson, readNdjson } from './ndjson'
+export { startDownload } from './download'
 export { createContextGuard, type ContextGuard } from './context'
 export { createScope, type Scope } from './scope'
 export { captureSession, endSession } from './session'
