@@ -10,8 +10,8 @@ it. Chunks without a ``classification_provenance`` value are never selected.
 The stored status is the state: there is no checkpoint. Every page is the first page of the
 remaining selection (classified chunks leave it, chunks that failed in this run are excluded),
 so no chunk is skipped by offset paging and no query reaches Weaviate's
-``QUERY_MAXIMUM_RESULTS``. ``max_failures`` bounds the excluded ids. The schema is only read: a missing collection, mapped
-field or ``classification_provenance`` property refuses the run.
+``QUERY_MAXIMUM_RESULTS``; ``max_failures`` bounds the excluded ids. The schema is only read:
+a missing collection, mapped field or ``classification_provenance`` property refuses the run.
 """
 import time
 from dataclasses import dataclass, field

@@ -3,8 +3,8 @@
 The real pipeline runs with a fake model: it answers each task with a label chosen per record
 (or a configured failure) and records what it was asked. Covers the selection by
 ``classification_provenance = UNPROCESSED``, missing-only filling, invalid results, the stop
-after consecutive failures and after ``max_failures``, the read-only schema, the alias, ``max_records``, the check and the
-guarded test collection. Collections are named ``ClassifierToolTest*`` and deleted after
+after consecutive failures and after ``max_failures``, the read-only schema, the alias,
+``max_records``, the check and the guarded test collection. Collections are named ``ClassifierToolTest*`` and deleted after
 each test, as are aliases to them.
 """
 import sys
