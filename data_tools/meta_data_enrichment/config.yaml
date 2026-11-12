@@ -26,6 +26,7 @@ filters: # List of query filters that further narrow the UNPROCESSED chunks; nev
 batch_size: 32 # Number of records to fetch per batch
 max_records: # Maximum total records to process (None or 0 for unlimited)
 max_consecutive_failures: 10 # Stop after this many consecutive chunks failed (e.g. an unreachable model); they stay UNPROCESSED
+max_failures: 1000 # Stop after this many chunks failed in a run (they stay UNPROCESSED); bounds the failed ids excluded from every query and listed in the summary
 max_retries: 5 # Maximum number of retries for database updates in case of connection errors
 retry_delay: 10.0 # Delay in seconds between retries
 model: # Model configuration (local HF transformers, OpenAI-compatible API, or PyTorch Lightning)

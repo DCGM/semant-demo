@@ -9,7 +9,8 @@ it. Chunks without a ``classification_provenance`` value are never selected.
 
 The stored status is the state: there is no checkpoint. Every page is the first page of the
 remaining selection (classified chunks leave it, chunks that failed in this run are excluded),
-so no chunk is skipped by offset paging. The schema is only read: a missing collection, mapped
+so no chunk is skipped by offset paging and no query reaches Weaviate's
+``QUERY_MAXIMUM_RESULTS``. ``max_failures`` bounds the excluded ids. The schema is only read: a missing collection, mapped
 field or ``classification_provenance`` property refuses the run.
 """
 import time
@@ -138,6 +139,12 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
         user_default=10,
         validator=lambda v: isinstance(v, int) and v > 0
     )
+    max_failures: int = ConfigurableValue(
+        desc="Stop after this many chunks failed in a run (they stay UNPROCESSED); bounds the failed ids "
+             "excluded from every query and listed in the summary",
+        user_default=1000,
+        validator=lambda v: isinstance(v, int) and v > 0
+    )
 
     max_retries: int = ConfigurableValue(
         desc="Maximum number of retries for database updates in case of connection errors",
@@ -247,6 +254,9 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
                     consecutive += 1
                     if consecutive >= self.max_consecutive_failures:
                         result.stopped = f"{consecutive} consecutive chunks failed"
+                        return
+                    if len(result.failed) >= self.max_failures:
+                        result.stopped = f"max_failures ({self.max_failures}) reached"
                         return
         finally:
             pbar.close()
