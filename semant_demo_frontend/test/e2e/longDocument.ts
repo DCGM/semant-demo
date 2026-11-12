@@ -89,9 +89,20 @@ function scroller (panel: Locator) {
   })
 }
 
-/** The panel scroller's `scrollTop` in every frame from now until `stop()`. */
+/**
+ * The panel scroller's `scrollTop` in every frame from now until `stop()`. Starts once the
+ * scroll has stood still for a moment, so an earlier scroll or layout shift (an extension
+ * just shown) is not taken for the motion under test.
+ */
 export async function recordScroll (panel: Locator) {
   const handle = await scroller(panel)
+  let previous = -1
+  await expect.poll(async () => {
+    const top = await handle.evaluate((el: Element) => Math.round(el.scrollTop))
+    const still = top === previous
+    previous = top
+    return still
+  }, { intervals: [250], timeout: 10_000 }).toBe(true)
   await handle.evaluate((el: Element) => {
     const w = window as unknown as { scrollTrace: number[], tracing: boolean }
     w.scrollTrace = [Math.round(el.scrollTop)]
