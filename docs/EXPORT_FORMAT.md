@@ -1,8 +1,8 @@
 # Collection export format
 
 A signed-in user can export whole collections they can read (owner or member) from the
-Collections table: the export action of a row, or *Export selected* for the selected rows
-(#656). The export is
+Collections page: the export action of a tile or a table row, or *Export selected* for the
+selected table rows (#656). The export is
 every annotation of each collection with the text it refers to, for annotator agreement,
 backup, data analysis and datasets. It is one ZIP of JSON files. The current
 `format_version` is **1**.
