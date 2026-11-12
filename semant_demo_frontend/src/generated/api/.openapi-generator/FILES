@@ -39,6 +39,8 @@ docs/ChunkTagPair.md
 docs/ChunkTagSyncRequest.md
 docs/Collection.md
 docs/CollectionChunk.md
+docs/CollectionExportRequest.md
+docs/CollectionExportTicket.md
 docs/CollectionPerson.md
 docs/CollectionStats.md
 docs/ContextChatRequest.md
@@ -196,6 +198,8 @@ models/ChunkTagPair.ts
 models/ChunkTagSyncRequest.ts
 models/Collection.ts
 models/CollectionChunk.ts
+models/CollectionExportRequest.ts
+models/CollectionExportTicket.ts
 models/CollectionPerson.ts
 models/CollectionStats.ts
 models/ContextChatRequest.ts

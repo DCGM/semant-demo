@@ -108,6 +108,17 @@
         <span class="bulk-count">{{ selected.length }} selected</span>
         <q-btn
           flat dense no-caps
+          icon="download"
+          label="Export selected"
+          color="primary"
+          size="md"
+          :loading="exportRequesting"
+          @click="handleBulkExport"
+        >
+          <q-tooltip>All annotations with the text of their passages, as a ZIP of JSON files</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat dense no-caps
           icon="share"
           label="Share selected"
           color="primary"
@@ -144,6 +155,7 @@ import { computed, ref, watch } from 'vue'
 import type { QTable, QTableColumn } from 'quasar'
 import { Collection, UserSearchResult } from 'src/generated/api'
 import useShareCollectionsDialog from './useShareCollectionsDialog'
+import { useCollectionExport } from './useCollectionExport'
 import { collectionRights } from './permissions'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { plural } from 'src/shared/plural'
@@ -173,6 +185,7 @@ const emit = defineEmits<
 const confirmDelete = useConfirmDelete()
 const selected = ref<Collection[]>([])
 const { openShareCollectionsDialog } = useShareCollectionsDialog()
+const { exportCollections, requesting: exportRequesting } = useCollectionExport()
 
 const initialPagination = {
   sortBy: 'collectionName',
@@ -253,6 +266,11 @@ watch(() => tableRef.value?.filteredSortedRows as Collection[] | undefined, (row
 // Sharing and deleting are the owner's (ADR 0007).
 const isOwned = (collection: Collection) => collectionRights(collection).share
 const allSelectedOwned = computed(() => selected.value.every(isOwned))
+
+// Exporting needs only read access, so shared collections can be exported too (#656).
+const handleBulkExport = () => {
+  void exportCollections(selected.value.map((c) => c.id))
+}
 
 const handleBulkShare = () => {
   if (selected.value.length === 0 || !allSelectedOwned.value) return

@@ -90,6 +90,18 @@
             {{ activeCollectionLabel }}
             <q-tooltip v-if="activeCollectionLabel">{{ activeCollectionLabel }}</q-tooltip>
           </h1>
+          <q-btn
+            v-if="activeCollectionLabel && !isEditingName"
+            flat dense no-caps
+            icon="download"
+            label="Export"
+            color="primary"
+            class="collection-export-button"
+            :loading="exportRequesting"
+            @click="exportCollections([collectionId])"
+          >
+            <q-tooltip>All annotations with the text of their passages, as a ZIP of JSON files</q-tooltip>
+          </q-btn>
         </div>
       </div>
 
@@ -154,6 +166,7 @@ import useColorPicker from 'src/shared/useColorPicker'
 import { collectionRights } from './permissions'
 import BackLink from 'src/shared/ui/BackLink.vue'
 import { overlayOpen } from 'src/shared/overlays'
+import { useCollectionExport } from './useCollectionExport'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
@@ -178,6 +191,8 @@ const collectionId = computed(() => {
   const value = $route.params.collectionId
   return typeof value === 'string' ? value : ''
 })
+
+const { exportCollections, requesting: exportRequesting } = useCollectionExport()
 
 const activeCollectionLabel = computed(() =>
   activeCollection.value?.id === collectionId.value
@@ -296,6 +311,10 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.collection-export-button {
+  flex: none;
 }
 
 .collection-title-button {

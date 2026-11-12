@@ -36,6 +36,8 @@ export * from './ChunkTagPair';
 export * from './ChunkTagSyncRequest';
 export * from './Collection';
 export * from './CollectionChunk';
+export * from './CollectionExportRequest';
+export * from './CollectionExportTicket';
 export * from './CollectionPerson';
 export * from './CollectionStats';
 export * from './ContextChatRequest';

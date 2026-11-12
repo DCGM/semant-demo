@@ -13,6 +13,7 @@
 | **Question & RAG chat** | A question answered from the retrieved results, and multi-turn RAG chat with source citations (configurable pipelines, see [ARCHITECTURE](docs/ARCHITECTURE.md#rag-system)) |
 | **User collections** | Documents and chunks grouped into collections, shared with other users (shared users annotate, owners manage membership) |
 | **Annotations** | Tags and character-level spans (manual `pos`/`neg`, AI-suggested `auto` with reason and confidence) in a document view |
+| **Collection export** | Whole collections (every annotation with its provenance and attributes, and the text of the collection's passages) downloaded as a ZIP of JSON ([format](docs/EXPORT_FORMAT.md)) |
 | **AI assistance** | Streamed span suggestions from the external Topicer service and a streamed "discuss this span" chat |
 | **App feedback** | In-app feedback form, stored server-side |
 
@@ -135,6 +136,7 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema, SQL tables, data ingestion |
 | [docs/SEARCH_FILTERS.md](docs/SEARCH_FILTERS.md) | Configurable search filters |
 | [docs/MCP.md](docs/MCP.md) | Public read-only MCP endpoint for personal AI clients: tools, limits, setup and smoke tests |
+| [docs/EXPORT_FORMAT.md](docs/EXPORT_FORMAT.md) | Collection export: ZIP contents, annotation positions, consistency |
 | [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and adding page tools to it |
 | [docs/START_HERE.md](docs/START_HERE.md) | First steps, code navigation and testing without project data |
 | [docs/ISSUE_WORKFLOW.md](docs/ISSUE_WORKFLOW.md) | Draft and implementation-ready issues, consultation, PR handoff and review request |

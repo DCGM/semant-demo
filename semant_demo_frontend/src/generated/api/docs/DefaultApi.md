@@ -29,6 +29,7 @@ All URIs are relative to *http://localhost*
 | [**deleteTagApiTagsTagUuidDelete**](DefaultApi.md#deletetagapitagstaguuiddelete) | **DELETE** /api/tags/{tag_uuid} | Delete Tag |
 | [**deleteTagSpanApiTagSpansSpanIdDelete**](DefaultApi.md#deletetagspanapitagspansspaniddelete) | **DELETE** /api/tag_spans/{span_id} | Delete Tag Span |
 | [**discussSpanApiAiDiscussSpanPost**](DefaultApi.md#discussspanapiaidiscussspanpost) | **POST** /api/ai/discuss_span | Discuss Span |
+| [**downloadCollectionExportApiExportsCollectionsTokenGet**](DefaultApi.md#downloadcollectionexportapiexportscollectionstokenget) | **GET** /api/exports/collections/{token} | Download Collection Export |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#fetchcollectiondocumentapiusercollectionscollectioniddocumentsdocumentidget) | **GET** /api/user_collections/{collection_id}/documents/{document_id} | Fetch Collection Document |
@@ -68,6 +69,7 @@ All URIs are relative to *http://localhost*
 | [**readTagSpansBatchApiTagSpansBatchPost**](DefaultApi.md#readtagspansbatchapitagspansbatchpost) | **POST** /api/tag_spans/batch | Read Tag Spans Batch |
 | [**removeChunkFromCollectionApiUserCollectionsCollectionIdChunksChunkIdDelete**](DefaultApi.md#removechunkfromcollectionapiusercollectionscollectionidchunkschunkiddelete) | **DELETE** /api/user_collections/{collection_id}/chunks/{chunk_id} | Remove Chunk From Collection |
 | [**removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete**](DefaultApi.md#removedocumentfromcollectionapiusercollectionscollectioniddocumentsdocumentiddelete) | **DELETE** /api/user_collections/{collection_id}/documents/{document_id} | Remove Document From Collection |
+| [**requestCollectionExportApiExportsCollectionsPost**](DefaultApi.md#requestcollectionexportapiexportscollectionspost) | **POST** /api/exports/collections | Request Collection Export |
 | [**resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost**](DefaultApi.md#resolvecollectionannotationidsapiusercollectionscollectionidannotationsidspost) | **POST** /api/user_collections/{collection_id}/annotations/ids | Resolve Collection Annotation Ids |
 | [**restoreCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsRestorePost**](DefaultApi.md#restorecollectionannotationsapiusercollectionscollectionidannotationsrestorepost) | **POST** /api/user_collections/{collection_id}/annotations/restore | Restore Collection Annotations |
 | [**reviewCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsReviewPost**](DefaultApi.md#reviewcollectionannotationsapiusercollectionscollectionidannotationsreviewpost) | **POST** /api/user_collections/{collection_id}/annotations/review | Review Collection Annotations |
@@ -1961,6 +1963,74 @@ example().catch(console.error);
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## downloadCollectionExportApiExportsCollectionsTokenGet
+
+> downloadCollectionExportApiExportsCollectionsTokenGet(token)
+
+Download Collection Export
+
+Downloads the export a ticket from &#x60;&#x60;POST /api/exports/collections&#x60;&#x60; names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable, 409 while another export of the user is running.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DownloadCollectionExportApiExportsCollectionsTokenGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  const body = {
+    // string
+    token: token_example,
+  } satisfies DownloadCollectionExportApiExportsCollectionsTokenGetRequest;
+
+  try {
+    const data = await api.downloadCollectionExportApiExportsCollectionsTokenGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **token** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/zip`, `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | The export as a ZIP of JSON files. |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -4765,6 +4835,78 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## requestCollectionExportApiExportsCollectionsPost
+
+> CollectionExportTicket requestCollectionExportApiExportsCollectionsPost(collectionExportRequest)
+
+Request Collection Export
+
+Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for &#x60;&#x60;expires_in&#x60;&#x60; seconds. 409 while another export of the user is running.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { RequestCollectionExportApiExportsCollectionsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // CollectionExportRequest
+    collectionExportRequest: ...,
+  } satisfies RequestCollectionExportApiExportsCollectionsPostRequest;
+
+  try {
+    const data = await api.requestCollectionExportApiExportsCollectionsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionExportRequest** | [CollectionExportRequest](CollectionExportRequest.md) |  | |
+
+### Return type
+
+[**CollectionExportTicket**](CollectionExportTicket.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
 - **Accept**: `application/json`
 
 

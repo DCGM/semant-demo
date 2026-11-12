@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 import { apiToken, ensureLoggedIn, fixture } from './support'
 
 // The collections page (#479): which collections are shown, the tile size and the table's
@@ -261,4 +262,22 @@ test('collections table sorts Created and Updated chronologically', async ({ pag
       expect(result.status, `Failed to delete collection ${result.id}`).toBe(204)
     }
   }
+})
+
+test('a shared collection can be exported from the table as a ZIP', async ({ page }) => {
+  // #656: read access suffices; the browser downloads the ZIP the backend streams.
+  await ensureLoggedIn(page, 'annotator')
+  await openCollections(page)
+  await page.getByRole('button', { name: 'Table' }).click()
+  const row = page.locator('tr').filter({ hasText: fixture.collection('chronicles').name })
+  await row.getByRole('checkbox').click()
+  await expect(page.locator('.bulk-count')).toHaveText('1 selected')
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export selected' }).click()
+  const file = await download
+  expect(file.suggestedFilename()).toMatch(/^semant-export-\d{4}-\d{2}-\d{2}\.zip$/)
+  const zip = readFileSync((await file.path())!)
+  expect(zip.subarray(0, 2).toString()).toBe('PK')
+  expect(zip.includes('manifest.json')).toBe(true)
 })

@@ -141,6 +141,8 @@ _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "e
         "documentStartWord", "documentEndWord"]
 
 
+_STORED = [*_PROPERTIES, "documentId", "revision"]
+"""What the collection export reads of a span besides provenance and attributes (no derived text)."""
 _PROVENANCE = [p.name for p in PROVENANCE_PROPERTIES]
 _ATTRIBUTES = [p.name for p in ATTRIBUTE_PROPERTIES]
 _ROW_FIELDS = {*_ROW, *_PROVENANCE, *_ATTRIBUTES}
@@ -636,6 +638,19 @@ class SpanRepository:
             return
         async for obj in self._tenant(collection_id).iterator(return_properties=self._row_properties()):
             yield to_row(obj)
+
+    async def iterate_stored(self, collection_id: UUID):
+        """Every span of the collection as stored, for the collection export (#656): its id
+        (``id``) and the stored properties that are not derived from text (position, tag,
+        type, AI reason and confidence, ``revision``, provenance and attribute values when the
+        collection holds them). Cursor order, no 10k limit; nothing when the collection has no
+        tenant."""
+        if not await self.tenant_exists(collection_id):
+            return
+        properties = [*_STORED, *(_PROVENANCE if self.provenance else []),
+                      *(_ATTRIBUTES if self.attributes else [])]
+        async for obj in self._tenant(collection_id).iterator(return_properties=properties):
+            yield {"id": UUID(str(obj.uuid)), **obj.properties}
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],
                                span_type: SpanType) -> dict[UUID, set[ChunkTag]]:
