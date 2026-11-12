@@ -269,11 +269,9 @@ test('a shared collection can be exported from the table as a ZIP', async ({ pag
   await openCollections(page)
   await page.getByRole('button', { name: 'Table' }).click()
   const row = page.locator('tr').filter({ hasText: fixture.collection('chronicles').name })
-  await row.getByRole('checkbox').click()
-  await expect(page.locator('.bulk-count')).toHaveText('1 selected')
 
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Export selected' }).click()
+  await row.getByRole('button', { name: 'Export collection' }).click()
   const file = await download
   expect(file.suggestedFilename()).toMatch(/^semant-export-\d{4}-\d{2}-\d{2}\.zip$/)
   expect(await file.failure()).toBeNull() // the whole stream arrived (contents: backend integration tests)
