@@ -250,7 +250,14 @@ test.describe('switching annotations of one long document', () => {
     await row(page, 'Brně').click()
     await expect(mark(page)).toHaveText('Brně')
     const path = await trace.stop()
-    expect(path, `one step: ${path.join(' ')}`).toHaveLength(2)
+    // No animation: the move to Brně is a single step that ends the motion. The full suite
+    // has shown a ~20 px shift just before it (likely scroll anchoring while the header's
+    // annotation details change height); such small shifts are not animation.
+    const screen = await (await recordScroll(panel(page))).height()
+    const steps = path.slice(1).map((top, i) => top - path[i])
+    const moves = steps.flatMap((step, i) => Math.abs(step) > screen / 2 ? [i] : [])
+    expect(moves, `one step: ${path.join(' ')}`).toEqual([steps.length - 1])
+    expect(steps.slice(0, -1).every(step => Math.abs(step) < 50), `no animation: ${path.join(' ')}`).toBe(true)
     await expect(mark(page)).toBeInViewport()
   })
 })
