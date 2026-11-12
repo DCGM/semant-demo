@@ -64,6 +64,8 @@ class _ExportResponse(StreamingResponse):
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         response = asyncio.ensure_future(super().__call__(scope, receive, send))
         self._run.cancel = response.cancel
+        if self._run.ended:  # a newer export ended it while its access was being checked
+            response.cancel()
         try:
             await response
         except asyncio.CancelledError:

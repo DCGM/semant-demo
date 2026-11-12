@@ -114,7 +114,9 @@ for entry in json.loads(archive.read("manifest.json"))["collections"]:
 
 The browser downloads the file through a one-time link that is valid for 60 seconds, so the
 download goes straight to disk. A user has one running export: starting another one ends the
-earlier download, which the browser then shows as failed.
+earlier download, which the browser then shows as failed. If the link fails (it expired, or
+access was removed in between), no download starts and the app cannot tell; start the export
+again.
 
 ## Consistency
 
