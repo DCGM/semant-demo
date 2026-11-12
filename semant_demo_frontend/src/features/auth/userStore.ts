@@ -75,8 +75,11 @@ export const useUserStore = defineStore('user', {
     logout (): Promise<void> {
       const token = this.token
       const verified = !!this.user
-      forgetStoredConversations(this.user?.id ?? (token ? tokenSubject(token) : null))
+      const userId = this.user?.id ?? (token ? tokenSubject(token) : null)
+      // The session ends first, so another tab hears of the sign-out before the chats go and
+      // cannot save one again under this user in between.
       this.forgetSession()
+      forgetStoredConversations(userId)
       if (!token || !verified) return Promise.resolve()
       return useApi().auth.authJwtLogoutApiAuthJwtLogoutPost({ headers: { Authorization: `Bearer ${token}` } })
         .then(() => undefined)
