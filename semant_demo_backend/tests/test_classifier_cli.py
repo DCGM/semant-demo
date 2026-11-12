@@ -25,7 +25,7 @@ CONFIG = {
     "weaviate_api_key": None, "weaviate_headers": None, "collection": "Chunks",
     "provenance": "test-model-v1", "field_tasks": {"complexity": "complexity", "style": "style"},
     "filters": [], "batch_size": 4, "max_records": None, "max_consecutive_failures": 3,
-    "max_retries": 0, "retry_delay": 0.0,
+    "max_failures": 20, "max_retries": 0, "retry_delay": 0.0,
     "model": {"cls": "LocalHFClassifierModel", "config": {
         "model_path": "converted_model/", "device": "cpu", "input_prompt": "{{ text }}", "threshold": 0.5}},
 }
@@ -148,6 +148,16 @@ def test_the_read_only_check_needs_no_endpoint(monkeypatch, config, started, con
 def test_a_config_without_a_valid_provenance_is_refused(monkeypatch, tmp_path, started, provenance):
     path = tmp_path / "classifier.yaml"
     path.write_text(yaml.safe_dump({**CONFIG, "provenance": provenance}))
+
+    assert run_cli(monkeypatch, str(path), "--confirm-endpoint", "weaviate.example:18080") == 2
+    assert started == []
+
+
+@pytest.mark.parametrize("setting", ["max_failures", "max_consecutive_failures"])
+@pytest.mark.parametrize("value", [0, -1, None])
+def test_a_config_with_a_non_positive_failure_limit_is_refused(monkeypatch, tmp_path, started, setting, value):
+    path = tmp_path / "classifier.yaml"
+    path.write_text(yaml.safe_dump({**CONFIG, setting: value}))
 
     assert run_cli(monkeypatch, str(path), "--confirm-endpoint", "weaviate.example:18080") == 2
     assert started == []

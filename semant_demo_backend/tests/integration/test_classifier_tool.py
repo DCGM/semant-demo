@@ -3,7 +3,7 @@
 The real pipeline runs with a fake model: it answers each task with a label chosen per record
 (or a configured failure) and records what it was asked. Covers the selection by
 ``classification_provenance = UNPROCESSED``, missing-only filling, invalid results, the stop
-after consecutive failures, the read-only schema, the alias, ``max_records``, the check and the
+after consecutive failures and after ``max_failures``, the read-only schema, the alias, ``max_records``, the check and the
 guarded test collection. Collections are named ``ClassifierToolTest*`` and deleted after
 each test, as are aliases to them.
 """
@@ -107,7 +107,7 @@ def make_pipeline(tmp_path, store_endpoint):
             "weaviate_grpc_port": store_endpoint.grpc_port, "weaviate_api_key": None, "weaviate_headers": None,
             "collection": TEST_COLLECTION, "provenance": PROVENANCE_ID, "field_tasks": FIELD_TASKS,
             "filters": [], "batch_size": 3, "max_records": None, "max_consecutive_failures": 5,
-            "max_retries": 0, "retry_delay": 0.0,
+            "max_failures": 100, "max_retries": 0, "retry_delay": 0.0,
             "model": {"cls": "LocalHFClassifierModel", "config": {
                 "model_path": "unused/", "device": "cpu", "input_prompt": "{{ text }}", "threshold": 0.5}},
             **settings,
@@ -214,6 +214,23 @@ def test_a_run_stops_after_consecutive_failures(client, make_pipeline):
     assert (result.classified, result.remaining, result.exit_code()) == (0, 10, 1)
     assert len(model.asked) <= 6  # the page that hit the limit, at most
     assert all(p[PROVENANCE] == UNPROCESSED for p in stored(client).values())
+
+
+def test_a_run_stops_after_max_failures_in_total(client, make_pipeline):
+    texts = [f"chunk {i:02}" for i in range(12)]
+    failing = {t: None for t in texts[::2]}  # 6 failures; the store's order decides how they interleave
+    ids = create_collection(client, unprocessed(*texts))
+    model = FakeModel(failures=failing)
+
+    result = make_pipeline(model, max_consecutive_failures=100, max_failures=3).run()
+
+    assert result.stopped == "max_failures (3) reached" and len(result.failed) == 3
+    assert set(result.failed) <= {ids[t] for t in failing}
+    assert result.remaining == 12 - result.classified and result.exit_code() == 1
+    assert len(model.asked) < 12  # stopped before the selection was exhausted
+    after = stored(client)
+    assert {t for t, p in after.items() if p[PROVENANCE] == PROVENANCE_ID} <= set(texts) - set(failing)
+    assert all(after[t][PROVENANCE] == UNPROCESSED for t in failing)
 
 
 def test_max_records_bounds_a_run(client, make_pipeline):

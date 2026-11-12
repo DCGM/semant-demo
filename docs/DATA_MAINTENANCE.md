@@ -621,7 +621,9 @@ python run.py config.yaml --confirm-endpoint HOST:PORT            # classify
   endpoint, an invalid configuration, a missing collection, a missing or non-`text[]` mapped
   field, a missing or differently declared `classification_provenance` (the schema is never
   changed), a filter on a written field, a mapped task the model has no classes for.
-- **Stop:** after `max_consecutive_failures` failed chunks in a row (e.g. an unreachable model).
+- **Stop:** after `max_consecutive_failures` failed chunks in a row (e.g. an unreachable model)
+  or `max_failures` failed chunks in the run (default 1000; their ids are excluded from every
+  query). Reading has no offset, so `QUERY_MAXIMUM_RESULTS` does not limit a run.
 - Exit code 0 when nothing selected is left `UNPROCESSED`, 1 when chunks remain, 2 when refused.
 - The model runs where the config says (a local GPU model or an OpenAI-compatible endpoint):
   a run on a shared store, and the choice of the model, are authorized per task.
