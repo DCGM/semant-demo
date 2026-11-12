@@ -89,6 +89,8 @@ test('the conversation is kept in the browser: back after a reload, forgotten by
   await sidebarPanelButton(page, 'AI Chat').click()
   await ask(page, 'O čem je dokument?')
   await expect(answers(page)).toHaveText('Fake summary of 2 passage(s); last [S1].')
+  // Saved once the answer's stream has ended, a moment after its text shows.
+  await expect.poll(storedChats).toBe(1)
 
   await page.reload()
   await sidebarPanelButton(page, 'AI Chat').click()
@@ -110,7 +112,7 @@ test('the conversation is kept in the browser: back after a reload, forgotten by
 
   await ask(page, 'O čem je dokument?')
   await expect(answers(page)).toHaveCount(1)
-  expect(await storedChats()).toBe(1)
+  await expect.poll(storedChats).toBe(1)
   await logOut(page)
   expect(await storedChats()).toBe(0)
 
