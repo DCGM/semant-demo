@@ -76,6 +76,9 @@ class RunningExport:
     def __init__(self, user_id: UUID):
         self.user_id = user_id
         self.cancel: Callable[[], None] | None = None
+        self.ended = False
+        """Ended by a newer export, possibly before its response started (``cancel`` not set yet):
+        the response then stops as soon as it starts."""
 
 
 class ExportRegistry:
@@ -94,8 +97,11 @@ class ExportRegistry:
 
     def _end_running(self, user_id: UUID) -> None:
         run = self._running.pop(user_id, None)
-        if run is not None and run.cancel is not None:
-            logger.info("Ending a running collection export: the user started another one")
+        if run is None:
+            return
+        logger.info("Ending a running collection export: the user started another one")
+        run.ended = True
+        if run.cancel is not None:
             run.cancel()
 
     def issue(self, user_id: UUID, collection_ids: list[UUID]) -> str:
@@ -234,16 +240,25 @@ async def _zip(sources: ExportSources, user_id: UUID, collections: list[Collecti
     for collection, name in zip(collections, _file_names(collections)):
         summary = _Summary(collection, name)
         summaries.append(summary)
-        with archive.open(name, "w", force_zip64=True) as entry:
-            async for fragment in _collection_json(sources, summary):
-                await _write(entry, fragment.encode("utf-8"))
-                if data := sink.take():
-                    yield data
+        with archive.open(_entry(name, started), "w", force_zip64=True) as entry:
+            async with contextlib.aclosing(_collection_json(sources, summary)) as fragments:
+                async for fragment in fragments:
+                    await _write(entry, fragment.encode("utf-8"))
+                    if data := sink.take():
+                        yield data
         if data := sink.take():
             yield data
-    archive.writestr("manifest.json", _json(await _manifest(sources, user_id, summaries, started), indent=2))
+    archive.writestr(_entry("manifest.json", started),
+                     _json(await _manifest(sources, user_id, summaries, started), indent=2))
     archive.close()
     yield sink.take()
+
+
+def _entry(name: str, started: datetime) -> zipfile.ZipInfo:
+    """A ZIP entry dated at the export's start (``zipfile`` would date a bare name 1980)."""
+    info = zipfile.ZipInfo(name, date_time=started.timetuple()[:6])
+    info.compress_type = zipfile.ZIP_DEFLATED
+    return info
 
 
 async def _write(entry, data: bytes) -> None:
@@ -320,8 +335,9 @@ async def _collection_json(sources: ExportSources, summary: _Summary) -> AsyncIt
     anchors: dict[UUID, tuple[UUID | None, int]] = {}
     yield ',"annotations":['
     batch: list[str] = []
-    async with store.activity.in_use(collection_id):
-        async for stored in store.spans.iterate_stored(collection_id):
+    async with store.activity.in_use(collection_id), \
+            contextlib.aclosing(store.spans.iterate_stored(collection_id, revision=store.enrichment.derived)) as spans:
+        async for stored in spans:
             record = _annotation(stored)
             summary.people.update(_uuid(record[k]) for k in ("created_by", "reviewed_by", "last_edited_by")
                                   if record[k] is not None)
@@ -339,11 +355,12 @@ async def _collection_json(sources: ExportSources, summary: _Summary) -> AsyncIt
         summary.annotations += len(batch)
 
     yield '],"chunks":['
-    async for chunks in _chunks(sources, collection_id, anchors, summary):
-        for start in range(0, len(chunks), _BATCH):
-            part = chunks[start:start + _BATCH]
-            yield ("," if summary.chunks else "") + ",".join(_json(c) for c in part)
-            summary.chunks += len(part)
+    async with contextlib.aclosing(_chunks(sources, collection_id, anchors, summary)) as documents:
+        async for chunks in documents:
+            for start in range(0, len(chunks), _BATCH):
+                part = chunks[start:start + _BATCH]
+                yield ("," if summary.chunks else "") + ",".join(_json(c) for c in part)
+                summary.chunks += len(part)
 
     yield '],"people":' + _json(await _people(sources, collection_id, summary.people)) + "}"
 
@@ -358,12 +375,13 @@ async def _chunks(sources: ExportSources, collection_id: UUID, anchors: dict[UUI
     guessed."""
     store = sources.store
     source = ChunkSource(store.documents)
-    # Anchors stored before spans named their document: read them now (by id, in batches).
-    undocumented = await store.documents.read_chunk_texts(
+    # Anchors of spans stored before spans named their document: only their documents now (by id,
+    # in batches); their texts are read with the rest of their document's chunks.
+    undocumented = await store.documents.read_chunk_documents(
         [chunk_id for chunk_id, (document_id, _) in anchors.items() if document_id is None])
     by_document: dict[UUID, dict[UUID, int]] = {}
     for chunk_id, (document_id, end) in anchors.items():
-        document_id = document_id or (undocumented[chunk_id].document_id if chunk_id in undocumented else None)
+        document_id = document_id or undocumented.get(chunk_id)
         if document_id is None:
             summary.missing_chunks += 1
             continue
@@ -376,9 +394,8 @@ async def _chunks(sources: ExportSources, collection_id: UUID, anchors: dict[UUI
                    if document_id in linked else [])
         out: dict[UUID, tuple[AnnotationChunk, bool]] = {c.id: (c, True) for c in members}
         ends = by_document.get(document_id, {})
-        outside = [i for i in ends if i not in out and i not in undocumented]
-        known = {**{i: c for i, c in undocumented.items() if i in ends},
-                 **(await store.documents.read_chunk_texts(outside) if outside else {})}
+        outside = [i for i in ends if i not in out]
+        known = await store.documents.read_chunk_texts(outside) if outside else {}
         for chunk_id, end in ends.items():
             if chunk_id in out:
                 anchor = out[chunk_id][0]
