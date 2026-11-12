@@ -51,6 +51,8 @@ async def test_export_holds_every_annotation_and_the_text_to_cut_it(api_client, 
     archive = await _export(api_client, owner, [chronicles, ids.col["newspapers"]])
 
     manifest = json.loads(archive.read("manifest.json"))
+    # Every entry is dated at the export (zipfile would date a bare name 1980).
+    assert {info.date_time[0] for info in archive.infolist()} == {int(manifest["exported_at"][:4])}
     assert manifest["format_version"] == 1
     assert manifest["exported_by"]["id"] == ids.user["owner"]
     assert [c["id"] for c in manifest["collections"]] == [chronicles, ids.col["newspapers"]]

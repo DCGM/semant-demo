@@ -22,9 +22,9 @@ export function useCollectionExport () {
       Notify.create({
         type: 'info',
         position: 'top',
-        message: collectionIds.length === 1
-          ? 'Export started. Your browser downloads the file.'
-          : `Export of ${collectionIds.length} collections started. Your browser downloads the file.`
+        // A failed download answer loads in a hidden frame (startDownload) and cannot be shown.
+        message: `${collectionIds.length === 1 ? 'Export' : `Export of ${collectionIds.length} collections`} ` +
+          'started. If no download starts within a few seconds, start the export again.'
       })
       return true
     } catch (err) {

@@ -1,5 +1,6 @@
 """Collection export tickets and the one running export per user (#656)."""
 import asyncio
+import inspect
 from uuid import uuid4
 
 import pytest
@@ -156,3 +157,28 @@ async def test_a_cancelled_export_waits_for_the_write_in_progress():
     with pytest.raises(asyncio.CancelledError):
         await task
     assert written == [b"data"]
+
+
+async def test_an_export_ended_before_its_response_started_does_not_run():
+    # A newer export can end one whose access is still being checked (no cancel handle yet).
+    from semant_demo.features.exports.routes import _ExportResponse
+    registry, user, sent, closed = ExportRegistry(), uuid4(), [], []
+    run = _run(registry, user)
+    registry.issue(user, [uuid4()])
+    assert run.ended and not registry.running(user)
+
+    async def stream():
+        try:
+            yield b"PK"
+        finally:
+            closed.append(True)
+
+    async def send(message):
+        sent.append(message["type"])
+
+    zipped = stream()
+    response = _ExportResponse(zipped, "x.zip", run, registry.release)
+    await asyncio.wait_for(response(_SCOPE, _receive, send), 1)
+    # Nothing was sent and the stream never started (closed unstarted, so its finally never ran).
+    assert "http.response.body" not in sent and closed == []
+    assert inspect.getasyncgenstate(zipped) == inspect.AGEN_CLOSED

@@ -141,8 +141,9 @@ _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "e
         "documentStartWord", "documentEndWord"]
 
 
-_STORED = [*_PROPERTIES, "documentId", "revision"]
-"""What the collection export reads of a span besides provenance and attributes (no derived text)."""
+_STORED = [*_PROPERTIES, "documentId"]
+"""What the collection export reads of a span besides ``revision``, provenance and attributes (no
+derived text)."""
 _PROVENANCE = [p.name for p in PROVENANCE_PROPERTIES]
 _ATTRIBUTES = [p.name for p in ATTRIBUTE_PROPERTIES]
 _ROW_FIELDS = {*_ROW, *_PROVENANCE, *_ATTRIBUTES}
@@ -646,13 +647,15 @@ class SpanRepository:
         async for obj in self._iterate(collection_id, self._row_properties()):
             yield to_row(obj)
 
-    async def iterate_stored(self, collection_id: UUID):
+    async def iterate_stored(self, collection_id: UUID, revision: bool = True):
         """Every span of the collection as stored, for the collection export (#656): its id
         (``id``) and the stored properties that are not derived from text (position, tag,
         type, AI reason and confidence, ``revision``, provenance and attribute values when the
         collection holds them). Cursor order, no 10k limit; nothing when the collection has no
-        tenant."""
-        async for obj in self._iterate(collection_id, self._row_properties(_STORED)):
+        tenant. ``revision`` only when asked: a store without the derived properties
+        of #328 has none, and Weaviate refuses to return an undeclared property."""
+        base = [*_STORED, "revision"] if revision else _STORED
+        async for obj in self._iterate(collection_id, self._row_properties(base)):
             yield {"id": UUID(str(obj.uuid)), **obj.properties}
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],

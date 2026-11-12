@@ -168,6 +168,20 @@ class DocumentRepository:
             chunks.update({o.uuid: _to_chunk_text(o) for o in response.objects})
         return chunks
 
+    async def read_chunk_documents(self, chunk_ids: list[UUID]) -> dict[UUID, UUID]:
+        """The document of each existing chunk among ``chunk_ids`` (no text), in batches of
+        ``ID_BATCH``."""
+        documents: dict[UUID, UUID] = {}
+        ids = list(dict.fromkeys(chunk_ids))
+        for first in range(0, len(ids), ID_BATCH):
+            batch = ids[first:first + ID_BATCH]
+            response = await self._chunks().query.fetch_objects(
+                filters=Filter.by_id().contains_any(batch), limit=len(batch), return_properties=[],
+                return_references=[QueryReference(link_on="document", return_properties=[])])
+            documents.update({o.uuid: document_id for o in response.objects
+                              if (document_id := _document_id(o)) is not None})
+        return documents
+
     async def _read_orders(self, document_id: UUID, first: int, last: int, **query) -> list:
         """The document's chunk objects with ``first <= order <= last``, sorted by order;
         several chunks with one order are all returned.
