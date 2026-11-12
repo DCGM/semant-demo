@@ -25,7 +25,7 @@ semant-export-<YYYY-MM-DD>.zip
   "exported_by": {"id": "…", "name": "Olga Owner", "username": "owner"},
   "collections": [
     {"id": "…", "name": "Kroniky a dopisy", "file": "kroniky-a-dopisy-5e3a0000.json",
-     "annotations": 6, "chunks": 4, "missing_chunks": 0}
+     "annotations": 6, "chunks": 4, "missing_chunks": 0, "broken_continuations": 0}
   ],
   "notes": "…"
 }
@@ -33,8 +33,12 @@ semant-export-<YYYY-MM-DD>.zip
 
 - `exported_at` is when the export started.
 - The counts equal the lengths of the collection file's `annotations` and `chunks` arrays.
-- `missing_chunks` counts chunks that annotations name but that no longer exist. Those
+- `missing_chunks` counts chunks that annotations start on but that no longer exist. Those
   annotations cannot be cut from the file.
+- `broken_continuations` counts chunks with an annotation whose end lies past a gap in the
+  document's chunk orders, a duplicate order or the document's end. Such an annotation can be
+  cut only up to there; the application refuses to create such a span, so this marks data
+  that breaks the text model.
 - The manifest is written last. A download that stops part way is an invalid ZIP, never a
   plausible partial dataset.
 
@@ -106,9 +110,22 @@ for entry in json.loads(archive.read("manifest.json"))["collections"]:
         print(annotation["type"], cut(annotation, data["chunks"]))
 ```
 
+## Starting an export
+
+The browser downloads the file through a one-time link that is valid for 60 seconds, so the
+download goes straight to disk. A user has one running export: starting another one ends the
+earlier download, which the browser then shows as failed.
+
 ## Consistency
 
 The export is not a snapshot. It reads the collection while others may edit it, so an
 annotation changed during the export may appear in either state. An annotation created
 during the export may be missing, and one deleted may still be listed. For a consistent
 dataset, export when nobody is annotating.
+
+The collection's chunks are found through its documents (a document is linked to the
+collection when one of its chunks is added). A chunk linked to the collection whose document
+link failed to be written is not listed as a member; it appears only if an annotation needs it,
+with `in_collection: false`. A collection with more than 10,000 documents, or a document with
+more than 10,000 chunks in the collection, ends the download unfinished (an invalid ZIP)
+instead of being cut short.
