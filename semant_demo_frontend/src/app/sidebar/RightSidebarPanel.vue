@@ -8,13 +8,13 @@
       :class="{ 'sidebar-panel--fill': fill }"
       :data-sidebar-panel="id"
     >
-      <slot />
+      <slot :visible="visible" />
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, toRef } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, toRef } from 'vue'
 import { useRightSidebarStore } from './rightSidebarStore'
 
 /**
@@ -29,6 +29,10 @@ import { useRightSidebarStore } from './rightSidebarStore'
  * On a page kept alive while another one is shown (MainLayout, #545), the panel is removed
  * while the page is hidden and added again, as the active one if it was, when it returns.
  * Its content is rendered anew then: a tool's state belongs to its page's composables.
+ *
+ * The slot gets `visible`: whether the content can be seen now (the page is shown, this is
+ * the active panel and the sidebar is open, not a rail), for a tool that must wait with
+ * layout work such as scrolling until it is (ChunkContextPanel, #493).
  */
 const props = withDefaults(defineProps<{
   id: string
@@ -44,6 +48,8 @@ let unregister: (() => void) | null = null
 /** False while the page is kept alive but hidden. */
 const shown = ref(true)
 let wasActive = false
+const visible = computed(() => shown.value && sidebar.activePanelId === props.id &&
+  sidebar.hasPanels && sidebar.open && !sidebar.miniState)
 
 function add () {
   if (unregister) return
