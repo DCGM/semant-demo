@@ -12,6 +12,10 @@ MAX_PASSAGES_LIMIT = MAX_QUERY_RESULTS - 1
 """Largest SEARCH_PASSAGES_LIMIT: a passage search ranks one more than the limit, to tell whether
 the limit cut the ranking (``search_passages``), so that query stays within MAX_QUERY_RESULTS."""
 
+
+def _list(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
 class Config:
     """Application settings.
 
@@ -71,6 +75,18 @@ class Config:
         for name in ("SEARCH_DOCUMENTS_METADATA_LIMIT", "SEARCH_DOCUMENTS_CHUNK_LIMIT"):
             if not 1 <= getattr(self, name) <= MAX_PASSAGES_LIMIT:
                 raise ValueError(f"{name} must be from 1 to {MAX_PASSAGES_LIMIT}.")
+
+        # Public read-only MCP endpoint at /mcp (#635, docs/MCP.md); off unless enabled.
+        self.MCP_ENABLED = env.get("MCP_ENABLED", str(False)).lower() in TRUE_VALUES
+        # Host and Origin header values the endpoint accepts besides the loopback ones and
+        # ALLOWED_ORIGIN (and its host): comma-separated, ``host:*`` / ``scheme://host:*`` for any port.
+        self.MCP_ALLOWED_HOSTS = _list(env.get("MCP_ALLOWED_HOSTS", ""))
+        self.MCP_ALLOWED_ORIGINS = _list(env.get("MCP_ALLOWED_ORIGINS", ""))
+        # Seconds one tool call may take, and the most search tool calls running at once.
+        self.MCP_TOOL_TIMEOUT_SECONDS = float(env.get("MCP_TOOL_TIMEOUT_SECONDS", 30.0))
+        self.MCP_MAX_CONCURRENT_SEARCHES = int(env.get("MCP_MAX_CONCURRENT_SEARCHES", 4))
+        if self.MCP_TOOL_TIMEOUT_SECONDS <= 0 or self.MCP_MAX_CONCURRENT_SEARCHES < 1:
+            raise ValueError("MCP_TOOL_TIMEOUT_SECONDS must be positive and MCP_MAX_CONCURRENT_SEARCHES at least 1.")
 
         self.GOOGLE_API_KEY = env.get("GOOGLE_API_KEY", "")
 

@@ -2,18 +2,23 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 import { aiErrorMessage, createContextGuard, isAbortError, postNdjson, reportAiOperation } from 'src/shared/api'
 import { tokenizeCitations, type TextToken } from 'src/shared/citationTokens'
 import { ContextChatRequestToJSON, SearchChatRequestToJSON, type ChatTurn, type SearchCriteria } from 'src/generated/api'
+import { forgetConversation, loadConversation, saveConversation } from './chatStorage'
 
 /**
  * Contextual chat in the right sidebar (ADR 0012). One composable for every scope; the
  * page owns the scope and passes it in: a document of a collection (#248) or search
  * results (#245).
  *
- * The conversation lives in memory only. A scope change stops a running answer. With
+ * The conversation lives in memory, and with `storageKey` also in this browser
+ * (`chatStorage.ts`; document chat, ADR 0012 decision 1): each finished answer saves it, and
+ * the scope's saved conversation comes back when the chat starts empty on that scope.
+ * A scope change stops a running answer. With
  * `keepOnScopeChange` (Search, ADR 0012 decision 1) the conversation stays with `scopeChanged`
  * set, so the panel can say what the next question is about, and that question starts an
  * empty conversation. Without it (another document is another page) the conversation starts
- * empty at once, as on unmount and *New conversation*. A late event of an old request never
- * reaches a newer conversation.
+ * empty at once (or with that scope's saved conversation), as on unmount. *New conversation*
+ * also forgets the saved one. A late event of an old request never reaches a newer
+ * conversation.
  *
  * Each answer is streamed as NDJSON events (`delta`, `sources`, `end` or `error`, see
  * `features/chat/schemas.py`). Its `[docN]` citations are numbered per request; the
@@ -207,12 +212,17 @@ export function historyTurns (messages: ChatMessage[]): ChatTurn[] {
   return turns.slice(-MAX_HISTORY_TURNS)
 }
 
-export interface ScopedChatOptions {
+export interface ScopedChatOptions<S extends ChatScope = ChatScope> {
   /** Keep the conversation, marked `scopeChanged`, until the next question after a scope change. */
   keepOnScopeChange?: boolean
+  /**
+   * Where the scope's conversation is kept in this browser (`chatStorage.ts`), or null to
+   * keep it in memory only (also when nobody is signed in).
+   */
+  storageKey?: (scope: S) => string | null
 }
 
-export function useScopedChat<S extends ChatScope> (scope: () => S | null, options: ScopedChatOptions = {}) {
+export function useScopedChat<S extends ChatScope> (scope: () => S | null, options: ScopedChatOptions<S> = {}) {
   const messages = ref<ChatMessage[]>([])
   const streaming = ref(false)
   /** The scope changed since the shown conversation; the next question starts a new one. */
@@ -227,8 +237,14 @@ export function useScopedChat<S extends ChatScope> (scope: () => S | null, optio
     streaming.value = false
   }
 
-  /** Stops a running answer and starts an empty conversation. */
-  function reset () {
+  /** Where the current scope's conversation is kept, if anywhere. */
+  function currentStorageKey (): string | null {
+    const current = scope()
+    return current && options.storageKey ? options.storageKey(current) : null
+  }
+
+  /** Stops a running answer and starts an empty conversation; a saved one stays saved. */
+  function clear () {
     stopRequest()
     conversation.enter()
     messages.value = []
@@ -236,10 +252,28 @@ export function useScopedChat<S extends ChatScope> (scope: () => S | null, optio
     scopeChanged.value = false
   }
 
+  /** The saved conversation of the current scope, when the shown one is empty. */
+  function restore () {
+    const key = currentStorageKey()
+    if (!key || messages.value.length) return
+    const saved = loadConversation(key)
+    if (!saved) return
+    messages.value = saved
+    labels = new Map(saved.flatMap(message => message.sources.map(source => [source.chunkId, source.label] as const)))
+  }
+
+  /** *New conversation*: starts an empty conversation and forgets the saved one. */
+  function reset () {
+    clear()
+    const key = currentStorageKey()
+    if (key) forgetConversation(key)
+  }
+
   /** ADR 0012 decision 1: with `keepOnScopeChange` the old conversation stays visible until the next question. */
   function changeScope () {
     if (!options.keepOnScopeChange || !messages.value.length) {
-      reset()
+      clear()
+      restore()
       return
     }
     stop()
@@ -272,13 +306,14 @@ export function useScopedChat<S extends ChatScope> (scope: () => S | null, optio
     const prompt = text.trim()
     const current = scope()
     if (!prompt || !current || streaming.value) return
-    if (scopeChanged.value) reset()
+    if (scopeChanged.value) clear()
 
     const history = historyTurns(messages.value)
     messages.value.push({ role: 'user', text: prompt, sources: [], status: 'done' })
     messages.value.push({ role: 'assistant', text: '', sources: [], status: 'streaming' })
     // The reactive proxy, so the stream's changes render.
     const reply = messages.value[messages.value.length - 1]
+    const storageKey = options.storageKey?.(current) ?? null
     const isCurrent = conversation.capture()
     const controller = new AbortController()
     abort = controller
@@ -307,6 +342,10 @@ export function useScopedChat<S extends ChatScope> (scope: () => S | null, optio
         abort = null
         streaming.value = false
       }
+      // Kept once the answer has ended (also stopped or failed); one cut off by another
+      // scope or unmount is not, so the saved conversation keeps its earlier turns. Nor is
+      // one that ends after sign-out or an account switch, before the watcher clears it.
+      if (isCurrent() && storageKey && currentStorageKey() === storageKey) saveConversation(storageKey, messages.value)
     }
   }
 
@@ -368,8 +407,11 @@ export function useScopedChat<S extends ChatScope> (scope: () => S | null, optio
     })
   }
 
-  watch(() => scopeKey(scope()), changeScope)
-  onScopeDispose(reset)
+  // The storage key is watched too: the user may become known after the chat starts
+  // (session restored), and then the saved conversation is shown.
+  watch(() => `${scopeKey(scope())}\n${currentStorageKey() ?? ''}`, changeScope)
+  restore()
+  onScopeDispose(clear)
 
   return {
     messages: computed(() => messages.value),
