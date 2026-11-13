@@ -98,6 +98,8 @@ import useTagSpans from 'src/features/annotations/useTagSpans'
 import { citeInReader } from 'src/features/documents/readerCitation'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
 import useScopedChat, { citedSources, type ChatAnswer, type DocumentChatScope } from 'src/features/chat/useScopedChat'
+import { documentChatKey } from 'src/features/chat/chatStorage'
+import { useUserStore } from 'src/features/auth/userStore'
 import { useApi } from 'src/shared/api'
 import { summaryPrompt } from 'src/shared/summaryLength'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
@@ -126,11 +128,15 @@ const { fetchCollection } = collectionsStore
 const { fetchTagsByCollection } = useTagsStore()
 const aiAssist = useAiAssistance()
 const tagSpans = useTagSpans()
-// Document chat (#248): one in-memory conversation per document; it starts empty on
-// another document or collection and is dropped when the view unmounts.
+// Document chat (#248): one conversation per document of a collection, kept in this browser
+// for the signed-in user (ADR 0012 decision 1), so it comes back after a reload or on
+// returning to the document; *New conversation* forgets it.
+const userStore = useUserStore()
 const documentChat = useScopedChat((): DocumentChatScope => ({
   kind: 'document', collectionId: props.collectionId, documentId: props.documentId
-}))
+}), {
+  storageKey: (scope) => userStore.getUserId ? documentChatKey(userStore.getUserId, scope) : null
+})
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
 /** The collection could not be read (no access, or it does not exist). */
 const collectionUnavailable = ref(false)

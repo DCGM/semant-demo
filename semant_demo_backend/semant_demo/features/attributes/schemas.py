@@ -181,6 +181,10 @@ class AttributeAssignResult(BaseModel):
     a conflict, so a client can show it instead of its stale copy."""
     outcome: WriteOutcome
     succeeded: list[str] = []
+    """Annotations processed successfully: changed, or already as asked (a retry is safe)."""
+    unchanged: list[str] = []
+    """The part of ``succeeded`` that already held the requested values: nothing was written,
+    no version counted up and no change recorded (#569)."""
     failed: list[StepFailure] = []
     versions: dict[UUID, int] = {}
     values: dict[UUID, list[UUID]] = {}
