@@ -3,6 +3,7 @@ import { effectScope, nextTick, ref } from 'vue'
 
 import { ResponseError } from 'src/generated/api'
 import useScopedChat, { chatTokens, citedSources, historyTurns, type ChatAnswer, type ChatMessage, type ChatSource, type SearchChatScope } from 'src/features/chat/useScopedChat'
+import { documentChatKey, loadConversation } from 'src/features/chat/chatStorage'
 import { muteConsole } from './console'
 
 // Document chat (#248) and Search chat (#245), ADR 0012: the composable's stream handling,
@@ -383,6 +384,128 @@ describe('useScopedChat', () => {
       await running
 
       expect([chat.messages.value, chat.streaming.value]).toEqual([[], false])
+    })
+  })
+
+  describe('kept in the browser', () => {
+    // Document chat (ADR 0012 decision 1): the conversation of a document is kept per user.
+    beforeEach(() => localStorage.clear())
+    afterEach(() => localStorage.clear())
+
+    const keyOf = (documentId: string) => documentChatKey('u1', { kind: 'document', collectionId: 'c1', documentId })
+
+    function mountKeptChat (userId = ref<string | null>('u1')) {
+      const documentId = ref('d1')
+      const scope = effectScope()
+      const chat = scope.run(() => useScopedChat(() => ({ kind: 'document', collectionId: 'c1', documentId: documentId.value }), {
+        storageKey: (s) => userId.value ? documentChatKey(userId.value, s) : null
+      }))!
+      return { chat, documentId, scope, userId }
+    }
+
+    async function answerWith (chat: { ask: (text: string) => Promise<void> }, text: string, reply: string, chunkId: string) {
+      const asking = chat.ask(text)
+      await flush()
+      const stream = streams[streams.length - 1]
+      stream.push({ event: 'delta', text: `${reply} [doc1]` })
+      stream.push({ event: 'sources', sources: [wireSource(1, chunkId)] })
+      stream.push({ event: 'end', coverage: 'all', used_chunks: 1, total_chunks: 1 })
+      stream.close()
+      await asking
+    }
+
+    it('shows the saved conversation again, and a follow-up continues its history and labels', async () => {
+      const first = mountKeptChat()
+      await answerWith(first.chat, 'Q1', 'A1', 'k1')
+      first.scope.stop()
+      expect(loadConversation(keyOf('d1'))?.map(m => m.text)).toEqual(['Q1', 'A1 [doc1]'])
+
+      const { chat } = mountKeptChat()
+      expect(chat.messages.value.map(m => m.text)).toEqual(['Q1', 'A1 [doc1]'])
+      await answerWith(chat, 'Q2', 'A2', 'k2')
+
+      expect((requests[1].body as { history: unknown[] }).history).toEqual([
+        { role: 'user', text: 'Q1', chunk_ids: [] },
+        { role: 'assistant', text: 'A1 [doc1]', chunk_ids: ['k1'] }
+      ])
+      expect(chat.messages.value[3].sources.map(s => s.label)).toEqual([2])
+      expect(loadConversation(keyOf('d1'))).toHaveLength(4)
+    })
+
+    it('keeps each document\'s conversation, and New conversation forgets only the current one', async () => {
+      const { chat, documentId } = mountKeptChat()
+      await answerWith(chat, 'About d1', 'A1', 'k1')
+
+      documentId.value = 'd2'
+      await nextTick()
+      expect(chat.messages.value).toEqual([])
+      await answerWith(chat, 'About d2', 'A2', 'k2')
+
+      documentId.value = 'd1'
+      await nextTick()
+      expect(chat.messages.value.map(m => m.text)).toEqual(['About d1', 'A1 [doc1]'])
+
+      chat.reset()
+      expect(chat.messages.value).toEqual([])
+      expect(loadConversation(keyOf('d1'))).toBeNull()
+      expect(loadConversation(keyOf('d2'))).not.toBeNull()
+    })
+
+    it('keeps a stopped answer, but not one cut off by leaving the document', async () => {
+      const { chat, scope } = mountKeptChat()
+      const stopped = chat.ask('Q1')
+      await flush()
+      streams[0].push({ event: 'delta', text: 'Part' })
+      await flush()
+      chat.stop()
+      streams[0].close()
+      await stopped
+      expect(loadConversation(keyOf('d1'))?.map(m => [m.text, m.status])).toEqual([['Q1', 'done'], ['Part', 'stopped']])
+
+      const cut = chat.ask('Q2')
+      await flush()
+      scope.stop()
+      streams[1].push({ event: 'delta', text: 'late' })
+      streams[1].close()
+      await cut
+      expect(loadConversation(keyOf('d1'))).toHaveLength(2)
+    })
+
+    it('shows the saved conversation once the user is known, and keeps nothing without one', async () => {
+      const first = mountKeptChat()
+      await answerWith(first.chat, 'Q1', 'A1', 'k1')
+      first.scope.stop()
+
+      const userId = ref<string | null>(null)
+      const { chat } = mountKeptChat(userId)
+      expect(chat.messages.value).toEqual([])
+      await answerWith(chat, 'Anonymous', 'A', 'k9')
+      expect(loadConversation(keyOf('d1'))?.[0].text).toBe('Q1')
+
+      userId.value = 'u1'
+      await nextTick()
+      expect(chat.messages.value.map(m => m.text)).toEqual(['Q1', 'A1 [doc1]'])
+    })
+
+    it('saves nothing for the old user when an answer ends after sign-out', async () => {
+      const { chat, userId } = mountKeptChat()
+      await answerWith(chat, 'Q1', 'A1', 'k1')
+      const asking = chat.ask('Q2')
+      await flush()
+
+      userId.value = null
+      streams[1].push({ event: 'delta', text: 'A2' })
+      streams[1].push({ event: 'end', coverage: 'all', used_chunks: 1, total_chunks: 1 })
+      streams[1].close()
+      await asking
+
+      expect(loadConversation(keyOf('d1'))).toHaveLength(2)
+    })
+
+    it('keeps nothing without a storage key', async () => {
+      const { chat } = mountChat()
+      await answerWith(chat, 'Q', 'A', 'k1')
+      expect(Object.keys(localStorage)).toEqual([])
     })
   })
 
