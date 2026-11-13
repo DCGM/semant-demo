@@ -46,15 +46,18 @@
           <q-toggle
             v-model="multiple"
             label="Allow multiple values per annotation"
-            :disable="frozen || !!props.attribute"
+            :disable="frozen || wasMultiple"
           />
-          <div v-if="props.attribute" class="text-caption text-grey-7 q-ml-sm">
-            {{ multiple ? 'Annotations can have several values of this attribute.' : 'Annotations have at most one value of this attribute.' }}
-            This cannot be changed after the attribute is created.
+          <div v-if="wasMultiple" class="text-caption text-grey-7 q-ml-sm">
+            Annotations can have several values of this attribute. This cannot go back to one value.
           </div>
           <div v-else-if="multiple" class="text-caption text-orange-10 q-ml-sm" role="status" data-testid="attribute-multiple-warning">
-            <q-icon name="warning" size="16px" class="q-mr-xs" />This cannot be reversed later: an attribute that
-            allows multiple values cannot go back to one value.
+            <q-icon name="warning" size="16px" class="q-mr-xs" /><template v-if="props.attribute">Values already
+              assigned are kept. </template>This cannot be reversed later: an attribute that allows multiple
+            values cannot go back to one value.
+          </div>
+          <div v-else-if="props.attribute" class="text-caption text-grey-7 q-ml-sm">
+            Annotations have at most one value of this attribute.
           </div>
         </div>
 
@@ -249,7 +252,9 @@ const scopeOptions = [
 const formRef = ref<QForm | null>(null)
 const name = ref(props.attribute?.name ?? '')
 const description = ref(props.attribute?.description ?? '')
-const multiple = ref(props.attribute?.cardinality === Cardinality.multi)
+// Single to multi only (#498): an attribute that allows multiple values cannot go back.
+const wasMultiple = props.attribute?.cardinality === Cardinality.multi
+const multiple = ref(wasMultiple)
 const initialTags = props.attribute?.tagIds ?? []
 // All tags is explicit (allTags, #522): Selected tags with none chosen is no tag, never All tags.
 // A new attribute starts at All tags for convenience; the dialog then sends allTags true.
@@ -323,6 +328,7 @@ const isDirty = computed(() =>
   name.value.trim() !== (props.attribute?.name ?? '') ||
   description.value.trim() !== (props.attribute?.description ?? '') ||
   !sameScope.value ||
+  (!!props.attribute && multiple.value !== wasMultiple) ||
   (!props.attribute && (multiple.value || filledDrafts.value.length > 0 || specialDrafts.value.length > 0))
 )
 
@@ -356,6 +362,7 @@ function payload (): PostAttribute | PatchAttribute | null {
   const patch: PatchAttribute = {}
   if (name.value.trim() !== props.attribute.name) patch.name = name.value.trim()
   if (description.value.trim() !== (props.attribute.description ?? '')) patch.description = description.value.trim()
+  if (multiple.value && !wasMultiple) patch.cardinality = Cardinality.multi
   if (!sameScope.value) {
     if (scope.value === 'selected' && !initialAll) {
       // Only the tags changed here, so a tag added or removed meanwhile (also from Edit Tag,

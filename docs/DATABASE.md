@@ -523,7 +523,7 @@ CREATE TABLE annotation_attribute (
     name          VARCHAR(200) NOT NULL,
     name_key      VARCHAR(200) NOT NULL,      -- casefolded, trimmed; UNIQUE (collection_id, name_key)
     description   TEXT         NOT NULL,
-    cardinality   VARCHAR(8)   NOT NULL,      -- single | multi (immutable)
+    cardinality   VARCHAR(8)   NOT NULL,      -- single | multi (only single -> multi, #498)
     all_tags      BOOLEAN      NOT NULL DEFAULT 0,  -- applies to every tag, tag_ids is [] (#522)
     tag_ids       JSON         NOT NULL,      -- with all_tags 0: the tags it applies to; [] = no tag
     retired       BOOLEAN      NOT NULL,

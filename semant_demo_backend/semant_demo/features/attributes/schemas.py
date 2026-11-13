@@ -91,7 +91,6 @@ class PostAttribute(BaseModel):
 
 
 class PatchAttribute(BaseModel):
-    """The cardinality cannot be changed: existing assignments would turn contradictory."""
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     all_tags: bool | None = None
@@ -106,6 +105,10 @@ class PatchAttribute(BaseModel):
     remove_tag_ids: list[UUID] | None = Field(default=None, max_length=500)
     """Tags to take out of the selected tags, like ``add_tag_ids``; the last one leaves no tag."""
     retired: bool | None = None
+    cardinality: Cardinality | None = None
+    """Only ``single`` to ``multi`` (#498): every stored assignment stays valid, so no annotation
+    is rewritten. ``multi`` to ``single`` is refused (400): annotations holding several values
+    would turn contradictory."""
     confirm_affected: int | None = Field(default=None, ge=0)
     """Confirms a narrowing of the tags that makes values on this many annotations stop applying
     (#568): the number a refusal (409 with ``confirm`` ``narrowing``) reported. Values are kept;
@@ -114,7 +117,7 @@ class PatchAttribute(BaseModel):
     @model_validator(mode="after")
     def check_any(self) -> "PatchAttribute":
         if all(v is None for v in (self.name, self.description, self.all_tags, self.tag_ids, self.add_tag_ids,
-                                   self.remove_tag_ids, self.retired)):
+                                   self.remove_tag_ids, self.retired, self.cardinality)):
             raise ValueError("Send at least one field to change")
         if self.all_tags and self.tag_ids:
             raise ValueError(ALL_TAGS_WITH_TAG_IDS)
