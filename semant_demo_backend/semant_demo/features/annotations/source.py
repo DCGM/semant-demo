@@ -37,7 +37,7 @@ def _consecutive(chunks: list[AnnotationChunk]) -> bool:
     return all(b.order == a.order + 1 for a, b in zip(chunks, chunks[1:]))
 
 
-def _run_after(chunk: AnnotationChunk, page: list[AnnotationChunk]) -> list[AnnotationChunk]:
+def run_after(chunk: AnnotationChunk, page: list[AnnotationChunk]) -> list[AnnotationChunk]:
     """The chunks of ``page`` that follow ``chunk`` without a gap or a duplicate order."""
     run = []
     for c in page:
@@ -115,7 +115,7 @@ class ChunkSource:
                 break
             last = after[-1].order
             page = await self.range(document_id, last + 1, last + NEIGHBOR_PAGE)
-            run = _run_after(after[-1], page)
+            run = run_after(after[-1], page)
             if run != page:
                 if text_length(local + "".join(c.text for c in run)) < end:
                     raise InvalidSpanRange("gap", "Span crosses a gap between the document's chunks")

@@ -44,40 +44,54 @@
     </template>
     <template #body-cell-actions="tableProps">
       <q-td :props="tableProps">
-        <div v-if="isOwned(tableProps.row)" class="row no-wrap items-center q-gutter-xs" @click.stop>
+        <div class="row no-wrap items-center q-gutter-xs" @click.stop>
           <q-btn
             flat
             dense
             round
-            icon="share"
+            icon="download"
             color="primary"
-            aria-label="Share collection"
-            @click="emit('share', tableProps.row)"
+            aria-label="Export collection"
+            :disable="exportRequesting"
+            @click="exportCollections([tableProps.row.id])"
           >
-            <q-tooltip>Share collection</q-tooltip>
+            <q-tooltip>Export: all annotations with the text of their passages, as a ZIP of JSON files</q-tooltip>
           </q-btn>
-          <q-btn
-            flat
-            dense
-            round
-            icon="edit"
-            color="primary"
-            aria-label="Edit collection"
-            @click="emit('edit', tableProps.row)"
-          />
-          <q-btn
-            flat
-            dense
-            round
-            icon="delete"
-            color="negative"
-            aria-label="Delete collection"
-            @click="emit('delete', tableProps.row)"
-          />
+          <template v-if="isOwned(tableProps.row)">
+            <q-btn
+              flat
+              dense
+              round
+              icon="share"
+              color="primary"
+              aria-label="Share collection"
+              @click="emit('share', tableProps.row)"
+            >
+              <q-tooltip>Share collection</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              dense
+              round
+              icon="edit"
+              color="primary"
+              aria-label="Edit collection"
+              @click="emit('edit', tableProps.row)"
+            />
+            <q-btn
+              flat
+              dense
+              round
+              icon="delete"
+              color="negative"
+              aria-label="Delete collection"
+              @click="emit('delete', tableProps.row)"
+            />
+          </template>
+          <q-icon v-else name="group" color="grey-6" size="sm">
+            <q-tooltip>Shared with you by {{ tableProps.row.owner }}; only the owner can share, edit or delete it.</q-tooltip>
+          </q-icon>
         </div>
-        <q-icon v-else name="group" color="grey-6" size="sm" @click.stop>
-          <q-tooltip>Shared with you by {{ tableProps.row.owner }}; only the owner can share, edit or delete it.</q-tooltip>
-        </q-icon>
       </q-td>
     </template>
     <template #body-cell-color="tableProps">
@@ -106,6 +120,17 @@
     <transition name="fade-slide-up">
       <div v-if="selected.length > 0" class="bulk-action-bar">
         <span class="bulk-count">{{ selected.length }} selected</span>
+        <q-btn
+          flat dense no-caps
+          icon="download"
+          label="Export selected"
+          color="primary"
+          size="md"
+          :loading="exportRequesting"
+          @click="handleBulkExport"
+        >
+          <q-tooltip>All annotations with the text of their passages, as a ZIP of JSON files</q-tooltip>
+        </q-btn>
         <q-btn
           flat dense no-caps
           icon="share"
@@ -144,6 +169,7 @@ import { computed, ref, watch } from 'vue'
 import type { QTable, QTableColumn } from 'quasar'
 import { Collection, UserSearchResult } from 'src/generated/api'
 import useShareCollectionsDialog from './useShareCollectionsDialog'
+import { useCollectionExport } from './useCollectionExport'
 import { collectionRights } from './permissions'
 import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { plural } from 'src/shared/plural'
@@ -173,6 +199,7 @@ const emit = defineEmits<
 const confirmDelete = useConfirmDelete()
 const selected = ref<Collection[]>([])
 const { openShareCollectionsDialog } = useShareCollectionsDialog()
+const { exportCollections, requesting: exportRequesting } = useCollectionExport()
 
 const initialPagination = {
   sortBy: 'collectionName',
@@ -253,6 +280,11 @@ watch(() => tableRef.value?.filteredSortedRows as Collection[] | undefined, (row
 // Sharing and deleting are the owner's (ADR 0007).
 const isOwned = (collection: Collection) => collectionRights(collection).share
 const allSelectedOwned = computed(() => selected.value.every(isOwned))
+
+// Exporting needs only read access, so shared collections can be exported too (#656).
+const handleBulkExport = () => {
+  void exportCollections(selected.value.map((c) => c.id))
+}
 
 const handleBulkShare = () => {
   if (selected.value.length === 0 || !allSelectedOwned.value) return
