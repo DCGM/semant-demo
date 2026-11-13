@@ -1,7 +1,34 @@
 import argparse
+import dataclasses
+import json
 import sys
 from classconfig import Config
+from .db import Refused
 from .pipeline import EnrichmentPipeline
+
+
+def endpoint_confirmed(host: str, port: int, confirmed: str | None) -> bool:
+    """Whether ``--confirm-endpoint`` names the configured Weaviate endpoint ``HOST:PORT``.
+
+    A run and ``--create-test-collection`` write, and the production store is reached as
+    ``localhost`` on its server, so the endpoint is confirmed for every write, not only for
+    remote hosts. Prints the refusal or the endpoint to stderr.
+    """
+    endpoint = f"{host}:{port}"
+    if confirmed != endpoint:
+        print(f"Refusing to run: configured Weaviate endpoint {endpoint}, --confirm-endpoint {confirmed}",
+              file=sys.stderr)
+        return False
+    print(f"Weaviate endpoint: {endpoint}", file=sys.stderr)
+    return True
+
+
+def report(result) -> int:
+    """Print the summary as JSON (stdout) and any refusal (stderr); return the exit code."""
+    print(json.dumps(dataclasses.asdict(result), indent=2))
+    if result.refused:
+        print(f"Refused, nothing written: {result.refused}", file=sys.stderr)
+    return result.exit_code()
 
 
 def _prompt(question: str, default: str = None, allow_empty: bool = False) -> str:
@@ -65,6 +92,8 @@ def run_init_wizard(output_path: str) -> None:
     if weaviate_api_key:
         overrides["weaviate_api_key"] = weaviate_api_key
     overrides["collection"] = _prompt("Weaviate collection name to enrich", default="Chunks")
+    overrides["provenance"] = _prompt("Model/version identifier written to classification_provenance "
+                                      "(change it whenever the model changes)")
 
     print("\n--- Classification model ---")
     backend = _prompt_choice("Model backend to use", ["local", "api"], default="local")
@@ -103,7 +132,9 @@ def run_init_wizard(output_path: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run the metadata enrichment pipeline on a Weaviate database."
+        description="Classify the UNPROCESSED chunks of a Weaviate collection: fill only their missing "
+                    "classification fields and set classification_provenance. Exit code 0 when nothing selected "
+                    "is left UNPROCESSED, 1 when chunks remain, 2 when refused."
     )
     parser.add_argument(
         "config",
@@ -129,10 +160,34 @@ def main():
     parser.add_argument(
         "--create-test-collection",
         action="store_true",
-        help="Create MetaDataEnrichmentTest collection inside Weaviate with 10 Czech historical records."
+        help="Create MetaDataEnrichmentTest collection inside Weaviate with 10 Czech historical records, "
+             "the mapped fields and classification_provenance, every record UNPROCESSED. An existing "
+             "MetaDataEnrichmentTest collection is refused unless --force is given."
+    )
+    parser.add_argument(
+        "--confirm-endpoint",
+        metavar="HOST:PORT",
+        help="Required for a pipeline run and --create-test-collection: the Weaviate endpoint of the config "
+             "(weaviate_host:weaviate_port; localhost:8080 for --create-test-collection without a config). "
+             "A missing or different value is refused (exit code 2) before connecting. "
+             "--check needs none and ignores it."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Read-only: check the configuration and the schema and count the UNPROCESSED chunks a run would "
+             "select. Loads no model, writes nothing. Exit code 0 when none is left, 1 when chunks are, "
+             "2 when a run would be refused."
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --create-test-collection: delete an existing MetaDataEnrichmentTest collection and create it again."
     )
     
     args = parser.parse_args()
+    if args.check and (args.create_test_collection or args.init or args.init_wizard or args.convert_ckpt):
+        parser.error("--check takes neither --create-test-collection, --init, --init-wizard nor --convert-ckpt")
     
     if args.create_test_collection:
         try:
@@ -145,14 +200,20 @@ def main():
                 grpc_port = pipeline.weaviate_grpc_port
                 api_key = pipeline.weaviate_api_key
                 headers = pipeline.weaviate_headers
+                fields = list(pipeline.field_tasks)
             else:
                 print("No config file provided. Using default connection settings (localhost:8080)...")
+                from .models import TASK_CLASSES
                 host = "localhost"
                 port = 8080
                 grpc_port = 50051
                 api_key = None
                 headers = None
-                
+                fields = list(TASK_CLASSES)
+
+            if not endpoint_confirmed(host, port, args.confirm_endpoint):
+                sys.exit(2)
+
             client = get_client(
                 host=host,
                 port=port,
@@ -161,11 +222,14 @@ def main():
                 headers=headers
             )
             try:
-                create_test_collection(client)
+                create_test_collection(client, fields, replace=args.force)
             finally:
                 client.close()
                 print("Weaviate connection closed.")
             sys.exit(0)
+        except Refused as e:
+            print(f"Refused: {e}", file=sys.stderr)
+            sys.exit(2)
         except Exception as e:
             print(f"Error creating test collection: {e}", file=sys.stderr)
             import traceback
@@ -211,7 +275,29 @@ def main():
     try:
         print(f"Loading configuration from '{args.config}'...")
         pipeline = EnrichmentPipeline.create(args.config)
-        pipeline.run()
+    except Exception as e:
+        print(f"Invalid configuration: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(2)
+
+    if args.check:
+        try:
+            sys.exit(report(pipeline.check()))
+        except Exception as e:
+            print(f"Check failed: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            sys.exit(2)
+
+    if not endpoint_confirmed(pipeline.weaviate_host, pipeline.weaviate_port, args.confirm_endpoint):
+        sys.exit(2)
+
+    try:
+        sys.exit(report(pipeline.run()))
+    except KeyboardInterrupt:
+        print("\nInterrupted. Classified chunks are kept; the rest stay UNPROCESSED for the next run.", file=sys.stderr)
+        sys.exit(130)
     except Exception as e:
         print(f"Pipeline execution failed: {e}", file=sys.stderr)
         import traceback

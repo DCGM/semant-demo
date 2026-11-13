@@ -834,7 +834,9 @@ used by document-level chunk filters are declared by
 `python -m semant_demo.maintenance.chunk_summary_schema` and recomputed for the whole
 database by `python -m semant_demo.maintenance.chunk_summaries` (#529). The chunks'
 classification status (`classification_provenance`, `UNPROCESSED` on imported chunks) is
-declared by `python -m semant_demo.maintenance.classification_provenance_schema` (#590).
+declared by `python -m semant_demo.maintenance.classification_provenance_schema` (#590);
+the offline classifier `data_tools/meta_data_enrichment` classifies only `UNPROCESSED` chunks
+and sets the status, reading the schema only.
 
 ## Historical material
 

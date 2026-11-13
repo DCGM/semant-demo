@@ -221,7 +221,8 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 - classifications (`text[]`, e.g. `communicative_mode`, `style`, `subject_domain`) — written by `data_tools/meta_data_enrichment`; the properties named in `features/search/filters.py::TASK_CLASSES` are search filters and are returned as a hit's `metadata` ([SEARCH_FILTERS](SEARCH_FILTERS.md#5-classifications-on-search-hits))
 - `classification_provenance` (`text`, `field` tokenization, filterable) — the classification
   status (#590): `UNPROCESSED` on every chunk `chunk_ingest` inserts, the classifier's
-  model/version identifier once classified, absent on chunks stored before the property was
+  configured model/version identifier (`provenance` of `data_tools/meta_data_enrichment`) once
+  classified, absent on chunks stored before the property was
   declared (never selected for classification). Declared by `classification_provenance_schema`
   ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-classification-status-classification_provenance_schema-590));
   `chunk_ingest` refuses a store without it.

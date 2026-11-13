@@ -113,9 +113,9 @@ metadata; ``--report --document-ids`` with the list and an evidence-backed libra
 document titles); ``data_tools/embedder`` (their vectors; until then they are missing from
 vector and hybrid search); ``chunk_summaries`` as the final pass after the classification
 (until then the new documents match no chunk filter). ``chunk_year`` and ``chunk_summaries``
-run while nothing else writes chunks. The classification has no safe command for new chunks
-yet (#590). ``page_order --document-ids`` takes the list too; scans and anchors for new
-documents are not covered yet (#542, #591).
+run while nothing else writes chunks. ``data_tools/meta_data_enrichment`` classifies the new
+chunks (those marked ``UNPROCESSED``, #590). ``page_order --document-ids`` takes the list
+too; scans and anchors for new documents are not covered yet (#542, #591).
 
 Exit code 0 when the pass is complete and nothing was rejected, invalid or blocked; 1
 otherwise; 2 when refused (endpoint, backup, schema, checkpoint) or an input file changed.
@@ -862,7 +862,8 @@ def summary(state: dict[str, Any], checkpoint: Path) -> dict[str, Any]:
         "runs": state.get("runs", []),
         "checkpoint": str(checkpoint), "manifest": str(manifest_path(checkpoint)), **listed,
         "next": "metadata_sync --document-ids (with a library source), then chunk_year and chunk_titles; "
-                "data_tools/embedder; chunk_summaries last, after the classification (docs/DATA_MAINTENANCE.md)"}
+                "data_tools/embedder; data_tools/meta_data_enrichment (classification); "
+                "chunk_summaries last, after the classification (docs/DATA_MAINTENANCE.md)"}
 
 
 def exit_code(result: dict[str, Any]) -> int:
