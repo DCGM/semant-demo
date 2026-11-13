@@ -1,7 +1,6 @@
 
 # PatchAttribute
 
-The cardinality cannot be changed: existing assignments would turn contradictory.
 
 ## Properties
 
@@ -14,6 +13,7 @@ Name | Type
 `addTagIds` | Array&lt;string&gt;
 `removeTagIds` | Array&lt;string&gt;
 `retired` | boolean
+`cardinality` | [Cardinality](Cardinality.md)
 `confirmAffected` | number
 
 ## Example
@@ -30,6 +30,7 @@ const example = {
   "addTagIds": null,
   "removeTagIds": null,
   "retired": null,
+  "cardinality": null,
   "confirmAffected": null,
 } satisfies PatchAttribute
 

@@ -193,6 +193,8 @@ class AttributeRepository:
                 changes["tag_ids"] = [str(t) for t in dict.fromkeys(patch.tag_ids)]
             if patch.retired is not None:
                 changes["retired"] = patch.retired
+            if patch.cardinality is not None:
+                changes["cardinality"] = patch.cardinality.value
             try:
                 result = await session.execute(
                     update(AttributeRow)

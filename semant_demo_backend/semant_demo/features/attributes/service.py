@@ -107,8 +107,9 @@ async def create_attribute(store: AttributeStore, user: Principal | None, collec
 
 async def update_attribute(store: AttributeStore, user: Principal | None, collection_id: Id, attribute_id: Id,
                            patch: PatchAttribute) -> Attribute:
-    """Renames, describes, retires or changes the tags of an attribute; ids of assigned values
-    are untouched, so no annotation is rewritten. Narrowing the applicable tags (All tags to
+    """Renames, describes, retires, changes the tags of an attribute or makes a single-valued
+    attribute multi-valued (#498; the reverse is refused, 400); ids of assigned values are
+    untouched, so no annotation is rewritten. Narrowing the applicable tags (All tags to
     selected tags or to none, or leaving out a selected tag) so that values held by annotations
     stop applying needs ``confirm_affected`` with the number of those annotations (#568);
     without it, or with another number, it is refused (``ConfirmationRequiredError``, 409, with
@@ -131,15 +132,18 @@ async def update_attribute(store: AttributeStore, user: Principal | None, collec
         await access.require_tags_in_collection(store.annotations.tags, named, grant.collection_id)
     for _ in range(SCOPE_ATTEMPTS):
         current = await _read(store, grant.collection_id, aid)
+        _check_cardinality_change(current, patch.cardinality)
         all_tags, tag_ids = _scope_after(current, patch)
         unchanged = all_tags == current.all_tags and tag_ids == current.tag_ids
         affected = await _newly_inapplicable(store, grant, current, all_tags, tag_ids)
         if affected and patch.confirm_affected != affected:
             raise ConfirmationRequiredError(_narrowing_message(affected, patch.confirm_affected), affected,
                                             NARROWING)
+        same_cardinality = patch.cardinality in (None, current.cardinality)
         scoped = patch.model_copy(update={"all_tags": all_tags, "tag_ids": tag_ids,
-                                          "add_tag_ids": None, "remove_tag_ids": None})
-        if unchanged and all(v is None for v in (patch.name, patch.description, patch.retired)):
+                                          "add_tag_ids": None, "remove_tag_ids": None,
+                                          "cardinality": None if same_cardinality else patch.cardinality})
+        if unchanged and same_cardinality and all(v is None for v in (patch.name, patch.description, patch.retired)):
             return current
         try:
             updated = await store.definitions.update(grant.collection_id, aid, scoped,
@@ -164,6 +168,13 @@ async def _newly_inapplicable(store: AttributeStore, grant, current: Attribute, 
     kept = set(tag_ids)
     removed = [t for t in current.tag_ids if t not in kept]
     return await _usage(store, grant, current.id, within_tags=removed) if removed else 0
+
+
+def _check_cardinality_change(current: Attribute, cardinality: Cardinality | None) -> None:
+    """Single to multi only: a stored single value is a valid multi-valued assignment, while
+    annotations holding several values have no single value to keep."""
+    if cardinality == Cardinality.single and current.cardinality == Cardinality.multi:
+        raise InvalidRequestError("A multi-valued attribute cannot be made single-valued.")
 
 
 def _narrowing_message(affected: int, confirmed: int | None) -> str:

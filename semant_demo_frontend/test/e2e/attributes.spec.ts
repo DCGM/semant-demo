@@ -32,7 +32,7 @@ async function openAttributes (page: Page, userKey = 'owner') {
 const headersOf = async (request: APIRequestContext) => ({ Authorization: `Bearer ${await apiToken(request, 'owner')}` })
 
 type Listed = {
-  id: string, name: string, all_tags: boolean, tag_ids: string[], values: { id: string, label: string, kind: string, retired: boolean }[]
+  id: string, name: string, cardinality: string, all_tags: boolean, tag_ids: string[], values: { id: string, label: string, kind: string, retired: boolean }[]
 }
 
 async function createAttribute (request: APIRequestContext, data: Record<string, unknown>): Promise<Listed> {
@@ -144,7 +144,7 @@ test('the owner defines an attribute and manages its values in Edit, each saved 
 
   const unknownId = (await listed(request, 'Speaker type')).values.find(v => v.kind === 'unknown')!.id
   await page.getByRole('button', { name: 'Edit Speaker type' }).click()
-  await expect(dialog(page).getByRole('switch', { name: 'Allow multiple values per annotation' })).toBeDisabled()
+  await expect(dialog(page).getByRole('switch', { name: 'Allow multiple values per annotation' })).toBeEnabled()
   await expect(page.getByTestId('attribute-values-immediate')).toContainText('saved immediately')
   // Value changes are saved at once, behind the dialog.
   await dialog(page).getByRole('switch', { name: 'Allow Not applicable' }).click()
@@ -184,9 +184,21 @@ test('the owner defines an attribute and manages its values in Edit, each saved 
   await page.getByRole('button', { name: 'Restore Speaker type' }).click()
   await expect(card(page, 'Speaker type')).not.toHaveClass(/attribute--retired/)
 
+  // One value per annotation can become multiple values, after a warning, and never go back (#498).
+  await page.getByRole('button', { name: 'Edit Speaker type' }).click()
+  await dialog(page).getByRole('switch', { name: 'Allow multiple values per annotation' }).click()
+  await expect(page.getByTestId('attribute-multiple-warning')).toContainText('Values already assigned are kept')
+  await dialog(page).getByRole('button', { name: 'Save' }).click()
+  await expect(card(page, 'Speaker type').getByTestId('attribute-cardinality')).toHaveText('Multiple values per annotation')
+  expect((await listed(request, 'Speaker type')).cardinality).toBe('multi')
+  await page.getByRole('button', { name: 'Edit Speaker type' }).click()
+  await expect(dialog(page).getByRole('switch', { name: 'Allow multiple values per annotation' })).toBeDisabled()
+  await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
+
   // The list is what the backend stores.
   await page.reload()
   await expect(chips(page, 'Speaker type')).toHaveText(['politician', 'journalist', 'spokesperson', 'Unknown', 'Not applicable'])
+  await expect(card(page, 'Speaker type').getByTestId('attribute-cardinality')).toHaveText('Multiple values per annotation')
 })
 
 for (const viewport of ['wide', 'phone'] as const) {

@@ -10,7 +10,7 @@ import { AttributeWriteError } from 'src/features/attributes/attributesStore'
 
 // The form dialogs of attribute definitions (#331, #506): a running save keeps the form open
 // and freezes everything that goes into its request, a refusal stays visible with what was
-// typed, Unknown / Not applicable are fixed toggles, the cardinality is fixed once created,
+// typed, Unknown / Not applicable are fixed toggles, the cardinality only goes from one value to multiple (#498),
 // All tags is sent explicitly and Selected tags with none chosen is no tag (#522), and in Edit each value change saves at
 // once while Save sends only the attribute's own fields.
 
@@ -290,16 +290,35 @@ describe('Edit Attribute', () => {
     expect(input(wrapper, 'Name').props('error')).not.toBe(true)
   })
 
-  it('shows the cardinality read-only and sends only the changed fields', async () => {
+  it('sends only the changed fields', async () => {
     const save = vi.fn().mockResolvedValue(speaker({ name: 'Speaker type', revision: 2 }))
     const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions() })
-    const cardinality = toggle(wrapper, 'Allow multiple values per annotation')
-    expect([cardinality.props('modelValue'), cardinality.props('disable')]).toEqual([false, true])
-    expect(text('attribute-cardinality')).toContain('cannot be changed after the attribute is created')
     await type(wrapper, 'Name', 'Speaker type')
     await button(wrapper, 'Save').trigger('click')
     await flushPromises()
     expect(save).toHaveBeenCalledWith({ name: 'Speaker type' })
+  })
+
+  it('lets a single-valued attribute allow multiple values, with a warning, and never back', async () => {
+    const save = vi.fn().mockResolvedValue(speaker({ cardinality: Cardinality.multi, revision: 2 }))
+    const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions() })
+    const cardinality = toggle(wrapper, 'Allow multiple values per annotation')
+    expect([cardinality.props('modelValue'), cardinality.props('disable')]).toEqual([false, false])
+    expect(text('attribute-cardinality')).toContain('at most one value')
+    expect(text('attribute-multiple-warning')).toBe('')
+    cardinality.vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(text('attribute-multiple-warning')).toContain('Values already assigned are kept')
+    expect(text('attribute-multiple-warning')).toContain('cannot be reversed')
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith({ cardinality: Cardinality.multi })
+    mounted.splice(0).forEach(w => w.unmount())
+
+    const multi = await open(AttributeDialog, { attribute: speaker({ cardinality: Cardinality.multi }), tags, save: vi.fn(), valueActions: valueActions() })
+    const fixed = toggle(multi, 'Allow multiple values per annotation')
+    expect([fixed.props('modelValue'), fixed.props('disable')]).toEqual([true, true])
+    expect(text('attribute-cardinality')).toContain('cannot go back to one value')
   })
 
   it('saves a value change at once, and Save waits for it', async () => {

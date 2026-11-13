@@ -22,7 +22,9 @@ renames categories later without rewriting annotations or losing who decided wha
   `value`/`unknown`/`not_applicable`, retired flag) and an append-only change record. Names are
   unique per collection and labels per attribute, ignoring case and surrounding spaces; nothing is
   global. A definition has the same rights as a tag definition (owner and shared users,
-  `require_attribute_definition_edit`). The cardinality cannot change after creation. Deleting a
+  `require_attribute_definition_edit`). The cardinality can only go from `single` to `multi`
+  (#498): every stored assignment stays valid, so no annotation is rewritten and only the
+  definition's revision goes up; `multi` to `single` is refused. Deleting a
   collection deletes the collection first and its definitions and change records afterwards
   (see Consequences).
 - **The accepted assignments of an annotation are one array on the annotation**,

@@ -405,6 +405,32 @@ async def test_cardinality_and_exclusive_unknown_and_retired_values(store, spans
     assert removed.succeeded == [str(PLACE_SPAN)]
 
 
+async def test_single_becomes_multi_without_rewriting_annotations_and_never_back(store, spans, definitions):
+    topic = await define(store, name="topic")
+    a, b = topic.values
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(topic, [APPROVED], AssignMode.add, [a]))
+    writes, records = len(spans.writes), len(await definitions.read_changes(COLLECTION, APPROVED))
+    refused = await service.assign_attributes(store, OWNER, COLLECTION,
+                                              assign(topic, [APPROVED], AssignMode.add, [b], {APPROVED: 1}))
+    assert [f.step for f in refused.failed] == ["check_cardinality"]
+
+    multi = await service.update_attribute(store, SHARED, COLLECTION, topic.id, PatchAttribute(cardinality="multi"))
+    assert multi.cardinality == "multi" and multi.revision == topic.revision + 1
+    assert len(spans.writes) == writes and values_of(spans, APPROVED, topic) == [str(a.id)]
+    assert len(await definitions.read_changes(COLLECTION, APPROVED)) == records
+    again = await service.update_attribute(store, OWNER, COLLECTION, topic.id, PatchAttribute(cardinality="multi"))
+    assert again.revision == multi.revision  # already multi-valued: nothing written
+
+    both = await service.assign_attributes(store, OWNER, COLLECTION,
+                                           assign(topic, [APPROVED], AssignMode.add, [b], {APPROVED: 1}))
+    assert both.succeeded == [str(APPROVED)] and sorted(values_of(spans, APPROVED, topic)) == sorted([str(a.id), str(b.id)])
+    with pytest.raises(InvalidRequestError, match="single-valued"):
+        await service.update_attribute(store, OWNER, COLLECTION, topic.id, PatchAttribute(cardinality="single"))
+    assert (await definitions.read(COLLECTION, topic.id)).cardinality == "multi"
+    with pytest.raises(ResourceNotFound):
+        await service.update_attribute(store, OTHER, COLLECTION, topic.id, PatchAttribute(cardinality="multi"))
+
+
 async def test_a_stale_version_changes_nothing_and_reports_the_current_state(store, spans):
     attribute = await define(store, cardinality="multi")
     author, narrator = attribute.values

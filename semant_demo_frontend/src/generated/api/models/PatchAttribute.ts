@@ -13,8 +13,16 @@
  */
 
 import { mapValues } from '../runtime';
+import type { Cardinality } from './Cardinality';
+import {
+    CardinalityFromJSON,
+    CardinalityFromJSONTyped,
+    CardinalityToJSON,
+    CardinalityToJSONTyped,
+} from './Cardinality';
+
 /**
- * The cardinality cannot be changed: existing assignments would turn contradictory.
+ * 
  * @export
  * @interface PatchAttribute
  */
@@ -63,11 +71,19 @@ export interface PatchAttribute {
     retired?: boolean | null;
     /**
      * 
+     * @type {Cardinality}
+     * @memberof PatchAttribute
+     */
+    cardinality?: Cardinality | null;
+    /**
+     * 
      * @type {number}
      * @memberof PatchAttribute
      */
     confirmAffected?: number | null;
 }
+
+
 
 /**
  * Check if a given object implements the PatchAttribute interface.
@@ -93,6 +109,7 @@ export function PatchAttributeFromJSONTyped(json: any, ignoreDiscriminator: bool
         'addTagIds': json['add_tag_ids'] == null ? undefined : json['add_tag_ids'],
         'removeTagIds': json['remove_tag_ids'] == null ? undefined : json['remove_tag_ids'],
         'retired': json['retired'] == null ? undefined : json['retired'],
+        'cardinality': json['cardinality'] == null ? undefined : CardinalityFromJSON(json['cardinality']),
         'confirmAffected': json['confirm_affected'] == null ? undefined : json['confirm_affected'],
     };
 }
@@ -115,6 +132,7 @@ export function PatchAttributeToJSONTyped(value?: PatchAttribute | null, ignoreD
         'add_tag_ids': value['addTagIds'],
         'remove_tag_ids': value['removeTagIds'],
         'retired': value['retired'],
+        'cardinality': CardinalityToJSON(value['cardinality']),
         'confirm_affected': value['confirmAffected'],
     };
 }
