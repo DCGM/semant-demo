@@ -420,6 +420,27 @@ async def test_a_stale_version_changes_nothing_and_reports_the_current_state(sto
     retry = await service.assign_attributes(store, OWNER, COLLECTION,
                                             assign(attribute, [APPROVED], AssignMode.add, [author]))
     assert retry.outcome.value == "complete" and len(spans.writes) == 2
+    assert retry.unchanged == retry.succeeded == [str(APPROVED)]
+
+
+async def test_annotations_already_as_asked_are_reported_unchanged_apart_from_changed_and_refused(
+        store, spans, definitions):
+    attribute = await define(store, tag_ids=[PERSON])
+    author = attribute.values[0]
+    other = uuid4()
+    spans.spans[(COLLECTION, other)] = span(other)
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [author]))
+
+    # APPROVED already holds it, though its expected version is stale; PLACE_SPAN's tag is not one
+    # the attribute applies to, which is no "already as asked".
+    result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                             assign(attribute, [APPROVED, other, PLACE_SPAN], AssignMode.add, [author]))
+    assert sorted(result.succeeded) == sorted([str(APPROVED), str(other)])
+    assert result.unchanged == [str(APPROVED)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(PLACE_SPAN), "check_applicable")]
+    assert result.versions[APPROVED] == 1 and result.values[APPROVED] == [author.id]
+    assert [w[0] for w in spans.writes] == [APPROVED, other]
+    assert len(await definitions.read_changes(COLLECTION, APPROVED)) == 1
 
 
 async def test_concurrent_requests_for_one_annotation_cannot_both_win(store, spans):
@@ -528,6 +549,7 @@ async def test_saved_assignments_are_kept_when_their_records_cannot_be_written(s
     result = await service.assign_attributes(store, OWNER, COLLECTION,
                                              assign(attribute, [APPROVED], AssignMode.add, attribute.values[:1]))
     assert result.succeeded == [str(APPROVED)] and result.outcome.value == "partial"
+    assert result.unchanged == []  # written, only its record is missing: changed
     assert [(f.step, f.item_id) for f in result.failed] == [("record_attribute_changes", str(APPROVED))]
     assert values_of(spans, APPROVED, attribute) == [str(attribute.values[0].id)]
 

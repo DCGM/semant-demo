@@ -50,6 +50,12 @@ export interface AttributeAssignResult {
     succeeded?: Array<string>;
     /**
      * 
+     * @type {Array<string>}
+     * @memberof AttributeAssignResult
+     */
+    unchanged?: Array<string>;
+    /**
+     * 
      * @type {Array<StepFailure>}
      * @memberof AttributeAssignResult
      */
@@ -90,6 +96,7 @@ export function AttributeAssignResultFromJSONTyped(json: any, ignoreDiscriminato
         
         'outcome': WriteOutcomeFromJSON(json['outcome']),
         'succeeded': json['succeeded'] == null ? undefined : json['succeeded'],
+        'unchanged': json['unchanged'] == null ? undefined : json['unchanged'],
         'failed': json['failed'] == null ? undefined : ((json['failed'] as Array<any>).map(StepFailureFromJSON)),
         'versions': json['versions'] == null ? undefined : json['versions'],
         'values': json['values'] == null ? undefined : json['values'],
@@ -109,6 +116,7 @@ export function AttributeAssignResultToJSONTyped(value?: AttributeAssignResult |
         
         'outcome': WriteOutcomeToJSON(value['outcome']),
         'succeeded': value['succeeded'],
+        'unchanged': value['unchanged'],
         'failed': value['failed'] == null ? undefined : ((value['failed'] as Array<any>).map(StepFailureToJSON)),
         'versions': value['versions'],
         'values': value['values'],

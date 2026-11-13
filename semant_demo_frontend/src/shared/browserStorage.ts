@@ -11,11 +11,14 @@ export function readStored (key: string): string | null {
   }
 }
 
-export function writeStored (key: string, value: string): void {
+/** Whether the value was stored (false when storage is unavailable or full). */
+export function writeStored (key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value)
+    return true
   } catch {
     // Storage unavailable — the choice just won't persist.
+    return false
   }
 }
 
@@ -24,5 +27,19 @@ export function removeStored (key: string): void {
     localStorage.removeItem(key)
   } catch {
     // Storage unavailable — there is nothing to remove.
+  }
+}
+
+/** The stored keys starting with `prefix`; none when storage is unavailable. */
+export function storedKeys (prefix: string): string[] {
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(prefix)) keys.push(key)
+    }
+    return keys
+  } catch {
+    return []
   }
 }
