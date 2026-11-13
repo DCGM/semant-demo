@@ -1,6 +1,6 @@
 import { AssignMode, Cardinality, SpanType, type Attribute, type AttributeValue } from 'src/generated/api'
 import { isSpecial, orderedValues, valueName } from './attributeForm'
-import type { AssignReport } from './attributeAssignStore'
+import { assignChanged, assignUncertain, type AssignReport } from './attributeAssignStore'
 import { plural } from 'src/shared/plural'
 
 /** One assignment of values of one attribute (ADR 0011): what the assign route sends besides
@@ -81,6 +81,15 @@ const REFUSED: Record<string, string> = {
   check_applicable: 'The attribute does not apply to their tag.'
 }
 
+/** Why an annotation already matched, per mode: adding or setting found the values held,
+ * removing or clearing found none of them. */
+const ALREADY: Record<AssignMode, string> = {
+  [AssignMode.add]: 'They already had the requested values.',
+  [AssignMode.replace]: 'They already had the requested values.',
+  [AssignMode.remove]: 'They had none of these values.',
+  [AssignMode.clear]: 'They had no values.'
+}
+
 /** One line of an assignment's result: how many annotations (none for a note) and what. */
 export interface ReportLine {
   count: number | null
@@ -88,8 +97,8 @@ export interface ReportLine {
   detail?: string
 }
 
-/** What an assignment report says: a headline, then one line per outcome, so each count stands
- * next to its own reason. */
+/** What an assignment report says: a headline with the annotations actually changed, then one
+ * line per outcome, so each count stands next to its own reason. */
 export function assignReportSummary (report: AssignReport, attribute: Attribute | null): { title: string, lines: ReportLine[] } {
   const r = report
   const lines: ReportLine[] = []
@@ -112,13 +121,33 @@ export function assignReportSummary (report: AssignReport, attribute: Attribute 
   if (r.missing.length) {
     lines.push({ count: r.missing.length, label: 'no longer exist', detail: 'Removed from the selection.' })
   }
+  if (r.unchanged.length) {
+    lines.push({ count: r.unchanged.length, label: 'already matched', detail: ALREADY[r.change.mode] })
+  }
+  if (r.savedOrMatched.length) {
+    lines.push({
+      count: r.savedOrMatched.length,
+      label: 'saved or already matched',
+      detail: 'The earlier attempt was not confirmed; it may have saved them.'
+    })
+  }
   if (r.unrecorded.length) {
     lines.push({ count: r.unrecorded.length, label: 'saved without history', detail: 'Their change could not be recorded; the values are saved.' })
   }
   if (r.error) lines.push({ count: null, label: r.error })
-  if (r.saved.length && (r.failed.length || r.conflicts.length)) lines.push({ count: null, label: 'Saved changes are kept.' })
+  const changed = assignChanged(r)
+  // Saved for certain: written, or found as asked after a lost write (no change known then).
+  if ((changed || r.savedOrMatched.length) && (r.failed.length || r.conflicts.length)) {
+    lines.push({ count: null, label: changed ? 'Saved changes are kept.' : 'Saved values are kept.' })
+  }
   const name = attribute ? `"${attribute.name}": ` : ''
-  return { title: `${name}saved ${r.saved.length} of ${plural(r.target, 'annotation')}`, lines }
+  // Annotations that already held the values are no change (#569); those that may have been
+  // written (the uncertain line and "saved or already matched" together) are not claimed either way.
+  const maybe = assignUncertain(r)
+  const title = !changed && !maybe
+    ? 'no annotations changed'
+    : `changed ${changed} of ${plural(r.target, 'annotation')}${maybe ? ` (${maybe} uncertain)` : ''}`
+  return { title: `${name}${title}`, lines }
 }
 
 /** Whether the report has anything besides saved changes. */

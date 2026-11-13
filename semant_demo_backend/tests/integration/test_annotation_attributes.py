@@ -138,6 +138,12 @@ async def test_definitions_are_per_collection_and_assignments_are_exact_and_vers
     assert sorted(result["succeeded"]) == sorted([novak, brno])
     assert [(f["item_id"], f["step"]) for f in result["failed"]] == [(lhota, "check_annotation_type")]
     assert result["outcome"] == "partial" and result["versions"] == {novak: 1, brno: 1}
+    assert result["unchanged"] == []
+    # Sent again with the versions now stale: already as asked, so done, but reported unchanged
+    # and not written again (#569).
+    again = (await api_client.post(url, headers=annotator, json=body)).json()
+    assert sorted(again["succeeded"]) == sorted(again["unchanged"]) == sorted([novak, brno])
+    assert again["versions"] == {novak: 1, brno: 1}
 
     rows = await _rows(api_client, owner, collection)
     assert rows[novak]["attributes"] == {speaker["id"]: [values["Author"]]}

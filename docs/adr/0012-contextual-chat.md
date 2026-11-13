@@ -32,14 +32,20 @@ the backend. Already in place:
 ## Product decisions (maintainer, 2026-11-02)
 
 1. **History lives in memory, one conversation per scope.** Nothing is stored on the
-   server; a reload or leaving the page loses it; Q6 stays deferred. When the scope changes
+   server; Q6 stays deferred. A reload or leaving the page loses a Search conversation.
+   Document chat keeps its conversation in the browser (maintainer, 2026-11-12): one per
+   document of a collection and signed-in user, its latest, so it comes back after a reload
+   or on returning to the document and the next question continues it; *New conversation*
+   forgets it. A user keeps the 20 most recently used ones, each for 30 days after its last
+   answer; signing out removes them (an expired session keeps them). When the scope changes
    (another search, selection, document or collection), the same thing happens everywhere:
    - an answer still streaming is stopped;
    - the old conversation stays visible, marked with a notice that says what the next
      question will be about;
    - the next question starts a new conversation and the old one is dropped.
 
-   Another document or collection page is a new page, so its chat simply starts empty.
+   Another document or collection page is a new page, so its chat starts empty, or with
+   that document's kept conversation.
 2. **Which chat a page shows.** Search: Search chat. Collection pages (overview,
    documents, tags...): Collection chat. A document page inside a collection: Document chat
    only, not Collection chat.
