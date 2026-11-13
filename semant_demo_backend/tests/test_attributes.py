@@ -18,7 +18,7 @@ from weaviate.exceptions import WeaviateTimeoutError
 
 from semant_demo.adapters.sql.attributes import AttributeRepository, StaleRevision
 from semant_demo.adapters.sql.base import Base
-from semant_demo.core.errors import EditConflictError, InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
+from semant_demo.core.errors import ConfirmationRequiredError, EditConflictError, InUseError, InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations.schemas import SpanType, TagSpan
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations import attribute_codec as codec
@@ -79,7 +79,7 @@ class FakeSpans:
         self.stored[(cid, span_id)] = sorted(set(values))
         self.spans[(cid, span_id)].attributeVersion = version
 
-    async def count_attribute_use(self, cid, attribute_id, value_id=None, outside_tags=None):
+    async def count_attribute_use(self, cid, attribute_id, value_id=None, outside_tags=None, within_tags=None):
         if not self.attributes:
             raise RuntimeError("no such property: attributeValues")
         self.counted += 1
@@ -87,6 +87,7 @@ class FakeSpans:
         for (c, sid), span in self.spans.items():
             values = [str(v) for v in codec.group(self.stored.get((c, sid))).get(attribute_id, [])]
             outside = outside_tags is None or UUID(span.tagId) not in outside_tags
+            outside = outside and (within_tags is None or UUID(span.tagId) in within_tags)
             total += c == cid and outside and (bool(values) if value_id is None else str(value_id) in values)
         return total
 
@@ -265,8 +266,9 @@ async def test_usage_guarded_changes_are_refused_when_whether_values_exist_is_un
         await service.delete_attribute(store, OWNER, COLLECTION, attribute.id)
     with pytest.raises(ServiceUnavailableError):
         await service.delete_value(store, OWNER, COLLECTION, attribute.id, author.id)
-    with pytest.raises(ServiceUnavailableError):
-        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(tag_ids=[PLACE]))
+    for patch in (PatchAttribute(tag_ids=[PLACE]), PatchAttribute(tag_ids=[PLACE], confirm_affected=1)):
+        with pytest.raises(ServiceUnavailableError):
+            await service.update_attribute(store, OWNER, COLLECTION, attribute.id, patch)
     # A count that fails on a store with the properties is no "unused" either.
     spans.attributes, spans.attributes_checked = True, True
 
@@ -418,6 +420,27 @@ async def test_a_stale_version_changes_nothing_and_reports_the_current_state(sto
     retry = await service.assign_attributes(store, OWNER, COLLECTION,
                                             assign(attribute, [APPROVED], AssignMode.add, [author]))
     assert retry.outcome.value == "complete" and len(spans.writes) == 2
+    assert retry.unchanged == retry.succeeded == [str(APPROVED)]
+
+
+async def test_annotations_already_as_asked_are_reported_unchanged_apart_from_changed_and_refused(
+        store, spans, definitions):
+    attribute = await define(store, tag_ids=[PERSON])
+    author = attribute.values[0]
+    other = uuid4()
+    spans.spans[(COLLECTION, other)] = span(other)
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add, [author]))
+
+    # APPROVED already holds it, though its expected version is stale; PLACE_SPAN's tag is not one
+    # the attribute applies to, which is no "already as asked".
+    result = await service.assign_attributes(store, OWNER, COLLECTION,
+                                             assign(attribute, [APPROVED, other, PLACE_SPAN], AssignMode.add, [author]))
+    assert sorted(result.succeeded) == sorted([str(APPROVED), str(other)])
+    assert result.unchanged == [str(APPROVED)]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(PLACE_SPAN), "check_applicable")]
+    assert result.versions[APPROVED] == 1 and result.values[APPROVED] == [author.id]
+    assert [w[0] for w in spans.writes] == [APPROVED, other]
+    assert len(await definitions.read_changes(COLLECTION, APPROVED)) == 1
 
 
 async def test_concurrent_requests_for_one_annotation_cannot_both_win(store, spans):
@@ -526,6 +549,7 @@ async def test_saved_assignments_are_kept_when_their_records_cannot_be_written(s
     result = await service.assign_attributes(store, OWNER, COLLECTION,
                                              assign(attribute, [APPROVED], AssignMode.add, attribute.values[:1]))
     assert result.succeeded == [str(APPROVED)] and result.outcome.value == "partial"
+    assert result.unchanged == []  # written, only its record is missing: changed
     assert [(f.step, f.item_id) for f in result.failed] == [("record_attribute_changes", str(APPROVED))]
     assert values_of(spans, APPROVED, attribute) == [str(attribute.values[0].id)]
 
@@ -677,45 +701,92 @@ async def test_a_batch_writes_a_bounded_number_of_annotations_at_a_time(store, s
     assert 1 < peak <= service.ASSIGN_CONCURRENCY
 
 
-async def test_tags_cannot_be_narrowed_while_annotations_hold_values_but_can_be_widened(store, spans):
+async def narrow(store, attribute, patch):
+    """Narrows after confirming the number of affected annotations the refusal reports (#568)."""
+    with pytest.raises(ConfirmationRequiredError) as asked:
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, patch)
+    assert (asked.value.confirm, asked.value.body()["confirm"]) == ("narrowing", "narrowing")
+    confirmed = patch.model_copy(update={"confirm_affected": asked.value.affected})
+    return asked.value.affected, await service.update_attribute(store, OWNER, COLLECTION, attribute.id, confirmed)
+
+
+async def test_narrowing_the_tags_of_held_values_is_confirmed_and_keeps_the_values(store, spans):
     attribute = await define(store, tag_ids=[PERSON])
     free = await define(store, name="free")
     await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add,
                                                                     attribute.values[:1]))
     await service.assign_attributes(store, OWNER, COLLECTION, assign(free, [APPROVED], AssignMode.add,
                                                                     free.values[:1], {APPROVED: 1}))
-    for narrowed, patch in ((attribute, PatchAttribute(tag_ids=[PLACE])),
-                            (free, PatchAttribute(all_tags=False, tag_ids=[PLACE])),
-                            # Down to no tag at all, from selected tags and from All tags (#522).
-                            (attribute, PatchAttribute(tag_ids=[])), (free, PatchAttribute(all_tags=False))):
-        with pytest.raises(InUseError) as used:
-            await service.update_attribute(store, OWNER, COLLECTION, narrowed.id, patch)
-        assert used.value.affected == 1
-    # Values on an annotation whose tag stays applicable do not block narrowing the other tags.
+    held = list(spans.stored[(COLLECTION, APPROVED)])
+    writes = len(spans.writes)
+    for narrowed, patch, scope in (
+            (attribute, PatchAttribute(tag_ids=[PLACE]), (False, [PLACE])),
+            (free, PatchAttribute(all_tags=False, tag_ids=[PLACE]), (False, [PLACE])),
+            # Down to no tag at all, from selected tags and from All tags (#522).
+            (attribute, PatchAttribute(all_tags=True), (True, [])),
+            (attribute, PatchAttribute(all_tags=False), (False, [])),
+            (free, PatchAttribute(all_tags=True), (True, [])),
+            (free, PatchAttribute(all_tags=False, tag_ids=[]), (False, []))):
+        before = (await service.list_attributes(store, OWNER, COLLECTION))
+        revision = next(a.revision for a in before if a.id == narrowed.id)
+        if scope[0]:  # widening is never asked about
+            saved = await service.update_attribute(store, OWNER, COLLECTION, narrowed.id, patch)
+        else:
+            affected, saved = await narrow(store, narrowed, patch)
+            assert affected == 1
+        assert (saved.all_tags, saved.tag_ids) == scope and saved.revision == revision + 1
+    # Only the definitions changed: the values, their version and their history stay as they were.
+    assert spans.stored[(COLLECTION, APPROVED)] == held and len(spans.writes) == writes
+    assert spans.spans[(COLLECTION, APPROVED)].attributeVersion == 2
+    assert len(await service.read_attribute_changes(store, OWNER, COLLECTION, APPROVED)) == 2
+
+    # Values on an annotation whose tag stays applicable are not affected by narrowing the others.
     both = await define(store, name="both", tag_ids=[PERSON, PLACE])
     await service.assign_attributes(store, OWNER, COLLECTION, assign(both, [APPROVED], AssignMode.add,
                                                                     both.values[:1], {APPROVED: 2}))
     kept = await service.update_attribute(store, OWNER, COLLECTION, both.id, PatchAttribute(tag_ids=[PERSON]))
     assert kept.tag_ids == [PERSON]
-    everywhere = await service.update_attribute(store, OWNER, COLLECTION, free.id,
-                                                PatchAttribute(all_tags=False, tag_ids=[PERSON]))
-    assert (everywhere.all_tags, everywhere.tag_ids) == (False, [PERSON])
-    with pytest.raises(InUseError):
-        await service.update_attribute(store, OWNER, COLLECTION, both.id, PatchAttribute(tag_ids=[PLACE]))
-    widened = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
-                                             PatchAttribute(tag_ids=[PERSON, PLACE]))
-    assert set(widened.tag_ids) == {PERSON, PLACE}
-    to_all = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(all_tags=True))
-    assert (to_all.all_tags, to_all.tag_ids) == (True, [])
-
+    # Nobody holds values: nothing to confirm, also down to no tag.
     unused = await define(store, name="unused", tag_ids=[PERSON])
     narrowed = await service.update_attribute(store, OWNER, COLLECTION, unused.id, PatchAttribute(tag_ids=[PLACE]))
     assert narrowed.tag_ids == [PLACE]
-    # Removing the last selected tag leaves no tag; it never makes the attribute global.
     emptied = await service.update_attribute(store, OWNER, COLLECTION, unused.id, PatchAttribute(tag_ids=[]))
     assert (emptied.all_tags, emptied.tag_ids) == (False, [])
-    assert [(a.all_tags, a.tag_ids) for a in await service.list_attributes(store, OWNER, COLLECTION)
-            if a.id == unused.id] == [(False, [])]
+
+
+async def test_a_narrowing_counts_only_values_that_stop_applying_and_refuses_a_stale_confirmation(store, spans):
+    attribute = await define(store, tag_ids=[PERSON, PLACE])
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED, PLACE_SPAN],
+                                                                    AssignMode.add, attribute.values[:1]))
+    # A value kept on the rejected annotation still counts: it would stop applying too.
+    spans.stored[(COLLECTION, REJECTED)] = list(spans.stored[(COLLECTION, APPROVED)])
+    with pytest.raises(ConfirmationRequiredError) as asked:
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PERSON]))
+    assert asked.value.affected == 2 and "Values on 2 annotations would stop applying" in asked.value.detail
+    # Another annotation took a value meanwhile: the number confirmed is stale, nothing changes.
+    spans.stored[(COLLECTION, SUGGESTION)] = list(spans.stored[(COLLECTION, APPROVED)])
+    with pytest.raises(ConfirmationRequiredError) as again:
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                       PatchAttribute(remove_tag_ids=[PERSON], confirm_affected=2))
+    assert again.value.affected == 3 and "changed from 2" in again.value.detail
+    assert (await service.list_attributes(store, OWNER, COLLECTION))[0].tag_ids == [PERSON, PLACE]
+    saved = await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                           PatchAttribute(remove_tag_ids=[PERSON], confirm_affected=3))
+    assert saved.tag_ids == [PLACE]
+
+    # The annotation retagged away from the attribute's tags holds a value that already does not
+    # apply (#500): narrowing the other tags does not count it.
+    spans.spans[(COLLECTION, PLACE_SPAN)].tagId = str(SECOND_TAG)
+    other = await define(store, name="other", tag_ids=[PERSON, PLACE])
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(other, [APPROVED], AssignMode.add,
+                                                                    other.values[:1], {APPROVED: 1}))
+    spans.spans[(COLLECTION, APPROVED)].tagId = str(SECOND_TAG)
+    kept = await service.update_attribute(store, OWNER, COLLECTION, other.id, PatchAttribute(remove_tag_ids=[PERSON]))
+    assert kept.tag_ids == [PLACE]
+    # Widening back makes the kept values apply again, unchanged.
+    spans.spans[(COLLECTION, APPROVED)].tagId = str(PERSON)
+    restored = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(add_tag_ids=[PERSON]))
+    assert service.applies(restored, PERSON) and values_of(spans, APPROVED, attribute) == [str(attribute.values[0].id)]
 
 
 async def test_tags_added_or_removed_by_id_keep_the_other_selected_tags(store, spans):
@@ -749,15 +820,14 @@ async def test_an_all_tags_attribute_changes_its_scope_only_explicitly(store):
             PatchAttribute(**fields)
 
 
-async def test_removing_a_tag_annotations_hold_values_for_is_refused(store, spans):
+async def test_removing_a_tag_annotations_hold_values_for_is_confirmed(store, spans):
     attribute = await define(store, tag_ids=[PERSON, PLACE])
     await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add,
                                                                     attribute.values[:1]))
-    with pytest.raises(InUseError) as used:
-        await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PERSON]))
-    assert used.value.affected == 1
     kept = await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PLACE]))
     assert kept.tag_ids == [PERSON]
+    affected, emptied = await narrow(store, attribute, PatchAttribute(remove_tag_ids=[PERSON]))
+    assert affected == 1 and (emptied.all_tags, emptied.tag_ids) == (False, [])
 
 
 async def test_a_change_of_the_tags_never_writes_over_one_made_in_between(store, definitions, monkeypatch):
@@ -788,6 +858,34 @@ async def test_a_change_of_the_tags_never_writes_over_one_made_in_between(store,
         await service.update_attribute(store, OWNER, COLLECTION, attribute.id, PatchAttribute(remove_tag_ids=[PLACE]))
     monkeypatch.setattr(definitions, "read", read)
     assert set((await read(COLLECTION, attribute.id)).tag_ids) == {PERSON, PLACE}
+
+
+async def test_a_narrowing_is_counted_again_when_the_attribute_changed_before_its_write(store, spans, definitions,
+                                                                                      monkeypatch):
+    """The count confirmed was right when read, but someone else changed the attribute and an
+    annotation took a value before the write: the retry counts again and asks for the new number."""
+    attribute = await define(store, tag_ids=[PERSON, PLACE])
+    await service.assign_attributes(store, OWNER, COLLECTION, assign(attribute, [APPROVED], AssignMode.add,
+                                                                    attribute.values[:1]))
+    update = definitions.update
+    raced = []
+
+    async def someone_else_first(cid, aid, patch, expected_revision=None):
+        if not raced:
+            raced.append(True)
+            await update(cid, aid, PatchAttribute(description="edited meanwhile"))
+            spans.stored[(COLLECTION, SUGGESTION)] = list(spans.stored[(COLLECTION, APPROVED)])
+        return await update(cid, aid, patch, expected_revision=expected_revision)
+
+    monkeypatch.setattr(definitions, "update", someone_else_first)
+    counted = spans.counted
+    with pytest.raises(ConfirmationRequiredError) as asked:
+        await service.update_attribute(store, OWNER, COLLECTION, attribute.id,
+                                       PatchAttribute(remove_tag_ids=[PERSON], confirm_affected=1))
+    assert (asked.value.affected, spans.counted - counted) == (2, 2)
+    monkeypatch.setattr(definitions, "update", update)
+    current = (await service.list_attributes(store, OWNER, COLLECTION))[0]
+    assert (current.tag_ids, current.description) == ([PERSON, PLACE], "edited meanwhile")
 
 
 async def test_a_rename_with_a_change_in_between_is_retried_and_a_persistent_race_is_a_conflict(
@@ -971,6 +1069,10 @@ def test_requests_are_validated_before_anything_is_read():
                                expected_versions={}, mode=AssignMode.replace)
     with pytest.raises(ValueError):
         PatchAttribute()
+    with pytest.raises(ValueError):  # a confirmation alone changes nothing; a count is never negative
+        PatchAttribute(confirm_affected=1)
+    with pytest.raises(ValueError):
+        PatchAttribute(tag_ids=[], confirm_affected=-1)
     with pytest.raises(ValueError):
         PatchAttributeValue()
 

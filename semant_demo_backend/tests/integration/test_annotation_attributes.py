@@ -82,6 +82,11 @@ async def test_use_counts_per_attribute_and_value(spans, ids):
     # Outside the given tags; outside no tag (an attribute narrowed to none, #522) is every one.
     assert await spans.count_attribute_use(collection, A1, outside_tags=[UUID(ids.tag["person"])]) == 1
     assert await spans.count_attribute_use(collection, A1, outside_tags=[]) == 2
+    # Within the given tags (those a narrowing leaves out, #568); within no tag is none.
+    assert await spans.count_attribute_use(collection, A1, within_tags=[UUID(ids.tag["person"])]) == 1
+    assert await spans.count_attribute_use(collection, A1, within_tags=[UUID(ids.tag["person"]),
+                                                                        UUID(ids.tag["place"])]) == 2
+    assert await spans.count_attribute_use(collection, A1, within_tags=[]) == 0
 
 
 async def _define(api_client, headers, collection, **body):
@@ -133,6 +138,12 @@ async def test_definitions_are_per_collection_and_assignments_are_exact_and_vers
     assert sorted(result["succeeded"]) == sorted([novak, brno])
     assert [(f["item_id"], f["step"]) for f in result["failed"]] == [(lhota, "check_annotation_type")]
     assert result["outcome"] == "partial" and result["versions"] == {novak: 1, brno: 1}
+    assert result["unchanged"] == []
+    # Sent again with the versions now stale: already as asked, so done, but reported unchanged
+    # and not written again (#569).
+    again = (await api_client.post(url, headers=annotator, json=body)).json()
+    assert sorted(again["succeeded"]) == sorted(again["unchanged"]) == sorted([novak, brno])
+    assert again["versions"] == {novak: 1, brno: 1}
 
     rows = await _rows(api_client, owner, collection)
     assert rows[novak]["attributes"] == {speaker["id"]: [values["Author"]]}
@@ -231,9 +242,22 @@ async def test_tags_can_limit_an_attribute_and_retired_or_used_definitions_are_k
                         expected_versions={brno: 1}, mode="add", value_ids=[nowhere["values"][0]["id"]])
     assert [f["step"] for f in (await api_client.post(url, headers=owner, json=body)).json()["failed"]] == [
         "check_applicable"]
-    # Removing the last tag of a used attribute is narrowing, refused with the number affected.
+    # Removing the last tag of a used attribute is narrowing: it waits for confirmation of the
+    # number of annotations whose values stop applying, keeps them, and restoring the tag makes
+    # them apply again (#568).
     emptied = await api_client.patch(base, headers=owner, json={"tag_ids": []})
-    assert (emptied.status_code, emptied.json()["affected"]) == (409, 1)
+    assert (emptied.status_code, emptied.json()["affected"], emptied.json()["confirm"]) == (409, 1, "narrowing")
+    negative = await api_client.patch(base, headers=owner, json={"tag_ids": [], "confirm_affected": -1})
+    assert negative.status_code == 422
+    stale = await api_client.patch(base, headers=owner, json={"tag_ids": [], "confirm_affected": 2})
+    assert (stale.status_code, stale.json()["affected"]) == (409, 1)
+    confirmed = await api_client.patch(base, headers=owner, json={"tag_ids": [], "confirm_affected": 1})
+    assert (confirmed.status_code, confirmed.json()["all_tags"], confirmed.json()["tag_ids"]) == (200, False, [])
+    # Kept on the annotation; its version stays (the removal of
+    # city below expects version 1).
+    assert (await _rows(api_client, owner, collection))[brno]["attributes"] == {only_places["id"]: [city]}
+    restored = await api_client.patch(base, headers=owner, json={"tag_ids": [ids.tag["place"]]})
+    assert (restored.status_code, restored.json()["tag_ids"]) == (200, [ids.tag["place"]])
     unused = await api_client.patch(f"/api/user_collections/{collection}/attributes/{everywhere['id']}",
                                     headers=owner, json={"all_tags": False})
     assert (unused.status_code, unused.json()["all_tags"], unused.json()["tag_ids"]) == (200, False, [])

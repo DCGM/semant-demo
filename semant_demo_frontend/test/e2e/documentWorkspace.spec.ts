@@ -461,7 +461,7 @@ test.describe('from Search and Chat and back', () => {
     await expect(page).toHaveURL(new RegExp(`/documents/${chronicle.id}\\?chunk=${target.id}&from=search`))
     await expect(chunk(page, 'chronicle_2')).toBeVisible()
     await expect(overlay(page)).toHaveAttribute('data-layout-page-id', PAGE_1)
-    await expect(page.getByRole('listitem', { name: 'Summary' })).toHaveCount(0)
+    await expect(page.getByRole('listitem', { name: 'AI Chat' })).toHaveCount(0)
 
     // Back: the same results, the opened result still in its panel.
     await page.getByRole('link', { name: 'Back to search results' }).click()
@@ -513,7 +513,7 @@ test.describe('the collection document view', () => {
     await expect(chunkText(page, 'chronicle_3')).toBeVisible()
     // Annotations and the collection's panels are as before.
     await expect(chunkText(page, 'chronicle_1').locator('.text-segment.is-tagged').first()).toBeVisible()
-    for (const name of ['Tags', 'AI Tagging', 'Summary', 'Document']) {
+    for (const name of ['Tags', 'AI Tagging', 'AI Chat', 'Document']) {
       await expect(page.getByRole('listitem', { name })).toHaveCount(1)
     }
 

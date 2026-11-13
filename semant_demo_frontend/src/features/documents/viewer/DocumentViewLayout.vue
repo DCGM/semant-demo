@@ -35,36 +35,13 @@
     >
       <AiAssistPanel :collection-id="collectionId" :document-id="documentId" />
     </RightSidebarPanel>
-    <!-- fill: the rendered summary scrolls on its own; the Summarize/Cancel controls stay in view -->
-    <RightSidebarPanel
-      :id="DOCUMENT_SIDEBAR_PANELS.summary"
-      label="Summary"
-      icon="summarize"
-      :order="1.5"
-      :busy="documentSummary.summarizing.value"
-      fill
-    >
-      <DocumentSummaryPanel
-        :tokens="documentSummary.tokens.value"
-        :time-spent="documentSummary.timeSpent.value"
-        :length="documentSummary.length.value"
-        :truncated="documentSummary.truncated.value"
-        :summarized-chunks="documentSummary.summarizedChunks.value"
-        :total-chunks="documentSummary.totalChunks.value"
-        :error="documentSummary.error.value"
-        :loading="documentSummary.summarizing.value"
-        @summarize="onSummarizeDocument"
-        @cancel="documentSummary.cancel"
-        @update:length="documentSummary.setLength"
-        @cite="documentSummary.cite"
-      />
-    </RightSidebarPanel>
-    <!-- fill: the conversation scrolls; the question input stays in view -->
+    <!-- AI Chat: summaries and questions about the document in one conversation (#248, #245).
+         fill: the conversation scrolls; the controls and the question input stay in view -->
     <RightSidebarPanel
       :id="DOCUMENT_SIDEBAR_PANELS.chat"
-      label="Chat"
+      label="AI Chat"
       icon="forum"
-      :order="1.75"
+      :order="1.5"
       :busy="documentChat.streaming.value"
       fill
     >
@@ -74,6 +51,10 @@
         :messages="documentChat.messages.value"
         :streaming="documentChat.streaming.value"
         scope-label="Asking about this document's passages in the collection"
+        empty-text="Summarize this document or ask a question about it. Answers cite its passages as S1, S2…; click one to show it in the text."
+        summaries
+        :suggested-questions="DOCUMENT_CHAT_QUESTIONS"
+        @summarize="summarizeDocument"
         @ask="documentChat.ask"
         @stop="documentChat.stop"
         @new-conversation="documentChat.reset"
@@ -105,7 +86,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
-import { Document } from 'src/generated/api'
+import { Document, type SummaryLength } from 'src/generated/api'
 import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import DocumentMetadataPanel from 'src/features/documents/DocumentMetadataPanel.vue'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
@@ -114,11 +95,13 @@ import DocumentTagsPanel from 'src/features/annotations/DocumentTagsPanel.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import useTagSpans from 'src/features/annotations/useTagSpans'
-import DocumentSummaryPanel from 'src/features/documents/DocumentSummaryPanel.vue'
-import useDocumentSummary from 'src/features/documents/useDocumentSummary'
 import { citeInReader } from 'src/features/documents/readerCitation'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
-import useScopedChat from 'src/features/chat/useScopedChat'
+import useScopedChat, { citedSources, type ChatAnswer, type DocumentChatScope } from 'src/features/chat/useScopedChat'
+import { documentChatKey } from 'src/features/chat/chatStorage'
+import { useUserStore } from 'src/features/auth/userStore'
+import { useApi } from 'src/shared/api'
+import { summaryPrompt } from 'src/shared/summaryLength'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import DocumentHeader from 'src/features/documents/workspace/DocumentHeader.vue'
 import { documentLink } from 'src/features/documents/workspace/documentLink'
@@ -145,18 +128,47 @@ const { fetchCollection } = collectionsStore
 const { fetchTagsByCollection } = useTagsStore()
 const aiAssist = useAiAssistance()
 const tagSpans = useTagSpans()
-const documentSummary = useDocumentSummary()
-// Document chat (#248): one in-memory conversation per document; it starts empty on
-// another document or collection and is dropped when the view unmounts.
-const documentChat = useScopedChat(() => ({
+// Document chat (#248): one conversation per document of a collection, kept in this browser
+// for the signed-in user (ADR 0012 decision 1), so it comes back after a reload or on
+// returning to the document; *New conversation* forgets it.
+const userStore = useUserStore()
+const documentChat = useScopedChat((): DocumentChatScope => ({
   kind: 'document', collectionId: props.collectionId, documentId: props.documentId
-}))
+}), {
+  storageKey: (scope) => userStore.getUserId ? documentChatKey(userStore.getUserId, scope) : null
+})
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
 /** The collection could not be read (no access, or it does not exist). */
 const collectionUnavailable = ref(false)
 
-function onSummarizeDocument() {
-  void documentSummary.summarize(props.collectionId, props.documentId)
+// Summaries are the chat's answers (#245): only the document's chunks in the collection, the
+// chat's scope; a long document's summary of its first chunks says so as partial coverage.
+const api = useApi().default
+const DOCUMENT_CHAT_QUESTIONS = [
+  'Who are the people and places mentioned, and what is their role?',
+  'When and where does this take place?'
+]
+
+function summarizeDocument(length: SummaryLength) {
+  void documentChat.summarize(summaryPrompt(length), async (scope, signal): Promise<ChatAnswer> => {
+    const data = await api.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(
+      { collectionId: scope.collectionId, documentId: scope.documentId, length }, { signal })
+    return {
+      text: data.summary,
+      sources: citedSources(data.summary, data.citations.map(citation => ({
+        chunkId: citation.chunkId,
+        documentId: scope.documentId,
+        order: citation.order ?? null,
+        fromPage: citation.fromPage,
+        toPage: citation.toPage
+      }))),
+      coverage: {
+        coverage: data.truncated ? 'part' : 'all',
+        usedChunks: data.summarizedChunks,
+        totalChunks: data.totalChunks
+      }
+    }
+  })
 }
 
 // Ctrl+F searches the tags while the Tags panel is the sidebar's active panel (also when
@@ -182,8 +194,6 @@ onBeforeUnmount(() => {
   aiAssist.reset()
   aiAssist.aiPanelActive.value = false
   aiAssist.highlightedAutoSpanId.value = null
-  // A summary in flight is dropped too; it is not persisted, unlike AI suggestions.
-  documentSummary.reset()
 })
 
 const documentData = computed<Document | null>(() => activeDocument.value ?? null)
@@ -251,7 +261,6 @@ watch(
     // suggestions from the previous document don't leak into the new one.
     aiAssist.reset()
     tagSpans.clearAll()
-    documentSummary.reset() // a stale/in-flight summary of the previous document is dropped
     await fetchDocument(documentId)
   },
   { immediate: true }
@@ -264,7 +273,6 @@ watch(
     // annotations (the same chunk can be in both) must not stay on screen.
     aiAssist.reset()
     tagSpans.clearAll()
-    documentSummary.reset() // a stale/in-flight summary of the previous collection is dropped
     collectionUnavailable.value = false
     await fetchCollection(collectionId)
     if (collectionId !== props.collectionId) return

@@ -566,13 +566,41 @@ positions only when `Chunks` declares them at startup (`bootstrap.detect_chunk_p
 Record counts, reported documents and the backup id on the issue. A development store seeded
 before #463 is completed by the same command, or by `make dev-reset`.
 
+## Chunk classification status (`classification_provenance_schema`, #590)
+
+`Chunks.classification_provenance` (`text`, `field` tokenization, filterable) says whether a
+chunk still needs classification: `UNPROCESSED` on every chunk that
+[`chunk_ingest`](#chunk-import-chunk_ingest-313) inserts, the classifier's model/version
+identifier once the chunk is classified. Chunks stored before the property was declared have
+no value and are never selected for classification: declaring it rewrites no chunk, so it needs
+no backup. A read-only pass over production on 2026-11-10 found no chunk with a missing
+classification field, so no existing chunk needs marking; marking chunks `UNPROCESSED` later
+would be a separate, explicit step.
+
+```bash
+python -m semant_demo.maintenance.classification_provenance_schema           # read-only check
+python -m semant_demo.maintenance.classification_provenance_schema --apply --confirm-endpoint HOST:PORT
+```
+
+- `--apply` adds the property to the collection behind the alias (Weaviate adds properties only
+  by the collection's name, not through an alias) and is repeatable. A property already declared
+  differently (another type, tokenization or filter index) is refused before anything is added;
+  it needs a separate, reviewed migration.
+- Exit code 0 when the property is declared as expected, 1 when the check finds it missing, 2
+  when refused.
+- Run it once before the first chunk import into a store: `chunk_ingest` refuses a store without
+  the property.
+
 ## Chunk import (`chunk_ingest`, #313)
 
 The one supported way to add text chunks: append-only, into the **existing** collections. It
 only inserts absent `Chunks` objects and, before the first chunk of a new document, an absent
 `Documents` object without properties. It never updates or deletes an existing object and
 only reads the schema (a missing collection, property or type is refused before any write;
-the schema itself is #128).
+the schema itself is #128). Every inserted chunk gets `classification_provenance=UNPROCESSED`;
+both modes refuse a store without that property, so declare it first
+([`classification_provenance_schema`](#chunk-classification-status-classification_provenance_schema-590)).
+The status is not compared with the input: a chunk classified since its import still replays.
 
 ```bash
 python -m semant_demo.maintenance.chunk_ingest --check check.json chunks/             # read-only plan
@@ -681,28 +709,69 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
     repetition. A line cut off by a killed run is removed when the run resumes.
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
-**Afterwards**, as separate commands:
+**Afterwards**, as separate commands. An arrow means that a step uses the result of the
+previous one; steps without an arrow between them are independent, and dashed steps have no
+safe command yet. `chunk_year` and `chunk_summaries` expect nothing else to write chunks, so
+do not run them alongside the embedder or another chunk writer.
+
+```mermaid
+flowchart LR
+  ingest["chunk_ingest --write"] --> meta["metadata_sync<br/>--document-ids"]
+  meta --> year["chunk_year"]
+  meta --> titles["chunk_titles"]
+  ingest --> emb["data_tools/embedder"]
+  ingest -.->|"#590"| cls["classification (planned)"]
+  ingest --> sum["chunk_summaries"]
+  cls -.-> sum
+```
 
 1. `metadata_sync --report REPORT --document-ids CHECKPOINT.documents.txt`, then
    `--apply REPORT`, fills the new documents' metadata (`--sync` takes no document list).
-2. `chunk_year --write` copies their year to the chunks.
+   The import creates the documents without `library`, so give the report an evidence-backed
+   source: `--infer-library-from-pages` (from the chunks' `start_page_id`), a verified
+   `--library-map`, or `--infer-library-from-mirror` for documents without page evidence;
+   otherwise every new document is `unresolved`. Check the unresolved entries and sample the
+   inferred libraries (`--inferred FILE`) before `--apply`, which refuses unresolved documents
+   unless `--accept-incomplete` is given
+   ([`metadata_sync`](#kramerius-metadata-sync-metadata_sync-257)).
+2. `chunk_year --write` copies their year to the chunks (a full scan); it needs the metadata.
 3. `chunk_titles --write` generates the new chunks' titles (every untitled chunk; no document
    list); after `metadata_sync`, since it uses the document titles
    ([Chunk titles](#chunk-titles-chunk_titles-575)).
 4. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
    vectors; until then the new chunks are missing from vector and hybrid search. `--check`
-   counts the chunks still without the vector, read-only.
+   counts the chunks still without the vector, read-only. The flag confirms the host and port,
+   not the collection: check `collection` in the config too.
+5. The classification has no safe command for new chunks on a populated store yet. The import
+   marks them `classification_provenance=UNPROCESSED`
+   ([status](#chunk-classification-status-classification_provenance_schema-590)), but
+   `data_tools/meta_data_enrichment` never changes that status, so a classified chunk would stay
+   `UNPROCESSED`, and it overwrites existing values
+   ([#590](https://github.com/DCGM/semant-demo/issues/590)). Until then the new chunks have no
+   classification.
+6. `chunk_summaries --write` is the final pass, after the classification, since it summarizes
+   the chunks' classifications. Until it runs, the new documents have no summaries and match no
+   chunk filter. A run before the classification (e.g. for the language filter) is only interim:
+   the import is not complete while the classification is pending. It is a full-corpus pass.
+
+`page_order --document-ids CHECKPOINT.documents.txt` exports the new documents' page lists.
+Scans and anchors for newly imported documents are not covered yet: `page_import` was built for
+the existing corpus (#542), and its production import has open questions
+([#591](https://github.com/DCGM/semant-demo/issues/591)).
 
 The import does none of this, nor anything to existing annotations: their positions stay valid,
 and context near the former document end keeps its old right boundary.
 
 Procedure on a shared store (authorized per task):
-1. Back up.
-2. Stop other chunk writers.
-3. Run `--check` and review the plan and the manifest.
-4. Run `--write`.
-5. Run `--check` again with a new checkpoint (expect `replayed` only).
-6. Run the follow-up commands.
+1. Once per store, before its first import: `classification_provenance_schema --apply`
+   ([status](#chunk-classification-status-classification_provenance_schema-590)); otherwise
+   `--check` and `--write` are refused.
+2. Back up.
+3. Stop other chunk writers.
+4. Run `--check` and review the plan and the manifest.
+5. Run `--write`.
+6. Run `--check` again with a new checkpoint (expect `replayed` only).
+7. Run the follow-up commands.
 
 Record the counts and the backup id on the issue.
 
