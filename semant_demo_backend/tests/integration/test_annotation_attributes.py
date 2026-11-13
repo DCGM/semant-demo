@@ -238,6 +238,13 @@ async def test_tags_can_limit_an_attribute_and_retired_or_used_definitions_are_k
         "everywhere": (True, []), "nowhere": (False, []), "place_kind": (False, [ids.tag["place"]])}
     assert (await api_client.post(f"/api/user_collections/{collection}/attributes", headers=owner, json={
         "name": "both", "all_tags": True, "tag_ids": [ids.tag["place"]]})).status_code == 422
+    # Single to multi is allowed and raises the revision; multi to single is refused (#498).
+    widened = await api_client.patch(f"/api/user_collections/{collection}/attributes/{everywhere['id']}",
+                                     headers=owner, json={"cardinality": "multi"})
+    assert widened.status_code == 200 and widened.json()["cardinality"] == "multi"
+    assert widened.json()["revision"] == everywhere["revision"] + 1
+    assert (await api_client.patch(f"/api/user_collections/{collection}/attributes/{everywhere['id']}",
+                                   headers=owner, json={"cardinality": "single"})).status_code == 400
     url, body = _assign(collection, attribute_id=nowhere["id"], annotation_ids=[brno],
                         expected_versions={brno: 1}, mode="add", value_ids=[nowhere["values"][0]["id"]])
     assert [f["step"] for f in (await api_client.post(url, headers=owner, json=body)).json()["failed"]] == [
