@@ -242,6 +242,15 @@ def test_max_records_bounds_a_run(client, make_pipeline):
     assert result.exit_code() == 1
 
 
+def test_max_records_that_exhausts_the_selection_completes_the_run(client, make_pipeline):
+    create_collection(client, unprocessed(*[f"chunk {i}" for i in range(6)]))
+
+    result = make_pipeline(FakeModel(), max_records=6).run()
+
+    assert (result.classified, result.remaining, result.stopped) == (6, 0, None)
+    assert result.exit_code() == 0
+
+
 def test_filters_narrow_the_selection(client, make_pipeline):
     create_collection(client, unprocessed("keep me", "other"))
 

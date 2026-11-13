@@ -91,7 +91,7 @@ The configuration file is a flat YAML file mapped directly to the `EnrichmentPip
 - Connection properties: `weaviate_host`, `weaviate_port`, `weaviate_grpc_port`, `weaviate_api_key`, `weaviate_headers`
 - Database collection target: `collection` (a collection or an alias)
 - `provenance`: the model/version identifier (see above)
-- Data mapping: `field_tasks`, a dict mapping Weaviate field names (declared as `text[]`) to classification tasks
+- Data mapping: `field_tasks`, a non-empty dict mapping Weaviate field names (declared as `text[]`) to classification tasks
 - Selection and execution: `filters`, `batch_size`, `max_records` (limit per run), `max_consecutive_failures`, `max_failures`, `max_retries`, `retry_delay` (database updates)
 - Model definition: `model` (select `LocalHFClassifierModel` or `APIModel` via the `cls` field). `APIModel` treats a failed request, an unrenderable prompt or a refusal as no result, so the chunk is not written.
 

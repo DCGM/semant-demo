@@ -100,7 +100,8 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
 
     # Pipeline execution settings
     field_tasks: dict = ConfigurableValue(
-        desc="Mapping of Weaviate property names (keys, declared as text[]) to their classification task names (values)",
+        desc="Non-empty mapping of Weaviate property names (keys, declared as text[]) to their classification task "
+             "names (values)",
         user_default={
             "communicative_mode": "communicative_mode",
             "complexity": "complexity",
@@ -118,7 +119,8 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
             "subject_domain": "subject_domain",
             "temporal_reference_frame": "temporal_reference_frame",
             "textual_stance": "textual_stance"
-        }
+        },
+        validator=lambda v: isinstance(v, dict) and len(v) > 0
     )
     filters: list = ConfigurableValue(
         desc="List of query filters that further narrow the UNPROCESSED chunks; never on a mapped field or classification_provenance.",
@@ -236,7 +238,9 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
             while True:
                 limit = self.batch_size if max_rec <= 0 else min(self.batch_size, max_rec - processed)
                 if limit <= 0:
-                    result.stopped = f"max_records ({max_rec}) reached"
+                    # A run whose max_records exactly exhausts the selection is complete, not stopped.
+                    if collection.query.fetch_objects(filters=self._selection(result.failed), limit=1).objects:
+                        result.stopped = f"max_records ({max_rec}) reached"
                     break
                 page = collection.query.fetch_objects(filters=self._selection(result.failed), limit=limit).objects
                 if not page:
