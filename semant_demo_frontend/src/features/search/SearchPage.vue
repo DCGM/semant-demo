@@ -485,6 +485,7 @@ import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, 
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
+import { useSearchVectors } from './useSearchVectors'
 import { chartsAvailability, useExploreCharts } from 'src/features/explore/useExploreCharts'
 import { documentPopulation, passagePopulation, useResultCharts, type RankedChartsState, type RankedPopulation } from 'src/features/explore/useResultCharts'
 import { withChartFilter, type ChartFilter } from 'src/features/analytics/corpusOverview'
@@ -544,8 +545,12 @@ const pending = computed(() => !sameCriteria(draftCriteria.value, applied.value.
 
 // Search vectors (GET /api/search/vectors): null in the request means the server's default,
 // so choosing the default again sends no explicit selection.
-const availableVectors = ref<SearchVectorInfo[]>([])
-const defaultVector = ref<string | null>(null)
+// One cached answer per tab until a reload (useSearchVectors); a failed load offers no choice
+// and searches use the server's default.
+const searchVectors = useSearchVectors()
+const availableVectors = computed<SearchVectorInfo[]>(() => searchVectors.data.value?.vectors ?? [])
+const defaultVector = computed<string | null>(() => searchVectors.data.value?.defaultVector ?? null)
+watch(searchVectors.error, (e) => { if (e) console.error('Failed to fetch search vectors:', e) })
 const vectorOptions = computed(() => availableVectors.value.map(v => ({
   label: v.id === defaultVector.value ? `${v.name} (default)` : v.name,
   value: v.id,
@@ -982,7 +987,11 @@ function removeHistory (index: number) {
 
 type LoadStatus = 'loading' | 'ready' | 'failed'
 const filtersStatus = ref<LoadStatus>('loading')
-const vectorsStatus = ref<LoadStatus>('loading')
+// A list loaded once stays usable when a later refresh fails.
+const vectorsStatus = computed<LoadStatus>(() => {
+  if (searchVectors.data.value) return 'ready'
+  return searchVectors.isError.value ? 'failed' : 'loading'
+})
 
 /**
  * Whether the lists a history entry is restored against are loaded: the offered filters,
@@ -1120,19 +1129,6 @@ async function fetchAvailableFilters () {
     Notify.create({ message: 'Failed to load search filters', position: 'top', color: 'warning' })
   } finally {
     loadingFilters.value = false
-  }
-}
-
-async function fetchSearchVectors () {
-  try {
-    const data = await api.getAvailableSearchVectorsApiSearchVectorsGet()
-    availableVectors.value = data.vectors
-    defaultVector.value = data.defaultVector
-    vectorsStatus.value = 'ready'
-  } catch (e) {
-    vectorsStatus.value = 'failed'
-    // Without the list there is no choice to offer; searches use the server's default.
-    console.error('Failed to fetch search vectors:', e)
   }
 }
 
@@ -1365,7 +1361,9 @@ whileShown(() => {
 })
 
 onMounted(async () => {
-  await Promise.all([fetchAvailableFilters(), fetchSearchVectors()])
+  // The search vectors load by themselves (useSearchVectors); waiting for them keeps the
+  // collections the third request, as before.
+  await Promise.all([fetchAvailableFilters(), searchVectors.suspense()])
   await loadCollections()
 })
 
