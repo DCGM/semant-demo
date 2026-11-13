@@ -163,6 +163,16 @@ def test_a_config_with_a_non_positive_failure_limit_is_refused(monkeypatch, tmp_
     assert started == []
 
 
+@pytest.mark.parametrize("field_tasks", [{}, None, []])
+def test_a_config_without_mapped_fields_is_refused(monkeypatch, tmp_path, started, field_tasks):
+    """Otherwise a run would mark chunks classified with only the provenance written."""
+    path = tmp_path / "classifier.yaml"
+    path.write_text(yaml.safe_dump({**CONFIG, "field_tasks": field_tasks}))
+
+    assert run_cli(monkeypatch, str(path), "--confirm-endpoint", "weaviate.example:18080") == 2
+    assert started == []
+
+
 def test_valid_provenance():
     assert valid_provenance("mmbert-multitask-2026-07-15")
     assert not any(valid_provenance(v) for v in (None, "", "UNPROCESSED", " x", 3))
