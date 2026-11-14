@@ -152,6 +152,9 @@ async def test_words_are_searched_in_the_fields_of_the_text_scope(store, owner, 
     assert await found("karel rodin", TextScope.annotation) == set()
     assert await found("karel rodin", TextScope.context) == {zdenka}
     assert await found("karel rodin", TextScope.both) == {zdenka, karel}  # Karel's "Karel" is its text
+    # An underscore separates words, as in Weaviate's tokenization of the stored text.
+    assert await found("karel_rodin", TextScope.both) == {zdenka, karel}
+    assert await found("karel_rodin", TextScope.annotation) == set()
     assert await found("pozdrav rodin", TextScope.context) == {zdenka, karel}
     assert await found("tvu", TextScope.both) == set()
     # The fixture stores "Zdeňku" decomposed (n + combining caron): Weaviate's word tokenization splits

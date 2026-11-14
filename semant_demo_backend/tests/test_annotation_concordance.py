@@ -90,7 +90,7 @@ _SCOPE_FIELDS = {TextScope.annotation: ("text",), TextScope.context: ("leftConte
 def _word_in(row: AnnotationRow, word: str, scope: TextScope) -> bool:
     """``like *word*`` on a word-tokenized field: inside one of its words, ignoring case."""
     return any(word.lower() in token.lower() for name in _SCOPE_FIELDS[scope]
-               for token in re.findall(r"\w+", getattr(row, name) or ""))
+               for token in re.findall(r"[^\W_]+", getattr(row, name) or ""))
 
 
 def _position_key(row: AnnotationRow):
@@ -341,6 +341,19 @@ async def test_the_text_scope_chooses_the_fields_each_word_must_occur_in(store):
     assert await found("novák brna", TextScope.both) == {in_text.id}
     assert await found("novák brna", TextScope.annotation) == set()
     assert await found("syn starosta", TextScope.both) == {in_left.id}
+
+
+async def test_underscores_separate_query_words_as_in_the_stored_text(store):
+    # Weaviate's word tokenization splits "Novák_Brna" into two words; so does the query.
+    both = ctx(DOC_A, 0, "Novák", right=" z Brna")
+    store.spans.rows = [both]
+
+    async def found(q, scope):
+        return ids(await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(q=q, text_scope=scope)))
+
+    assert await found("novák_brna", TextScope.both) == [both.id]
+    assert await found("novák_brna", TextScope.annotation) == []
+    assert service._concordance_query(None, None, "a_b__c_").words == ["a", "b", "c"]
 
 
 async def test_a_decomposed_query_matches_composed_text(store):
