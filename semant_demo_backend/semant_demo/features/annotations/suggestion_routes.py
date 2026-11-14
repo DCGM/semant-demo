@@ -24,10 +24,10 @@ stops the remaining work; stored suggestions remain.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from starlette.types import Receive, Scope, Send
 
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.features.annotations import service, suggestions
@@ -40,6 +40,7 @@ from semant_demo.features.quota.principal import get_allowance_budget
 from semant_demo.features.quota.schemas import QUOTA_EXHAUSTED_RESPONSES
 from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.routes.dependencies import get_annotation_store, get_topicer
+from semant_demo.routes.streaming import OperationStreamingResponse
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
 
@@ -48,26 +49,17 @@ exp_router = APIRouter()
 _NDJSON_MEDIA_TYPE = "application/x-ndjson"
 
 
-class _RunResponse(StreamingResponse):
-    """NDJSON stream of a suggestion run that is closed however the response ends.
+def _run_response(run: suggestions.SuggestionRun) -> OperationStreamingResponse:
+    """NDJSON stream of ``run``, closed however the response ends: closing the events
+    cancels and awaits the run's remaining work, and a run that never started is released
+    (#563)."""
+    return OperationStreamingResponse(_lines(run.events()), run, _NDJSON_MEDIA_TYPE)
 
-    Starlette cancels a response whose client disconnected but does not close its
-    iterator; closing it here cancels and awaits the run's remaining work.
-    """
 
-    def __init__(self, run: suggestions.SuggestionRun):
-        self._events = run.events()
-        super().__init__(self._lines(), media_type=_NDJSON_MEDIA_TYPE)
-
-    async def _lines(self) -> AsyncGenerator[bytes, None]:
-        async for event in self._events:
+async def _lines(events: AsyncGenerator[suggestions.SuggestionEvent, None]) -> AsyncGenerator[bytes, None]:
+    async with aclosing(events):
+        async for event in events:
             yield (event.model_dump_json() + "\n").encode("utf-8")
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        try:
-            await super().__call__(scope, receive, send)
-        finally:
-            await self._events.aclose()
 
 
 def _stream_responses(description: str) -> dict:
@@ -115,7 +107,7 @@ async def suggest_spans_thorough(
     :class:`SuggestSpansChunkResult` per chunk, then a :class:`SuggestSpansRunEnd`.
     """
     run = await suggestions.prepare_document_run(store, provider, current_user, body, "thorough", budget)
-    return _RunResponse(run)
+    return _run_response(run)
 
 
 @exp_router.post(
@@ -138,7 +130,7 @@ async def suggest_spans_optimized(
     :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
     """
     run = await suggestions.prepare_document_run(store, provider, current_user, body, "optimized", budget)
-    return _RunResponse(run)
+    return _run_response(run)
 
 
 @exp_router.post(
@@ -174,7 +166,7 @@ async def suggest_spans_selection(
     not on the first chunk of the selection.
     """
     run = await suggestions.prepare_selection_run(store, provider, current_user, body, budget)
-    return _RunResponse(run)
+    return _run_response(run)
 
 
 @exp_router.post(

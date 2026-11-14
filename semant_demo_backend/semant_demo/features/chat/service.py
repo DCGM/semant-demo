@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 from uuid import UUID
@@ -85,7 +86,7 @@ class StreamingLlm(Protocol):
 
     def operation(self, feature: str, budget=None) -> OperationScope: ...
 
-    def stream(self, feature: str, messages: Sequence[dict[str, str]]) -> AsyncIterator[str]: ...
+    def stream(self, feature: str, messages: Sequence[dict[str, str]]) -> AsyncGenerator[str, None]: ...
 
 
 def rewrite_citations(text: str, cited: Sequence[UUID], numbering: dict[UUID, int]) -> str:
@@ -174,16 +175,16 @@ class PreparedChat:
     chunks: list[DocumentChunk]
     total_chunks: int
 
-    async def events(self, llm: StreamingLlm, operation: OperationScope) -> AsyncIterator[ChatEvent]:
+    async def events(self, llm: StreamingLlm, operation: OperationScope) -> AsyncGenerator[ChatEvent, None]:
         """The answer's events; ``operation`` (already admitted) is entered here and settled
-        when the stream ends, also when the client disconnects during it (one that never
-        starts the stream leaves the reservation charged, #563). The sources of the text
-        already streamed come before an error too, so a partial answer keeps its citations."""
+        when the stream ends or is closed (a stream that never starts is released by the
+        route, #563). The sources of the text already streamed come before an error too, so
+        a partial answer keeps its citations."""
         answer: list[str] = []
         error: ChatErrorEvent | None = None
         try:
-            async with operation:
-                async for delta in llm.stream(FEATURE, self.messages):
+            async with operation, aclosing(llm.stream(FEATURE, self.messages)) as deltas:
+                async for delta in deltas:
                     answer.append(delta)
                     yield ChatDeltaEvent(text=delta)
         except LlmInputTooLarge as e:
