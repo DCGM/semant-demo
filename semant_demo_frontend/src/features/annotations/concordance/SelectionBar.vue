@@ -11,11 +11,13 @@
         dense
         no-caps
         color="primary"
-        :label="`Select all ${total} matches`"
+        :label="ranked ? `Select these top ${total}` : `Select all ${total} matches`"
         :loading="resolving"
         data-testid="select-all-matches"
         @click="emit('select-all')"
-      />
+      >
+        <q-tooltip v-if="ranked">Selects the {{ total }} ranked annotations only, not every annotation matching the filters</q-tooltip>
+      </q-btn>
       <q-btn
         v-if="selectedCount"
         flat
@@ -215,8 +217,10 @@ import type { ChangeKind, ReportAction, ReviewReport, UndoableChange } from './a
 
 const props = defineProps<{
   selectedCount: number
-  /** Matches of the current filters. */
+  /** Matches of the current filters, or the annotations of a ranked top k. */
   total: number
+  /** The result is a ranked top k (#664): "select all" selects exactly it. */
+  ranked?: boolean
   /** Selected annotations the filters do not show; null while unknown. */
   hiddenSelected: number | null
   shownError: string | null

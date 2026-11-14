@@ -54,7 +54,8 @@ from uuid import UUID
 from semant_demo.features.annotations.schemas import (
     MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationFilters, AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
-    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
+    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest,
+    MAX_TOP_K, AnnotationRanking, AnnotationResultSet, HYBRID_ALPHA, ResultKind, RetrievalMode, SCOPE_FIELDS, VectorCoverage, VectorRanking, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
 )
 from semant_demo.features.documents.criteria import Condition, document_conditions
 from semant_demo.features.documents.schemas import Document
@@ -835,26 +836,6 @@ async def list_annotation_rows(store: AnnotationStore, user: Principal | None, c
     return await _visible(store, rows)
 
 
-async def similar_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, query: str, *,
-                              tag_ids: list[Id] | None = None, limit: int = 20) -> list[AnnotationRow]:
-    """
-    The collection's annotations nearest in meaning to ``query`` (its query embedding
-    against the contextual vectors), nearest first. Only vectors of the span's current
-    revision and of the configured vector count: a span whose vector is pending, failed,
-    stale or of another configuration is left out, so fewer than ``limit`` may return.
-    """
-    grant = await access.require_collection_read(store.collections, user, collection_id)
-    _check_limit(limit)
-    vector = store.enrichment.vector
-    if vector is None:
-        raise InvalidRequestError("Semantic annotation search is not configured.")
-    tags = [access.parse_id(t, "Tag") for t in tag_ids] if tag_ids else None
-    cid = await use_tenant(store, grant)
-    rows = await store.spans.near_vector(cid, vector.target_vector, await vector.embed_query(query), vector.id,
-                                         limit, tags)
-    return await _visible(store, [r for r in rows if vector_current(r, vector.id) and text_current(r)])
-
-
 ################################
 # Concordance queries (#329)   #
 ################################
@@ -1031,6 +1012,110 @@ async def _rows_in_document_order(store: AnnotationStore, cid: UUID, query: Anno
     return [row for document, _, _ in slices for row in by_document[document]]
 
 
+SEMANTIC_NOT_CONFIGURED = "Search by meaning is not configured on this server (no annotation vector)."
+EMBEDDING_UNAVAILABLE = ("The embedding service is unavailable, so search by meaning cannot run now. "
+                         "Lexical search and Find similar still work.")
+NO_SOURCE_VECTOR = ("This annotation has no current vector yet (it is pending, failed or of an older edit), "
+                    "so similar annotations cannot be found from it.")
+_MAX_CANDIDATES = 4 * (MAX_TOP_K + 1)
+"""Ranked candidates read at most to find ``k`` + 1 with a current vector (#664)."""
+
+
+@dataclass
+class _Ranked:
+    """A ranked annotation query's top ``k`` (relevance, then id) and what they are of."""
+    ids: list[UUID]
+    result: AnnotationResultSet
+    documents: dict[UUID, Document] | None
+    """The annotated documents, when document filters had to read them."""
+
+
+def _ranking_query(filters: AnnotationFilters, ranking: AnnotationRanking,
+                   ids: list[UUID] | None = None) -> tuple[AnnotationQuery, str | None]:
+    """The stored-field conditions of a ranked query and the text it ranks by: ``semantic`` and
+    ``hybrid`` rank by ``q`` (required), which then filters nothing; ``similar`` keeps ``q`` as
+    a lexical filter. Checked before any read or provider call."""
+    if ranking.mode == RetrievalMode.similar:
+        return _filters_query(filters, ids), None
+    text = " ".join((filters.q or "").split())
+    if not text:
+        raise InvalidRequestError("Enter a text to search by meaning.")
+    return _filters_query(filters.model_copy(update={"q": None}), ids), text
+
+
+async def _query_vector(store: AnnotationStore, cid: UUID, ranking: AnnotationRanking,
+                        text: str | None) -> tuple[list[float], UUID | None]:
+    """The vector to rank by and the annotation never to rank: the query embedding of ``text``,
+    or the stored current vector of the ``similar`` source (no provider call)."""
+    vector = store.enrichment.vector
+    assert vector is not None
+    if ranking.mode == RetrievalMode.similar:
+        found = await store.spans.read_vector(cid, ranking.similar_to, vector.target_vector)
+        if found is None:
+            raise NotFoundError("Annotation not found")
+        source, stored = found
+        if stored is None or not vector_current(source, vector.id):
+            raise InvalidRequestError(NO_SOURCE_VECTOR)
+        return stored, None if ranking.include_source else source.id
+    try:
+        return await vector.embed_query(text), None
+    except Exception as exc:
+        logger.warning("Embedding an annotation query failed: %s", type(exc).__name__)
+        raise ServiceUnavailableError(EMBEDDING_UNAVAILABLE) from exc
+
+
+async def _rank(store: AnnotationStore, cid: UUID, filters: AnnotationFilters, ranking: AnnotationRanking,
+                query: AnnotationQuery, text: str | None, conditions: list[Condition]) -> _Ranked:
+    """The top ``ranking.k`` annotations matching ``query``, ``filters.document_ids`` and the
+    document ``conditions``, by relevance then id, and their vector coverage (#664). Every
+    filter applies before ranking. A candidate whose vector is ``ready`` but not of its current
+    revision (not filterable in Weaviate) is skipped and counted as uncovered; more candidates
+    are read until ``k`` + 1 current ones are found, so pages are never silently short."""
+    vector = store.enrichment.vector
+    assert vector is not None
+    documents, joined = filters.document_ids or None, None
+    if conditions:
+        found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents, conditions)
+        documents, joined, matching = found.order, found.documents, sum(found.counts.values())
+    else:
+        matching = None
+    embedded, exclude = await _query_vector(store, cid, ranking, text)
+    ranked_query = query.model_copy(update={"vector_config": vector.id})
+    order = VectorRanking(target_vector=vector.target_vector, vector=embedded, exclude=exclude,
+                          **({"text": text, "fields": SCOPE_FIELDS[filters.text_scope], "alpha": HYBRID_ALPHA}
+                             if ranking.mode == RetrievalMode.hybrid else {}))
+    counts = [store.spans.count_rows(cid, ranked_query, documents)]
+    if matching is None:
+        counts.append(store.spans.count_rows(cid, query, documents))
+    limit = ranking.k + 1
+    candidates, *counted = await asyncio.gather(
+        store.spans.rank(cid, ranked_query, order, document_ids=documents, limit=limit), *counts)
+    while True:
+        current = [c for c in candidates if vector_current(c, vector.id)]
+        if len(current) > ranking.k or len(candidates) < limit or limit >= _MAX_CANDIDATES:
+            break
+        limit = min(2 * limit, _MAX_CANDIDATES)
+        candidates = await store.spans.rank(cid, ranked_query, order, document_ids=documents, limit=limit)
+    with_vector = counted[0] - (len(candidates) - len(current))
+    if matching is None:
+        matching = counted[1]
+    if ranking.mode == RetrievalMode.hybrid:
+        current.sort(key=lambda c: (-(c.score or 0.0), str(c.id)))
+    else:
+        current.sort(key=lambda c: (c.distance if c.distance is not None else float("inf"), str(c.id)))
+    truncated = len(current) > ranking.k or (len(candidates) == limit and limit >= _MAX_CANDIDATES)
+    return _Ranked(ids=[c.id for c in current[:ranking.k]], documents=joined, result=AnnotationResultSet(
+        kind=ResultKind.top_k, mode=ranking.mode, k=ranking.k, truncated=truncated,
+        coverage=VectorCoverage(matching=matching, with_vector=max(0, min(with_vector, matching)))))
+
+
+def _check_ranking(store: AnnotationStore, ranking: AnnotationRanking, sort: AnnotationSort | None) -> None:
+    if sort is not None:
+        raise InvalidRequestError("Ranked results are in order of relevance; they cannot be sorted.")
+    if store.enrichment.vector is None:
+        raise ServiceUnavailableError(SEMANTIC_NOT_CONFIGURED)
+
+
 async def count_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
                             tag_ids: list[Id] | None = None) -> AnnotationCounts:
     """
@@ -1046,8 +1131,8 @@ async def count_annotations(store: AnnotationStore, user: Principal | None, coll
 
 async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id,
                             filters: AnnotationFilters | None = None, *,
-                            sort: AnnotationSort = AnnotationSort.document, limit: int = 50,
-                            offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
+                            ranking: AnnotationRanking | None = None, sort: AnnotationSort | None = None,
+                            limit: int = 50, offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
     """
     One page of the collection's annotations matching the annotation query ``filters``
     (``AnnotationFilters``, #663) as concordance (KWIC) rows, and the number of all that match.
@@ -1057,16 +1142,35 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
 
     Reads the annotations and, for document order or document filters, the metadata of the
     annotated documents once (at most ``_MAX_DOCUMENTS``); never the source chunks.
+
+    A ranked ``ranking`` (#664) pages through its top ``k`` instead, in relevance order (``sort``
+    must be absent); ``semantic`` and ``hybrid`` embed ``q`` (one provider call per page, after
+    authorization and validation), ``similar`` reads its source's stored vector.
     """
     grant = await access.require_collection_read(store.collections, user, collection_id)
     if not 1 <= limit <= _MAX_PAGE or offset < 0:
         raise InvalidRequestError(f"limit must be between 1 and {_MAX_PAGE} and offset not negative")
-    filters = filters or AnnotationFilters()
-    query = _filters_query(filters, _parse_ids(annotation_ids, "annotation"))
+    filters, ranking = filters or AnnotationFilters(), ranking or AnnotationRanking()
+    ids = _parse_ids(annotation_ids, "annotation")
+    if ranking.ranked:
+        _check_ranking(store, ranking, sort)
+        query, text = _ranking_query(filters, ranking, ids)
+    else:
+        query, text = _filters_query(filters, ids), None
+    sort = sort or AnnotationSort.document
     _require_attribute_properties(store, query)
     documents = filters.document_ids or None
     conditions = document_conditions(filters.document_filters)
     cid = await use_tenant(store, grant)
+    if ranking.ranked:
+        ranked = await _rank(store, cid, filters, ranking, query, text, conditions)
+        page = ranked.ids[offset:offset + limit]
+        found_rows = await store.spans.read_rows_by_id(cid, page)
+        rows = [found_rows[i] for i in page if i in found_rows]
+        joined = ranked.documents if ranked.documents is not None else await store.documents.read_many(
+            list({r.documentId for r in rows if r.documentId is not None}))
+        return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
+                              total=len(ranked.ids), offset=offset, limit=limit, result=ranked.result)
     if sort == AnnotationSort.text and not conditions:
         if offset + limit > _MAX_WINDOW:
             raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
@@ -1118,19 +1222,34 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
     """
     The ids of all annotations matching the concordance filters now (``within``: only
     among these), for a selection that must not change with later filters. At most
-    ``MAX_RESOLVED_IDS``; a query matching more is refused, never truncated.
+    ``MAX_RESOLVED_IDS``; a query matching more is refused, never truncated. A ranked
+    ``request.ranking`` (#664) resolves exactly its top ``k`` (of ``within``), in relevance order.
     """
     grant = await access.require_collection_read(store.collections, user, collection_id)
     within = list(dict.fromkeys(request.within)) if request.within is not None else None
     if within is not None and len(within) > MAX_RESOLVED_IDS:
         raise InvalidRequestError(f"Ask about at most {MAX_RESOLVED_IDS} annotations")
-    query = _filters_query(request, within)
+    ranking = request.ranking
+    filters = request
+    if ranking.ranked:
+        _check_ranking(store, ranking, None)
+        query, text = _ranking_query(filters, ranking)  # ``within`` is applied to the top k, not before ranking
+    else:
+        query, text = _filters_query(filters, within), None
     _require_attribute_properties(store, query)
     documents = request.document_ids or None
     conditions = document_conditions(request.document_filters)
     cid = await use_tenant(store, grant)
     if within == []:
-        return AnnotationIds(ids=[], versions={}, attribute_versions={})
+        return AnnotationIds(ids=[], versions={}, attribute_versions={},
+                             result=AnnotationResultSet(kind=ResultKind.top_k, mode=ranking.mode, k=ranking.k)
+                             if ranking.ranked else AnnotationResultSet())
+    if ranking.ranked:
+        ranked, chosen = await _rank(store, cid, filters, ranking, query, text, conditions), set(within or ())
+        versions = await store.spans.query_ids(cid, query.model_copy(update={"ids": ranked.ids}), limit=len(ranked.ids))
+        top = [i for i in ranked.ids if i in versions and (within is None or i in chosen)]
+        return AnnotationIds(ids=top, versions={i: versions[i][0] for i in top},
+                             attribute_versions={i: versions[i][1] for i in top}, result=ranked.result)
     if conditions:
         found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents, conditions)
         total, documents = sum(found.counts.values()), found.order

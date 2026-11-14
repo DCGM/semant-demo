@@ -61,7 +61,7 @@ from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import NoProgressError
 from semant_demo.features.annotations.schemas import (
-    AnnotationQuery, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan, TextScope,
+    AnnotationQuery, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan, TextScope, VectorRanking, SCOPE_FIELDS,
 )
 from semant_demo.features.annotations import attribute_codec as codec
 
@@ -144,6 +144,9 @@ _ROW = ["chunkId", "tagId", "documentId", "start", "end", "type", "revision", "e
 _PROVENANCE = [p.name for p in PROVENANCE_PROPERTIES]
 _ATTRIBUTES = [p.name for p in ATTRIBUTE_PROPERTIES]
 _ROW_FIELDS = {*_ROW, *_PROVENANCE, *_ATTRIBUTES}
+_CURRENCY = ["revision", "enrichmentStatus", "enrichedRevision", "derivationVersion", "vectorStatus",
+             "vectorRevision", "vectorConfig"]
+"""What ``enrichment.vector_current`` reads: a ranked candidate is read with these only."""
 
 
 def _contextual_vector(name: str):
@@ -279,17 +282,9 @@ def to_row(obj) -> AnnotationRow:
     return AnnotationRow(id=obj.uuid, distance=distance, **{k: props.get(k) for k in props if k in _ROW_FIELDS})
 
 
-_SCOPE_FIELDS = {
-    TextScope.annotation: ("text",),
-    TextScope.context: ("leftContext", "rightContext"),
-    TextScope.both: ("text", "leftContext", "rightContext"),
-}
-"""The stored text fields a lexical query searches per ``TextScope`` (#663)."""
-
-
 def _word_filter(word: str, scope: TextScope):
     """``word`` inside a word of one of the scope's fields."""
-    found = [Filter.by_property(name).like(f"*{word}*") for name in _SCOPE_FIELDS[scope]]
+    found = [Filter.by_property(name).like(f"*{word}*") for name in SCOPE_FIELDS[scope]]
     return Filter.any_of(found) if len(found) > 1 else found[0]
 
 
@@ -300,10 +295,13 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
     conditions = [Filter.by_property("type").contains_any([t.value for t in query.types])]
     if query.tag_ids:
         conditions.append(Filter.by_property("tagId").contains_any(list(query.tag_ids)))
-    if query.words:
+    if query.words or query.vector_config is not None:
         conditions.append(Filter.by_property("enrichmentStatus").equal("ready"))
         if query.derivation_version is not None:
             conditions.append(Filter.by_property("derivationVersion").equal(query.derivation_version))
+    if query.vector_config is not None:
+        conditions.append(Filter.by_property("vectorStatus").equal("ready"))
+        conditions.append(Filter.by_property("vectorConfig").equal(query.vector_config))
     conditions.extend(_word_filter(word, query.text_scope) for word in query.words)
     if document_ids is not None:
         conditions.append(Filter.by_property("documentId").contains_any(list(document_ids)))
@@ -626,22 +624,57 @@ class SpanRepository:
                     for o in response.objects}
         return await self._read(collection_id, read, {})
 
-    async def near_vector(self, collection_id: UUID, target_vector: str, vector: list[float], config_id: str,
-                          limit: int, tag_ids: list[UUID] | None = None) -> list[AnnotationRow]:
-        """The collection's spans nearest to ``vector`` among those whose vector is ``ready``
-        and of configuration ``config_id``, nearest first, with ``distance``. The caller
-        still checks that each vector belongs to the span's current revision."""
-        filters = (Filter.by_property("vectorStatus").equal("ready")
-                   & Filter.by_property("vectorConfig").equal(config_id))
-        if tag_ids:
-            filters = filters & Filter.by_property("tagId").contains_any(list(tag_ids))
+    async def rank(self, collection_id: UUID, query: AnnotationQuery, ranking: VectorRanking, *,
+                   document_ids: list[UUID] | None = None, limit: int) -> list[AnnotationRow]:
+        """The best ``limit`` spans matching ``query`` (of the given documents when ``document_ids``
+        is not None) by ``ranking``, best first, with ``distance`` (vector) or ``score`` (hybrid)
+        and only the properties that tell whether their text and vector are current. The filters
+        apply before ranking (Weaviate's filtered search), so they never only trim the result.
+        One query per call: Weaviate's hybrid ranking depends on the limit and its offset does not
+        reach past the first results (``search.py``), so callers slice one ranking."""
+        if document_ids is not None and not document_ids:
+            return []
+        filters = _query_filter(query, document_ids)
+        if ranking.exclude is not None:
+            filters = filters & Filter.by_id().not_equal(ranking.exclude)
+        common = dict(target_vector=ranking.target_vector, limit=limit, filters=filters,
+                      return_properties=_CURRENCY)
 
         async def read():
-            response = await self._tenant(collection_id).query.near_vector(
-                near_vector=vector, target_vector=target_vector, limit=limit, filters=filters,
-                return_properties=self._row_properties(), return_metadata=MetadataQuery(distance=True))
-            return [to_row(o) for o in response.objects]
+            if ranking.text is not None:
+                response = await self._tenant(collection_id).query.hybrid(
+                    query=ranking.text, vector=ranking.vector, alpha=ranking.alpha,
+                    query_properties=list(ranking.fields), return_metadata=MetadataQuery(score=True), **common)
+            else:
+                response = await self._tenant(collection_id).query.near_vector(
+                    near_vector=ranking.vector, return_metadata=MetadataQuery(distance=True), **common)
+            return [AnnotationRow(id=o.uuid, distance=o.metadata.distance, score=o.metadata.score,
+                                  **{k: o.properties.get(k) for k in _CURRENCY}) for o in response.objects]
         return await self._read(collection_id, read, [])
+
+    async def read_rows_by_id(self, collection_id: UUID, span_ids: list[UUID]) -> dict[UUID, AnnotationRow]:
+        """The spans ``span_ids`` that exist, with their derived fields."""
+        if not span_ids:
+            return {}
+
+        async def read():
+            response = await self._tenant(collection_id).query.fetch_objects(
+                filters=Filter.by_id().contains_any(list(span_ids)), limit=len(span_ids),
+                return_properties=self._row_properties())
+            return {UUID(str(o.uuid)): to_row(o) for o in response.objects}
+        return await self._read(collection_id, read, {})
+
+    async def read_vector(self, collection_id: UUID, span_id: UUID,
+                          target_vector: str) -> tuple[AnnotationRow, list[float] | None] | None:
+        """The span with its derived fields and its stored ``target_vector`` (``None`` when it has
+        none), or ``None`` when the collection holds no such span."""
+        async def read():
+            obj = await self._tenant(collection_id).query.fetch_object_by_id(
+                span_id, return_properties=self._row_properties(), include_vector=[target_vector])
+            if obj is None:
+                return None
+            return to_row(obj), (obj.vector or {}).get(target_vector)
+        return await self._read(collection_id, read, None)
 
     async def iterate_rows(self, collection_id: UUID):
         """Every span of the collection with its revision and derived data (cursor order;

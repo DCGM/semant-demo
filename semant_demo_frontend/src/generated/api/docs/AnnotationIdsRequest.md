@@ -16,6 +16,7 @@ Name | Type
 `attributeValues` | Array&lt;string&gt;
 `attributeUnassigned` | Array&lt;string&gt;
 `within` | Array&lt;string&gt;
+`ranking` | [AnnotationRanking](AnnotationRanking.md)
 
 ## Example
 
@@ -33,6 +34,7 @@ const example = {
   "attributeValues": null,
   "attributeUnassigned": null,
   "within": null,
+  "ranking": null,
 } satisfies AnnotationIdsRequest
 
 console.log(example)

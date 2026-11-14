@@ -3674,11 +3674,11 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, mode, k, similarTo, includeSource)
 
 List Collection Annotations
 
-One page of the collection\&#39;s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have &#x60;&#x60;textStatus&#x60;&#x60; other than &#x60;&#x60;ready&#x60;&#x60; and no text. A document filter this corpus database cannot evaluate is refused (422).
+One page of the collection\&#39;s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have &#x60;&#x60;textStatus&#x60;&#x60; other than &#x60;&#x60;ready&#x60;&#x60; and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked &#x60;&#x60;mode&#x60;&#x60; (#664) pages through its top &#x60;&#x60;k&#x60;&#x60; in relevance order, and &#x60;&#x60;result&#x60;&#x60; describes it (&#x60;&#x60;top_k&#x60;&#x60;, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
 
 ### Example
 
@@ -3700,7 +3700,7 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-    // AnnotationSort (optional)
+    // AnnotationSort | Lexical mode: the row order, default document; ranked modes are in relevance order and take none (optional)
     sort: ...,
     // number (optional)
     limit: 56,
@@ -3732,6 +3732,14 @@ async function example() {
     attribute: ...,
     // Array<string> | Only annotations without an accepted value of this attribute id (repeat) (optional)
     unassigned: ...,
+    // RetrievalMode | lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first) (optional)
+    mode: ...,
+    // number | Ranked modes: at most this many (optional)
+    k: 56,
+    // string | Mode similar: the source annotation id (optional)
+    similarTo: similarTo_example,
+    // boolean | Mode similar: rank the source annotation too (optional)
+    includeSource: true,
   } satisfies ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest;
 
   try {
@@ -3752,7 +3760,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
-| **sort** | `AnnotationSort` |  | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
+| **sort** | `AnnotationSort` | Lexical mode: the row order, default document; ranked modes are in relevance order and take none | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
 | **annotationId** | `Array<string>` | Only these annotations | [Optional] |
@@ -3768,6 +3776,10 @@ example().catch(console.error);
 | **languages** | `Array<string>` | Only documents in these languages | [Optional] |
 | **attribute** | `Array<string>` | Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all) | [Optional] |
 | **unassigned** | `Array<string>` | Only annotations without an accepted value of this attribute id (repeat) | [Optional] |
+| **mode** | `RetrievalMode` | lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first) | [Optional] [Defaults to `undefined`] [Enum: lexical, semantic, hybrid, similar] |
+| **k** | `number` | Ranked modes: at most this many | [Optional] [Defaults to `100`] |
+| **similarTo** | `string` | Mode similar: the source annotation id | [Optional] [Defaults to `undefined`] |
+| **includeSource** | `boolean` | Mode similar: rank the source annotation too | [Optional] [Defaults to `false`] |
 
 ### Return type
 
@@ -4825,7 +4837,7 @@ example().catch(console.error);
 
 Resolve Collection Annotation Ids
 
-The ids of all annotations matching the concordance filters now, or of those among &#x60;&#x60;within&#x60;&#x60; that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+The ids of all annotations matching the concordance filters now, or of those among &#x60;&#x60;within&#x60;&#x60; that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated. A ranked &#x60;&#x60;ranking&#x60;&#x60; resolves exactly its top &#x60;&#x60;k&#x60;&#x60; (#664).
 
 ### Example
 
