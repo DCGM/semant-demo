@@ -126,9 +126,7 @@ const reason = computed(() => {
 
 <style scoped>
 .annotation-attributes {
-  margin: 6px 0;
-  padding-top: 4px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin: 0 0 6px;
 }
 
 .annotation-attributes__title {

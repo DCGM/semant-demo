@@ -270,7 +270,7 @@ test('filters, selection and the open row survive a visit to the document', asyn
   await row(page, 'Jan Novák').getByRole('checkbox').click()
   await row(page, 'Jan Novák').click()
 
-  await panel(page).getByRole('link', { name: 'Open in document' }).click()
+  await panel(page).getByRole('link', { name: 'Open document' }).click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   await expect(page.locator('.text-segment.is-tagged', { hasText: 'Jan Novák' }).first()).toBeVisible()
 
@@ -301,6 +301,32 @@ test('a long cross-chunk annotation is elided in its row and complete in the sid
   await expect(panel(page).getByTestId('annotation-context-text')).toHaveText(first.slice(10) + second.slice(0, 30))
 })
 
+test('a long annotated text shows its first lines in the sidebar, the whole text on request', async ({ page, request }) => {
+  const first = fixture.chunk('chronicle_1').text
+  const second = fixture.chunk('chronicle_2').text
+  await createSpan(request, 'chronicle_1', 0, first.length + second.length)
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  await row(page, first.slice(0, 30)).click()
+
+  const text = panel(page).getByTestId('annotation-context-text')
+  const toggle = panel(page).getByTestId('annotation-context-text-toggle')
+  await expect(toggle).toHaveText('Show all text')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(await text.evaluate(e => e.scrollHeight > e.clientHeight), 'the text is clamped').toBe(true)
+  const clamped = (await text.boundingBox())?.height ?? 0
+
+  await toggle.click()
+  await expect(toggle).toHaveText('Show less')
+  expect((await text.boundingBox())?.height).toBeGreaterThan(clamped)
+
+  // Another annotation opens clamped again; a short one has no toggle.
+  await page.getByRole('button', { name: 'Close sidebar' }).click()
+  await row(page, 'Prahy').click()
+  await expect(text).toHaveText('Prahy')
+  await expect(toggle).toHaveCount(0)
+})
+
 test('a shared user reads the same workspace', async ({ page }) => {
   await useViewport(page, 'phone')
   await openWorkspace(page, 'annotator')
@@ -315,7 +341,7 @@ test('a review made in the document view shows in the workspace on return', asyn
   await useViewport(page, 'narrow')
   await openWorkspace(page)
   await row(page, 'Lhoty').click()
-  await panel(page).getByRole('link', { name: 'Open in document' }).click()
+  await panel(page).getByRole('link', { name: 'Open document' }).click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   // The linked proposal is marked although AI Tagging (which shows proposals) is not open.
   await expect(page.locator('.text-segment.is-highlighted', { hasText: 'Lhoty' }).first()).toBeVisible()
@@ -335,7 +361,7 @@ test('the open row follows edits made in the document view', async ({ page, requ
   await openWorkspace(page)
   await row(page, 'Jan Novák').click()
   const openDocument = async () => {
-    await panel(page).getByRole('link', { name: 'Open in document' }).click()
+    await panel(page).getByRole('link', { name: 'Open document' }).click()
     await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   }
   try {
@@ -407,10 +433,12 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
     await expect(next).toHaveAttribute('aria-current', 'true')
 
     await row(page, first.slice(0, 4)).click()
-    await review.getByRole('button', { name: 'Delete…' }).click()
+    await panel(page).getByRole('button', { name: 'More actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete…' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
     await expect(row(page, first.slice(0, 4))).toHaveCount(1)
-    await review.getByRole('button', { name: 'Delete…' }).click()
+    await panel(page).getByRole('button', { name: 'More actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete…' }).click()
     await expect(page.getByRole('dialog')).toContainText('cannot be restored')
     await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Deleted 1 of 1 annotation.')
@@ -636,7 +664,8 @@ test('undoing a batch approval restores the proposals not changed since; a delet
 
     await page.getByTestId('concordance-status-pos').click() // all statuses again
     await row(page, 'Roku').click()
-    await page.getByTestId('annotation-review').getByRole('button', { name: 'Delete…' }).click()
+    await page.getByTestId('annotation-context').getByRole('button', { name: 'More actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete…' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
     await expect(page.getByTestId('undo-bar')).toHaveText('Deleted annotations cannot be restored.')
     await expect(page.getByTestId('undo')).toHaveCount(0)

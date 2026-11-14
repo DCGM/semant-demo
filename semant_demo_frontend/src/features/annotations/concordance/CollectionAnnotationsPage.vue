@@ -104,170 +104,209 @@
         :error="chunkContext.error"
         :highlight="highlight"
         target-name="Annotated passage"
+        document-heading="In the document"
+        :open-link="selection.focused.documentId ? documentRoute : null"
         return-label="Focus on annotation"
         @extend="chunkContext.extend"
         @reload="chunkContext.load"
         @return="returnToRow"
       >
         <template #header>
+          <!-- The open annotation (#659): what it is and what can be done with it first, then its
+               attributes and origin (scrolled within a capped height), then its document. -->
           <div class="annotation-context" data-testid="annotation-context">
-            <div class="annotation-context__meta text-caption">
-              <span class="annotation-context__dot" :style="{ backgroundColor: focusedTag?.color ?? '#9e9e9e' }" aria-hidden="true" />
-              <span>{{ focusedTag?.name ?? 'Unknown tag' }}</span>
-              <span>·</span>
-              <span>{{ statusText }}</span>
-            </div>
-            <div
-              v-if="selection.focusedGone"
-              class="annotation-context__gone text-body2 text-grey-8"
-              role="status"
-              data-testid="annotation-context-gone"
-            >
-              This annotation is no longer on this page: it was deleted, or an edit took it out of
-              these filters or moved it to another page.
-            </div>
-            <blockquote v-else class="annotation-context__text text-body2" data-testid="annotation-context-text">
-              {{ selection.focused.text ?? 'The annotated text is not available yet.' }}
-            </blockquote>
-            <ProvenanceSummary
-              v-if="!selection.focusedGone && selection.focused.provenance"
-              :provenance="selection.focused.provenance"
-              :type="selection.focused.type"
-              :people="store.people"
-              :me="userStore.getUserId"
-            />
-            <AnnotationAttributes
-              v-if="!selection.focusedGone"
-              :row="selection.focused"
-              :attributes="attributesStore.attributes"
-              :loading="attributesStore.loading"
-              :error="attributesStore.error"
-              :busy="assign.running || assign.pending.has(selection.focused.id)"
-              :definitions-route="{ name: 'collectionAttributes', params: { collectionId } }"
-              @assign="(attribute, change, done) => selection.focused && assignRow(selection.focused, attribute, change).then(done)"
-            />
-            <div
-              v-if="focusedConflict && !selection.focusedGone"
-              class="annotation-context__conflict text-body2"
-              role="alert"
-              data-testid="annotation-conflict"
-            >
-              <div>{{ conflictText }}</div>
-              <div class="annotation-context__conflict-actions">
+            <section class="annotation-context__main" aria-label="Annotation">
+              <div class="annotation-context__meta">
+                <span class="annotation-context__dot" :style="{ backgroundColor: focusedTag?.color ?? '#9e9e9e' }" aria-hidden="true" />
+                <span class="annotation-context__tag text-subtitle2">{{ focusedTag?.name ?? 'Unknown tag' }}</span>
+                <span class="annotation-context__status text-caption" data-testid="annotation-context-status">{{ statusText }}</span>
+                <!-- Actions on the whole annotation; deleting is kept apart from the review. -->
                 <q-btn
+                  v-if="!selection.focusedGone && !editingBoundary"
                   dense
-                  unelevated
-                  no-caps
-                  color="primary"
-                  label="Apply to current version"
-                  :disable="review.running || store.loading || savingBoundary"
-                  data-testid="conflict-apply"
-                  @click="applyToCurrent"
-                />
-                <q-btn dense flat no-caps color="primary" label="Keep" data-testid="conflict-keep" @click="keepCurrent" />
+                  flat
+                  round
+                  color="grey-8"
+                  icon="more_vert"
+                  aria-label="More actions"
+                  :disable="review.running"
+                  class="annotation-context__menu"
+                  data-testid="row-more"
+                >
+                  <q-menu anchor="bottom right" self="top right">
+                    <q-list dense role="menu" aria-label="More actions" style="min-width: 160px">
+                      <q-item
+                        v-close-popup
+                        clickable
+                        role="menuitem"
+                        class="text-negative"
+                        data-testid="row-delete"
+                        @click="reviewFocused(ReviewAction.delete)"
+                      >
+                        <q-item-section side><q-icon name="delete" color="negative" /></q-item-section>
+                        <q-item-section>Delete…</q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-menu>
+                </q-btn>
               </div>
-            </div>
-            <BoundaryEditor
-              v-if="editingBoundary && boundary"
-              ref="boundaryEditor"
-              v-model:unit="boundaryUnit"
-              :text="boundaryText"
-              :changed="boundaryChanged"
-              :saving="savingBoundary"
-              :note="boundaryNote"
-              @step="stepEdited"
-              @use-selection="useSelectedText"
-              @save="saveBoundary"
-              @cancel="cancelBoundary"
-            />
-            <div
-              v-else-if="!selection.focusedGone"
-              class="annotation-context__review"
-              role="group"
-              aria-label="Review this annotation"
-              data-testid="annotation-review"
-            >
-              <q-btn
-                dense
-                outline
-                no-caps
-                color="positive"
-                icon="check"
-                label="Approve"
-                :disable="review.running || selection.focused.type === SpanType.pos"
-                data-testid="row-approve"
-                @click="reviewFocused(ReviewAction.approve)"
-              />
-              <q-btn
-                dense
-                outline
-                no-caps
-                color="warning"
-                text-color="orange-10"
-                icon="block"
-                label="Reject"
-                :disable="review.running || selection.focused.type === SpanType.neg"
-                data-testid="row-reject"
-                @click="reviewFocused(ReviewAction.reject)"
-              />
-              <q-btn
-                dense
-                flat
-                no-caps
-                color="primary"
-                icon="skip_next"
-                label="Skip"
-                :disable="!nextRow"
-                data-testid="row-skip"
-                @click="skip"
+              <div
+                v-if="selection.focusedGone"
+                class="annotation-context__gone text-body2 text-grey-8"
+                role="status"
+                data-testid="annotation-context-gone"
               >
-                <q-tooltip>Leave it as it is and show the next row</q-tooltip>
-              </q-btn>
-              <ReviewTagMenu
-                :tags="tags"
-                label="Change tag"
-                :current-tag-id="selection.focused.tagId ?? null"
-                :disable="review.running"
-                testid="row-retag"
-                @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
-              />
-              <q-btn
-                ref="editBoundaryButton"
-                dense
-                flat
-                no-caps
-                color="primary"
-                icon="straighten"
-                label="Edit boundaries"
-                :disable="review.running || !canEditBoundary"
-                data-testid="row-edit-boundaries"
-                @click="editBoundary"
+                This annotation is no longer on this page: it was deleted, or an edit took it out of
+                these filters or moved it to another page.
+              </div>
+              <template v-else>
+                <blockquote
+                  ref="focusedTextEl"
+                  class="annotation-context__text text-body2"
+                  :class="{ 'annotation-context__text--clamped': !textExpanded }"
+                  data-testid="annotation-context-text"
+                >{{ selection.focused.text ?? 'The annotated text is not available yet.' }}</blockquote>
+                <q-btn
+                  v-if="textClamped || textExpanded"
+                  dense
+                  flat
+                  no-caps
+                  size="sm"
+                  color="primary"
+                  class="annotation-context__more-text"
+                  :label="textExpanded ? 'Show less' : 'Show all text'"
+                  :aria-expanded="textExpanded"
+                  data-testid="annotation-context-text-toggle"
+                  @click="textExpanded = !textExpanded"
+                />
+              </template>
+              <div
+                v-if="focusedConflict && !selection.focusedGone"
+                class="annotation-context__conflict text-body2"
+                role="alert"
+                data-testid="annotation-conflict"
               >
-                <q-tooltip>{{ canEditBoundary ? 'Change where this annotation starts or ends' : 'Wait until its passage is loaded' }}</q-tooltip>
-              </q-btn>
-              <q-btn
-                dense
-                flat
-                no-caps
-                color="negative"
-                icon="delete"
-                label="Delete…"
-                :disable="review.running"
-                data-testid="row-delete"
-                @click="reviewFocused(ReviewAction.delete)"
+                <div>{{ conflictText }}</div>
+                <div class="annotation-context__conflict-actions">
+                  <q-btn
+                    dense
+                    unelevated
+                    no-caps
+                    color="primary"
+                    label="Apply to current version"
+                    :disable="review.running || store.loading || savingBoundary"
+                    data-testid="conflict-apply"
+                    @click="applyToCurrent"
+                  />
+                  <q-btn dense flat no-caps color="primary" label="Keep" data-testid="conflict-keep" @click="keepCurrent" />
+                </div>
+              </div>
+              <BoundaryEditor
+                v-if="editingBoundary && boundary"
+                ref="boundaryEditor"
+                v-model:unit="boundaryUnit"
+                :text="boundaryText"
+                :changed="boundaryChanged"
+                :saving="savingBoundary"
+                :note="boundaryNote"
+                @step="stepEdited"
+                @use-selection="useSelectedText"
+                @save="saveBoundary"
+                @cancel="cancelBoundary"
               />
+              <div
+                v-else-if="!selection.focusedGone"
+                class="annotation-context__review"
+                role="group"
+                aria-label="Review this annotation"
+                data-testid="annotation-review"
+              >
+                <!-- The review decision, used on most rows. -->
+                <div class="annotation-context__actions">
+                  <q-btn
+                    dense
+                    outline
+                    no-caps
+                    color="positive"
+                    icon="check"
+                    label="Approve"
+                    :disable="review.running || selection.focused.type === SpanType.pos"
+                    data-testid="row-approve"
+                    @click="reviewFocused(ReviewAction.approve)"
+                  />
+                  <q-btn
+                    dense
+                    outline
+                    no-caps
+                    color="warning"
+                    text-color="orange-10"
+                    icon="block"
+                    label="Reject"
+                    :disable="review.running || selection.focused.type === SpanType.neg"
+                    data-testid="row-reject"
+                    @click="reviewFocused(ReviewAction.reject)"
+                  />
+                  <q-btn
+                    dense
+                    flat
+                    no-caps
+                    color="primary"
+                    icon="skip_next"
+                    label="Skip"
+                    :disable="!nextRow"
+                    data-testid="row-skip"
+                    @click="skip"
+                  >
+                    <q-tooltip>Leave it as it is and show the next row</q-tooltip>
+                  </q-btn>
+                </div>
+                <!-- Corrections. -->
+                <div class="annotation-context__actions annotation-context__actions--secondary">
+                  <ReviewTagMenu
+                    :tags="tags"
+                    label="Change tag"
+                    :current-tag-id="selection.focused.tagId ?? null"
+                    :disable="review.running"
+                    testid="row-retag"
+                    @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
+                  />
+                  <q-btn
+                    ref="editBoundaryButton"
+                    dense
+                    flat
+                    no-caps
+                    color="primary"
+                    icon="straighten"
+                    label="Edit boundaries"
+                    :disable="review.running || !canEditBoundary"
+                    data-testid="row-edit-boundaries"
+                    @click="editBoundary"
+                  >
+                    <q-tooltip>{{ canEditBoundary ? 'Change where this annotation starts or ends' : 'Wait until its passage is loaded' }}</q-tooltip>
+                  </q-btn>
+                </div>
+              </div>
+            </section>
+            <div v-if="!selection.focusedGone" class="annotation-context__details" data-testid="annotation-context-details">
+              <AnnotationAttributes
+                :row="selection.focused"
+                :attributes="attributesStore.attributes"
+                :loading="attributesStore.loading"
+                :error="attributesStore.error"
+                :busy="assign.running || assign.pending.has(selection.focused.id)"
+                :definitions-route="{ name: 'collectionAttributes', params: { collectionId } }"
+                @assign="(attribute, change, done) => selection.focused && assignRow(selection.focused, attribute, change).then(done)"
+              />
+              <section v-if="selection.focused.provenance" class="annotation-context__origin" aria-label="Origin">
+                <div class="annotation-context__title text-caption">Origin</div>
+                <ProvenanceSummary
+                  :provenance="selection.focused.provenance"
+                  :type="selection.focused.type"
+                  :people="store.people"
+                  :me="userStore.getUserId"
+                />
+              </section>
             </div>
-            <q-btn
-              v-if="selection.focused.documentId"
-              dense
-              flat
-              no-caps
-              color="primary"
-              icon="open_in_new"
-              label="Open in document"
-              class="annotation-context__open"
-              :to="documentRoute"
-            />
           </div>
         </template>
       </ChunkContextPanel>
@@ -381,6 +420,17 @@ const highlight = computed(() => {
 })
 
 const focusedTag = computed(() => tags.value.find(t => t.id === selection.focused?.tagId) ?? null)
+
+// A long annotated text shows its first lines; the whole span is also marked in the passage.
+const focusedTextEl = ref<HTMLElement | null>(null)
+const textExpanded = ref(false)
+const textClamped = ref(false)
+watch(() => [selection.focused?.id, selection.focused?.text, selection.focusedGone] as const, async ([id], old) => {
+  if (id !== old?.[0]) textExpanded.value = false
+  await nextTick()
+  const el = focusedTextEl.value
+  textClamped.value = !!el && el.scrollHeight > el.clientHeight + 1
+}, { immediate: true })
 const statusText = computed(() => ({
   [SpanType.pos]: 'Confirmed',
   [SpanType.auto]: 'Proposal',
@@ -900,24 +950,45 @@ watch(collectionId, async (id) => {
 }
 
 .annotation-context {
-  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.annotation-context__main {
+  padding-bottom: 6px;
 }
 
 .annotation-context__meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  color: rgba(0, 0, 0, 0.7);
+  gap: 2px 8px;
 }
 
 .annotation-context__dot {
-  width: 9px;
-  height: 9px;
+  flex: none;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
 }
 
+.annotation-context__tag {
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.annotation-context__menu {
+  margin-left: auto;
+}
+
+.annotation-context__status {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.72);
+}
+
 .annotation-context__text {
-  margin: 4px 0;
+  margin: 6px 0 0;
   padding: 4px 8px;
   border-left: 3px solid #ffd54f;
   background: #fffbe6;
@@ -927,21 +998,55 @@ watch(collectionId, async (id) => {
   overflow-y: auto;
 }
 
+.annotation-context__text--clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.annotation-context__more-text {
+  margin-left: -4px;
+}
+
 .annotation-context__gone {
-  margin: 4px 0;
+  margin: 6px 0 0;
   padding: 4px 8px;
   border-left: 3px solid #bdbdbd;
 }
 
 .annotation-context__review {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  margin: 6px 0;
+  margin-top: 8px;
 }
 
-.annotation-context__open {
-  margin-left: -6px;
+.annotation-context__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.annotation-context__actions--secondary {
+  margin-top: 4px;
+}
+
+/* Attributes and origin can be long: capped, so the passage keeps room on short screens. */
+.annotation-context__details {
+  max-height: 22vh;
+  overflow-y: auto;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.annotation-context__origin {
+  margin-top: 6px;
+}
+
+.annotation-context__title {
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.7);
+  margin-bottom: 2px;
 }
 
 .annotation-context__conflict {

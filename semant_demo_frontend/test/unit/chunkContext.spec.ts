@@ -404,6 +404,21 @@ describe('ChunkContextPanel', () => {
     expect(wrapper.text()).toContain('End of document')
   })
 
+  it('puts the header slot above the document, under a heading only when one is given', async () => {
+    const plain = mountPanel()
+    expect(plain.find('[data-testid="chunk-context-heading"]').exists()).toBe(false)
+
+    const wrapper = mount(ChunkContextPanel, {
+      props: { targetChunkId: 'doc-1-c4', document, chunks, documentHeading: 'In the document' },
+      slots: { header: '<div data-testid="slotted">The annotation</div>' },
+      global: { plugins: [[Quasar, {}]] }
+    })
+    await flushPromises()
+    const text = wrapper.get('[data-testid="chunk-context-header"]').text()
+    expect(text.indexOf('The annotation')).toBeLessThan(text.indexOf('In the document'))
+    expect(text.indexOf('In the document')).toBeLessThan(text.indexOf('Kronika'))
+  })
+
   it('shows a reference label with the target only when one is given', async () => {
     const plain = mountPanel()
     expect(plain.find('[data-testid="chunk-context-target-label"]').exists()).toBe(false)

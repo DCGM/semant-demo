@@ -7,6 +7,11 @@
     <template v-else>
       <!-- Stays at the top of the sidebar's scroller while the text scrolls. -->
       <div ref="headerEl" class="chunk-context__header" data-testid="chunk-context-header">
+        <!-- What the passage is shown for (e.g. the open annotation), above its document. -->
+        <slot name="header" />
+        <div v-if="documentHeading" class="chunk-context__heading text-overline" data-testid="chunk-context-heading">
+          {{ documentHeading }}
+        </div>
         <div v-if="document" class="chunk-context__document">
           <div class="text-subtitle2 text-weight-medium chunk-context__title">{{ documentTitle }}</div>
           <div class="text-caption text-grey-8">{{ document.yearIssued || 'Year N/A' }}</div>
@@ -26,7 +31,6 @@
           title="Open the whole document with its page scans"
           data-testid="chunk-context-open"
         />
-        <slot name="header" />
         <!-- Another passage of the same document is loading: the shown one stays (#493). -->
         <div
           v-if="loading && chunks.length"
@@ -171,6 +175,8 @@ const props = withDefaults(defineProps<{
   highlight?: ContextHighlight | null
   /** The full document view at the target (#545, workspace/documentLink.ts); no link by default. */
   openLink?: RouteLocationRaw | null
+  /** Heading above the document title, separating it from the `header` slot; none by default. */
+  documentHeading?: string | null
   emptyText?: string
   /** Whether the panel can be seen now (e.g. its sidebar tab is active and open): a request
    * to show the target waits until it is, as scrolling hidden content does nothing. */
@@ -187,6 +193,7 @@ const props = withDefaults(defineProps<{
   targetName: 'Matched passage',
   highlight: null,
   openLink: null,
+  documentHeading: null,
   emptyText: 'Nothing selected.',
   visible: true
 })
@@ -320,6 +327,12 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   padding: 8px 0 4px;
   background: #fff;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.chunk-context__heading {
+  margin-top: 8px;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .chunk-context__reloading {
