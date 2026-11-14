@@ -72,13 +72,13 @@
           />
         </div>
         <div class="kwic__cell kwic__left" role="gridcell">
-          <span dir="ltr" class="kwic__ltr">{{ row.leftContext ?? '' }}</span>
+          <span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(row.leftContext, inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
         </div>
         <div class="kwic__cell kwic__key" role="gridcell" :title="row.text ?? undefined">
-          <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text">{{ row.text }}</span>
+          <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(row.text, inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
           <span v-else class="kwic__missing">{{ missingText(row) }}</span>
         </div>
-        <div class="kwic__cell kwic__right" role="gridcell">{{ row.rightContext ?? '' }}</div>
+        <div class="kwic__cell kwic__right" role="gridcell"><template v-for="(part, i) in marked(row.rightContext, inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></div>
         <div
           v-for="attribute in attributes"
           :key="attribute.id"
@@ -148,7 +148,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QCheckbox, QMenu } from 'quasar'
-import { Cardinality, SpanType, TextStatus, type AnnotationListRow, type Attribute, type Tag } from 'src/generated/api'
+import { Cardinality, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag } from 'src/generated/api'
+import { markMatches, queryWords, type TextPart } from './textMatches'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
@@ -165,11 +166,16 @@ const props = withDefaults(defineProps<{
   attributes?: Attribute[]
   /** Annotations with an assignment under way. */
   pending?: Set<string>
+  /** The lexical query whose matches are marked (#663), and where it searches. */
+  query?: string
+  queryScope?: TextScope
 }>(), {
   focusedId: null,
   loading: false,
   attributes: () => [],
-  pending: () => new Set()
+  pending: () => new Set(),
+  query: '',
+  queryScope: TextScope.annotation
 })
 
 const emit = defineEmits<{
@@ -183,6 +189,14 @@ const emit = defineEmits<{
 }>()
 
 const helpId = `kwic-help-${Math.random().toString(36).slice(2, 8)}`
+
+// Lexical matches, marked only in the fields the query searched.
+const words = computed(() => queryWords(props.query))
+const inText = computed(() => props.queryScope !== TextScope.context)
+const inContext = computed(() => props.queryScope !== TextScope.annotation)
+function marked (text: string | null | undefined, searched: boolean): TextPart[] {
+  return markMatches(text ?? '', searched ? words.value : [])
+}
 const tagsById = computed(() => new Map(props.tags.map(t => [t.id, t])))
 
 const pageSelection = computed<boolean | null>(() => {
@@ -479,6 +493,17 @@ defineExpose({ reveal })
   padding: 1px 4px;
   border-radius: 2px;
   background: rgba(255, 213, 79, 0.35);
+}
+
+/* A lexical match: underlined, distinct from the annotation's own highlight. */
+.kwic__match {
+  background: none;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--q-primary);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
 }
 
 .kwic__row--rejected .kwic__key-text {

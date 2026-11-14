@@ -9,8 +9,17 @@
       :shown-attribute-ids="store.shownAttributeIds"
       class="q-mb-sm"
       @change="store.setFilters"
-      @reset="store.resetFilters"
       @show-attributes="ids => { store.shownAttributeIds = ids }"
+    />
+
+    <ConcordanceFilterChips
+      :filters="store.filters"
+      :tags="tags"
+      :documents="store.documents"
+      :attributes="attributesStore.attributes"
+      class="q-mb-sm"
+      @change="store.setFilters"
+      @reset="store.resetFilters"
     />
 
     <SelectionBar
@@ -76,6 +85,8 @@
       :loading="store.loading"
       :attributes="shownAttributes"
       :pending="assignWaiting"
+      :query="store.filters.text"
+      :query-scope="store.filters.textScope"
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
       @toggle="toggleRow"
@@ -333,6 +344,7 @@ import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
 import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
+import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import ConcordanceTable from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'

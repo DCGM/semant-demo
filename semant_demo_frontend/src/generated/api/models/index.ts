@@ -139,6 +139,7 @@ export * from './Tag';
 export * from './TagSpan';
 export * from './TagSpanBatchRequest';
 export * from './TagSpanWriteResult';
+export * from './TextScope';
 export * from './TextStatus';
 export * from './TopicerConfigsResponse';
 export * from './Url';

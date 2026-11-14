@@ -6,17 +6,21 @@ text, document and year; rejected annotations only on request; derived text only
 current; denied requests read nothing. The Weaviate queries themselves:
 tests/integration/test_annotation_concordance.py.
 """
+import re
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 
+from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.core.errors import InvalidRequestError, ServiceUnavailableError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION
 from semant_demo.features.annotations.schemas import (
-    MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, AnnotationIdsRequest, AnnotationRow, AnnotationSort, EnrichmentStatus, SpanType, TextStatus,
+    MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, AnnotationFilters, AnnotationIdsRequest, AnnotationRow,
+    AnnotationSort, EnrichmentStatus, SpanType, TextScope, TextStatus,
 )
+from semant_demo.features.documents.criteria import AnyOf, ContainsWords, DocumentFilters, NumberRange
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.documents.schemas import Document
@@ -31,9 +35,9 @@ DOC_A = UUID("00000000-0000-4000-8000-000000000002")
 DOC_NO_YEAR = UUID("00000000-0000-4000-8000-000000000003")
 DOC_GONE = UUID("00000000-0000-4000-8000-000000000004")
 DOCUMENTS = {
-    DOC_A: Document(id=DOC_A, title="Almanach", yearIssued=1912),
-    DOC_B: Document(id=DOC_B, title="Bulletin", yearIssued=1850),
-    DOC_NO_YEAR: Document(id=DOC_NO_YEAR, title="Čtení"),
+    DOC_A: Document(id=DOC_A, title="Almanach", yearIssued=1912, library="mzk", language="ces"),
+    DOC_B: Document(id=DOC_B, title="Bulletin", yearIssued=1850, library="nkp", language="deu"),
+    DOC_NO_YEAR: Document(id=DOC_NO_YEAR, title="Čtení", library="mzk"),
 }
 
 
@@ -42,13 +46,51 @@ class FakeCollections:
         return (OWNER.id, {SHARED.id}) if cid == COLLECTION else None
 
 
+def _holds(document: Document, condition) -> bool:
+    """The shared document predicates (``criteria``), as the Weaviate rendering evaluates them."""
+    value = getattr(document, condition.prop)
+    if isinstance(condition, NumberRange):
+        return value is not None and (condition.minimum is None or value >= condition.minimum) \
+            and (condition.maximum is None or value <= condition.maximum)
+    if isinstance(condition, ContainsWords):
+        words = (value or "").casefold().split()
+        return any(all(any(w.casefold() in t for t in words) for w in alternative)
+                   for alternative in condition.alternatives)
+    assert isinstance(condition, AnyOf)
+    return value is not None and value.casefold() in {v.casefold() for v in condition.values}
+
+
 class FakeDocuments:
     def __init__(self):
         self.reads: list[list[UUID]] = []
+        self.eligible_reads: list[tuple[list[UUID], list]] = []
+        self.unavailable: Exception | None = None
 
     async def read_many(self, ids):
         self.reads.append(list(ids))
         return {i: DOCUMENTS[i] for i in ids if i in DOCUMENTS}
+
+    async def read_eligible(self, ids, collection_id=None, conditions=()):
+        assert collection_id is None  # annotated documents of a collection need not be in it
+        if self.unavailable is not None:
+            raise self.unavailable
+        self.eligible_reads.append((list(ids), list(conditions)))
+        return {i: DOCUMENTS[i] for i in ids
+                if i in DOCUMENTS and all(_holds(DOCUMENTS[i], c) for c in conditions)}
+
+
+def years(year_min=None, year_max=None, **fields) -> AnnotationFilters:
+    return AnnotationFilters(document_filters=DocumentFilters(year_min=year_min, year_max=year_max), **fields)
+
+
+_SCOPE_FIELDS = {TextScope.annotation: ("text",), TextScope.context: ("leftContext", "rightContext"),
+                 TextScope.both: ("text", "leftContext", "rightContext")}
+
+
+def _word_in(row: AnnotationRow, word: str, scope: TextScope) -> bool:
+    """``like *word*`` on a word-tokenized field: inside one of its words, ignoring case."""
+    return any(word.lower() in token.lower() for name in _SCOPE_FIELDS[scope]
+               for token in re.findall(r"[^\W_]+", getattr(row, name) or ""))
 
 
 def _position_key(row: AnnotationRow):
@@ -71,8 +113,7 @@ class FakeSpans:
                 and (not query.tag_ids or r.tagId in query.tag_ids)
                 and (not query.words or (r.enrichmentStatus == EnrichmentStatus.ready
                                          and r.derivationVersion == query.derivation_version))
-                and all(r.text is not None and any(w.lower() in t.lower() for t in r.text.split())
-                        for w in query.words)
+                and all(_word_in(r, w, query.text_scope) for w in query.words)
                 and (document_ids is None or r.documentId in document_ids)
                 and (query.ids is None or r.id in query.ids)
                 and (not query.attribute_values or r.type == SpanType.pos)
@@ -121,10 +162,10 @@ def ids(page):
     return [r.id for r in page.rows]
 
 
-async def all_pages(store, size, **kwargs):
+async def all_pages(store, size, filters=None, **kwargs):
     rows, offset = [], 0
     while True:
-        page = await service.query_annotations(store, OWNER, COLLECTION, limit=size, offset=offset, **kwargs)
+        page = await service.query_annotations(store, OWNER, COLLECTION, filters, limit=size, offset=offset, **kwargs)
         rows += ids(page)
         offset += size
         if offset >= page.total:
@@ -164,24 +205,23 @@ async def test_rejected_annotations_only_on_request(store):
                         row(DOC_A, 2, type=SpanType.neg)]
     default = await service.query_annotations(store, OWNER, COLLECTION)
     assert {r.type for r in default.rows} == {SpanType.pos, SpanType.auto}
-    rejected = await service.query_annotations(store, OWNER, COLLECTION, types=[SpanType.neg])
+    rejected = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(types=[SpanType.neg]))
     assert [r.type for r in rejected.rows] == [SpanType.neg]
 
 
 async def test_filters_by_tag_text_document_and_year(store):
     store.spans.rows = [row(DOC_A, 0, "Školní reforma"), row(DOC_A, 20, "reforma", tag=OTHER_TAG),
                         row(DOC_B, 0, "školní dvůr"), row(DOC_NO_YEAR, 0, "školní")]
-    by_tag = await service.query_annotations(store, OWNER, COLLECTION, tag_ids=[str(OTHER_TAG)])
+    by_tag = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(tag_ids=[OTHER_TAG]))
     assert [r.text for r in by_tag.rows] == ["reforma"]
-    by_words = await service.query_annotations(store, OWNER, COLLECTION, text="ŠKOL, refor")
+    by_words = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(q="ŠKOL, refor"))
     assert [r.text for r in by_words.rows] == ["Školní reforma"]
-    by_document = await service.query_annotations(store, OWNER, COLLECTION, document_ids=[str(DOC_B)])
+    by_document = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(document_ids=[DOC_B]))
     assert [r.text for r in by_document.rows] == ["školní dvůr"]
-    by_year = await service.query_annotations(store, OWNER, COLLECTION, year_from=1900, year_to=1950,
-                                              sort=AnnotationSort.text)
+    by_year = await service.query_annotations(store, OWNER, COLLECTION, years(1900, 1950), sort=AnnotationSort.text)
     assert by_year.total == 2 and {r.documentId for r in by_year.rows} == {DOC_A}
     # A year range leaves out documents without a year.
-    since = await service.query_annotations(store, OWNER, COLLECTION, year_from=1800)
+    since = await service.query_annotations(store, OWNER, COLLECTION, years(1800))
     assert DOC_NO_YEAR not in {r.documentId for r in since.rows}
 
 
@@ -189,8 +229,8 @@ async def test_annotations_are_read_by_id_with_the_type_filter_they_ask_for(stor
     # The workspace reads the annotation it shows as it is now, also when it left the page's filters (#460).
     approved, other = row(DOC_A, 0, type=SpanType.pos), row(DOC_A, 5, type=SpanType.auto)
     store.spans.rows = [approved, other]
-    page = await service.query_annotations(store, OWNER, COLLECTION, annotation_ids=[str(approved.id)],
-                                           types=list(SpanType))
+    page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(types=list(SpanType)),
+                                           annotation_ids=[str(approved.id)])
     assert (ids(page), page.total) == ([approved.id], 1)
     with pytest.raises(InvalidRequestError):
         await service.query_annotations(store, OWNER, COLLECTION, annotation_ids=["not-an-id"])
@@ -228,12 +268,22 @@ async def test_shared_users_read_and_others_are_denied_before_any_read(store):
     assert store.spans.queries == 0 and store.documents.reads == []
 
 
-@pytest.mark.parametrize("kwargs", [{"limit": 0}, {"limit": 201}, {"offset": -1}, {"tag_ids": ["not-a-uuid"]},
-                                    {"text": " ".join(["w"] * 11)},
-                                    {"sort": AnnotationSort.text, "offset": 9990, "limit": 20}])
-async def test_invalid_queries_are_refused(store, kwargs):
+@pytest.mark.parametrize("filters, kwargs", [
+    (None, {"limit": 0}), (None, {"limit": 201}), (None, {"offset": -1}),
+    (AnnotationFilters(q=" ".join(["w"] * 11)), {}),
+    (None, {"sort": AnnotationSort.text, "offset": 9990, "limit": 20})])
+async def test_invalid_queries_are_refused(store, filters, kwargs):
     with pytest.raises(InvalidRequestError):
-        await service.query_annotations(store, OWNER, COLLECTION, **kwargs)
+        await service.query_annotations(store, OWNER, COLLECTION, filters, **kwargs)
+
+
+@pytest.mark.parametrize("fields", [{"tag_ids": ["not-a-uuid"]}, {"year_from": 1900},
+                                    {"document_filters": {"year_min": 1950, "year_max": 1900}},
+                                    {"document_filters": {"title_contains": ["*"]}}, {"text_scope": "title"}])
+def test_malformed_annotation_queries_are_refused_by_the_model(fields):
+    # The shared document filters' validation applies; the old year_from/year_to fields are refused, not ignored.
+    with pytest.raises(ValueError):
+        AnnotationFilters.model_validate(fields)
 
 
 async def test_too_many_annotated_documents_are_refused_not_truncated(store, monkeypatch):
@@ -246,7 +296,7 @@ async def test_too_many_annotated_documents_are_refused_not_truncated(store, mon
 async def test_the_document_limit_counts_only_the_chosen_documents(store, monkeypatch):
     monkeypatch.setattr(service, "_MAX_DOCUMENTS", 2)
     store.spans.rows = [row(DOC_A, 0), row(DOC_B, 0), row(DOC_NO_YEAR, 0)]
-    page = await service.query_annotations(store, OWNER, COLLECTION, document_ids=[str(DOC_A)])
+    page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(document_ids=[DOC_A]))
     assert (page.total, [r.documentId for r in page.rows]) == (1, [DOC_A])
 
 
@@ -255,7 +305,7 @@ async def test_text_search_skips_text_of_another_revision_or_policy(store):
     failed = row(DOC_A, 5, "Novák").model_copy(update={"enrichmentStatus": EnrichmentStatus.failed})
     old_policy = row(DOC_A, 9, "Novák").model_copy(update={"derivationVersion": DERIVATION_VERSION - 1})
     store.spans.rows = [current, failed, old_policy]
-    page = await service.query_annotations(store, OWNER, COLLECTION, text="novák")
+    page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(q="novák"))
     assert (page.total, ids(page)) == (1, [current.id])
 
 
@@ -265,7 +315,137 @@ async def test_annotated_documents_list_counts_by_title(store):
     listed = await service.list_annotated_documents(store, OWNER, COLLECTION)
     assert [(d.id, d.count, d.available) for d in listed] == [(DOC_A, 2, True), (DOC_B, 1, True),
                                                                (DOC_GONE, 1, False)]
-    assert listed[0].title == "Almanach" and listed[0].year == 1912
+    assert (listed[0].title, listed[0].year, listed[0].library, listed[0].language) == ("Almanach", 1912, "mzk", "ces")
+
+
+# ── Annotation query (#663) ───────────────────────────────────────────────
+
+def ctx(document, start, text, left="", right="", **kwargs):
+    return row(document, start, text, **kwargs).model_copy(update={"leftContext": left, "rightContext": right})
+
+
+async def test_the_text_scope_chooses_the_fields_each_word_must_occur_in(store):
+    in_text = ctx(DOC_A, 0, "Novák", left="pan ", right=" z Brna")
+    in_left = ctx(DOC_A, 10, "starosta", left="Novákův syn, ", right=" obce")
+    in_right = ctx(DOC_A, 20, "kronikář", left="", right=", Novák")
+    store.spans.rows = [in_text, in_left, in_right]
+
+    async def found(q, scope):
+        page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(q=q, text_scope=scope))
+        return set(ids(page))
+
+    assert await found("novák", TextScope.annotation) == {in_text.id}
+    assert await found("novák", TextScope.context) == {in_left.id, in_right.id}
+    assert await found("NOVÁK", TextScope.both) == {in_text.id, in_left.id, in_right.id}
+    # Each word may occur in another field of the scope, but every word must occur.
+    assert await found("novák brna", TextScope.both) == {in_text.id}
+    assert await found("novák brna", TextScope.annotation) == set()
+    assert await found("syn starosta", TextScope.both) == {in_left.id}
+
+
+async def test_underscores_separate_query_words_as_in_the_stored_text(store):
+    # Weaviate's word tokenization splits "Novák_Brna" into two words; so does the query.
+    both = ctx(DOC_A, 0, "Novák", right=" z Brna")
+    store.spans.rows = [both]
+
+    async def found(q, scope):
+        return ids(await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(q=q, text_scope=scope)))
+
+    assert await found("novák_brna", TextScope.both) == [both.id]
+    assert await found("novák_brna", TextScope.annotation) == []
+    assert service._concordance_query(None, None, "a_b__c_").words == ["a", "b", "c"]
+
+
+async def test_a_decomposed_query_matches_composed_text(store):
+    composed = ctx(DOC_A, 0, "Zdeňku")
+    store.spans.rows = [composed]
+    page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(q="zden\u030cku"))
+    assert ids(page) == [composed.id]
+
+
+async def test_context_search_also_needs_current_derived_text(store):
+    stale = ctx(DOC_A, 0, "Novák", left="Praha ").model_copy(update={"derivationVersion": DERIVATION_VERSION - 1})
+    store.spans.rows = [stale]
+    page = await service.query_annotations(store, OWNER, COLLECTION,
+                                           AnnotationFilters(q="praha", text_scope=TextScope.context))
+    assert page.total == 0
+
+
+@pytest.mark.parametrize("sort", list(AnnotationSort))
+async def test_document_filters_select_the_annotations_of_the_documents_they_select(store, sort):
+    store.spans.rows = [row(DOC_A, 0), row(DOC_A, 5), row(DOC_B, 0), row(DOC_NO_YEAR, 0), row(DOC_GONE, 0)]
+
+    async def documents(**filters):
+        page = await service.query_annotations(
+            store, OWNER, COLLECTION, AnnotationFilters(document_filters=DocumentFilters(**filters)), sort=sort)
+        assert page.total == len(page.rows)
+        return [r.documentId for r in page.rows]
+
+    assert sorted(await documents(year_min=1900), key=str) == [DOC_A, DOC_A]
+    assert await documents(year_max=1900) == [DOC_B]  # no year: never in a range
+    assert await documents(title_contains=["BULL"]) == [DOC_B]
+    assert sorted(set(await documents(title_contains=["alma", "čten"])), key=str) == sorted([DOC_A, DOC_NO_YEAR], key=str)
+    assert sorted(set(await documents(libraries=["mzk"])), key=str) == sorted([DOC_A, DOC_NO_YEAR], key=str)
+    assert await documents(languages=["DEU"]) == [DOC_B]
+    assert await documents(libraries=["mzk"], year_max=1900) == []
+    # A document deleted from the corpus matches no document filter.
+    assert DOC_GONE not in await documents(languages=["ces", "deu"])
+
+
+async def test_document_filters_are_evaluated_once_over_the_annotated_documents(store):
+    store.spans.rows = [row(DOC_A, 0, "Praha"), row(DOC_B, 0, "Brno"), row(DOC_NO_YEAR, 0, "Praha")]
+    filters = AnnotationFilters(q="praha", document_filters=DocumentFilters(libraries=["mzk"], year_min=1800))
+
+    page = await service.query_annotations(store, OWNER, COLLECTION, filters)
+
+    assert ids(page) == [store.spans.rows[0].id]
+    [(read, conditions)] = store.documents.eligible_reads
+    assert set(read) == {DOC_A, DOC_NO_YEAR}  # only documents with matching annotations
+    assert {type(c) for c in conditions} == {NumberRange, AnyOf}
+
+
+async def test_a_document_filter_the_store_cannot_evaluate_is_not_answered_empty(store):
+    store.spans.rows = [row(DOC_A, 0)]
+    store.documents.unavailable = LookupError("library is not recorded")
+    filters = AnnotationFilters(document_filters=DocumentFilters(libraries=["mzk"]))
+    with pytest.raises(LookupError):
+        await service.query_annotations(store, OWNER, COLLECTION, filters)
+    with pytest.raises(LookupError):
+        await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest(**filters.model_dump()))
+
+
+async def test_the_same_query_selects_the_same_annotations_in_pages_ids_and_documents(store):
+    store.spans.rows = [ctx(DOC_A, 0, "Praha", right=" hlavní"), ctx(DOC_A, 5, "Brno", left="hlavní "),
+                        ctx(DOC_B, 0, "Praha", right=" hlavní"), ctx(DOC_NO_YEAR, 0, "Praha", right=" hlavní"),
+                        ctx(DOC_A, 9, "Praha", right=" hlavní", tag=OTHER_TAG)]
+    fields = {"tag_ids": [TAG], "q": "hlavní", "text_scope": TextScope.context,
+              "document_filters": DocumentFilters(libraries=["mzk"])}
+    filters = AnnotationFilters(**fields)
+
+    rows, total = await all_pages(store, 1, filters)
+    resolved = await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest(**fields))
+    documents = await service.list_annotated_documents(store, OWNER, COLLECTION, filters)
+
+    assert total == 3 and sorted(rows, key=str) == sorted(resolved.ids, key=str)
+    expected = {r.id for r in store.spans.rows[:2]} | {store.spans.rows[3].id}
+    assert set(rows) == expected
+    assert [(d.id, d.count) for d in documents] == [(DOC_A, 2), (DOC_NO_YEAR, 1)]
+
+
+async def test_the_source_choices_ignore_the_document_choice_itself(store):
+    store.spans.rows = [row(DOC_A, 0), row(DOC_B, 0, tag=OTHER_TAG)]
+    documents = await service.list_annotated_documents(
+        store, OWNER, COLLECTION, AnnotationFilters(tag_ids=[TAG], document_ids=[DOC_B]))
+    assert [d.id for d in documents] == [DOC_A]
+
+
+async def test_document_filters_of_a_denied_request_read_nothing(store):
+    filters = AnnotationFilters(document_filters=DocumentFilters(libraries=["mzk"]))
+    with pytest.raises(ResourceNotFound):
+        await service.query_annotations(store, OTHER, COLLECTION, filters)
+    with pytest.raises(ResourceNotFound):
+        await service.list_annotated_documents(store, OTHER, COLLECTION, filters)
+    assert store.documents.eligible_reads == [] and store.spans.queries == 0
 
 
 # ── HTTP contract ─────────────────────────────────────────────────────────
@@ -295,7 +475,18 @@ async def test_routes_parse_repeated_filters_and_serialize_rows(tmp_path, store,
         documents = await client.get(f"{path}/documents", headers=headers)
         by_id = await client.get(path, headers=headers, params=[("annotation_id", str(store.spans.rows[2].id))])
         bad = [await client.get(path, headers=headers, params=params)
-               for params in ({"sort": "random"}, {"limit": 201}, {"type": "maybe"}, {"offset": -1})]
+               for params in ({"sort": "random"}, {"limit": 201}, {"type": "maybe"}, {"offset": -1},
+                              {"text_scope": "title"}, {"year_min": 1950, "year_max": 1900},
+                              {"title_contains": "*"}, {"tag_id": "not-a-uuid"})]
+        filtered = await client.get(path, headers=headers, params=[
+            ("type", "pos"), ("type", "neg"), ("q", "lho"), ("text_scope", "both"), ("year_min", "1900"),
+            ("libraries", "mzk"), ("languages", "ces"), ("title_contains", "alma")])
+        filtered_documents = await client.get(f"{path}/documents", headers=headers, params={"year_max": 1900})
+        resolved = await client.post(f"{path}/ids", headers=headers,
+                                     json={"document_filters": {"title_contains": ["bulletin"]}})
+        old_fields = await client.post(f"{path}/ids", headers=headers, json={"year_from": 1900})
+        store.documents.unavailable = UnavailableFilter("library", "missing")
+        unavailable = await client.get(path, headers=headers, params={"libraries": "mzk"})
 
     assert anonymous.status_code == 401
     assert page.status_code == 200, page.text
@@ -308,7 +499,13 @@ async def test_routes_parse_repeated_filters_and_serialize_rows(tmp_path, store,
                           "rightContext", "documentAvailable"}
     assert [(d["title"], d["count"]) for d in documents.json()] == [("Almanach", 1), ("Bulletin", 1)]
     assert [r["text"] for r in by_id.json()["rows"]] == ["Lhota"]
-    assert [r.status_code for r in bad] == [422, 422, 422, 422]
+    assert [r.status_code for r in bad] == [422] * 8
+    assert filtered.status_code == 200, filtered.text
+    assert [r["text"] for r in filtered.json()["rows"]] == ["Lhota"]
+    assert [d["title"] for d in filtered_documents.json()] == ["Bulletin"]
+    assert resolved.status_code == 200 and resolved.json()["ids"] == [str(store.spans.rows[1].id)]
+    assert old_fields.status_code == 422  # the former year fields are refused, never ignored
+    assert unavailable.status_code == 422 and "library" in unavailable.json()["detail"]
 
 
 # ── Resolving a selection (#459) ──────────────────────────────────────────
@@ -318,7 +515,7 @@ async def test_all_matches_resolve_to_the_ids_of_every_page(store):
                                                             row(DOC_A, 9, type=SpanType.neg)]
     resolved = await service.resolve_annotation_ids(store, SHARED, COLLECTION, AnnotationIdsRequest(tag_ids=[TAG]))
 
-    rows, _ = await all_pages(store, 2, tag_ids=[TAG])
+    rows, _ = await all_pages(store, 2, AnnotationFilters(tag_ids=[TAG]))
     assert sorted(resolved.ids, key=str) == sorted(rows, key=str)
     assert len(resolved.ids) == 5
 
@@ -326,7 +523,7 @@ async def test_all_matches_resolve_to_the_ids_of_every_page(store):
 async def test_resolving_applies_the_year_and_text_filters(store):
     store.spans.rows = [row(DOC_A, 0, "Praha"), row(DOC_B, 0, "Praha"), row(DOC_A, 9, "Brno")]
     resolved = await service.resolve_annotation_ids(store, OWNER, COLLECTION,
-                                                    AnnotationIdsRequest(q="prah", year_from=1900))
+                                                    AnnotationIdsRequest(q="prah", document_filters=DocumentFilters(year_min=1900)))
 
     assert resolved.ids == [store.spans.rows[0].id]
 
@@ -412,7 +609,8 @@ async def test_attribute_filters_match_any_value_of_an_attribute_all_attributes_
     store.spans.rows = [with_value, with_both, with_other_value, none]
 
     async def found(**kwargs):
-        return {r.id for r in (await service.query_annotations(store, OWNER, COLLECTION, **kwargs)).rows}
+        return {r.id for r in (await service.query_annotations(store, OWNER, COLLECTION,
+                                                               AnnotationFilters(**kwargs))).rows}
 
     assert await found(attribute_values=[f"{ATTRIBUTE}:{VALUE}"]) == {with_value.id, with_both.id}
     assert await found(attribute_values=[f"{ATTRIBUTE}:{VALUE}", f"{ATTRIBUTE}:{OTHER_VALUE}"]) \
@@ -424,7 +622,8 @@ async def test_attribute_filters_match_any_value_of_an_attribute_all_attributes_
 
     # Rows carry the accepted values and the version assignments expect; the resolved selection too.
     with_both.attributeVersion = 3
-    page = await service.query_annotations(store, OWNER, COLLECTION, attribute_values=[f"{ATTRIBUTE}:{VALUE}"])
+    page = await service.query_annotations(store, OWNER, COLLECTION,
+                                           AnnotationFilters(attribute_values=[f"{ATTRIBUTE}:{VALUE}"]))
     by_id = {r.id: r for r in page.rows}
     assert by_id[with_both.id].attributes == {ATTRIBUTE: [VALUE], OTHER_ATTRIBUTE: [OTHER_VALUE]}
     assert (by_id[with_both.id].attributeVersion, by_id[with_value.id].attributeVersion) == (3, 0)
@@ -440,43 +639,41 @@ async def test_values_kept_on_rejected_annotations_are_not_accepted_classificati
     store.spans.rows = [approved, rejected]
     every_type = [SpanType.pos, SpanType.auto, SpanType.neg]
 
-    page = await service.query_annotations(store, OWNER, COLLECTION, types=every_type,
-                                           attribute_values=[f"{ATTRIBUTE}:{VALUE}"])
+    page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(
+        types=every_type, attribute_values=[f"{ATTRIBUTE}:{VALUE}"]))
     assert [r.id for r in page.rows] == [approved.id]
-    page = await service.query_annotations(store, OWNER, COLLECTION, types=every_type)
+    page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(types=every_type))
     by_id = {r.id: r for r in page.rows}
     assert by_id[approved.id].attributes == {ATTRIBUTE: [VALUE]} and by_id[rejected.id].attributes == {}
-    page = await service.query_annotations(store, OWNER, COLLECTION, types=every_type,
-                                           attribute_unassigned=[str(ATTRIBUTE)])
+    page = await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(
+        types=every_type, attribute_unassigned=[ATTRIBUTE]))
     assert [r.id for r in page.rows] == [rejected.id]
 
 
 async def test_attribute_filters_are_refused_on_a_store_without_the_attribute_properties(store):
     store.spans.attributes = False
     with pytest.raises(ServiceUnavailableError):
-        await service.query_annotations(store, OWNER, COLLECTION, attribute_values=[f"{ATTRIBUTE}:{VALUE}"])
+        await service.query_annotations(store, OWNER, COLLECTION,
+                                        AnnotationFilters(attribute_values=[f"{ATTRIBUTE}:{VALUE}"]))
     with pytest.raises(ServiceUnavailableError):
         await service.resolve_annotation_ids(
             store, OWNER, COLLECTION, AnnotationIdsRequest(attribute_unassigned=[str(ATTRIBUTE)]))
     await service.query_annotations(store, OWNER, COLLECTION)  # without attribute filters nothing changes
 
 
-@pytest.mark.parametrize("values, unassigned", [(["x"], None), ([f"{ATTRIBUTE}:{VALUE} "], None),
-                                                (None, ["x"]), (["a:b"], None)])
-async def test_malformed_attribute_filters_are_refused(store, values, unassigned):
+@pytest.mark.parametrize("values", [["x"], [f"{ATTRIBUTE}:{VALUE} "], ["a:b"]])
+async def test_malformed_attribute_filters_are_refused(store, values):
     with pytest.raises(InvalidRequestError):
-        await service.query_annotations(store, OWNER, COLLECTION, attribute_values=values,
-                                        attribute_unassigned=unassigned)
+        await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(attribute_values=values))
+    with pytest.raises(ValueError):
+        AnnotationFilters(attribute_unassigned=["x"])
 
 
 async def test_too_many_attribute_filters_are_refused(store):
-    with pytest.raises(InvalidRequestError, match="at most"):
-        await service.query_annotations(store, OWNER, COLLECTION,
-                                        attribute_unassigned=[str(uuid4()) for _ in range(21)])
-    # One attribute with many values is bounded too, in both the GET query and the id resolution body.
+    # Attributes and one attribute's many values are bounded by the query model (GET and id resolution alike).
     many = [codec.encode(ATTRIBUTE, uuid4()) for _ in range(MAX_ATTRIBUTE_FILTER_VALUES + 1)]
-    with pytest.raises(InvalidRequestError, match="attribute values"):
-        await service.query_annotations(store, OWNER, COLLECTION, attribute_values=many)
+    with pytest.raises(ValueError):
+        AnnotationFilters(attribute_values=many)
     with pytest.raises(ValueError):
         AnnotationIdsRequest(attribute_values=many)
     with pytest.raises(ValueError):

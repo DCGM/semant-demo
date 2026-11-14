@@ -1,15 +1,19 @@
 """HTTP routes of the Annotations feature (tags and spans); the rules live in ``service.py``."""
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
 from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
-    AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationPage, AnnotationRestoreRequest,
+    MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
+    AnnotationPage, AnnotationRestoreRequest, TextScope,
     AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.routes.dependencies import get_annotation_store, get_attribute_definitions
 from semant_demo.core.outcomes import WriteResult
@@ -219,39 +223,69 @@ _TYPE_FILTER = Query(default=None, alias="type", description=(
     "neg (rejected); default pos and auto"))
 
 
-@span_router.get("/api/user_collections/{collection_id}/annotations", response_model=AnnotationPage)
-async def list_collection_annotations(
-    collection_id: str,
+def annotation_filters(
     tag_id: list[str] | None = _TAG_FILTER,
     types: list[SpanType] | None = _TYPE_FILTER,
-    q: str | None = Query(default=None, max_length=500,
-                          description="Words that must each occur in the annotated text (inside a word, any case)"),
+    q: str | None = Query(default=None, max_length=MAX_QUERY_TEXT_LENGTH, description=(
+        "Words that must each occur inside a word of the fields of text_scope, ignoring case")),
+    text_scope: TextScope = Query(default=TextScope.annotation, description=(
+        "Where the words of q must occur: annotation (the annotated text), context (left or right "
+        "context) or both; each word may occur in another field")),
     document_id: list[str] | None = Query(default=None, description="Only annotations in these documents"),
-    year_from: int | None = Query(default=None, description="Only documents issued in or after this year"),
-    year_to: int | None = Query(default=None, description="Only documents issued in or before this year"),
-    sort: AnnotationSort = AnnotationSort.document,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    annotation_id: list[str] | None = Query(default=None, max_length=200,
-                                            description="Only these annotations"),
+    year_min: int | None = Query(default=None, description="Only documents issued in or after this year"),
+    year_max: int | None = Query(default=None, description="Only documents issued in or before this year"),
+    title_contains: list[str] = Query(default=[], description=(
+        "Only documents whose title matches one of these (each word inside a title word, any case)")),
+    libraries: list[str] = Query(default=[], description="Only documents of these libraries"),
+    languages: list[str] = Query(default=[], description="Only documents in these languages"),
     attribute: list[str] | None = Query(default=None, max_length=20, description=(
         "Only annotations with this accepted attribute value, as <attribute id>:<value id> (repeat; values of "
         "one attribute match any, different attributes all)")),
     unassigned: list[str] | None = Query(default=None, max_length=20, description=(
         "Only annotations without an accepted value of this attribute id (repeat)")),
+) -> AnnotationFilters:
+    """The annotation query (``AnnotationFilters``, #663) of a GET request's parameters. The
+    document filters are the shared ``DocumentFilters`` with the parameter names of document
+    browsing; an invalid one is refused (422) as there."""
+    try:
+        return AnnotationFilters.model_validate({
+            "tag_ids": tag_id, "types": types, "q": q, "text_scope": text_scope, "document_ids": document_id,
+            "document_filters": {"year_min": year_min, "year_max": year_max, "title_contains": title_contains,
+                                 "libraries": libraries, "languages": languages},
+            "attribute_values": attribute or [], "attribute_unassigned": unassigned or []})
+    except ValidationError as e:
+        raise RequestValidationError([{**error, "loc": ("query", *error["loc"])} for error in e.errors()]) from e
+
+
+def _unavailable(e: UnavailableFilter) -> HTTPException:
+    """A document filter on a property the corpus store does not record (422, never no results)."""
+    return HTTPException(status_code=422, detail=str(e))
+
+
+@span_router.get("/api/user_collections/{collection_id}/annotations", response_model=AnnotationPage)
+async def list_collection_annotations(
+    collection_id: str,
+    filters: AnnotationFilters = Depends(annotation_filters),
+    sort: AnnotationSort = AnnotationSort.document,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    annotation_id: list[str] | None = Query(default=None, max_length=200,
+                                            description="Only these annotations"),
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> AnnotationPage:
     """
-    One page of the collection's annotations as concordance rows (stored text, left and
-    right context, tag, type, document title and year) and the number of all matches.
-    Rows are in a total order, so paging is deterministic. Rows whose text is not derived
-    for their current revision have ``textStatus`` other than ``ready`` and no text.
+    One page of the collection's annotations matching the annotation query as concordance
+    rows (stored text, left and right context, tag, type, document title and year) and the
+    number of all matches. Rows are in a total order, so paging is deterministic. Rows whose
+    text is not derived for their current revision have ``textStatus`` other than ``ready``
+    and no text. A document filter this corpus database cannot evaluate is refused (422).
     """
-    return await service.query_annotations(
-        store, current_user, collection_id, tag_ids=tag_id, types=types, text=q, document_ids=document_id,
-        year_from=year_from, year_to=year_to, sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id,
-        attribute_values=attribute, attribute_unassigned=unassigned)
+    try:
+        return await service.query_annotations(store, current_user, collection_id, filters, sort=sort, limit=limit,
+                                               offset=offset, annotation_ids=annotation_id)
+    except UnavailableFilter as e:
+        raise _unavailable(e) from e
 
 
 @span_router.get("/api/user_collections/{collection_id}/annotations/counts", response_model=AnnotationCounts)
@@ -270,13 +304,16 @@ async def count_collection_annotations(
                  response_model=list[AnnotatedDocument])
 async def list_annotated_documents(
     collection_id: str,
-    tag_id: list[str] | None = _TAG_FILTER,
-    types: list[SpanType] | None = _TYPE_FILTER,
+    filters: AnnotationFilters = Depends(annotation_filters),
     store: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> list[AnnotatedDocument]:
-    """The documents with annotations of the given tags and types, with their counts, by title."""
-    return await service.list_annotated_documents(store, current_user, collection_id, tag_ids=tag_id, types=types)
+    """The documents with annotations matching the annotation query, with their counts, by
+    title: the source filter's choices. ``document_id`` is not applied (it is being chosen)."""
+    try:
+        return await service.list_annotated_documents(store, current_user, collection_id, filters)
+    except UnavailableFilter as e:
+        raise _unavailable(e) from e
 
 
 ###################################
@@ -295,7 +332,10 @@ async def resolve_collection_annotation_ids(
     ``within`` that match (which members of a selection the filters show). At most 5,000;
     a query matching more is refused (400), never truncated.
     """
-    return await service.resolve_annotation_ids(store, current_user, collection_id, body)
+    try:
+        return await service.resolve_annotation_ids(store, current_user, collection_id, body)
+    except UnavailableFilter as e:
+        raise _unavailable(e) from e
 
 
 @span_router.post("/api/user_collections/{collection_id}/annotations/review", response_model=AnnotationReviewResult)

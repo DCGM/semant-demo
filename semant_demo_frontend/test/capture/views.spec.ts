@@ -239,6 +239,36 @@ test('annotation workspace (#329)', async ({ page, request }, testInfo) => {
   }
 })
 
+test('annotation workspace query (#663)', async ({ page }, testInfo) => {
+  // Context search with its marked matches, a document filter and the active filter chips;
+  // then the document filter menu.
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
+  await page.reload() // without the sign-in notification
+  await expect(page.getByTestId('kwic-row').first()).toBeVisible()
+  await page.getByTestId('concordance-text-scope').click()
+  await page.getByRole('option', { name: 'Both' }).click()
+  await page.getByLabel('Annotation or context text').fill('jan')
+  await page.getByTestId('concordance-document-filters').click()
+  await page.getByLabel('Title contains').fill('kronika')
+  await page.getByLabel('Title contains').press('Enter')
+  await expect(page.getByTestId('concordance-chips')).toContainText('Title contains')
+  const menu = page.getByTestId('concordance-document-form')
+  await expect.poll(() => menu.evaluate(el => getComputedStyle(el.closest('.q-menu')!).opacity)).toBe('1')
+  await save(page, testInfo, 'annotation-workspace-document-filters')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.q-menu')).toHaveCount(0)
+  await expect(page.locator('mark.kwic__match').first()).toBeVisible()
+  if (testInfo.project.name === 'narrow') {
+    // Both sidebars open: the list as narrow as it gets on a desktop.
+    await page.getByTestId('kwic-row').first().click()
+    await expect(page.getByTestId('chunk-context-mark').first()).toBeVisible()
+    await expectRightSidebarIn(page)
+  }
+  await expectSidebarsOpen(page, testInfo)
+  await save(page, testInfo, 'annotation-workspace-query')
+})
+
 test('annotation workspace review (#459)', async ({ page, request }, testInfo) => {
   // A batch reject of the two proposals: its per-item result and the now hidden selection.
   const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }

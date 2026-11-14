@@ -1,7 +1,7 @@
 
 # AnnotationIdsRequest
 
-The concordance filters (#329) whose matching annotation ids to resolve (#459). ``within``: only these annotations, to learn which members of a selection the filters show.
+The annotation query whose matching annotation ids to resolve (#459). ``within``: only these annotations, to learn which members of a selection the filters show.
 
 ## Properties
 
@@ -10,12 +10,12 @@ Name | Type
 `tagIds` | Array&lt;string&gt;
 `types` | [Array&lt;SpanType&gt;](SpanType.md)
 `q` | string
+`textScope` | [TextScope](TextScope.md)
 `documentIds` | Array&lt;string&gt;
-`yearFrom` | number
-`yearTo` | number
-`within` | Array&lt;string&gt;
+`documentFilters` | [DocumentFilters](DocumentFilters.md)
 `attributeValues` | Array&lt;string&gt;
 `attributeUnassigned` | Array&lt;string&gt;
+`within` | Array&lt;string&gt;
 
 ## Example
 
@@ -27,12 +27,12 @@ const example = {
   "tagIds": null,
   "types": null,
   "q": null,
+  "textScope": null,
   "documentIds": null,
-  "yearFrom": null,
-  "yearTo": null,
-  "within": null,
+  "documentFilters": null,
   "attributeValues": null,
   "attributeUnassigned": null,
+  "within": null,
 } satisfies AnnotationIdsRequest
 
 console.log(example)
