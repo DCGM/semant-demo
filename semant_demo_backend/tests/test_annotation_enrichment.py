@@ -15,7 +15,7 @@ import pytest
 
 from tests.chunk_fakes import in_range, positioned
 
-from semant_demo.core.errors import InvalidRequestError
+from semant_demo.core.errors import ServiceUnavailableError
 from semant_demo.core.outcomes import WriteOutcome
 from semant_demo.features.annotations import backfill, service
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText
@@ -23,7 +23,8 @@ from semant_demo.features.annotations.enrichment import (
     AnnotationVector, AnnotationVectorSettings, Enrichment, text_current, vector_current,
 )
 from semant_demo.features.annotations.schemas import (
-    AnnotationChunk, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan,
+    AnnotationChunk, AnnotationFilters, AnnotationRanking, AnnotationRow, PatchSpan, PostSpan, RetrievalMode,
+    SpanType, TagSpan,
 )
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.documents.schemas import Document
@@ -137,9 +138,23 @@ class FakeSpans:
     async def read_rows(self, cid, *, tag_ids=None, document_id=None, limit=100, offset=0):
         return [self._row(s) for s in self.objects][offset:offset + limit]
 
-    async def near_vector(self, cid, target_vector, vector, config_id, limit, tag_ids=None):
-        return [self._row(s).model_copy(update={"distance": 0.1}) for s, p in self.objects.items()
-                if p.get("vectorStatus") == "ready" and p.get("vectorConfig") == config_id][:limit]
+    def _ranked(self, query):
+        """Spans of the query's types with a ``ready`` vector of its configuration and current-policy text."""
+        return [s for s, p in self.objects.items() if SpanType(p["type"]) in query.types
+                and (query.vector_config is None
+                     or (p.get("vectorStatus") == "ready" and p.get("vectorConfig") == query.vector_config
+                         and p.get("enrichmentStatus") == "ready"
+                         and p.get("derivationVersion") == query.derivation_version))]
+
+    async def count_rows(self, cid, query, document_ids=None):
+        return len(self._ranked(query))
+
+    async def rank(self, cid, query, ranking, *, document_ids=None, limit):
+        return [self._row(s).model_copy(update={"distance": 0.1}) for s in self._ranked(query)
+                if s != ranking.exclude][:limit]
+
+    async def read_rows_by_id(self, cid, ids):
+        return {i: self._row(i) for i in ids if i in self.objects}
 
     async def iterate_rows(self, cid):
         for sid in list(self.objects):
@@ -169,6 +184,13 @@ class FakeEmbedder:
 @pytest.fixture
 def embedder():
     return FakeEmbedder()
+
+
+async def semantic(store, user, q):
+    """The rows of a semantic annotation query (#664) for ``q``."""
+    page = await service.query_annotations(store, user, COLLECTION, AnnotationFilters(q=q),
+                                           ranking=AnnotationRanking(mode=RetrievalMode.semantic))
+    return page.rows
 
 
 @pytest.fixture
@@ -274,7 +296,7 @@ async def test_derived_data_of_an_older_policy_is_not_current_and_not_returned(s
     assert not text_current(row) and not vector_current(row, CONFIG_ID)
     [listed] = await service.list_annotation_rows(store, OWNER, COLLECTION)
     assert listed.text is None and listed.leftContext is None
-    assert await service.similar_annotations(store, OWNER, COLLECTION, "hejtman") == []
+    assert await semantic(store, OWNER, "hejtman") == []
 
 
 async def test_saving_again_rederives_an_older_policy_and_reembeds(store, embedder):
@@ -388,14 +410,14 @@ async def test_semantic_search_leaves_out_stale_vectors(store, embedder):
     stale, _ = await create(store, 0, 4)
     store.spans.objects[stale]["revision"] = 2
 
-    rows = await service.similar_annotations(store, OWNER, COLLECTION, "hejtman")
+    rows = await semantic(store, OWNER, "hejtman")
 
     assert [r.id for r in rows] == [current] and embedder.queries == ["hejtman"]
 
 
 async def test_reads_are_authorized_before_embedding_the_query(store, embedder):
     with pytest.raises(ResourceNotFound):
-        await service.similar_annotations(store, OTHER, COLLECTION, "hejtman")
+        await semantic(store, OTHER, "hejtman")
     with pytest.raises(ResourceNotFound):
         await service.list_annotation_rows(store, OTHER, COLLECTION)
     assert embedder.queries == []
@@ -403,8 +425,8 @@ async def test_reads_are_authorized_before_embedding_the_query(store, embedder):
 
 async def test_semantic_search_needs_a_configured_vector(store):
     store.enrichment = Enrichment(derived=True)
-    with pytest.raises(InvalidRequestError):
-        await service.similar_annotations(store, OWNER, COLLECTION, "hejtman")
+    with pytest.raises(ServiceUnavailableError):
+        await semantic(store, OWNER, "hejtman")
 
 
 # ── Backfill ──────────────────────────────────────────────────────────────
@@ -519,7 +541,7 @@ async def test_backfill_without_vectors_marks_the_vector_of_an_older_policy_pend
     row = await store.spans.read_row(COLLECTION, sid)
     assert text_current(row) and row.vectorStatus == "pending" and not vector_current(row, CONFIG_ID)
     assert result.remaining_incomplete == 1
-    assert await service.similar_annotations(store, OWNER, COLLECTION, "hejtman") == []
+    assert await semantic(store, OWNER, "hejtman") == []
 
 
 # ── Configuration ─────────────────────────────────────────────────────────

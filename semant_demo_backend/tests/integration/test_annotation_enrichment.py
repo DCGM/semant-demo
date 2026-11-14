@@ -23,9 +23,17 @@ from semant_demo.features.annotations import backfill, service
 from semant_demo.features.annotations.enrichment import (
     AnnotationVector, AnnotationVectorSettings, Enrichment, text_current, vector_current,
 )
-from semant_demo.features.annotations.schemas import PatchSpan, PostSpan, SpanType
+from semant_demo.features.annotations.schemas import (
+    AnnotationFilters, AnnotationRanking, PatchSpan, PostSpan, RetrievalMode, SpanType,
+)
 from semant_demo.features.annotations.service import AnnotationStore
 from tests.fakes import fake_embedding
+
+
+async def semantic(store, owner, collection, q, **filters):
+    """A semantic annotation query (#664) for ``q``."""
+    return await service.query_annotations(store, owner, collection, AnnotationFilters(q=q, **filters),
+                                           ranking=AnnotationRanking(mode=RetrievalMode.semantic))
 
 pytestmark = pytest.mark.integration
 
@@ -131,8 +139,8 @@ async def test_vector_is_current_after_create_and_kept_by_a_type_change(store, o
     assert embedder.calls == 1
     row = await store.spans.read_row(collection, sid)
     assert vector_current(row, CONFIG_ID)
-    found = await service.similar_annotations(store, owner, collection, "Jan Novák")
-    assert sid in [r.id for r in found] and all(r.distance is not None for r in found)
+    found = await semantic(store, owner, collection, "Jan Novák", types=[SpanType.neg])
+    assert sid in [r.id for r in found.rows] and found.result.kind == "top_k"
     # The patch did not drop the stored vector.
     obj = await store.spans._tenant(collection).query.fetch_object_by_id(sid, include_vector=True)
     assert obj.vector["contextual"] == pytest.approx(fake_embedding(store.enrichment.vector.input_of(
@@ -149,12 +157,12 @@ async def test_a_vector_of_an_older_revision_is_never_returned(store, owner, ids
     assert moved.outcome == "partial" and [f.step for f in moved.failed] == ["embed_annotation"]
     row = await store.spans.read_row(collection, sid)
     assert (row.start, row.revision, row.text, row.vectorStatus) == (38, 2, "Novák", "failed")
-    assert sid not in [r.id for r in await service.similar_annotations(store, owner, collection, "Jan Novák")]
+    assert sid not in [r.id for r in (await semantic(store, owner, collection, "Jan Novák")).rows]
 
     embedder.fail = False
     retried = await service.update_span(store, owner, collection, sid, PatchSpan(start=38))
     assert retried.outcome == "complete"
-    assert sid in [r.id for r in await service.similar_annotations(store, owner, collection, "Novák")]
+    assert sid in [r.id for r in (await semantic(store, owner, collection, "Novák")).rows]
 
 
 async def test_rows_are_read_from_annotations_with_their_document(store, owner, ids, corpus):

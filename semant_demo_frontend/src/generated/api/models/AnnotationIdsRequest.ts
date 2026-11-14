@@ -27,6 +27,13 @@ import {
     SpanTypeToJSON,
     SpanTypeToJSONTyped,
 } from './SpanType';
+import type { AnnotationRanking } from './AnnotationRanking';
+import {
+    AnnotationRankingFromJSON,
+    AnnotationRankingFromJSONTyped,
+    AnnotationRankingToJSON,
+    AnnotationRankingToJSONTyped,
+} from './AnnotationRanking';
 import type { TextScope } from './TextScope';
 import {
     TextScopeFromJSON,
@@ -96,6 +103,12 @@ export interface AnnotationIdsRequest {
      * @memberof AnnotationIdsRequest
      */
     within?: Array<string> | null;
+    /**
+     * 
+     * @type {AnnotationRanking}
+     * @memberof AnnotationIdsRequest
+     */
+    ranking?: AnnotationRanking;
 }
 
 
@@ -126,6 +139,7 @@ export function AnnotationIdsRequestFromJSONTyped(json: any, ignoreDiscriminator
         'attributeValues': json['attribute_values'] == null ? undefined : json['attribute_values'],
         'attributeUnassigned': json['attribute_unassigned'] == null ? undefined : json['attribute_unassigned'],
         'within': json['within'] == null ? undefined : json['within'],
+        'ranking': json['ranking'] == null ? undefined : AnnotationRankingFromJSON(json['ranking']),
     };
 }
 
@@ -149,6 +163,7 @@ export function AnnotationIdsRequestToJSONTyped(value?: AnnotationIdsRequest | n
         'attribute_values': value['attributeValues'],
         'attribute_unassigned': value['attributeUnassigned'],
         'within': value['within'],
+        'ranking': AnnotationRankingToJSON(value['ranking']),
     };
 }
 

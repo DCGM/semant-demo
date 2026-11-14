@@ -7,7 +7,7 @@ from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.schemas import (
     MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
-    AnnotationPage, AnnotationRestoreRequest, TextScope,
+    AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
     AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
@@ -257,6 +257,22 @@ def annotation_filters(
         raise RequestValidationError([{**error, "loc": ("query", *error["loc"])} for error in e.errors()]) from e
 
 
+def annotation_ranking(
+    mode: RetrievalMode = Query(default=RetrievalMode.lexical, description=(
+        "lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by "
+        "meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)")),
+    k: int = Query(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K, description="Ranked modes: at most this many"),
+    similar_to: str | None = Query(default=None, description="Mode similar: the source annotation id"),
+    include_source: bool = Query(default=False, description="Mode similar: rank the source annotation too"),
+) -> AnnotationRanking:
+    """The retrieval mode (``AnnotationRanking``, #664) of a GET request's parameters."""
+    try:
+        return AnnotationRanking.model_validate({"mode": mode, "k": k, "similar_to": similar_to,
+                                                 "include_source": include_source})
+    except ValidationError as e:
+        raise RequestValidationError([{**error, "loc": ("query", *error["loc"])} for error in e.errors()]) from e
+
+
 def _unavailable(e: UnavailableFilter) -> HTTPException:
     """A document filter on a property the corpus store does not record (422, never no results)."""
     return HTTPException(status_code=422, detail=str(e))
@@ -266,7 +282,9 @@ def _unavailable(e: UnavailableFilter) -> HTTPException:
 async def list_collection_annotations(
     collection_id: str,
     filters: AnnotationFilters = Depends(annotation_filters),
-    sort: AnnotationSort = AnnotationSort.document,
+    ranking: AnnotationRanking = Depends(annotation_ranking),
+    sort: AnnotationSort | None = Query(default=None, description=(
+        "Lexical mode: the row order, default document; ranked modes are in relevance order and take none")),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     annotation_id: list[str] | None = Query(default=None, max_length=200,
@@ -280,10 +298,14 @@ async def list_collection_annotations(
     number of all matches. Rows are in a total order, so paging is deterministic. Rows whose
     text is not derived for their current revision have ``textStatus`` other than ``ready``
     and no text. A document filter this corpus database cannot evaluate is refused (422).
+
+    A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result``
+    describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a
+    usable embedding service answer 503; a similar source without a current vector 400.
     """
     try:
-        return await service.query_annotations(store, current_user, collection_id, filters, sort=sort, limit=limit,
-                                               offset=offset, annotation_ids=annotation_id)
+        return await service.query_annotations(store, current_user, collection_id, filters, ranking=ranking,
+                                               sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id)
     except UnavailableFilter as e:
         raise _unavailable(e) from e
 
@@ -330,7 +352,8 @@ async def resolve_collection_annotation_ids(
     """
     The ids of all annotations matching the concordance filters now, or of those among
     ``within`` that match (which members of a selection the filters show). At most 5,000;
-    a query matching more is refused (400), never truncated.
+    a query matching more is refused (400), never truncated. A ranked ``ranking`` resolves
+    exactly its top ``k`` (#664).
     """
     try:
         return await service.resolve_annotation_ids(store, current_user, collection_id, body)

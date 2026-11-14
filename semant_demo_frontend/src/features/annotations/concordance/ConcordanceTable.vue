@@ -38,7 +38,7 @@
         >
           {{ attribute.name }}
         </div>
-        <div class="kwic__cell kwic__meta" role="columnheader">Tag · status</div>
+        <div class="kwic__cell kwic__meta" role="columnheader">{{ rankStart !== null ? 'Rank · tag · status' : 'Tag · status' }}</div>
         <div class="kwic__cell kwic__source" role="columnheader">Source</div>
       </div>
 
@@ -61,6 +61,18 @@
         @click="emit('open', row)"
         @focus="activeIndex = index"
       >
+        <q-menu v-if="similar" context-menu touch-position data-testid="kwic-row-menu">
+          <q-list dense style="min-width: 180px">
+            <q-item v-close-popup clickable data-testid="kwic-row-open" @click="emit('open', row)">
+              <q-item-section avatar><q-icon name="menu_book" /></q-item-section>
+              <q-item-section>Show in document</q-item-section>
+            </q-item>
+            <q-item v-close-popup clickable data-testid="kwic-row-similar" @click="emit('similar', row)">
+              <q-item-section avatar><q-icon name="join_inner" /></q-item-section>
+              <q-item-section>Find similar</q-item-section>
+            </q-item>
+          </q-list>
+        </q-menu>
         <div class="kwic__cell kwic__check" role="gridcell" @click.stop>
           <q-checkbox
             dense
@@ -127,6 +139,7 @@
           </span>
         </div>
         <div class="kwic__cell kwic__meta" role="gridcell">
+          <span v-if="rankStart !== null" class="kwic__rank" data-testid="kwic-rank">#{{ rankStart + index }}</span>
           <span class="kwic__tag" :title="tagName(row)">
             <span class="kwic__tag-dot" :style="{ backgroundColor: tagColor(row) }" aria-hidden="true" />
             {{ tagName(row) }}
@@ -147,7 +160,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { QBtn, QCheckbox, QMenu } from 'quasar'
+import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, ClosePopup as vClosePopup } from 'quasar'
 import { Cardinality, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag } from 'src/generated/api'
 import { markMatches, queryWords, type TextPart } from './textMatches'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
@@ -169,18 +182,26 @@ const props = withDefaults(defineProps<{
   /** The lexical query whose matches are marked (#663), and where it searches. */
   query?: string
   queryScope?: TextScope
+  /** The rank of the first row, in a ranked result (#664); null shows no ranks. */
+  rankStart?: number | null
+  /** Rows offer Find similar in their context menu (#664). */
+  similar?: boolean
 }>(), {
   focusedId: null,
   loading: false,
   attributes: () => [],
   pending: () => new Set(),
   query: '',
-  queryScope: TextScope.annotation
+  queryScope: TextScope.annotation,
+  rankStart: null,
+  similar: false
 })
 
 const emit = defineEmits<{
   /** Show the row's annotation in its document (row click, Enter). */
   open: [row: AnnotationListRow]
+  /** List the annotations most similar to the row's (its context menu, #664). */
+  similar: [row: AnnotationListRow]
   /** Check or uncheck one row (its checkbox, Space); separate from opening. */
   toggle: [id: string, value: boolean]
   'select-page': [value: boolean]
@@ -526,6 +547,12 @@ defineExpose({ reveal })
   align-items: center;
   gap: 6px;
   font-size: 0.78rem;
+}
+
+.kwic__rank {
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.65);
 }
 
 .kwic__tag {
