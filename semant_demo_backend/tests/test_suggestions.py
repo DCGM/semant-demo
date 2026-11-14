@@ -24,7 +24,7 @@ from semant_demo.features.annotations.schemas import (
 )
 from semant_demo.features.annotations.enrichment import Enrichment
 from semant_demo.features.annotations.service import AnnotationStore
-from semant_demo.features.annotations.suggestion_routes import _RunResponse
+from semant_demo.features.annotations.suggestion_routes import _run_response
 from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.annotations.schemas import AnnotationChunk
 from semant_demo.core.outcomes import StepFailure
@@ -526,7 +526,7 @@ async def test_route_closes_the_run_when_the_client_disconnects():
     never = asyncio.Event()
     provider = FakeProvider(world, {"done": [proposal(PERSON, 0, 4)], "slow": (never, [])})
     run = await thorough(world, provider)
-    response = _RunResponse(run)
+    response = _run_response(run)
     sent, disconnected = [], asyncio.Event()
 
     async def send(message):

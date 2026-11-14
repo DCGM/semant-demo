@@ -74,6 +74,11 @@ class FakeOperation:
     async def __aexit__(self, *exc_info) -> None:
         self.events.append("exit")
 
+    async def release(self) -> None:
+        # As OperationScope: only an operation admitted and never entered is released.
+        if "admit" in self.events and "enter" not in self.events:
+            self.events.append("release")
+
 
 class FakeStreamingChat:
     """Replaces ``adapters.llm.gateway.FeatureChat``: yields ``deltas``, records calls.
