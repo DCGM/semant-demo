@@ -23,8 +23,9 @@ from semant_demo.features.annotations import service
 from semant_demo.features.annotations.enrichment import Enrichment
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.annotations.schemas import (
-    AnnotationIdsRequest, AnnotationSort, PatchSpan, PostSpan, SpanType, TextStatus,
+    AnnotationFilters, AnnotationIdsRequest, AnnotationSort, PatchSpan, PostSpan, SpanType, TextScope, TextStatus,
 )
+from semant_demo.features.documents.criteria import DocumentFilters
 from semant_demo.features.annotations.service import AnnotationStore
 
 pytestmark = pytest.mark.integration
@@ -67,14 +68,14 @@ async def created(store, owner, ids, corpus):
     )
 
 
-async def query(store, owner, ids, **kwargs):
-    return await service.query_annotations(store, owner, ids.col["chronicles"], **kwargs)
+async def query(store, owner, ids, filters=None, **kwargs):
+    return await service.query_annotations(store, owner, ids.col["chronicles"], filters, **kwargs)
 
 
-async def all_pages(store, owner, ids, size, **kwargs):
+async def all_pages(store, owner, ids, size, filters=None, **kwargs):
     rows, offset = [], 0
     while True:
-        page = await query(store, owner, ids, limit=size, offset=offset, **kwargs)
+        page = await query(store, owner, ids, filters, limit=size, offset=offset, **kwargs)
         rows += page.rows
         offset += size
         if offset >= page.total:
@@ -110,20 +111,22 @@ async def test_document_order_and_row_fields(store, owner, ids, corpus, created)
 
 
 async def test_filters_are_applied_by_the_store(store, owner, ids, corpus, created):
-    novak = await query(store, owner, ids, text="NOVÁ")
+    novak = await query(store, owner, ids, AnnotationFilters(q="NOVÁ"))
     # The seeded "Novák" has no derived text, so no text matches it.
     assert [r.id for r in novak.rows] == created.novak
 
-    rejected = await query(store, owner, ids, types=[SpanType.neg])
+    rejected = await query(store, owner, ids, AnnotationFilters(types=[SpanType.neg]))
     assert [r.id for r in rejected.rows] == [UUID(corpus.spans["kronikar_rejected"]["id"])]
 
-    places = await query(store, owner, ids, tag_ids=[ids.tag["place"]], types=[SpanType.auto])
+    places = await query(store, owner, ids, AnnotationFilters(tag_ids=[ids.tag["place"]], types=[SpanType.auto]))
     assert {r.id for r in places.rows} == {created.brno, UUID(corpus.spans["lhota_automatic"]["id"]),
                                            UUID(corpus.spans["praha_automatic"]["id"])}
 
-    letters = await query(store, owner, ids, year_from=1900, sort=AnnotationSort.text)
+    letters = await query(store, owner, ids, AnnotationFilters(document_filters=DocumentFilters(year_min=1900)),
+                          sort=AnnotationSort.text)
     assert {r.documentTitle for r in letters.rows} == {"Dopisy z Prahy"} and letters.total == 3
-    chronicle = await query(store, owner, ids, document_ids=[ids.doc["chronicle"]], sort=AnnotationSort.text)
+    chronicle = await query(store, owner, ids, AnnotationFilters(document_ids=[ids.doc["chronicle"]]),
+                            sort=AnnotationSort.text)
     assert chronicle.total == 7
 
     documents = await service.list_annotated_documents(store, owner, ids.col["chronicles"])
@@ -131,11 +134,70 @@ async def test_filters_are_applied_by_the_store(store, owner, ids, corpus, creat
                                                                ("Kronika obce Lhota", 1851, 7)]
 
 
+async def test_words_are_searched_in_the_fields_of_the_text_scope(store, owner, ids, created):
+    # letters_2: "Pozdravuj Zdeňku a celou rodinu. Tvůj Karel 😀" with annotations "Zdeňku" and "Karel".
+    async def found(q, scope):
+        return {r.id for r in (await query(store, owner, ids, AnnotationFilters(q=q, text_scope=scope),
+                                           limit=200)).rows}
+
+    zdenka, karel = created.zdenka, created.karel
+    assert await found("karel", TextScope.annotation) == {karel}
+    assert await found("KAREL", TextScope.context) == {zdenka}
+    assert await found("karel", TextScope.both) == {karel, zdenka}
+    assert await found("rodin", TextScope.annotation) == set()
+    assert await found("rodin", TextScope.context) == {zdenka, karel}
+    # Each word may occur in another field; every word must occur. Diacritics count, case does not.
+    # Each word may occur in another field; every word must occur. Diacritics count, case does not.
+    assert await found("TVŮ rodin", TextScope.both) == {zdenka, karel}
+    assert await found("karel rodin", TextScope.annotation) == set()
+    assert await found("karel rodin", TextScope.context) == {zdenka}
+    assert await found("karel rodin", TextScope.both) == {zdenka, karel}  # Karel's "Karel" is its text
+    assert await found("pozdrav rodin", TextScope.context) == {zdenka, karel}
+    assert await found("tvu", TextScope.both) == set()
+    # The fixture stores "Zdeňku" decomposed (n + combining caron): Weaviate's word tokenization splits
+    # it at the mark, so the composed letter does not match it (stored corpus text is composed, NFC).
+    assert await found("zdeň", TextScope.both) == set()
+    # Text of the preceding chunk is context too (letters_1 ends "Počasí je ošklivé.").
+    assert await found("ošklivé", TextScope.context) == {zdenka, karel}
+
+
+async def test_document_filters_are_the_shared_document_predicates(store, owner, ids, created):
+    async def titles(**filters):
+        page = await query(store, owner, ids, AnnotationFilters(document_filters=DocumentFilters(**filters)), limit=200)
+        assert page.total == len(page.rows)
+        return {r.documentTitle for r in page.rows}, page.total
+
+    assert await titles(title_contains=["DOPISY"]) == ({"Dopisy z Prahy"}, 3)
+    assert await titles(title_contains=["kronik", "nonexistent"]) == ({"Kronika obce Lhota"}, 7)
+    assert await titles(year_max=1900) == ({"Kronika obce Lhota"}, 7)
+    assert await titles(languages=["CES"]) == ({"Dopisy z Prahy", "Kronika obce Lhota"}, 10)
+    assert await titles(languages=["deu"]) == (set(), 0)
+    text_order = await query(store, owner, ids, AnnotationFilters(document_filters=DocumentFilters(year_min=1900)),
+                             sort=AnnotationSort.text)
+    assert text_order.total == 3
+
+    documents = await service.list_annotated_documents(
+        store, owner, ids.col["chronicles"], AnnotationFilters(document_filters=DocumentFilters(year_min=1900)))
+    assert [(d.title, d.count) for d in documents] == [("Dopisy z Prahy", 3)]
+
+
+async def test_api_takes_the_shared_document_filter_parameters(api_client, login, ids):
+    path = f"/api/user_collections/{ids.col['chronicles']}/annotations"
+    owner = await login("owner")
+    page = await api_client.get(path, headers=owner, params=[("title_contains", "kronika"), ("year_max", "1900"),
+                                                             ("text_scope", "both")])
+    ids_page = await api_client.post(f"{path}/ids", headers=owner,
+                                     json={"document_filters": {"title_contains": ["kronika"], "year_max": 1900}})
+    assert page.status_code == 200, page.text
+    assert {r["documentTitle"] for r in page.json()["rows"]} == {"Kronika obce Lhota"}
+    assert ids_page.status_code == 200 and len(ids_page.json()["ids"]) == page.json()["total"]
+
+
 async def test_the_document_limit_counts_only_the_chosen_documents(store, owner, ids, created, monkeypatch):
     monkeypatch.setattr(service, "_MAX_DOCUMENTS", 1)  # both documents are annotated
     with pytest.raises(InvalidRequestError):
         await query(store, owner, ids)
-    chronicle = await query(store, owner, ids, document_ids=[ids.doc["chronicle"]])
+    chronicle = await query(store, owner, ids, AnnotationFilters(document_ids=[ids.doc["chronicle"]]))
     assert chronicle.total == 7
 
 
@@ -148,7 +210,7 @@ async def test_a_failed_re_derivation_leaves_no_searchable_text(store, owner, id
     result = await service.update_span(store, owner, ids.col["chronicles"], str(moved), PatchSpan(start=35))
     assert [f.step for f in result.failed] == ["derive_annotation"]
 
-    assert moved not in [r.id for r in (await query(store, owner, ids, text="Novák")).rows]
+    assert moved not in [r.id for r in (await query(store, owner, ids, AnnotationFilters(q="Novák"))).rows]
     by_text = (await query(store, owner, ids, sort=AnnotationSort.text, limit=200)).rows
     [row] = [r for r in by_text if r.id == moved]
     assert (row.textStatus, row.text) == (TextStatus.failed, None)
@@ -158,7 +220,8 @@ async def test_a_failed_re_derivation_leaves_no_searchable_text(store, owner, id
 
 async def test_a_collection_without_annotations_is_empty(store, owner, ids):
     # "newspapers" has the seeded "Požár" only; a tag of another collection matches nothing.
-    page = await service.query_annotations(store, owner, ids.col["newspapers"], tag_ids=[ids.tag["person"]])
+    page = await service.query_annotations(store, owner, ids.col["newspapers"],
+                                           AnnotationFilters(tag_ids=[ids.tag["person"]]))
     assert (page.total, page.rows) == (0, [])
 
 
@@ -179,12 +242,12 @@ async def test_api_reads_for_owner_and_shared_user_only(api_client, login, ids):
 
 async def test_all_matches_resolve_to_the_ids_the_pages_show(store, owner, ids, created):
     col = ids.col["chronicles"]
-    for request, kwargs in [(AnnotationIdsRequest(), {}),
-                            (AnnotationIdsRequest(tag_ids=[ids.tag["person"]], q="nov"),
-                             {"tag_ids": [ids.tag["person"]], "text": "nov"}),
-                            (AnnotationIdsRequest(year_from=1900), {"year_from": 1900})]:
+    for fields in [{}, {"tag_ids": [ids.tag["person"]], "q": "nov"},
+                   {"document_filters": DocumentFilters(year_min=1900)},
+                   {"q": "z", "text_scope": TextScope.context, "document_filters": DocumentFilters(languages=["ces"])}]:
+        request = AnnotationIdsRequest(**fields)
         resolved = await service.resolve_annotation_ids(store, owner, col, request)
-        rows = await all_pages(store, owner, ids, 3, **kwargs)
+        rows = await all_pages(store, owner, ids, 3, AnnotationFilters(**fields))
         assert sorted(resolved.ids, key=str) == sorted(rows, key=str), request
         assert resolved.ids == sorted(resolved.ids, key=str)
 
@@ -206,7 +269,7 @@ async def test_api_review_is_per_item_for_owner_and_shared_user_only(api_client,
     rejected = await api_client.post(path, headers=annotator, json=body)
     assert rejected.status_code == 200, rejected.text
     assert rejected.json()["outcome"] == "complete"
-    page = await query(store, owner, ids, types=[SpanType.neg])
+    page = await query(store, owner, ids, AnnotationFilters(types=[SpanType.neg]))
     assert {r.id for r in page.rows} >= {created.brno, created.zdenka}
 
     karel = {"annotation_ids": [str(created.karel)], "expected_versions": {str(created.karel): 0}}

@@ -46,19 +46,37 @@
       </q-checkbox>
     </div>
 
-    <q-input
-      :model-value="filters.text"
-      dense
-      outlined
-      clearable
-      debounce="400"
-      label="Annotated text"
-      class="concordance-toolbar__text"
-      data-testid="concordance-text"
-      @update:model-value="value => emit('change', { text: String(value ?? '') })"
-    >
-      <template #prepend><q-icon name="search" /></template>
-    </q-input>
+    <div class="concordance-toolbar__search" role="group" aria-label="Text search">
+      <q-input
+        :model-value="filters.text"
+        dense
+        outlined
+        clearable
+        debounce="400"
+        :label="scopeLabel"
+        :hint="scopeHint"
+        hide-hint
+        hide-bottom-space
+        class="concordance-toolbar__text"
+        data-testid="concordance-text"
+        @update:model-value="value => emit('change', { text: String(value ?? '') })"
+      >
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+      <q-select
+        :model-value="filters.textScope"
+        :options="scopeOptions"
+        emit-value
+        map-options
+        dense
+        outlined
+        options-dense
+        label="Search in"
+        class="concordance-toolbar__scope"
+        data-testid="concordance-text-scope"
+        @update:model-value="value => emit('change', { textScope: value })"
+      />
+    </div>
 
     <q-select
       :model-value="filters.documentIds"
@@ -118,7 +136,7 @@
 
     <div class="concordance-toolbar__years" role="group" aria-label="Publication years">
       <q-input
-        :model-value="filters.yearFrom ?? ''"
+        :model-value="filters.documentFilters.yearMin ?? ''"
         dense
         outlined
         type="number"
@@ -126,10 +144,10 @@
         label="From year"
         class="concordance-toolbar__year"
         data-testid="concordance-year-from"
-        @update:model-value="value => emit('change', { yearFrom: toYear(value) })"
+        @update:model-value="value => setDocumentFilters({ yearMin: toYear(value) })"
       />
       <q-input
-        :model-value="filters.yearTo ?? ''"
+        :model-value="filters.documentFilters.yearMax ?? ''"
         dense
         outlined
         type="number"
@@ -137,9 +155,80 @@
         label="To year"
         class="concordance-toolbar__year"
         data-testid="concordance-year-to"
-        @update:model-value="value => emit('change', { yearTo: toYear(value) })"
+        @update:model-value="value => setDocumentFilters({ yearMax: toYear(value) })"
       />
     </div>
+
+    <q-btn
+      outline
+      dense
+      no-caps
+      color="primary"
+      icon="tune"
+      :label="documentFilterCount ? `Document filters (${documentFilterCount})` : 'Document filters'"
+      class="concordance-toolbar__document-filters"
+      data-testid="concordance-document-filters"
+    >
+      <q-menu anchor="bottom left" self="top left" class="concordance-toolbar__menu">
+        <div class="concordance-toolbar__document-form" data-testid="concordance-document-form">
+          <p class="concordance-toolbar__menu-hint">
+            The same document filters as in Search and the corpus overview: annotations in documents that match
+            every kind, and any of several values of one kind.
+          </p>
+          <q-input
+            v-model="titleDraft"
+            dense
+            outlined
+            clearable
+            maxlength="100"
+            label="Title contains"
+            hint="Enter adds it; several titles match any of them. Each word inside a title word, in any order; ignores case, not diacritics."
+            :error="!!titleError"
+            :error-message="titleError ?? undefined"
+            data-testid="concordance-title"
+            @keydown.enter.prevent="addTitle"
+          >
+            <template #append>
+              <q-btn flat dense round icon="add" aria-label="Add title filter" :disable="!titleDraft?.trim()" @click="addTitle" />
+            </template>
+          </q-input>
+          <q-select
+            :model-value="filters.documentFilters.libraries ?? []"
+            :options="libraryOptions"
+            multiple
+            emit-value
+            map-options
+            use-chips
+            clearable
+            dense
+            outlined
+            options-dense
+            label="Source library"
+            :disable="!libraryOptions.length"
+            :hint="libraryOptions.length ? 'Any of the selected libraries' : 'The annotated documents record no library'"
+            data-testid="concordance-libraries"
+            @update:model-value="value => setDocumentFilters({ libraries: value ?? [] })"
+          />
+          <q-select
+            :model-value="filters.documentFilters.languages ?? []"
+            :options="languageOptions"
+            multiple
+            emit-value
+            map-options
+            use-chips
+            clearable
+            dense
+            outlined
+            options-dense
+            label="Document language"
+            :disable="!languageOptions.length"
+            :hint="languageOptions.length ? 'Any of the selected languages' : 'The annotated documents record no language'"
+            data-testid="concordance-languages"
+            @update:model-value="value => setDocumentFilters({ languages: value ?? [] })"
+          />
+        </div>
+      </q-menu>
+    </q-btn>
 
     <q-select
       :model-value="filters.sort"
@@ -192,25 +281,19 @@
       <q-tooltip>Shows each chosen attribute's values in a column of their own, where they can be assigned</q-tooltip>
     </q-select>
 
-    <q-btn
-      flat
-      dense
-      no-caps
-      color="primary"
-      icon="filter_alt_off"
-      label="Reset"
-      :disable="!filtersChanged"
-      @click="emit('reset')"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { QBtn, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QSelect, QTooltip } from 'quasar'
-import { AnnotationSort, SpanType, type AnnotatedDocument, type Attribute, type Tag } from 'src/generated/api'
+import { QBtn, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QMenu, QSelect, QTooltip } from 'quasar'
+import {
+  AnnotationSort, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+} from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
-import { defaultFilters, type ConcordanceFilters } from './concordanceStore'
+import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
+import type { ConcordanceFilters } from './concordanceStore'
+import { SCOPE_LABELS, scopeHintText, titleProblem } from './filterChips'
 
 const props = defineProps<{
   filters: ConcordanceFilters
@@ -225,7 +308,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   change: [change: Partial<ConcordanceFilters>]
-  reset: []
   'show-attributes': [attributeIds: string[]]
 }>()
 
@@ -244,6 +326,45 @@ const sortOptions = [
   { value: AnnotationSort.year, label: 'Year' },
   { value: AnnotationSort.text, label: 'Annotated text' }
 ]
+
+const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOPE_LABELS[value] }))
+const scopeLabel = computed(() => props.filters.textScope === TextScope.annotation ? 'Annotated text'
+  : props.filters.textScope === TextScope.context ? 'Context text' : 'Annotation or context text')
+const scopeHint = computed(() => scopeHintText(props.filters.textScope))
+
+function setDocumentFilters (change: Partial<DocumentFilters>) {
+  emit('change', { documentFilters: { ...props.filters.documentFilters, ...change } })
+}
+
+const documentFilterCount = computed(() => {
+  const f = props.filters.documentFilters
+  return (f.titleContains?.length ?? 0) + (f.libraries?.length ?? 0) + (f.languages?.length ?? 0)
+})
+
+const titleDraft = ref<string | null>(null)
+const titleError = ref<string | null>(null)
+function addTitle () {
+  const text = titleDraft.value?.trim()
+  if (!text) return
+  const titles = props.filters.documentFilters.titleContains ?? []
+  titleError.value = titleProblem(text, titles)
+  if (titleError.value) return
+  if (!titles.includes(text)) setDocumentFilters({ titleContains: [...titles, text] })
+  titleDraft.value = null
+}
+
+/** The stored values of the annotated documents, with how many annotations each has. */
+function valueOptions (key: 'library' | 'language', label: (value: string) => string) {
+  const counts = new Map<string, number>()
+  for (const d of props.documents) {
+    const value = d[key]
+    if (value) counts.set(value, (counts.get(value) ?? 0) + d.count)
+  }
+  return [...counts].sort(([a], [b]) => label(a).localeCompare(label(b)))
+    .map(([value, count]) => ({ value, label: `${label(value)} (${count})` }))
+}
+const libraryOptions = computed(() => valueOptions('library', libraryLabel))
+const languageOptions = computed(() => valueOptions('language', languageLabel))
 
 function toggleType (type: SpanType, value: boolean) {
   const types = value ? [...props.filters.types, type] : props.filters.types.filter(t => t !== type)
@@ -324,8 +445,6 @@ const shownLabel = computed(() => {
   const ids = new Set(shownIds.value)
   return shownAttributeOptions.value.filter(o => ids.has(o.value)).map(o => o.label).join(', ')
 })
-
-const filtersChanged = computed(() => JSON.stringify(props.filters) !== JSON.stringify(defaultFilters()))
 </script>
 
 <style scoped>
@@ -341,9 +460,33 @@ const filtersChanged = computed(() => JSON.stringify(props.filters) !== JSON.str
   max-width: 360px;
 }
 
+.concordance-toolbar__search {
+  display: flex;
+  flex: 1 1 320px;
+  max-width: 460px;
+  gap: 6px;
+}
+
 .concordance-toolbar__text {
   flex: 1 1 200px;
-  max-width: 320px;
+}
+
+.concordance-toolbar__scope {
+  width: 130px;
+}
+
+.concordance-toolbar__document-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 12px;
+}
+
+.concordance-toolbar__menu-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(0, 0, 0, 0.65);
 }
 
 .concordance-toolbar__sources {

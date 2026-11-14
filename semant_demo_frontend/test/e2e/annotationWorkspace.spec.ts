@@ -281,6 +281,41 @@ test('filters, selection and the open row survive a visit to the document', asyn
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
 })
 
+test('the text scope, document filters and filter chips compose (#663)', async ({ page }) => {
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  const all = await rows(page).count()
+
+  // "hejtman" occurs only in the context of the chronicle's annotations, never in an annotation.
+  await page.getByLabel('Annotated text').fill('hejtman')
+  await expect(page.getByText('No annotations match these filters.')).toBeVisible()
+  await page.getByTestId('concordance-text-scope').click()
+  await page.getByRole('option', { name: 'Context' }).click()
+  await expect(row(page, 'Jan Novák')).toBeVisible()
+  await expect(row(page, 'Jan Novák').locator('.kwic__left mark.kwic__match')).toHaveText('hejtman')
+  await expect(row(page, 'Jan Novák').locator('.kwic__key mark')).toHaveCount(0)
+  const chips = page.getByTestId('concordance-chips')
+  await expect(chips).toContainText('Text in context:hejtman')
+
+  // A document filter of the shared criteria: only the letters' title matches.
+  await page.getByLabel('Context text').clear()
+  await expect(rows(page)).toHaveCount(all)
+  await page.getByTestId('concordance-document-filters').click()
+  await page.getByLabel('Title contains').fill('dopisy')
+  await page.getByLabel('Title contains').press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(chips).toContainText('Title contains:dopisy')
+  await expect(page.getByTestId('concordance-document-filters')).toContainText('Document filters (1)')
+  await expect(rows(page).first()).toBeVisible()
+  const letters = await rows(page).count()
+  expect(letters).toBeLessThan(all)
+  for (const source of await rows(page).locator('.kwic__title').allTextContents()) expect(source).toBe('Dopisy z Prahy')
+
+  await page.getByRole('button', { name: 'Remove filter Title contains: dopisy' }).click()
+  await expect(rows(page)).toHaveCount(all)
+  await expect(chips).toHaveCount(0)
+})
+
 test('a long cross-chunk annotation is elided in its row and complete in the sidebar', async ({ page, request }) => {
   const first = fixture.chunk('chronicle_1').text
   const second = fixture.chunk('chronicle_2').text

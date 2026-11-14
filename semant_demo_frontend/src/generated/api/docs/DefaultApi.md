@@ -3419,11 +3419,11 @@ No authorization required
 
 ## listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet
 
-> Array&lt;AnnotatedDocument&gt; listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(collectionId, tagId, type)
+> Array&lt;AnnotatedDocument&gt; listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(collectionId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned)
 
 List Annotated Documents
 
-The documents with annotations of the given tags and types, with their counts, by title.
+The documents with annotations matching the annotation query, with their counts, by title: the source filter\&#39;s choices. &#x60;&#x60;document_id&#x60;&#x60; is not applied (it is being chosen).
 
 ### Example
 
@@ -3449,6 +3449,26 @@ async function example() {
     tagId: ...,
     // Array<SpanType> | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto (optional)
     type: ...,
+    // string | Words that must each occur inside a word of the fields of text_scope, ignoring case (optional)
+    q: q_example,
+    // TextScope | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field (optional)
+    textScope: ...,
+    // Array<string> | Only annotations in these documents (optional)
+    documentId: ...,
+    // number | Only documents issued in or after this year (optional)
+    yearMin: 56,
+    // number | Only documents issued in or before this year (optional)
+    yearMax: 56,
+    // Array<string> | Only documents whose title matches one of these (each word inside a title word, any case) (optional)
+    titleContains: ...,
+    // Array<string> | Only documents of these libraries (optional)
+    libraries: ...,
+    // Array<string> | Only documents in these languages (optional)
+    languages: ...,
+    // Array<string> | Only annotations with this accepted attribute value, as <attribute id>:<value id> (repeat; values of one attribute match any, different attributes all) (optional)
+    attribute: ...,
+    // Array<string> | Only annotations without an accepted value of this attribute id (repeat) (optional)
+    unassigned: ...,
   } satisfies ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest;
 
   try {
@@ -3471,6 +3491,16 @@ example().catch(console.error);
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
 | **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
 | **type** | `Array<SpanType>` | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto | [Optional] |
+| **q** | `string` | Words that must each occur inside a word of the fields of text_scope, ignoring case | [Optional] [Defaults to `undefined`] |
+| **textScope** | `TextScope` | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field | [Optional] [Defaults to `undefined`] [Enum: annotation, context, both] |
+| **documentId** | `Array<string>` | Only annotations in these documents | [Optional] |
+| **yearMin** | `number` | Only documents issued in or after this year | [Optional] [Defaults to `undefined`] |
+| **yearMax** | `number` | Only documents issued in or before this year | [Optional] [Defaults to `undefined`] |
+| **titleContains** | `Array<string>` | Only documents whose title matches one of these (each word inside a title word, any case) | [Optional] |
+| **libraries** | `Array<string>` | Only documents of these libraries | [Optional] |
+| **languages** | `Array<string>` | Only documents in these languages | [Optional] |
+| **attribute** | `Array<string>` | Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all) | [Optional] |
+| **unassigned** | `Array<string>` | Only annotations without an accepted value of this attribute id (repeat) | [Optional] |
 
 ### Return type
 
@@ -3644,11 +3674,11 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, tagId, type, q, documentId, yearFrom, yearTo, sort, limit, offset, annotationId, attribute, unassigned)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned)
 
 List Collection Annotations
 
-One page of the collection\&#39;s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have &#x60;&#x60;textStatus&#x60;&#x60; other than &#x60;&#x60;ready&#x60;&#x60; and no text.
+One page of the collection\&#39;s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have &#x60;&#x60;textStatus&#x60;&#x60; other than &#x60;&#x60;ready&#x60;&#x60; and no text. A document filter this corpus database cannot evaluate is refused (422).
 
 ### Example
 
@@ -3670,18 +3700,6 @@ async function example() {
   const body = {
     // string
     collectionId: collectionId_example,
-    // Array<string> | Only annotations of these tags (repeat the parameter) (optional)
-    tagId: ...,
-    // Array<SpanType> | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto (optional)
-    type: ...,
-    // string | Words that must each occur in the annotated text (inside a word, any case) (optional)
-    q: q_example,
-    // Array<string> | Only annotations in these documents (optional)
-    documentId: ...,
-    // number | Only documents issued in or after this year (optional)
-    yearFrom: 56,
-    // number | Only documents issued in or before this year (optional)
-    yearTo: 56,
     // AnnotationSort (optional)
     sort: ...,
     // number (optional)
@@ -3690,6 +3708,26 @@ async function example() {
     offset: 56,
     // Array<string> | Only these annotations (optional)
     annotationId: ...,
+    // Array<string> | Only annotations of these tags (repeat the parameter) (optional)
+    tagId: ...,
+    // Array<SpanType> | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto (optional)
+    type: ...,
+    // string | Words that must each occur inside a word of the fields of text_scope, ignoring case (optional)
+    q: q_example,
+    // TextScope | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field (optional)
+    textScope: ...,
+    // Array<string> | Only annotations in these documents (optional)
+    documentId: ...,
+    // number | Only documents issued in or after this year (optional)
+    yearMin: 56,
+    // number | Only documents issued in or before this year (optional)
+    yearMax: 56,
+    // Array<string> | Only documents whose title matches one of these (each word inside a title word, any case) (optional)
+    titleContains: ...,
+    // Array<string> | Only documents of these libraries (optional)
+    libraries: ...,
+    // Array<string> | Only documents in these languages (optional)
+    languages: ...,
     // Array<string> | Only annotations with this accepted attribute value, as <attribute id>:<value id> (repeat; values of one attribute match any, different attributes all) (optional)
     attribute: ...,
     // Array<string> | Only annotations without an accepted value of this attribute id (repeat) (optional)
@@ -3714,16 +3752,20 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
-| **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
-| **type** | `Array<SpanType>` | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto | [Optional] |
-| **q** | `string` | Words that must each occur in the annotated text (inside a word, any case) | [Optional] [Defaults to `undefined`] |
-| **documentId** | `Array<string>` | Only annotations in these documents | [Optional] |
-| **yearFrom** | `number` | Only documents issued in or after this year | [Optional] [Defaults to `undefined`] |
-| **yearTo** | `number` | Only documents issued in or before this year | [Optional] [Defaults to `undefined`] |
 | **sort** | `AnnotationSort` |  | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
 | **annotationId** | `Array<string>` | Only these annotations | [Optional] |
+| **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
+| **type** | `Array<SpanType>` | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto | [Optional] |
+| **q** | `string` | Words that must each occur inside a word of the fields of text_scope, ignoring case | [Optional] [Defaults to `undefined`] |
+| **textScope** | `TextScope` | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field | [Optional] [Defaults to `undefined`] [Enum: annotation, context, both] |
+| **documentId** | `Array<string>` | Only annotations in these documents | [Optional] |
+| **yearMin** | `number` | Only documents issued in or after this year | [Optional] [Defaults to `undefined`] |
+| **yearMax** | `number` | Only documents issued in or before this year | [Optional] [Defaults to `undefined`] |
+| **titleContains** | `Array<string>` | Only documents whose title matches one of these (each word inside a title word, any case) | [Optional] |
+| **libraries** | `Array<string>` | Only documents of these libraries | [Optional] |
+| **languages** | `Array<string>` | Only documents in these languages | [Optional] |
 | **attribute** | `Array<string>` | Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all) | [Optional] |
 | **unassigned** | `Array<string>` | Only annotations without an accepted value of this attribute id (repeat) | [Optional] |
 

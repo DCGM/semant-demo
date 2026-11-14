@@ -101,6 +101,7 @@ import type {
   TagSpan,
   TagSpanBatchRequest,
   TagSpanWriteResult,
+  TextScope,
   TopicerConfigsResponse,
   UserSearchResult,
   WriteResult,
@@ -278,6 +279,8 @@ import {
     TagSpanBatchRequestToJSON,
     TagSpanWriteResultFromJSON,
     TagSpanWriteResultToJSON,
+    TextScopeFromJSON,
+    TextScopeToJSON,
     TopicerConfigsResponseFromJSON,
     TopicerConfigsResponseToJSON,
     UserSearchResultFromJSON,
@@ -481,6 +484,16 @@ export interface ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotations
     collectionId: string;
     tagId?: Array<string> | null;
     type?: Array<SpanType> | null;
+    q?: string | null;
+    textScope?: TextScope;
+    documentId?: Array<string> | null;
+    yearMin?: number | null;
+    yearMax?: number | null;
+    titleContains?: Array<string>;
+    libraries?: Array<string>;
+    languages?: Array<string>;
+    attribute?: Array<string> | null;
+    unassigned?: Array<string> | null;
 }
 
 export interface ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest {
@@ -494,16 +507,20 @@ export interface ListAttributesApiUserCollectionsCollectionIdAttributesGetReques
 
 export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest {
     collectionId: string;
-    tagId?: Array<string> | null;
-    type?: Array<SpanType> | null;
-    q?: string | null;
-    documentId?: Array<string> | null;
-    yearFrom?: number | null;
-    yearTo?: number | null;
     sort?: AnnotationSort;
     limit?: number;
     offset?: number;
     annotationId?: Array<string> | null;
+    tagId?: Array<string> | null;
+    type?: Array<SpanType> | null;
+    q?: string | null;
+    textScope?: TextScope;
+    documentId?: Array<string> | null;
+    yearMin?: number | null;
+    yearMax?: number | null;
+    titleContains?: Array<string>;
+    libraries?: Array<string>;
+    languages?: Array<string>;
     attribute?: Array<string> | null;
     unassigned?: Array<string> | null;
 }
@@ -1863,17 +1880,37 @@ export interface DefaultApiInterface {
      * @param {string} collectionId 
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
+     * @param {Array<string>} [documentId] Only annotations in these documents
+     * @param {number} [yearMin] Only documents issued in or after this year
+     * @param {number} [yearMax] Only documents issued in or before this year
+     * @param {Array<string>} [titleContains] Only documents whose title matches one of these (each word inside a title word, any case)
+     * @param {Array<string>} [libraries] Only documents of these libraries
+     * @param {Array<string>} [languages] Only documents in these languages
+     * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
+     * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequestOpts(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * The documents with annotations of the given tags and types, with their counts, by title.
+     * The documents with annotations matching the annotation query, with their counts, by title: the source filter\'s choices. ``document_id`` is not applied (it is being chosen).
      * @summary List Annotated Documents
      * @param {string} collectionId 
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
+     * @param {Array<string>} [documentId] Only annotations in these documents
+     * @param {number} [yearMin] Only documents issued in or after this year
+     * @param {number} [yearMax] Only documents issued in or before this year
+     * @param {Array<string>} [titleContains] Only documents whose title matches one of these (each word inside a title word, any case)
+     * @param {Array<string>} [libraries] Only documents of these libraries
+     * @param {Array<string>} [languages] Only documents in these languages
+     * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
+     * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1881,7 +1918,7 @@ export interface DefaultApiInterface {
     listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRaw(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AnnotatedDocument>>>;
 
     /**
-     * The documents with annotations of the given tags and types, with their counts, by title.
+     * The documents with annotations matching the annotation query, with their counts, by title: the source filter\'s choices. ``document_id`` is not applied (it is being chosen).
      * List Annotated Documents
      */
     listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AnnotatedDocument>>;
@@ -1939,16 +1976,20 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
      * @param {string} collectionId 
-     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
-     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
-     * @param {string} [q] Words that must each occur in the annotated text (inside a word, any case)
-     * @param {Array<string>} [documentId] Only annotations in these documents
-     * @param {number} [yearFrom] Only documents issued in or after this year
-     * @param {number} [yearTo] Only documents issued in or before this year
      * @param {AnnotationSort} [sort] 
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
+     * @param {Array<string>} [documentId] Only annotations in these documents
+     * @param {number} [yearMin] Only documents issued in or after this year
+     * @param {number} [yearMax] Only documents issued in or before this year
+     * @param {Array<string>} [titleContains] Only documents whose title matches one of these (each word inside a title word, any case)
+     * @param {Array<string>} [libraries] Only documents of these libraries
+     * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
      * @throws {RequiredError}
@@ -1957,19 +1998,23 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
      * @summary List Collection Annotations
      * @param {string} collectionId 
-     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
-     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
-     * @param {string} [q] Words that must each occur in the annotated text (inside a word, any case)
-     * @param {Array<string>} [documentId] Only annotations in these documents
-     * @param {number} [yearFrom] Only documents issued in or after this year
-     * @param {number} [yearTo] Only documents issued in or before this year
      * @param {AnnotationSort} [sort] 
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
+     * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
+     * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
+     * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
+     * @param {Array<string>} [documentId] Only annotations in these documents
+     * @param {number} [yearMin] Only documents issued in or after this year
+     * @param {number} [yearMax] Only documents issued in or before this year
+     * @param {Array<string>} [titleContains] Only documents whose title matches one of these (each word inside a title word, any case)
+     * @param {Array<string>} [libraries] Only documents of these libraries
+     * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
      * @param {*} [options] Override http request option.
@@ -1979,7 +2024,7 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>>;
 
     /**
-     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
      * List Collection Annotations
      */
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
@@ -5522,6 +5567,46 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['type'] = requestParameters['type'];
         }
 
+        if (requestParameters['q'] != null) {
+            queryParameters['q'] = requestParameters['q'];
+        }
+
+        if (requestParameters['textScope'] != null) {
+            queryParameters['text_scope'] = requestParameters['textScope'];
+        }
+
+        if (requestParameters['documentId'] != null) {
+            queryParameters['document_id'] = requestParameters['documentId'];
+        }
+
+        if (requestParameters['yearMin'] != null) {
+            queryParameters['year_min'] = requestParameters['yearMin'];
+        }
+
+        if (requestParameters['yearMax'] != null) {
+            queryParameters['year_max'] = requestParameters['yearMax'];
+        }
+
+        if (requestParameters['titleContains'] != null) {
+            queryParameters['title_contains'] = requestParameters['titleContains'];
+        }
+
+        if (requestParameters['libraries'] != null) {
+            queryParameters['libraries'] = requestParameters['libraries'];
+        }
+
+        if (requestParameters['languages'] != null) {
+            queryParameters['languages'] = requestParameters['languages'];
+        }
+
+        if (requestParameters['attribute'] != null) {
+            queryParameters['attribute'] = requestParameters['attribute'];
+        }
+
+        if (requestParameters['unassigned'] != null) {
+            queryParameters['unassigned'] = requestParameters['unassigned'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && this.configuration.accessToken) {
@@ -5542,7 +5627,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * The documents with annotations of the given tags and types, with their counts, by title.
+     * The documents with annotations matching the annotation query, with their counts, by title: the source filter\'s choices. ``document_id`` is not applied (it is being chosen).
      * List Annotated Documents
      */
     async listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRaw(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AnnotatedDocument>>> {
@@ -5553,7 +5638,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * The documents with annotations of the given tags and types, with their counts, by title.
+     * The documents with annotations matching the annotation query, with their counts, by title: the source filter\'s choices. ``document_id`` is not applied (it is being chosen).
      * List Annotated Documents
      */
     async listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(requestParameters: ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AnnotatedDocument>> {
@@ -5686,30 +5771,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
-        if (requestParameters['tagId'] != null) {
-            queryParameters['tag_id'] = requestParameters['tagId'];
-        }
-
-        if (requestParameters['type'] != null) {
-            queryParameters['type'] = requestParameters['type'];
-        }
-
-        if (requestParameters['q'] != null) {
-            queryParameters['q'] = requestParameters['q'];
-        }
-
-        if (requestParameters['documentId'] != null) {
-            queryParameters['document_id'] = requestParameters['documentId'];
-        }
-
-        if (requestParameters['yearFrom'] != null) {
-            queryParameters['year_from'] = requestParameters['yearFrom'];
-        }
-
-        if (requestParameters['yearTo'] != null) {
-            queryParameters['year_to'] = requestParameters['yearTo'];
-        }
-
         if (requestParameters['sort'] != null) {
             queryParameters['sort'] = requestParameters['sort'];
         }
@@ -5724,6 +5785,46 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['annotationId'] != null) {
             queryParameters['annotation_id'] = requestParameters['annotationId'];
+        }
+
+        if (requestParameters['tagId'] != null) {
+            queryParameters['tag_id'] = requestParameters['tagId'];
+        }
+
+        if (requestParameters['type'] != null) {
+            queryParameters['type'] = requestParameters['type'];
+        }
+
+        if (requestParameters['q'] != null) {
+            queryParameters['q'] = requestParameters['q'];
+        }
+
+        if (requestParameters['textScope'] != null) {
+            queryParameters['text_scope'] = requestParameters['textScope'];
+        }
+
+        if (requestParameters['documentId'] != null) {
+            queryParameters['document_id'] = requestParameters['documentId'];
+        }
+
+        if (requestParameters['yearMin'] != null) {
+            queryParameters['year_min'] = requestParameters['yearMin'];
+        }
+
+        if (requestParameters['yearMax'] != null) {
+            queryParameters['year_max'] = requestParameters['yearMax'];
+        }
+
+        if (requestParameters['titleContains'] != null) {
+            queryParameters['title_contains'] = requestParameters['titleContains'];
+        }
+
+        if (requestParameters['libraries'] != null) {
+            queryParameters['libraries'] = requestParameters['libraries'];
+        }
+
+        if (requestParameters['languages'] != null) {
+            queryParameters['languages'] = requestParameters['languages'];
         }
 
         if (requestParameters['attribute'] != null) {
@@ -5754,7 +5855,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>> {
@@ -5765,7 +5866,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage> {
