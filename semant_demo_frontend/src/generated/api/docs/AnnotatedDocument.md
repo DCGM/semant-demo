@@ -1,7 +1,7 @@
 
 # AnnotatedDocument
 
-A document with annotations matching a concordance query, for the source and year filters (#329). ``available`` is false when the document cannot be read.
+A document with annotations matching a concordance query, for the source and year filters (#329). ``available`` is false when the document cannot be read. ``library`` and ``language`` are the stored ``Documents`` values the library and language filters match (#663), absent when the document has none.
 
 ## Properties
 
@@ -10,6 +10,8 @@ Name | Type
 `id` | string
 `title` | string
 `year` | number
+`library` | string
+`language` | string
 `count` | number
 `available` | boolean
 
@@ -23,6 +25,8 @@ const example = {
   "id": null,
   "title": null,
   "year": null,
+  "library": null,
+  "language": null,
   "count": null,
   "available": null,
 } satisfies AnnotatedDocument

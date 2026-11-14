@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import {
-  AnnotationSort, SpanType, type AnnotatedDocument, type AnnotationListRow, type AnnotationPage,
-  type AttributeAssignResult, type CollectionPerson
+  AnnotationSort, SpanType, TextScope, type AnnotatedDocument, type AnnotationListRow, type AnnotationPage,
+  type AttributeAssignResult, type CollectionPerson, type DocumentFilters
 } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
 import { MAX_SELECTION, useAnnotationSelectionStore } from '../annotationSelectionStore'
@@ -17,11 +17,14 @@ export interface ConcordanceFilters {
   tagIds: string[]
   /** `pos` (manual or approved) and `auto` (proposals) by default; `neg` only when chosen. */
   types: SpanType[]
-  /** Words that must each occur in the annotated text. */
+  /** Words that must each occur inside a word of a field of `textScope`, ignoring case (#663). */
   text: string
+  /** Where the words of `text` must occur: the annotated text, its context, or either. */
+  textScope: TextScope
   documentIds: string[]
-  yearFrom: number | null
-  yearTo: number | null
+  /** The shared document filters (#526): publication years, title, library, document language;
+   * normalized (`normalizeDocumentFilters`), so "no filter" is always `{}`. */
+  documentFilters: DocumentFilters
   /** Accepted attribute values, as `<attribute id>:<value id>`: values of one attribute match
    * any, different attributes all (ADR 0011). */
   attributeValues: string[]
@@ -35,13 +38,24 @@ export function defaultFilters (): ConcordanceFilters {
     tagIds: [],
     types: [SpanType.pos, SpanType.auto],
     text: '',
+    textScope: TextScope.annotation,
     documentIds: [],
-    yearFrom: null,
-    yearTo: null,
+    documentFilters: {},
     attributeValues: [],
     attributeUnassigned: [],
     sort: AnnotationSort.document
   }
+}
+
+/** The document filters without empty values, so equal filters compare equal. */
+export function normalizeDocumentFilters (f: DocumentFilters): DocumentFilters {
+  const result: DocumentFilters = {}
+  if (f.yearMin != null) result.yearMin = f.yearMin
+  if (f.yearMax != null) result.yearMax = f.yearMax
+  if (f.titleContains?.length) result.titleContains = [...f.titleContains]
+  if (f.libraries?.length) result.libraries = [...f.libraries]
+  if (f.languages?.length) result.languages = [...f.languages]
+  return result
 }
 
 function failure (e: unknown, what: string): string {
@@ -58,9 +72,9 @@ function idsRequest (f: ConcordanceFilters, within?: string[]) {
     tagIds: f.tagIds.length ? f.tagIds : null,
     types: f.types,
     q: f.text.trim() || null,
+    textScope: f.textScope,
     documentIds: f.documentIds.length ? f.documentIds : null,
-    yearFrom: f.yearFrom,
-    yearTo: f.yearTo,
+    documentFilters: normalizeDocumentFilters(f.documentFilters),
     attributeValues: f.attributeValues.length ? f.attributeValues : undefined,
     attributeUnassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
     within: within ?? null
@@ -249,9 +263,13 @@ export const useConcordanceStore = defineStore('concordance', () => {
         tagId: f.tagIds.length ? f.tagIds : undefined,
         type: f.types,
         q: f.text.trim() || undefined,
+        textScope: f.text.trim() ? f.textScope : undefined,
         documentId: f.documentIds.length ? f.documentIds : undefined,
-        yearFrom: f.yearFrom ?? undefined,
-        yearTo: f.yearTo ?? undefined,
+        yearMin: f.documentFilters.yearMin ?? undefined,
+        yearMax: f.documentFilters.yearMax ?? undefined,
+        titleContains: f.documentFilters.titleContains?.length ? f.documentFilters.titleContains : undefined,
+        libraries: f.documentFilters.libraries?.length ? f.documentFilters.libraries : undefined,
+        languages: f.documentFilters.languages?.length ? f.documentFilters.languages : undefined,
         attribute: f.attributeValues.length ? f.attributeValues : undefined,
         unassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
         sort: f.sort,
@@ -398,6 +416,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
   async function setFilters (change: Partial<ConcordanceFilters>) {
     const before = filters.value
     filters.value = { ...before, ...change }
+    if (change.documentFilters) filters.value.documentFilters = normalizeDocumentFilters(change.documentFilters)
     offset.value = 0
     stopResolving()
     shown.value = new Set()

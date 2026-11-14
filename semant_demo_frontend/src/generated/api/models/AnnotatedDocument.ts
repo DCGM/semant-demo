@@ -15,7 +15,9 @@
 import { mapValues } from '../runtime';
 /**
  * A document with annotations matching a concordance query, for the source and year
- * filters (#329). ``available`` is false when the document cannot be read.
+ * filters (#329). ``available`` is false when the document cannot be read. ``library`` and
+ * ``language`` are the stored ``Documents`` values the library and language filters match
+ * (#663), absent when the document has none.
  * @export
  * @interface AnnotatedDocument
  */
@@ -38,6 +40,18 @@ export interface AnnotatedDocument {
      * @memberof AnnotatedDocument
      */
     year?: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AnnotatedDocument
+     */
+    library?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AnnotatedDocument
+     */
+    language?: string | null;
     /**
      * 
      * @type {number}
@@ -75,6 +89,8 @@ export function AnnotatedDocumentFromJSONTyped(json: any, ignoreDiscriminator: b
         'id': json['id'],
         'title': json['title'] == null ? undefined : json['title'],
         'year': json['year'] == null ? undefined : json['year'],
+        'library': json['library'] == null ? undefined : json['library'],
+        'language': json['language'] == null ? undefined : json['language'],
         'count': json['count'],
         'available': json['available'],
     };
@@ -94,6 +110,8 @@ export function AnnotatedDocumentToJSONTyped(value?: AnnotatedDocument | null, i
         'id': value['id'],
         'title': value['title'],
         'year': value['year'],
+        'library': value['library'],
+        'language': value['language'],
         'count': value['count'],
         'available': value['available'],
     };

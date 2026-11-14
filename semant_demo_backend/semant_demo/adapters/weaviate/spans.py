@@ -61,7 +61,7 @@ from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import NoProgressError
 from semant_demo.features.annotations.schemas import (
-    AnnotationQuery, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan,
+    AnnotationQuery, AnnotationRow, PatchSpan, PostSpan, SpanType, TagSpan, TextScope,
 )
 from semant_demo.features.annotations import attribute_codec as codec
 
@@ -279,10 +279,24 @@ def to_row(obj) -> AnnotationRow:
     return AnnotationRow(id=obj.uuid, distance=distance, **{k: props.get(k) for k in props if k in _ROW_FIELDS})
 
 
+_SCOPE_FIELDS = {
+    TextScope.annotation: ("text",),
+    TextScope.context: ("leftContext", "rightContext"),
+    TextScope.both: ("text", "leftContext", "rightContext"),
+}
+"""The stored text fields a lexical query searches per ``TextScope`` (#663)."""
+
+
+def _word_filter(word: str, scope: TextScope):
+    """``word`` inside a word of one of the scope's fields."""
+    found = [Filter.by_property(name).like(f"*{word}*") for name in _SCOPE_FIELDS[scope]]
+    return Filter.any_of(found) if len(found) > 1 else found[0]
+
+
 def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None):
-    """The Weaviate filter of a concordance query; ``like`` on the word-tokenized text
-    matches inside one word and ignores case, only in text ``ready`` under the query's
-    derivation version."""
+    """The Weaviate filter of a concordance query; ``like`` on the word-tokenized text and
+    contexts matches inside one word and ignores case, only in text ``ready`` under the query's
+    derivation version. Each word may match in another field of the query's scope."""
     conditions = [Filter.by_property("type").contains_any([t.value for t in query.types])]
     if query.tag_ids:
         conditions.append(Filter.by_property("tagId").contains_any(list(query.tag_ids)))
@@ -290,7 +304,7 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
         conditions.append(Filter.by_property("enrichmentStatus").equal("ready"))
         if query.derivation_version is not None:
             conditions.append(Filter.by_property("derivationVersion").equal(query.derivation_version))
-    conditions.extend(Filter.by_property("text").like(f"*{word}*") for word in query.words)
+    conditions.extend(_word_filter(word, query.text_scope) for word in query.words)
     if document_ids is not None:
         conditions.append(Filter.by_property("documentId").contains_any(list(document_ids)))
     if query.ids is not None:

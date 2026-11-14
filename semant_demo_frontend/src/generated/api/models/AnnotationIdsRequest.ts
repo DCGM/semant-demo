@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { DocumentFilters } from './DocumentFilters';
+import {
+    DocumentFiltersFromJSON,
+    DocumentFiltersFromJSONTyped,
+    DocumentFiltersToJSON,
+    DocumentFiltersToJSONTyped,
+} from './DocumentFilters';
 import type { SpanType } from './SpanType';
 import {
     SpanTypeFromJSON,
@@ -20,11 +27,17 @@ import {
     SpanTypeToJSON,
     SpanTypeToJSONTyped,
 } from './SpanType';
+import type { TextScope } from './TextScope';
+import {
+    TextScopeFromJSON,
+    TextScopeFromJSONTyped,
+    TextScopeToJSON,
+    TextScopeToJSONTyped,
+} from './TextScope';
 
 /**
- * The concordance filters (#329) whose matching annotation ids to resolve (#459).
- * ``within``: only these annotations, to learn which members of a selection the filters
- * show.
+ * The annotation query whose matching annotation ids to resolve (#459). ``within``: only
+ * these annotations, to learn which members of a selection the filters show.
  * @export
  * @interface AnnotationIdsRequest
  */
@@ -49,28 +62,22 @@ export interface AnnotationIdsRequest {
     q?: string | null;
     /**
      * 
+     * @type {TextScope}
+     * @memberof AnnotationIdsRequest
+     */
+    textScope?: TextScope;
+    /**
+     * 
      * @type {Array<string>}
      * @memberof AnnotationIdsRequest
      */
     documentIds?: Array<string> | null;
     /**
      * 
-     * @type {number}
+     * @type {DocumentFilters}
      * @memberof AnnotationIdsRequest
      */
-    yearFrom?: number | null;
-    /**
-     * 
-     * @type {number}
-     * @memberof AnnotationIdsRequest
-     */
-    yearTo?: number | null;
-    /**
-     * 
-     * @type {Array<string>}
-     * @memberof AnnotationIdsRequest
-     */
-    within?: Array<string> | null;
+    documentFilters?: DocumentFilters;
     /**
      * 
      * @type {Array<string>}
@@ -83,7 +90,15 @@ export interface AnnotationIdsRequest {
      * @memberof AnnotationIdsRequest
      */
     attributeUnassigned?: Array<string>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof AnnotationIdsRequest
+     */
+    within?: Array<string> | null;
 }
+
+
 
 /**
  * Check if a given object implements the AnnotationIdsRequest interface.
@@ -105,12 +120,12 @@ export function AnnotationIdsRequestFromJSONTyped(json: any, ignoreDiscriminator
         'tagIds': json['tag_ids'] == null ? undefined : json['tag_ids'],
         'types': json['types'] == null ? undefined : ((json['types'] as Array<any>).map(SpanTypeFromJSON)),
         'q': json['q'] == null ? undefined : json['q'],
+        'textScope': json['text_scope'] == null ? undefined : TextScopeFromJSON(json['text_scope']),
         'documentIds': json['document_ids'] == null ? undefined : json['document_ids'],
-        'yearFrom': json['year_from'] == null ? undefined : json['year_from'],
-        'yearTo': json['year_to'] == null ? undefined : json['year_to'],
-        'within': json['within'] == null ? undefined : json['within'],
+        'documentFilters': json['document_filters'] == null ? undefined : DocumentFiltersFromJSON(json['document_filters']),
         'attributeValues': json['attribute_values'] == null ? undefined : json['attribute_values'],
         'attributeUnassigned': json['attribute_unassigned'] == null ? undefined : json['attribute_unassigned'],
+        'within': json['within'] == null ? undefined : json['within'],
     };
 }
 
@@ -128,12 +143,12 @@ export function AnnotationIdsRequestToJSONTyped(value?: AnnotationIdsRequest | n
         'tag_ids': value['tagIds'],
         'types': value['types'] == null ? undefined : ((value['types'] as Array<any>).map(SpanTypeToJSON)),
         'q': value['q'],
+        'text_scope': TextScopeToJSON(value['textScope']),
         'document_ids': value['documentIds'],
-        'year_from': value['yearFrom'],
-        'year_to': value['yearTo'],
-        'within': value['within'],
+        'document_filters': DocumentFiltersToJSON(value['documentFilters']),
         'attribute_values': value['attributeValues'],
         'attribute_unassigned': value['attributeUnassigned'],
+        'within': value['within'],
     };
 }
 

@@ -92,12 +92,20 @@ describe('concordance store', () => {
     const store = await opened()
     const first = store.setFilters({ tagIds: ['t1', 't2'], text: ' Novák ' })
     await flush()
-    const second = store.setFilters({ yearFrom: 1900, types: ['neg'] as never })
+    const second = store.setFilters({
+      documentFilters: { yearMin: 1900, titleContains: ['kronika'], libraries: [], languages: ['ces'] },
+      textScope: 'both' as never,
+      types: ['neg'] as never
+    })
     await flush()
 
     const latest = rowCalls()[rowCalls().length - 1].url.searchParams
     expect(latest.getAll('tag_id')).toEqual(['t1', 't2'])
-    expect([latest.get('q'), latest.get('year_from'), latest.getAll('type')]).toEqual(['Novák', '1900', ['neg']])
+    expect([latest.get('q'), latest.get('text_scope'), latest.getAll('type')]).toEqual(['Novák', 'both', ['neg']])
+    expect([latest.get('year_min'), latest.getAll('title_contains'), latest.getAll('languages'), latest.has('libraries')])
+      .toEqual(['1900', ['kronika'], ['ces'], false])
+    // Empty document filters are dropped, so the default filters compare equal again.
+    expect(store.filters.documentFilters).toEqual({ yearMin: 1900, titleContains: ['kronika'], languages: ['ces'] })
     // The later query answers first; the earlier one (aborted) cannot replace it.
     rowCalls()[rowCalls().length - 1].answer(page(['rejected']))
     documentCalls().forEach(c => c.answer([]))
@@ -252,7 +260,7 @@ describe('concordance store', () => {
   it('selects all matches as the ids resolved for the filters, which later filters do not widen', async () => {
     const store = await opened(['a', 'b'], 3)
     const selection = useAnnotationSelectionStore()
-    const filtering = store.setFilters({ tagIds: ['t1'] })
+    const filtering = store.setFilters({ tagIds: ['t1'], documentFilters: { libraries: ['mzk'] }, text: 'praha' })
     await flush()
     rowCalls()[1].answer(page(['a', 'b'], 3))
     documentCalls()[1].answer([])
@@ -260,7 +268,15 @@ describe('concordance store', () => {
 
     const selecting = store.selectAllMatches()
     await flush()
-    expect(idCalls()[0].body).toMatchObject({ tag_ids: ['t1'], types: ['pos', 'auto'], within: null })
+    // The same annotation query as the page (#663): text scope and the shared document filters.
+    expect(idCalls()[0].body).toMatchObject({
+      tag_ids: ['t1'],
+      types: ['pos', 'auto'],
+      q: 'praha',
+      text_scope: 'annotation',
+      document_filters: { libraries: ['mzk'] },
+      within: null
+    })
     idCalls()[0].answer({ ids: ['a', 'b', 'c'] })
     expect(await selecting).toBeNull()
     expect([...selection.ids]).toEqual(['a', 'b', 'c'])

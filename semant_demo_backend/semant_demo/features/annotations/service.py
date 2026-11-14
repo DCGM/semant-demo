@@ -45,6 +45,7 @@ per process: across backend processes a conflict is detectable but not atomic (A
 import asyncio
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import NamedTuple, Protocol
 from datetime import datetime, timezone
@@ -52,9 +53,10 @@ from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
     MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
-    AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
-    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextStatus, VectorStatus,
+    AnnotationFilters, AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
+    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
 )
+from semant_demo.features.documents.criteria import Condition, document_conditions
 from semant_demo.features.documents.schemas import Document
 from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
 from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
@@ -910,14 +912,23 @@ def _attribute_filter(values: list[str] | None, unassigned: list[Id] | None
 
 def _concordance_query(tag_ids: list[Id] | None, types: list[SpanType] | None, text: str | None,
                        ids: list[UUID] | None = None, attribute_values: list[str] | None = None,
-                       attribute_unassigned: list[Id] | None = None) -> AnnotationQuery:
-    words = _WORD.findall(text or "")
+                       attribute_unassigned: list[Id] | None = None,
+                       text_scope: TextScope = TextScope.annotation) -> AnnotationQuery:
+    # Composed (NFC), as the corpus text is stored: a decomposed query (e.g. pasted) still matches.
+    words = _WORD.findall(unicodedata.normalize("NFC", text or ""))
     if len(words) > _MAX_WORDS:
         raise InvalidRequestError(f"Search for at most {_MAX_WORDS} words")
     wanted, missing = _attribute_filter(attribute_values, attribute_unassigned)
     return AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)),
-                           words=words, derivation_version=DERIVATION_VERSION, ids=ids,
+                           words=words, text_scope=text_scope, derivation_version=DERIVATION_VERSION, ids=ids,
                            attribute_values=wanted, attribute_unassigned=missing)
+
+
+def _filters_query(filters: AnnotationFilters, ids: list[UUID] | None = None) -> AnnotationQuery:
+    """The stored-field conditions of an annotation query (#663); its document filters are
+    applied to the annotated documents (``_annotated_documents``)."""
+    return _concordance_query(filters.tag_ids, filters.types, filters.q, ids, filters.attribute_values,
+                              filters.attribute_unassigned, filters.text_scope)
 
 
 def _text_status(row: AnnotationRow) -> TextStatus:
@@ -960,18 +971,20 @@ class _Documents:
 
 
 async def _annotated_documents(store: AnnotationStore, cid: UUID, query: AnnotationQuery, sort: AnnotationSort,
-                               document_ids: list[UUID] | None, year_from: int | None,
-                               year_to: int | None) -> _Documents:
+                               document_ids: list[UUID] | None, conditions: list[Condition]) -> _Documents:
+    """The documents with annotations matching ``query`` (of ``document_ids`` when given) and
+    their counts; with document ``conditions`` (``DocumentFilters``) only the documents they
+    select, read by one ``Documents`` query with the shared predicates (#663). Raises
+    ``UnavailableFilter`` (adapter) for a condition the corpus store cannot evaluate."""
     counts = await store.spans.count_by_document(cid, query, _MAX_DOCUMENTS + 1, document_ids)
     if len(counts) > _MAX_DOCUMENTS:
         raise InvalidRequestError(
             f"The annotations are in more than {_MAX_DOCUMENTS} documents; filter by tag or text first.")
-    documents = await store.documents.read_many(list(counts))
-    if year_from is not None or year_to is not None:
-        def in_range(year: int | None) -> bool:
-            return year is not None and (year_from is None or year >= year_from) and (year_to is None or year <= year_to)
-        counts = {d: n for d, n in counts.items()
-                  if d in documents and in_range(documents[d].yearIssued)}
+    if conditions:
+        documents = await store.documents.read_eligible(list(counts), conditions=conditions)
+        counts = {d: n for d, n in counts.items() if d in documents}
+    else:
+        documents = await store.documents.read_many(list(counts))
 
     def key(d: UUID) -> tuple:
         title, year = _title_key(documents.get(d)), _year_key(documents.get(d))
@@ -1029,38 +1042,30 @@ async def count_annotations(store: AnnotationStore, user: Principal | None, coll
     return AnnotationCounts(approved=approved, suggestions=suggestions, rejected=rejected)
 
 
-async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
-                            tag_ids: list[Id] | None = None, types: list[SpanType] | None = None,
-                            text: str | None = None, document_ids: list[Id] | None = None,
-                            year_from: int | None = None, year_to: int | None = None,
+async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                            filters: AnnotationFilters | None = None, *,
                             sort: AnnotationSort = AnnotationSort.document, limit: int = 50,
-                            offset: int = 0, annotation_ids: list[Id] | None = None,
-                            attribute_values: list[str] | None = None,
-                            attribute_unassigned: list[Id] | None = None) -> AnnotationPage:
+                            offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
     """
-    One page of the collection's annotations as concordance (KWIC) rows, and the number of
-    all that match: of some tags, types (default ``pos`` and ``auto``; rejected ``neg``
-    only when asked), documents and document years, and whose annotated text contains each
-    word of ``text`` (inside a word, ignoring case). The order is total (``AnnotationSort``),
-    so pages do not overlap or skip rows while the annotations do not change.
-    ``annotation_ids``: only these annotations (the workspace reads one it shows as it is
-    now, whether or not it still matches the page's filters; #460). ``attribute_values``
-    (``<attribute id>:<value id>``: any of one attribute's values, all attributes) and
-    ``attribute_unassigned`` (attribute ids with no accepted value) filter by attributes (#331).
+    One page of the collection's annotations matching the annotation query ``filters``
+    (``AnnotationFilters``, #663) as concordance (KWIC) rows, and the number of all that match.
+    The order is total (``AnnotationSort``), so pages do not overlap or skip rows while the
+    annotations do not change. ``annotation_ids``: only these annotations (the workspace reads
+    one it shows as it is now, whether or not it still matches the page's filters; #460).
 
-    Reads the annotations and, for document order or a year filter, the metadata of the
+    Reads the annotations and, for document order or document filters, the metadata of the
     annotated documents once (at most ``_MAX_DOCUMENTS``); never the source chunks.
     """
     grant = await access.require_collection_read(store.collections, user, collection_id)
     if not 1 <= limit <= _MAX_PAGE or offset < 0:
         raise InvalidRequestError(f"limit must be between 1 and {_MAX_PAGE} and offset not negative")
-    query = _concordance_query(tag_ids, types, text, _parse_ids(annotation_ids, "annotation"),
-                               attribute_values, attribute_unassigned)
+    filters = filters or AnnotationFilters()
+    query = _filters_query(filters, _parse_ids(annotation_ids, "annotation"))
     _require_attribute_properties(store, query)
-    documents = _parse_ids(document_ids, "document")
+    documents = filters.document_ids or None
+    conditions = document_conditions(filters.document_filters)
     cid = await use_tenant(store, grant)
-    by_year = year_from is not None or year_to is not None
-    if sort == AnnotationSort.text and not by_year:
+    if sort == AnnotationSort.text and not conditions:
         if offset + limit > _MAX_WINDOW:
             raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
         total, rows = await asyncio.gather(
@@ -1068,7 +1073,7 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
             store.spans.query_rows(cid, query, by_text=True, document_ids=documents, limit=limit, offset=offset))
         joined = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
     else:
-        found = await _annotated_documents(store, cid, query, sort, documents, year_from, year_to)
+        found = await _annotated_documents(store, cid, query, sort, documents, conditions)
         total = sum(found.counts.values())
         if sort == AnnotationSort.text:
             if offset + limit > _MAX_WINDOW:
@@ -1082,19 +1087,24 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
                           total=total, offset=offset, limit=limit)
 
 
-async def list_annotated_documents(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
-                                   tag_ids: list[Id] | None = None, types: list[SpanType] | None = None
-                                   ) -> list[AnnotatedDocument]:
-    """The documents with annotations of the given tags and types (default ``pos`` and
-    ``auto``) and how many, by title: the choices of the concordance's source and year
-    filters."""
+async def list_annotated_documents(store: AnnotationStore, user: Principal | None, collection_id: Id,
+                                   filters: AnnotationFilters | None = None) -> list[AnnotatedDocument]:
+    """The documents with annotations matching the annotation query ``filters`` and how many,
+    by title: the choices of the concordance's source filter. Its ``document_ids`` are not
+    applied (they are what is being chosen); every other filter is."""
     grant = await access.require_collection_read(store.collections, user, collection_id)
-    query = AnnotationQuery(tag_ids=_parse_ids(tag_ids, "tag"), types=list(dict.fromkeys(types or DEFAULT_TYPES)))
+    filters = filters or AnnotationFilters()
+    query = _filters_query(filters)
+    _require_attribute_properties(store, query)
     found = await _annotated_documents(store, await use_tenant(store, grant), query, AnnotationSort.document,
-                                       None, None, None)
-    return [AnnotatedDocument(id=d, title=found.documents[d].title if d in found.documents else None,
-                              year=found.documents[d].yearIssued if d in found.documents else None,
-                              count=found.counts[d], available=d in found.documents) for d in found.order]
+                                       None, document_conditions(filters.document_filters))
+    def listed(d: UUID) -> AnnotatedDocument:
+        document = found.documents.get(d)
+        if document is None:
+            return AnnotatedDocument(id=d, count=found.counts[d], available=False)
+        return AnnotatedDocument(id=d, title=document.title, year=document.yearIssued, library=document.library,
+                                 language=document.language, count=found.counts[d], available=True)
+    return [listed(d) for d in found.order]
 
 
 ######################################
@@ -1112,16 +1122,15 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
     within = list(dict.fromkeys(request.within)) if request.within is not None else None
     if within is not None and len(within) > MAX_RESOLVED_IDS:
         raise InvalidRequestError(f"Ask about at most {MAX_RESOLVED_IDS} annotations")
-    query = _concordance_query(request.tag_ids, request.types, request.q, within, request.attribute_values,
-                               request.attribute_unassigned)
+    query = _filters_query(request, within)
     _require_attribute_properties(store, query)
     documents = request.document_ids or None
+    conditions = document_conditions(request.document_filters)
     cid = await use_tenant(store, grant)
     if within == []:
         return AnnotationIds(ids=[], versions={}, attribute_versions={})
-    if request.year_from is not None or request.year_to is not None:
-        found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents,
-                                           request.year_from, request.year_to)
+    if conditions:
+        found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents, conditions)
         total, documents = sum(found.counts.values()), found.order
     else:
         total = await store.spans.count_rows(cid, query, documents)

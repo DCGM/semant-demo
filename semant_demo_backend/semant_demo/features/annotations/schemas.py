@@ -4,9 +4,10 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from semant_demo.core.outcomes import WriteResult
+from semant_demo.features.documents.criteria import DocumentFilters
 from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 
 
@@ -206,14 +207,30 @@ class AnnotationRow(BaseModel):
                                        if getattr(self, k) is not None})
 
 
+class TextScope(str, Enum):
+    """Where the words of a lexical annotation query must occur (#663). Each word must occur
+    inside a word of one of the scope's fields, ignoring case; different words may occur in
+    different fields. Word containment, not a phrase or a literal substring. Words are runs of
+    letters and digits of the query composed to NFC, as the corpus text is stored; stored text in
+    decomposed form (a letter followed by a combining mark) is split at the mark by Weaviate's
+    word tokenization, so such a letter cannot be searched."""
+    annotation = "annotation"
+    """The annotated text."""
+    context = "context"
+    """The stored left or right context (up to 200 characters on each side, #328)."""
+    both = "both"
+    """The annotated text or either context."""
+
+
 class AnnotationQuery(BaseModel):
     """Internal: the stored-field conditions of a concordance query (#329), all required.
-    ``words``: each must occur in the annotation's text, inside one of its words; only text
+    ``words``: each must occur in a field of ``text_scope``, inside one of its words; only text
     ``ready`` under ``derivation_version`` is searched, so text left from an older revision
     or policy does not match."""
     tag_ids: list[UUID] | None = None
     types: list[SpanType]
     words: list[str] = []
+    text_scope: TextScope = TextScope.annotation
     derivation_version: int | None = None
     ids: list[UUID] | None = None
     """Only these annotations (a selection whose matching members are asked for, #459)."""
@@ -297,10 +314,14 @@ class AnnotationCounts(BaseModel):
 
 class AnnotatedDocument(BaseModel):
     """A document with annotations matching a concordance query, for the source and year
-    filters (#329). ``available`` is false when the document cannot be read."""
+    filters (#329). ``available`` is false when the document cannot be read. ``library`` and
+    ``language`` are the stored ``Documents`` values the library and language filters match
+    (#663), absent when the document has none."""
     id: UUID
     title: str | None = None
     year: int | None = None
+    library: str | None = None
+    language: str | None = None
     count: int
     available: bool
 
@@ -317,23 +338,42 @@ MAX_ATTRIBUTE_FILTER_VALUES = 200
 """``<attribute id>:<value id>`` pairs one concordance query may filter by (#331), all attributes together."""
 
 
-class AnnotationIdsRequest(BaseModel):
-    """The concordance filters (#329) whose matching annotation ids to resolve (#459).
-    ``within``: only these annotations, to learn which members of a selection the filters
-    show."""
+MAX_QUERY_TEXT_LENGTH = 500
+"""Characters of a lexical annotation query (at most ``_MAX_WORDS`` words are searched)."""
+
+
+class AnnotationFilters(BaseModel):
+    """The annotation query (#663): which of a collection's annotations the concordance lists,
+    a selection resolves (#459) and the source filter offers, one definition for all of them.
+    Different filters combine with AND; the values of one filter are alternatives (OR), except
+    attributes (below).
+
+    Document metadata is filtered by the shared ``DocumentFilters`` of Search, document browsing
+    and Analytics (#526): the same validation and predicates select the same documents. They are
+    evaluated against the documents of the matching annotations, joined per query, never copied
+    onto annotations (ADR 0009)."""
+    model_config = ConfigDict(extra="forbid")
+
     tag_ids: list[UUID] | None = None
     types: list[SpanType] | None = None
-    """Default ``pos`` and ``auto``, as in the concordance."""
-    q: str | None = Field(default=None, max_length=500)
+    """Default ``pos`` and ``auto``; rejected ``neg`` only when asked."""
+    q: str | None = Field(default=None, max_length=MAX_QUERY_TEXT_LENGTH)
+    """Words that must each occur in a field of ``text_scope``, inside one of its words, ignoring case."""
+    text_scope: TextScope = TextScope.annotation
     document_ids: list[UUID] | None = None
-    year_from: int | None = None
-    year_to: int | None = None
-    within: list[UUID] | None = Field(default=None, max_length=MAX_RESOLVED_IDS)
+    document_filters: DocumentFilters = Field(default_factory=DocumentFilters)
+    """Publication year range, title, library and document language of the annotation's document."""
     attribute_values: list[str] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTER_VALUES)
     """Stored form ``<attribute id>:<value id>`` (#331): values of one attribute match any, different
     attributes all."""
     attribute_unassigned: list[UUID] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTERS)
     """Only annotations without an accepted value of these attributes."""
+
+
+class AnnotationIdsRequest(AnnotationFilters):
+    """The annotation query whose matching annotation ids to resolve (#459). ``within``: only
+    these annotations, to learn which members of a selection the filters show."""
+    within: list[UUID] | None = Field(default=None, max_length=MAX_RESOLVED_IDS)
 
 
 class AnnotationIds(BaseModel):
