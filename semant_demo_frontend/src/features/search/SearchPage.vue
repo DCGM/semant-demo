@@ -449,8 +449,9 @@
     </RightSidebarPanel>
 
     <!-- Registered once a result is opened, so AI Chat stays the default panel. -->
-    <RightSidebarPanel v-if="contextResultNumber !== null" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1">
+    <RightSidebarPanel v-if="contextResultNumber !== null" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1" v-slot="{ visible }">
       <ChunkContextPanel
+        :visible="visible"
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
         :document="chunkContext.document"
         :chunks="chunkContext.chunks"

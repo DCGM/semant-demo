@@ -5,6 +5,7 @@ import { Quasar } from 'quasar'
 import type { DocumentChunk, SearchResultChunk } from 'src/generated/api'
 import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
 import { CONTEXT_SIDE, CONTEXT_STEP, mergeChunks, useChunkContext } from 'src/features/documents/useChunkContext'
+import { leadJump } from 'src/features/documents/contextScroll'
 import SearchResultCard from 'src/features/search/SearchResultCard.vue'
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -64,6 +65,39 @@ describe('mergeChunks', () => {
   it('keeps at most `max` chunks by dropping the other end', () => {
     expect(mergeChunks(loaded, [chunk(3), chunk(4)], 'before', 4)).toEqual({ chunks: [chunk(3), chunk(4), chunk(5), chunk(6)], trimmed: true })
     expect(mergeChunks(loaded, [chunk(8), chunk(9)], 'after', 4)).toEqual({ chunks: [chunk(6), chunk(7), chunk(8), chunk(9)], trimmed: true })
+  })
+})
+
+describe('leadJump', () => {
+  const viewport = 400
+
+  it('smooth-scrolls from where the passage is to a nearby target on its side', () => {
+    expect(leadJump(300, viewport, 1)).toBe(0)
+    expect(leadJump(-300, viewport, -1)).toBe(0)
+    expect(leadJump(-50, viewport, 1)).toBe(0) // barely past the centre
+  })
+
+  it('jumps close to a far target, keeping it on the side it lies on', () => {
+    expect(leadJump(5000, viewport, 1)).toBe(5000 - 300)
+    expect(leadJump(-5000, viewport, -1)).toBe(-5000 + 300)
+  })
+
+  it('moves a target shown on the wrong side to its side, so the motion goes the right way', () => {
+    // An earlier target is below the centre (the passage was replaced): it goes above.
+    expect(leadJump(200, viewport, -1)).toBe(200 + 300)
+    expect(leadJump(-200, viewport, 1)).toBe(-200 - 300)
+  })
+
+  it('after a replaced passage, brings even a target just past the centre in from its side', () => {
+    // Regression: a later target just above the centre after the replace scrolled up a little.
+    expect(leadJump(-40, viewport, 1, true)).toBe(-40 - 300)
+    expect(leadJump(40, viewport, -1, true)).toBe(40 + 300)
+    // Already a clear distance on its side: smooth from there.
+    expect(leadJump(200, viewport, 1, true)).toBe(0)
+  })
+
+  it('leaves the scroll alone without a direction', () => {
+    expect(leadJump(5000, viewport, 0)).toBe(0)
   })
 })
 
@@ -130,12 +164,108 @@ describe('useChunkContext', () => {
     await flush()
     calls[0].answer(windowBody(10, [9, 10, 11]))
     await first
-    const again = context.open(target)
-    await flush()
-    calls[1].answer(windowBody(10, [9, 10, 11]))
-    await again
+    await context.open(target)
 
-    expect(context.focusRequest.value).toBe(2)
+    // Shown again without reading it again (#493).
+    expect([context.focusRequest.value, calls.length]).toEqual([2, 1])
+  })
+
+  it('switches to a target of the shown passage without reading or clearing it', async () => {
+    // Regression (#493): every switch blanked the panel and read the passage again.
+    const context = useChunkContext()
+    const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+    calls[0].answer(windowBody(10, [8, 9, 10, 11, 12]))
+    await first
+    const shown = context.chunks.value
+
+    await context.open({ documentId: 'doc-1', chunkId: 'doc-1-c12' })
+
+    expect(calls).toHaveLength(1)
+    expect(context.target.value?.chunkId).toBe('doc-1-c12')
+    expect(context.chunks.value).toBe(shown)
+    expect([context.loading.value, context.focusRequest.value, context.containsTarget.value]).toEqual([false, 2, true])
+  })
+
+  it('stops an extension of the previous target when switching within the passage', async () => {
+    const context = useChunkContext()
+    const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11], { after: true }))
+    await first
+
+    const extending = context.extend('after')
+    await flush()
+    await context.open({ documentId: 'doc-1', chunkId: 'doc-1-c9' })
+    expect(calls[1].signal?.aborted).toBe(true)
+    calls[1].answer(adjacentBody([12, 13], false))
+    await extending
+
+    expect(context.chunks.value.map(c => c.order)).toEqual([9, 10, 11])
+    expect(context.extending.value).toBeNull()
+  })
+
+  it('keeps the shown passage of the same document while the passage around a new target loads', async () => {
+    const context = useChunkContext()
+    const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await first
+
+    const second = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c40' })
+    await flush()
+    expect(calls[1].url.pathname).toBe('/api/documents/doc-1/chunks/doc-1-c40/window')
+    expect(context.loading.value).toBe(true)
+    expect(context.chunks.value.map(c => c.order)).toEqual([9, 10, 11])
+    expect(context.document.value?.id).toBe('doc-1')
+
+    calls[1].answer(windowBody(40, [39, 40, 41]))
+    await second
+    expect(context.chunks.value.map(c => c.order)).toEqual([39, 40, 41])
+    expect([context.loading.value, context.containsTarget.value]).toEqual([false, true])
+  })
+
+  it('starts from nothing for another document or after a failed read', async () => {
+    const context = useChunkContext()
+    const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await first
+
+    const other = context.open({ documentId: 'doc-2', chunkId: 'doc-2-c4' })
+    await flush()
+    expect([context.chunks.value, context.document.value]).toEqual([[], null])
+    calls[1].answer({ detail: 'Chunk not found' }, 404)
+    await other
+
+    // After the failure, even a chunk id of the earlier passage is read again.
+    const retry = context.open({ documentId: 'doc-2', chunkId: 'doc-2-c4' })
+    await flush()
+    expect(calls).toHaveLength(3)
+    expect(context.error.value).toBeNull()
+    calls[2].answer(windowBody(4, [3, 4, 5], {}, 'doc-2'))
+    await retry
+    expect(context.chunks.value.map(c => c.id)).toEqual(['doc-2-c3', 'doc-2-c4', 'doc-2-c5'])
+  })
+
+  it('ends on the last of quickly switched targets of one document', async () => {
+    const context = useChunkContext()
+    const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await first
+
+    const toB = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c40' })
+    await flush()
+    const toC = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c80' })
+    await flush()
+    expect(calls[1].signal?.aborted).toBe(true)
+    calls[1].answer(windowBody(40, [39, 40, 41]))
+    calls[2].answer(windowBody(80, [79, 80, 81]))
+    await Promise.all([toB, toC])
+
+    expect(context.target.value?.chunkId).toBe('doc-1-c80')
+    expect(context.chunks.value.map(c => c.order)).toEqual([79, 80, 81])
   })
 
   it('focuses the target again, reloading it only when extending dropped it', async () => {
@@ -216,16 +346,21 @@ describe('ChunkContextPanel', () => {
   const document = { id: 'doc-1', title: 'Kronika', author: ['Jan Novák'], yearIssued: 1921 }
   let scroll: ReturnType<typeof vi.fn>
   let scrolled: Element[] // the elements scrolled into view, in order
+  let originalRaf: typeof globalThis.requestAnimationFrame
 
   beforeEach(() => {
     // jsdom has no scrollIntoView.
     scrolled = []
     scroll = vi.fn(function (this: Element) { scrolled.push(this) })
     HTMLElement.prototype.scrollIntoView = scroll
+    // The panel scrolls in the frame after it is laid out; here at once (flushPromises).
+    originalRaf = globalThis.requestAnimationFrame
+    globalThis.requestAnimationFrame = (frame: FrameRequestCallback) => { void Promise.resolve().then(() => frame(performance.now())); return 0 }
   })
 
   afterEach(() => {
     delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView
+    globalThis.requestAnimationFrame = originalRaf
   })
 
   function mountPanel (props: Record<string, unknown> = {}) {
@@ -300,6 +435,31 @@ describe('ChunkContextPanel', () => {
     expect(scroll).toHaveBeenCalledTimes(2)
   })
 
+  it('scrolls to the marked range, not to the start of its chunk', async () => {
+    // Regression: in a long chunk an annotation at its end stayed below the screen.
+    const wrapper = mountPanel({ highlight: { chunkId: 'doc-1-c4', start: 10, end: 11 } })
+    await flushPromises()
+    expect(scrolled.at(-1)).toBe(wrapper.get('[data-testid="chunk-context-mark"]').element)
+  })
+
+  it('waits with a focus request until the panel is visible', async () => {
+    // Review of #628: reopening a loaded target is immediate, so it can land while the
+    // Document tab is hidden; the scroll must wait for it to be shown.
+    const wrapper = mountPanel({ visible: false })
+    await flushPromises()
+    expect(scroll).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ visible: true })
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(1)
+
+    // Hidden again, then shown: no new request, so no scroll.
+    await wrapper.setProps({ visible: false })
+    await wrapper.setProps({ visible: true })
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(1)
+  })
+
   it('offers extension, return and retry as events', async () => {
     const wrapper = mountPanel({ hasBefore: true, hasAfter: true, returnLabel: 'Focus on result' })
 
@@ -316,12 +476,31 @@ describe('ChunkContextPanel', () => {
     expect(wrapper.emitted('reload')).toHaveLength(1)
   })
 
-  it('shows no stale text while loading or without a target', async () => {
-    const wrapper = mountPanel({ loading: true })
+  it('shows only a loading state while loading with nothing shown, and nothing without a target', async () => {
+    // The composable clears the passage for another document, so no other document's text shows.
+    const wrapper = mountPanel({ loading: true, chunks: [] })
     expect(wrapper.findAll('.chunk-context__chunk')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Loading the document…')
 
     await wrapper.setProps({ loading: false, targetChunkId: null, emptyText: 'Pick a result.' })
     expect(wrapper.text()).toBe('Pick a result.')
+  })
+
+  it('keeps the shown passage while another passage of the document loads', async () => {
+    // Regression (#493): switching annotations of one document blanked the panel.
+    const wrapper = mountPanel({ hasAfter: true })
+    await flushPromises()
+    await wrapper.setProps({ targetChunkId: 'doc-1-c40', focusRequest: 2, loading: true })
+
+    expect(wrapper.findAll('.chunk-context__chunk')).toHaveLength(3)
+    expect(wrapper.text()).not.toContain('Loading the document…')
+    expect(wrapper.find('[data-testid="chunk-context-reloading"]').exists()).toBe(true)
+    expect(button(wrapper, 'Show later text')!.attributes('disabled')).toBeDefined()
+
+    await wrapper.setProps({ loading: false, chunks: [chunk(39), chunk(40), chunk(41)] })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="chunk-context-reloading"]').exists()).toBe(false)
+    expect(scrolled.at(-1)).toBe(wrapper.get('[aria-current="true"]').element)
   })
 })
 

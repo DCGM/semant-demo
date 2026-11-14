@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { Notify, QLayout, QPageContainer, Quasar } from 'quasar'
+import { Notify, QLayout, QPageContainer, Quasar, type QVueGlobals } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, effectScope, h } from 'vue'
 import { createMemoryHistory, createRouter, RouterView, type RouteRecordRaw } from 'vue-router'
@@ -375,6 +375,11 @@ describe('a newer session stored by another tab', () => {
 })
 
 describe('MainLayout session teardown', () => {
+  const ends: Array<() => void> = []
+  afterEach(() => {
+    ends.splice(0).reverse().forEach((end) => end())
+  })
+
   async function mountLayout () {
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -386,6 +391,16 @@ describe('MainLayout session teardown', () => {
         stubs: { RightSidebar: true, LoginDialog: true, RegisterDialog: true, UserInfoDialog: true }
       }
     })
+    // The layout and the notifications it shows end with the test, so none of their timers
+    // is still pending when the file ends (#551).
+    const $q = (wrapper.vm as unknown as { $q: QVueGlobals }).$q
+    const notify = $q.notify
+    $q.notify = ((options: Parameters<typeof notify>[0]) => {
+      const dismiss = notify(options)
+      ends.push(dismiss)
+      return dismiss
+    }) as typeof notify
+    ends.push(() => wrapper.unmount())
     await flushPromises()
     const store = useUserStore()
     setAuthToken(jwt('uA'))

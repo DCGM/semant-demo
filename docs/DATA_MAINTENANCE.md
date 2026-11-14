@@ -591,6 +591,43 @@ python -m semant_demo.maintenance.classification_provenance_schema --apply --con
 - Run it once before the first chunk import into a store: `chunk_ingest` refuses a store without
   the property.
 
+## Chunk classification (`data_tools/meta_data_enrichment`, #590)
+
+The offline classifier fills the classification fields of the chunks that await
+classification. It is a standalone tool with its own YAML configuration and model
+([README](../data_tools/meta_data_enrichment/README.md)), not a backend command.
+
+```bash
+cd data_tools/meta_data_enrichment
+python run.py config.yaml --check                                 # read-only: what a run would select
+python run.py config.yaml --confirm-endpoint HOST:PORT            # classify
+```
+
+- **Selection:** only chunks whose `classification_provenance` is `UNPROCESSED` (optionally
+  narrowed by the config's `filters`). Chunks without a value and chunks already classified are
+  never selected.
+- **Writes:** per chunk, only the mapped fields it is missing (absent, `null` or `[]`), and
+  only when every one of them got a valid result (a non-empty list of the task's labels),
+  together with `classification_provenance` = the config's `provenance` identifier, in one
+  update. Existing non-empty values are never overwritten. A chunk that fails is not written
+  and stays `UNPROCESSED`; running the command again retries it. No checkpoint: the status is
+  the state.
+- **Model identity:** `provenance` is required (`mmbert-multitask-2026-07-15` for the converted
+  model, named by its earliest known copy) and must change with the model. It is not checked
+  against the model; the run summary records the model's fingerprint (SHA-256 of the local
+  model's files, or the API endpoint, model name and prompt hashes). Keep the summary with
+  the run's record on the issue.
+- **Refusals (exit 2, nothing written):** a `--confirm-endpoint` other than the configured
+  endpoint, an invalid configuration, a missing collection, a missing or non-`text[]` mapped
+  field, a missing or differently declared `classification_provenance` (the schema is never
+  changed), a filter on a written field, a mapped task the model has no classes for.
+- **Stop:** after `max_consecutive_failures` failed chunks in a row (e.g. an unreachable model)
+  or `max_failures` failed chunks in the run (default 1000; their ids are excluded from every
+  query). Reading has no offset, so `QUERY_MAXIMUM_RESULTS` does not limit a run.
+- Exit code 0 when nothing selected is left `UNPROCESSED`, 1 when chunks remain, 2 when refused.
+- The model runs where the config says (a local GPU model or an OpenAI-compatible endpoint):
+  a run on a shared store, and the choice of the model, are authorized per task.
+
 ## Chunk import (`chunk_ingest`, #313)
 
 The one supported way to add text chunks: append-only, into the **existing** collections. It
@@ -710,9 +747,9 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
 - Exit 0 only when nothing was rejected, invalid or blocked.
 
 **Afterwards**, as separate commands. An arrow means that a step uses the result of the
-previous one; steps without an arrow between them are independent, and dashed steps have no
-safe command yet. `chunk_year` and `chunk_summaries` expect nothing else to write chunks, so
-do not run them alongside the embedder or another chunk writer.
+previous one; steps without an arrow between them are independent. `chunk_year` and
+`chunk_summaries` expect nothing else to write chunks, so do not run them alongside the
+embedder, the classifier or another chunk writer.
 
 ```mermaid
 flowchart LR
@@ -720,9 +757,8 @@ flowchart LR
   meta --> year["chunk_year"]
   meta --> titles["chunk_titles"]
   ingest --> emb["data_tools/embedder"]
-  ingest -.->|"#590"| cls["classification (planned)"]
-  ingest --> sum["chunk_summaries"]
-  cls -.-> sum
+  ingest --> cls["data_tools/<br/>meta_data_enrichment"]
+  cls --> sum["chunk_summaries"]
 ```
 
 1. `metadata_sync --report REPORT --document-ids CHECKPOINT.documents.txt`, then
@@ -742,13 +778,14 @@ flowchart LR
    vectors; until then the new chunks are missing from vector and hybrid search. `--check`
    counts the chunks still without the vector, read-only. The flag confirms the host and port,
    not the collection: check `collection` in the config too.
-5. The classification has no safe command for new chunks on a populated store yet. The import
-   marks them `classification_provenance=UNPROCESSED`
-   ([status](#chunk-classification-status-classification_provenance_schema-590)), but
-   `data_tools/meta_data_enrichment` never changes that status, so a classified chunk would stay
-   `UNPROCESSED`, and it overwrites existing values
-   ([#590](https://github.com/DCGM/semant-demo/issues/590)). Until then the new chunks have no
-   classification.
+5. `data_tools/meta_data_enrichment` (with `--confirm-endpoint`) classifies the new chunks. The
+   import marks them `classification_provenance=UNPROCESSED`
+   ([status](#chunk-classification-status-classification_provenance_schema-590)); a run selects
+   only those, fills their missing classification fields and records the model in the status
+   ([Chunk classification](#chunk-classification-data_toolsmeta_data_enrichment-590)). Until
+   then the new chunks have no classification. `--check` counts the chunks still `UNPROCESSED`,
+   read-only. As with the embedder, the flag confirms the host and port, not the collection:
+   check `collection` in the config too.
 6. `chunk_summaries --write` is the final pass, after the classification, since it summarizes
    the chunks' classifications. Until it runs, the new documents have no summaries and match no
    chunk filter. A run before the classification (e.g. for the language filter) is only interim:
