@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import { ensureLoggedIn, fixture, logOut, useViewport } from './support'
+import { LONG_PASSAGE_TEXT } from '../fixtures/longPassage'
+import { ensureLoggedIn, fixture, insertLongPassage, logOut, useViewport, type SearchResponse } from './support'
 
 // The shared setup helpers (#273) from every starting state: they must reach the requested
 // session and never leave another user's session behind.
@@ -55,4 +56,12 @@ test('the helpers work on a phone, where navigation is an overlay', async ({ pag
   await logOut(page)
 
   expect(await storedToken(page)).toBeNull()
+})
+
+test('insertLongPassage replaces only its chunk\'s text and fails when the chunk is missing', () => {
+  const [chronicle, gazette] = [fixture.chunk('chronicle_1'), fixture.chunk('gazette_1')]
+  const body: SearchResponse = { items: [gazette, chronicle].map(({ id, text }) => ({ id, text })), ranked_ids: [], read_count: 2 }
+  insertLongPassage(body)
+  expect(body.items).toEqual([{ id: gazette.id, text: gazette.text }, { id: chronicle.id, text: LONG_PASSAGE_TEXT }])
+  expect(() => insertLongPassage(body, 'letters_1')).toThrow('fixture letters_1 is not among the search results')
 })

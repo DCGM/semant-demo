@@ -257,7 +257,10 @@ Browser specs set up their state with the shared helpers in
 `semant_demo_frontend/test/e2e/support.ts` (conventions and examples at their code):
 `useViewport` (wide / narrow / phone, as in the UI captures), `ensureLoggedIn` / `logOut`
 from any session state, `search`, `goToResultsPage` and `editSearchResults` for edge cases
-the corpus lacks. Every test sets up its own state and passes alone or in any order.
+the corpus lacks. For a long passage (previews, wrapping, expansion) use `useLongPassage` /
+`insertLongPassage`: they give a fixture chunk's result the synthetic multilingual text in
+`semant_demo_frontend/test/fixtures/longPassage.ts`, which unit tests import too; do not
+hand-build long texts per test. Every test sets up its own state and passes alone or in any order.
 
 ### Fast browser-test loop
 

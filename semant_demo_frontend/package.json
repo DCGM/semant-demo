@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@quasar/extras": "^1.0.0",
+    "@tanstack/vue-query": "5.104.5",
     "marked": "^16.2.1",
     "pinia": "^2.1.6",
     "quasar": "^2.6.0",
