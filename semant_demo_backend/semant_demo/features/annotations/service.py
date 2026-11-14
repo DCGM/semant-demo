@@ -865,7 +865,9 @@ _MAX_WINDOW = 10_000
 # Annotated documents a document-ordered or year-filtered query reads (one aggregation).
 _MAX_DOCUMENTS = 10_000
 _MAX_WORDS = 10
-_WORD = re.compile(r"\w+")
+_WORD = re.compile(r"[^\W_]+")
+"""A query word: a run of letters and digits, split as Weaviate's ``word`` tokenization splits the
+searched text (also at underscores; the workspace highlights by the same rule, #663)."""
 DEFAULT_TYPES = (SpanType.pos, SpanType.auto)
 
 
