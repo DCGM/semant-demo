@@ -317,6 +317,9 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             Property(name="startWord", data_type=integer),
             Property(name="wordOpenAtStart", data_type=DataType.BOOL),
             *(Property(name=name, data_type=text_array) for name in TASK_CLASSES),
+            # the classification status (#590), as classification_provenance_schema declares it
+            Property(name="classification_provenance", data_type=text, tokenization=Tokenization.FIELD,
+                     index_filterable=True, index_searchable=False),
         ],
         references=[
             ReferenceProperty(name="document", target_collection=names.document_collection_name),

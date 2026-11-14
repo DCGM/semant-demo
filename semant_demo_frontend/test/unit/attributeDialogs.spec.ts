@@ -362,9 +362,9 @@ describe('Edit Attribute', () => {
     expect(wrapper.emitted('ok')).toHaveLength(1)
   })
 
-  it('shows a refused narrowing of the tags at the tags and keeps them', async () => {
-    const message = '1 annotations with values of this attribute have a tag outside the new applicable tags; change or remove those values first.'
-    const save = vi.fn().mockRejectedValue(new AttributeWriteError(message, 409))
+  it('shows a narrowing whose usage cannot be counted at the tags and keeps them', async () => {
+    const message = 'Could not check which annotations hold these values; nothing was changed. Try again later.'
+    const save = vi.fn().mockRejectedValue(new AttributeWriteError(message, 503))
     const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions() })
     wrapper.findComponent(QSelect).vm.$emit('update:modelValue', ['t2'])
     await flushPromises()
@@ -374,8 +374,58 @@ describe('Edit Attribute', () => {
     expect(save).toHaveBeenCalledWith({ addTagIds: ['t2'], removeTagIds: ['t1'] })
     const select = wrapper.findComponent(QSelect)
     expect([select.props('error'), select.props('errorMessage'), select.props('modelValue')]).toEqual([true, message, ['t2']])
-    expect(text('attribute-dialog-error')).toBe('')
+    // Not "0 affected", and no confirmation: Save tries again.
+    expect([text('attribute-dialog-error'), text('attribute-narrowing-warning')]).toEqual(['', ''])
+    expect(button(wrapper, 'Save')).toBeTruthy()
     expect(wrapper.emitted('ok')).toBeUndefined()
+  })
+
+  it('asks to confirm a narrowing that makes held values stop applying, and asks again for another number', async () => {
+    const save = vi.fn()
+      .mockRejectedValueOnce(new AttributeWriteError('Values on 3 annotations will no longer apply.', 409, 3))
+      .mockRejectedValueOnce(new AttributeWriteError('Changed from 3.', 409, 4))
+      .mockResolvedValue(speaker({ tagIds: [], revision: 2 }))
+    const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions() })
+    wrapper.findComponent(QSelect).vm.$emit('update:modelValue', [])
+    await flushPromises()
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenLastCalledWith({ removeTagIds: ['t1'] })
+    // A count of annotations, and that nothing is deleted; not an error, and nothing was saved.
+    expect(text('attribute-narrowing-warning')).toContain('existing values apply on 3 annotations')
+    expect(text('attribute-narrowing-warning')).toContain('No values are deleted')
+    expect([text('attribute-dialog-error'), wrapper.findComponent(QSelect).props('error')]).toEqual(['', false])
+    expect(wrapper.emitted('ok')).toBeUndefined()
+
+    // Confirming sends the number shown; the server counted another one meanwhile.
+    await button(wrapper, 'Confirm and save').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenLastCalledWith({ removeTagIds: ['t1'], confirmAffected: 3 })
+    expect(text('attribute-narrowing-warning')).toContain('changed from 3 since it was shown')
+    expect(text('attribute-narrowing-warning')).toContain('on 4 annotations')
+    expect(wrapper.emitted('ok')).toBeUndefined()
+
+    await button(wrapper, 'Confirm and save').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenLastCalledWith({ removeTagIds: ['t1'], confirmAffected: 4 })
+    expect(wrapper.emitted('ok')).toHaveLength(1)
+  })
+
+  it('withdraws a confirmation when the tags change again', async () => {
+    const save = vi.fn().mockRejectedValueOnce(new AttributeWriteError('Values on 1 annotation will no longer apply.', 409, 1))
+      .mockResolvedValue(speaker({ tagIds: ['t1', 't2'], revision: 2 }))
+    const wrapper = await open(AttributeDialog, { attribute: speaker(), tags, save, valueActions: valueActions() })
+    wrapper.findComponent(QSelect).vm.$emit('update:modelValue', ['t2'])
+    await flushPromises()
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(text('attribute-narrowing-warning')).toContain('on 1 annotation.')
+    wrapper.findComponent(QSelect).vm.$emit('update:modelValue', ['t1', 't2'])
+    await flushPromises()
+    expect(text('attribute-narrowing-warning')).toBe('')
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenLastCalledWith({ addTagIds: ['t2'] })
   })
 
   it('keeps Selected tags when the last tag is removed, and changes the scope only explicitly', async () => {

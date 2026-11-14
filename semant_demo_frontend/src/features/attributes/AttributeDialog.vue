@@ -4,7 +4,7 @@
     :dirty="isDirty"
     :busy="saving"
     :pending="valuesBusy"
-    :ok-label="props.attribute ? 'Save' : 'Create'"
+    :ok-label="props.attribute ? (toConfirm === null ? 'Save' : 'Confirm and save') : 'Create'"
     @hide="onDialogHide"
     @confirm="formRef?.submit()"
   >
@@ -105,6 +105,20 @@
             </template>
           </q-select>
           <div v-else-if="tagsError" class="text-caption text-negative" role="alert">{{ tagsError }}</div>
+          <q-banner
+            v-if="toConfirm !== null"
+            ref="narrowingBanner"
+            dense
+            rounded
+            class="bg-orange-1 text-grey-9 q-mt-sm"
+            role="alert"
+            data-testid="attribute-narrowing-warning"
+          >
+            <template #avatar>
+              <q-icon name="warning" color="warning" />
+            </template>
+            {{ narrowingText }} Confirm and save to change the tags.
+          </q-banner>
         </div>
 
         <AttributeValuesEditor
@@ -200,7 +214,7 @@ import FormDialog from 'src/shared/ui/FormDialog.vue'
 import { Cardinality, type Attribute, type PatchAttribute, type PostAttribute, type Tag } from 'src/generated/api'
 import {
   DESCRIPTION_STYLE, KIND_LABELS, MAX_DESCRIPTION, MAX_NAME, MAX_VALUES, SPECIAL_KINDS, TAKEN_NAME, isTaken, labelTaken,
-  nameTaken,
+  nameTaken, narrowingWarning,
   type SpecialKind, type ValueActions
 } from './attributeForm'
 import { AttributeWriteError } from './attributesStore'
@@ -261,9 +275,17 @@ function draftTaken (index: number): string | null {
   const specials = specialDrafts.value.map(kind => ({ label: KIND_LABELS[kind], kind }))
   return labelTaken(drafts.value[index] ?? '', [...earlier, ...specials])
 }
-// A refusal of the tags (narrowing them while annotations hold values), shown at the field.
+// A refusal of the tags (their usage could not be counted, or a race), shown at the field.
 const tagsError = ref<string | null>(null)
-watch([scope, tagIds], () => { tagsError.value = null })
+// A narrowing that makes values on this many annotations stop applying, waiting for the user to
+// confirm it (#568); the next save sends the number. Any change of the tags asks again.
+const toConfirm = ref<number | null>(null)
+const narrowingText = ref('')
+const narrowingBanner = ref<QBanner | null>(null)
+watch([scope, tagIds], () => {
+  tagsError.value = null
+  toConfirm.value = null
+})
 
 // The edited attribute as last saved: value writes answer with it while the dialog is open.
 const current = ref<Attribute | null>(props.attribute ?? null)
@@ -360,14 +382,25 @@ async function submit () {
     onDialogOK(null)
     return
   }
+  const changedTags = 'tagIds' in body || 'addTagIds' in body || 'removeTagIds' in body
+  const shown = toConfirm.value
+  if (props.attribute && changedTags && shown !== null) (body as PatchAttribute).confirmAffected = shown
   saving.value = true
   try {
     onDialogOK(await props.save(body))
   } catch (e) {
     const message = e instanceof Error ? e.message : 'The attribute could not be saved.'
-    // Only a change of the tags is refused for annotations that hold values (409), or when
-    // their number cannot be counted (503).
-    const changedTags = 'tagIds' in body || 'addTagIds' in body || 'removeTagIds' in body
+    if (e instanceof AttributeWriteError && e.toConfirm !== null) {
+      // Values on annotations would stop applying (or another number than confirmed): explain
+      // and ask to confirm; nothing was saved.
+      narrowingText.value = narrowingWarning(e.toConfirm, shown)
+      toConfirm.value = e.toConfirm
+      await nextTick()
+      narrowingBanner.value?.$el?.scrollIntoView?.({ block: 'nearest' })
+      return
+    }
+    // A change of the tags is also refused when the annotations holding values cannot be
+    // counted (503) or the attribute kept changing meanwhile (409).
     const refusedTags = !!props.attribute && changedTags && e instanceof AttributeWriteError &&
       (e.status === 409 || e.status === 503)
     if (refusedTags) tagsError.value = message

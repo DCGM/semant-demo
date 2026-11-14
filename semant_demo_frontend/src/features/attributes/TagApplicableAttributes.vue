@@ -54,6 +54,14 @@
           >
             {{ errors[attribute.id] }}
           </div>
+          <div
+            v-else-if="warnings?.[attribute.id]"
+            class="text-orange-10 text-caption q-ml-xl"
+            role="alert"
+            data-testid="tag-applicable-attribute-warning"
+          >
+            {{ warnings[attribute.id] }}
+          </div>
         </div>
         <div v-if="!shown.length" class="text-grey-7">No attribute matches.</div>
       </div>
@@ -79,6 +87,8 @@ const props = defineProps<{
   wanted: Record<string, boolean>
   /** A refused or failed change, by attribute id. */
   errors: Record<string, string>
+  /** A change waiting for confirmation, by attribute id: values would stop applying (#568). */
+  warnings?: Record<string, string>
   loading: boolean
   error: string | null
   disable: boolean

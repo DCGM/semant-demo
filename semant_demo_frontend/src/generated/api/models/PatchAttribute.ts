@@ -61,6 +61,12 @@ export interface PatchAttribute {
      * @memberof PatchAttribute
      */
     retired?: boolean | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof PatchAttribute
+     */
+    confirmAffected?: number | null;
 }
 
 /**
@@ -87,6 +93,7 @@ export function PatchAttributeFromJSONTyped(json: any, ignoreDiscriminator: bool
         'addTagIds': json['add_tag_ids'] == null ? undefined : json['add_tag_ids'],
         'removeTagIds': json['remove_tag_ids'] == null ? undefined : json['remove_tag_ids'],
         'retired': json['retired'] == null ? undefined : json['retired'],
+        'confirmAffected': json['confirm_affected'] == null ? undefined : json['confirm_affected'],
     };
 }
 
@@ -108,6 +115,7 @@ export function PatchAttributeToJSONTyped(value?: PatchAttribute | null, ignoreD
         'add_tag_ids': value['addTagIds'],
         'remove_tag_ids': value['removeTagIds'],
         'retired': value['retired'],
+        'confirm_affected': value['confirmAffected'],
     };
 }
 

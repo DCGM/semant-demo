@@ -2,6 +2,7 @@ import { expect, type APIRequestContext, type Locator, type Page } from '@playwr
 import { viewports, type ViewportName } from './viewports'
 // Same synthetic corpus the backend profile seeds (single source, shared with pytest).
 import corpus from '../../../semant_demo_backend/tests/fixtures/corpus.json'
+import { LONG_PASSAGE_TEXT } from '../fixtures/longPassage'
 
 type Keyed = { key: string }
 
@@ -127,8 +128,8 @@ export const isPassageSearch = (url: string, method: string): boolean =>
 
 /**
  * Changes the `/api/search/passages` answers of this page only, for deterministic edge cases
- * the fixture corpus lacks (long passages, many results). Call before searching; the real
- * response is fetched and passed to `edit`.
+ * the fixture corpus lacks (a long passage: `insertLongPassage`; many results). Call before
+ * searching; the real response is fetched and passed to `edit`.
  *
  *   await editSearchResults(page, (body) => appendResultCopies(body, 2))
  */
@@ -147,6 +148,28 @@ export function appendResultCopies (body: SearchResponse, copies: number): void 
   for (let copy = 1; copy <= copies; copy++) {
     body.items = body.items.concat(original.map(r => ({ ...r, id: `${r.id.slice(0, -4)}${copy}fff` })))
   }
+}
+
+/** The fixture chunk whose text `useLongPassage` replaces (a Lhota search finds it). */
+export const LONG_PASSAGE_CHUNK = 'chronicle_1'
+
+/**
+ * Gives the result of fixture chunk `chunkKey` the synthetic long multilingual passage
+ * (test/fixtures/longPassage.ts) as its text; its id, document and source metadata stay
+ * real. Fails when the chunk is not among the results, so the edit never silently misses.
+ * Combine with other edits in one `editSearchResults` call; for this edit alone, use
+ * `useLongPassage`.
+ */
+export function insertLongPassage (body: SearchResponse, chunkKey = LONG_PASSAGE_CHUNK): void {
+  const id = fixture.chunk(chunkKey).id
+  const result = body.items.find((r) => r.id === id)
+  if (!result) throw new Error(`fixture ${chunkKey} is not among the search results`)
+  result.text = LONG_PASSAGE_TEXT
+}
+
+/** Shows the long passage (`insertLongPassage`) in this page's passage searches; call before searching. */
+export async function useLongPassage (page: Page, chunkKey = LONG_PASSAGE_CHUNK): Promise<void> {
+  await editSearchResults(page, (body) => insertLongPassage(body, chunkKey))
 }
 
 /** A chat assistant answer as `/api/rag` sends it (snake_case). */

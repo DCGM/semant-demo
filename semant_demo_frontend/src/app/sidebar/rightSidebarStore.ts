@@ -27,6 +27,10 @@ interface RegisteredPanel {
 export const useRightSidebarStore = defineStore('rightSidebar', () => {
   const panels = ref<RegisteredPanel[]>([])
   const activePanelId = ref<string | null>(null)
+  // Until a panel is chosen (`select`/`activate`: the user, the page or a kept-alive page
+  // restoring its panel), the active panel is the default one: the lowest `order` among the
+  // registered panels, whatever order they registered in (Vue mounts panels in its own order).
+  let activeIsDefault = true
   const open = ref(false)
   const miniState = ref(false)
   // element the panels teleport their content into; set by the shell once mounted
@@ -52,8 +56,9 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     }
     const owner = Symbol(panel.id)
     panels.value.push({ panel, owner })
-    if (activePanelId.value === null) {
+    if (activePanelId.value === null || activeIsDefault) {
       activePanelId.value = sortedPanels.value[0].id
+      activeIsDefault = true
     }
     return () => unregister(owner)
   }
@@ -64,6 +69,7 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     panels.value = panels.value.filter(p => p.owner !== owner)
     if (activePanelId.value === removed.panel.id) {
       activePanelId.value = sortedPanels.value[0]?.id ?? null
+      activeIsDefault = true
     }
     if (!hasPanels.value) {
       // the state is not remembered between pages
@@ -71,10 +77,17 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     }
   }
 
+  // shows the panel without opening the sidebar; a panel registered later no longer replaces it
+  function select (id: string) {
+    if (!panels.value.some(p => p.panel.id === id)) return
+    activePanelId.value = id
+    activeIsDefault = false
+  }
+
   // brings the panel to front and makes sure it is visible
   function activate (id: string) {
     if (!panels.value.some(p => p.panel.id === id)) return
-    activePanelId.value = id
+    select(id)
     open.value = true
     miniState.value = false
   }
@@ -96,6 +109,7 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
     miniState,
     targetEl,
     register,
+    select,
     activate,
     toggleOpen,
     toggleMiniState

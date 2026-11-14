@@ -8,6 +8,7 @@ Name | Type
 ------------ | -------------
 `summary` | string
 `timeSpent` | number
+`failed` | boolean
 
 ## Example
 
@@ -18,6 +19,7 @@ import type { SummaryResponse } from ''
 const example = {
   "summary": null,
   "timeSpent": null,
+  "failed": null,
 } satisfies SummaryResponse
 
 console.log(example)

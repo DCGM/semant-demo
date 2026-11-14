@@ -120,6 +120,7 @@ docs/RankingDescription.md
 docs/RankingScope.md
 docs/ResultMember.md
 docs/ReviewAction.md
+docs/SearchChatRequest.md
 docs/SearchCriteria.md
 docs/SearchFilter.md
 docs/SearchFilterInput.md
@@ -275,6 +276,7 @@ models/RankingDescription.ts
 models/RankingScope.ts
 models/ResultMember.ts
 models/ReviewAction.ts
+models/SearchChatRequest.ts
 models/SearchCriteria.ts
 models/SearchFilter.ts
 models/SearchFilterInput.ts

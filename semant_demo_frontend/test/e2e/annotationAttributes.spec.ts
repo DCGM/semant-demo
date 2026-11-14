@@ -11,6 +11,8 @@ import { apiToken, deleteAddedAttributes, ensureLoggedIn, fixture, useViewport }
 // attribute does not apply to are greyed, marked and cleared like any others (#530 review).
 // Several attributes can be shown side by side, each column edited on its own; showing them
 // changes no filter, selection, sort or open row, and a phone scrolls them sideways (#537).
+// An assignment that finds every annotation already as asked reports no change and keeps the
+// undo of the last review (#569).
 
 const chronicles = fixture.collection('chronicles')
 const base = `/api/user_collections/${chronicles.id}`
@@ -150,7 +152,7 @@ test('a selection is assigned in one batch, reported per annotation, without ove
 
   const report = page.getByTestId('assign-report')
   // A headline, then each count on its own line next to its reason.
-  await expect(report.getByTestId('assign-report-title')).toHaveText('"Role": saved 0 of 4 annotations')
+  await expect(report.getByTestId('assign-report-title')).toHaveText('"Role": no annotations changed')
   await expect(report.getByTestId('assign-report-lines').getByRole('listitem')).toHaveText([
     /^1\s*not saved\s*Changed by someone else since you selected them\.$/,
     /^2\s*not changed\s*Only confirmed annotations take values\.$/,
@@ -166,9 +168,79 @@ test('a selection is assigned in one batch, reported per annotation, without ove
   await choose(page, 'assign-dialog-attribute', 'Role (several values)')
   await dialog(page).getByRole('checkbox', { name: 'statesman' }).click()
   await dialog(page).getByRole('button', { name: 'Add to 1' }).click()
-  await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": saved 1 of 1 annotation')
+  await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": changed 1 of 1 annotation')
   await expect(page.getByTestId('assign-report-lines')).toHaveCount(0)
   await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesmanchronicler')
+
+  // Assigned again, it already holds the value: done, but no change (#569).
+  await page.getByTestId('assign-attribute').click()
+  await choose(page, 'assign-dialog-attribute', 'Role (several values)')
+  await dialog(page).getByRole('checkbox', { name: 'statesman' }).click()
+  await dialog(page).getByRole('button', { name: 'Add to 1' }).click()
+  await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": no annotations changed')
+  await expect(page.getByTestId('assign-report-lines').getByRole('listitem')).toHaveText([
+    /^1\s*already matched\s*They already had the requested values\.$/
+  ])
+  await expect(page.getByTestId('assign-retry')).toHaveCount(0)
+})
+
+/** Someone else adds the value to the annotation through the API, at its current version. */
+async function addAsAnnotator (request: APIRequestContext, attributeId: string, spanId: string, valueId: string) {
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'annotator')}` }
+  const listed = await request.get(`${base}/annotations`, { headers, params: { annotation_id: spanId } })
+  const version = (await listed.json()).rows[0].attributeVersion as number
+  const added = await request.post(`${base}/annotations/attributes/assign`, {
+    headers,
+    data: { attribute_id: attributeId, annotation_ids: [spanId], expected_versions: { [spanId]: version }, mode: 'add', value_ids: [valueId] }
+  })
+  expect((await added.json()).outcome).toBe('complete')
+}
+
+test('an assignment that changes nothing keeps the undo of the last review; one that changes something replaces it', async ({ page, request }) => {
+  const role = await createRole(request)
+  const [statesman, chronicler] = [role.values[0]!, role.values[1]!]
+  const novak = fixture.span('novak_manual').id
+  const lhota = fixture.span('lhota_automatic')
+  await addAsAnnotator(request, role.id, novak, statesman.id)
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  try {
+    await toggleOption(page, 'concordance-show-attribute', 'Role')
+    await row(page, 'Lhoty').getByRole('checkbox').click()
+    await page.getByTestId('review-approve').click()
+    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you approved 1 annotation.')
+
+    // A selection that already holds the value (#569).
+    await page.getByTestId('clear-selection').click()
+    await row(page, 'Jan Novák').getByRole('checkbox').click()
+    await page.getByTestId('assign-attribute').click()
+    await choose(page, 'assign-dialog-attribute', 'Role (several values)')
+    await dialog(page).getByRole('checkbox', { name: 'statesman' }).click()
+    await dialog(page).getByRole('button', { name: 'Add to 1' }).click()
+    await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": no annotations changed')
+    await expect(page.getByTestId('undo')).toBeVisible()
+
+    // A row whose value someone else set meanwhile: picking it changes nothing either.
+    await addAsAnnotator(request, role.id, novak, chronicler.id)
+    await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesman')
+    await cell(page, 'Jan Novák').getByTestId('kwic-attribute-edit').click()
+    await picker(page).getByText('chronicler', { exact: true }).click()
+    await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesmanchronicler')
+    await expect(page.getByTestId('undo')).toBeVisible()
+    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you approved 1 annotation.')
+
+    // Removing it is a change: the review can no longer be undone.
+    await picker(page).getByText('chronicler', { exact: true }).click()
+    await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesman')
+    await expect(page.getByTestId('undo-bar')).toHaveText('Attribute assignments cannot be undone.')
+    await expect(page.getByTestId('undo')).toHaveCount(0)
+    await closePicker(page)
+  } finally {
+    const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+    const restored = await request.patch(`/api/tag_spans/${lhota.id}`,
+      { headers, params: { collection_id: chronicles.id }, data: { type: 'auto' } })
+    expect(restored.ok()).toBe(true)
+  }
 })
 
 test('several attribute columns are shown side by side and edited one by one, changing nothing else', async ({ page, request }) => {
@@ -334,7 +406,7 @@ test('values kept after a retag are greyed and marked, and a batch Clear removes
     await choose(page, 'assign-dialog-attribute', 'Role (several values)')
     await dialog(page).getByRole('button', { name: 'Clear', exact: true }).click()
     await dialog(page).getByRole('button', { name: 'Clear on 1' }).click()
-    await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": saved 1 of 1 annotation')
+    await expect(page.getByTestId('assign-report-title')).toHaveText('"Role": changed 1 of 1 annotation')
     await expect(kept.getByTestId('attribute-chips-inapplicable')).toHaveCount(0)
     await expect(kept).toContainText('–')
   } finally {

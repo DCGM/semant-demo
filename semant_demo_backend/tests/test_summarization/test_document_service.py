@@ -106,6 +106,28 @@ async def test_document_outside_the_collection_is_not_summarized():
     assert llm.calls == []
 
 
+async def test_only_the_chunks_in_the_collection_are_summarized_and_counted():
+    # ADR 0006, the same scope as document chat: a collection may hold only a part of a document.
+    inside, outside, last = chunk(0), chunk(1, in_user_collection=False, text="Cizí odstavec"), chunk(2)
+    llm = FakeLlm(lambda messages: messages[1]["content"])
+
+    response = await service.summarize_document(FakeDocuments([inside, outside, last]), FakeCollections(),
+                                                 summarizer(llm), OWNER, DOCUMENT, COLLECTION)
+
+    assert [c.chunk_id for c in response.citations] == [inside.id, last.id]
+    assert "Cizí odstavec" not in response.summary and "[doc2] Odstavec 2" in response.summary
+    assert (response.total_chunks, response.summarized_chunks, response.truncated) == (2, 2, False)
+
+
+async def test_a_document_without_chunks_in_the_collection_is_not_found():
+    llm = FakeLlm()
+
+    with pytest.raises(NotFoundError):
+        await service.summarize_document(FakeDocuments([chunk(0, in_user_collection=False)]), FakeCollections(),
+                                         summarizer(llm), OWNER, DOCUMENT, COLLECTION)
+    assert llm.calls == []
+
+
 async def test_long_documents_are_truncated_to_the_configured_chunk_limit():
     chunks = [chunk(i) for i in range(5)]
     documents = FakeDocuments(chunks)

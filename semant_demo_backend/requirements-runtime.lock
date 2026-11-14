@@ -2085,6 +2085,7 @@ mcp==1.30.0 \
     --hash=sha256:666edb5009503e1047c9d60346a756f94b261f05cc2625f23d41c728ffc484d0
     # via
     #   -c requirements-dev.lock
+    #   -r requirements.txt
     #   fastmcp-slim
     #   pydantic-ai-slim
 mdurl==0.1.2 \

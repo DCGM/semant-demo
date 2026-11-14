@@ -134,6 +134,7 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | [docs/adr/](docs/adr/README.md), [docs/TARGET_ARCHITECTURE.md](docs/TARGET_ARCHITECTURE.md) | Agreed decisions and ongoing design principles |
 | [docs/DATABASE.md](docs/DATABASE.md) | Weaviate schema, SQL tables, data ingestion |
 | [docs/SEARCH_FILTERS.md](docs/SEARCH_FILTERS.md) | Configurable search filters |
+| [docs/MCP.md](docs/MCP.md) | Public read-only MCP endpoint for personal AI clients: tools, limits, setup and smoke tests |
 | [docs/RIGHT_SIDEBAR.md](docs/RIGHT_SIDEBAR.md) | Frontend right sidebar and adding page tools to it |
 | [docs/START_HERE.md](docs/START_HERE.md) | First steps, code navigation and testing without project data |
 | [docs/ISSUE_WORKFLOW.md](docs/ISSUE_WORKFLOW.md) | Draft and implementation-ready issues, consultation, PR handoff and review request |

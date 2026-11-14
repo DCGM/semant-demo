@@ -88,7 +88,7 @@ test('search documents: filter-only and ranked results, Load more and states (#6
   await expect(page.getByTestId('document-result-open')).toHaveCount(2)
   await expect(page.getByTestId('search-load-more')).toBeVisible()
   await page.getByTestId('search-coverage').click() // closes the recent searches the field offers
-  // No right sidebar: the Summary panel serves passages only.
+  // No right sidebar: the AI Chat panel serves passages only.
   await save(page, testInfo, 'search-documents')
 
   await page.getByTestId('search-load-more').click()
@@ -169,7 +169,7 @@ test('document view', async ({ page }, testInfo) => {
   await save(page, testInfo, 'document-view')
 })
 
-test('document view - summary panel (#249)', async ({ page }, testInfo) => {
+test('document view - AI Chat panel with a summary (#249, #245)', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
   await page.reload() // without the sign-in notification
@@ -180,9 +180,9 @@ test('document view - summary panel (#249)', async ({ page }, testInfo) => {
     await page.getByRole('button', { name: 'Toggle sidebar' }).click()
   }
 
-  await sidebarPanelButton(page, 'Summary').click()
-  await page.getByRole('button', { name: 'Summarize Document' }).click()
-  await expect(page.getByTestId('document-summary')).toBeVisible()
+  await sidebarPanelButton(page, 'AI Chat').click()
+  await page.getByRole('button', { name: 'Summarize briefly' }).click()
+  await expect(page.getByTestId('chat-answer').getByRole('link').first()).toBeVisible()
   await save(page, testInfo, 'document-view-summary')
 })
 
@@ -581,10 +581,22 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
     await expect(dialog.getByTestId('assign-summary')).toContainText('Add "chronicler"')
     await save(page, testInfo, 'attribute-assign-dialog')
     await dialog.getByRole('button', { name: 'Add to 4' }).click()
-    await expect(page.getByTestId('assign-report')).toContainText('saved 1 of 4')
+    await expect(page.getByTestId('assign-report')).toContainText('changed 1 of 4')
     await expect(dialog).toHaveCount(0)
     await page.mouse.move(0, 0)
     await save(page, testInfo, 'attribute-assign-result')
+    // The same again: Jan Novák already holds it, which is no change (#569).
+    await page.getByTestId('assign-attribute').click()
+    await dialog.getByTestId('assign-dialog-attribute').click()
+    await page.getByRole('option', { name: 'Role (several values)' }).click()
+    await expect(page.locator('.q-menu')).toHaveCount(0)
+    await dialog.getByRole('checkbox', { name: 'chronicler' }).click()
+    await dialog.getByRole('button', { name: 'Add to 4' }).click()
+    await expect(page.getByTestId('assign-report-title')).toContainText('no annotations changed')
+    await expect(page.getByTestId('assign-report')).toContainText('already matched')
+    await expect(dialog).toHaveCount(0)
+    await page.mouse.move(0, 0)
+    await save(page, testInfo, 'attribute-assign-result-matched')
 
     await novak.locator('.kwic__key').click() // not on an attribute cell, which edits instead
     await expect(page.getByTestId('annotation-attributes')).toBeVisible()

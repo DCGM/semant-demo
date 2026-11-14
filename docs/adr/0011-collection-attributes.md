@@ -93,7 +93,7 @@ renames categories later without rewriting annotations or losing who decided wha
   tags it added or removed while the attribute stays on Selected tags. Every change of an
   attribute (its tags, and also only its name, description or retired flag) is written only on
   the `revision` it was computed from (a conditional update):
-  when someone else changed the attribute in between, the change and its narrowing check are
+  when someone else changed the attribute in between, the change and its narrowing count are
   computed again, and after three such races it is refused (409, nothing changed). The tag and the
   attributes it applies to are separate writes (ADR 0002): a tag saved before an attribute change
   fails stays saved, and the dialog shows and retries the failed changes; closing it before all
@@ -104,17 +104,28 @@ renames categories later without rewriting annotations or losing who decided wha
   with the number affected) but can be retired. The UI offers only retiring and restoring
   (#506); deletion stays an API operation for exceptional cleanup. When the usage cannot be counted (the count fails,
   or startup could not read the schema, so whether annotations hold values is unknown), deleting
-  and narrowing are refused with 503 rather than taken as unused. Narrowing an attribute's applicable tags while
-  annotations hold values of it is refused the same way (409, counting only annotations whose tag
-  would fall outside the new tags; going from All tags to selected tags or to none, and from
-  selected tags to none, is narrowing too); widening and an unchanged scope are always allowed. Merging values (reassigning the affected
-  annotations) is not implemented here.
+  and narrowing are refused with 503 rather than taken as unused. Merging values (reassigning the
+  affected annotations) is not implemented here.
+- **Narrowing the tags is confirmed, not refused** (#568, which replaced the earlier refusal).
+  Narrowing an attribute's applicable tags (All tags to selected tags or to none, leaving out a
+  selected tag, the last one included) so that values held by annotations stop applying answers
+  409 with `affected` (the number of distinct annotations whose values stop applying: those whose
+  current tag the attribute applies to now and would not; values that already do not apply are
+  not counted; rejected annotations holding values count too) and `confirm: narrowing`, and
+  changes nothing. Sent again with `confirm_affected` equal to the number counted at that time,
+  it is written; another number is refused the same way with the new one, so a confirmation
+  never applies a materially different change. Only the definition changes (its revision moves);
+  `attributeValues`, `attributeVersion` and change records stay, the values become inapplicable
+  as after a retag (below) and apply again when the tags are widened. An annotation that takes a
+  value between the count and the write is not counted (a narrow race accepted as for the other
+  definition checks). Widening and an unchanged scope are never asked about. Create/Edit Tag
+  confirms per attribute the same way.
 - **Values that no longer apply are kept** (#500, decided by the product owner). An attribute
   applies to an annotation when it applies to All tags or its selected tags include the
   annotation's current tag; this is derived on every read, never stored. A retag (review
   `retag`, `PATCH /api/tag_spans/{id}`, `bulk_update`) leaves `attributeValues` as they are, so an
   approved annotation can hold *inapplicable* values. They still match `?attribute=` and count as
-  usage (they block deleting their value or attribute and narrowing the tags away from them);
+  usage (they block deleting their value or attribute; a narrowing does not count them again);
   the workspace greys and marks them, apart from the applicable ones and removable only. A value
   of an attribute that does not apply is not assigned (`check_applicable`); removing it is allowed
   (`remove`, `clear`, or, unless the attribute is retired (#566), a `replace` that only leaves
@@ -146,7 +157,7 @@ Collection deletion crosses two stores: the collection (Weaviate) first, then it
 change records (SQL), so a failed collection deletion never costs a surviving collection its
 definitions or history; rows a failed second step leaves behind belong to a collection that no
 longer exists and are unreachable (cleaning them is a follow-up, `docs/TODO.md`). A retag can
-create inapplicable values, the state narrowing refuses to create; they stay until someone
+create inapplicable values, as a confirmed narrowing does (#568); they stay until someone
 removes them (#500). The document view does not show attributes yet.
 
 ## Verification

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, StrictInt
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from semant_demo.adapters.llm.gateway import LlmGateway
+from semant_demo.adapters.llm.usage import LlmRequestRefused
 from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.features.summarization.base import SearchResultsSummarizer
 from semant_demo.features.summarization.schemas import SummaryLength
@@ -201,10 +202,15 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
         return await self._complete("search_summary", system_prompt, prompt, values, options)
 
     async def _generate_or_fallback(self, kind: str, fallback: str, on_error: Optional[Callable[[str], None]],
-                                    *args) -> str:
+                                    *args, raise_refusals: bool = False) -> str:
+        """The generated text, or ``fallback`` when generation fails. With ``raise_refusals``, a
+        refusal by the server itself (``LlmRequestRefused``: input too large, provider not
+        configured, call limit) is raised instead, so the caller can show its safe message."""
         try:
             return await self._generate(*args)
         except Exception as e:
+            if raise_refusals and isinstance(e, LlmRequestRefused):
+                raise
             # Content-free: the provider error may quote the request.
             logging.error("Search %s generation failed: %s", kind, type(e).__name__)
             if on_error is not None:
@@ -220,13 +226,13 @@ Uživatel zadal do vyhledávače historických dokumentů dotaz:
 
     async def gen_results_summary(self, query: str, results: Sequence[DocumentChunk], prompt: Optional[str] = None, brevity: Optional[int] = None,
                                   on_error: Optional[Callable[[str], None]] = None,
-                                  length: Optional[SummaryLength] = None) -> str:
+                                  length: Optional[SummaryLength] = None, raise_refusals: bool = False) -> str:
         level, words = self.gen_results_summary_lengths.resolve(length)
         return await self._generate_or_fallback(
             "results_summary", self.gen_results_summary_error_summary, on_error,
             self.gen_results_summary_system_prompt, self.handle_prompt(prompt, self.gen_results_summary_prompt),
             {"results": results, "query": query, "length": level.value, "brevity": words},
-            self.gen_results_summary_model_options)
+            self.gen_results_summary_model_options, raise_refusals=raise_refusals)
 
     async def gen_query_summary_for_text_chunk(self, query: str, text: DocumentChunk, prompt: Optional[str] = None, brevity: Optional[int] = None,
                                                on_error: Optional[Callable[[str], None]] = None) -> str:

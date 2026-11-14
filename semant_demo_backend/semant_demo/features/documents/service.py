@@ -16,7 +16,8 @@ from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.documents.criteria import (
     ChunkFilters, ChunkVocabulary, Condition, DocumentFilters, document_level_conditions)
-from semant_demo.features.documents.schemas import DocumentChunk, AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail
+from semant_demo.features.documents.schemas import DocumentChunk, AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail, \
+    DocumentViewChunk
 
 Id = str | UUID
 
@@ -154,3 +155,14 @@ async def read_chunks_in_collection(documents: DocumentRepository, collections: 
     if detail is None:
         raise NotFoundError(f"Document with id {document_id} not found")
     return detail
+
+
+def chunks_in_collection(detail: DocumentDetail) -> list[DocumentViewChunk]:
+    """The document's chunks that are in the collection, in document order (chunks without
+    an order last): the scope of the document summary and the document chat (ADR 0006).
+    Raises ``NotFoundError`` when none is."""
+    chunks = sorted((chunk for chunk in detail.chunks if chunk.in_user_collection),
+                    key=lambda chunk: (chunk.order is None, chunk.order))
+    if not chunks:
+        raise NotFoundError("The document has no passages in this collection.")
+    return chunks

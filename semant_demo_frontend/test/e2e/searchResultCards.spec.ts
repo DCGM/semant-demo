@@ -1,22 +1,14 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
-import { appendResultCopies, editSearchResults, ensureLoggedIn, fixture, search, useViewport } from './support'
+import { LONG_PASSAGE_TERM, LONG_PASSAGE_TEXT, LONG_PASSAGE_TOKEN } from '../fixtures/longPassage'
+import { appendResultCopies, editSearchResults, ensureLoggedIn, fixture, insertLongPassage, LONG_PASSAGE_CHUNK, search, useLongPassage, useViewport } from './support'
 
 // Search result cards (#256): checkbox left of the title only, an understated selected
 // state, passage previews in narrow result columns, the selection toolbar and Escape.
+// The fixture passages are a line long; the shared long multilingual passage (#274) stands
+// in for chronicle_1's text.
 
-const chronicle = fixture.chunk('chronicle_1')
-// The fixture passages are a line long; the browser gets a long one for chronicle_1.
-const longText = [chronicle.text, ...Array.from({ length: 12 }, (_, i) =>
-  `Odstavec ${i + 1}: kronikář pečlivě zapsal, kdo do obce přijel, kde se ubytoval a co se ten den v hostinci U Lípy projednávalo.`)].join('\n')
-
-/** Lengthens chronicle_1 and, with `copies`, appends copies of the results (a long list). */
-const patchSearch = (page: Page, copies = 0) => editSearchResults(page, (body) => {
-  for (const result of body.items) {
-    if (result.text === chronicle.text) result.text = longText
-  }
-  appendResultCopies(body, copies)
-})
+const chronicle = fixture.chunk(LONG_PASSAGE_CHUNK)
 
 async function box (locator: Locator) {
   const b = await locator.boundingBox()
@@ -24,7 +16,15 @@ async function box (locator: Locator) {
   return b
 }
 
-const card = (page: Page, text = chronicle.text) => page.locator('.search-result', { hasText: text })
+const card = (page: Page, text = LONG_PASSAGE_TERM) => page.locator('.search-result', { hasText: text })
+const renderedText = (text: Locator) => text.evaluate(el => (el as HTMLElement).innerText)
+const visible = (text: Locator, index: number) => text.evaluate((el, i) => {
+  const range = document.createRange()
+  range.setStart(el.firstChild as Text, i)
+  range.setEnd(el.firstChild as Text, i + 1)
+  const [char, box] = [range.getBoundingClientRect(), el.getBoundingClientRect()]
+  return char.top >= box.top - 1 && char.bottom <= box.bottom + 1 && char.right <= box.right + 1
+}, index)
 const clipped = (text: Locator) => text.evaluate(el => el.scrollHeight > el.clientHeight + 1)
 const toolbar = (page: Page) => page.locator('.selection-toolbar')
 
@@ -35,7 +35,7 @@ for (const { name, viewport, constrained } of [
 ] as const) {
   test(`result cards on ${name}: alignment, passage and keyboard selection`, async ({ page }) => {
     await useViewport(page, viewport)
-    await patchSearch(page)
+    await useLongPassage(page)
     await search(page, 'Lhota')
 
     if (name.includes('sidebars')) {
@@ -61,14 +61,22 @@ for (const { name, viewport, constrained } of [
     expect(await result.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 
     // The passage: complete when wide; a ~6-line preview with Show full text when narrow.
-    await expect(text).toHaveText(longText)
-    await expect(result).toContainText(`Source: ${fixture.document('chronicle').properties.title}`)
+    expect(await renderedText(text)).toBe(LONG_PASSAGE_TEXT)
+
+    const { title: source, author, yearIssued } = fixture.document('chronicle').properties
+    await expect(result).toContainText(`Source: ${source}`)
+    await expect(result.locator('.search-result__meta')).toContainText(author?.join(', ') ?? 'missing author')
+    await expect(result.locator('.search-result__meta')).toContainText(String(yearIssued))
     const showFull = result.getByRole('button', { name: 'Show full text' })
     if (!constrained) {
       expect(await clipped(text)).toBe(false)
       await expect(showFull).toHaveCount(0)
+      expect(await visible(text, 0)).toBe(true)
+      expect(await visible(text, LONG_PASSAGE_TEXT.length - 1)).toBe(true)
     } else {
       expect(await clipped(text)).toBe(true)
+      expect(await visible(text, 0)).toBe(true)
+      expect(await visible(text, LONG_PASSAGE_TEXT.length - 1)).toBe(false)
       const lines = await text.evaluate(el => el.clientHeight / parseFloat(getComputedStyle(el).lineHeight))
       expect(lines).toBeGreaterThanOrEqual(5)
       expect(lines).toBeLessThanOrEqual(6.5)
@@ -76,6 +84,9 @@ for (const { name, viewport, constrained } of [
 
       await showFull.click()
       expect(await clipped(text)).toBe(false)
+      expect(await visible(text, LONG_PASSAGE_TEXT.length - 1)).toBe(true)
+      expect(await visible(text, LONG_PASSAGE_TEXT.indexOf(LONG_PASSAGE_TOKEN) + LONG_PASSAGE_TOKEN.length - 1)).toBe(true)
+      expect(await renderedText(text)).toBe(LONG_PASSAGE_TEXT)
       const showLess = result.getByRole('button', { name: 'Show less' })
       await expect(showLess).toHaveAttribute('aria-expanded', 'true')
       await showLess.click()
@@ -108,7 +119,7 @@ for (const { name, viewport, constrained } of [
 test('a signed-in user without membership rights gets no collection actions', async ({ page }) => {
   await ensureLoggedIn(page, 'annotator') // only a shared collection
   await search(page, 'Lhota')
-  await card(page).getByRole('checkbox').click()
+  await card(page, chronicle.text).getByRole('checkbox').click()
   await expect(toolbar(page)).toContainText('1 item(s) selected')
   await expect(toolbar(page).getByRole('button', { name: 'Clear selection' })).toBeVisible()
   await expect(toolbar(page).getByRole('button', { name: 'Add Chunks' })).toHaveCount(0)
@@ -119,7 +130,7 @@ test('a signed-in user without membership rights gets no collection actions', as
 test('the collection owner gets the collection actions', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await search(page, 'Lhota')
-  await card(page).getByRole('checkbox').click()
+  await card(page, chronicle.text).getByRole('checkbox').click()
   await expect(toolbar(page).getByLabel('Select Collection')).toBeVisible()
   await expect(toolbar(page).getByRole('button', { name: 'Add Chunks' })).toBeVisible()
   await expect(toolbar(page).getByRole('button', { name: 'Add Documents' })).toBeVisible()
@@ -129,7 +140,7 @@ test('the collection owner gets the collection actions', async ({ page }) => {
 
 test('Escape clears the whole selection, but not inside a field or menu', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
-  await patchSearch(page, 2) // a long list: selected results out of view
+  await editSearchResults(page, (body) => { insertLongPassage(body); appendResultCopies(body, 2) })
   await search(page, 'Lhota')
   const selected = page.locator('.search-result--selected')
 

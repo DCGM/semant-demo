@@ -9,8 +9,8 @@ export interface RequestedCitation {
   token: number
 }
 
-// Module-scope singleton: the sidebar panels that cite chunks (document Summary #249,
-// document Chat #248) live in `DocumentViewLayout`, but `DocumentReaderPage` is a sibling
+// Module-scope singleton: the sidebar panel that cites chunks (AI Chat with its summaries,
+// #248/#249) lives in `DocumentViewLayout`, but `DocumentReaderPage` is a sibling
 // route with no prop/event path from them. The reader watches `requestedCitation` and
 // scrolls to it.
 const requested = ref<RequestedCitation | null>(null)

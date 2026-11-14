@@ -5,8 +5,7 @@ import { Quasar } from 'quasar'
 import type { SearchResultChunk } from 'src/generated/api'
 import SearchResultCard from 'src/features/search/SearchResultCard.vue'
 import { CONSTRAINED_RESULT_WIDTH, escapeClearsSelection, isConstrainedResultWidth } from 'src/features/search/resultLayout'
-
-const longText = Array.from({ length: 40 }, (_, i) => `Sentence ${i + 1} of a long source passage.`).join('\n')
+import { LONG_PASSAGE_TEXT as longText } from '../fixtures/longPassage'
 
 const chunk = {
   id: 'chunk-1',
@@ -100,7 +99,7 @@ describe('SearchResultCard', () => {
     await flushPromises()
     const text = wrapper.get('.search-result__text')
 
-    expect(text.text()).toBe(longText)
+    expect(text.element.textContent).toBe(longText) // exact: line breaks and non-ASCII kept
     expect(text.classes()).not.toContain('search-result__text--preview')
     expect(wrapper.find('.search-result__toggle').exists()).toBe(false) // no Show full text control
     const header = wrapper.get('.search-result__header').text()
@@ -117,7 +116,7 @@ describe('SearchResultCard', () => {
     const toggle = () => wrapper.get('.search-result__toggle')
 
     expect(text.classes()).toContain('search-result__text--preview')
-    expect(text.text()).toBe(longText) // clipped visually, never cut
+    expect(text.element.textContent).toBe(longText) // clipped visually, never cut
     expect(toggle().text()).toBe('Show full text')
     expect(toggle().attributes('aria-expanded')).toBe('false')
     expect(toggle().attributes('aria-controls')).toBe(text.attributes('id'))

@@ -49,7 +49,17 @@ services:
       - traefik.enable=true
       - traefik.http.routers.${TEST_ROUTER_NAME}.rule=Host(`${TEST_SUBDOMAIN}`)
       - traefik.http.routers.${TEST_ROUTER_NAME}.entrypoints=websecure
+      - traefik.http.routers.${TEST_ROUTER_NAME}.service=${TEST_ROUTER_NAME}
       - traefik.http.services.${TEST_ROUTER_NAME}.loadbalancer.server.port=8000
+      # The public MCP endpoint (docs/MCP.md, #635) gets a per-client-IP rate limit: the longer
+      # rule wins over the host router, so only /mcp passes this middleware. Over the limit, 429.
+      - traefik.http.routers.${TEST_ROUTER_NAME}-mcp.rule=Host(`${TEST_SUBDOMAIN}`) && PathPrefix(`/mcp`)
+      - traefik.http.routers.${TEST_ROUTER_NAME}-mcp.entrypoints=websecure
+      - traefik.http.routers.${TEST_ROUTER_NAME}-mcp.service=${TEST_ROUTER_NAME}
+      - traefik.http.routers.${TEST_ROUTER_NAME}-mcp.middlewares=${TEST_ROUTER_NAME}-mcp-ratelimit
+      - traefik.http.middlewares.${TEST_ROUTER_NAME}-mcp-ratelimit.ratelimit.average=60
+      - traefik.http.middlewares.${TEST_ROUTER_NAME}-mcp-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.${TEST_ROUTER_NAME}-mcp-ratelimit.ratelimit.burst=30
 
 networks:
   web:

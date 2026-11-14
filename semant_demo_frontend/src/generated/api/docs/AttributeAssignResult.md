@@ -9,6 +9,7 @@ Name | Type
 ------------ | -------------
 `outcome` | [WriteOutcome](WriteOutcome.md)
 `succeeded` | Array&lt;string&gt;
+`unchanged` | Array&lt;string&gt;
 `failed` | [Array&lt;StepFailure&gt;](StepFailure.md)
 `versions` | { [key: string]: number; }
 `values` | { [key: string]: Array&lt;string&gt;; }
@@ -22,6 +23,7 @@ import type { AttributeAssignResult } from ''
 const example = {
   "outcome": null,
   "succeeded": null,
+  "unchanged": null,
   "failed": null,
   "versions": null,
   "values": null,

@@ -686,14 +686,20 @@ class SpanRepository:
     # ── Attributes (#331) ─────────────────────────────────────────────────
 
     async def count_attribute_use(self, collection_id: UUID, attribute_id: UUID, value_id: UUID | None = None,
-                                  outside_tags: list[UUID] | None = None) -> int:
+                                  outside_tags: list[UUID] | None = None,
+                                  within_tags: list[UUID] | None = None) -> int:
         """Annotations of the collection holding an accepted value of the attribute (of this value
-        when given), whatever their type; with ``outside_tags`` only those whose tag is not among them."""
+        when given), whatever their type; with ``outside_tags`` only those whose tag is not among
+        them, with ``within_tags`` only those whose tag is among them (none for an empty list)."""
+        if within_tags is not None and not within_tags:
+            return 0
         values = Filter.by_property("attributeValues")
         where = (values.contains_any([codec.encode(attribute_id, value_id)]) if value_id is not None
                  else values.like(codec.attribute_pattern(attribute_id)))
         if outside_tags:  # an empty list: every annotation is outside
             where = where & Filter.not_(Filter.by_property("tagId").contains_any(list(outside_tags)))
+        if within_tags:
+            where = where & Filter.by_property("tagId").contains_any(list(within_tags))
 
         async def count():
             result = await self._tenant(collection_id).aggregate.over_all(filters=where, total_count=True)

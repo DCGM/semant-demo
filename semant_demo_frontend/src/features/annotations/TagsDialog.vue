@@ -2,7 +2,7 @@
   <FormDialog
     ref="dialogRef"
     :dirty="isDirty"
-    :ok-label="savedTag ? 'Save' : 'Create'"
+    :ok-label="Object.keys(toConfirm).length ? 'Confirm and save' : savedTag ? 'Save' : 'Create'"
     :busy="saving"
     @hide="onHide"
     @confirm="handleConfirm"
@@ -176,6 +176,7 @@
           :attributes="attributes"
           :tag-id="savedTag?.id ?? null"
           :errors="attributeErrors"
+          :warnings="attributeWarnings"
           :loading="attributesLoading"
           :error="attributesError"
           :disable="saving"
@@ -199,10 +200,10 @@ import useColorPicker from 'src/shared/useColorPicker'
 import { plural } from 'src/shared/plural'
 import { apiErrorMessage } from 'src/shared/api'
 import { PostTag, Tag } from 'src/generated/api'
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import TagApplicableAttributes from 'src/features/attributes/TagApplicableAttributes.vue'
-import { useAttributesStore } from 'src/features/attributes/attributesStore'
-import { tagApplicabilityChanges } from 'src/features/attributes/attributeForm'
+import { AttributeWriteError, useAttributesStore } from 'src/features/attributes/attributesStore'
+import { narrowingWarning, tagApplicabilityChanges } from 'src/features/attributes/attributeForm'
 import { TagsDialogProps } from './TagsDialogTypes'
 
 // The dialog saves on its own and closes only when everything is saved (#516): first the tag,
@@ -212,7 +213,9 @@ import { TagsDialogProps } from './TagsDialogTypes'
 // everything confirms the dialog (`ok`, on which the caller may go on, e.g. tag the selected
 // text); closing it before that is a dismissal even when the tag was saved, and the caller learns
 // of that tag from its `save`. After a failed attribute change, closing reloads the attributes, as
-// they may have been changed by someone else.
+// they may have been changed by someone else. Switching an attribute off for the tag may make
+// values on annotations stop applying (#568): that change waits, shown at its attribute with the
+// number of annotations, and the next save (Confirm and save) confirms that number.
 const props = defineProps<TagsDialogProps>()
 defineEmits([...useDialogPluginComponent.emits])
 const { dialogRef, onDialogHide, onDialogOK } =
@@ -249,6 +252,19 @@ const saving = ref(false)
 const formError = ref<string | null>(null)
 const attributeErrors = ref<Record<string, string>>({})
 const wanted = ref<Record<string, boolean>>({})
+// Removals waiting for confirmation: the number of annotations whose values would stop applying,
+// with its warning, by attribute id. Switching the attribute back on withdraws it.
+const toConfirm = ref<Record<string, number>>({})
+const attributeWarnings = ref<Record<string, string>>({})
+watch(wanted, () => {
+  const withdrawn = Object.keys(toConfirm.value).filter(id => wanted.value[id] !== false)
+  if (!withdrawn.length) return
+  function keep<T> (entries: Record<string, T>): Record<string, T> {
+    return Object.fromEntries(Object.entries(entries).filter(([id]) => !withdrawn.includes(id)))
+  }
+  toConfirm.value = keep(toConfirm.value)
+  attributeWarnings.value = keep(attributeWarnings.value)
+})
 
 const attributesStore = useAttributesStore()
 const { attributes, loading: attributesLoading, error: attributesError } = storeToRefs(attributesStore)
@@ -332,6 +348,9 @@ const handleSubmit = async () => {
   saving.value = true
   formError.value = null
   attributeErrors.value = {}
+  // Pending confirmations and their warnings stay until the attribute changes answer again,
+  // together, so a confirmation is never armed without its count on screen (also when the tag
+  // save fails first).
   try {
     // Whether this save wrote the tag: only then is the failure of an attribute change worth
     // saying the tag is saved (a new tag exists although the dialog stays open).
@@ -348,19 +367,34 @@ const handleSubmit = async () => {
     if (!tag) return
     const tagId = tag.id
     const changes = tagApplicabilityChanges(attributes.value, tagId, wanted.value)
+    const shown = toConfirm.value
     const results = await Promise.allSettled(changes.map(({ attribute, add }) =>
       attributesStore.updateAttribute(props.collectionId, attribute.id,
-        add ? { addTagIds: [tagId] } : { removeTagIds: [tagId] })))
+        add
+          ? { addTagIds: [tagId] }
+          : attribute.id in shown
+            ? { removeTagIds: [tagId], confirmAffected: shown[attribute.id] }
+            : { removeTagIds: [tagId] })))
     const errors: Record<string, string> = {}
+    const confirm: Record<string, number> = {}
+    const warnings: Record<string, string> = {}
     results.forEach((result, index) => {
       if (result.status === 'rejected') {
         const reason: unknown = result.reason
-        errors[changes[index]!.attribute.id] =
-          reason instanceof Error && reason.message ? reason.message : 'The change could not be saved.'
+        const id = changes[index]!.attribute.id
+        if (reason instanceof AttributeWriteError && reason.toConfirm !== null) {
+          confirm[id] = reason.toConfirm
+          warnings[id] = narrowingWarning(reason.toConfirm, shown[id] ?? null)
+        } else {
+          errors[id] = reason instanceof Error && reason.message ? reason.message : 'The change could not be saved.'
+        }
       }
     })
+    toConfirm.value = confirm
+    attributeWarnings.value = warnings
     const failed = Object.keys(errors).length
-    if (!failed) {
+    const waiting = Object.keys(confirm).length
+    if (!failed && !waiting) {
       confirmed = true
       onDialogOK(tag)
       return
@@ -369,9 +403,23 @@ const handleSubmit = async () => {
     attributeErrors.value = errors
     const what = plural(failed, 'attribute change')
     const were = failed === 1 ? 'was' : 'were'
-    formError.value = tagSaved
-      ? `The tag is saved, but ${what} ${were} not; Save tries again.`
-      : `${what} ${were} not saved; Save tries again.`
+    if (!waiting) {
+      formError.value = tagSaved
+        ? `The tag is saved, but ${what} ${were} not; Save tries again.`
+        : `${what} ${were} not saved; Save tries again.`
+    } else {
+      // Nothing is wrong with a change waiting for confirmation: say what confirming does.
+      formError.value = [
+        tagSaved ? 'The tag is saved.' : '',
+        `Switching off ${plural(waiting, 'attribute')} changes whether existing values apply; ` +
+          'see the counts above. Confirm and save to apply.',
+        failed ? `${what} ${were} not saved; Confirm and save tries again too.` : ''
+      ].filter(Boolean).join(' ')
+    }
+    // The messages are at their attributes, in a list the form may be scrolled away from.
+    await nextTick()
+    document.querySelector('[data-testid="tag-applicable-attribute-warning"], [data-testid="tag-applicable-attribute-error"]')
+      ?.scrollIntoView?.({ block: 'nearest' })
   } finally {
     saving.value = false
   }

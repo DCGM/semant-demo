@@ -301,7 +301,7 @@ import ProvenanceSummary from './ProvenanceSummary.vue'
 import BoundaryEditor from './BoundaryEditor.vue'
 import AnnotationAttributes from './AnnotationAttributes.vue'
 import { useAttributesStore } from 'src/features/attributes/attributesStore'
-import { useAttributeAssignStore } from 'src/features/attributes/attributeAssignStore'
+import { assignMayHaveChanged, useAttributeAssignStore } from 'src/features/attributes/attributeAssignStore'
 import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
 import type { AssignChange } from 'src/features/attributes/assignment'
 import {
@@ -764,10 +764,11 @@ const filtersByAttribute = computed(() =>
 /** Rows and the open annotation take what the server answered, never their own copy. */
 const answered = (attributeId: string) => (result: AttributeAssignResult) => store.applyAssignment(attributeId, result)
 
-/** An assignment that saved something is the last change, which cannot be undone (yet): the
- * undo line no longer offers the change before it. */
-function noteAssigned (saved: number) {
-  if (saved && (review.undoable || review.undoNote)) review.noteChange(null, 'Attribute assignments cannot be undone.')
+/** An assignment that changed something, or may have (a lost write), is the last change,
+ * which cannot be undone (yet): the undo line no longer offers the change before it. One that
+ * found every annotation already as asked changed nothing and keeps it (#569). */
+function noteAssigned (changed: number) {
+  if (changed && (review.undoable || review.undoNote)) review.noteChange(null, 'Attribute assignments cannot be undone.')
 }
 
 /** Assigns values to one annotation (a row's column or the sidebar), at the attribute version
@@ -777,7 +778,7 @@ async function assignRow (row: AnnotationListRow, attribute: Attribute, change: 
   if (!id) return false
   const report = await assign.assignOne(id, attribute.id, change, [row.id, row.attributeVersion ?? 0], answered(attribute.id))
   if (!report) return false
-  noteAssigned(report.saved.length)
+  noteAssigned(assignMayHaveChanged(report))
   if (report.missing.length) selection.remove(report.missing)
   const problem = report.conflicts.length
     ? 'Someone else changed this annotation\'s attributes meanwhile; it now shows them. Your change was not saved.'
@@ -816,7 +817,7 @@ function assignSelection () {
         review.dismiss()
         const report = await assign.assign(id, attributeId, change, targets, answered(attributeId))
         if (report) {
-          noteAssigned(report.saved.length)
+          noteAssigned(assignMayHaveChanged(report))
           afterAssign(report)
         }
         return report
@@ -831,7 +832,7 @@ async function retryAssign () {
   if (!id || !attributeId) return
   const report = await assign.retry(id, answered(attributeId))
   if (report) {
-    noteAssigned(report.saved.length)
+    noteAssigned(assignMayHaveChanged(report))
     afterAssign(report)
   }
 }

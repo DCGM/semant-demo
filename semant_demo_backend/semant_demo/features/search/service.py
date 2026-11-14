@@ -27,6 +27,7 @@ import logging
 from dataclasses import dataclass
 from functools import partial
 from time import time
+from collections.abc import Sequence
 from typing import Any, Awaitable, Callable, Protocol
 from uuid import UUID
 
@@ -50,7 +51,7 @@ from semant_demo.features.search.schemas import (
     ChunkQuery, DocumentHit, DocumentReadRequest, DocumentReadResponse, DocumentRetrieval, DocumentSearchRequest,
     DocumentSearchResponse, FieldCondition, RankedDocument, Op, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse,
     SearchFiltersResponse, SearchRequest,
-    SearchResponse, SearchType, TagFilter,
+    SearchResponse, SearchResultChunk, SearchType, TagFilter,
 )
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
 
@@ -221,12 +222,26 @@ async def read_passages(backends: SearchBackends, user: Principal | None, reques
     longer matches, is left out. Nothing is ranked or embedded.
     """
     start = time()
-    _, query, _ = await _passage_query(backends, user, request.criteria, request.user_collection_id,
-                                       filter_definitions, limit=len(request.ids), type=SearchType.text)
-    items = await backends.chunks.read_hits(list(dict.fromkeys(request.ids)), query)
+    items = await read_search_hits(backends, user, request.ids, request.criteria, request.user_collection_id,
+                                   filter_definitions)
+    return PassageReadResponse(items=items, time_spent=time() - start)
+
+
+async def read_search_hits(backends: SearchBackends, user: Principal | None, ids: Sequence[UUID],
+                           criteria: SearchCriteria, user_collection_id: str | None,
+                           filter_definitions: SearchFiltersResponse | None) -> list[SearchResultChunk]:
+    """The passages among ``ids`` (from a client) that a passage search of ``criteria`` in
+    ``user_collection_id`` could return, in the order of ``ids``, each once, with display
+    text: access to the collection and the criteria are checked again and the chunks are
+    read under the search's own restrictions; the others are left out. Nothing is ranked or
+    embedded. Used for a later page of a search (#611) and the Search chat's scope (#245)."""
+    unique = list(dict.fromkeys(ids))
+    _, query, _ = await _passage_query(backends, user, criteria, user_collection_id, filter_definitions,
+                                       limit=max(len(unique), 1), type=SearchType.text)
+    items = await backends.chunks.read_hits(unique, query)
     for item in items:
         item.text = display_text(item.text)
-    return PassageReadResponse(items=items, time_spent=time() - start)
+    return items
 
 
 async def passage_document_values(backends: SearchBackends, user: Principal | None, ids: list[UUID],

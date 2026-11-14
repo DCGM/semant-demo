@@ -14,11 +14,12 @@ from uuid import UUID
 
 import pytest
 from weaviate.classes.backup import BackupStorage
-from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty
+from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
 from weaviate.classes.data import DataObject
 from weaviate.classes.query import Filter, MetadataQuery, QueryReference
 
 from semant_demo.adapters.weaviate import chunk_ingest as store
+from semant_demo.adapters.weaviate.classification_provenance import PROPERTY as PROVENANCE, UNPROCESSED
 from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
 from semant_demo.maintenance import chunk_ingest, chunk_positions as backfill, metadata_sync, page_order
 
@@ -73,7 +74,9 @@ async def ingest_store(weaviate_client, collection_names):
                     Property(name="end_paragraph", data_type=DataType.BOOL),
                     Property(name="yearIssued", data_type=DataType.INT, index_range_filters=True),
                     Property(name="startChar", data_type=DataType.INT), Property(name="startWord", data_type=DataType.INT),
-                    Property(name="wordOpenAtStart", data_type=DataType.BOOL)],
+                    Property(name="wordOpenAtStart", data_type=DataType.BOOL),
+                    Property(name="classification_provenance", data_type=DataType.TEXT,
+                             tokenization=Tokenization.FIELD, index_filterable=True, index_searchable=False)],
         references=[ReferenceProperty(name="document", target_collection=DOCS),
                     ReferenceProperty(name="positiveTag", target_collection=TAGS)])
     await client.alias.create(alias_name=DOCS_ALIAS, target_collection=DOCS)
@@ -435,6 +438,66 @@ async def test_a_schema_without_positions_is_refused_before_writing(ingest_store
                                checkpoint=tmp_path / "run.json", endpoint="test", write_=True,
                                backup={"offline_backup": "test copy"}, progress=quiet)
     assert not await s.client.collections.get(DOCS).query.fetch_object_by_id(NEW)
+
+
+async def provenance(client, document: UUID, orders) -> list:
+    """The stored classification status of the document's chunks (None when absent)."""
+    chunks = client.collections.get(CHUNKS)
+    return [(await chunks.query.fetch_object_by_id(cid(document, i))).properties.get(PROVENANCE) for i in orders]
+
+
+async def test_inserted_chunks_await_classification_and_stored_ones_keep_their_status(ingest_store, tmp_path):
+    s = ingest_store
+    before = await snapshot(s.client)
+    inputs = jsonl(tmp_path, "mixed.jsonl", [line(NEW, i) for i in range(3)] + [line(EXISTING, i) for i in range(2, 5)])
+    _, code = await run(s, tmp_path, inputs)
+    assert code == 0
+    assert await provenance(s.client, NEW, range(3)) == [UNPROCESSED] * 3
+    assert await provenance(s.client, EXISTING, range(5)) == [None] * STORED + [UNPROCESSED] * 2
+    after = await snapshot(s.client)
+    assert {k: after[k] for k in before} == before
+
+
+async def test_bulk_inserted_chunks_await_classification(ingest_store, tmp_path):
+    s = ingest_store
+    await empty_chunks(s.client)
+    _, code = await run(s, tmp_path, jsonl(tmp_path, "all.jsonl", [line(NEW, i) for i in range(3)]), bulk=True)
+    assert code == 0 and await provenance(s.client, NEW, range(3)) == [UNPROCESSED] * 3
+
+
+async def test_a_chunk_classified_since_its_import_still_replays(ingest_store, tmp_path):
+    s = ingest_store
+    inputs = jsonl(tmp_path, "new.jsonl", [line(NEW, i) for i in range(3)])
+    _, code = await run(s, tmp_path, inputs, "first.json")
+    assert code == 0
+    await s.client.collections.get(CHUNKS).data.update(uuid=cid(NEW, 1), properties={PROVENANCE: "classifier-v1"})
+    before = await snapshot(s.client)
+    result, code = await run(s, tmp_path, inputs, "second.json")
+    assert code == 0 and result["counts"]["replayed"] == 1 and result["counts"]["chunks_inserted"] == 0
+    assert await snapshot(s.client) == before
+    assert await provenance(s.client, NEW, range(3)) == [UNPROCESSED, "classifier-v1", UNPROCESSED]
+
+
+@pytest.mark.parametrize("declared, state", [
+    (None, "missing"),
+    (Property(name=PROVENANCE, data_type=DataType.TEXT, tokenization=Tokenization.WORD), "different")])
+@pytest.mark.parametrize("write", [False, True])
+async def test_a_store_without_the_classification_status_is_refused_before_writing(
+        ingest_store, tmp_path, declared, state, write):
+    s = ingest_store
+    await s.client.collections.create("IngestBareChunks", properties=[
+        Property(name="text", data_type=DataType.TEXT), Property(name="order", data_type=DataType.INT),
+        Property(name="startChar", data_type=DataType.INT), Property(name="startWord", data_type=DataType.INT),
+        Property(name="wordOpenAtStart", data_type=DataType.BOOL), *([declared] if declared else [])],
+        references=[ReferenceProperty(name="document", target_collection=DOCS)])
+    names = s.names.model_copy(update={"chunks_collection_name": "IngestBareChunks"})
+    with pytest.raises(LookupError, match=f"classification_provenance is {state}.*classification_provenance_schema"):
+        await chunk_ingest.run(s.client, names, jsonl(tmp_path, "new.jsonl", [line(NEW, 0)]),
+                               checkpoint=tmp_path / "run.json", endpoint="test", write_=write,
+                               backup={"offline_backup": "test copy"} if write else None, progress=quiet)
+    assert not await s.client.collections.get(DOCS).query.fetch_object_by_id(NEW)
+    assert not (await s.client.collections.get("IngestBareChunks").aggregate.over_all(total_count=True)).total_count
+    assert not (tmp_path / "run.json").exists()
 
 
 async def test_the_backup_must_hold_the_chunks_and_documents(ingest_store):

@@ -29,6 +29,9 @@ class QuestionRequest(BaseModel):
 class SummaryResponse(BaseModel):
     summary: str
     time_spent: float
+    failed: bool = False
+    """Generation failed and ``summary`` is the configured fallback text (search results
+    summary): show it as an error, never as a summary of the results."""
 
 
 class DocumentSummaryCitation(BaseModel):

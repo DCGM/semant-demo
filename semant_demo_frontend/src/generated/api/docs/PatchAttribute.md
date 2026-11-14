@@ -14,6 +14,7 @@ Name | Type
 `addTagIds` | Array&lt;string&gt;
 `removeTagIds` | Array&lt;string&gt;
 `retired` | boolean
+`confirmAffected` | number
 
 ## Example
 
@@ -29,6 +30,7 @@ const example = {
   "addTagIds": null,
   "removeTagIds": null,
   "retired": null,
+  "confirmAffected": null,
 } satisfies PatchAttribute
 
 console.log(example)

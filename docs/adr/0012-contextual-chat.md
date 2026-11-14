@@ -32,30 +32,46 @@ the backend. Already in place:
 ## Product decisions (maintainer, 2026-11-02)
 
 1. **History lives in memory, one conversation per scope.** Nothing is stored on the
-   server; a reload or leaving the page loses it; Q6 stays deferred. When the scope changes
+   server; Q6 stays deferred. A reload or leaving the page loses a Search conversation.
+   Document chat keeps its conversation in the browser (maintainer, 2026-11-12): one per
+   document of a collection and signed-in user, its latest, so it comes back after a reload
+   or on returning to the document and the next question continues it; *New conversation*
+   forgets it. A user keeps the 20 most recently used ones, each for 30 days after its last
+   answer; signing out removes them (an expired session keeps them). When the scope changes
    (another search, selection, document or collection), the same thing happens everywhere:
    - an answer still streaming is stopped;
    - the old conversation stays visible, marked with a notice that says what the next
      question will be about;
    - the next question starts a new conversation and the old one is dropped.
 
-   Another document or collection page is a new page, so its chat simply starts empty.
+   Another document or collection page is a new page, so its chat starts empty, or with
+   that document's kept conversation.
 2. **Which chat a page shows.** Search: Search chat. Collection pages (overview,
    documents, tags...): Collection chat. A document page inside a collection: Document chat
    only, not Collection chat.
 3. **Search chat (#245)**
    - Scope: the selected results if any are checked, otherwise all retrieved results of the
      current search. The panel always says which ("Asking about 3 selected results",
-     "Asking about all 50 results").
+     "Asking about all 50 loaded results").
+   - "All results" are the results loaded on the page, not the whole
+     ranking behind *Load more* (maintainer, 2026-11-11). For now a question is about at most
+     the first 20 of them (the first page), or of the selected ones, and the panel says so
+     ("Asking about the first 20 of 35 selected results"); *Load more* therefore does not
+     change the scope.
+   - A citation shows its result and opens it in the Document panel; it never selects the
+     result, which would change the scope.
    - Any selection change is a scope change (decision 1), including unchecking the last
      selected result: the notice then says the next question is about all results. The
      scope never changes without that notice and a new conversation, so nothing widens
      silently (ADR 0006).
-   - The **Summary panel stays** a separate tool. A *Discuss in chat* action on a summary
-     starts a chat whose scope is exactly the results the summary was made from (its first
-     3, first 10, all or selected results), with the summary as its first assistant
-     message. Its citations keep pointing to the same chunks. Changing the selection
-     afterwards is a scope change as above.
+   - **Summary is part of the chat** (maintainer, 2026-11-11; this replaces "the Summary
+     panel stays a separate tool" with a *Discuss in chat* action). One *AI Chat* panel on
+     Search and in the document reader: the suggested messages *Summarize briefly* and
+     *Summarize in detail* (always shown) summarize exactly the chat's scope, and the
+     summary is the conversation's answer to that message, its citations the answer's
+     sources, so follow-up questions ask about it. Each page also suggests a few questions
+     of its own while the conversation is empty. The summary scopes Focused/Broader/Extensive are gone; the document summary
+     covers only the document's chunks in the collection, as the chat does (ADR 0006).
    - Signed-out users may use it under the daily AI allowance and its warnings, like Summary
      and the Chat assistant.
 4. **Document chat (#248)**
@@ -142,8 +158,9 @@ the backend. Already in place:
 ### Frontend
 
 - `features/chat/`: one composable `useScopedChat(scope)` and one `ScopedChatPanel.vue`,
-  used by all three pages. The page owns the scope (`SearchResultsContext` plus selection,
-  `collectionId`, `collectionId` + `documentId`) and passes it in.
+  used by all three pages. The page owns the scope (Search: the chosen results' ids with the
+  search's criteria and collection; `collectionId`; `collectionId` + `documentId`) and passes
+  it in.
 - A scope change, a new question replacing a running one, or unmount aborts the request
   through `createContextGuard()`; a late event cannot reach the new conversation. After a
   scope change the panel keeps the old messages with the notice of decision 1.

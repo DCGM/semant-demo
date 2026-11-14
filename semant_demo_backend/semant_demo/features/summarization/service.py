@@ -70,6 +70,7 @@ class SafeLlmFailure(Exception):
 
 QuestionFailed = SafeLlmFailure
 DocumentSummaryFailed = SafeLlmFailure
+SummaryRefused = SafeLlmFailure
 
 
 async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
@@ -78,15 +79,22 @@ async def summarize(summarizer: SearchResultsSummarizer, summary_type: str,
     """The summary of ``summary_type`` of the results; only ``results`` is supported.
 
     ``length`` is the length level (#360); None uses the configured default. A failed
-    generation returns the summarizer's configured fallback text.
+    generation returns the summarizer's configured fallback text with ``failed`` set; a
+    refusal by the server (input too large, provider not configured, call limit) raises
+    :class:`SummaryRefused` with its safe message and status instead.
     """
     start_time = time.time()
     if summary_type != "results":
         raise InvalidRequestError(f"Unknown summary type: {summary_type}")
-    async with summarizer.operation(budget):
-        summary = await summarizer.gen_results_summary(search_response.search_request.query,
-                                                       search_response.results, length=length)
-    return SummaryResponse(summary=summary, time_spent=time.time() - start_time)
+    failures: list[str] = []
+    try:
+        async with summarizer.operation(budget):
+            summary = await summarizer.gen_results_summary(search_response.search_request.query,
+                                                           search_response.results, on_error=failures.append,
+                                                           length=length, raise_refusals=True)
+    except LlmRequestRefused as e:
+        raise SummaryRefused.of(e, str(e)) from e
+    return SummaryResponse(summary=summary, time_spent=time.time() - start_time, failed=bool(failures))
 
 
 async def answer_question(llm: LlmGateway, question: str, search_response: SearchResponse,
@@ -117,7 +125,7 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
                              length: SummaryLength | None = None) -> DocumentSummaryResponse:
     """
     A summary of the current document of ``collection_id`` (#249), with citations to the
-    chunks it was built from.
+    chunks it was built from: only the document's chunks in the collection (ADR 0006).
 
     Authorization and chunk access go entirely through
     ``features.documents.service.read_chunks_in_collection`` (collection-read access, then
@@ -138,7 +146,8 @@ async def summarize_document(documents: DocumentRepository, collections: UserCol
     start_time = time.time()
     detail = await documents_service.read_chunks_in_collection(documents, collections, user, document_id,
                                                                 collection_id)
-    chunks = sorted(detail.chunks, key=lambda chunk: (chunk.order is None, chunk.order))
+    # Only the document's chunks in the collection (ADR 0006), the same scope as document chat.
+    chunks = documents_service.chunks_in_collection(detail)
     truncated = chunks[:document_summarizer.chunk_limit]
     # gen_document_summary calls the model exactly once here, so a single slot — not the
     # list-of-failures accumulator the multi-part search summarizer needs — is enough to carry
