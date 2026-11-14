@@ -625,6 +625,10 @@ jobs:
           sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(escape_sed_replacement "$JWT_SECRET")|"  "$DEPLOY_PATH/.env"
           sed -i "s|^OTEL_ENABLED=.*|OTEL_ENABLED=true|" "$DEPLOY_PATH/.env"
           sed -i "s|^DEPLOYMENT_ENVIRONMENT=.*|DEPLOYMENT_ENVIRONMENT=test-main|" "$DEPLOY_PATH/.env"
+          # Enable public read-only MCP only on persistent test-main (#635). The shared test
+          # template stays disabled for PR previews, and production remains opt-in.
+          sed -i "s|^MCP_ENABLED=.*|MCP_ENABLED=true|" "$DEPLOY_PATH/.env"
+          grep -qx "MCP_ENABLED=true" "$DEPLOY_PATH/.env"
 
           echo "Test URL: https://${TEST_SUBDOMAIN}"
 
