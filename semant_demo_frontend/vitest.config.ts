@@ -22,7 +22,9 @@ export default defineConfig({
     }
   },
   test: {
-    environment: 'jsdom',
+    // Vitest's jsdom, ending the timers a file leaves behind with the file (#551,
+    // test/unit/environment).
+    environment: 'jsdom-timers',
     include: ['test/unit/**/*.spec.ts'],
     setupFiles: ['test/unit/setup.ts'],
     // Generated client and build output are not test sources.
