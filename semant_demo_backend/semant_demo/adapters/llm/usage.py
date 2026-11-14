@@ -207,13 +207,16 @@ class UsageRecorder:
             except Exception:
                 logger.exception("Failed to record LLM call metrics")
 
-    def record_operation(self, operation: LlmOperation) -> None:
+    def record_operation(self, operation: LlmOperation, *, released: bool = False) -> None:
+        """Log the ended operation; ``released`` marks one settled without being started
+        (its client left before the stream began), apart from real operations without calls."""
         extra = {"llm.feature": operation.feature, "llm.operation.calls": operation.started_calls,
                  "llm.operation.finished_calls": operation.finished_calls,
                  "llm.operation.max_calls": operation.max_calls,
                  "llm.operation.cost_usd": round(operation.cost_usd, 8),
                  "llm.operation.unknown_cost_calls": operation.unknown_cost_calls,
-                 "llm.operation.cost_sources": ",".join(sorted(operation.cost_sources))}
+                 "llm.operation.cost_sources": ",".join(sorted(operation.cost_sources)),
+                 "llm.operation.released": released}
         request_id = current_request_id.get()
         if request_id is not None:
             extra["request.id"] = request_id
@@ -291,7 +294,7 @@ class UsageCallback(AsyncCallbackHandler):
         run = self._runs.pop(run_id, None)
         if run is None:
             return
-        outcome = "cancelled" if isinstance(error, asyncio.CancelledError) else "error"
+        outcome = "cancelled" if isinstance(error, asyncio.CancelledError | GeneratorExit) else "error"
         self._record_estimate(run, outcome, run.output_chars, error_type=type(error).__name__)
 
     def abandon_runs(self) -> None:

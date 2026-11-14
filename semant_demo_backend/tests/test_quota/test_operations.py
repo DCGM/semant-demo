@@ -195,6 +195,68 @@ async def test_a_cancelled_operation_is_still_settled(ledger, tmp_path):
         == [("unfinished", "unknown", None)]
 
 
+async def test_releasing_an_operation_never_entered_settles_it_with_no_calls(transport, ledger, tmp_path):
+    llm = gateway(transport, catalog=catalog(reserve_usd=0.03))
+    unentered, entered = llm.operation("chat", budget(ledger)), llm.operation("chat", budget(ledger))
+    await unentered.admit()
+    async with entered:
+        await llm.complete("chat", messages())
+    charged = (await totals(ledger)).charged_micro_usd
+    assert (await totals(ledger)).reserved_micro_usd == 30_000
+
+    await unentered.release()
+    await unentered.release()
+    await entered.release()
+
+    assert await totals(ledger) == DayTotals(reserved_micro_usd=0, charged_micro_usd=charged)
+    assert rows(tmp_path / "quota.db", "SELECT status, count(*) FROM llm_quota_operation GROUP BY status") \
+        == [("settled", 2)]
+    assert len(transport.paths) == 1
+
+
+async def test_a_released_operation_is_logged_as_released(transport, ledger, caplog):
+    llm = gateway(transport, catalog=catalog())
+    released, entered = llm.operation("chat", budget(ledger)), llm.operation("chat", budget(ledger))
+    await released.admit()
+
+    with caplog.at_level("INFO"):
+        await released.release()
+        async with entered:
+            pass
+
+    finished = [r for r in caplog.records if r.getMessage() == "LLM operation finished"]
+    assert [getattr(r, "llm.operation.released") for r in finished] == [True, False]
+
+
+@pytest.mark.parametrize("ended", ["released", "left"])
+async def test_an_operation_cannot_be_entered_again_once_released_or_left(transport, ledger, tmp_path, ended):
+    llm = gateway(transport, catalog=catalog(reserve_usd=0.03))
+    operation = llm.operation("chat", budget(ledger))
+    await operation.admit()
+    if ended == "released":
+        await operation.release()
+    else:
+        async with operation:
+            pass
+
+    with pytest.raises(RuntimeError):
+        async with operation:
+            await llm.complete("chat", messages())
+    await llm.wait_for_settlements()
+
+    assert transport.paths == []
+    assert await totals(ledger) == DayTotals(reserved_micro_usd=0, charged_micro_usd=0)
+    assert rows(tmp_path / "quota.db", "SELECT status FROM llm_quota_operation") == [("settled",)]
+
+
+async def test_releasing_an_operation_never_admitted_does_nothing(transport, ledger, tmp_path):
+    llm = gateway(transport, catalog=catalog())
+
+    await llm.operation("chat", budget(ledger)).release()
+
+    assert rows(tmp_path / "quota.db", "SELECT count(*) FROM llm_quota_operation") == [(0,)]
+
+
 class SlowSettlement(AllowanceBudget):
     async def settle(self, admission, operation):
         await asyncio.sleep(0.05)

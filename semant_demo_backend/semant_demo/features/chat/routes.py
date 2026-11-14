@@ -6,10 +6,10 @@ results, as NDJSON (``schemas.ChatEvent``). Access is
 checked and the input fitted before the stream starts, then the answer is admitted as
 one AI operation against the caller's daily allowance: a denial is 401/404, an input that
 cannot fit 413 and a refusal 429, all before the stream. The operation is settled when the
-stream ends, also when the client disconnects during it; a client that leaves before the
-stream starts leaves the reservation charged (#563).
+stream ends, also when the client disconnects during it or before it starts (#563).
 """
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -28,6 +28,7 @@ from semant_demo.features.search.schemas import SearchFiltersResponse
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.routes.dependencies import get_documents, get_llm, get_search_backends, get_search_filters, \
     get_user_collections
+from semant_demo.routes.streaming import OperationStreamingResponse
 from semant_demo.users.auth import current_active_optional_user, current_active_user
 from semant_demo.users.models import User
 
@@ -36,9 +37,10 @@ exp_router = APIRouter()
 _NDJSON_MEDIA_TYPE = "application/x-ndjson"
 
 
-async def _ndjson(events: AsyncIterator[ChatEvent]) -> AsyncIterator[bytes]:
-    async for event in events:
-        yield (event.model_dump_json() + "\n").encode("utf-8")
+async def _ndjson(events: AsyncGenerator[ChatEvent, None]) -> AsyncGenerator[bytes, None]:
+    async with aclosing(events):
+        async for event in events:
+            yield (event.model_dump_json() + "\n").encode("utf-8")
 
 
 @exp_router.post(
@@ -64,7 +66,7 @@ async def chat_about_document(collection_id: str, document_id: str, body: Contex
         raise HTTPException(status_code=413, detail=str(e))
     operation = llm.operation(service.FEATURE, budget)
     await operation.admit()
-    return StreamingResponse(_ndjson(chat.events(llm, operation)), media_type=_NDJSON_MEDIA_TYPE)
+    return OperationStreamingResponse(_ndjson(chat.events(llm, operation)), operation, _NDJSON_MEDIA_TYPE)
 
 
 @exp_router.post(
@@ -97,4 +99,4 @@ async def chat_about_search_results(body: SearchChatRequest,
         raise HTTPException(status_code=413, detail=str(e))
     operation = llm.operation(service.FEATURE, budget)
     await operation.admit()
-    return StreamingResponse(_ndjson(chat.events(llm, operation)), media_type=_NDJSON_MEDIA_TYPE)
+    return OperationStreamingResponse(_ndjson(chat.events(llm, operation)), operation, _NDJSON_MEDIA_TYPE)
