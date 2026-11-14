@@ -47,14 +47,27 @@
     </div>
 
     <div class="concordance-toolbar__search" role="group" aria-label="Text search">
+      <q-select
+        :model-value="filters.mode"
+        :options="modeOptions"
+        emit-value
+        map-options
+        dense
+        outlined
+        options-dense
+        label="Find by"
+        class="concordance-toolbar__mode"
+        data-testid="concordance-mode"
+        @update:model-value="value => emit('change', modeChange(value))"
+      />
       <q-input
         :model-value="filters.text"
         dense
         outlined
         clearable
         debounce="400"
-        :label="scopeLabel"
-        :hint="scopeHint"
+        :label="textLabel"
+        :hint="textHint"
         hide-hint
         hide-bottom-space
         class="concordance-toolbar__text"
@@ -64,6 +77,7 @@
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <q-select
+        v-if="filters.mode !== RetrievalMode.semantic"
         :model-value="filters.textScope"
         :options="scopeOptions"
         emit-value
@@ -75,6 +89,28 @@
         class="concordance-toolbar__scope"
         data-testid="concordance-text-scope"
         @update:model-value="value => emit('change', { textScope: value })"
+      />
+      <q-select
+        v-if="ranked"
+        :model-value="filters.k"
+        :options="TOP_K_OPTIONS"
+        dense
+        outlined
+        options-dense
+        label="Top"
+        class="concordance-toolbar__k"
+        data-testid="concordance-k"
+        @update:model-value="value => emit('change', { k: value })"
+      >
+        <q-tooltip>How many annotations to rank at most</q-tooltip>
+      </q-select>
+      <q-checkbox
+        v-if="filters.mode === RetrievalMode.similar"
+        dense
+        :model-value="filters.includeSource"
+        label="Include source"
+        data-testid="concordance-include-source"
+        @update:model-value="value => emit('change', { includeSource: !!value })"
       />
     </div>
 
@@ -239,10 +275,14 @@
       outlined
       options-dense
       label="Sort by"
+      :disable="ranked"
+      :display-value="ranked ? 'Relevance' : undefined"
       class="concordance-toolbar__sort"
       data-testid="concordance-sort"
       @update:model-value="value => emit('change', { sort: value })"
-    />
+    >
+      <q-tooltip v-if="ranked">Ranked results are in order of relevance</q-tooltip>
+    </q-select>
 
     <q-select
       v-if="attributes.length"
@@ -288,12 +328,12 @@
 import { computed, ref } from 'vue'
 import { QBtn, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QMenu, QSelect, QTooltip } from 'quasar'
 import {
-  AnnotationSort, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+  AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
-import type { ConcordanceFilters } from './concordanceStore'
-import { SCOPE_LABELS, scopeHintText, titleProblem } from './filterChips'
+import { TOP_K_OPTIONS, modeChange, type ConcordanceFilters } from './concordanceStore'
+import { MODE_LABELS, SCOPE_LABELS, modeHintText, titleProblem } from './filterChips'
 
 const props = defineProps<{
   filters: ConcordanceFilters
@@ -330,7 +370,14 @@ const sortOptions = [
 const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOPE_LABELS[value] }))
 const scopeLabel = computed(() => props.filters.textScope === TextScope.annotation ? 'Annotated text'
   : props.filters.textScope === TextScope.context ? 'Context text' : 'Annotation or context text')
-const scopeHint = computed(() => scopeHintText(props.filters.textScope))
+const ranked = computed(() => props.filters.mode !== RetrievalMode.lexical)
+// Find similar is entered from an annotation; the selector only shows it while it is active.
+const modeOptions = computed(() => Object.values(RetrievalMode)
+  .filter(value => value !== RetrievalMode.similar || props.filters.mode === RetrievalMode.similar)
+  .map(value => ({ value, label: MODE_LABELS[value], disable: value === RetrievalMode.similar })))
+const textLabel = computed(() => props.filters.mode === RetrievalMode.semantic ? 'Meaning of'
+  : props.filters.mode === RetrievalMode.hybrid ? 'Meaning and words of' : scopeLabel.value)
+const textHint = computed(() => modeHintText(props.filters.mode, props.filters.textScope))
 
 function setDocumentFilters (change: Partial<DocumentFilters>) {
   emit('change', { documentFilters: { ...props.filters.documentFilters, ...change } })
@@ -462,13 +509,16 @@ const shownLabel = computed(() => {
 
 .concordance-toolbar__search {
   display: flex;
-  flex: 1 1 320px;
-  max-width: 460px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1 1 420px;
+  max-width: 760px;
   gap: 6px;
 }
 
 .concordance-toolbar__text {
-  flex: 1 1 200px;
+  flex: 1 1 180px;
+  min-width: 0;
 }
 
 .concordance-toolbar__scope {
@@ -531,6 +581,15 @@ const shownLabel = computed(() => {
 
 .concordance-toolbar__sort {
   width: 160px;
+}
+
+.concordance-toolbar__mode {
+  flex: 0 1 170px;
+  min-width: 120px;
+}
+
+.concordance-toolbar__k {
+  width: 84px;
 }
 
 .concordance-toolbar__dot {

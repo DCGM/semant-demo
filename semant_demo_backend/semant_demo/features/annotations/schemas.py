@@ -183,7 +183,9 @@ class AnnotationRow(BaseModel):
     vectorRevision: int | None = None
     vectorConfig: str | None = None
     distance: float | None = None
-    """Vector distance, for semantic search results."""
+    """Vector distance, for semantic and similar ranking (#664)."""
+    score: float | None = None
+    """Hybrid score, for hybrid ranking (#664)."""
     documentTitle: str | None = None
     documentYear: int | None = None
     """Joined from the document per page of rows (not copied onto annotations)."""
@@ -222,6 +224,14 @@ class TextScope(str, Enum):
     """The annotated text or either context."""
 
 
+SCOPE_FIELDS = {
+    TextScope.annotation: ("text",),
+    TextScope.context: ("leftContext", "rightContext"),
+    TextScope.both: ("text", "leftContext", "rightContext"),
+}
+"""The stored text fields a lexical query (and hybrid's BM25, #664) searches per ``TextScope``."""
+
+
 class AnnotationQuery(BaseModel):
     """Internal: the stored-field conditions of a concordance query (#329), all required.
     ``words``: each must occur in a field of ``text_scope``, inside one of its words; only text
@@ -239,6 +249,23 @@ class AnnotationQuery(BaseModel):
     values; every attribute must match."""
     attribute_unassigned: list[UUID] = []
     """Attributes the annotation must have no accepted value of."""
+    vector_config: str | None = None
+    """Only annotations with a ``ready`` vector of this configuration and text ``ready`` under
+    ``derivation_version`` (ranked retrieval, #664). Whether the vector belongs to the current
+    revision cannot be filtered in Weaviate; the caller checks it per row (``vector_current``)."""
+
+
+class VectorRanking(BaseModel):
+    """Internal: how a ranked annotation query orders the annotations its ``AnnotationQuery``
+    selects (#664): nearest to ``vector`` in ``target_vector``, or, with ``text``, Weaviate hybrid
+    of that vector and BM25 of ``text`` on ``fields`` weighted by ``alpha`` (1: vector only)."""
+    target_vector: str
+    vector: list[float]
+    text: str | None = None
+    fields: tuple[str, ...] = ()
+    alpha: float = 0.5
+    exclude: UUID | None = None
+    """Never this annotation (the source of Find similar)."""
 
 
 class AnnotationSort(str, Enum):
@@ -293,12 +320,92 @@ class AnnotationListRow(BaseModel):
     """The version an attribute assignment of this annotation expects."""
 
 
+class RetrievalMode(str, Enum):
+    """How an annotation query selects and orders annotations (#664)."""
+    lexical = "lexical"
+    """Every annotation matching the filters (``q``: words, ``TextScope``), in an ``AnnotationSort``."""
+    semantic = "semantic"
+    """The ``k`` nearest in meaning to ``q``: its query embedding against the stored contextual vectors."""
+    hybrid = "hybrid"
+    """The ``k`` best by Weaviate hybrid of the contextual vector and BM25 of ``q`` on the fields of
+    ``text_scope``, with the fixed weight ``HYBRID_ALPHA``."""
+    similar = "similar"
+    """The ``k`` nearest to the stored vector of the annotation ``similar_to``; no embedding call.
+    ``q`` stays a lexical filter."""
+
+
+DEFAULT_TOP_K = 100
+MAX_TOP_K = 500
+HYBRID_ALPHA = 0.5
+"""Weight of the vector in hybrid annotation retrieval (BM25: ``1 - HYBRID_ALPHA``); Weaviate's
+relative-score fusion. The default of passage search."""
+
+
+class AnnotationRanking(BaseModel):
+    """The retrieval mode of an annotation query (#664). Ranked modes return at most ``k``
+    annotations by relevance among those matching every filter (filters apply before ranking),
+    only those with a current vector of the configured model."""
+    model_config = ConfigDict(extra="forbid")
+
+    mode: RetrievalMode = RetrievalMode.lexical
+    k: int = Field(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K)
+    """Ranked modes: at most this many annotations; ignored by ``lexical``."""
+    similar_to: UUID | None = None
+    """Mode ``similar``: the source annotation, of the same collection."""
+    include_source: bool = False
+    """Mode ``similar``: rank the source too (excluded by default)."""
+
+    @model_validator(mode="after")
+    def _source(self) -> "AnnotationRanking":
+        if (self.mode == RetrievalMode.similar) != (self.similar_to is not None):
+            raise ValueError("similar_to is required by mode similar and only allowed with it")
+        if self.include_source and self.mode != RetrievalMode.similar:
+            raise ValueError("include_source is only allowed with mode similar")
+        return self
+
+    @property
+    def ranked(self) -> bool:
+        return self.mode != RetrievalMode.lexical
+
+
+class ResultKind(str, Enum):
+    complete = "complete"
+    """Every matching annotation; ``total`` is their exact number."""
+    top_k = "top_k"
+    """At most ``k`` annotations by relevance; ``total`` is how many were returned."""
+
+
+class VectorCoverage(BaseModel):
+    """Of the annotations matching a ranked query's filters, how many could be ranked (#664)."""
+    matching: int
+    """Annotations matching the filters (in mode ``similar`` the source too, when it matches)."""
+    with_vector: int
+    """Of them, those with a vector of the configured model for their current text and revision.
+    Pending, failed and stale vectors cannot be ranked. A vector stored ``ready`` but for an older
+    revision is found only among the ranked candidates, so this count may be slightly high when
+    the result is truncated."""
+
+
+class AnnotationResultSet(BaseModel):
+    """What a page of annotations is a page of (#664)."""
+    kind: ResultKind = ResultKind.complete
+    mode: RetrievalMode = RetrievalMode.lexical
+    k: int | None = None
+    """Ranked modes: the requested ``k``."""
+    truncated: bool = False
+    """Ranked modes: more than ``k`` annotations could have been ranked."""
+    coverage: VectorCoverage | None = None
+    """Ranked modes."""
+
+
 class AnnotationPage(BaseModel):
-    """One page of a collection's concordance rows and the number of all matching rows."""
+    """One page of a collection's concordance rows and the number of all rows of the result:
+    every match (``complete``) or the ranked top ``k`` (``top_k``), in relevance order then id."""
     rows: list[AnnotationListRow]
     total: int
     offset: int
     limit: int
+    result: AnnotationResultSet = Field(default_factory=AnnotationResultSet)
 
 
 class AnnotationCounts(BaseModel):
@@ -358,7 +465,8 @@ class AnnotationFilters(BaseModel):
     types: list[SpanType] | None = None
     """Default ``pos`` and ``auto``; rejected ``neg`` only when asked."""
     q: str | None = Field(default=None, max_length=MAX_QUERY_TEXT_LENGTH)
-    """Words that must each occur in a field of ``text_scope``, inside one of its words, ignoring case."""
+    """Lexical and ``similar`` modes: words that must each occur in a field of ``text_scope``, inside
+    one of its words, ignoring case. ``semantic`` and ``hybrid``: the query ranked by (#664), required."""
     text_scope: TextScope = TextScope.annotation
     document_ids: list[UUID] | None = None
     document_filters: DocumentFilters = Field(default_factory=DocumentFilters)
@@ -374,6 +482,8 @@ class AnnotationIdsRequest(AnnotationFilters):
     """The annotation query whose matching annotation ids to resolve (#459). ``within``: only
     these annotations, to learn which members of a selection the filters show."""
     within: list[UUID] | None = Field(default=None, max_length=MAX_RESOLVED_IDS)
+    ranking: AnnotationRanking = Field(default_factory=AnnotationRanking)
+    """A ranked mode resolves exactly its top ``k`` ids (#664), never every filter match."""
 
 
 class AnnotationIds(BaseModel):
@@ -383,6 +493,8 @@ class AnnotationIds(BaseModel):
     ids: list[UUID]
     versions: dict[UUID, int] = {}
     attribute_versions: dict[UUID, int] = {}
+    result: AnnotationResultSet = Field(default_factory=AnnotationResultSet)
+    """Whether ``ids`` are every match or a ranked top ``k`` (#664)."""
     """Each one's ``attributeVersion`` then, which attribute assignments send back (#331)."""
 
 

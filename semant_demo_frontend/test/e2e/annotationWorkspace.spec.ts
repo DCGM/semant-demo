@@ -316,6 +316,49 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   await expect(chips).toHaveCount(0)
 })
 
+test('find similar from the sidebar, ranked by meaning, as a top k (#664)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  const range = page.getByTestId('concordance-range')
+  const ranked = page.getByTestId('concordance-ranked')
+
+  // From the open annotation: the others, ranked, without it; its chip names and opens it.
+  await row(page, 'Jan Novák').click()
+  await page.getByTestId('row-find-similar').click()
+  await expect(range).toHaveText('Rows 1–3 of 3 ranked annotations')
+  await expect(ranked).toHaveText('Top 100 most similar (3 found)')
+  await expect(row(page, 'Jan Novák')).toHaveCount(0)
+  await expect(rows(page).getByTestId('kwic-rank')).toHaveText(['#1', '#2', '#3'])
+  await expect(page.getByTestId('concordance-sort')).toHaveText('Relevance')
+  await expect(page.locator('label', { has: page.getByTestId('concordance-sort') })).toHaveClass(/q-field--disabled/)
+  await expect(page.getByTestId('select-all-matches')).toHaveText('Select these top 3')
+  const chip = page.getByTestId('concordance-chip-similar')
+  await expect(chip).toContainText('Similar to:\'Jan Novák\'')
+
+  await page.getByTestId('concordance-include-source').click()
+  await expect(range).toHaveText('Rows 1–4 of 4 ranked annotations')
+  await expect(rows(page).first()).toContainText('Jan Novák') // nearest to itself
+
+  await chip.locator('.filter-chips__value').click()
+  await expect(page.getByTestId('annotation-context-text')).toHaveText('Jan Novák')
+
+  // Removing the chip leaves the mode; every match again, sortable.
+  await page.getByRole('button', { name: 'Stop finding annotations similar to \'Jan Novák\'' }).click()
+  await expect(range).toHaveText('Rows 1–4 of 4 matching annotations')
+  await expect(ranked).toHaveCount(0)
+
+  // By meaning: nothing is read until a text is entered; then a ranked top k of the filters.
+  await page.getByTestId('concordance-mode').click()
+  await page.getByRole('option', { name: 'Meaning', exact: true }).click()
+  await expect(page.getByTestId('concordance-needs-text')).toBeVisible()
+  await page.getByLabel('Meaning of').fill('hejtman')
+  await expect(range).toHaveText('Rows 1–4 of 4 ranked annotations')
+  await expect(ranked).toContainText('Top 100 by meaning')
+  await expect(page.getByTestId('concordance-chips')).toContainText('Meaning:hejtman')
+  await page.getByTestId('concordance-status-pos').click() // proposals only: filters apply before ranking
+  await expect(range).toHaveText('Rows 1–2 of 2 ranked annotations')
+})
+
 test('a long cross-chunk annotation is elided in its row and complete in the sidebar', async ({ page, request }) => {
   const first = fixture.chunk('chronicle_1').text
   const second = fixture.chunk('chronicle_2').text

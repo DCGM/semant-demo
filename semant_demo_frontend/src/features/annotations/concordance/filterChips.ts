@@ -1,7 +1,9 @@
-import { SpanType, TextScope, type AnnotatedDocument, type Attribute, type Tag } from 'src/generated/api'
+import {
+  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationListRow, type Attribute, type Tag
+} from 'src/generated/api'
 import { filterGroups, withoutFilter } from 'src/features/analytics/corpusOverview'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
-import { defaultFilters, type ConcordanceFilters } from './concordanceStore'
+import { defaultFilters, modeChange, type ConcordanceFilters } from './concordanceStore'
 
 /** The fields of a lexical annotation query (#663), as the scope selector names them. */
 export const SCOPE_LABELS: Record<TextScope, string> = {
@@ -45,6 +47,59 @@ export interface ConcordanceChip {
   label: string
   /** The change of the filters that removes this chip. */
   remove: Partial<ConcordanceFilters>
+  /** A reference chip: clicking it opens this annotation (the source of Find similar). */
+  opens?: AnnotationListRow
+}
+
+/** The retrieval modes (#664), as the mode selector names them. */
+export const MODE_LABELS: Record<RetrievalMode, string> = {
+  [RetrievalMode.lexical]: 'Words',
+  [RetrievalMode.semantic]: 'Meaning',
+  [RetrievalMode.hybrid]: 'Meaning and words',
+  [RetrievalMode.similar]: 'Similar'
+}
+
+/** How a ranked mode ranks, for the result label, e.g. "Top 100 by meaning". */
+const RANKED_BY: Record<RetrievalMode, string> = {
+  [RetrievalMode.lexical]: '',
+  [RetrievalMode.semantic]: 'by meaning',
+  [RetrievalMode.hybrid]: 'by meaning and words',
+  [RetrievalMode.similar]: 'most similar'
+}
+
+/** What the mode's text field does, as its hint says. */
+export function modeHintText (mode: RetrievalMode, scope: TextScope): string {
+  if (mode === RetrievalMode.semantic) {
+    return 'Ranks annotations with their context by closeness in meaning to this text; it filters nothing.'
+  }
+  if (mode === RetrievalMode.hybrid) {
+    return `Ranks by meaning and by the words found in ${SCOPE_FIELDS[scope]} (BM25), equally weighted; it filters nothing.`
+  }
+  return scopeHintText(scope)
+}
+
+/** The source annotation of Find similar, quoted and shortened. */
+export function sourceLabel (row: AnnotationListRow): string {
+  const text = (row.text ?? '').trim() || 'annotation'
+  return `'${text.length > 40 ? `${text.slice(0, 39)}…` : text}'`
+}
+
+/** The description of a ranked page (#664), e.g. "Top 100 by meaning · 37 matching annotations
+ * have no vector yet"; null for a complete (lexical) result. */
+export function rankedLabel (result: { kind?: string, mode?: RetrievalMode, k?: number | null, truncated?: boolean,
+  coverage?: { matching: number, withVector: number } | null } | undefined, returned: number): string | null {
+  if (!result || result.kind !== 'top_k' || !result.mode) return null
+  const parts = [`Top ${result.k ?? returned} ${RANKED_BY[result.mode]}`]
+  if (returned < (result.k ?? 0)) parts[0] += ` (${returned} found)`
+  else if (!result.truncated) parts[0] += ' (all that could be ranked)'
+  const coverage = result.coverage
+  if (coverage) {
+    const missing = coverage.matching - coverage.withVector
+    if (missing > 0) {
+      parts.push(`${missing} matching ${missing === 1 ? 'annotation has' : 'annotations have'} no vector yet and cannot be ranked`)
+    }
+  }
+  return parts.join(' · ')
 }
 
 const STATUS_LABELS: Record<SpanType, string> = {
@@ -69,8 +124,14 @@ export function concordanceChips (f: ConcordanceFilters, tags: Tag[], documents:
   if (JSON.stringify([...f.types].sort()) !== JSON.stringify([...defaults.types].sort())) {
     chips.push({ key: 'types', group: 'Status', label: f.types.map(t => STATUS_LABELS[t]).join(', '), remove: { types: defaults.types } })
   }
+  if (f.mode === RetrievalMode.similar && f.similarTo) {
+    chips.push({ key: 'similar', group: 'Similar to', label: sourceLabel(f.similarTo), remove: modeChange(RetrievalMode.lexical), opens: f.similarTo })
+  }
   if (f.text.trim()) {
-    chips.push({ key: 'text', group: `Text in ${SCOPE_LABELS[f.textScope].toLowerCase()}`, label: f.text.trim(), remove: { text: '' } })
+    const group = f.mode === RetrievalMode.semantic
+      ? 'Meaning'
+      : f.mode === RetrievalMode.hybrid ? `Meaning and words in ${SCOPE_LABELS[f.textScope].toLowerCase()}` : `Text in ${SCOPE_LABELS[f.textScope].toLowerCase()}`
+    chips.push({ key: 'text', group, label: f.text.trim(), remove: { text: '' } })
   }
   const titles = new Map(documents.map(d => [d.id, d.available ? (d.title || 'Untitled document') : 'Unavailable source']))
   for (const id of f.documentIds) {

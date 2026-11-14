@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { AnnotationResultSet } from './AnnotationResultSet';
+import {
+    AnnotationResultSetFromJSON,
+    AnnotationResultSetFromJSONTyped,
+    AnnotationResultSetToJSON,
+    AnnotationResultSetToJSONTyped,
+} from './AnnotationResultSet';
+
 /**
  * The ids of all annotations matching a query when it was resolved (by id); the caller
  * keeps them as a fixed set, so later changes of the filters or annotations never widen it.
@@ -39,6 +47,12 @@ export interface AnnotationIds {
      * @memberof AnnotationIds
      */
     attributeVersions?: { [key: string]: number; };
+    /**
+     * 
+     * @type {AnnotationResultSet}
+     * @memberof AnnotationIds
+     */
+    result?: AnnotationResultSet;
 }
 
 /**
@@ -62,6 +76,7 @@ export function AnnotationIdsFromJSONTyped(json: any, ignoreDiscriminator: boole
         'ids': json['ids'],
         'versions': json['versions'] == null ? undefined : json['versions'],
         'attributeVersions': json['attribute_versions'] == null ? undefined : json['attribute_versions'],
+        'result': json['result'] == null ? undefined : AnnotationResultSetFromJSON(json['result']),
     };
 }
 
@@ -79,6 +94,7 @@ export function AnnotationIdsToJSONTyped(value?: AnnotationIds | null, ignoreDis
         'ids': value['ids'],
         'versions': value['versions'],
         'attribute_versions': value['attributeVersions'],
+        'result': AnnotationResultSetToJSON(value['result']),
     };
 }
 

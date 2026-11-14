@@ -6,11 +6,15 @@
       :key="chip.key"
       removable
       dense
-      color="blue-1"
+      :clickable="!!chip.opens"
+      :icon="chip.opens ? 'join_inner' : undefined"
+      :color="chip.opens ? 'amber-2' : 'blue-1'"
       text-color="dark"
       class="filter-chips__chip"
-      :remove-aria-label="`Remove filter ${chip.group}: ${chip.label}`"
+      :title="chip.opens ? 'Show this annotation' : undefined"
+      :remove-aria-label="chip.opens ? `Stop finding annotations similar to ${chip.label}` : `Remove filter ${chip.group}: ${chip.label}`"
       :data-testid="`concordance-chip-${chip.key}`"
+      @click="chip.opens && emit('open', chip.opens)"
       @remove="emit('change', chip.remove)"
     >
       <span class="filter-chips__group">{{ chip.group }}:</span>
@@ -31,11 +35,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { QBtn, QChip } from 'quasar'
-import type { AnnotatedDocument, Attribute, Tag } from 'src/generated/api'
+import type { AnnotatedDocument, AnnotationListRow, Attribute, Tag } from 'src/generated/api'
 import type { ConcordanceFilters } from './concordanceStore'
 import { concordanceChips } from './filterChips'
 
-/** The concordance's active filters as removable chips, with a reset of all (#663). */
+/** The concordance's active filters as removable chips, with a reset of all (#663); the source
+ * of Find similar as a reference chip that opens it (#664). */
 const props = defineProps<{
   filters: ConcordanceFilters
   tags: Tag[]
@@ -46,6 +51,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   change: [change: Partial<ConcordanceFilters>]
   reset: []
+  open: [row: AnnotationListRow]
 }>()
 
 const chips = computed(() => concordanceChips(props.filters, props.tags, props.documents, props.attributes ?? []))
