@@ -47,6 +47,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from functools import total_ordering
 from typing import NamedTuple, Protocol
 from datetime import datetime, timezone
 from uuid import UUID
@@ -945,6 +946,27 @@ def _year_key(document: Document | None) -> tuple:
     return (year is None, year or 0)
 
 
+@total_ordering
+class _Reversed:
+    """A sort key component in reverse order."""
+    __slots__ = ("value",)
+
+    def __init__(self, value) -> None:
+        self.value = value
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Reversed) and self.value == other.value
+
+    def __lt__(self, other: "_Reversed") -> bool:
+        return other.value < self.value
+
+
+def _descending(key: tuple) -> tuple:
+    """A ``(missing, *values)`` key with its values reversed and missing values still last."""
+    missing, *values = key
+    return (missing, *(_Reversed(v) for v in values))
+
+
 @dataclass
 class _Documents:
     """The annotated documents of a query, filtered and in row order, with their counts."""
@@ -954,10 +976,12 @@ class _Documents:
 
 
 async def _annotated_documents(store: AnnotationStore, cid: UUID, query: AnnotationQuery, sort: AnnotationSort,
-                               document_ids: list[UUID] | None, conditions: list[Condition]) -> _Documents:
+                               document_ids: list[UUID] | None, conditions: list[Condition],
+                               descending: bool = False) -> _Documents:
     """The documents with annotations matching ``query`` (of ``document_ids`` when given) and
     their counts; with document ``conditions`` (``DocumentFilters``) only the documents they
-    select, read by one ``Documents`` query with the shared predicates (#663). Raises
+    select, read by one ``Documents`` query with the shared predicates (#663). ``descending``
+    reverses titles and years; documents without them stay last, ties stay by id. Raises
     ``UnavailableFilter`` (adapter) for a condition the corpus store cannot evaluate."""
     counts = await store.spans.count_by_document(cid, query, _MAX_DOCUMENTS + 1, document_ids)
     if len(counts) > _MAX_DOCUMENTS:
@@ -971,6 +995,8 @@ async def _annotated_documents(store: AnnotationStore, cid: UUID, query: Annotat
 
     def key(d: UUID) -> tuple:
         title, year = _title_key(documents.get(d)), _year_key(documents.get(d))
+        if descending:
+            title, year = _descending(title), _descending(year)
         return (*(year + title if sort == AnnotationSort.year else title + year), str(d))
     return _Documents(order=sorted(counts, key=key), counts=counts, documents=documents)
 
@@ -1109,8 +1135,9 @@ async def _rank(store: AnnotationStore, cid: UUID, filters: AnnotationFilters, r
         coverage=VectorCoverage(matching=matching, with_vector=max(0, min(with_vector, matching)))))
 
 
-def _check_ranking(store: AnnotationStore, ranking: AnnotationRanking, sort: AnnotationSort | None) -> None:
-    if sort is not None:
+def _check_ranking(store: AnnotationStore, ranking: AnnotationRanking, sort: AnnotationSort | None,
+                   descending: bool = False) -> None:
+    if sort is not None or descending:
         raise InvalidRequestError("Ranked results are in order of relevance; they cannot be sorted.")
     if store.enrichment.vector is None:
         raise ServiceUnavailableError(SEMANTIC_NOT_CONFIGURED)
@@ -1132,12 +1159,13 @@ async def count_annotations(store: AnnotationStore, user: Principal | None, coll
 async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id,
                             filters: AnnotationFilters | None = None, *,
                             ranking: AnnotationRanking | None = None, sort: AnnotationSort | None = None,
-                            limit: int = 50, offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
+                            descending: bool = False, limit: int = 50, offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
     """
     One page of the collection's annotations matching the annotation query ``filters``
     (``AnnotationFilters``, #663) as concordance (KWIC) rows, and the number of all that match.
-    The order is total (``AnnotationSort``), so pages do not overlap or skip rows while the
-    annotations do not change. ``annotation_ids``: only these annotations (the workspace reads
+    The order is total (``AnnotationSort``, reversed when ``descending``: documents without a
+    title or year and rows without text last, rows of one document still in reading order, ties
+    by id), so pages do not overlap or skip rows while the annotations do not change. ``annotation_ids``: only these annotations (the workspace reads
     one it shows as it is now, whether or not it still matches the page's filters; #460).
 
     Reads the annotations and, for document order or document filters, the metadata of the
@@ -1153,7 +1181,7 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     filters, ranking = filters or AnnotationFilters(), ranking or AnnotationRanking()
     ids = _parse_ids(annotation_ids, "annotation")
     if ranking.ranked:
-        _check_ranking(store, ranking, sort)
+        _check_ranking(store, ranking, sort, descending)
         query, text = _ranking_query(filters, ranking, ids)
     else:
         query, text = _filters_query(filters, ids), None
@@ -1176,16 +1204,17 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
             raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
         total, rows = await asyncio.gather(
             store.spans.count_rows(cid, query, documents),
-            store.spans.query_rows(cid, query, by_text=True, document_ids=documents, limit=limit, offset=offset))
+            store.spans.query_rows(cid, query, by_text=True, document_ids=documents, limit=limit, offset=offset,
+                                   descending=descending))
         joined = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
     else:
-        found = await _annotated_documents(store, cid, query, sort, documents, conditions)
+        found = await _annotated_documents(store, cid, query, sort, documents, conditions, descending)
         total = sum(found.counts.values())
         if sort == AnnotationSort.text:
             if offset + limit > _MAX_WINDOW:
                 raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
             rows = await store.spans.query_rows(cid, query, by_text=True, document_ids=found.order,
-                                                limit=limit, offset=offset)
+                                                limit=limit, offset=offset, descending=descending)
         else:
             rows = await _rows_in_document_order(store, cid, query, found, limit, offset)
         joined = found.documents

@@ -272,6 +272,8 @@ async def test_no_provider_call_before_authorization_and_validation(store, embed
         await ranked(store, AnnotationFilters(q="  "))
     with pytest.raises(InvalidRequestError, match="cannot be sorted"):
         await ranked(store, sort=AnnotationSort.text)
+    with pytest.raises(InvalidRequestError, match="cannot be sorted"):
+        await ranked(store, descending=True)
     with pytest.raises(InvalidRequestError):
         await ranked(store, AnnotationFilters(q="hejtman", attribute_values=["malformed"]))
     with pytest.raises(ResourceNotFound):

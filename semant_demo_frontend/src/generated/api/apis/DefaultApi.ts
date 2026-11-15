@@ -511,6 +511,7 @@ export interface ListAttributesApiUserCollectionsCollectionIdAttributesGetReques
 export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest {
     collectionId: string;
     sort?: AnnotationSort | null;
+    descending?: boolean;
     limit?: number;
     offset?: number;
     annotationId?: Array<string> | null;
@@ -1984,6 +1985,7 @@ export interface DefaultApiInterface {
      * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
      * @param {string} collectionId 
      * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
+     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
@@ -2013,6 +2015,7 @@ export interface DefaultApiInterface {
      * @summary List Collection Annotations
      * @param {string} collectionId 
      * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
+     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
@@ -5788,6 +5791,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['sort'] != null) {
             queryParameters['sort'] = requestParameters['sort'];
+        }
+
+        if (requestParameters['descending'] != null) {
+            queryParameters['descending'] = requestParameters['descending'];
         }
 
         if (requestParameters['limit'] != null) {

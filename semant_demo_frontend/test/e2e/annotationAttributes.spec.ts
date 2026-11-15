@@ -248,8 +248,10 @@ test('several attribute columns are shown side by side and edited one by one, ch
   const place = await createForAllTags(request, 'Place type', 'single', ['town', 'village'])
   await useViewport(page, 'narrow')
   await openWorkspace(page)
-  await choose(page, 'concordance-sort', 'Annotated text')
-  const order = await rows(page).locator('.kwic__key').allTextContents()
+  await page.getByTestId('kwic-sort-annotation').click()
+  await expect(page.getByTestId('kwic-head-annotation')).toHaveAttribute('aria-sort', 'ascending')
+  await expect(page.getByRole('grid')).not.toHaveAttribute('aria-busy', 'true')
+  const order = await rows(page).locator('.kwic__key-label').allTextContents()
   await row(page, 'Brně').getByRole('checkbox').click()
   await row(page, 'Jan Novák').click()
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
@@ -268,13 +270,13 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await expect(page.getByRole('listbox')).toHaveCount(0)
   await expect(page.getByTestId('kwic-attribute')).toHaveCount(8)
   // Nothing else changed: same rows in the same order, the check, the open row.
-  await expect(rows(page).locator('.kwic__key')).toHaveText(order)
+  await expect(rows(page).locator('.kwic__key-label')).toHaveText(order)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
   await expect(page.getByTestId('annotation-context')).toBeVisible()
   // The checked and the open row keep their colours, also in the sticky annotation cell.
   await expect(row(page, 'Brně')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
-  await expect(row(page, 'Brně').locator('.kwic__key')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
+  await expect(row(page, 'Brně').getByTestId('kwic-text')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
   await expect(row(page, 'Jan Novák')).toHaveCSS('background-color', 'rgb(255, 248, 214)')
   await expect(row(page, 'Lhoty')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
 
@@ -306,7 +308,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   // Hiding one changes nothing else either.
   await toggleOption(page, 'concordance-show-attribute', 'Role')
   await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type'])
-  await expect(rows(page).locator('.kwic__key')).toHaveText(order)
+  await expect(rows(page).locator('.kwic__key-label')).toHaveText(order)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
 })
 
@@ -325,6 +327,9 @@ test('on a phone several attribute columns scroll sideways under the annotation'
   await toggleOption(page, 'concordance-show-attribute', 'Stance')
   await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role', 'Stance'])
   await expect.poll(overflow).toBeGreaterThan(0)
+  // The annotation header keeps room for its name and controls (#665).
+  await expect(page.getByTestId('kwic-sort-annotation')).toBeVisible()
+  expect((await page.getByTestId('kwic-head-annotation').boundingBox())!.width).toBeGreaterThanOrEqual(80)
   // The page itself does not scroll sideways.
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
 
@@ -337,9 +342,10 @@ test('on a phone several attribute columns scroll sideways under the annotation'
     return { left: box!.x - list!.x, right: box!.x + box!.width - list!.x - list!.width }
   }
   const key = row(page, 'Jan Novák').locator('.kwic__key')
-  // The annotation stays in view next to the checkbox; the last column has come into view.
-  await expect.poll(async () => (await edges(key)).left).toBeGreaterThanOrEqual(0)
-  await expect.poll(async () => (await edges(key)).left).toBeLessThan(40)
+  // The annotation stays wholly in view after the checkbox (and what the list keeps of the left
+  // context, #665); the last column has come into view.
+  await expect.poll(async () => (await edges(key)).left).toBeGreaterThanOrEqual(32)
+  await expect.poll(async () => (await edges(key)).right).toBeLessThanOrEqual(0)
   await expect(key).toBeVisible()
   await expect.poll(async () => (await edges(page.getByTestId('kwic-attribute-head').last())).right).toBeLessThanOrEqual(1)
 

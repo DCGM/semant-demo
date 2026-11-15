@@ -3674,7 +3674,7 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, mode, k, similarTo, includeSource)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, descending, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, mode, k, similarTo, includeSource)
 
 List Collection Annotations
 
@@ -3702,6 +3702,8 @@ async function example() {
     collectionId: collectionId_example,
     // AnnotationSort | Lexical mode: the row order, default document; ranked modes are in relevance order and take none (optional)
     sort: ...,
+    // boolean | Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id (optional)
+    descending: true,
     // number (optional)
     limit: 56,
     // number (optional)
@@ -3761,6 +3763,7 @@ example().catch(console.error);
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
 | **sort** | `AnnotationSort` | Lexical mode: the row order, default document; ranked modes are in relevance order and take none | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
+| **descending** | `boolean` | Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id | [Optional] [Defaults to `false`] |
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
 | **annotationId** | `Array<string>` | Only these annotations | [Optional] |

@@ -591,13 +591,15 @@ class SpanRepository:
         return await self._read(collection_id, count, 0)
 
     async def query_rows(self, collection_id: UUID, query: AnnotationQuery, *, by_text: bool,
-                         document_ids: list[UUID] | None = None, limit: int, offset: int = 0) -> list[AnnotationRow]:
+                         document_ids: list[UUID] | None = None, limit: int, offset: int = 0,
+                         descending: bool = False) -> list[AnnotationRow]:
         """One page of matching spans (of the given documents when ``document_ids`` is not
-        None) with their derived fields, by annotated text or by position in the document,
-        each ending with the span id."""
+        None) with their derived fields, by annotated text (``descending``: reversed; Weaviate
+        puts spans without text first ascending, last descending) or by position in the
+        document, each ending with the span id (ascending)."""
         if document_ids is not None and not document_ids:
             return []
-        sort = (Sort.by_property("text") if by_text else
+        sort = (Sort.by_property("text", ascending=not descending) if by_text else
                 Sort.by_property("documentStartChar").by_property("documentEndChar"))
 
         async def read():

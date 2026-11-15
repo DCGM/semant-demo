@@ -285,6 +285,8 @@ async def list_collection_annotations(
     ranking: AnnotationRanking = Depends(annotation_ranking),
     sort: AnnotationSort | None = Query(default=None, description=(
         "Lexical mode: the row order, default document; ranked modes are in relevance order and take none")),
+    descending: bool = Query(default=False, description=(
+        "Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id")),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     annotation_id: list[str] | None = Query(default=None, max_length=200,
@@ -305,7 +307,7 @@ async def list_collection_annotations(
     """
     try:
         return await service.query_annotations(store, current_user, collection_id, filters, ranking=ranking,
-                                               sort=sort, limit=limit, offset=offset, annotation_ids=annotation_id)
+                                               sort=sort, descending=descending, limit=limit, offset=offset, annotation_ids=annotation_id)
     except UnavailableFilter as e:
         raise _unavailable(e) from e
 

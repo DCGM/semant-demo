@@ -239,6 +239,65 @@ test('annotation workspace (#329)', async ({ page, request }, testInfo) => {
   }
 })
 
+test('annotation workspace columns (#665)', async ({ page, request }, testInfo) => {
+  // Continuous rows with long and wrapped annotations, sorted descending by the annotation header,
+  // a year filter from its header (active icon and chip) and an attribute column; then scrolled
+  // sideways under the annotation and with the sidebar open.
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  const base = `/api/user_collections/${fixture.collection('chronicles').id}`
+  const first = fixture.chunk('chronicle_1').text
+  const spans: [string, number, number][] = [['chronicle_1', 10, first.length + 30], ['chronicle_2', 51, 60], ['letters_2', 10, 16]]
+  const role = await request.post(`${base}/attributes`, {
+    headers,
+    data: { name: 'Role', cardinality: 'multi', tag_ids: [fixture.tag('person').id], values: [{ label: 'statesman' }, { label: 'chronicler' }] }
+  })
+  expect(role.ok()).toBe(true)
+  try {
+    for (const [chunk, start, end] of spans) {
+      const response = await request.post('/api/tag_spans', {
+        headers, data: { chunkId: fixture.chunk(chunk).id, tagId: fixture.tag('person').id, start, end, type: 'pos' }
+      })
+      expect(response.ok()).toBe(true)
+    }
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
+    await page.reload() // without the sign-in notification
+    await expect(page.getByTestId('kwic-row')).toHaveCount(7)
+    await page.getByTestId('concordance-show-attribute').click()
+    await page.getByRole('option', { name: 'Role', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('listbox')).toHaveCount(0)
+    await page.getByTestId('kwic-sort-annotation').click()
+    await page.getByTestId('kwic-sort-annotation').click()
+    await expect(page.getByTestId('kwic-head-annotation')).toHaveAttribute('aria-sort', 'descending')
+    const year = page.getByTestId('kwic-filter-year')
+    if (await year.isVisible()) await year.click()
+    else await page.getByTestId('concordance-year-from').click()
+    await page.keyboard.type('1800')
+    await expect(page.getByTestId('concordance-chips')).toContainText('1800')
+    await expect(page.getByRole('grid')).not.toHaveAttribute('aria-busy', 'true')
+    await page.getByTestId('kwic-sort-annotation').focus()
+    await save(page, testInfo, 'annotation-workspace-columns')
+
+    const kwic = page.getByTestId('kwic')
+    if (await kwic.evaluate(el => el.scrollWidth > el.clientWidth)) {
+      await kwic.evaluate(el => { el.scrollLeft = el.scrollWidth })
+      await page.mouse.move(0, 0)
+      await save(page, testInfo, 'annotation-workspace-columns-scrolled')
+      await kwic.evaluate(el => { el.scrollLeft = 0 })
+    }
+
+    await page.getByTestId('kwic-row').nth(1).locator('.kwic__key').click()
+    await expect(page.getByTestId('chunk-context-mark').first()).toBeVisible()
+    await expectRightSidebarIn(page)
+    await expectSidebarsOpen(page, testInfo)
+    await save(page, testInfo, 'annotation-workspace-columns-context')
+  } finally {
+    await deleteAddedSpans(request, 'owner', 'chronicles')
+    await deleteAddedAttributes(request, 'owner', 'chronicles')
+  }
+})
+
 test('annotation workspace query (#663)', async ({ page }, testInfo) => {
   // Context search with its marked matches, a document filter and the active filter chips;
   // then the document filter menu.
