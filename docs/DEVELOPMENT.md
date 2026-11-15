@@ -40,6 +40,8 @@ The data is the synthetic fixture corpus of the automated tests,
 annotations with their derived text, positions and vectors (#328), chunk tag references and
 search classifications. Search for e.g. `Jan Novák`; open *Kroniky a dopisy* to see the
 annotated Document view. This small corpus is for checking workflows, not search quality.
+For a test that depends on it, the [corpus quick reference](../semant_demo_backend/tests/fixtures/CORPUS.md)
+lists which chunks and tags belong to which collection and explains the Unicode edge cases.
 
 **Page scans.** The backend also serves synthetic page scans and layout files
 (`tests/page_fixtures.py`, #543) from `.dev-data/page_assets`: *Kronika obce Lhota* has
