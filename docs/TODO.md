@@ -52,3 +52,5 @@ Update [ARCHITECTURE.md](ARCHITECTURE.md) when implementation changes,
 [DEPLOYMENT.md](DEPLOYMENT.md) or [deploy/README](../deploy/README.md) for deployment changes,
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md) for maintenance procedures, and the
 [ADRs](adr/README.md) when an agreed decision changes. Do not modify archived history.
+
+<!-- #687 rollout probe: docs-only change, not to be merged. -->
