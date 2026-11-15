@@ -24,9 +24,15 @@ RUN if [ -n "${COMMIT}" ]; then \
 # The frontend is built from the committed generated API client (src/generated/api), which
 # CI checks against a fresh generation (api-client-drift); it is not regenerated here.
 FROM node:22.23.4-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd AS node-build
-COPY --from=git /tmp/repo/ /repo/
 WORKDIR /repo/semant_demo_frontend
+# Install from the manifests (and the local file: dependency) alone, so the npm ci layer is
+# reused from the build cache until they change; the rest of the source arrives afterwards.
+COPY --from=git /tmp/repo/semant_demo_frontend/package.json \
+                /tmp/repo/semant_demo_frontend/package-lock.json \
+                /tmp/repo/semant_demo_frontend/.npmrc ./
+COPY --from=git /tmp/repo/semant_demo_frontend/test/unit/environment/ ./test/unit/environment/
 RUN npm ci
+COPY --from=git /tmp/repo/ /repo/
 ARG BACKEND_URL
 RUN BACKEND_URL=${BACKEND_URL} npx quasar build
 
