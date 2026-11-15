@@ -250,10 +250,20 @@ jobs:
   # Playwright smoke tests against the deterministic backend profile. The image supplies
   # the Chromium revision and system libraries for the exact Playwright version pinned in
   # package-lock.json; setup-node keeps the project toolchain on Node 22.
-  test-browser:
-    name: Browser smoke tests
+  # Two shards (#685), each a separate job with its own Weaviate service, frontend build,
+  # backend, SQLite and ownership token, running whole spec files on one worker;
+  # scripts/browser_shards.py balances the files by measured time. The required check is
+  # the "Browser smoke tests" job below, which passes only when every shard passed and
+  # together they ran each test of the inventory exactly once.
+  test-browser-shard:
+    name: Browser shard ${{ matrix.shard }}/${{ strategy.job-total }}
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, semant-ci]
+    strategy:
+      # Finish the other shard so a failure report names every failing shard.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble
       options: --user 1025:1027 --shm-size=1gb -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
@@ -278,7 +288,8 @@ jobs:
       SEMANT_TEST_WEAVIATE_GRPC_PORT: 50051
       SEMANT_TEST_WEAVIATE_ALLOW_NONLOCAL: "1"
       # Unique even when the browser and integration jobs share the Docker daemon.
-      SEMANT_TEST_STORE_TOKEN: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      SEMANT_TEST_STORE_TOKEN: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ matrix.shard }}
+      SHARD_DIR: /tmp/browser-shard
     permissions:
       contents: read
     steps:
@@ -321,19 +332,74 @@ jobs:
           done
           echo "Weaviate service did not become ready" >&2
           exit 1
+      - name: Plan shard
+        run: /tmp/venv/bin/python scripts/browser_shards.py plan --shard ${{ matrix.shard }} --total ${{ strategy.job-total }} --out "$SHARD_DIR"
       - name: Run browser smoke tests
         working-directory: semant_demo_frontend
+        shell: bash
         env:
           PYTHON: /tmp/venv/bin/python
-        run: env -u DISPLAY npm run test:e2e
+          PLAYWRIGHT_JSON_OUTPUT_FILE: /tmp/browser-shard/report.json
+        run: |
+          mapfile -t files < "$SHARD_DIR/files.txt"
+          env -u DISPLAY npx playwright test --reporter=list,json "${files[@]}"
+      - name: Check shard report
+        if: always()
+        shell: bash # -o pipefail: the check's status, not tee's
+        run: /tmp/venv/bin/python scripts/browser_shards.py check "$SHARD_DIR" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-shard-${{ matrix.shard }}
+          path: /tmp/browser-shard/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload Playwright traces
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-traces
+          name: playwright-traces-shard-${{ matrix.shard }}
           path: semant_demo_frontend/test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
+
+  # The required "Browser smoke tests" check; like "Integration tests" it runs even when a
+  # shard failed or was cancelled, so a missing or unsuccessful shard fails it.
+  test-browser:
+    name: Browser smoke tests
+    needs: [test-browser-shard]
+    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027
+    env:
+      HOME: /tmp
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download shard reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true # a missing shard is reported by the next step
+        with:
+          pattern: browser-shard-*
+          path: /tmp/browser-shards
+      - name: Verify that the shards ran the complete inventory once
+        shell: bash # -o pipefail: the verification's status, not tee's
+        run: |
+          shopt -s nullglob
+          python scripts/browser_shards.py verify /tmp/browser-shards/browser-shard-* | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Require every shard to pass
+        if: always()
+        env:
+          SHARDS: ${{ needs.test-browser-shard.result }}
+        run: |
+          if [ "$SHARDS" != success ]; then
+            echo "::error::Browser shards finished with result '$SHARDS'; see the failing 'Browser shard' job."
+            exit 1
+          fi
 
   # The production image installs requirements-runtime.lock (#139). Check that it alone
   # installs, is consistent and serves the same OpenAPI schema, and that neither lock is
