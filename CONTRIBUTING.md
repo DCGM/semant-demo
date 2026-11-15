@@ -92,10 +92,12 @@ make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
 make e2e-dev-start; make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts"; make e2e-dev-stop
 ```
 
-**Run the full suites locally** (`make check`, `make test-integration`, `make test-e2e`) for
-high-risk or unclear impact: security/access, schema/migration, shared Weaviate adapters,
-API contracts (always `make api-check`) and cross-feature changes. Also run them before a
-release, and when CI is unavailable or cannot exercise the change. This is local policy;
+**Run the relevant full suites locally** (`make check`, `make test-integration`,
+`make test-e2e`) for high-risk or unclear-impact changes: security/access,
+schema/migration, shared Weaviate adapters, API contracts (always `make api-check`)
+and cross-feature changes. Cross-layer changes may require all three suites. Also run
+relevant full suites before a release, and when CI is unavailable or cannot exercise
+the change. This is local policy;
 CI test selection (#454) and required checks are unaffected. **Documentation-only PRs
 need link/format checks, not application suites.** Report unavailable checks honestly;
 never imply they passed.
