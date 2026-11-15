@@ -21,7 +21,11 @@ describe('scripts/check-deps.mjs', () => {
     writeFileSync(join(dir, 'package-lock.json'), lock({
       'node_modules/vue': { version: '3.5.0' },
       'node_modules/@tanstack/vue-query': { version: '5.104.5', dev: true },
-      'node_modules/esbuild-darwin-64': { version: '0.14.0', optional: true, os: ['darwin'] },
+      // Platform builds: npm skips the foreign ones, but this platform's one is required.
+      'node_modules/esbuild-here': { version: '0.14.0', optional: true, os: [process.platform], cpu: [process.arch] },
+      'node_modules/esbuild-other-os': { version: '0.14.0', optional: true, os: ['no-such-os'], cpu: [process.arch] },
+      'node_modules/esbuild-other-cpu': { version: '0.14.0', optional: true, os: [process.platform], cpu: ['no-such-cpu'] },
+      'node_modules/esbuild-not-here': { version: '0.14.0', optional: true, os: [`!${process.platform}`] },
       'node_modules/local': { resolved: '../local', link: true }
     }))
   })
@@ -51,11 +55,25 @@ describe('scripts/check-deps.mjs', () => {
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('node_modules/vue is 3.4.0, locked 3.5.0')
     expect(result.stderr).toContain('node_modules/@tanstack/vue-query@5.104.5 is missing')
-    expect(result.stderr).not.toContain('esbuild-darwin-64')
+    expect(result.stderr).not.toContain('esbuild-other')
   })
 
-  it('passes quietly once node_modules matches the lock, skipping optional platform builds', () => {
+  it("requires this platform's optional native build but not other platforms' builds", () => {
     installed({ 'node_modules/vue': { version: '3.5.0' }, 'node_modules/@tanstack/vue-query': { version: '5.104.5' } })
+
+    const result = check()
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('node_modules/esbuild-here@0.14.0 is missing')
+    expect(result.stderr).not.toMatch(/esbuild-other|esbuild-not-here/)
+  })
+
+  it('passes quietly once node_modules matches the lock, without other platforms\' builds', () => {
+    installed({
+      'node_modules/vue': { version: '3.5.0' },
+      'node_modules/@tanstack/vue-query': { version: '5.104.5' },
+      'node_modules/esbuild-here': { version: '0.14.0' }
+    })
 
     const result = check()
 
