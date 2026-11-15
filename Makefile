@@ -7,7 +7,7 @@ PYTHON ?= $(VENV)/bin/python
 PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
-.PHONY: setup deps-check deps-check-backend deps-check-frontend check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e \
+.PHONY: setup docker-check deps-check deps-check-backend deps-check-frontend check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e \
 	dev-up dev-down dev-backend dev-frontend dev-reset dev-status dev-verify dev-add-documents \
 	e2e-dev-start e2e-dev-test e2e-dev-capture e2e-dev-rebuild e2e-dev-restart e2e-dev-stop e2e-dev-status
 
@@ -28,6 +28,11 @@ deps-check-backend:
 
 deps-check-frontend:
 	@node semant_demo_frontend/scripts/check-deps.mjs
+
+## Whether Docker works here, with a specific diagnosis if not (also checks the Weaviate image,
+## pulling it if missing). The Docker-dependent targets below run the same check.
+docker-check:
+	@scripts/docker-preflight.sh --image
 
 ## Seeded local development environment (scripts/local-dev.sh; docs/DEVELOPMENT.md). Needs
 ## Docker. `dev-up` starts the development Weaviate and seeds it and .dev-data/semant.db on
@@ -81,6 +86,8 @@ test-integration: deps-check-backend
 ## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.
 ## Headless Chromium needs no display; with a forwarded one (ssh -X) it stalls ~25 s.
 test-e2e: deps-check
+	@# Docker before the Chromium download; an external SEMANT_TEST_WEAVIATE_HOST needs none.
+	@test -n "$$SEMANT_TEST_WEAVIATE_HOST" || scripts/docker-preflight.sh --image
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
 	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON="$(PY)" npm run test:e2e'
 
@@ -90,6 +97,7 @@ test-e2e: deps-check
 ##   make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts --grep phone"
 ##   make e2e-dev-stop
 e2e-dev-start: deps-check
+	@scripts/docker-preflight.sh --image
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
 	PYTHON="$(PY)" scripts/e2e-dev.sh start
 

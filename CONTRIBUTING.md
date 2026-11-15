@@ -23,12 +23,14 @@ contracts. Include relevant tests, documentation and generated-client changes.
 
 Use an isolated checkout and local services, never production credentials/data. Toolchain:
 Python 3.12, Node 22, npm, Make and Java 11+ (API generator). Use the repository `.venv`.
-Docker is needed for local application, integration and browser workflows, not fast tests.
+Docker is needed for local application, integration and browser workflows, not fast tests
+([which checks need Docker](docs/DEVELOPMENT.md#which-checks-need-docker)).
 
 | Command (repository root) | Purpose |
 | --- | --- |
 | `make setup` | Install locked Python/frontend dependencies and the backend package. |
 | `make deps-check` | Check `.venv`/`node_modules` against their locks (checks, tests and launchers run it first); installs nothing. |
+| `make docker-check` | Whether Docker and the Weaviate image are usable, with a specific diagnosis if not. |
 | `make check` | Lint, types, fast tests and API-client drift; offline after generator bootstrap. |
 | `make api-generate` / `make api-check` | Regenerate the client / check for drift. |
 | `make lock` / `make lock-check` | Update / validate backend dependency locks; needs network. |
