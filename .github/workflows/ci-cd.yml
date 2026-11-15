@@ -56,6 +56,9 @@ jobs:
       - name: Lint
         working-directory: semant_demo_backend
         run: /tmp/venv/bin/ruff check .
+      - name: Lint the chunk classifier (make check-classifier)
+        working-directory: data_tools/meta_data_enrichment
+        run: /tmp/venv/bin/ruff check .
       - name: Export OpenAPI schema
         working-directory: semant_demo_backend
         run: /tmp/venv/bin/python export_openapi.py --output openapi.json

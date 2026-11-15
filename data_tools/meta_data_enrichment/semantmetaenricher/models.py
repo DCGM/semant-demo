@@ -366,7 +366,7 @@ class LocalHFClassifierModel(Model):
 
         task_sizes = {task: len(classes) for task, classes in self.task_classes.items()}
 
-        print(f"Loading encoder model and classification heads...")
+        print("Loading encoder model and classification heads...")
         py_model = CustomModel(self.model_path, task_sizes)
         
         heads_path = os.path.join(self.model_path, "heads.bin")

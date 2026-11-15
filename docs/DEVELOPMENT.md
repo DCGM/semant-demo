@@ -341,7 +341,7 @@ edit only the matrix of `test-browser-shard` in `.github/workflows/ci-cd.yml`.
 
 | Needs no Docker | Needs Docker (a working daemon and the Weaviate 1.40.1 image) |
 |---|---|
-| `make setup`, `make deps-check`, `make check` (`check-backend`, `check-frontend`, `api-check`), `make api-generate`, `make lock` / `lock-check` (network), `make e2e-dev-rebuild` | `make test-integration`, `make test-e2e`, `make e2e-dev-start` / `e2e-dev-restart`, `make dev-up` and the other `make dev-*` commands except `dev-frontend` |
+| `make setup`, `make deps-check`, `make check` (`check-backend`, `check-classifier`, `check-frontend`, `api-check`), `make api-generate`, `make lock` / `lock-check` (network), `make e2e-dev-rebuild` | `make test-integration`, `make test-e2e`, `make e2e-dev-start` / `e2e-dev-restart`, `make dev-up` and the other `make dev-*` commands except `dev-frontend` |
 
 `make e2e-dev-test` and `e2e-dev-capture` start no container: they need the profile that
 `e2e-dev-start` started, so only indirectly Docker.
