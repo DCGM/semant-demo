@@ -405,8 +405,10 @@ Measured on a workstation for `searchResultCards.spec.ts --grep phone` (one test
 
 The whole suite through the loop (`test --all`) took 78 s versus 132 s for `make test-e2e`
 before it unset `DISPLAY` and 107 s after (both include the build and the seed).
-The loop is for iteration only: run `make test-e2e` (fresh build, store and seed) before
-asking for a PR merge. Without the script, `E2E_REUSE_SERVER=1 npx playwright test` still
+The loop is for iteration and focused checks. Required CI runs the fresh suite (new build,
+store and seed); run `make test-e2e` locally when
+[the testing contract](../CONTRIBUTING.md#4-testing-contract) calls for it. Without the
+script, `E2E_REUSE_SERVER=1 npx playwright test` still
 reuses a profile you started by hand on port 8765 (built with that `BACKEND_URL`).
 
 ## 5. Advanced: an authorized realistic snapshot

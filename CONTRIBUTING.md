@@ -80,11 +80,25 @@ reuse coverage; do not add a test at every layer by default.
 | Selection, streaming, navigation | Targeted browser tests when browser behavior is essential. |
 | Prompt/model/retrieval quality | Deterministic contracts and a recorded small evaluation for intentional quality changes. |
 
-Run affected tests while iterating, then `make check` before pushing code and the relevant
-integration/browser checks before handoff. For UI/browser-test work, use the fast loop,
-then run a fresh `make test-e2e` once before handoff. Run the full isolated integration/smoke
-suite before release. **Documentation-only PRs need link/format checks, not application
-suites.** Report unavailable checks honestly; never imply they passed.
+**Before pushing or handing off a PR**, run lint/types for the side you touched and the
+tests for the changed behavior, including focused real-Weaviate or browser tests when
+the behavior depends on them. Unrelated full suites are not required locally. Required CI
+runs the full suites before merge and is never bypassed. For example:
+
+```sh
+(cd semant_demo_backend && ../.venv/bin/python -m ruff check . && ../.venv/bin/python -m pytest tests/test_attributes.py -k codec)
+(cd semant_demo_frontend && npm run lint && npm run typecheck && npx vitest run test/unit/routes.spec.ts)
+make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
+make e2e-dev-start; make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts"; make e2e-dev-stop
+```
+
+**Run the full suites locally** (`make check`, `make test-integration`, `make test-e2e`) for
+high-risk or unclear impact: security/access, schema/migration, shared Weaviate adapters,
+API contracts (always `make api-check`) and cross-feature changes. Also run them before a
+release, and when CI is unavailable or cannot exercise the change. This is local policy;
+CI test selection (#454) and required checks are unaffected. **Documentation-only PRs
+need link/format checks, not application suites.** Report unavailable checks honestly;
+never imply they passed.
 
 Tests must pass alone and in any order; fixtures own and clean up mutable state. Fast tests
 are offline, with no keys, live providers, GPUs, model downloads or development data.
