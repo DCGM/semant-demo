@@ -258,7 +258,9 @@ make test-e2e           # Playwright smoke suite against the deterministic app p
 While iterating, run only the affected integration tests: the container starts in about a
 second, so one file takes ~30 s instead of ~4 min for the whole suite, e.g.
 `make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"` (paths relative
-to `semant_demo_backend`). Run the full suite before review when the change needs it.
+to `semant_demo_backend`). Quote inside `ARGS` as on a shell command line, e.g.
+`ARGS="tests/integration/test_access.py -k 'case_a or case_b'"`; the arguments reach pytest
+intact. Run the full suite before review when the change needs it.
 
 They never use the development container, `.dev-data/` or `local_data/`:
 
