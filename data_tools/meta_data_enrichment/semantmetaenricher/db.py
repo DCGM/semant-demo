@@ -230,3 +230,5 @@ def create_test_collection(client: weaviate.WeaviateClient, fields: List[str], r
         raise RuntimeError(f"Failed to insert test records: {response.errors}")
 
     print(f"Successfully created and populated collection '{collection_name}' with {len(records)} records.")
+
+_CI_PROBE = f"temporary #676 lint probe"
