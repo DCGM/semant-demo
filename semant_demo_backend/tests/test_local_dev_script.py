@@ -29,6 +29,22 @@ esac
 exit 0
 """
 
+# The dependency preflight (scripts/check_python_deps.py) passes unless STUB_STALE_PYTHON is
+# set and is not recorded; `tests.local_dev environ` fails with STUB_ENVIRON_ERROR and
+# prints STUB_ENVIRON otherwise.
+PYTHON_STUB = r"""#!/bin/sh
+case "$1" in */check_python_deps.py)
+  [ -z "$STUB_STALE_PYTHON" ] && exit 0
+  echo "$STUB_STALE_PYTHON" >&2; exit 1 ;;
+esac
+echo "python $*" >>"{calls}"
+if [ "$*" = "-m tests.local_dev environ" ]; then
+  [ -n "$STUB_ENVIRON_ERROR" ] && {{ echo "$STUB_ENVIRON_ERROR" >&2; exit 1; }}
+  echo "$STUB_ENVIRON"
+fi
+exit 0
+"""
+
 
 @pytest.fixture
 def launcher(tmp_path):
@@ -38,7 +54,7 @@ def launcher(tmp_path):
     (bin_dir / "docker").write_text(DOCKER_STUB)
     (bin_dir / "curl").write_text("#!/bin/sh\nexit 0\n")
     python = tmp_path / "python"
-    python.write_text(f'#!/bin/sh\necho "python $*" >>"{calls}"\n')
+    python.write_text(PYTHON_STUB.format(calls=calls))
     for stub in (bin_dir / "docker", bin_dir / "curl", python):
         stub.chmod(0o755)
     # Free ports, so a service running on this machine is never mistaken for the stubs.
@@ -167,3 +183,26 @@ def test_reset_refuses_while_a_backend_runs(launcher):
     assert result.returncode == 1
     assert "stop make dev-backend" in result.stderr
     assert result.calls == ""
+
+
+@pytest.mark.parametrize("command", ["up", "backend", "reset", "add-documents", "verify"])
+def test_commands_refuse_a_stale_python_environment_before_touching_anything(launcher, command):
+    result = launcher(command, CONFIRM="yes", STUB_STALE_PYTHON="  - pillow==12.0.0 is missing")
+
+    assert result.returncode == 1
+    assert "pillow==12.0.0 is missing" in result.stderr
+    assert "stale Python environment" in result.stderr
+    assert result.calls == "" and _changes(result.calls) == []
+
+
+@pytest.mark.parametrize("env, message", [
+    ({"STUB_ENVIRON_ERROR": "ModuleNotFoundError: No module named 'PIL'"}, "ModuleNotFoundError: No module named 'PIL'"),
+    ({"STUB_ENVIRON": ""}, "the backend settings came out empty"),
+], ids=["failure", "empty"])
+def test_backend_stops_when_its_settings_cannot_be_derived(launcher, env, message):
+    result = launcher("backend", **env)
+
+    assert result.returncode == 1
+    assert message in result.stderr and "nothing was started" in result.stderr
+    assert "python -m tests.local_dev environ" in result.calls
+    assert "providers" not in result.calls and "uvicorn" not in result.calls

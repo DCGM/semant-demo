@@ -170,6 +170,9 @@ stores (`make test-integration`, `make test-e2e`, `make e2e-dev-*`) for automate
 this checkout's backend environment: pass `PYTHON=/path/to/first-checkout/.venv/bin/python`
 to `make`. The tests, `api-check` and the E2E server still import the code of the checkout
 they run in. Run `npm ci` in its `semant_demo_frontend` (seconds with a warm npm cache).
+The dependency preflight (`make deps-check`) accepts the shared environment as long as it
+has this checkout's locked versions; after a lock change it names the differing packages
+and the `pip` commands for that interpreter.
 Each test run owns its Weaviate, so `make check` and `make test-integration` can run in
 several checkouts at once. `make test-e2e` uses ports 8765–8767 (`E2E_PORT` moves the
 first) and `make e2e-dev-*` 8775–8777 (`E2E_DEV_PORT`), so start concurrent runs at least
@@ -190,6 +193,7 @@ three ports apart. The development instance above stays one per machine.
 | Requests fail with CORS errors | Open `http://localhost:9000`, not `127.0.0.1:9000`. |
 | A feature reports a provider error | It uses a provider route the fakes do not implement (HTTP 501); see the table above. |
 | `make dev-backend` says the stores are not initialized | Run `make dev-up` first. |
+| `... does not match semant_demo_backend/requirements-dev.lock` or `Frontend dependencies ... do not match package-lock.json` | `.venv` / `node_modules` predate a lock change (pull or branch switch). Run the printed repair command (`make setup`, or `npm ci` in `semant_demo_frontend`). `make deps-check` repeats the check without running anything else. |
 
 `make dev-status` shows the state of both stores; `scripts/local-dev.sh logs` the
 Weaviate log. Removing everything by hand (only if you want to): `make dev-down`,
