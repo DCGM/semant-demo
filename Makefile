@@ -7,7 +7,7 @@ PYTHON ?= $(VENV)/bin/python
 PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
-.PHONY: setup docker-check deps-check deps-check-backend deps-check-frontend check check-backend check-classifier check-frontend api-generate api-check lock lock-check test-integration test-e2e \
+.PHONY: setup docker-check deps-check deps-check-backend deps-check-frontend check check-backend check-classifier check-frontend check-docs api-generate api-check lock lock-check test-integration test-e2e \
 	dev-up dev-down dev-backend dev-frontend dev-reset dev-status dev-verify dev-add-documents \
 	e2e-dev-start e2e-dev-test e2e-dev-capture e2e-dev-rebuild e2e-dev-restart e2e-dev-stop e2e-dev-status
 
@@ -65,7 +65,7 @@ dev-add-documents:
 	PYTHON="$(PY)" COUNT="$(COUNT)" OUTLIERS="$(OUTLIERS)" scripts/local-dev.sh add-documents
 
 ## Fast offline checks: lint, types, unit tests and generated-client drift.
-check: check-backend check-classifier check-frontend api-check
+check: check-backend check-classifier check-frontend check-docs api-check
 
 check-backend: deps-check-backend
 	cd semant_demo_backend && $(PY) -m ruff check .
@@ -75,6 +75,10 @@ check-backend: deps-check-backend
 ## backend suites. Other data_tools/ subprojects are not linted yet.
 check-classifier: deps-check-backend
 	cd data_tools/meta_data_enrichment && $(PY) -m ruff check .
+
+## Relative links in the project's Markdown resolve (#687); the documentation-only CI check.
+check-docs:
+	python3 scripts/check_doc_links.py
 
 check-frontend: deps-check-frontend
 	cd semant_demo_frontend && npm run lint
