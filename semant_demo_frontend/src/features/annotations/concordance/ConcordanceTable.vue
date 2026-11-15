@@ -7,7 +7,8 @@
     @copy="onCopy"
   >
     <p :id="helpId" class="sr-only">
-      Arrow keys move between rows, Enter shows the annotation in its document, Space checks the row.
+      Arrow keys move between rows, Enter shows the annotation in its document, Space checks the row,
+      the context menu key or Shift+F10 opens the row's actions and the filters of its values.
     </p>
     <div
       class="kwic__grid"
@@ -105,19 +106,46 @@
         :tabindex="index === activeIndex ? 0 : -1"
         :data-annotation-id="row.id"
         data-testid="kwic-row"
-        @click="emit('open', row)"
+        @click="onRowClick(row, $event)"
+        @contextmenu="prepareMenu(row)"
         @focus="activeIndex = index"
       >
-        <q-menu v-if="similar" context-menu touch-position data-testid="kwic-row-menu">
-          <q-list dense style="min-width: 180px">
+        <!-- The row's actions and the filters of its values (#665): right click (with the words
+             selected in its text), the context menu key or Shift+F10, or its menu button. -->
+        <q-menu
+          v-if="hasMenu"
+          :ref="(el: unknown) => setMenu(row.id, el as QMenu | null)"
+          context-menu
+          touch-position
+          data-testid="kwic-row-menu"
+          @hide="onMenuHide(row)"
+        >
+          <q-list dense style="min-width: 260px; max-width: 360px">
             <q-item v-close-popup clickable data-testid="kwic-row-open" @click="emit('open', row)">
               <q-item-section avatar><q-icon name="menu_book" /></q-item-section>
               <q-item-section>Show in document</q-item-section>
             </q-item>
-            <q-item v-close-popup clickable data-testid="kwic-row-similar" @click="emit('similar', row)">
+            <q-item v-if="similar" v-close-popup clickable data-testid="kwic-row-similar" @click="emit('similar', row)">
               <q-item-section avatar><q-icon name="join_inner" /></q-item-section>
               <q-item-section>Find similar</q-item-section>
             </q-item>
+            <template v-for="group in menuGroups(row)" :key="group.key">
+              <q-separator />
+              <q-item-label header class="kwic__menu-group" :data-testid="`kwic-refine-group-${group.key}`">
+                <span class="kwic__menu-label">{{ group.label }}</span>
+                <span v-if="group.caption" class="kwic__menu-caption">{{ group.caption }}</span>
+              </q-item-label>
+              <q-item
+                v-for="action in group.actions"
+                :key="action.key"
+                clickable
+                :data-testid="`kwic-refine-${action.key}`"
+                @click="refine(row, action.change)"
+              >
+                <q-item-section avatar><q-icon :name="action.icon" /></q-item-section>
+                <q-item-section>{{ action.label }}</q-item-section>
+              </q-item>
+            </template>
           </q-list>
         </q-menu>
         <div class="kwic__cell kwic__check" role="gridcell" @click.stop>
@@ -200,6 +228,20 @@
             {{ tagName(row) }}
           </span>
           <span class="kwic__status" :class="`kwic__status--${row.type}`">{{ statusLabel(row.type) }}</span>
+          <q-btn
+            v-if="hasMenu"
+            flat
+            round
+            dense
+            size="xs"
+            icon="more_vert"
+            tabindex="-1"
+            class="kwic__more"
+            :aria-label="`Actions and filters for ${rowLabel(row)}`"
+            title="Actions and filters (context menu key or Shift+F10)"
+            data-testid="kwic-row-more"
+            @click.stop="event => openMenu(row, event)"
+          />
         </div>
         <div class="kwic__cell kwic__source" role="gridcell" :title="sourceLabel(row)">
           <span v-if="row.documentAvailable" class="kwic__title">{{ row.documentTitle || 'Untitled document' }}</span>
@@ -222,11 +264,12 @@ export type FilterField = 'annotation' | 'context' | 'source' | 'year'
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, ClosePopup as vClosePopup } from 'quasar'
+import { QBtn, QCheckbox, QIcon, QItem, QItemLabel, QItemSection, QList, QMenu, QSeparator, ClosePopup as vClosePopup } from 'quasar'
 import {
   AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
 } from 'src/generated/api'
 import type { ConcordanceFilters } from './concordanceStore'
+import { rowFilterGroups, wordFilterGroup, type CellFilterGroup } from './cellFilters'
 import HeaderControls, { type SortState } from './KwicHeaderControls.vue'
 import { markMatches, queryWords, splitParts, type TextPart } from './textMatches'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
@@ -281,6 +324,8 @@ const emit = defineEmits<{
   sort: [sort: AnnotationSort, descending: boolean]
   /** Show the filter of a column (its header's filter button). */
   filter: [field: FilterField]
+  /** Change the query by a filter of a row's value or of the words selected in its text (its menu). */
+  refine: [change: Partial<ConcordanceFilters>]
 }>()
 
 // The column headers (#665). Left and right context sort by their nearest words in #666.
@@ -468,7 +513,73 @@ function onKeydown (event: KeyboardEvent) {
   } else if (event.key === ' ') {
     event.preventDefault()
     emit('toggle', row.id, !props.selected.has(row.id))
+  } else if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+    event.preventDefault()
+    openMenu(row)
   }
+}
+
+// The row menus (#665): the row's actions, the filters of its values and, when it was opened with
+// words selected in the row's text, the filter by them.
+const hasMenu = computed(() => props.similar || !!props.filters)
+const menus = new Map<string, QMenu>()
+function setMenu (id: string, menu: QMenu | null) {
+  if (menu) menus.set(id, menu)
+  else menus.delete(id)
+}
+
+/** The words selected in a row's text when its menu was opened, and the field(s) they are in. */
+const selectedWords = ref<{ rowId: string, text: string, scope: TextScope } | null>(null)
+
+/** Notes what the menu of `row` is opened for (before it opens: right click, key, button). */
+function prepareMenu (row: AnnotationListRow) {
+  selectedWords.value = null
+  const cell = rowEls.get(row.id)?.querySelector('.kwic__text')
+  const selection = window.getSelection()
+  if (!cell || !selection || selection.isCollapsed || !selection.rangeCount) return
+  const range = selection.getRangeAt(0)
+  if (!cell.contains(range.startContainer) || !cell.contains(range.endContainer)) return
+  const parts = selectedParts(range, cell)
+  // The fields with a selected word (a selected space next to the annotation does not count).
+  const fields = new Set(parts.filter(p => /[\p{L}\p{N}]/u.test(p.text))
+    .map(p => p.node.parentElement?.closest('.kwic__key') ? 'annotation' : 'context'))
+  if (!fields.size) return
+  const scope = fields.size > 1 ? TextScope.both : fields.has('annotation') ? TextScope.annotation : TextScope.context
+  selectedWords.value = { rowId: row.id, text: parts.map(p => p.text).join(''), scope }
+}
+
+function openMenu (row: AnnotationListRow, event?: Event) {
+  prepareMenu(row)
+  menus.get(row.id)?.show(event)
+}
+
+/** Applies a filter of the row's menu. The menu is closed first: the filter changes the menu's
+ * items, and an item removed before `v-close-popup` acts would leave it open. */
+function refine (row: AnnotationListRow, change: Partial<ConcordanceFilters>) {
+  menus.get(row.id)?.hide()
+  emit('refine', change)
+}
+
+function onMenuHide (row: AnnotationListRow) {
+  if (selectedWords.value?.rowId === row.id) selectedWords.value = null
+}
+
+function menuGroups (row: AnnotationListRow): CellFilterGroup[] {
+  const f = props.filters
+  if (!f) return []
+  const words = selectedWords.value?.rowId === row.id
+    ? wordFilterGroup(selectedWords.value.text, selectedWords.value.scope, f)
+    : null
+  const groups = rowFilterGroups(row, f, { tagName: tagName(row), attributes: props.attributes })
+  return words ? [words, ...groups] : groups
+}
+
+/** A click opens the row, unless it ended selecting text in it (the selection is kept). */
+function onRowClick (row: AnnotationListRow, event: MouseEvent) {
+  const selection = window.getSelection()
+  const el = event.currentTarget as HTMLElement
+  if (selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(el)) return
+  emit('open', row)
 }
 
 /** Scrolls the row into view and gives it keyboard focus. */
@@ -497,25 +608,33 @@ function onCopy (event: ClipboardEvent) {
   if (!selection || selection.isCollapsed || !selection.rangeCount || !event.clipboardData) return
   const range = selection.getRangeAt(0)
   if (!Array.from(list.querySelectorAll('.kwic__key')).some(key => range.intersectsNode(key))) return
-  const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT)
   let text = ''
   let lastCell: Element | null = null
-  for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
-    // Screen-reader texts are left out, and hidden decorations, but not the annotation's halves
-    // (their screen-reader copy is the one left out).
-    if (!range.intersectsNode(node) ||
-      node.parentElement?.closest('.sr-only, [aria-hidden="true"]:not(.kwic__key-head, .kwic__key-tail)')) continue
-    const value = node.textContent ?? ''
-    const part = value.slice(node === range.startContainer ? range.startOffset : 0,
-      node === range.endContainer ? range.endOffset : value.length)
-    if (!part) continue
+  for (const { node, text: part } of selectedParts(range, range.commonAncestorContainer)) {
     const cell = node.parentElement?.closest('[role="gridcell"], [role="columnheader"]') ?? null
     if (text && cell !== lastCell) text += '\n'
     text += part
     lastCell = cell
   }
-  event.clipboardData.setData('text/plain', text.replace(/\u00a0/g, ' '))
+  event.clipboardData.setData('text/plain', text)
   event.preventDefault()
+}
+
+/** The selected text of the text nodes under `root`, in order, as the source has it: no-break
+ * spaces as spaces; screen-reader texts and hidden decorations are left out, but not the
+ * annotation's halves (their screen-reader copy is the one left out). */
+function selectedParts (range: Range, root: Node): { node: Node, text: string }[] {
+  const parts: { node: Node, text: string }[] = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
+    if (!range.intersectsNode(node) ||
+      node.parentElement?.closest('.sr-only, [aria-hidden="true"]:not(.kwic__key-head, .kwic__key-tail)')) continue
+    const value = node.textContent ?? ''
+    const part = value.slice(node === range.startContainer ? range.startOffset : 0,
+      node === range.endContainer ? range.endOffset : value.length)
+    if (part) parts.push({ node, text: part.replace(/\u00a0/g, ' ') })
+  }
+  return parts
 }
 
 defineExpose({ reveal })
@@ -839,6 +958,55 @@ defineExpose({ reveal })
   border: 1px solid currentColor;
   font-size: 0.7rem;
   line-height: 1.4;
+}
+
+/* A group of the row menu: the field and the row's value, cut to one line, and what it does. */
+.kwic__menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px 2px;
+}
+
+.kwic__menu-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kwic__menu-caption {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* The row's menu button: over the row's right end (it takes no column), shown on the hovered or
+   keyboard-focused row, on touch screens also on the open one (a long press opens the menu too). */
+.kwic__row {
+  position: relative;
+}
+
+.kwic__more {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  color: rgba(0, 0, 0, 0.65);
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  visibility: hidden;
+}
+
+.kwic__row:hover .kwic__more,
+.kwic__row:focus-visible .kwic__more {
+  visibility: visible;
+}
+
+@media (hover: none) {
+  .kwic__row--focused .kwic__more {
+    visibility: visible;
+  }
 }
 
 .kwic__status--pos {

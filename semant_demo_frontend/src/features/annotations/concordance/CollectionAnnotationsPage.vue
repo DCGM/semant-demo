@@ -104,6 +104,7 @@
       @select-page="selectPage"
       @sort="(sort, descending) => store.setFilters({ sort, descending })"
       @filter="field => toolbar?.openFilter(field)"
+      @refine="store.setFilters"
       @assign="(row, attribute, change, done) => assignRow(row, attribute, change).then(done)"
     />
 

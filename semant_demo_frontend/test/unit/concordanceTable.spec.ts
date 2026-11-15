@@ -163,3 +163,59 @@ describe('concordance toolbar header filters', () => {
     expect(toolbar.emitted('change')).toBeUndefined()
   })
 })
+
+describe('concordance row value filters', () => {
+  const menuItem = (testid: string) => document.body.querySelector<HTMLElement>(`[data-testid="${testid}"]`)
+  async function until (found: () => unknown) {
+    for (let i = 0; i < 50 && !found(); i++) await new Promise(resolve => setTimeout(resolve, 10))
+    expect(found()).toBeTruthy()
+  }
+
+  it('opens the row menu from the keyboard and refines the query without opening or checking the row', async () => {
+    const wrapper = mount(ConcordanceTable, {
+      props: { rows: [annotation('a')], tags: [tag], selected: new Set<string>(), filters: defaultFilters() },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+    const row = wrapper.get('[data-testid="kwic-row"]')
+    await row.trigger('keydown', { key: 'F10', shiftKey: true })
+    await until(() => menuItem('kwic-refine-source-only'))
+    expect(menuItem('kwic-refine-group-source')?.textContent).toContain('Source · Kronika obce Lhota')
+    // No selected words: no word filter.
+    expect(menuItem('kwic-refine-words')).toBeNull()
+    menuItem('kwic-refine-year-only')?.click()
+    expect(wrapper.emitted('refine')).toEqual([[{ documentFilters: { yearMin: 1851, yearMax: 1851 } }]])
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(wrapper.emitted('toggle')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('offers the words selected in the row\'s text, and a click that ends a selection does not open the row', async () => {
+    const wrapper = mount(ConcordanceTable, {
+      props: { rows: [annotation('a')], tags: [tag], selected: new Set<string>(), filters: defaultFilters() },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+    const cell = wrapper.get('.kwic__text .kwic__right').element
+    const right = Array.from(cell.childNodes).find(n => n.textContent?.includes('ubytoval')) as Text
+    const range = document.createRange()
+    range.setStart(right, 3) // " a |ubytoval| se"
+    range.setEnd(right, 11)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    const row = wrapper.get('[data-testid="kwic-row"]')
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toBeUndefined()
+
+    await row.trigger('keydown', { key: 'ContextMenu' })
+    await until(() => menuItem('kwic-refine-words'))
+    expect(menuItem('kwic-refine-words')?.textContent).toContain('Filter annotations with “ubytoval” in their context')
+    menuItem('kwic-refine-words')?.click()
+    expect(wrapper.emitted('refine')).toEqual([[{ text: 'ubytoval', textScope: TextScope.context }]])
+
+    window.getSelection()?.removeAllRanges()
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toHaveLength(1)
+    wrapper.unmount()
+  })
+})

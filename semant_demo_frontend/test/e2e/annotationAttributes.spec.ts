@@ -121,6 +121,22 @@ test('a row is classified in the attribute column and in the sidebar, and filter
   await toggleOption(page, 'concordance-attributes', 'Role: not assigned')
   await expect(rows(page)).toHaveCount(3)
   await expect(row(page, 'Jan Novák')).toHaveCount(0)
+
+  // From a displayed value (#665): right click on it offers Only this value, which replaces the
+  // attribute's other filter; the value picker stays closed. Clear removes the attribute's filter.
+  await toggleOption(page, 'concordance-attributes', 'Role: not assigned')
+  await expect(rows(page)).toHaveCount(4)
+  const menu = page.getByTestId('kwic-row-menu')
+  await cell(page, 'Jan Novák').click({ button: 'right' })
+  await expect(menu).toContainText('Role · statesman')
+  await menu.getByText('Only this value').click()
+  await expect(page.getByTestId('concordance-chips')).toContainText('Role:statesman')
+  await expect(rows(page)).toHaveCount(1)
+  await expect(picker(page)).toHaveCount(0)
+  await cell(page, 'Jan Novák').click({ button: 'right' })
+  await menu.getByText('Clear the Role filter').click()
+  await expect(rows(page)).toHaveCount(4)
+  await expect(page.getByTestId('concordance-chips')).toHaveCount(0)
 })
 
 test('a selection is assigned in one batch, reported per annotation, without overwriting a newer change', async ({ page, request }) => {
