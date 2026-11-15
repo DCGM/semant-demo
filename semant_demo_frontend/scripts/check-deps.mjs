@@ -2,8 +2,9 @@
 // Fail fast when node_modules does not match package-lock.json (#673).
 //
 // `npm ci` / `npm install` record what they installed in node_modules/.package-lock.json.
-// Every package of package-lock.json must be there with the same version, except optional
-// ones (platform-specific builds that npm skips). Nothing is resolved or installed.
+// Every package of package-lock.json must be there with the same version, except native
+// builds whose os/cpu/libc exclude this platform (npm skips those). Nothing is resolved
+// or installed.
 //
 // Usage: node scripts/check-deps.mjs
 import { readFileSync } from 'node:fs'
@@ -12,13 +13,37 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
+// npm's `os` / `cpu` / `libc` lists: names, or `!name` exclusions; absent means any.
+function allows(list, value) {
+  if (!list?.length) return true
+  if (list.includes(`!${value}`)) return false
+  const wanted = list.filter((name) => !name.startsWith('!'))
+  return wanted.length === 0 || wanted.includes(value)
+}
+
+let libc = null
+function currentLibc() {
+  if (libc === null) {
+    libc = process.platform !== 'linux' ? undefined
+      : process.report?.getReport().header.glibcVersionRuntime ? 'glibc' : 'musl'
+  }
+  return libc
+}
+
+// A native build for another platform, which npm skips (e.g. esbuild-darwin-64 on Linux);
+// the current platform's build (esbuild-linux-64 on Linux x64) is required although optional.
+function forAnotherPlatform(entry) {
+  return !allows(entry.os, process.platform) || !allows(entry.cpu, process.arch) ||
+    (entry.libc !== undefined && currentLibc() !== undefined && !allows(entry.libc, currentLibc()))
+}
+
 export function lockProblems(locked, installed) {
   const found = []
   for (const [path, entry] of Object.entries(locked.packages ?? {})) {
     if (path === '' || entry.link) continue
     const have = installed.packages?.[path]
     if (!have) {
-      if (!entry.optional && !entry.os && !entry.cpu) found.push(`${path}@${entry.version} is missing`)
+      if (!forAnotherPlatform(entry)) found.push(`${path}@${entry.version} is missing`)
     } else if (have.version !== entry.version) {
       found.push(`${path} is ${have.version}, locked ${entry.version}`)
     }
