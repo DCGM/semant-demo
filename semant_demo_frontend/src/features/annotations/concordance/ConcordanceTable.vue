@@ -108,26 +108,33 @@
         data-testid="kwic-row"
         @click="onRowClick(row, $event)"
         @contextmenu="prepareMenu(row)"
+        v-touch-hold:500="() => onHold(row)"
         @focus="activeIndex = index"
       >
         <!-- The row's actions and the filters of its values (#665): right click (with the words
-             selected in its text), the context menu key or Shift+F10, or its menu button. -->
+             selected in its text), the context menu key or Shift+F10, or its menu button; on a phone a
+             long press (`onHold`). -->
         <q-menu
           v-if="hasMenu"
           :ref="(el: unknown) => setMenu(row.id, el as QMenu | null)"
-          context-menu
-          touch-position
+          :context-menu="!phone"
+          :no-parent-event="phone"
+          :touch-position="!phone"
+          :fit="phone"
+          :anchor="phone ? 'bottom left' : undefined"
+          :self="phone ? 'top left' : undefined"
           data-testid="kwic-row-menu"
-          @before-show="menuOpen = row.id"
+          :persistent="pressHeld"
+          @before-show="onMenuOpening(row)"
           @before-hide="onMenuClosing(row)"
           @hide="onMenuHide(row)"
         >
-          <q-list dense class="kwic__menu">
-            <q-item v-close-popup clickable data-testid="kwic-row-open" @click="emit('open', row)">
+          <q-list dense class="kwic__menu" :class="{ 'kwic__menu--fit': phone }">
+            <q-item clickable data-testid="kwic-row-open" @click="menuAction(row, () => emit('open', row))">
               <q-item-section avatar><q-icon name="menu_book" /></q-item-section>
               <q-item-section>Show in document</q-item-section>
             </q-item>
-            <q-item v-if="similar" v-close-popup clickable data-testid="kwic-row-similar" @click="emit('similar', row)">
+            <q-item v-if="similar" clickable data-testid="kwic-row-similar" @click="menuAction(row, () => emit('similar', row))">
               <q-item-section avatar><q-icon name="join_inner" /></q-item-section>
               <q-item-section>Find similar</q-item-section>
             </q-item>
@@ -142,7 +149,7 @@
                 :key="action.key"
                 clickable
                 :data-testid="`kwic-refine-${action.key}`"
-                @click="refine(row, action.change)"
+                @click="menuAction(row, () => emit('refine', action.change))"
               >
                 <q-item-section avatar><q-icon :name="action.icon" /></q-item-section>
                 <q-item-section>{{ action.label }}</q-item-section>
@@ -266,7 +273,7 @@ export type FilterField = 'annotation' | 'context' | 'source' | 'year'
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { QBtn, QCheckbox, QIcon, QItem, QItemLabel, QItemSection, QList, QMenu, QSeparator, ClosePopup as vClosePopup } from 'quasar'
+import { QBtn, QCheckbox, QIcon, QItem, QItemLabel, QItemSection, QList, QMenu, QSeparator, TouchHold as vTouchHold, useQuasar } from 'quasar'
 import {
   AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
 } from 'src/generated/api'
@@ -557,11 +564,37 @@ function openMenu (row: AnnotationListRow, event?: Event) {
   menus.get(row.id)?.show(event)
 }
 
-/** Applies a filter of the row's menu. The menu is closed first: the filter changes the menu's
- * items, and an item removed before `v-close-popup` acts would leave it open. */
-function refine (row: AnnotationListRow, change: Partial<ConcordanceFilters>) {
+/** Does what an item of the row's menu does, after closing the menu (a filter changes the menu's
+ * items, and an item removed before `v-close-popup` acts would leave it open). Nothing while the
+ * long press that opened the menu is being released: the browser may report it as a click on the
+ * item under the finger. */
+function menuAction (row: AnnotationListRow, action: () => void) {
+  if (pressHeld.value) return
   menus.get(row.id)?.hide()
-  emit('refine', change)
+  action()
+}
+
+/** A long press opened the menu and its finger is still down: on a phone the menu is not under it,
+ * and the browser may report its release as a tap outside, which would close the menu. */
+const pressHeld = ref(false)
+
+function onMenuOpening (row: AnnotationListRow) {
+  menuOpen.value = row.id
+}
+
+/** On a phone a long press opens the menu (Quasar's context menu would place it at the finger, and
+ * narrow it at the viewport's edge until it scrolls sideways): as wide as the row, under or above it. */
+const $q = useQuasar()
+// A phone, not a narrow window of a desktop browser (which keeps the right click).
+const phone = computed(() => $q.platform.is.mobile === true && $q.screen.lt.sm)
+function onHold (row: AnnotationListRow) {
+  if (!phone.value) return
+  pressHeld.value = true
+  // The menu takes taps outside again a moment after the finger is lifted.
+  const release = () => setTimeout(() => { pressHeld.value = false }, 400)
+  document.addEventListener('touchend', release, { once: true, capture: true })
+  document.addEventListener('touchcancel', release, { once: true, capture: true })
+  openMenu(row)
 }
 
 function onMenuClosing (row: AnnotationListRow) {
@@ -588,11 +621,15 @@ function menuGroups (row: AnnotationListRow): CellFilterGroup[] {
  * screens, and lifting the finger may then click the row. */
 const menuOpen = ref<string | null>(null)
 let menuClosed: { rowId: string, at: number } | null = null
+// A menu of a row the new page no longer has went with it, without closing.
+watch(() => props.rows, rows => {
+  if (menuOpen.value && !rows.some(r => r.id === menuOpen.value)) menuOpen.value = null
+})
 
 /** A click opens the row, unless it ended selecting text in it (the selection is kept) or the long
  * press that opened its menu. */
 function onRowClick (row: AnnotationListRow, event: MouseEvent) {
-  if (menuOpen.value === row.id || (menuClosed?.rowId === row.id && Date.now() - menuClosed.at < 400)) return
+  if (menuOpen.value || (menuClosed?.rowId === row.id && Date.now() - menuClosed.at < 400)) return
   const selection = window.getSelection()
   const el = event.currentTarget as HTMLElement
   if (selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(el)) return
@@ -981,6 +1018,12 @@ defineExpose({ reveal })
 .kwic__menu {
   min-width: min(260px, calc(100vw - 16px));
   max-width: min(360px, calc(100vw - 16px));
+}
+
+/* On a phone as wide as the list, under (or above) the held row. */
+.kwic__menu--fit {
+  min-width: 0;
+  max-width: none;
 }
 
 /* A group of the row menu: the field and the row's value, cut to one line, and what it does. */

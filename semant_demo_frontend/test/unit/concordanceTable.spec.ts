@@ -193,6 +193,22 @@ describe('concordance row value filters', () => {
     wrapper.unmount()
   })
 
+  it('opens rows again after the row whose menu was open left the page', async () => {
+    const wrapper = mount(ConcordanceTable, {
+      props: { rows: [annotation('a'), annotation('b')], tags: [tag], selected: new Set<string>(), filters: defaultFilters() },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+    await wrapper.findAll('[data-testid="kwic-row"]')[0].trigger('keydown', { key: 'ContextMenu' })
+    await until(() => menuItem('kwic-refine-source-only'))
+    // The filter took the row out: its menu goes without closing.
+    await wrapper.setProps({ rows: [annotation('b')] })
+    await new Promise(resolve => setTimeout(resolve, 450))
+    await wrapper.get('[data-testid="kwic-row"]').trigger('click')
+    expect(wrapper.emitted('open')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('offers the words selected in the row\'s text, and a click that ends a selection does not open the row', async () => {
     const wrapper = mount(ConcordanceTable, {
       props: { rows: [annotation('a')], tags: [tag], selected: new Set<string>(), filters: defaultFilters() },
