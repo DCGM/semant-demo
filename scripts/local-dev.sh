@@ -28,8 +28,9 @@ FRONTEND="$ROOT/semant_demo_frontend"
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 case "$PYTHON" in /*) ;; */*) PYTHON="$(cd "$(dirname "$PYTHON")" && pwd)/$(basename "$PYTHON")" ;; esac
 
-# Same version as deployment and the test stores (scripts/with-test-weaviate.sh).
-IMAGE="cr.weaviate.io/semitechnologies/weaviate:1.40.1"
+# Docker preflight and the Weaviate image: the version of deployment and the test stores,
+# or an explicit SEMANT_WEAVIATE_IMAGE with the same version tag (#674).
+source "$ROOT/scripts/docker-preflight.sh"
 NAME="semant-weaviate-local"
 VOLUME="semant-local-weaviate"
 LABEL="org.semant.purpose=local-development"
@@ -47,7 +48,7 @@ need_python() {
   [[ -x "$PYTHON" ]] || die "no Python at $PYTHON (run make setup, or set PYTHON)"
   "$PYTHON" "$ROOT/scripts/check_python_deps.py" || die "stale Python environment; repair it as shown above"
 }
-need_docker() { command -v docker >/dev/null || die "docker is required for the development Weaviate"; }
+need_docker() { docker_ready || die "Docker is required for the development Weaviate (see above)"; }
 local_dev() { (cd "$BACKEND" && "$PYTHON" -m tests.local_dev "$@"); }
 
 listening() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
@@ -92,6 +93,9 @@ start_weaviate() {
     if listening "$REST" || listening "$SEMANT_DEV_WEAVIATE_GRPC_PORT"; then
       die "port $REST or $SEMANT_DEV_WEAVIATE_GRPC_PORT is already in use; stop that service or set SEMANT_DEV_WEAVIATE_REST_PORT / SEMANT_DEV_WEAVIATE_GRPC_PORT"
     fi
+    local image
+    image="$(weaviate_image)" || die "no usable Weaviate image; nothing was started"
+    weaviate_image_ready "$image" || die "the Weaviate image is not available; nothing was started"
     docker run -d --rm \
       --name "$NAME" \
       --label "$LABEL" \
@@ -105,7 +109,7 @@ start_weaviate() {
       -e DEFAULT_VECTORIZER_MODULE=none \
       -e CLUSTER_HOSTNAME=node1 \
       -e DISABLE_TELEMETRY=true \
-      "$IMAGE" --host 0.0.0.0 --port 8080 --scheme http >/dev/null \
+      "$image" --host 0.0.0.0 --port 8080 --scheme http >/dev/null \
       || die "could not start $NAME (port conflict? see the Docker error above)"
     say "started $NAME (REST 127.0.0.1:$REST, gRPC 127.0.0.1:$SEMANT_DEV_WEAVIATE_GRPC_PORT)"
   fi
@@ -217,6 +221,6 @@ case "$command" in
   add-documents) cmd_add_documents ;;
   status) cmd_status ;;
   verify) need_python; need_docker; check_owned; local_dev verify ;;
-  logs) exec docker logs "$NAME" ;;
+  logs) need_docker; exec docker logs "$NAME" ;;
   *) sed -n '2,/^set /p' "$0" | sed -n 's/^# \{0,1\}//p' >&2; exit 2 ;;
 esac
