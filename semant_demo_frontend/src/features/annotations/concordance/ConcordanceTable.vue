@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="root"
     class="kwic"
     :class="{ 'kwic--attributes': attributes.length > 0, 'kwic--scrolled': scrolled }"
     data-testid="kwic"
@@ -136,7 +135,9 @@
         <div class="kwic__text" role="gridcell" aria-colspan="3" data-testid="kwic-text">
           <span class="kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(lineText(row.leftContext, true), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
           <span class="kwic__key" :title="row.text ?? undefined">
-            <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(lineText(row.text), inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+            <template v-if="row.text !== null && row.text !== undefined">
+              <span v-for="(half, h) in halves(row.text)" :key="h" :class="h ? 'kwic__key-tail' : 'kwic__key-head'"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in half" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
+            </template>
             <span v-else class="kwic__missing">{{ missingText(row) }}</span>
           </span>
           <span class="kwic__right"><template v-for="(part, i) in marked(lineText(row.rightContext), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
@@ -216,14 +217,14 @@ export type FilterField = 'annotation' | 'context' | 'source' | 'year'
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, ClosePopup as vClosePopup } from 'quasar'
 import {
   AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
 } from 'src/generated/api'
 import type { ConcordanceFilters } from './concordanceStore'
 import HeaderControls, { type SortState } from './KwicHeaderControls.vue'
-import { markMatches, queryWords, type TextPart } from './textMatches'
+import { markMatches, queryWords, splitParts, type TextPart } from './textMatches'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
@@ -345,6 +346,11 @@ const inText = computed(() => props.queryScope !== TextScope.context)
 const inContext = computed(() => props.queryScope !== TextScope.annotation)
 function marked (text: string | null | undefined, searched: boolean): TextPart[] {
   return markMatches(text ?? '', searched ? words.value : [])
+}
+
+/** The annotation in its two halves (`splitParts`), its matches marked. */
+function halves (text: string): [TextPart[], TextPart[]] {
+  return splitParts(marked(lineText(text), inText.value))
 }
 
 /** A context or annotation as one line of the row: line breaks as spaces; `endKept`: its trailing spaces (before
@@ -472,42 +478,6 @@ function reveal (id: string) {
     el?.focus({ preventScroll: true })
   })
 }
-
-// A wrapped annotation's box keeps the width it was given, not that of its longest line, which
-// would leave a gap before the right context and push the annotation off center. So each wrapped
-// annotation gets the width of its longest line, measured after rendering and on every resize
-// (all widths reset, then all measured, then all set: one layout pass, not one per row).
-const root = ref<HTMLElement | null>(null)
-let fitFrame = 0
-function fitWrappedKeys () {
-  fitFrame = 0
-  const keys = Array.from(root.value?.querySelectorAll<HTMLElement>('.kwic__text .kwic__key') ?? [])
-  for (const key of keys) key.style.width = ''
-  const widths = keys.map(key => {
-    // Only the lines shown: those cut off after the second still have boxes of their own.
-    const bottom = key.getBoundingClientRect().bottom
-    const lines = Array.from(key.firstElementChild?.getClientRects() ?? []).filter(r => r.top < bottom - 1)
-    if (lines.length < 2) return null
-    return Math.ceil(Math.max(...lines.map(r => r.width))) + 1
-  })
-  keys.forEach((key, i) => { if (widths[i] !== null) key.style.width = `${widths[i]}px` })
-}
-function scheduleFit () {
-  if (!fitFrame && typeof requestAnimationFrame !== 'undefined') fitFrame = requestAnimationFrame(fitWrappedKeys)
-}
-let resizes: ResizeObserver | null = null
-onMounted(() => {
-  scheduleFit()
-  if (typeof ResizeObserver !== 'undefined' && root.value) {
-    resizes = new ResizeObserver(scheduleFit)
-    resizes.observe(root.value)
-  }
-})
-onBeforeUnmount(() => {
-  resizes?.disconnect()
-  if (fitFrame) cancelAnimationFrame(fitFrame)
-})
-watch(() => [props.rows, props.query, props.queryScope, props.attributes.length], () => { void nextTick(scheduleFit) })
 
 defineExpose({ reveal })
 </script>
@@ -723,31 +693,42 @@ defineExpose({ reveal })
   direction: ltr;
 }
 
-/* At most 60 % of the text, so some context shows on both sides; longer annotations wrap to a
-   second line and are cut after it (the full text is in the sidebar and the title). */
+/* The annotation, highlighted, on one line of at most 60 % of the text, so some context shows on
+   both sides. A longer one is cut in the middle: its first half shows its start (cut at its end,
+   with an ellipsis), its second half its end (cut at its start). Each half gets half the room and
+   gives what it does not need to the other (basis 0, at most its text), so only an annotation
+   that does not fit is cut, and the words next to both contexts stay visible. The full text is in
+   the sidebar and the title. */
 .kwic__text .kwic__key {
   flex: 0 1 auto;
   max-width: 60%;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  min-width: 0;
+  display: flex;
   overflow: hidden;
-  /* Its own spaces kept too (an annotation may start or end with one); wraps at them, in lines
-     of even length, and gets the width of its longest line (`fitWrappedKeys`). */
-  white-space: pre-wrap;
-  text-wrap: balance;
-  overflow-wrap: anywhere;
+  /* Its own spaces kept too (an annotation may start or end with one). */
+  white-space: pre;
+  border-radius: 2px;
+  background: rgba(255, 213, 79, 0.35);
   font-weight: 600;
   color: #1f2a37;
 }
 
-.kwic__key-text {
-  padding: 1px 0;
-  border-radius: 2px;
-  background: rgba(255, 213, 79, 0.35);
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+.kwic__key-head,
+.kwic__key-tail {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: max-content;
+  overflow: hidden;
+}
+
+.kwic__key-head {
+  text-overflow: ellipsis;
+}
+
+/* Cut at its start, like the left context. */
+.kwic__key-tail {
+  direction: rtl;
+  text-overflow: clip;
 }
 
 /* A lexical match: underlined, distinct from the annotation's own highlight. */
@@ -761,7 +742,8 @@ defineExpose({ reveal })
   text-underline-offset: 2px;
 }
 
-.kwic__row--rejected .kwic__key-text {
+.kwic__row--rejected .kwic__key-head,
+.kwic__row--rejected .kwic__key-tail {
   text-decoration: line-through;
   text-decoration-color: rgba(0, 0, 0, 0.45);
 }

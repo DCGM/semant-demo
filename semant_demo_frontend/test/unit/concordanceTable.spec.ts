@@ -57,7 +57,12 @@ describe('concordance table', () => {
 
   it('keeps the spaces an annotation starts or ends with, and shows its line breaks as spaces', () => {
     const wrapper = mountTable({}, [annotation('a', { leftContext: 'den', text: ' gegenseitigen\nBeistand ', rightContext: 'ablehnen' })])
-    expect(wrapper.get('.kwic__key-text').element.textContent).toBe(' gegenseitigen Beistand ')
+    expect(wrapper.get('[data-testid="kwic-text"] .kwic__key').element.textContent).toBe(' gegenseitigen Beistand ')
+  })
+
+  it('shows the annotation in two halves, the start of the first and the end of the second', () => {
+    const wrapper = mountTable({}, [annotation('a', { text: 'přijel do Lhoty hejtman' })])
+    expect([wrapper.get('.kwic__key-head').text(), wrapper.get('.kwic__key-tail').text()]).toEqual(['přijel do Lh', 'oty hejtman'])
   })
 
   it('marks the active sort and its direction, and leaves the context headers unsortable', () => {

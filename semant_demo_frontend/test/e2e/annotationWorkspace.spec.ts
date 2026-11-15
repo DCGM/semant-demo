@@ -98,14 +98,14 @@ test('opening, checking and keyboard use are distinct; the source shows the exac
   // Keyboard: arrows move, Space checks, Enter opens.
   await row(page, 'Jan Novák').focus()
   await page.keyboard.press('ArrowDown')
-  const keys = await rows(page).locator('.kwic__key').allInnerTexts()
+  const keys = await rows(page).locator('.kwic__key').allTextContents()
   const next = rows(page).nth(keys.indexOf('Jan Novák') + 1)
   await expect(next).toBeFocused()
   await page.keyboard.press('Space')
   await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
   await page.keyboard.press('Enter')
   await expect(next).toHaveAttribute('aria-current', 'true')
-  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText(await next.locator('.kwic__key').innerText())
+  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText(await next.locator('.kwic__key').textContent() ?? '')
 })
 
 test('switching between annotations of one document keeps the passage in place', async ({ page }) => {
@@ -326,7 +326,7 @@ test('the text scope, document filters and filter chips compose (#663)', async (
 test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
-  const keys = () => rows(page).locator('.kwic__key').allInnerTexts()
+  const keys = () => rows(page).locator('.kwic__key').allTextContents()
   const annotation = page.getByTestId('kwic-head-annotation')
 
   await page.getByTestId('kwic-sort-year').click()
@@ -417,40 +417,50 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   await expect(range).toHaveText('Rows 1–2 of 2 ranked annotations')
 })
 
-test('a long cross-chunk annotation wraps to a second line in its row and is complete in the sidebar', async ({ page, request }) => {
+test('a long cross-chunk annotation is cut in its middle in its row and complete in the sidebar', async ({ page, request }) => {
   const first = fixture.chunk('chronicle_1').text
   const second = fixture.chunk('chronicle_2').text
   await createSpan(request, 'chronicle_1', 10, first.length + 30)
   await useViewport(page, 'narrow')
   await openWorkspace(page)
   const long = row(page, first.slice(10, 40))
-
-  // Wrapped to a second line (at most; longer ones are cut after it), not cut in one.
   const key = long.locator('.kwic__key')
   await expect(key).toHaveText(first.slice(10) + second.slice(0, 30))
-  const [box, line] = await Promise.all([key.boundingBox(), row(page, 'Brně').locator('.kwic__key').boundingBox()])
-  expect(box!.height, 'two lines').toBeGreaterThan(1.5 * line!.height)
-  expect(box!.height, 'two lines').toBeLessThan(2.5 * line!.height)
-  expect(await key.evaluate(e => getComputedStyle(e).webkitLineClamp)).toBe('2')
-  // Its box is as wide as its longest line: the contexts touch it and it stays centered.
-  const fitted = async () => {
+
+  // One line, centered, the contexts touching it; cut in the middle (#665): its first half shows
+  // the start, its second half the end, so both contexts read on into it.
+  const cut = async () => {
+    const [box, line] = await Promise.all([key.boundingBox(), row(page, 'Brně').locator('.kwic__key').boundingBox()])
+    expect(Math.abs(box!.height - line!.height), 'one line').toBeLessThanOrEqual(1)
     const parts = await long.getByTestId('kwic-text').evaluate(el => {
       const text = el.getBoundingClientRect()
       const [left, k, right] = ['.kwic__left', '.kwic__key', '.kwic__right'].map(s => el.querySelector(s)!.getBoundingClientRect())
-      // The lines shown (those cut off after the second have boxes too).
-      const lines = Array.from(el.querySelector('.kwic__key-text')!.getClientRects()).filter(r => r.top < k.bottom - 1).map(r => r.right)
-      return { gapBefore: k.left - left.right, gapAfter: right.left - k.right, lineEnd: k.right - Math.max(...lines), off: (k.left + k.right) / 2 - (text.left + text.right) / 2 }
+      const head = el.querySelector<HTMLElement>('.kwic__key-head')!
+      const tail = el.querySelector<HTMLElement>('.kwic__key-tail')!
+      const tailText = tail.firstElementChild!.getBoundingClientRect()
+      return {
+        gapBefore: k.left - left.right,
+        gapAfter: right.left - k.right,
+        off: (k.left + k.right) / 2 - (text.left + text.right) / 2,
+        headCut: head.scrollWidth > head.clientWidth,
+        headStart: head.firstElementChild!.getBoundingClientRect().left - head.getBoundingClientRect().left,
+        tailCut: tail.scrollWidth > tail.clientWidth,
+        tailEnd: tail.getBoundingClientRect().right - tailText.right
+      }
     })
     expect(Math.abs(parts.gapBefore)).toBeLessThanOrEqual(0.5)
     expect(Math.abs(parts.gapAfter)).toBeLessThanOrEqual(0.5)
-    expect(parts.lineEnd).toBeLessThanOrEqual(2)
     expect(Math.abs(parts.off)).toBeLessThanOrEqual(1.5)
+    expect([parts.headCut, parts.tailCut], 'both halves cut').toEqual([true, true])
+    expect(Math.abs(parts.headStart), 'the start shown').toBeLessThanOrEqual(0.5)
+    expect(Math.abs(parts.tailEnd), 'the end shown').toBeLessThanOrEqual(0.5)
   }
-  await fitted()
-  // Narrower, it needs more than two lines and is cut after the second: still fitted to those.
+  await cut()
+  // A short one is not cut, though its halves differ in width.
+  expect(await row(page, 'Prahy').locator('.kwic__key-head, .kwic__key-tail')
+    .evaluateAll(els => els.map(e => e.scrollWidth <= e.clientWidth))).toEqual([true, true])
   await useViewport(page, 'phone')
-  await expect.poll(() => key.evaluate(e => e.scrollHeight > e.clientHeight + 2)).toBe(true)
-  await expect.poll(async () => { try { await fitted(); return true } catch { return false } }).toBe(true)
+  await expect.poll(async () => { try { await cut(); return true } catch { return false } }).toBe(true)
   await useViewport(page, 'narrow')
 
   await long.click()
@@ -558,7 +568,7 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
   const review = page.getByTestId('annotation-review')
   try {
     await row(page, 'Lhoty').click()
-    const next = rows(page).nth((await rows(page).locator('.kwic__key').allInnerTexts()).indexOf('Lhoty') + 1)
+    const next = rows(page).nth((await rows(page).locator('.kwic__key').allTextContents()).indexOf('Lhoty') + 1)
     await review.getByRole('button', { name: 'Approve' }).click()
     await expect(row(page, 'Lhoty')).toContainText('Confirmed')
     // Approving moves on to the next row.

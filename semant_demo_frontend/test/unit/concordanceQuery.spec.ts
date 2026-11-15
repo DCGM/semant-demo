@@ -10,12 +10,30 @@ import ConcordanceTable from 'src/features/annotations/concordance/ConcordanceTa
 import ConcordanceToolbar from 'src/features/annotations/concordance/ConcordanceToolbar.vue'
 import { defaultFilters, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
 import { concordanceChips, scopeHintText, titleProblem } from 'src/features/annotations/concordance/filterChips'
-import { markMatches, queryWords } from 'src/features/annotations/concordance/textMatches'
+import { markMatches, queryWords, splitParts } from 'src/features/annotations/concordance/textMatches'
 
 // The annotation query of the workspace (#663): lexical matches marked where the server matched
 // them, every active filter as a removable chip, the text scope and the shared document filters.
 
 const marks = (text: string, words: string[]) => markMatches(text, words).filter(p => p.match).map(p => p.text)
+
+describe('annotation halves (#665)', () => {
+  const texts = (parts: { text: string }[]) => parts.map(p => p.text)
+
+  it('splits at the middle, also inside a marked match, keeping every character once', () => {
+    const [head, tail] = splitParts(markMatches('Jan Novák z Lhoty', ['novák']))
+    expect([texts(head), texts(tail)]).toEqual([['Jan ', 'Novák'], [' z Lhoty']])
+    const [h2, t2] = splitParts(markMatches('Pan Novák', ['novák']))
+    expect([h2, t2]).toEqual([[{ text: 'Pan ', match: false }, { text: 'N', match: true }], [{ text: 'ovák', match: true }]])
+  })
+
+  it('never splits a surrogate pair, and leaves an empty text empty', () => {
+    const halves = (text: string) => splitParts([{ text, match: false }]).map(h => texts(h).join(''))
+    expect(halves('ab😀')).toEqual(['ab', '😀'])
+    expect(halves('a😀b')).toEqual(['a😀', 'b'])
+    expect(splitParts([])).toEqual([[], []])
+  })
+})
 
 describe('lexical matches', () => {
   it('marks a query word inside a word, ignoring case, keeping the text unchanged', () => {
@@ -192,9 +210,13 @@ describe('components', () => {
       documentYear: 1851
     } as AnnotationListRow
     const table = mountIt(ConcordanceTable, { rows: [row], tags, selected: new Set(), query: 'prah', queryScope: TextScope.annotation })
-    const marked = () => ['left', 'key', 'right'].map(c => table.findAll(`.kwic__${c} mark.kwic__match`).map(m => m.text()))
+    // A match the annotation's middle cuts is marked in both halves (#665): joined per field here.
+    const marked = () => ['left', 'key', 'right'].map(c => {
+      const text = table.findAll(`[data-testid="kwic-text"] .kwic__${c} mark.kwic__match`).map(m => m.text()).join('')
+      return text ? [text] : []
+    })
     expect(marked()).toEqual([[], ['Prah'], []])
-    expect(table.find('.kwic__key-text').text()).toBe('Praha')
+    expect(table.get('[data-testid="kwic-text"] .kwic__key').text()).toBe('Praha')
 
     await table.setProps({ queryScope: TextScope.context } as never)
     expect(marked()).toEqual([['Prah'], [], ['Prah']])
