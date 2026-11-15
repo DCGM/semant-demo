@@ -23,6 +23,7 @@ python3.12 -m venv .venv
 .venv/bin/python -m pip install -r semant_demo_backend/requirements-dev.lock
 .venv/bin/python -m pip install --no-deps -e semant_demo_backend
 (cd semant_demo_backend && ../.venv/bin/python -m ruff check .)
+(cd data_tools/meta_data_enrichment && ../../.venv/bin/python -m ruff check .)  # classifier, #676
 (cd semant_demo_backend && ../.venv/bin/python -m pytest -m "not integration and not live and not benchmark")
 scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/python -m pytest -m integration'
 ```

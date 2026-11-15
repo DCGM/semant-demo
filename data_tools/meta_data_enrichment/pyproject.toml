@@ -31,3 +31,9 @@ semantmetaenricher = "semantmetaenricher.__main__:main"
 
 [tool.setuptools]
 packages = ["semantmetaenricher"]
+
+# Linted by `make check` (`make check-classifier`) and CI (#676). The backend selects a narrower
+# set only because of its legacy findings; this tool meets Ruff's default rule set, so it keeps
+# it (pinned here so that a Ruff upgrade does not change the policy silently).
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

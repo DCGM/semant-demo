@@ -97,6 +97,9 @@ The configuration file is a flat YAML file mapped directly to the `EnrichmentPip
 
 ## Tests
 
+The package is linted with Ruff's default rule set (`[tool.ruff.lint]` in `pyproject.toml`) by
+`make check` and CI; `make check-classifier` (from the repository root) runs only that lint.
+
 `semant_demo_backend/tests/integration/test_classifier_tool.py` runs the pipeline against the
 test-owned Weaviate (`make test-integration`, and in CI) with a fake model: the selection by
 status, missing-only filling, invalid results, paging past failed chunks, the stop after
