@@ -23,17 +23,19 @@ import ipaddress
 import os
 import socket
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Collection, Mapping
 
 import weaviate
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
 from weaviate.classes.query import Filter
+from weaviate.classes.tenants import TenantActivityStatus
 
 from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.spans import create_annotation_collection
 from tests.fakes import SECOND_VECTOR
+from tests.fixture_profile import phase
 
 MARKER_COLLECTION = "SemantTestStoreMarker"
 MARKER_PURPOSE = "semant-automated-tests"
@@ -171,7 +173,8 @@ async def _app_schema(client: WeaviateAsyncClient, names: CollectionNames) -> di
 
 
 async def reset_app_collections(
-        client: WeaviateAsyncClient, names: CollectionNames, token: str, created: dict) -> None:
+        client: WeaviateAsyncClient, names: CollectionNames, token: str, created: dict,
+        keep_tenants: Collection[str] = ()) -> None:
     """Leave the application collections empty, after re-verifying ownership.
 
     Deletes the objects and keeps the collections if their configuration still equals
@@ -180,20 +183,35 @@ async def reset_app_collections(
     drops and recreates them. Recreating per test dominated the suite's runtime, and
     dropping a just-created collection can stall for ~20 s in Weaviate 1.34 (HNSW
     commit-log unregistration timeout).
+
+    Annotation tenants are removed, except active ones named in ``keep_tenants`` (those
+    the next seed creates), which are emptied instead: removing and recreating them was
+    the largest repeated reset cost (#686).
     """
-    await claim_store(client, token)
-    if not created or await _app_schema(client, names) != created:
-        await drop_app_collections(client, names, token)
-        await create_app_schema(client, names)
-        created.clear()
-        created.update(await _app_schema(client, names))
+    with phase("reset.claim"):
+        await claim_store(client, token)
+    with phase("reset.compare_schema"):
+        unchanged = bool(created) and await _app_schema(client, names) == created
+    if not unchanged:
+        with phase("reset.recreate_schema"):
+            await drop_app_collections(client, names, token)
+            await create_app_schema(client, names)
+            created.clear()
+            created.update(await _app_schema(client, names))
         return
     annotations = client.collections.get(names.annotation_collection_name)
-    tenants = list((await annotations.tenants.get()).keys())
-    if tenants:
-        await annotations.tenants.remove(tenants)
+    with phase("reset.tenants"):
+        tenants = await annotations.tenants.get()
+        kept = [name for name, tenant in tenants.items()
+                if name in keep_tenants and tenant.activity_status == TenantActivityStatus.ACTIVE]
+        removed = [name for name in tenants if name not in kept]
+        if removed:
+            await annotations.tenants.remove(removed)
+        for name in kept:
+            await _delete_all_objects(annotations.with_tenant(name))
     for name in _app_collections_in_drop_order(names)[1:]:
-        await _delete_all_objects(client.collections.get(name))
+        with phase(f"reset.delete_objects.{name}"):
+            await _delete_all_objects(client.collections.get(name))
 
 
 async def _delete_all_objects(collection) -> None:

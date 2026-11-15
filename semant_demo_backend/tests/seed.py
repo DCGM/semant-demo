@@ -18,6 +18,7 @@ from semant_demo.features.documents.positions import ChunkPosition, chunk_positi
 from semant_demo.users.models import User
 from tests.corpus import Corpus
 from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
+from tests.fixture_profile import phase
 from tests.weaviate_store import claim_store
 
 FIXTURE_TIMESTAMP = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -39,7 +40,8 @@ def corpus_positions(chunks: dict[str, dict]) -> dict[str, ChunkPosition]:
 
 
 async def _insert(client: WeaviateAsyncClient, collection: str, objects: list[DataObject]) -> None:
-    result = await client.collections.get(collection).data.insert_many(objects)
+    with phase(f"seed.insert.{collection}"):
+        result = await client.collections.get(collection).data.insert_many(objects)
     if result.has_errors:
         raise RuntimeError(f"Seeding {collection} failed: {result.errors}")
 
@@ -47,7 +49,8 @@ async def _insert(client: WeaviateAsyncClient, collection: str, objects: list[Da
 async def seed_weaviate(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus, token: str) -> None:
     """Insert the corpus into the (already created, empty) application collections of a
     test-owned store (``token``, verified first)."""
-    await claim_store(client, token)
+    with phase("seed.claim"):
+        await claim_store(client, token)
     await insert_corpus(client, names, corpus)
 
 
@@ -152,18 +155,35 @@ def _span_object(corpus: Corpus, span: dict, *, legacy: bool) -> DataObject:
     return DataObject(uuid=span["id"], properties=properties, references={"text_chunk": chunk["id"]})
 
 
-async def seed_annotations(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
-    """The corpus spans in the annotation tenants of their tags' collections (#327)."""
-    by_collection: dict[str, list[DataObject]] = {}
+def _spans_by_tenant(corpus: Corpus) -> dict[str, list[DataObject]]:
+    by_tenant: dict[str, list[DataObject]] = {}
     for span in corpus.spans.values():
         collection = corpus.collections[corpus.tags[span["tag"]]["collection"]]["id"]
-        by_collection.setdefault(collection, []).append(_span_object(corpus, span, legacy=False))
+        by_tenant.setdefault(str(UUID(collection)), []).append(_span_object(corpus, span, legacy=False))
+    return by_tenant
+
+
+def annotation_tenants(corpus: Corpus) -> set[str]:
+    """The annotation tenants ``seed_annotations`` fills."""
+    return set(_spans_by_tenant(corpus))
+
+
+async def seed_annotations(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
+    """The corpus spans in the annotation tenants of their tags' collections (#327).
+    Creates the tenants that do not exist; existing ones (kept, emptied, by
+    ``reset_app_collections``) are reused."""
+    by_tenant = _spans_by_tenant(corpus)
     annotations = client.collections.get(names.annotation_collection_name)
-    await annotations.tenants.create([Tenant(name=str(UUID(c))) for c in by_collection])
-    for collection, objects in by_collection.items():
-        result = await annotations.with_tenant(str(UUID(collection))).data.insert_many(objects)
+    with phase("seed.annotation_tenants"):
+        existing = await annotations.tenants.get()
+        missing = [Tenant(name=t) for t in by_tenant if t not in existing]
+        if missing:
+            await annotations.tenants.create(missing)
+    for tenant, objects in by_tenant.items():
+        with phase("seed.insert.annotations"):
+            result = await annotations.with_tenant(tenant).data.insert_many(objects)
         if result.has_errors:
-            raise RuntimeError(f"Seeding the annotations of {collection} failed: {result.errors}")
+            raise RuntimeError(f"Seeding the annotations of {tenant} failed: {result.errors}")
 
 
 async def seed_legacy_spans(client: WeaviateAsyncClient, names: CollectionNames, corpus: Corpus) -> None:
