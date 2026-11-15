@@ -480,7 +480,7 @@ jobs:
           [ -n "$OLD_BACKEND" ] && docker tag "$OLD_BACKEND" semant-demo-rollback || true
 
           docker compose -p semant-demo -f ./docker-compose.app.yaml down --rmi local 2>/dev/null || true
-          docker compose -p semant-demo -f ./docker-compose.app.yaml build --no-cache
+          docker compose -p semant-demo -f ./docker-compose.app.yaml build
           # The old app is stopped: bring the mounted SQLite file to the new schema before the new app
           # starts (#522, deploy/README.md#sqlite-schema-steps-522). It runs in the new image against the same
           # mount and SQL_DB_URL as the app; a refusal changed nothing and fails the deployment.
@@ -658,7 +658,7 @@ jobs:
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-main"
           cd "$DEPLOY_PATH"
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml down --rmi local 2>/dev/null || true
-          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml build --no-cache
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-main" -f docker-compose.app-test.yml build
           # The old app is stopped: bring the mounted SQLite file to the new schema before the new app
           # starts (#522, deploy/README.md#sqlite-schema-steps-522). It runs in the new image against the same
           # mount and SQL_DB_URL as the app; a refusal changed nothing and fails the deployment.
@@ -834,7 +834,7 @@ jobs:
           DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
           cd "$DEPLOY_PATH"
           docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml down --rmi local 2>/dev/null || true
-          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml build --no-cache
+          docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml build
           # The old app is stopped: bring the mounted SQLite file to the new schema before the new app
           # starts (#522, deploy/README.md#sqlite-schema-steps-522). It runs in the new image against the same
           # mount and SQL_DB_URL as the app; a refusal changed nothing and fails the deployment.
