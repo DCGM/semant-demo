@@ -169,7 +169,7 @@ def test_required_browser_check_gates_on_every_shard():
     gate, shard = jobs["test-browser"], jobs["test-browser-shard"]
 
     assert gate["name"] == "Browser smoke tests"
-    assert gate["needs"] == ["test-browser-shard"]
+    assert gate["needs"] == ["classify", "test-browser-shard"]
     assert gate["if"].startswith("always()")
     assert shard["strategy"]["fail-fast"] is False
     assert "matrix.shard" in shard["env"]["SEMANT_TEST_STORE_TOKEN"]
