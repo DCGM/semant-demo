@@ -484,7 +484,9 @@ function fitWrappedKeys () {
   const keys = Array.from(root.value?.querySelectorAll<HTMLElement>('.kwic__text .kwic__key') ?? [])
   for (const key of keys) key.style.width = ''
   const widths = keys.map(key => {
-    const lines = Array.from(key.firstElementChild?.getClientRects() ?? [])
+    // Only the lines shown: those cut off after the second still have boxes of their own.
+    const bottom = key.getBoundingClientRect().bottom
+    const lines = Array.from(key.firstElementChild?.getClientRects() ?? []).filter(r => r.top < bottom - 1)
     if (lines.length < 2) return null
     return Math.ceil(Math.max(...lines.map(r => r.width))) + 1
   })

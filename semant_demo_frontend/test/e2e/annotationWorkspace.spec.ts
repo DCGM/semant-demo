@@ -433,16 +433,25 @@ test('a long cross-chunk annotation wraps to a second line in its row and is com
   expect(box!.height, 'two lines').toBeLessThan(2.5 * line!.height)
   expect(await key.evaluate(e => getComputedStyle(e).webkitLineClamp)).toBe('2')
   // Its box is as wide as its longest line: the contexts touch it and it stays centered.
-  const parts = await long.getByTestId('kwic-text').evaluate(el => {
-    const text = el.getBoundingClientRect()
-    const [left, k, right] = ['.kwic__left', '.kwic__key', '.kwic__right'].map(s => el.querySelector(s)!.getBoundingClientRect())
-    const lines = Array.from(el.querySelector('.kwic__key-text')!.getClientRects()).map(r => r.right)
-    return { gapBefore: k.left - left.right, gapAfter: right.left - k.right, lineEnd: k.right - Math.max(...lines), off: (k.left + k.right) / 2 - (text.left + text.right) / 2 }
-  })
-  expect(Math.abs(parts.gapBefore)).toBeLessThanOrEqual(0.5)
-  expect(Math.abs(parts.gapAfter)).toBeLessThanOrEqual(0.5)
-  expect(parts.lineEnd).toBeLessThanOrEqual(2)
-  expect(Math.abs(parts.off)).toBeLessThanOrEqual(1.5)
+  const fitted = async () => {
+    const parts = await long.getByTestId('kwic-text').evaluate(el => {
+      const text = el.getBoundingClientRect()
+      const [left, k, right] = ['.kwic__left', '.kwic__key', '.kwic__right'].map(s => el.querySelector(s)!.getBoundingClientRect())
+      // The lines shown (those cut off after the second have boxes too).
+      const lines = Array.from(el.querySelector('.kwic__key-text')!.getClientRects()).filter(r => r.top < k.bottom - 1).map(r => r.right)
+      return { gapBefore: k.left - left.right, gapAfter: right.left - k.right, lineEnd: k.right - Math.max(...lines), off: (k.left + k.right) / 2 - (text.left + text.right) / 2 }
+    })
+    expect(Math.abs(parts.gapBefore)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(parts.gapAfter)).toBeLessThanOrEqual(0.5)
+    expect(parts.lineEnd).toBeLessThanOrEqual(2)
+    expect(Math.abs(parts.off)).toBeLessThanOrEqual(1.5)
+  }
+  await fitted()
+  // Narrower, it needs more than two lines and is cut after the second: still fitted to those.
+  await useViewport(page, 'phone')
+  await expect.poll(() => key.evaluate(e => e.scrollHeight > e.clientHeight + 2)).toBe(true)
+  await expect.poll(async () => { try { await fitted(); return true } catch { return false } }).toBe(true)
+  await useViewport(page, 'narrow')
 
   await long.click()
   const marks = panel(page).getByTestId('chunk-context-mark')
