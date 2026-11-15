@@ -20,12 +20,14 @@
       class="q-mb-sm"
       @change="store.setFilters"
       @reset="store.resetFilters"
+      @open="openContext"
     />
 
     <SelectionBar
       class="q-mb-xs"
       :selected-count="selection.size"
       :total="store.total"
+      :ranked="ranked"
       :hidden-selected="store.hiddenSelected"
       :shown-error="store.shownError"
       :all-selected="allMatchesSelected"
@@ -57,6 +59,7 @@
 
     <div class="collection-annotations__summary" aria-live="polite">
       <span data-testid="concordance-range">{{ rangeLabel }}</span>
+      <span v-if="rankedText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-ranked">{{ rankedText }}</span>
       <q-spinner v-if="store.loading" color="primary" size="1.2em" aria-label="Loading annotations" />
       <q-space />
       <PagerButtons v-if="store.total > PAGE_SIZE" />
@@ -73,6 +76,9 @@
     >
       {{ emptyText }}
     </div>
+    <div v-else-if="store.needsText" class="collection-annotations__state text-grey-8" data-testid="concordance-needs-text">
+      Enter a text to find the annotations closest to it in meaning.
+    </div>
     <div v-else-if="!store.page" class="collection-annotations__state text-grey-7">Loading annotations…</div>
 
     <ConcordanceTable
@@ -85,10 +91,13 @@
       :loading="store.loading"
       :attributes="shownAttributes"
       :pending="assignWaiting"
-      :query="store.filters.text"
+      :query="ranksText(store.filters.mode) ? '' : store.filters.text"
       :query-scope="store.filters.textScope"
+      :rank-start="ranked ? store.offset + 1 : null"
+      similar
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
+      @similar="findSimilar"
       @toggle="toggleRow"
       @select-page="selectPage"
       @assign="(row, attribute, change, done) => assignRow(row, attribute, change).then(done)"
@@ -272,7 +281,7 @@
                     <q-tooltip>Leave it as it is and show the next row</q-tooltip>
                   </q-btn>
                 </div>
-                <!-- Corrections. -->
+                <!-- Corrections, and annotations like this one. -->
                 <div class="annotation-context__actions annotation-context__actions--secondary">
                   <ReviewTagMenu
                     :tags="tags"
@@ -295,6 +304,23 @@
                     @click="editBoundary"
                   >
                     <q-tooltip>{{ canEditBoundary ? 'Change where this annotation starts or ends' : 'Wait until its passage is loaded' }}</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    dense
+                    flat
+                    no-caps
+                    color="primary"
+                    icon="join_inner"
+                    label="Find similar"
+                    :disable="selection.focused.textStatus !== TextStatus.ready"
+                    data-testid="row-find-similar"
+                    @click="findSimilar(selection.focused)"
+                  >
+                    <q-tooltip>
+                      {{ selection.focused.textStatus === TextStatus.ready
+                        ? 'List the annotations closest in meaning to this one, within the current filters'
+                        : 'Its text and vector are not derived yet' }}
+                    </q-tooltip>
                   </q-btn>
                 </div>
               </div>
@@ -333,7 +359,7 @@ import { QBtn, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import {
-  ReviewAction, SpanType, type AnnotationListRow, type Attribute, type AttributeAssignResult
+  RetrievalMode, ReviewAction, SpanType, TextStatus, type AnnotationListRow, type Attribute, type AttributeAssignResult
 } from 'src/generated/api'
 import { apiErrorMessage, captureSession, errorStatus } from 'src/shared/api'
 import { spanWriteWarning } from 'src/shared/writeOutcome'
@@ -361,7 +387,8 @@ import {
   rangeBetween, rangeText, sameRange, stepBoundary, type BoundaryHandle, type BoundaryRange, type BoundaryUnit
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
-import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
+import { PAGE_SIZE, defaultFilters, ranksText, useConcordanceStore } from './concordanceStore'
+import { rankedLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
@@ -386,18 +413,25 @@ const spansRepo = useTagSpansRepository()
 
 const collectionId = computed(() => typeof route.params.collectionId === 'string' ? route.params.collectionId : '')
 
+const ranked = computed(() => store.filters.mode !== RetrievalMode.lexical)
+
 const rangeLabel = computed(() => {
   if (!store.page) return ''
-  if (!store.total) return 'No matching annotations'
+  if (!store.total) return ranked.value ? 'No ranked annotations' : 'No matching annotations'
   const first = store.offset + 1
   const last = store.offset + store.rows.length
-  return `Rows ${first}–${last} of ${store.total} matching annotations`
+  return `Rows ${first}–${last} of ${store.total} ${ranked.value ? 'ranked' : 'matching'} annotations`
 })
 
-const emptyText = computed(() =>
-  JSON.stringify(store.filters) === JSON.stringify(defaultFilters())
+/** A ranked page's description (#664): top k, truncation and vector coverage. */
+const rankedText = computed(() => rankedLabel(store.page?.result, store.total))
+
+const emptyText = computed(() => {
+  if (ranked.value) return 'No annotation matching these filters has a current vector to rank by.'
+  return JSON.stringify(store.filters) === JSON.stringify(defaultFilters())
     ? 'This collection has no confirmed or proposed annotations yet.'
-    : 'No annotations match these filters.')
+    : 'No annotations match these filters.'
+})
 
 // Previous/next page; rendered above and below the rows.
 const PagerButtons = defineComponent(() => () => h('div', { class: 'row no-wrap q-gutter-x-xs' }, [
@@ -481,6 +515,13 @@ async function openContext (row: AnnotationListRow) {
   await nextTick() // the panel registers when the first row is opened
   rightSidebar.activate(CONTEXT_PANEL_ID)
   await opening
+}
+
+/** Lists the annotations most similar to `row` within the current filters (#664); the row stays
+ * open. On narrow screens the sidebar covering the list closes, so the result is seen. */
+function findSimilar (row: AnnotationListRow) {
+  if ($q.screen.lt.md) rightSidebar.open = false
+  void store.findSimilar(row)
 }
 
 function returnToRow () {

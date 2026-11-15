@@ -11,8 +11,10 @@ docs/AnnotationListRow.md
 docs/AnnotationOrigin.md
 docs/AnnotationPage.md
 docs/AnnotationProvenance.md
+docs/AnnotationRanking.md
 docs/AnnotationRestoreItem.md
 docs/AnnotationRestoreRequest.md
+docs/AnnotationResultSet.md
 docs/AnnotationReviewRequest.md
 docs/AnnotationReviewResult.md
 docs/AnnotationSort.md
@@ -118,7 +120,9 @@ docs/RankedResultsDistributions.md
 docs/RankedResultsDistributionsRequest.md
 docs/RankingDescription.md
 docs/RankingScope.md
+docs/ResultKind.md
 docs/ResultMember.md
+docs/RetrievalMode.md
 docs/ReviewAction.md
 docs/SearchChatRequest.md
 docs/SearchCriteria.md
@@ -156,6 +160,7 @@ docs/ValidationError.md
 docs/ValueKind.md
 docs/Values.md
 docs/ValuesAnyOfInner.md
+docs/VectorCoverage.md
 docs/WriteOutcome.md
 docs/WriteResult.md
 docs/YearBin.md
@@ -170,8 +175,10 @@ models/AnnotationListRow.ts
 models/AnnotationOrigin.ts
 models/AnnotationPage.ts
 models/AnnotationProvenance.ts
+models/AnnotationRanking.ts
 models/AnnotationRestoreItem.ts
 models/AnnotationRestoreRequest.ts
+models/AnnotationResultSet.ts
 models/AnnotationReviewRequest.ts
 models/AnnotationReviewResult.ts
 models/AnnotationSort.ts
@@ -275,7 +282,9 @@ models/RankedResultsDistributions.ts
 models/RankedResultsDistributionsRequest.ts
 models/RankingDescription.ts
 models/RankingScope.ts
+models/ResultKind.ts
 models/ResultMember.ts
+models/RetrievalMode.ts
 models/ReviewAction.ts
 models/SearchChatRequest.ts
 models/SearchCriteria.ts
@@ -312,6 +321,7 @@ models/ValidationError.ts
 models/ValueKind.ts
 models/Values.ts
 models/ValuesAnyOfInner.ts
+models/VectorCoverage.ts
 models/WriteOutcome.ts
 models/WriteResult.ts
 models/YearBin.ts

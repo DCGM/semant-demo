@@ -1,7 +1,7 @@
 
 # AnnotationPage
 
-One page of a collection\'s concordance rows and the number of all matching rows.
+One page of a collection\'s concordance rows and the number of all rows of the result: every match (``complete``) or the ranked top ``k`` (``top_k``), in relevance order then id.
 
 ## Properties
 
@@ -11,6 +11,7 @@ Name | Type
 `total` | number
 `offset` | number
 `limit` | number
+`result` | [AnnotationResultSet](AnnotationResultSet.md)
 
 ## Example
 
@@ -23,6 +24,7 @@ const example = {
   "total": null,
   "offset": null,
   "limit": null,
+  "result": null,
 } satisfies AnnotationPage
 
 console.log(example)

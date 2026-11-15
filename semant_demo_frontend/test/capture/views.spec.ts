@@ -269,6 +269,35 @@ test('annotation workspace query (#663)', async ({ page }, testInfo) => {
   await save(page, testInfo, 'annotation-workspace-query')
 })
 
+test('annotation workspace ranked (#664)', async ({ page }, testInfo) => {
+  // Find similar from the open annotation (sidebar): ranks, the reference chip and the top-k label;
+  // then search by meaning with the mode selector and k.
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
+  await page.reload() // without the sign-in notification
+  const novak = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
+  await novak.click()
+  await expect(page.getByTestId('chunk-context-mark').first()).toBeVisible()
+  await page.getByTestId('row-find-similar').click()
+  await expect(page.getByTestId('concordance-ranked')).toHaveText('Top 100 most similar (3 found)')
+  await expect(page.getByTestId('kwic-rank').first()).toHaveText('#1')
+  await page.mouse.move(0, 0) // without the button's tooltip
+  await expect(page.locator('.q-tooltip')).toHaveCount(0)
+  if (testInfo.project.name !== 'phone') { // on a phone the sidebar closes to show the result
+    await expectRightSidebarIn(page)
+    await expectSidebarsOpen(page, testInfo)
+  }
+  await save(page, testInfo, 'annotation-workspace-similar')
+
+  await page.getByRole('button', { name: 'Stop finding annotations similar to \'Jan Novák\'' }).click()
+  await page.getByTestId('concordance-mode').click()
+  await page.getByRole('option', { name: 'Meaning', exact: true }).click()
+  await page.getByLabel('Meaning of').fill('hejtman v obci')
+  await expect(page.getByTestId('concordance-ranked')).toContainText('Top 100 by meaning')
+  await expect(page.locator('.q-menu')).toHaveCount(0)
+  await save(page, testInfo, 'annotation-workspace-meaning')
+})
+
 test('annotation workspace review (#459)', async ({ page, request }, testInfo) => {
   // A batch reject of the two proposals: its per-item result and the now hidden selection.
   const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }

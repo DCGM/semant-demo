@@ -10,6 +10,7 @@ Name | Type
 `ids` | Array&lt;string&gt;
 `versions` | { [key: string]: number; }
 `attributeVersions` | { [key: string]: number; }
+`result` | [AnnotationResultSet](AnnotationResultSet.md)
 
 ## Example
 
@@ -21,6 +22,7 @@ const example = {
   "ids": null,
   "versions": null,
   "attributeVersions": null,
+  "result": null,
 } satisfies AnnotationIds
 
 console.log(example)

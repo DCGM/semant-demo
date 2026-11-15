@@ -86,6 +86,7 @@ import type {
   RagRouteConfig,
   RankedResultsDistributions,
   RankedResultsDistributionsRequest,
+  RetrievalMode,
   SearchChatRequest,
   SearchFiltersResponse,
   SearchRequest,
@@ -249,6 +250,8 @@ import {
     RankedResultsDistributionsToJSON,
     RankedResultsDistributionsRequestFromJSON,
     RankedResultsDistributionsRequestToJSON,
+    RetrievalModeFromJSON,
+    RetrievalModeToJSON,
     SearchChatRequestFromJSON,
     SearchChatRequestToJSON,
     SearchFiltersResponseFromJSON,
@@ -507,7 +510,7 @@ export interface ListAttributesApiUserCollectionsCollectionIdAttributesGetReques
 
 export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest {
     collectionId: string;
-    sort?: AnnotationSort;
+    sort?: AnnotationSort | null;
     limit?: number;
     offset?: number;
     annotationId?: Array<string> | null;
@@ -523,6 +526,10 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     languages?: Array<string>;
     attribute?: Array<string> | null;
     unassigned?: Array<string> | null;
+    mode?: RetrievalMode;
+    k?: number;
+    similarTo?: string | null;
+    includeSource?: boolean;
 }
 
 export interface QuestionApiQuestionPostRequest {
@@ -1976,7 +1983,7 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
      * @param {string} collectionId 
-     * @param {AnnotationSort} [sort] 
+     * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
@@ -1992,16 +1999,20 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)
+     * @param {number} [k] Ranked modes: at most this many
+     * @param {string} [similarTo] Mode similar: the source annotation id
+     * @param {boolean} [includeSource] Mode similar: rank the source annotation too
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * @summary List Collection Annotations
      * @param {string} collectionId 
-     * @param {AnnotationSort} [sort] 
+     * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
@@ -2017,6 +2028,10 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)
+     * @param {number} [k] Ranked modes: at most this many
+     * @param {string} [similarTo] Mode similar: the source annotation id
+     * @param {boolean} [includeSource] Mode similar: rank the source annotation too
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2024,7 +2039,7 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>>;
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
@@ -2399,7 +2414,7 @@ export interface DefaultApiInterface {
     resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequestOpts(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated. A ranked ``ranking`` resolves exactly its top ``k`` (#664).
      * @summary Resolve Collection Annotation Ids
      * @param {string} collectionId 
      * @param {AnnotationIdsRequest} annotationIdsRequest 
@@ -2410,7 +2425,7 @@ export interface DefaultApiInterface {
     resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRaw(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationIds>>;
 
     /**
-     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated. A ranked ``ranking`` resolves exactly its top ``k`` (#664).
      * Resolve Collection Annotation Ids
      */
     resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationIds>;
@@ -5835,6 +5850,22 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['unassigned'] = requestParameters['unassigned'];
         }
 
+        if (requestParameters['mode'] != null) {
+            queryParameters['mode'] = requestParameters['mode'];
+        }
+
+        if (requestParameters['k'] != null) {
+            queryParameters['k'] = requestParameters['k'];
+        }
+
+        if (requestParameters['similarTo'] != null) {
+            queryParameters['similar_to'] = requestParameters['similarTo'];
+        }
+
+        if (requestParameters['includeSource'] != null) {
+            queryParameters['include_source'] = requestParameters['includeSource'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && this.configuration.accessToken) {
@@ -5855,7 +5886,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>> {
@@ -5866,7 +5897,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage> {
@@ -6720,7 +6751,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated. A ranked ``ranking`` resolves exactly its top ``k`` (#664).
      * Resolve Collection Annotation Ids
      */
     async resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRaw(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationIds>> {
@@ -6731,7 +6762,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated.
+     * The ids of all annotations matching the concordance filters now, or of those among ``within`` that match (which members of a selection the filters show). At most 5,000; a query matching more is refused (400), never truncated. A ranked ``ranking`` resolves exactly its top ``k`` (#664).
      * Resolve Collection Annotation Ids
      */
     async resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost(requestParameters: ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationIds> {

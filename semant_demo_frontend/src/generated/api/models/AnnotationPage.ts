@@ -20,9 +20,17 @@ import {
     AnnotationListRowToJSON,
     AnnotationListRowToJSONTyped,
 } from './AnnotationListRow';
+import type { AnnotationResultSet } from './AnnotationResultSet';
+import {
+    AnnotationResultSetFromJSON,
+    AnnotationResultSetFromJSONTyped,
+    AnnotationResultSetToJSON,
+    AnnotationResultSetToJSONTyped,
+} from './AnnotationResultSet';
 
 /**
- * One page of a collection's concordance rows and the number of all matching rows.
+ * One page of a collection's concordance rows and the number of all rows of the result:
+ * every match (``complete``) or the ranked top ``k`` (``top_k``), in relevance order then id.
  * @export
  * @interface AnnotationPage
  */
@@ -51,6 +59,12 @@ export interface AnnotationPage {
      * @memberof AnnotationPage
      */
     limit: number;
+    /**
+     * 
+     * @type {AnnotationResultSet}
+     * @memberof AnnotationPage
+     */
+    result?: AnnotationResultSet;
 }
 
 /**
@@ -78,6 +92,7 @@ export function AnnotationPageFromJSONTyped(json: any, ignoreDiscriminator: bool
         'total': json['total'],
         'offset': json['offset'],
         'limit': json['limit'],
+        'result': json['result'] == null ? undefined : AnnotationResultSetFromJSON(json['result']),
     };
 }
 
@@ -96,6 +111,7 @@ export function AnnotationPageToJSONTyped(value?: AnnotationPage | null, ignoreD
         'total': value['total'],
         'offset': value['offset'],
         'limit': value['limit'],
+        'result': AnnotationResultSetToJSON(value['result']),
     };
 }
 
