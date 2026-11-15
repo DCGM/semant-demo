@@ -27,6 +27,7 @@ npm run dev
 ### Checks
 
 ```bash
+node scripts/check-deps.mjs  # node_modules matches package-lock.json (run by the Make targets)
 npm run lint        # ESLint
 npm run typecheck   # vue-tsc against typecheck-baseline.json (empty: no known errors)
 npm test            # Vitest unit/component tests (test/unit)
