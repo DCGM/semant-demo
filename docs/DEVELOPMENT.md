@@ -347,17 +347,28 @@ The `Classify changes` job (`scripts/ci_changes.py`, #687) classifies each PR's 
 diff (GitHub's merge commit against its base parent, so renames, deletions and a moved
 base are included) and selects a mode. **Full validation is the default** and is used for
 pushes to `main`, tags, manual runs, PRs with the `ci:full` label (add it and re-run the
-workflow), any path outside a mode's allowlist and any classification error. The only
-reduced mode is `docs`: a PR that changes nothing but root-level Markdown, Markdown under
-`docs/`, `deploy/README.md` and the `.github` PR/issue templates runs `Documentation
-checks` (`make check-docs`: relative Markdown links resolve) and skips the application
-suites and the PR preview. Package READMEs, generated client docs and other files are not
-documentation for this purpose.
+workflow), any path outside a mode's allowlist and any classification error. The narrowest
+enabled mode that fits every changed path is used; there are two reduced modes:
+
+- `docs`: a PR that changes nothing but root-level Markdown, Markdown under `docs/`,
+  `deploy/README.md` and the `.github` PR/issue templates runs `Documentation checks`
+  (`make check-docs`: relative Markdown links resolve) and skips the application suites
+  and the PR preview. Package READMEs, generated client docs and other files are not
+  documentation for this purpose.
+- `frontend`: a PR that changes only `semant_demo_frontend/src/`, `test/`, `public/`,
+  `index.html` or its README (plus documentation) runs `Documentation checks`, `Frontend
+  checks` and `Browser smoke tests`, deploys the preview, and skips `Backend tests`,
+  `Integration tests`, `Python dependency locks` and `Generated API client drift`.
+  Dependencies (`package.json`, the lock), build/lint/test configuration, the generated
+  API client (`src/generated/`), frontend files that backend tests read and deleted or
+  renamed browser specs run everything. A backend test that starts reading a frontend
+  file must add it to `FRONTEND_FORCE_FULL` in the script; the tests check the frontend
+  paths named literally in backend code.
 
 The `CI result` job is the gate: it passes only when the classification succeeded and
 every suite its mode requires succeeded, and it lists the suites a mode omitted as not
 tested. The mode is applied only when the repository variable `CI_CHANGE_SELECTION`
-includes it (e.g. `docs`); unset, the classification is only reported and everything runs.
+includes it (e.g. `docs,frontend`); unset, the classification is only reported and everything runs.
 Enable it after `CI result` is a required check of the `main` ruleset, because GitHub
 treats a skipped required check as passing. To try a classification locally:
 `python3 scripts/ci_changes.py paths <path>...`. A new mode or path needs a reviewed entry
