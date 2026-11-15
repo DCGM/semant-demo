@@ -102,6 +102,8 @@ cmd_start() {
     die "something else answers on http://127.0.0.1:$PORT; stop it or set E2E_DEV_PORT"
   fi
   [[ -x "$PYTHON" ]] || die "no Python at $PYTHON (make setup, or set PYTHON)"
+  "$PYTHON" "$ROOT/scripts/check_python_deps.py" || die "stale Python environment; repair it as shown above"
+  node "$FRONTEND/scripts/check-deps.mjs" || die "stale frontend dependencies; repair them as shown above"
   command -v docker >/dev/null || die "docker is required"
   rm -f "$STATE/server.pid" "$STATE/server.port" "$STATE/backend.stamp"
 

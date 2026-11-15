@@ -14,7 +14,8 @@ make check             # Ruff, fast pytest suite, frontend checks, API client dr
 make test-integration  # real-Weaviate tests in a throwaway container (Docker)
 ```
 
-Set `PYTHON=...` to select another interpreter. Without Make, the backend equivalents
+Make targets first check that the environment matches `requirements-dev.lock`
+(`scripts/check_python_deps.py`; `make deps-check`). Set `PYTHON=...` to select another interpreter. Without Make, the backend equivalents
 (from the repository root) are:
 
 ```bash

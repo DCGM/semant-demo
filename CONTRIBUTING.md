@@ -28,6 +28,7 @@ Docker is needed for local application, integration and browser workflows, not f
 | Command (repository root) | Purpose |
 | --- | --- |
 | `make setup` | Install locked Python/frontend dependencies and the backend package. |
+| `make deps-check` | Check `.venv`/`node_modules` against their locks (checks, tests and launchers run it first); installs nothing. |
 | `make check` | Lint, types, fast tests and API-client drift; offline after generator bootstrap. |
 | `make api-generate` / `make api-check` | Regenerate the client / check for drift. |
 | `make lock` / `make lock-check` | Update / validate backend dependency locks; needs network. |
