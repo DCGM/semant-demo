@@ -15,12 +15,69 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type != 'tag' && github.event.action != 'closed' }}
 
 jobs:
+  # Change-aware PR validation (#687, scripts/ci_changes.py). Classifies the PR's complete
+  # diff (merge commit vs. its base parent) and outputs `mode`. Full validation is the
+  # default: pushes, tags, manual runs, the `ci:full` label, any path outside the mode's
+  # allowlist and any classification error all give `full`. Jobs omitted in a mode skip only
+  # on the exact output, so a failed or missing classification runs them; the "CI result"
+  # gate below fails in that case. A mode is enabled by the repository variable
+  # CI_CHANGE_SELECTION (comma-separated, e.g. `docs`); unset, it is only reported.
+  classify:
+    name: Classify changes
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027
+    env:
+      HOME: /tmp
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The PR merge commit and both parents.
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Classify the diff
+        id: classify
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_CHANGE_SELECTION: ${{ vars.CI_CHANGE_SELECTION }}
+        run: >-
+          python scripts/ci_changes.py classify --event "${{ github.event_name }}"
+          --repo "${{ github.repository }}" --pr "${{ github.event.pull_request.number || 0 }}"
+          --head-sha "${{ github.event.pull_request.head.sha }}"
+
+  # Relative Markdown links (scripts/check_doc_links.py); required in every mode.
+  docs-check:
+    name: Documentation checks
+    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027
+    env:
+      HOME: /tmp
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check relative links in Markdown
+        run: python scripts/check_doc_links.py
+
   # Fast offline checks (see `make check`). These jobs are blocking: a failure fails the
   # workflow and prevents the production and test-main deployments below. They use no
   # secrets, API keys, GPU or live services.
   test-backend:
     name: Backend tests
-    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [classify]
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
     runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
@@ -85,7 +142,8 @@ jobs:
 
   test-frontend:
     name: Frontend checks
-    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [classify]
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
     runs-on: [self-hosted, semant-ci]
     container:
       image: node:22.23.4-bookworm@sha256:18a6d90fd60542269850c80ca03b29b1d9b14d6b221ac7ee8e35b0d33ef904bd
@@ -123,7 +181,8 @@ jobs:
   # the inventory exactly once.
   test-integration-shard:
     name: Integration shard ${{ matrix.shard }}/${{ strategy.job-total }}
-    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [classify]
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
     runs-on: [self-hosted, semant-ci]
     strategy:
       # Finish the other shard so a failure report names every failing shard.
@@ -217,8 +276,8 @@ jobs:
   # it; for external forks it is skipped exactly as the shards are (#393).
   test-integration:
     name: Integration tests
-    needs: [test-integration-shard]
-    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [classify, test-integration-shard]
+    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs'
     runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
@@ -260,7 +319,8 @@ jobs:
   # together they ran each test of the inventory exactly once.
   test-browser-shard:
     name: Browser shard ${{ matrix.shard }}/${{ strategy.job-total }}
-    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [classify]
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
     runs-on: [self-hosted, semant-ci]
     strategy:
       # Finish the other shard so a failure report names every failing shard.
@@ -371,8 +431,8 @@ jobs:
   # shard failed or was cancelled, so a missing or unsuccessful shard fails it.
   test-browser:
     name: Browser smoke tests
-    needs: [test-browser-shard]
-    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [classify, test-browser-shard]
+    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs'
     runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
@@ -411,7 +471,8 @@ jobs:
   # tags (which deploy) and manual runs always do, and python-locks-drift.yml runs it weekly.
   python-locks:
     name: Python dependency locks
-    if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [classify]
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
     runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
@@ -476,9 +537,36 @@ jobs:
           OPENAPI_GENERATOR: java -jar /opt/openapi-generator/modules/openapi-generator-cli/target/openapi-generator-cli.jar
         run: bash semant_demo_frontend/scripts/api-client.sh check
 
+  # The "CI result" gate (#687): passes only when the classification succeeded and every
+  # suite its mode requires succeeded; suites the mode omits must be skipped or successful
+  # and are listed as not tested. Its needs must equal SUITES in scripts/ci_changes.py
+  # (checked by the gate and by semant_demo_backend/tests/test_ci_changes.py).
+  ci-result:
+    name: CI result
+    needs: [classify, docs-check, test-backend, test-frontend, test-integration, test-browser, python-locks, api-client-drift]
+    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, semant-ci]
+    container:
+      image: python:3.12
+      options: --user 1025:1027
+    env:
+      HOME: /tmp
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require every selected suite to pass
+        env:
+          MODE: ${{ needs.classify.outputs.mode }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci_changes.py gate --mode "$MODE" --classify-result "$CLASSIFY_RESULT" --needs-json "$NEEDS"
+
   deploy-production:
     name: Deploy Production ${{ github.ref_name }}
-    needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks]
+    needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks, ci-result]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: [self-hosted, semant-server]
     environment: production
@@ -664,7 +752,7 @@ jobs:
 
   deploy-test-main:
     name: Deploy test-main
-    needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks]
+    needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks, ci-result]
     if: github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
@@ -819,10 +907,13 @@ jobs:
 
   deploy-test-pr:
     name: "Deploy test PR #${{ github.event.pull_request.number }}"
-    # No needs: the preview starts with the tests, not after them, and deploys even when they
-    # fail, for manual diagnosis (#689; supersedes only the scheduling of #213). Failed checks
-    # still block merging through branch protection, not the preview.
-    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    # Needs only the change classification: the preview starts with the tests, not after them,
+    # and deploys even when they fail, for manual diagnosis (#689; supersedes only the
+    # scheduling of #213). Failed checks still block merging through branch protection, not
+    # the preview. Documentation-only PRs get no preview (#687); a failed classification
+    # still deploys one.
+    needs: [classify]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && needs.classify.outputs.mode != 'docs' }}
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
 
