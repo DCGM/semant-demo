@@ -238,6 +238,7 @@
             />
           </div>
         <q-input
+          class="concordance-toolbar__title"
           v-model="titleDraft"
           dense
           outlined
@@ -621,6 +622,11 @@ const shownLabel = computed(() => {
 .concordance-toolbar__more-fields > .q-field {
   flex: 1 1 240px;
   max-width: 340px;
+}
+
+/* Its hint is two lines where the other fields have one; the hint is positioned absolutely. */
+.concordance-toolbar__title.q-field--with-bottom {
+  padding-bottom: 46px;
 }
 
 .concordance-toolbar__rule {
