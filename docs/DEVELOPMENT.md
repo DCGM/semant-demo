@@ -348,7 +348,7 @@ diff (GitHub's merge commit against its base parent, so renames, deletions and a
 base are included) and selects a mode. **Full validation is the default** and is used for
 pushes to `main`, tags, manual runs, PRs with the `ci:full` label (add it and re-run the
 workflow), any path outside a mode's allowlist and any classification error. The narrowest
-enabled mode that fits every changed path is used; there are two reduced modes:
+enabled mode that fits every changed path is used; there are three reduced modes:
 
 - `docs`: a PR that changes nothing but root-level Markdown, Markdown under `docs/`,
   `deploy/README.md` and the `.github` PR/issue templates runs `Documentation checks`
@@ -364,11 +364,22 @@ enabled mode that fits every changed path is used; there are two reduced modes:
   renamed browser specs run everything. A backend test that starts reading a frontend
   file must add it to `FRONTEND_FORCE_FULL` in the script; the tests check the frontend
   paths named literally in backend code.
+- `deploy`: a PR that changes only `deploy/` and the `semant_demo_backend/tests/test_deploy_*.py`
+  contract tests (plus documentation) runs `Documentation checks`, `Backend tests` (which
+  hold every test that reads `deploy/`) and `Generated API client drift`, deploys the
+  preview (which builds and runs the image), and skips `Frontend checks`, `Integration
+  tests`, `Browser smoke tests` and `Python dependency locks`; those run from source and
+  never read `deploy/`. The workflow, `scripts/` and other backend tests run everything.
+
+Standalone data tools (`data_tools/`) and database maintenance have no mode: in the month
+before 2026-11-16, no PR changed only a data tool and two changed only maintenance code
+and its tests, and maintenance changes need the backend and real-store suites anyway, so
+the saving would not justify the classification rules.
 
 The `CI result` job is the gate: it passes only when the classification succeeded and
 every suite its mode requires succeeded, and it lists the suites a mode omitted as not
 tested. The mode is applied only when the repository variable `CI_CHANGE_SELECTION`
-includes it (e.g. `docs,frontend`); unset, the classification is only reported and everything runs.
+includes it (e.g. `docs,frontend,deploy`); unset, the classification is only reported and everything runs.
 Enable it after `CI result` is a required check of the `main` ruleset, because GitHub
 treats a skipped required check as passing. To try a classification locally:
 `python3 scripts/ci_changes.py paths <path>...`. A new mode or path needs a reviewed entry
