@@ -211,12 +211,12 @@
           flat dense no-caps size="sm"
           icon="check"
           color="positive"
-          label="Approve"
+          label="Confirm"
           :loading="isBulkResolving"
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.pos)"
         >
-          <q-tooltip>Approve all selected suggestions</q-tooltip>
+          <q-tooltip>Confirm all selected suggestions</q-tooltip>
         </q-btn>
         <q-btn
           flat dense no-caps size="sm"
@@ -282,7 +282,7 @@
               :disable="busyAutoSpanIds.has(entry.span.id || '')"
               @click.stop="approveAutoSpan(entry.span)"
             >
-              <q-tooltip>Approve</q-tooltip>
+              <q-tooltip>Confirm</q-tooltip>
             </q-btn>
             <q-btn
               flat dense round size="xs"

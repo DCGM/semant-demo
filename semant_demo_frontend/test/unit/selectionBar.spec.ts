@@ -40,7 +40,7 @@ describe('SelectionBar', () => {
 
   it('names the target count of batch actions and shows hidden members', async () => {
     const wrapper = mountBar({ selectedCount: 12, hiddenSelected: 3 })
-    expect(byTestId(wrapper, 'review-approve').text()).toContain('Approve 12')
+    expect(byTestId(wrapper, 'review-approve').text()).toContain('Confirm 12')
     expect(byTestId(wrapper, 'review-delete').text()).toContain('Delete 12…')
     expect(byTestId(wrapper, 'hidden-selected').text()).toContain('3 selected not shown by these filters')
     await byTestId(wrapper, 'review-reject').trigger('click')
@@ -64,7 +64,7 @@ describe('SelectionBar', () => {
     }
     const wrapper = mountBar({ selectedCount: 9, report })
     const text = byTestId(wrapper, 'review-report').text()
-    expect(text).toContain('Approved 7 of 10 annotations. 1 failed.')
+    expect(text).toContain('Confirmed 7 of 10 annotations. 1 failed.')
     expect(text).toContain('1 uncertain')
     expect(text).toContain('1 no longer exist')
     expect(text).toContain('Saved changes are kept.')

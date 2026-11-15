@@ -398,7 +398,7 @@ defineExpose({ openFilter })
 const tagOptions = computed(() => props.tags.map(t => ({ label: t.name, value: t.id, color: t.color })))
 
 const statusOptions = [
-  { value: SpanType.pos, label: 'Confirmed', hint: 'Manual or approved annotations' },
+  { value: SpanType.pos, label: 'Confirmed', hint: 'Created by hand or confirmed proposals' },
   { value: SpanType.auto, label: 'Proposals', hint: 'Automatic proposals not yet reviewed' },
   { value: SpanType.neg, label: 'Rejected', hint: 'Rejected proposals, kept as negative examples' }
 ]
