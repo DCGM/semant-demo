@@ -661,10 +661,12 @@ previews, test jobs and the other deployments share the same server and Docker d
 code running there with access to that daemon can reach more than its own `.env`. That is a
 known scope boundary; host separation is not planned.
 
-**Test results versus preview availability.** `deploy-test-pr` runs with `if: always()`
-after the backend tests, so a preview is built and deployed even when backend, frontend,
-integration, API client drift or dependency lock checks fail; this lets developers diagnose a
-failing PR by hand. A healthy preview (and a green "Deploy test PR" job) does **not** mean
+**Test results versus preview availability.** `deploy-test-pr` does not depend on any test
+job: it starts with the checks as soon as the `semant-server` runner is free (#689), so a
+preview is built and deployed while the tests run and even when backend, frontend,
+integration, browser, API client drift or dependency lock checks fail; this lets developers
+diagnose a failing PR by hand. The preview build shares the host and Docker daemon with the
+`semant-ci` test jobs. A healthy preview (and a green "Deploy test PR" job) does **not** mean
 the PR passed CI or can be merged: the failed checks stay visible on the PR, and branch
 protection, not the preview, blocks merging. The deploy job's summary repeats this.
 
