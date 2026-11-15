@@ -593,6 +593,19 @@ describe('attribute components', () => {
     expect(none.find('[data-testid="annotation-attributes-empty"]').text()).toContain('No attributes apply to this tag.')
   })
 
+  it('lists the attributes holding values first, and keeps that order while values are edited (#669)', async () => {
+    const attributes = [speaker(), topic({ tagIds: ['tag-1'] }), speaker({ id: 'a3', name: 'Place' })]
+    const ids = (w: VueWrapper) => w.findAll('[data-testid^="annotation-attribute-a"]').map(e => e.attributes('data-testid'))
+    const wrapper = mountIt(AnnotationAttributes, { row: row('r1', { attributes: { a3: ['v1'] } }), attributes })
+    expect(ids(wrapper)).toEqual(['annotation-attribute-a3', 'annotation-attribute-a1', 'annotation-attribute-a2'])
+    // A value given to Speaker or taken from Place does not move the rows under the user's hand.
+    await wrapper.setProps({ row: row('r1', { attributes: { a1: ['v2'] } }) } as never)
+    expect(ids(wrapper)).toEqual(['annotation-attribute-a3', 'annotation-attribute-a1', 'annotation-attribute-a2'])
+    // Another annotation is ordered by its own values.
+    await wrapper.setProps({ row: row('r2', { attributes: { a2: ['v1'] } }) } as never)
+    expect(ids(wrapper)).toEqual(['annotation-attribute-a2', 'annotation-attribute-a1', 'annotation-attribute-a3'])
+  })
+
   it('shows a selection\'s assignment result with retry and the changed ones apart', async () => {
     const report: AssignReport = {
       attributeId: 'a1',
