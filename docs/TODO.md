@@ -54,3 +54,4 @@ Update [ARCHITECTURE.md](ARCHITECTURE.md) when implementation changes,
 [ADRs](adr/README.md) when an agreed decision changes. Do not modify archived history.
 
 <!-- #687 rollout probe: docs-only change, not to be merged. -->
+See [the plan](NO_SUCH_FILE.md).
