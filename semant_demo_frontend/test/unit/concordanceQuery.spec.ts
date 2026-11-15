@@ -216,7 +216,7 @@ describe('components', () => {
       return text ? [text] : []
     })
     expect(marked()).toEqual([[], ['Prah'], []])
-    expect(table.get('[data-testid="kwic-text"] .kwic__key').text()).toBe('Praha')
+    expect(table.get('[data-testid="kwic-text"] .kwic__key-label').text()).toBe('Praha')
 
     await table.setProps({ queryScope: TextScope.context } as never)
     expect(marked()).toEqual([['Prah'], [], ['Prah']])

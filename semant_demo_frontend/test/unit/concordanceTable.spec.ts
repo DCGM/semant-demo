@@ -48,7 +48,9 @@ describe('concordance table', () => {
     // The space before the annotation survives the line end of the left context; line breaks
     // show as spaces; the right context follows the annotation in the same flow.
     expect(text.get('.kwic__left').element.textContent).toBe('přijel do Lhoty hejtman\u00a0')
-    expect(text.get('.kwic__key').text()).toBe('Jan Novák')
+    expect(text.get('.kwic__key-label').text()).toBe('Jan Novák')
+    // Read as one text; the visible halves are hidden from assistive technology.
+    expect(text.findAll('.kwic__key-head, .kwic__key-tail').map(h => h.attributes('aria-hidden'))).toEqual(['true', 'true'])
     expect(text.get('.kwic__right').element.textContent).toBe(' a ubytoval se v hostinci')
     expect(text.findAll(':scope > span').map(s => s.classes()[0])).toEqual(['kwic__left', 'kwic__key', 'kwic__right'])
     const name = (h: ReturnType<typeof wrapper.get>) => h.find('.kwic-head__label').exists() ? h.get('.kwic-head__label').text() : h.text()
@@ -58,7 +60,7 @@ describe('concordance table', () => {
 
   it('keeps the spaces an annotation starts or ends with, and shows its line breaks as spaces', () => {
     const wrapper = mountTable({}, [annotation('a', { leftContext: 'den', text: ' gegenseitigen\nBeistand ', rightContext: 'ablehnen' })])
-    expect(wrapper.get('[data-testid="kwic-text"] .kwic__key').element.textContent).toBe(' gegenseitigen Beistand ')
+    expect(wrapper.get('[data-testid="kwic-text"] .kwic__key-label').element.textContent).toBe(' gegenseitigen Beistand ')
   })
 
   it('shows the annotation in two halves, the start of the first and the end of the second', () => {

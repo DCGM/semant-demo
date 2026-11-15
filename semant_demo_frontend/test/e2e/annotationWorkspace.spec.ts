@@ -98,14 +98,14 @@ test('opening, checking and keyboard use are distinct; the source shows the exac
   // Keyboard: arrows move, Space checks, Enter opens.
   await row(page, 'Jan Novák').focus()
   await page.keyboard.press('ArrowDown')
-  const keys = await rows(page).locator('.kwic__key').allTextContents()
+  const keys = await rows(page).locator('.kwic__key-label').allTextContents()
   const next = rows(page).nth(keys.indexOf('Jan Novák') + 1)
   await expect(next).toBeFocused()
   await page.keyboard.press('Space')
   await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
   await page.keyboard.press('Enter')
   await expect(next).toHaveAttribute('aria-current', 'true')
-  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText(await next.locator('.kwic__key').textContent() ?? '')
+  await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText(await next.locator('.kwic__key-label').textContent() ?? '')
 })
 
 test('switching between annotations of one document keeps the passage in place', async ({ page }) => {
@@ -326,7 +326,7 @@ test('the text scope, document filters and filter chips compose (#663)', async (
 test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
-  const keys = () => rows(page).locator('.kwic__key').allTextContents()
+  const keys = () => rows(page).locator('.kwic__key-label').allTextContents()
   const annotation = page.getByTestId('kwic-head-annotation')
 
   await page.getByTestId('kwic-sort-year').click()
@@ -431,7 +431,7 @@ test('a long cross-chunk annotation is cut in its middle in its row and complete
   await openWorkspace(page)
   const long = row(page, first.slice(10, 40))
   const key = long.locator('.kwic__key')
-  await expect(key).toHaveText(first.slice(10) + second.slice(0, 30))
+  await expect(long.locator('.kwic__key-label')).toHaveText(first.slice(10) + second.slice(0, 30))
 
   // One line, centered, the contexts touching it; cut in the middle (#665): its first half shows
   // the start, its second half the end, so both contexts read on into it.
@@ -509,7 +509,7 @@ test('copying from a row gives the source text unchanged, also of a cut annotati
   }
 
   // A short annotation alone, then with the words around it.
-  const novak = rows(page).filter({ has: page.locator('.kwic__key', { hasText: /^Jan Novák$/ }) }).first().getByTestId('kwic-text')
+  const novak = rows(page).filter({ has: page.locator('.kwic__key-label', { hasText: /^Jan Novák$/ }) }).first().getByTestId('kwic-text')
   expect(await copy(novak, '.kwic__key', 0, '.kwic__key', 'end')).toBe('Jan Novák')
   const left = (await novak.locator('.kwic__left').textContent())!
   const at = first.indexOf('hejtman Jan Novák')
@@ -543,9 +543,52 @@ test('narrow lists keep the tag and status and give up source and year first (#6
   await openWorkspace(page)
   await check(false)
   // Without attribute columns the list fits: it does not scroll sideways.
-  expect(await page.getByTestId('kwic').evaluate(e => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0)
+  // (Polled: the layout settles after the viewport change closes the sidebar.)
+  await expect.poll(() => page.getByTestId('kwic').evaluate(e => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0)
   const [list, status] = await Promise.all([page.getByTestId('kwic').boundingBox(), row(page, 'Jan Novák').locator('.kwic__status').boundingBox()])
   expect(status!.x + status!.width, 'status within the list').toBeLessThanOrEqual(list!.x + list!.width)
+})
+
+test('keyboard: Home shows the first row below the header, focus is drawn on checked rows, Escape closes the covering sidebar (#665 review)', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const first = rows(page).first()
+  // Home from the last row, the page scrolled so the first row is under the fixed app header (in
+  // the viewport, so the browser alone would not scroll): it comes into view below the header.
+  const header = (await page.locator('.q-header').boundingBox())!
+  // Room below the list, as a full page of rows would leave.
+  await page.getByTestId('collection-annotations').evaluate(el => { el.style.paddingBottom = '1500px' })
+  await rows(page).last().evaluate(el => (el as HTMLElement).focus({ preventScroll: true }))
+  await first.evaluate((el, bottom) => window.scrollBy(0, el.getBoundingClientRect().top - (bottom - 20)), header.y + header.height)
+  expect((await first.boundingBox())!.y, 'the first row starts under the header').toBeLessThan(header.y + header.height)
+  await page.keyboard.press('Home')
+  await expect(first).toBeFocused()
+  await expect.poll(async () => (await first.boundingBox())!.y).toBeGreaterThanOrEqual(header.y + header.height)
+
+  // A checked row that has keyboard focus shows the focus ring across its text too.
+  await first.getByRole('checkbox').click()
+  await rows(page).nth(1).evaluate(el => (el as HTMLElement).focus())
+  await page.keyboard.press('ArrowUp')
+  await expect(first).toBeFocused()
+  await expect(first).toHaveAttribute('aria-selected', 'true')
+  await expect(first.getByTestId('kwic-text')).toHaveCSS('box-shadow', /inset/)
+
+  // Enter opens the row in the sidebar, which covers the list on a phone; Escape closes it and
+  // gives the keyboard back to the row.
+  await page.keyboard.press('Enter')
+  const drawer = page.locator('.q-drawer--right')
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+  await expect(drawer).toBeInViewport()
+  await page.keyboard.press('Escape')
+  await expect(drawer).not.toBeInViewport()
+  await expect(first).toBeFocused()
+
+  // On a wide screen the sidebar sits beside the list and Escape leaves it open.
+  await useViewport(page, 'wide')
+  await first.click()
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
 })
 
 test('a shared user reads the same workspace', async ({ page }) => {
@@ -647,7 +690,7 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
   const review = page.getByTestId('annotation-review')
   try {
     await row(page, 'Lhoty').click()
-    const next = rows(page).nth((await rows(page).locator('.kwic__key').allTextContents()).indexOf('Lhoty') + 1)
+    const next = rows(page).nth((await rows(page).locator('.kwic__key-label').allTextContents()).indexOf('Lhoty') + 1)
     await review.getByRole('button', { name: 'Approve' }).click()
     await expect(row(page, 'Lhoty')).toContainText('Confirmed')
     // Approving moves on to the next row.

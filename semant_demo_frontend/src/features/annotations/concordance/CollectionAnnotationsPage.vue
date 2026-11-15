@@ -320,7 +320,7 @@
 
 <script setup lang="ts">
 import { plural } from 'src/shared/plural'
-import { computed, defineComponent, h, nextTick, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { QBtn, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -479,6 +479,23 @@ function findSimilar (row: AnnotationListRow) {
   if ($q.screen.lt.md) rightSidebar.open = false
   void store.findSimilar(row)
 }
+
+/** Escape closes the sidebar where it covers the list (narrow screens) and gives the keyboard back
+ * to the open row. Not while a menu or dialog is open (Escape closes that) or when something
+ * else handled the key (e.g. the boundary editor's cancel). */
+function closeSidebarOnEscape (event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented || !$q.screen.lt.md) return
+  if (!rightSidebar.open || !rightSidebar.hasPanels || !selection.focused) return
+  // A field, select or menu takes Escape for itself (closing its list).
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [role="listbox"], [role="menu"], .q-field, .q-menu, .q-dialog')) return
+  if (document.querySelector('.q-menu, .q-dialog')) return
+  rightSidebar.open = false
+  const row = selection.focused
+  if (row && store.rows.some(r => r.id === row.id)) table.value?.reveal(row.id)
+}
+onMounted(() => window.addEventListener('keydown', closeSidebarOnEscape))
+onBeforeUnmount(() => window.removeEventListener('keydown', closeSidebarOnEscape))
 
 function returnToRow () {
   const row = selection.focused

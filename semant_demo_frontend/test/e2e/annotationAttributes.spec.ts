@@ -251,7 +251,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await page.getByTestId('kwic-sort-annotation').click()
   await expect(page.getByTestId('kwic-head-annotation')).toHaveAttribute('aria-sort', 'ascending')
   await expect(page.getByRole('grid')).not.toHaveAttribute('aria-busy', 'true')
-  const order = await rows(page).locator('.kwic__key').allTextContents()
+  const order = await rows(page).locator('.kwic__key-label').allTextContents()
   await row(page, 'Brně').getByRole('checkbox').click()
   await row(page, 'Jan Novák').click()
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
@@ -270,7 +270,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await expect(page.getByRole('listbox')).toHaveCount(0)
   await expect(page.getByTestId('kwic-attribute')).toHaveCount(8)
   // Nothing else changed: same rows in the same order, the check, the open row.
-  await expect(rows(page).locator('.kwic__key')).toHaveText(order)
+  await expect(rows(page).locator('.kwic__key-label')).toHaveText(order)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
   await expect(page.getByTestId('annotation-context')).toBeVisible()
@@ -308,7 +308,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   // Hiding one changes nothing else either.
   await toggleOption(page, 'concordance-show-attribute', 'Role')
   await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type'])
-  await expect(rows(page).locator('.kwic__key')).toHaveText(order)
+  await expect(rows(page).locator('.kwic__key-label')).toHaveText(order)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
 })
 

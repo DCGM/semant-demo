@@ -137,7 +137,10 @@
           <span class="kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(lineText(row.leftContext, true), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
           <span class="kwic__key" :title="row.text ?? undefined">
             <template v-if="row.text !== null && row.text !== undefined">
-              <span v-for="(half, h) in halves(row.text)" :key="h" :class="h ? 'kwic__key-tail' : 'kwic__key-head'"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in half" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
+              <!-- Read as one text: the halves are flex items, which assistive technology would
+                   announce apart ("Jan N ovák"). -->
+              <span class="sr-only kwic__key-label">{{ lineText(row.text) }}</span>
+              <span v-for="(half, h) in halves(row.text)" :key="h" :class="h ? 'kwic__key-tail' : 'kwic__key-head'" aria-hidden="true"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in half" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
             </template>
             <span v-else class="kwic__missing">{{ missingText(row) }}</span>
           </span>
@@ -498,7 +501,10 @@ function onCopy (event: ClipboardEvent) {
   let text = ''
   let lastCell: Element | null = null
   for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
-    if (!range.intersectsNode(node) || node.parentElement?.closest('.sr-only, [aria-hidden="true"]')) continue
+    // Screen-reader texts are left out, and hidden decorations, but not the annotation's halves
+    // (their screen-reader copy is the one left out).
+    if (!range.intersectsNode(node) ||
+      node.parentElement?.closest('.sr-only, [aria-hidden="true"]:not(.kwic__key-head, .kwic__key-tail)')) continue
     const value = node.textContent ?? ''
     const part = value.slice(node === range.startContainer ? range.startOffset : 0,
       node === range.endContainer ? range.endOffset : value.length)
@@ -622,7 +628,9 @@ defineExpose({ reveal })
   box-shadow: inset 2px 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
-.kwic__grid--attribute .kwic__row:focus-visible .kwic__text {
+/* The text cell is opaque (it may stick), so it draws its part of the focus ring, also on a
+   checked or open row. */
+.kwic__row:focus-visible .kwic__text {
   box-shadow: inset 0 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
@@ -637,6 +645,9 @@ defineExpose({ reveal })
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
+  /* A row moved to by keyboard (Home, arrows) comes into view below the fixed app header. */
+  scroll-margin-top: 4.5rem;
+  scroll-margin-bottom: 0.5rem;
   align-items: center;
   min-height: 2rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
