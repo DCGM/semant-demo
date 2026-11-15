@@ -413,20 +413,47 @@ test('a long annotated text shows its first lines in the sidebar, the whole text
 
   const text = panel(page).getByTestId('annotation-context-text')
   const toggle = panel(page).getByTestId('annotation-context-text-toggle')
-  await expect(toggle).toHaveText('Show all text')
+  await expect(toggle).toHaveAttribute('aria-label', 'Show all text')
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   expect(await text.evaluate(e => e.scrollHeight > e.clientHeight), 'the text is clamped').toBe(true)
   const clamped = (await text.boundingBox())?.height ?? 0
 
+  // The arrow unfolds it, smoothly; a click on the text folds it again.
   await toggle.click()
-  await expect(toggle).toHaveText('Show less')
-  expect((await text.boundingBox())?.height).toBeGreaterThan(clamped)
+  await expect(toggle).toHaveAttribute('aria-label', 'Show less text')
+  await expect.poll(async () => (await text.boundingBox())?.height ?? 0).toBeGreaterThan(clamped + 10)
+  await text.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect.poll(async () => (await text.boundingBox())?.height ?? 0).toBeLessThan(clamped + 2)
 
   // Another annotation opens clamped again; a short one has no toggle.
   await page.getByRole('button', { name: 'Close sidebar' }).click()
   await row(page, 'Prahy').click()
   await expect(text).toHaveText('Prahy')
   await expect(toggle).toHaveCount(0)
+})
+
+test('the review comes first; the tag chip changes the tag (#659)', async ({ page, request }) => {
+  const text = fixture.chunk('chronicle_2').text.slice(0, 8)
+  await createSpan(request, 'chronicle_2', 0, 8)
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  await row(page, text).click()
+  const context = page.getByTestId('annotation-context')
+  const review = page.getByTestId('annotation-review')
+  const chip = page.getByTestId('row-retag')
+  await expect(chip).toHaveAccessibleName(`Tag: ${fixture.tag('person').name}. Change tag`)
+  // The decision is the first thing in the detail, above the tag and the text.
+  const y = async (locator: typeof chip) => (await locator.boundingBox())?.y ?? 0
+  expect(await y(review)).toBeLessThan(await y(chip))
+  expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
+
+  await chip.click()
+  const menu = page.getByRole('menu', { name: 'Change tag' })
+  await expect(menu.getByRole('menuitem', { name: fixture.tag('person').name })).toHaveAttribute('aria-disabled', 'true')
+  await menu.getByRole('menuitem', { name: fixture.tag('place').name }).click()
+  await expect(chip).toHaveAccessibleName(`Tag: ${fixture.tag('place').name}. Change tag`)
+  await expect(page.getByTestId('review-report')).toContainText('1 of 1')
 })
 
 test('a shared user reads the same workspace', async ({ page }) => {
