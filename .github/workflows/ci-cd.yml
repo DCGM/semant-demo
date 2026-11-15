@@ -20,8 +20,11 @@ jobs:
   # default: pushes, tags, manual runs, the `ci:full` label, any path outside the mode's
   # allowlist and any classification error all give `full`. Jobs omitted in a mode skip only
   # on the exact output, so a failed or missing classification runs them; the "CI result"
-  # gate below fails in that case. A mode is enabled by the repository variable
-  # CI_CHANGE_SELECTION (comma-separated, e.g. `docs`); unset, it is only reported.
+  # gate below fails in that case. Modes: `docs` runs only the documentation checks;
+  # `frontend` also runs "Frontend checks" and the browser suite, and omits the backend,
+  # integration, lock and API-client-drift jobs. A mode is enabled by the repository
+  # variable CI_CHANGE_SELECTION (comma-separated, e.g. `docs,frontend`); unset, it is only
+  # reported.
   classify:
     name: Classify changes
     if: github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -77,7 +80,7 @@ jobs:
   test-backend:
     name: Backend tests
     needs: [classify]
-    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' && needs.classify.outputs.mode != 'frontend' }}
     runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
@@ -182,7 +185,7 @@ jobs:
   test-integration-shard:
     name: Integration shard ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: [classify]
-    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' && needs.classify.outputs.mode != 'frontend' }}
     runs-on: [self-hosted, semant-ci]
     strategy:
       # Finish the other shard so a failure report names every failing shard.
@@ -277,7 +280,7 @@ jobs:
   test-integration:
     name: Integration tests
     needs: [classify, test-integration-shard]
-    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs'
+    if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' && needs.classify.outputs.mode != 'frontend'
     runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
@@ -472,7 +475,7 @@ jobs:
   python-locks:
     name: Python dependency locks
     needs: [classify]
-    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' }}
+    if: ${{ !cancelled() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.classify.outputs.mode != 'docs' && needs.classify.outputs.mode != 'frontend' }}
     runs-on: [self-hosted, semant-ci]
     container:
       image: python:3.12
@@ -910,8 +913,8 @@ jobs:
     # Needs only the change classification: the preview starts with the tests, not after them,
     # and deploys even when they fail, for manual diagnosis (#689; supersedes only the
     # scheduling of #213). Failed checks still block merging through branch protection, not
-    # the preview. Documentation-only PRs get no preview (#687); a failed classification
-    # still deploys one.
+    # the preview. Documentation-only PRs get no preview (#687); frontend-only PRs and a
+    # failed classification still deploy one.
     needs: [classify]
     if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && needs.classify.outputs.mode != 'docs' }}
     runs-on: [self-hosted, semant-server]

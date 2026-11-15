@@ -27,6 +27,8 @@ ci = load("ci_changes")
 links = load("check_doc_links")
 WORKFLOW = yaml.safe_load((ROOT / ".github" / "workflows" / "ci-cd.yml").read_text())["jobs"]
 DOCS_ON = {ci.DOCS}
+ALL_ON = {ci.DOCS, ci.FRONTEND}
+FE = "semant_demo_frontend/"
 
 
 # --- classification of paths -------------------------------------------------------------
@@ -47,7 +49,6 @@ def test_documentation_only_paths_select_the_docs_mode(files):
     "semant_demo_backend/README.md",  # pyproject.toml readme: installed with the package
     "data_tools/embedder/README.md",
     "semant_demo_frontend/src/generated/api/docs/Values.md",  # generated client
-    "semant_demo_frontend/README.md",
     "docs/weaviate-audit-2026-10/inventory-2026-10-16b.json",
     "docs/screenshot.png",
     "docs/README.MD",
@@ -59,7 +60,7 @@ def test_documentation_only_paths_select_the_docs_mode(files):
     "notes/new.md",  # unknown directory
 ])
 def test_any_path_outside_the_allowlist_selects_full_validation(path):
-    decision = ci.classify_paths(["docs/DEVELOPMENT.md", path], DOCS_ON)
+    decision = ci.classify_paths(["docs/DEVELOPMENT.md", path], ALL_ON)
 
     assert (decision.mode, decision.classification) == (ci.FULL, ci.FULL)
     assert decision.outside == [path]
@@ -74,6 +75,93 @@ def test_documentation_only_change_runs_everything_until_the_mode_is_enabled():
 
     assert (decision.mode, decision.classification) == (ci.FULL, ci.DOCS)
     assert "observe-only" in decision.reason
+
+
+# --- the frontend mode ----------------------------------------------------------------------
+
+FRONTEND_PATHS = [
+    FE + "src/features/search/SearchPage.vue",
+    FE + "src/shared/api/client.ts",
+    FE + "test/unit/searchPage.spec.ts",
+    FE + "test/e2e/search.spec.ts",
+    FE + "test/e2e/helpers/login.ts",
+    FE + "test/fixtures/longPassage.ts",
+    FE + "public/icons/favicon-32x32.png",
+    FE + "index.html",
+    FE + "README.md",
+    "docs/UI_GUIDELINES.md",  # documentation may come with it
+]
+
+
+def test_frontend_only_paths_select_the_frontend_mode():
+    decision = ci.classify_paths(FRONTEND_PATHS, ALL_ON)
+
+    assert (decision.mode, decision.classification) == (ci.FRONTEND, ci.FRONTEND)
+
+
+def test_the_narrowest_enabled_mode_that_fits_is_selected():
+    assert ci.classify_paths(["docs/DEVELOPMENT.md"], ALL_ON).mode == ci.DOCS
+    decision = ci.classify_paths(["docs/DEVELOPMENT.md"], {ci.FRONTEND})
+    assert (decision.mode, decision.classification) == (ci.FRONTEND, ci.DOCS)
+
+
+def test_frontend_only_change_runs_everything_until_the_mode_is_enabled():
+    decision = ci.classify_paths(FRONTEND_PATHS, DOCS_ON)
+
+    assert (decision.mode, decision.classification) == (ci.FULL, ci.FRONTEND)
+    assert "observe-only" in decision.reason
+
+
+@pytest.mark.parametrize("path", [
+    FE + "package.json",
+    FE + "package-lock.json",
+    FE + ".nvmrc",
+    FE + ".npmrc",
+    FE + "openapitools.json",
+    FE + "quasar.config.js",
+    FE + "playwright.config.ts",
+    FE + "vitest.config.ts",
+    FE + "tsconfig.json",
+    FE + "typecheck-baseline.json",
+    FE + ".eslintrc.js",
+    FE + "scripts/api-client.sh",
+    FE + "src/generated/api/apis/DefaultApi.ts",
+    FE + "src/features/documents/originalSource.ts",
+    FE + "test/e2e/shard_durations.json",
+    FE + "new-config.json",
+    "semant_demo_backend/semant_demo/main.py",
+    "semant_demo_backend/tests/fixtures/text_offsets.json",  # read by a frontend unit test
+    "deploy/Dockerfile",
+    "scripts/browser_shards.py",
+    "Makefile",
+])
+def test_shared_or_backend_paths_with_frontend_changes_select_full_validation(path):
+    decision = ci.classify_paths([FE + "src/App.vue", path], ALL_ON)
+
+    assert (decision.mode, decision.classification) == (ci.FULL, ci.FULL)
+    assert decision.outside == [path]
+
+
+def test_deleting_a_browser_spec_selects_full_validation():
+    spec = FE + "test/e2e/search.spec.ts"
+
+    assert ci.classify_paths([spec], ALL_ON, deleted=frozenset({spec})).mode == ci.FULL
+    unit = FE + "test/unit/old.spec.ts"
+    assert ci.classify_paths([unit], ALL_ON, deleted=frozenset({unit})).mode == ci.FRONTEND
+    assert ci.classify_paths([spec], ALL_ON).mode == ci.FRONTEND
+
+
+def test_frontend_paths_named_in_backend_code_force_full_validation():
+    """A backend test reading a frontend file must not be omitted when that file changes."""
+    import re
+    named = set()
+    for source in (ROOT / "semant_demo_backend").rglob("*.py"):
+        if source.name == "test_ci_changes.py":
+            continue
+        named |= set(re.findall(r"semant_demo_frontend/[\w./-]*\w", source.read_text(encoding="utf-8")))
+    assert FE + "src/features/documents/originalSource.ts" in named
+    for path in named:
+        assert not ci.MODES[ci.FRONTEND].fits(path), path
 
 
 def test_summary_lists_omitted_suites_and_the_paths():
@@ -122,7 +210,7 @@ def merge_repo(tmp_path, monkeypatch):
 def test_diff_lists_both_sides_of_a_rename_and_only_the_prs_changes(merge_repo):
     _, head = merge_repo
 
-    assert ci.changed_files(head) == ["docs/A.md", "old.md", "src_renamed.md"]
+    assert ci.changed_files(head) == {"docs/A.md": "M", "old.md": "D", "src_renamed.md": "A"}
 
 
 def test_diff_refuses_a_merge_whose_second_parent_is_not_the_pr_head(merge_repo):
@@ -151,7 +239,7 @@ def docs_pr(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "t")
     monkeypatch.setenv(ci.SELECTION_VARIABLE, "docs")
     monkeypatch.setattr(ci, "pr_labels", lambda repo, pr, token: [])
-    monkeypatch.setattr(ci, "changed_files", lambda head: ["docs/DEVELOPMENT.md"])
+    monkeypatch.setattr(ci, "changed_files", lambda head: {"docs/DEVELOPMENT.md": "M"})
 
 
 def test_classify_selects_docs_for_a_documentation_only_pr(docs_pr):
@@ -185,10 +273,20 @@ def test_an_undeterminable_diff_runs_everything(docs_pr, monkeypatch):
     assert ci.classify(args()).mode == ci.FULL
 
 
-@pytest.mark.parametrize("value", ["", "frontend", "Docs"])
+@pytest.mark.parametrize("value", ["", "Docs", "doc", "full"])
 def test_the_mode_runs_only_when_enabled(docs_pr, monkeypatch, value):
     monkeypatch.setenv(ci.SELECTION_VARIABLE, value)
 
+    assert ci.classify(args()).mode == ci.FULL
+
+
+def test_classify_reads_deletions_from_the_diff(docs_pr, monkeypatch):
+    monkeypatch.setenv(ci.SELECTION_VARIABLE, "docs, frontend")
+    spec = FE + "test/e2e/search.spec.ts"
+    monkeypatch.setattr(ci, "changed_files", lambda head: {spec: "M"})
+    assert ci.classify(args()).mode == ci.FRONTEND
+
+    monkeypatch.setattr(ci, "changed_files", lambda head: {spec: "D"})
     assert ci.classify(args()).mode == ci.FULL
 
 
@@ -214,6 +312,8 @@ def needs(default="success", **results):
 
 
 DOCS_SKIPPED = {job.replace("-", "_"): "skipped" for job in ci.SUITES if job != "docs-check"}
+FRONTEND_SKIPPED = {job.replace("-", "_"): "skipped" for job in ci.SUITES
+                    if job not in ci.MODES[ci.FRONTEND].required}
 
 
 def test_gate_passes_full_validation_when_everything_succeeded():
@@ -233,6 +333,23 @@ def test_gate_passes_docs_mode_with_omitted_suites_recorded_as_not_tested():
 @pytest.mark.parametrize("job", list(ci.SUITES))
 def test_gate_fails_any_required_suite_that_did_not_succeed(job, result):
     ok, _ = ci.gate(ci.FULL, "success", needs(**{job.replace("-", "_"): result}))
+
+    assert not ok
+
+
+def test_gate_passes_frontend_mode_with_backend_suites_omitted():
+    ok, report = ci.gate(ci.FRONTEND, "success", needs(**FRONTEND_SKIPPED))
+
+    assert ok, report
+    assert set(FRONTEND_SKIPPED) == {"test_backend", "test_integration", "python_locks", "api_client_drift"}
+    assert "| Backend tests | intentionally omitted | skipped, not tested | ok |" in report
+    assert "| Browser smoke tests | required | success | ok |" in report
+
+
+@pytest.mark.parametrize("result", ["failure", "cancelled", "skipped"])
+@pytest.mark.parametrize("job", ["docs_check", "test_frontend", "test_browser"])
+def test_gate_fails_frontend_mode_when_a_required_suite_did_not_succeed(job, result):
+    ok, _ = ci.gate(ci.FRONTEND, "success", needs(**{**FRONTEND_SKIPPED, job: result}))
 
     assert not ok
 
@@ -258,7 +375,7 @@ def test_gate_fails_when_classification_did_not_succeed(result):
     assert not ok
 
 
-@pytest.mark.parametrize("mode", ["", "frontend", "DOCS"])
+@pytest.mark.parametrize("mode", ["", "front", "DOCS", "Frontend"])
 def test_gate_fails_an_unknown_mode_even_when_everything_passed(mode):
     ok, _ = ci.gate(mode, "success", needs())
 

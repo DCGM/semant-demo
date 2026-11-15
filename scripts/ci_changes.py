@@ -14,9 +14,13 @@ below positively passes; anything else, including an error, is full validation:
   against the first parent is the PR's complete effect on the current base, including
   additions, deletions, both sides of renames and a changed base;
 * the PR has no ``ci:full`` label, read from the API at run time (so re-runs see it);
-* every changed path is in the mode's allowlist (``DOCS_ONLY`` below);
+* every changed path fits the mode: it is in the mode's allowlist, not in its force-full
+  exceptions, and not a deletion the mode forbids (``MODES`` below);
 * the repository variable CI_CHANGE_SELECTION enables the mode (rollout switch; without
   it the would-be reduction is reported and the full suites still run).
+
+The narrowest enabled mode that fits is used: a documentation-only PR runs ``docs`` even
+when ``frontend`` is enabled as well.
 
 ``classify`` appends ``mode=<mode>`` to $GITHUB_OUTPUT and a report to $GITHUB_STEP_SUMMARY.
 Jobs omitted in a mode skip only on the exact output ``mode == '<mode>'``, so a failed
@@ -43,6 +47,7 @@ from dataclasses import dataclass, field
 
 FULL = "full"
 DOCS = "docs"
+FRONTEND = "frontend"
 FORCE_FULL_LABEL = "ci:full"
 SELECTION_VARIABLE = "CI_CHANGE_SELECTION"
 
@@ -68,6 +73,30 @@ DOCS_ONLY = (
     ".github/ISSUE_TEMPLATE/*.md",
 )
 
+# The frontend's source, tests and static assets, which only "Frontend checks", the browser
+# suite and the image build consume. Not included, so they run everything: package.json and
+# the lock (dependencies), build, lint, type and test configuration, scripts/ (the API
+# client generator) and anything else in the frontend's root.
+FRONTEND_ONLY = DOCS_ONLY + (
+    "semant_demo_frontend/src/**",
+    "semant_demo_frontend/test/**",
+    "semant_demo_frontend/public/**",
+    "semant_demo_frontend/index.html",
+    "semant_demo_frontend/README.md",
+)
+# Frontend files that the omitted suites read; changing them runs everything. Backend
+# tests that read a frontend file must add it here (test_ci_changes.py checks the literal
+# paths in backend code).
+FRONTEND_FORCE_FULL = (
+    "semant_demo_frontend/src/generated/**",  # the API client: "Generated API client drift"
+    "semant_demo_frontend/src/features/documents/originalSource.ts",  # test_mcp.py
+    "semant_demo_frontend/test/e2e/shard_durations.json",  # test_browser_shards.py
+)
+# Backend tests check that browser specs exist (test_browser_shards.py: those named in
+# shard_durations.json; test_e2e_dev_script.py: smoke.spec.ts), so deleting or renaming
+# one runs everything.
+FRONTEND_NO_DELETE = ("semant_demo_frontend/test/e2e/*.spec.ts",)
+
 
 @dataclass(frozen=True)
 class Mode:
@@ -76,12 +105,23 @@ class Mode:
     allowlist: tuple[str, ...]
     required: frozenset[str]
     omits_preview: bool = False
+    force_full: tuple[str, ...] = ()
+    no_delete: tuple[str, ...] = ()
+
+    def fits(self, path: str, deleted: frozenset[str] = frozenset()) -> bool:
+        return (in_allowlist(path, self.allowlist) and not in_allowlist(path, self.force_full)
+                and not (path in deleted and in_allowlist(path, self.no_delete)))
 
 
 MODES = {
     FULL: Mode(FULL, "Full validation", (), frozenset(SUITES)),
     DOCS: Mode(DOCS, "Documentation only", DOCS_ONLY, frozenset({"docs-check"}), omits_preview=True),
+    FRONTEND: Mode(FRONTEND, "Frontend only", FRONTEND_ONLY,
+                   frozenset({"docs-check", "test-frontend", "test-browser"}),
+                   force_full=FRONTEND_FORCE_FULL, no_delete=FRONTEND_NO_DELETE),
 }
+# Reduced modes from the narrowest; each one's allowlist contains the previous one's.
+REDUCED = (MODES[DOCS], MODES[FRONTEND])
 
 
 def _matches(path: str, pattern: str) -> bool:
@@ -118,7 +158,7 @@ class Decision:
         lines.append(f"| PR preview | {'intentionally omitted' if mode.omits_preview else 'deployed'} |")
         if self.files:
             lines += ["", f"<details><summary>{len(self.files)} changed path(s)</summary>", ""]
-            lines += [f"- `{path}`" + (" (outside the docs allowlist)" if path in self.outside else "")
+            lines += [f"- `{path}`" + (" (fits no reduced mode)" if path in self.outside else "")
                       for path in self.files[:300]]
             if len(self.files) > 300:
                 lines.append(f"- ... and {len(self.files) - 300} more")
@@ -126,20 +166,24 @@ class Decision:
         return "\n".join(lines) + "\n"
 
 
-def classify_paths(files: list[str], enabled: set[str]) -> Decision:
-    """The decision for a PR whose complete diff is ``files``."""
+def classify_paths(files: list[str], enabled: set[str], deleted: frozenset[str] = frozenset()) -> Decision:
+    """The decision for a PR whose complete diff is ``files``, of which ``deleted`` were deleted."""
     if not files:
         return Decision(reason="The diff is empty or could not be listed; running everything.")
-    outside = [path for path in files if not in_allowlist(path, DOCS_ONLY)]
-    if outside:
+    fitting = [mode for mode in REDUCED if all(mode.fits(path, deleted) for path in files)]
+    if not fitting:
+        outside = [path for path in files if not any(m.fits(path, deleted) for m in REDUCED)]
         return Decision(files=files, outside=outside,
-                        reason=f"{len(outside)} changed path(s) outside the documentation allowlist.")
-    if DOCS not in enabled:
-        return Decision(classification=DOCS, files=files,
-                        reason=f"Documentation-only, but `{SELECTION_VARIABLE}` does not enable `{DOCS}` "
-                               "(observe-only rollout); running everything.")
-    return Decision(mode=DOCS, classification=DOCS, files=files,
-                    reason=f"Every changed path is in the documentation allowlist. Add the "
+                        reason=f"{len(outside)} changed path(s) fit no reduced mode, or the paths "
+                               "span several components.")
+    narrowest = fitting[0]
+    selected = next((mode for mode in fitting if mode.name in enabled), None)
+    if selected is None:
+        return Decision(classification=narrowest.name, files=files,
+                        reason=f"{narrowest.description}, but `{SELECTION_VARIABLE}` does not enable "
+                               f"`{narrowest.name}` (observe-only rollout); running everything.")
+    return Decision(mode=selected.name, classification=narrowest.name, files=files,
+                    reason=f"Every changed path fits the `{selected.name}` mode. Add the "
                            f"`{FORCE_FULL_LABEL}` label and re-run to run everything.")
 
 
@@ -147,8 +191,9 @@ def _git(*args: str) -> str:
     return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
 
 
-def changed_files(head_sha: str) -> list[str]:
-    """The paths a PR merge commit changes relative to its base parent.
+def changed_files(head_sha: str) -> dict[str, str]:
+    """The paths a PR merge commit changes relative to its base parent, with git's status
+    letter (``A``, ``D``, ``M``, ...).
 
     Raises ValueError unless HEAD is a two-parent merge whose second parent is the PR head.
     """
@@ -157,9 +202,12 @@ def changed_files(head_sha: str) -> list[str]:
         raise ValueError(f"HEAD has {len(parents)} parent(s), expected GitHub's PR merge commit")
     if parents[1] != head_sha:
         raise ValueError(f"the merge commit's second parent {parents[1]} is not the PR head {head_sha}")
-    # --no-renames lists both sides of a rename; -z keeps unusual names intact.
-    out = _git("diff", "--no-renames", "--name-only", "-z", parents[0], "HEAD")
-    return sorted({path for path in out.split("\0") if path})
+    # --no-renames lists a rename as a deletion and an addition; -z keeps unusual names
+    # intact and gives "status NUL path NUL" pairs.
+    fields = _git("diff", "--no-renames", "--name-status", "-z", parents[0], "HEAD").split("\0")[:-1]
+    if len(fields) % 2:
+        raise ValueError("unexpected git diff --name-status output")
+    return {path: status for status, path in zip(fields[::2], fields[1::2])}
 
 
 def pr_labels(repo: str, pr: int, token: str) -> list[str]:
@@ -180,11 +228,12 @@ def classify(args: argparse.Namespace) -> Decision:
     if FORCE_FULL_LABEL in labels:
         return Decision(reason=f"The `{FORCE_FULL_LABEL}` label requests full validation.")
     try:
-        files = changed_files(args.head_sha)
+        changes = changed_files(args.head_sha)
     except (ValueError, subprocess.CalledProcessError, OSError) as exc:
         return Decision(reason=f"Could not determine the PR diff ({exc}); running everything.")
     enabled = {item.strip() for item in os.environ.get(SELECTION_VARIABLE, "").split(",") if item.strip()}
-    return classify_paths(files, enabled)
+    deleted = frozenset(path for path, status in changes.items() if status == "D")
+    return classify_paths(sorted(changes), enabled, deleted)
 
 
 def _append(variable: str, text: str) -> None:
@@ -240,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "paths":
-        decision = classify_paths(args.files, {DOCS})
+        decision = classify_paths(args.files, set(MODES))
         print(decision.summary())
         return 0
     if args.command == "classify":
