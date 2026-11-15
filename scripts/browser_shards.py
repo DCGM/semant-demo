@@ -121,6 +121,10 @@ def compare(data: dict, executed: list[dict]) -> list[str]:
         if keys:
             shown = ", ".join(titles.get(k, k) for k in sorted(keys)[:10])
             problems.append(f"{sum(keys.values())} test(s) {label}: {shown}")
+    skipped = [t for t in executed if t["status"] == "skipped"]
+    if skipped:
+        problems.append(f"{len(skipped)} test(s) skipped: "
+                        + ", ".join(titles.get(t["key"], t["key"]) for t in skipped[:10]))
     repeated = sorted(k for k, c in reported.items() if c > 1)
     if repeated:
         problems.append(f"{len(repeated)} test(s) reported more than once: "
