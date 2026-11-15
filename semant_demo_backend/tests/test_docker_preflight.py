@@ -21,6 +21,8 @@ case "$STUB_DOCKER:$1" in
   down:*) echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2; exit 1 ;;
   denied:*) echo "permission denied while trying to connect to the Docker daemon socket" >&2; exit 1 ;;
   hung:*) exec sleep 30 ;;
+  hangs-after-probe:version) exit 0 ;;
+  hangs-after-probe:*) exec sleep 30 ;;
 esac
 case "$STUB_DOCKER:$*" in
   blocked:"image inspect"*|pulls:"image inspect"*|pull-hangs:"image inspect"*) exit 1 ;;
@@ -212,3 +214,43 @@ def test_e2e_dev_start_stops_before_building(env, tmp_path):
     assert f"could not pull {CANONICAL}" in result.stderr
     assert "nothing was built or started" in result.stderr
     assert "npx" not in result.calls and "docker run" not in result.calls
+
+
+@pytest.mark.parametrize("command", ["status", "verify", "add-documents"])
+def test_local_dev_queries_after_the_probe_are_bounded(env, tmp_path, command):
+    python = tmp_path / "python"
+    python.write_text(f'#!/bin/sh\necho "python $*" >>"{env["calls"]}"\nexit 0\n')
+    python.chmod(0o755)
+
+    result = _run(env, ROOT / "scripts" / "local-dev.sh", command, STUB_DOCKER="hangs-after-probe", PYTHON=python)
+
+    assert result.returncode == 1
+    assert "did not answer within 1 s (docker " in result.stderr
+    assert "not running" not in result.stdout  # a hung query is not reported as a stopped store
+    assert "-m tests.local_dev" not in result.calls
+
+
+def _make_e2e(env, target, **extra):
+    for tool in ("npx", "npm"):
+        stub = env["bin"] / tool
+        stub.write_text(f'#!/bin/sh\necho "{tool} $*" >>"{env["calls"]}"\nexit 0\n')
+        stub.chmod(0o755)
+    # -o: take the dependency preflight as done; this is about the order after it.
+    return _run(env, "make", "--no-print-directory", "-o", "deps-check", target, **extra)
+
+
+@pytest.mark.parametrize("target", ["test-e2e", "e2e-dev-start"])
+def test_browser_targets_check_docker_before_installing_chromium(env, target):
+    result = _make_e2e(env, target, STUB_DOCKER="down")
+
+    assert result.returncode != 0
+    assert "the Docker daemon is not available" in result.stderr
+    assert "npx" not in result.calls
+
+
+def test_browser_tests_against_an_external_store_install_chromium_without_docker(env):
+    result = _make_e2e(env, "test-e2e", STUB_DOCKER="down", SEMANT_TEST_WEAVIATE_HOST="127.0.0.1")
+
+    assert result.returncode == 0, result.stderr
+    assert "npx playwright install" in result.calls
+    assert "docker" not in result.calls
