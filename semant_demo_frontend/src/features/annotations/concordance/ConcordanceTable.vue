@@ -97,6 +97,7 @@
         class="kwic__row"
         :class="{
           'kwic__row--focused': row.id === focusedId,
+          'kwic__row--menu': row.id === menuOpen,
           'kwic__row--selected': selected.has(row.id),
           'kwic__row--rejected': row.type === SpanType.neg
         }"
@@ -120,16 +121,15 @@
           :context-menu="!phone"
           :no-parent-event="phone"
           :touch-position="!phone"
-          :fit="phone"
-          :anchor="phone ? 'bottom left' : undefined"
-          :self="phone ? 'top left' : undefined"
+          :anchor="phone ? 'bottom right' : undefined"
+          :self="phone ? 'top right' : undefined"
           data-testid="kwic-row-menu"
           :persistent="pressHeld"
           @before-show="onMenuOpening(row)"
           @before-hide="onMenuClosing(row)"
           @hide="onMenuHide(row)"
         >
-          <q-list dense class="kwic__menu" :class="{ 'kwic__menu--fit': phone }">
+          <q-list dense class="kwic__menu" :class="{ 'kwic__menu--phone': phone }">
             <q-item clickable data-testid="kwic-row-open" @click="menuAction(row, () => emit('open', row))">
               <q-item-section avatar><q-icon name="menu_book" /></q-item-section>
               <q-item-section>Show in document</q-item-section>
@@ -797,12 +797,21 @@ defineExpose({ reveal })
   box-shadow: inset 3px 0 0 var(--q-primary);
 }
 
+.kwic__grid--attribute .kwic__row--menu .kwic__check,
 .kwic__grid--attribute .kwic__row:focus-visible .kwic__check {
   box-shadow: inset 2px 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
+/* The row whose menu is open is marked like a focused one, so the menu's row stays recognizable
+   (on a phone the menu is under or above it, not at the finger). */
+.kwic__row.kwic__row--menu {
+  background: #eef4fd;
+  box-shadow: inset 0 0 0 2px var(--q-primary);
+}
+
 /* The text cell is opaque (it may stick), so it draws its part of the focus ring, also on a
    checked or open row. */
+.kwic__row--menu .kwic__text,
 .kwic__row:focus-visible .kwic__text {
   box-shadow: inset 0 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
@@ -1020,10 +1029,11 @@ defineExpose({ reveal })
   max-width: min(360px, calc(100vw - 16px));
 }
 
-/* On a phone as wide as the list, under (or above) the held row. */
-.kwic__menu--fit {
-  min-width: 0;
-  max-width: none;
+/* On a phone as wide as its content, never wider than the list (its 16 px gutters), at the held
+   row's right edge. */
+.kwic__menu--phone {
+  min-width: min(220px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
 }
 
 /* A group of the row menu: the field and the row's value, cut to one line, and what it does. */

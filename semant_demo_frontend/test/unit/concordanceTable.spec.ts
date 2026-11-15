@@ -181,6 +181,8 @@ describe('concordance row value filters', () => {
     await row.trigger('keydown', { key: 'F10', shiftKey: true })
     await until(() => menuItem('kwic-refine-source-only'))
     expect(menuItem('kwic-refine-group-source')?.textContent).toContain('Source · Kronika obce Lhota')
+    // The row whose menu is open is marked.
+    expect(row.classes()).toContain('kwic__row--menu')
     // No selected words: no word filter.
     expect(menuItem('kwic-refine-words')).toBeNull()
     // A click on the row while its menu is shown (lifting the finger after a long press) opens nothing.
@@ -188,6 +190,8 @@ describe('concordance row value filters', () => {
     expect(wrapper.emitted('open')).toBeUndefined()
     menuItem('kwic-refine-year-only')?.click()
     expect(wrapper.emitted('refine')).toEqual([[{ documentFilters: { yearMin: 1851, yearMax: 1851 } }]])
+    await wrapper.vm.$nextTick()
+    expect(row.classes()).not.toContain('kwic__row--menu')
     expect(wrapper.emitted('open')).toBeUndefined()
     expect(wrapper.emitted('toggle')).toBeUndefined()
     wrapper.unmount()
