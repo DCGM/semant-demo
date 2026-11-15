@@ -750,10 +750,10 @@ jobs:
 
   deploy-test-pr:
     name: "Deploy test PR #${{ github.event.pull_request.number }}"
-    # always(): the preview deploys even when checks fail, for manual diagnosis. Failed checks
-    # still block merging through branch protection, not the preview (#213).
-    needs: [test-backend]
-    if: always() && github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    # No needs: the preview starts with the tests, not after them, and deploys even when they
+    # fail, for manual diagnosis (#689; supersedes only the scheduling of #213). Failed checks
+    # still block merging through branch protection, not the preview.
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
 
@@ -918,7 +918,7 @@ jobs:
             if curl --fail --silent --max-time 10 "$TEST_URL"; then
               echo ""
               echo "Health check passed: $TEST_URL"
-              echo "Preview https://${TEST_SUBDOMAIN} is up for manual testing. Previews deploy even when checks fail, so this says nothing about whether the PR passed CI; see the PR's checks." >> "$GITHUB_STEP_SUMMARY"
+              echo "Preview https://${TEST_SUBDOMAIN} is up for **manual testing only, CI independent**. Previews deploy without waiting for the tests and even when they fail, so this says nothing about whether the PR passed CI or can be merged; see the PR's checks." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
           done
