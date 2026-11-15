@@ -26,7 +26,7 @@ def report(specs=SPECS, ran=True, statuses=None, duplicate=None):
         entries = []
         for title in titles + ([duplicate] if duplicate in titles else []):
             status = (statuses or {}).get(title, "expected") if ran else "skipped"
-            results = [{"status": "passed", "duration": 1500}] if ran else []
+            results = [{"status": "skipped" if status == "skipped" else "passed", "duration": 1500}] if ran else []
             entries.append({"title": title, "id": f"id-{title}", "file": file,
                             "tests": [{"projectName": "chromium", "status": status, "results": results}]})
         # Specs inside a describe block, as Playwright nests them.
@@ -131,6 +131,23 @@ def test_check_counts_outcomes(tmp_path, capsys):
     row = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("| 1/2"))
     cells = [c.strip() for c in row.split("|")[1:-1]]
     assert cells[3:6] == [str(len(titles)), str(len(titles) - 1), "1"]
+
+
+def test_skipped_test_fails_shard_check_and_gate(tmp_path, capsys):
+    one, two = (shards.plan(i, 2, INVENTORY, DURATIONS) for i in (1, 2))
+    skipped_title = SPECS[one["files"][0]][0]
+    skipped_run = report({f: SPECS[f] for f in one["files"]}, statuses={skipped_title: "skipped"})
+    first = write_shard(tmp_path / "1", one, skipped_run)
+    second = write_shard(tmp_path / "2", two)
+
+    # A skipped test can have a non-empty Playwright result, yet never execute.
+    _, executed, _ = shards.load_shard(first)
+    assert any(t["status"] == "skipped" and t["results"] for t in executed)
+    assert shards.main(["check", str(first)]) == 1
+    assert "test(s) skipped" in capsys.readouterr().out
+
+    _, problems = shards.verify([first, second])
+    assert any("test(s) skipped" in problem for problem in problems)
 
 
 def test_durations_are_measured_per_file(tmp_path):
