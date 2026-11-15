@@ -45,6 +45,7 @@ BACKEND_PATHS=(semant_demo_backend/semant_demo semant_demo_backend/tests semant_
   ':(exclude,glob)semant_demo_backend/tests/**/test_*.py' ':(exclude)semant_demo_backend/tests/conftest.py')
 
 die() { echo "e2e-dev: $*" >&2; exit 1; }
+source "$ROOT/scripts/docker-preflight.sh"
 
 fingerprint() {
   (cd "$ROOT" && git ls-files -co --exclude-standard -z -- "$@" | sort -z \
@@ -104,7 +105,11 @@ cmd_start() {
   [[ -x "$PYTHON" ]] || die "no Python at $PYTHON (make setup, or set PYTHON)"
   "$PYTHON" "$ROOT/scripts/check_python_deps.py" || die "stale Python environment; repair it as shown above"
   node "$FRONTEND/scripts/check-deps.mjs" || die "stale frontend dependencies; repair them as shown above"
-  command -v docker >/dev/null || die "docker is required"
+  # Before the build: Docker, the daemon and the Weaviate image, each with its own diagnosis.
+  docker_ready || die "Docker is required for the profile's throwaway Weaviate (see above)"
+  local image
+  image="$(weaviate_image test)" || die "no usable Weaviate image"
+  weaviate_image_ready "$image" || die "the Weaviate image is not available; nothing was built or started"
   rm -f "$STATE/server.pid" "$STATE/server.port" "$STATE/backend.stamp"
 
   local started=$SECONDS

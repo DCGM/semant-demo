@@ -193,11 +193,50 @@ three ports apart. The development instance above stays one per machine.
 | Requests fail with CORS errors | Open `http://localhost:9000`, not `127.0.0.1:9000`. |
 | A feature reports a provider error | It uses a provider route the fakes do not implement (HTTP 501); see the table above. |
 | `make dev-backend` says the stores are not initialized | Run `make dev-up` first. |
+| `docker-preflight: the docker command is not installed` | No Docker CLI on `PATH` (e.g. a cloud agent session, or WSL without Docker Desktop integration). Install Docker, or use only [the checks that need no Docker](#which-checks-need-docker). |
+| `docker-preflight: the Docker daemon is not available` | The CLI works but the daemon is stopped, unreachable (`DOCKER_HOST`, `docker context`) or your user may not use its socket. Start Docker Desktop or `sudo systemctl start docker`, or join the `docker` group. |
+| `docker-preflight: the Docker daemon did not answer within 10 s` | The daemon is starting or hung (seen with Docker Desktop). Wait or restart it; `SEMANT_DOCKER_TIMEOUT=<seconds>` allows a slow one. Every probe and the read-only queries of the local-dev commands (`make dev-status` too) are bounded. |
+| `docker-preflight: could not pull cr.weaviate.io/...:1.40.1` | Docker works; the registry is blocked or down. See [Docker and the Weaviate image](#docker-and-the-weaviate-image). |
 | `... does not match semant_demo_backend/requirements-dev.lock` or `Frontend dependencies ... do not match package-lock.json` | `.venv` / `node_modules` predate a lock change (pull or branch switch). Run the printed repair command (`make setup`, or `npm ci` in `semant_demo_frontend`). `make deps-check` repeats the check without running anything else. |
 
 `make dev-status` shows the state of both stores; `scripts/local-dev.sh logs` the
 Weaviate log. Removing everything by hand (only if you want to): `make dev-down`,
 `docker volume rm semant-local-weaviate`, `rm -r .dev-data`.
+
+### Docker and the Weaviate image
+
+`make docker-check` (`scripts/docker-preflight.sh --image`) says whether Docker works here.
+`make dev-up` and the other local-dev commands, `make test-integration`, `make test-e2e` and
+`make e2e-dev-start` run the same preflight before they start anything (the last two before
+Playwright's Chromium download) and fail within
+seconds with one of four diagnoses: no Docker CLI, daemon not running or not accessible,
+daemon not answering (each probe is bounded by `SEMANT_DOCKER_TIMEOUT`, default 10 s), or
+the image is neither present nor pullable (the pull is bounded by
+`SEMANT_DOCKER_PULL_TIMEOUT`, default 600 s). With Docker available nothing else changes; the
+ownership checks of the stores run as before.
+
+Every launcher uses **Weaviate 1.40.1**, by default `cr.weaviate.io/semitechnologies/weaviate:1.40.1`.
+When that registry is not reachable, choose another source of the same version yourself; the
+launchers never fall back to one on their own:
+
+- **Retag a copy.** Load or pull a 1.40.1 image you trust and give it the canonical name;
+  the launchers then find it locally and pull nothing:
+
+  ```bash
+  docker load -i weaviate-1.40.1.tar     # or: docker pull <mirror>/semitechnologies/weaviate:1.40.1
+  docker tag <that image> cr.weaviate.io/semitechnologies/weaviate:1.40.1
+  ```
+
+- **Select a mirror explicitly** for one command or a shell:
+  `SEMANT_WEAVIATE_IMAGE=<mirror>/semitechnologies/weaviate:1.40.1 make test-integration`.
+  The tag must be `1.40.1` (a digest may follow it); `latest`, another version or a digest
+  alone is refused. `scripts/with-test-weaviate.sh` also accepts the older
+  `SEMANT_TEST_WEAVIATE_IMAGE` under the same rule. For `make dev-up` the image applies when
+  the container is created; a stopped `semant-weaviate-local` is restarted from the image it
+  was created with.
+
+Neither changes ports, container names, volumes or ownership markers, so no shared or
+production store can be selected this way.
 
 ## 4. Testing versus development data
 
@@ -265,6 +304,19 @@ the corpus lacks. For a long passage (previews, wrapping, expansion) use `useLon
 `insertLongPassage`: they give a fixture chunk's result the synthetic multilingual text in
 `semant_demo_frontend/test/fixtures/longPassage.ts`, which unit tests import too; do not
 hand-build long texts per test. Every test sets up its own state and passes alone or in any order.
+
+### Which checks need Docker
+
+| Needs no Docker | Needs Docker (a working daemon and the Weaviate 1.40.1 image) |
+|---|---|
+| `make setup`, `make deps-check`, `make check` (`check-backend`, `check-frontend`, `api-check`), `make api-generate`, `make lock` / `lock-check` (network), `make e2e-dev-rebuild` | `make test-integration`, `make test-e2e`, `make e2e-dev-start` / `e2e-dev-restart`, `make dev-up` and the other `make dev-*` commands except `dev-frontend` |
+
+`make e2e-dev-test` and `e2e-dev-capture` start no container: they need the profile that
+`e2e-dev-start` started, so only indirectly Docker.
+
+Where Docker is not available (for example a cloud agent session without it), run the
+left column and report the right column as not run for that reason, not as a failure of
+the change. `make docker-check` tells which case applies.
 
 ### Fast browser-test loop
 
