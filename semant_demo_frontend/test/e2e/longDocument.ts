@@ -82,6 +82,9 @@ export async function longDocument (page: Page, options: { length: number, place
 /** The element scrolling the sidebar panel's content. */
 function scroller (panel: Locator) {
   return panel.evaluateHandle(el => {
+    // A passage that scrolls by itself (ChunkContextPanel `scrollText`).
+    const body = el.querySelector<HTMLElement>('[data-testid="chunk-context-body"]')
+    if (body && /(auto|scroll)/.test(getComputedStyle(body).overflowY)) return body
     for (let node = el.parentElement; node; node = node.parentElement) {
       if (/(auto|scroll)/.test(getComputedStyle(node).overflowY)) return node
     }

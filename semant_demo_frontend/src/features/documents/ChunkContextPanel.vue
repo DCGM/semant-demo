@@ -1,11 +1,16 @@
 <template>
-  <div class="chunk-context column q-gutter-y-sm" data-testid="chunk-context">
+  <div
+    class="chunk-context column q-gutter-y-sm"
+    :class="{ 'chunk-context--scroll-text': scrollText }"
+    data-testid="chunk-context"
+  >
     <div v-if="!targetChunkId" class="text-caption text-grey-7">
       {{ emptyText }}
     </div>
 
     <template v-else>
-      <!-- Stays at the top of the sidebar's scroller while the text scrolls. -->
+      <!-- Stays at the top of the sidebar's scroller while the text scrolls; with
+           `scrollText`, above the text's own scroller. -->
       <div ref="headerEl" class="chunk-context__header" data-testid="chunk-context-header">
         <!-- What the passage is shown for (e.g. the open annotation), above its document. -->
         <slot name="header" />
@@ -54,73 +59,76 @@
         />
       </div>
 
-      <div v-if="error" class="text-negative text-body2 row items-center q-gutter-x-sm" role="alert">
-        <span>{{ error }}</span>
-        <q-btn v-if="!chunks.length" dense flat no-caps color="primary" label="Retry" @click="emit('reload')" />
-      </div>
-
-      <div v-if="loading && !chunks.length" class="row items-center text-caption text-grey-7" aria-live="polite">
-        <q-spinner color="primary" size="1.5em" class="q-mr-sm" />
-        Loading the document…
-      </div>
-
-      <template v-else-if="chunks.length">
-        <q-btn
-          v-if="hasBefore"
-          dense
-          outline
-          no-caps
-          color="primary"
-          icon="expand_less"
-          label="Show earlier text"
-          :loading="extending === 'before'"
-          :disable="!!extending || loading"
-          @click="emit('extend', 'before')"
-        />
-        <div v-else class="chunk-context__edge text-caption text-grey-6">Start of document</div>
-
-        <div class="chunk-context__text">
-          <section
-            v-for="chunk in chunks"
-            :key="chunk.id"
-            :ref="el => setChunkEl(chunk.id, el as HTMLElement | null)"
-            class="chunk-context__chunk"
-            :class="{ 'chunk-context__chunk--target': chunk.id === targetChunkId }"
-            :aria-current="chunk.id === targetChunkId ? 'true' : undefined"
-            :aria-label="chunk.id === targetChunkId ? (targetLabel ? `Cited passage ${targetLabel}` : targetName) : undefined"
-            :data-chunk-id="chunk.id"
-          >
-            <div
-              v-if="targetLabel && chunk.id === targetChunkId"
-              class="chunk-context__target-label text-caption text-weight-bold"
-              data-testid="chunk-context-target-label"
-            >{{ targetLabel }}</div>
-            <div class="chunk-context__chunk-text text-body2" data-chunk-text><template
-              v-for="(part, index) in textParts(chunk)"
-              :key="index"
-            ><mark
-              v-if="part.marked"
-              class="chunk-context__mark"
-              :class="{ 'chunk-context__mark--pending': highlight?.pending }"
-              data-testid="chunk-context-mark"
-            >{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></div>
-          </section>
+      <!-- The passage: laid out with the header (display: contents), or scrolled by itself. -->
+      <div class="chunk-context__body" data-testid="chunk-context-body">
+        <div v-if="error" class="text-negative text-body2 row items-center q-gutter-x-sm" role="alert">
+          <span>{{ error }}</span>
+          <q-btn v-if="!chunks.length" dense flat no-caps color="primary" label="Retry" @click="emit('reload')" />
         </div>
 
-        <q-btn
-          v-if="hasAfter"
-          dense
-          outline
-          no-caps
-          color="primary"
-          icon="expand_more"
-          label="Show later text"
-          :loading="extending === 'after'"
-          :disable="!!extending || loading"
-          @click="emit('extend', 'after')"
-        />
-        <div v-else class="chunk-context__edge text-caption text-grey-6">End of document</div>
-      </template>
+        <div v-if="loading && !chunks.length" class="row items-center text-caption text-grey-7" aria-live="polite">
+          <q-spinner color="primary" size="1.5em" class="q-mr-sm" />
+          Loading the document…
+        </div>
+
+        <template v-else-if="chunks.length">
+          <q-btn
+            v-if="hasBefore"
+            dense
+            outline
+            no-caps
+            color="primary"
+            icon="expand_less"
+            label="Show earlier text"
+            :loading="extending === 'before'"
+            :disable="!!extending || loading"
+            @click="emit('extend', 'before')"
+          />
+          <div v-else class="chunk-context__edge text-caption text-grey-6">Start of document</div>
+
+          <div class="chunk-context__text">
+            <section
+              v-for="chunk in chunks"
+              :key="chunk.id"
+              :ref="el => setChunkEl(chunk.id, el as HTMLElement | null)"
+              class="chunk-context__chunk"
+              :class="{ 'chunk-context__chunk--target': chunk.id === targetChunkId }"
+              :aria-current="chunk.id === targetChunkId ? 'true' : undefined"
+              :aria-label="chunk.id === targetChunkId ? (targetLabel ? `Cited passage ${targetLabel}` : targetName) : undefined"
+              :data-chunk-id="chunk.id"
+            >
+              <div
+                v-if="targetLabel && chunk.id === targetChunkId"
+                class="chunk-context__target-label text-caption text-weight-bold"
+                data-testid="chunk-context-target-label"
+              >{{ targetLabel }}</div>
+              <div class="chunk-context__chunk-text text-body2" data-chunk-text><template
+                v-for="(part, index) in textParts(chunk)"
+                :key="index"
+              ><mark
+                v-if="part.marked"
+                class="chunk-context__mark"
+                :class="{ 'chunk-context__mark--pending': highlight?.pending }"
+                data-testid="chunk-context-mark"
+              >{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></div>
+            </section>
+          </div>
+
+          <q-btn
+            v-if="hasAfter"
+            dense
+            outline
+            no-caps
+            color="primary"
+            icon="expand_more"
+            label="Show later text"
+            :loading="extending === 'after'"
+            :disable="!!extending || loading"
+            @click="emit('extend', 'after')"
+          />
+          <div v-else class="chunk-context__edge text-caption text-grey-6">End of document</div>
+        </template>
+      </div>
     </template>
   </div>
 </template>
@@ -175,6 +183,9 @@ const props = withDefaults(defineProps<{
   highlight?: ContextHighlight | null
   /** The full document view at the target (#545, workspace/documentLink.ts); no link by default. */
   openLink?: RouteLocationRaw | null
+  /** The passage scrolls by itself below a header that stays in place, instead of the
+   * sidebar scrolling both; needs a definite height (`RightSidebarPanel` `fill`). */
+  scrollText?: boolean
   /** Heading above the document title, separating it from the `header` slot; none by default. */
   documentHeading?: string | null
   emptyText?: string
@@ -194,6 +205,7 @@ const props = withDefaults(defineProps<{
   highlight: null,
   openLink: null,
   documentHeading: null,
+  scrollText: false,
   emptyText: 'Nothing selected.',
   visible: true
 })
@@ -312,7 +324,7 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   // chunk's start can be a screen away from it. Clear of the sticky header; a target
   // taller than half the screen shows from its start.
   const target = el.querySelector<HTMLElement>('[data-testid="chunk-context-mark"]') ?? el
-  const inset = (headerEl.value?.offsetHeight ?? 0) + 8
+  const inset = (props.scrollText ? 0 : headerEl.value?.offsetHeight ?? 0) + 8
   target.style.scrollMarginTop = `${inset}px`
   const tall = target.getBoundingClientRect().height > window.innerHeight / 2
   scrollToTarget(target, direction, tall, inset, replaced)
@@ -327,6 +339,31 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   padding: 8px 0 4px;
   background: #fff;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.chunk-context__body {
+  display: contents;
+}
+
+.chunk-context--scroll-text {
+  flex-wrap: nowrap;
+}
+
+.chunk-context--scroll-text > .chunk-context__header {
+  position: static;
+  flex: none;
+}
+
+/* Fills the rest of the panel; a header too tall for a short screen leaves it a minimum,
+   and the sidebar then scrolls the whole panel. */
+.chunk-context--scroll-text > .chunk-context__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 0;
+  min-height: 160px;
+  overflow-y: auto;
+  overflow-anchor: auto;
 }
 
 .chunk-context__heading {

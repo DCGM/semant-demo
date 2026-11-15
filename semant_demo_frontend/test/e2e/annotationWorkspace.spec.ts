@@ -233,6 +233,30 @@ test.describe('switching annotations of one long document', () => {
     await expect(mark(page)).toBeInViewport()
   })
 
+  test('only the passage scrolls: the annotation above it stays in place (#659)', async ({ page }) => {
+    await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 30 } })
+    for (const width of ['wide', 'phone'] as const) {
+      await useViewport(page, width)
+      await openWorkspace(page)
+      await row(page, 'Brně').click()
+      await expect(mark(page)).toHaveText('Brně')
+      await expect(mark(page)).toBeInViewport()
+      const body = panel(page).getByTestId('chunk-context-body')
+      const actions = page.getByTestId('annotation-review')
+      const top = (await actions.boundingBox())?.y
+      // The passage is scrolled to Brně within itself; the sidebar does not scroll.
+      expect(await body.evaluate(el => el.scrollTop), `${width}: the passage scrolled`).toBeGreaterThan(0)
+      expect(await panel(page).evaluate(el => el.closest('.scroll')?.scrollTop ?? 0), `${width}: the sidebar did not`).toBe(0)
+      // Scrolling the passage by hand moves only the passage.
+      const before = await body.evaluate(el => el.scrollTop)
+      await body.hover()
+      await page.mouse.wheel(0, -600)
+      await expect.poll(() => body.evaluate(el => el.scrollTop), `${width}: the passage scrolls by the wheel`).toBeLessThan(before)
+      expect((await actions.boundingBox())?.y, `${width}: the actions stay in place`).toBe(top)
+      await expect(actions.getByRole('button', { name: 'Approve' })).toBeInViewport()
+    }
+  })
+
   test('with reduced motion the passage moves at once', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 20 } })

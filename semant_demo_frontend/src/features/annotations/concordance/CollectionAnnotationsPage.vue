@@ -100,7 +100,7 @@
     </div>
 
     <!-- Registered once a row is opened. -->
-    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1" v-slot="{ visible }">
+    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1" fill v-slot="{ visible }">
       <ChunkContextPanel
         :visible="visible"
         ref="panel"
@@ -116,6 +116,7 @@
         :highlight="highlight"
         target-name="Annotated passage"
         document-heading="In the document"
+        scroll-text
         :open-link="selection.focused.documentId ? documentRoute : null"
         return-label="Focus on annotation"
         @extend="chunkContext.extend"
