@@ -92,7 +92,8 @@ test-e2e: deps-check
 	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON="$(PY)" npm run test:e2e'
 
 ## Fast local browser-test loop (scripts/e2e-dev.sh; docs/DEVELOPMENT.md). Not a substitute
-## for `make test-e2e` before a PR. Start once, run selected specs repeatedly, then stop:
+## for the fresh `make test-e2e` suite (CONTRIBUTING.md §4). Start once, run selected specs
+## repeatedly, then stop:
 ##   make e2e-dev-start
 ##   make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts --grep phone"
 ##   make e2e-dev-stop
