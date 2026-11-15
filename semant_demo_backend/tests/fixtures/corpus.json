@@ -1,5 +1,5 @@
 {
-  "description": "Synthetic test-owned fixture corpus (no real user text). Loaded by tests/support/corpus.py and the Playwright suite. Span offsets are Python str indices (code points); every span's text precedes any non-BMP character in its chunk, so they equal JavaScript UTF-16 offsets as well.",
+  "description": "Synthetic test-owned fixture corpus (no real user text). Loaded by tests/corpus.py and the Playwright suite. Span offsets are Python str indices (code points); every span's text precedes any non-BMP character in its chunk, so they equal JavaScript UTF-16 offsets as well.",
   "users": [
     {"key": "owner", "id": "5e3a0000-0000-4000-8000-00000000a001", "email": "owner@example.com", "username": "owner", "name": "Olga Owner", "password": "owner-password-1", "is_superuser": false},
     {"key": "annotator", "id": "5e3a0000-0000-4000-8000-00000000a002", "email": "annotator@example.com", "username": "annotator", "name": "Adam Annotator", "password": "annotator-password-1", "is_superuser": false},
