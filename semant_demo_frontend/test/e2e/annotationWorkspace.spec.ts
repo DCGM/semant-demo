@@ -456,6 +456,27 @@ test('the review comes first; the tag chip changes the tag (#659)', async ({ pag
   await expect(page.getByTestId('review-report')).toContainText('1 of 1')
 })
 
+test('a long document title takes two lines above the passage, the whole title in its tooltip (#659)', async ({ page }) => {
+  const title = 'Karlínské listy : politickohospodářský neodvislý týdenník města Karlína, Holešovic, Libně a Vysočan. 2. 28'
+  await page.route('**/api/documents/*/chunks/*/window*', async route => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.document = { ...body.document, title }
+    await route.fulfill({ response, json: body })
+  })
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  await row(page, 'Jan Novák').click()
+  const heading = panel(page).getByTestId('chunk-context-title')
+  await expect(heading).toHaveAttribute('title', new RegExp('^' + title))
+  const { lines, clipped } = await heading.evaluate(el => ({
+    lines: Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)),
+    clipped: el.scrollHeight > el.clientHeight
+  }))
+  expect(lines).toBe(2)
+  expect(clipped, 'the title is longer than two lines here').toBe(true)
+})
+
 test('a shared user reads the same workspace', async ({ page }) => {
   await useViewport(page, 'phone')
   await openWorkspace(page, 'annotator')

@@ -18,7 +18,11 @@
           {{ documentHeading }}
         </div>
         <div v-if="document" class="chunk-context__document">
-          <div class="text-subtitle2 text-weight-medium chunk-context__title">{{ documentTitle }}</div>
+          <div
+            class="text-subtitle2 text-weight-medium chunk-context__title"
+            :title="documentTitle"
+            data-testid="chunk-context-title"
+          >{{ documentTitle }}</div>
           <div class="text-caption text-grey-8">{{ document.yearIssued || 'Year N/A' }}</div>
           <OriginalSourceLink :document="document" :page-id="targetPageId" class="text-caption" />
         </div>
@@ -386,6 +390,16 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
 .chunk-context__title {
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+
+/* Above a passage that scrolls by itself, a long title takes two lines (the whole one in its
+   tooltip), so the fixed header leaves the passage room on a phone. */
+.chunk-context--scroll-text .chunk-context__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .chunk-context__text {
