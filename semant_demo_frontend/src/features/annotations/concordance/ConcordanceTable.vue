@@ -136,7 +136,7 @@
           <span class="kwic__cell kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(lineText(row.leftContext, true), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
           <span class="kwic__cell kwic__flow">
             <span class="kwic__key" :title="row.text ?? undefined">
-              <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(row.text, inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+              <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(lineText(row.text), inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
               <span v-else class="kwic__missing">{{ missingText(row) }}</span>
             </span>
             <span class="kwic__right"><template v-for="(part, i) in marked(lineText(row.rightContext), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
@@ -350,7 +350,7 @@ function marked (text: string | null | undefined, searched: boolean): TextPart[]
   return markMatches(text ?? '', searched ? words.value : [])
 }
 
-/** A context as one line of the row: line breaks as spaces; `endKept`: its trailing spaces (before
+/** A context or annotation as one line of the row: line breaks as spaces; `endKept`: its trailing spaces (before
  * the annotation) as no-break spaces, which neither collapse at the line end nor move to the far
  * side of the right-to-left cell the left context is cut in. */
 function lineText (text: string | null | undefined, endKept = false): string {
@@ -695,7 +695,8 @@ defineExpose({ reveal })
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-  white-space: normal;
+  /* Its own spaces kept too (an annotation may start or end with one); wraps at them. */
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-weight: 600;
   color: #1f2a37;

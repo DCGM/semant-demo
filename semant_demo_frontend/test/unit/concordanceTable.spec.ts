@@ -53,6 +53,11 @@ describe('concordance table', () => {
       .toEqual(['', 'Left context', 'Annotation', 'Right context', 'Tag · status', 'Source', 'Year'])
   })
 
+  it('keeps the spaces an annotation starts or ends with, and shows its line breaks as spaces', () => {
+    const wrapper = mountTable({}, [annotation('a', { leftContext: 'den', text: ' gegenseitigen\nBeistand ', rightContext: 'ablehnen' })])
+    expect(wrapper.get('.kwic__key-text').element.textContent).toBe(' gegenseitigen Beistand ')
+  })
+
   it('marks the active sort and its direction, and leaves the context headers unsortable', () => {
     const wrapper = mountTable({ sort: AnnotationSort.year, descending: true })
     expect(head(wrapper, 'year').attributes('aria-sort')).toBe('descending')
