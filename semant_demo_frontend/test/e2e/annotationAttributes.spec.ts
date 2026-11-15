@@ -276,7 +276,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await expect(page.getByTestId('annotation-context')).toBeVisible()
   // The checked and the open row keep their colours, also in the sticky annotation cell.
   await expect(row(page, 'Brně')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
-  await expect(row(page, 'Brně').locator('.kwic__flow')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
+  await expect(row(page, 'Brně').getByTestId('kwic-text')).toHaveCSS('background-color', 'rgb(238, 244, 253)')
   await expect(row(page, 'Jan Novák')).toHaveCSS('background-color', 'rgb(255, 248, 214)')
   await expect(row(page, 'Lhoty')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
 

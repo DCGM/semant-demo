@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="root"
     class="kwic"
     :class="{ 'kwic--attributes': attributes.length > 0, 'kwic--scrolled': scrolled }"
     data-testid="kwic"
@@ -129,18 +130,16 @@
             @update:model-value="value => emit('toggle', row.id, !!value)"
           />
         </div>
-        <!-- One cell under the three text headers: the left context ends in the Left context
-             column, the annotation starts in the Annotation column and the right context runs on
-             right after it, so the row reads as continuous text (#665). -->
+        <!-- One cell under the three text headers, a row of its own: the annotation centered,
+             the left context right before it and the right context right after it, so the row
+             reads as continuous text (#665). -->
         <div class="kwic__text" role="gridcell" aria-colspan="3" data-testid="kwic-text">
-          <span class="kwic__cell kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(lineText(row.leftContext, true), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
-          <span class="kwic__cell kwic__flow">
-            <span class="kwic__key" :title="row.text ?? undefined">
-              <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(lineText(row.text), inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
-              <span v-else class="kwic__missing">{{ missingText(row) }}</span>
-            </span>
-            <span class="kwic__right"><template v-for="(part, i) in marked(lineText(row.rightContext), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+          <span class="kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(lineText(row.leftContext, true), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
+          <span class="kwic__key" :title="row.text ?? undefined">
+            <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(lineText(row.text), inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+            <span v-else class="kwic__missing">{{ missingText(row) }}</span>
           </span>
+          <span class="kwic__right"><template v-for="(part, i) in marked(lineText(row.rightContext), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
         </div>
         <div
           v-for="attribute in attributes"
@@ -217,7 +216,7 @@ export type FilterField = 'annotation' | 'context' | 'source' | 'year'
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, ClosePopup as vClosePopup } from 'quasar'
 import {
   AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
@@ -331,13 +330,11 @@ function filterLabel (field: FilterField): string {
   return filterActive(field) ? `${FILTER_LABELS[field]} (active)` : FILTER_LABELS[field]
 }
 
-// Scrolled sideways past the left context (attribute columns): the annotation sticks next to the
-// checkbox, without its right context.
+// Scrolled sideways (attribute columns): each row's text sticks next to the checkbox as its
+// annotation alone, so the attribute columns scroll in beside it.
 const scrolled = ref(false)
 function onScroll (event: Event) {
-  const list = event.target as HTMLElement
-  const left = list.querySelector<HTMLElement>('[data-testid="kwic-head-left"]')
-  scrolled.value = list.scrollLeft > 0 && list.scrollLeft >= (left?.offsetWidth ?? 0)
+  scrolled.value = (event.target as HTMLElement).scrollLeft > 0
 }
 
 const helpId = `kwic-help-${Math.random().toString(36).slice(2, 8)}`
@@ -476,6 +473,40 @@ function reveal (id: string) {
   })
 }
 
+// A wrapped annotation's box keeps the width it was given, not that of its longest line, which
+// would leave a gap before the right context and push the annotation off center. So each wrapped
+// annotation gets the width of its longest line, measured after rendering and on every resize
+// (all widths reset, then all measured, then all set: one layout pass, not one per row).
+const root = ref<HTMLElement | null>(null)
+let fitFrame = 0
+function fitWrappedKeys () {
+  fitFrame = 0
+  const keys = Array.from(root.value?.querySelectorAll<HTMLElement>('.kwic__text .kwic__key') ?? [])
+  for (const key of keys) key.style.width = ''
+  const widths = keys.map(key => {
+    const lines = Array.from(key.firstElementChild?.getClientRects() ?? [])
+    if (lines.length < 2) return null
+    return Math.ceil(Math.max(...lines.map(r => r.width))) + 1
+  })
+  keys.forEach((key, i) => { if (widths[i] !== null) key.style.width = `${widths[i]}px` })
+}
+function scheduleFit () {
+  if (!fitFrame && typeof requestAnimationFrame !== 'undefined') fitFrame = requestAnimationFrame(fitWrappedKeys)
+}
+let resizes: ResizeObserver | null = null
+onMounted(() => {
+  scheduleFit()
+  if (typeof ResizeObserver !== 'undefined' && root.value) {
+    resizes = new ResizeObserver(scheduleFit)
+    resizes.observe(root.value)
+  }
+})
+onBeforeUnmount(() => {
+  resizes?.disconnect()
+  if (fitFrame) cancelAnimationFrame(fitFrame)
+})
+watch(() => [props.rows, props.query, props.queryScope, props.attributes.length], () => { void nextTick(scheduleFit) })
+
 defineExpose({ reveal })
 </script>
 
@@ -503,14 +534,14 @@ defineExpose({ reveal })
 }
 
 /* check | left context | annotation | right context | [attributes] | tag · status | source | year.
-   The annotation column is as wide as its header: rows start their annotation there and run
-   their right context on after it, across the right context column (#665). */
+   The context columns share the text area equally, so the annotation header is centered over
+   it, as each row's annotation is (#665). */
 .kwic__grid {
   --kwic-context-min: 0px;
   /* The annotation column never collapses below its header's name and controls (cut). */
   --kwic-key-min: 6.5rem;
   --kwic-text:
-    minmax(var(--kwic-context-min), 9fr) minmax(var(--kwic-key-min), auto) minmax(var(--kwic-context-min), 11fr);
+    minmax(var(--kwic-context-min), 1fr) minmax(var(--kwic-key-min), auto) minmax(var(--kwic-context-min), 1fr);
   display: grid;
   grid-template-columns: 2rem var(--kwic-text) fit-content(9rem) fit-content(13rem) auto;
   font-size: 0.9rem;
@@ -544,10 +575,12 @@ defineExpose({ reveal })
   background: #fff;
 }
 
-/* The row's checkbox and annotation stay in view while the attribute columns scroll under. */
+/* The row's checkbox and annotation stay in view while the attribute columns scroll under: the
+   whole text cell sticks (a sticky box stays within its parent's box, so it is the row's grid item,
+   not the annotation inside it), shrunk to the annotation once the list is scrolled. */
 .kwic__grid--attribute .kwic__check,
 .kwic__grid--attribute .kwic__row--head .kwic__key,
-.kwic__grid--attribute .kwic__flow {
+.kwic__grid--attribute .kwic__text {
   position: sticky;
   z-index: 1;
   background: inherit;
@@ -558,13 +591,21 @@ defineExpose({ reveal })
 }
 
 .kwic__grid--attribute .kwic__row--head .kwic__key,
-.kwic__grid--attribute .kwic__flow {
+.kwic__grid--attribute .kwic__text {
   left: 2rem;
 }
 
-/* Once the annotation sticks, its right context gives way to the attribute columns. */
-.kwic--scrolled .kwic__flow .kwic__right {
+.kwic--scrolled .kwic__text {
+  justify-self: start;
+}
+
+.kwic--scrolled .kwic__text .kwic__left,
+.kwic--scrolled .kwic__text .kwic__right {
   display: none;
+}
+
+.kwic--scrolled .kwic__text .kwic__key {
+  max-width: min(14rem, 60vw);
 }
 
 /* They cover the row's own marks, so they draw their part of them. */
@@ -576,7 +617,7 @@ defineExpose({ reveal })
   box-shadow: inset 2px 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
-.kwic__grid--attribute .kwic__row:focus-visible .kwic__flow {
+.kwic__grid--attribute .kwic__row:focus-visible .kwic__text {
   box-shadow: inset 0 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
@@ -641,62 +682,59 @@ defineExpose({ reveal })
   text-align: right;
 }
 
-/* The text cell: no box of its own; its parts are cells of the row's grid, side by side with no
-   gap or padding between them. Rows have its background, for the sticky annotation. */
+.kwic__row--head .kwic__key {
+  text-align: center;
+}
+
+/* The text cell: the annotation between two context boxes that share the rest of the width
+   equally, so the annotation is centered whatever its length; the contexts run right up to it
+   (no gap or padding) and are cut at their outer ends only. */
 .kwic__text {
-  display: contents;
+  grid-column: 2 / span 3;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  padding: 7px 4px;
+  line-height: 1.25;
   background: inherit;
 }
 
-.kwic__row:not(.kwic__row--head) .kwic__left,
-.kwic__flow {
-  /* On the first line of a wrapped annotation; centered in a one-line row. */
-  align-self: start;
-  padding-top: 7px;
-  padding-bottom: 7px;
-  line-height: 1.25;
-}
-
-/* Left context ends where the annotation starts, cut at its start, so the words next to the
-   annotation stay visible. Spaces are kept as in the text (`lineText`). */
-.kwic__row:not(.kwic__row--head) .kwic__left {
-  grid-column: 2;
-  padding-right: 0;
-  direction: rtl;
-  text-align: right;
+.kwic__text .kwic__left,
+.kwic__text .kwic__right {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Spaces kept as in the text (`lineText`), also those next to the annotation. */
   white-space: pre;
   color: #444;
+}
+
+/* Cut at its start, so the words next to the annotation stay visible. */
+.kwic__text .kwic__left {
+  direction: rtl;
+  text-align: right;
 }
 
 .kwic__ltr {
   direction: ltr;
 }
 
-/* The annotation, then its right context right after it, across the right context column. */
-.kwic__flow {
-  grid-column: 3 / span 2;
-  justify-self: start;
-  max-width: 100%;
-  display: flex;
-  align-items: baseline;
-  padding-left: 0;
-}
-
-.kwic__row--head .kwic__key {
-  padding-left: 0;
-}
-
-/* A long annotation wraps to a second line and is cut after it; the right context then gets no
-   room. The full text is in the sidebar and the title. */
-.kwic__flow .kwic__key {
+/* At most 60 % of the text, so some context shows on both sides; longer annotations wrap to a
+   second line and are cut after it (the full text is in the sidebar and the title). */
+.kwic__text .kwic__key {
   flex: 0 1 auto;
+  max-width: 60%;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-  /* Its own spaces kept too (an annotation may start or end with one); wraps at them. */
+  /* Its own spaces kept too (an annotation may start or end with one); wraps at them, in lines
+     of even length, and gets the width of its longest line (`fitWrappedKeys`). */
   white-space: pre-wrap;
+  text-wrap: balance;
   overflow-wrap: anywhere;
   font-weight: 600;
   color: #1f2a37;
@@ -708,15 +746,6 @@ defineExpose({ reveal })
   background: rgba(255, 213, 79, 0.35);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-}
-
-.kwic__flow .kwic__right {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre;
-  color: #444;
 }
 
 /* A lexical match: underlined, distinct from the annotation's own highlight. */

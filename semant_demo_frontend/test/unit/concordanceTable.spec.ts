@@ -47,7 +47,9 @@ describe('concordance table', () => {
     // The space before the annotation survives the line end of the left context; line breaks
     // show as spaces; the right context follows the annotation in the same flow.
     expect(text.get('.kwic__left').element.textContent).toBe('přijel do Lhoty hejtman\u00a0')
-    expect(text.get('.kwic__flow').element.textContent).toBe('Jan Novák a ubytoval se v hostinci')
+    expect(text.get('.kwic__key').text()).toBe('Jan Novák')
+    expect(text.get('.kwic__right').element.textContent).toBe(' a ubytoval se v hostinci')
+    expect(text.findAll(':scope > span').map(s => s.classes()[0])).toEqual(['kwic__left', 'kwic__key', 'kwic__right'])
     const name = (h: ReturnType<typeof wrapper.get>) => h.find('.kwic-head__label').exists() ? h.get('.kwic-head__label').text() : h.text()
     expect(wrapper.findAll('[role="columnheader"]').map(name))
       .toEqual(['', 'Left context', 'Annotation', 'Right context', 'Tag · status', 'Source', 'Year'])

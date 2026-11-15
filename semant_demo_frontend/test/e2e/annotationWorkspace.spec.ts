@@ -58,8 +58,16 @@ test('one aligned line per annotation; rejected ones only on request', async ({ 
   await expect(row(page, 'Jan Novák')).toContainText(`${fixture.document('chronicle').properties.yearIssued}`)
 
   const keys = await rows(page).locator('.kwic__key').evaluateAll(els => els.map(e => e.getBoundingClientRect()))
-  expect(new Set(keys.map(k => Math.round(k.left))).size, 'annotations start in one column').toBe(1)
   expect(Math.max(...keys.map(k => k.height)), 'every row is one line').toBeLessThan(40)
+  // Each annotation is centered under the Annotation header, whatever its length; the contexts
+  // run right up to it from both sides (#665).
+  const head = (await page.getByTestId('kwic-head-annotation').boundingBox())!
+  for (const k of keys) expect(Math.abs(k.left + k.width / 2 - (head.x + head.width / 2)), 'centered').toBeLessThanOrEqual(1.5)
+  const parts = await rows(page).first().getByTestId('kwic-text').evaluate(el =>
+    ['.kwic__left', '.kwic__key', '.kwic__right'].map(s => el.querySelector(s)!.getBoundingClientRect()))
+  expect(Math.abs(parts[0].right - parts[1].left), 'no gap before').toBeLessThanOrEqual(0.5)
+  expect(Math.abs(parts[2].left - parts[1].right), 'no gap after').toBeLessThanOrEqual(0.5)
+  expect(Math.abs(parts[0].width - parts[2].width), 'equal context boxes').toBeLessThanOrEqual(1)
   // Left context ends at the annotation, right context starts after it.
   await expect(row(page, 'Jan Novák').locator('.kwic__left')).toContainText('hejtman')
   await expect(row(page, 'Jan Novák').locator('.kwic__right')).toContainText('a ubytoval')
@@ -424,6 +432,17 @@ test('a long cross-chunk annotation wraps to a second line in its row and is com
   expect(box!.height, 'two lines').toBeGreaterThan(1.5 * line!.height)
   expect(box!.height, 'two lines').toBeLessThan(2.5 * line!.height)
   expect(await key.evaluate(e => getComputedStyle(e).webkitLineClamp)).toBe('2')
+  // Its box is as wide as its longest line: the contexts touch it and it stays centered.
+  const parts = await long.getByTestId('kwic-text').evaluate(el => {
+    const text = el.getBoundingClientRect()
+    const [left, k, right] = ['.kwic__left', '.kwic__key', '.kwic__right'].map(s => el.querySelector(s)!.getBoundingClientRect())
+    const lines = Array.from(el.querySelector('.kwic__key-text')!.getClientRects()).map(r => r.right)
+    return { gapBefore: k.left - left.right, gapAfter: right.left - k.right, lineEnd: k.right - Math.max(...lines), off: (k.left + k.right) / 2 - (text.left + text.right) / 2 }
+  })
+  expect(Math.abs(parts.gapBefore)).toBeLessThanOrEqual(0.5)
+  expect(Math.abs(parts.gapAfter)).toBeLessThanOrEqual(0.5)
+  expect(parts.lineEnd).toBeLessThanOrEqual(2)
+  expect(Math.abs(parts.off)).toBeLessThanOrEqual(1.5)
 
   await long.click()
   const marks = panel(page).getByTestId('chunk-context-mark')
