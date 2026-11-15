@@ -82,10 +82,14 @@ check-frontend: deps-check-frontend
 	cd semant_demo_frontend && npm test
 
 ## Real-Weaviate tests in a throwaway, test-owned Weaviate container (needs Docker).
-## ARGS selects tests while iterating, e.g.
+## ARGS selects tests while iterating; quote as on a shell command line, e.g.
 ##   make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
+##   make test-integration ARGS="tests/integration/test_access.py -k 'case_a or case_b'"
+## ARGS is expanded outside the quoted sh -c script and arrives as "$$@", so its quoting
+## survives (#696).
 test-integration: deps-check-backend
-	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && "$(PY)" -m pytest -m integration $(ARGS)'
+	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && py="$$1" && shift && exec "$$py" -m pytest -m integration "$$@"' \
+		test-integration "$(PY)" $(ARGS)
 
 ## Browser smoke tests: build the frontend and run it against the deterministic backend
 ## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.
