@@ -173,10 +173,12 @@ describe('components', () => {
     const toolbar = mountIt(ConcordanceToolbar, {
       filters: filters({ documentFilters: { yearMin: 1800, libraries: ['mzk'] } }), tags: [], documents
     })
-    const open = toolbar.findAllComponents(QBtn).find(b => b.attributes('data-testid') === 'concordance-document-filters')!
-    expect(open.text()).toContain('Document filters (1)')
+    const open = toolbar.findAllComponents(QBtn).find(b => b.attributes('data-testid') === 'concordance-more-filters')!
+    expect(open.text()).toContain('More filters (2)')
+    expect(open.attributes('aria-expanded')).toBe('false')
     await open.trigger('click')
     await flushPromises()
+    expect(open.attributes('aria-expanded')).toBe('true')
     const select = (label: string) => toolbar.findAllComponents(QSelect).find(s => s.props('label') === label)!
     expect(select('Source library').props('options')).toEqual([
       { value: 'mzk', label: 'Moravian Library (mzk) (4)' }, { value: 'nkp', label: 'National Library of the Czech Republic (nkp) (2)' }

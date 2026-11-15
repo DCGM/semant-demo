@@ -507,7 +507,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
   }
 
   async function resetFilters () {
-    filters.value = defaultFilters()
+    // The order of the rows is a display setting, not a filter: it stays.
+    filters.value = { ...defaultFilters(), sort: filters.value.sort, descending: filters.value.descending }
     offset.value = 0
     stopResolving()
     shown.value = new Set()
