@@ -183,6 +183,9 @@ describe('concordance row value filters', () => {
     expect(menuItem('kwic-refine-group-source')?.textContent).toContain('Source · Kronika obce Lhota')
     // No selected words: no word filter.
     expect(menuItem('kwic-refine-words')).toBeNull()
+    // A click on the row while its menu is shown (lifting the finger after a long press) opens nothing.
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toBeUndefined()
     menuItem('kwic-refine-year-only')?.click()
     expect(wrapper.emitted('refine')).toEqual([[{ documentFilters: { yearMin: 1851, yearMax: 1851 } }]])
     expect(wrapper.emitted('open')).toBeUndefined()
@@ -213,7 +216,11 @@ describe('concordance row value filters', () => {
     menuItem('kwic-refine-words')?.click()
     expect(wrapper.emitted('refine')).toEqual([[{ text: 'ubytoval', textScope: TextScope.context }]])
 
+    // Right after the menu closed, a click still belongs to its long press; later ones open the row.
     window.getSelection()?.removeAllRanges()
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toBeUndefined()
+    await new Promise(resolve => setTimeout(resolve, 450))
     await row.trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
     wrapper.unmount()

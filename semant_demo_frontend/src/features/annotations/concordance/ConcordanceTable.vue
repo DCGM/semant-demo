@@ -118,9 +118,11 @@
           context-menu
           touch-position
           data-testid="kwic-row-menu"
+          @before-show="menuOpen = row.id"
+          @before-hide="onMenuClosing(row)"
           @hide="onMenuHide(row)"
         >
-          <q-list dense style="min-width: 260px; max-width: 360px">
+          <q-list dense class="kwic__menu">
             <q-item v-close-popup clickable data-testid="kwic-row-open" @click="emit('open', row)">
               <q-item-section avatar><q-icon name="menu_book" /></q-item-section>
               <q-item-section>Show in document</q-item-section>
@@ -560,6 +562,12 @@ function refine (row: AnnotationListRow, change: Partial<ConcordanceFilters>) {
   emit('refine', change)
 }
 
+function onMenuClosing (row: AnnotationListRow) {
+  if (menuOpen.value !== row.id) return
+  menuOpen.value = null
+  menuClosed = { rowId: row.id, at: Date.now() }
+}
+
 function onMenuHide (row: AnnotationListRow) {
   if (selectedWords.value?.rowId === row.id) selectedWords.value = null
 }
@@ -574,8 +582,15 @@ function menuGroups (row: AnnotationListRow): CellFilterGroup[] {
   return words ? [words, ...groups] : groups
 }
 
-/** A click opens the row, unless it ended selecting text in it (the selection is kept). */
+/** The row whose menu is shown, and the last one closed: a long press opens the menu on touch
+ * screens, and lifting the finger may then click the row. */
+const menuOpen = ref<string | null>(null)
+let menuClosed: { rowId: string, at: number } | null = null
+
+/** A click opens the row, unless it ended selecting text in it (the selection is kept) or the long
+ * press that opened its menu. */
 function onRowClick (row: AnnotationListRow, event: MouseEvent) {
+  if (menuOpen.value === row.id || (menuClosed?.rowId === row.id && Date.now() - menuClosed.at < 400)) return
   const selection = window.getSelection()
   const el = event.currentTarget as HTMLElement
   if (selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(el)) return
@@ -958,6 +973,12 @@ defineExpose({ reveal })
   border: 1px solid currentColor;
   font-size: 0.7rem;
   line-height: 1.4;
+}
+
+/* The row menu fits a phone's width: long values are cut, never scrolled sideways. */
+.kwic__menu {
+  min-width: min(260px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
 }
 
 /* A group of the row menu: the field and the row's value, cut to one line, and what it does. */
