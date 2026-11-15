@@ -133,6 +133,7 @@
       </q-btn>
       </div>
       <div
+        v-if="attributes.length"
         class="concordance-toolbar__display"
         role="group"
         aria-label="Display settings, they do not limit the results"
@@ -140,37 +141,6 @@
       >
         <span class="concordance-toolbar__group-label">Display<q-tooltip>Display settings change how the results are shown, not which annotations match</q-tooltip></span>
         <q-select
-          :model-value="filters.sort"
-          :options="sortOptions"
-          emit-value
-          map-options
-          dense
-          outlined
-          options-dense
-          label="Sort by"
-          :disable="ranked"
-          :display-value="ranked ? 'Relevance' : undefined"
-          class="concordance-toolbar__sort"
-          data-testid="concordance-sort"
-          @update:model-value="value => emit('change', { sort: value, descending: false })"
-        >
-          <q-tooltip v-if="ranked">Ranked results are in order of relevance</q-tooltip>
-        </q-select>
-        <q-btn
-          v-if="!ranked"
-          flat
-          dense
-          round
-          :icon="filters.descending ? 'arrow_downward' : 'arrow_upward'"
-          :aria-label="filters.descending ? 'Descending; sort ascending' : 'Ascending; sort descending'"
-          :aria-pressed="filters.descending ? 'true' : 'false'"
-          data-testid="concordance-sort-direction"
-          @click="emit('change', { descending: !filters.descending })"
-        >
-          <q-tooltip>{{ filters.descending ? 'Descending' : 'Ascending' }}</q-tooltip>
-        </q-btn>
-        <q-select
-          v-if="attributes.length"
           :model-value="shownIds"
           :options="shownAttributeOptions"
           multiple
@@ -368,7 +338,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { QBtn, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QSelect, QTooltip } from 'quasar'
 import {
-  AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
@@ -444,12 +414,6 @@ const statusOptions = [
   { value: SpanType.pos, label: 'Confirmed', hint: 'Manual or approved annotations' },
   { value: SpanType.auto, label: 'Proposals', hint: 'Automatic proposals not yet reviewed' },
   { value: SpanType.neg, label: 'Rejected', hint: 'Rejected proposals, kept as negative examples' }
-]
-
-const sortOptions = [
-  { value: AnnotationSort.document, label: 'Document' },
-  { value: AnnotationSort.year, label: 'Year' },
-  { value: AnnotationSort.text, label: 'Annotated text' }
 ]
 
 const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOPE_LABELS[value] }))
@@ -717,10 +681,6 @@ const shownLabel = computed(() => {
 
 .concordance-toolbar__year {
   width: 104px;
-}
-
-.concordance-toolbar__sort {
-  width: 160px;
 }
 
 .concordance-toolbar__mode {

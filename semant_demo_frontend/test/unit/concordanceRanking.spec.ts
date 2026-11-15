@@ -225,7 +225,7 @@ describe('ranked components', () => {
     await toolbar.setProps({ filters: filters({ mode: RetrievalMode.semantic }) } as never)
     expect(select(toolbar, 'Search in')).toBeUndefined() // meaning is of the text alone
     expect(toolbar.findAllComponents(QInput).find(i => i.props('label') === 'Meaning of')).toBeDefined()
-    expect(select(toolbar, 'Sort by')!.props('disable')).toBe(true)
+    expect(select(toolbar, 'Sort by')).toBeUndefined() // the rows are sorted by the table's headers
     select(toolbar, 'Top')!.vm.$emit('update:modelValue', 500)
     expect(toolbar.emitted('change')![1]).toEqual([{ k: 500 }])
 

@@ -391,7 +391,6 @@ test('column headers sort the whole result both ways and bring up their filters,
   await page.keyboard.press('Enter')
   await expect(annotation).toHaveAttribute('aria-sort', 'descending')
   await expect.poll(keys).toEqual(['Prahy', 'Lhoty', 'Jan Novák', 'Brně'])
-  await expect(page.getByTestId('concordance-sort-direction')).toHaveAttribute('aria-pressed', 'true')
   // Sorting kept the open row and the sidebar.
   await expect(row(page, 'Lhoty')).toHaveAttribute('aria-current', 'true')
   await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
@@ -435,8 +434,6 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   await expect(ranked).toHaveText('Top 100 most similar (3 found)')
   await expect(row(page, 'Jan Novák')).toHaveCount(0)
   await expect(rows(page).getByTestId('kwic-rank')).toHaveText(['#1', '#2', '#3'])
-  await expect(page.getByTestId('concordance-sort')).toHaveText('Relevance')
-  await expect(page.locator('label', { has: page.getByTestId('concordance-sort') })).toHaveClass(/q-field--disabled/)
   await expect(page.getByTestId('select-all-matches')).toHaveText('Select these top 3')
   const chip = page.getByTestId('concordance-chip-similar')
   await expect(chip).toContainText('Similar to:\'Jan Novák\'')
