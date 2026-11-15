@@ -466,10 +466,7 @@ test('the review comes first; the tag chip changes the tag (#659)', async ({ pag
   expect(await y(review)).toBeLessThan(await y(chip))
   expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
   // Approve, Reject and Next decide; Delete is a quiet action of its own, apart from them.
-  await expect(review.getByRole('button')).toHaveText(['checkApprove', 'blockReject', /^skip_nextNext\d+\/\d+$/])
-  // Next quietly says where the open row is among the matches.
-  const keys = await rows(page).locator('.kwic__key').allInnerTexts()
-  await expect(page.getByTestId('row-position')).toHaveText(`${keys.findIndex(k => k.includes(text)) + 1}/${keys.length}`)
+  await expect(review.getByRole('button')).toHaveText(['checkApprove', 'blockReject', 'skip_nextNext'])
   // The status in its colour, the tag's definition on the chip.
   await expect(context.getByTestId('annotation-context-status')).toHaveClass(/annotation-context__status--pos/)
   await chip.hover()

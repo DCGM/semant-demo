@@ -198,8 +198,6 @@
                   @click="skip"
                 >
                   <span>Next</span>
-                  <!-- Where the open row is among the matches, quietly. -->
-                  <span v-if="focusedPosition" class="annotation-context__position" data-testid="row-position">{{ focusedPosition }}</span>
                   <q-tooltip>Show the next row without a review decision</q-tooltip>
                 </q-btn>
               </div>
@@ -524,12 +522,6 @@ function toggleTextFromClick () {
   if (window.getSelection()?.isCollapsed === false) return
   textExpanded.value = !textExpanded.value
 }
-/** "4/15": the open row's place among all matches (pages included), or null when not on this page. */
-const focusedPosition = computed(() => {
-  const index = store.rows.findIndex(r => r.id === selection.focused?.id)
-  return index < 0 || !store.total ? null : `${store.offset + index + 1}/${store.total}`
-})
-
 const statusText = computed(() => ({
   [SpanType.pos]: 'Confirmed',
   [SpanType.auto]: 'Proposal',
@@ -1070,12 +1062,6 @@ watch(collectionId, async (id) => {
 
 .annotation-context__delete {
   margin-left: auto;
-}
-
-.annotation-context__position {
-  margin-left: 6px;
-  font-size: 0.72rem;
-  opacity: 0.7;
 }
 
 .annotation-context__status {
