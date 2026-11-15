@@ -23,8 +23,11 @@
             :title="documentTitle"
             data-testid="chunk-context-title"
           >{{ documentTitle }}</div>
-          <div class="text-caption text-grey-8">{{ document.yearIssued || 'Year N/A' }}</div>
-          <OriginalSourceLink :document="document" :page-id="targetPageId" class="text-caption" />
+          <!-- The year and the link to the original on one line, wrapping on a phone. -->
+          <div class="chunk-context__meta text-caption">
+            <span class="text-grey-8">{{ document.yearIssued || 'Year N/A' }}</span>
+            <OriginalSourceLink :document="document" :page-id="targetPageId" />
+          </div>
         </div>
         <!-- The full document view (text and scans), unlike this passage beside the page. -->
         <q-btn
@@ -368,6 +371,13 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   min-height: 160px;
   overflow-y: auto;
   overflow-anchor: auto;
+}
+
+.chunk-context__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 12px;
 }
 
 .chunk-context__heading {

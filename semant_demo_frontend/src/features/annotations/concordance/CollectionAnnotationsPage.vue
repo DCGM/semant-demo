@@ -109,7 +109,7 @@
     </div>
 
     <!-- Registered once a row is opened. -->
-    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Document" icon="menu_book" :order="1" fill v-slot="{ visible }">
+    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Annotation" icon="format_quote" :order="1" fill v-slot="{ visible }">
       <ChunkContextPanel
         :visible="visible"
         ref="panel"
@@ -161,37 +161,43 @@
                 <q-btn
                   unelevated
                   no-caps
-                  color="positive"
+                  :color="approveDisabled ? 'grey-3' : 'positive'"
+                  :text-color="approveDisabled ? 'grey-7' : 'white'"
                   icon="check"
                   label="Approve"
                   class="annotation-context__decision"
-                  :disable="review.running || selection.focused.type === SpanType.pos"
+                  :disable="approveDisabled"
                   data-testid="row-approve"
                   @click="reviewFocused(ReviewAction.approve)"
-                />
+                >
+                  <q-tooltip>Confirm the annotation</q-tooltip>
+                </q-btn>
                 <q-btn
                   unelevated
                   no-caps
-                  color="orange-9"
+                  :color="rejectDisabled ? 'grey-3' : 'deep-orange-9'"
+                  :text-color="rejectDisabled ? 'grey-7' : 'white'"
                   icon="block"
                   label="Reject"
                   class="annotation-context__decision"
-                  :disable="review.running || selection.focused.type === SpanType.neg"
+                  :disable="rejectDisabled"
                   data-testid="row-reject"
                   @click="reviewFocused(ReviewAction.reject)"
-                />
+                >
+                  <q-tooltip>Mark it as wrong. It is kept as a rejected annotation (negative feedback); to remove it for good, use Delete</q-tooltip>
+                </q-btn>
                 <q-btn
                   outline
                   no-caps
                   color="primary"
                   icon="skip_next"
-                  label="Skip"
+                  label="Next"
                   class="annotation-context__decision"
                   :disable="!nextRow"
-                  data-testid="row-skip"
+                  data-testid="row-next"
                   @click="skip"
                 >
-                  <q-tooltip>Leave it as it is and show the next row</q-tooltip>
+                  <q-tooltip>Show the next row without a review decision</q-tooltip>
                 </q-btn>
               </div>
               <div
@@ -224,35 +230,6 @@
                   @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
                 />
                 <span class="annotation-context__status text-caption" data-testid="annotation-context-status">{{ statusText }}</span>
-                <!-- Actions on the whole annotation; deleting is kept apart from the review. -->
-                <q-btn
-                  v-if="!selection.focusedGone && !editingBoundary"
-                  dense
-                  flat
-                  round
-                  color="grey-8"
-                  icon="more_vert"
-                  aria-label="More actions"
-                  :disable="review.running"
-                  class="annotation-context__menu"
-                  data-testid="row-more"
-                >
-                  <q-menu anchor="bottom right" self="top right">
-                    <q-list dense role="menu" aria-label="More actions" style="min-width: 160px">
-                      <q-item
-                        v-close-popup
-                        clickable
-                        role="menuitem"
-                        class="text-negative"
-                        data-testid="row-delete"
-                        @click="reviewFocused(ReviewAction.delete)"
-                      >
-                        <q-item-section side><q-icon name="delete" color="negative" /></q-item-section>
-                        <q-item-section>Delete…</q-item-section>
-                      </q-item>
-                    </q-list>
-                  </q-menu>
-                </q-btn>
               </div>
               <div
                 v-if="selection.focusedGone"
@@ -332,6 +309,21 @@
                       : 'Its text and vector are not derived yet' }}
                   </q-tooltip>
                 </q-btn>
+                <!-- Kept apart from the review decision and less prominent; it asks before deleting. -->
+                <q-btn
+                  dense
+                  flat
+                  round
+                  color="grey-7"
+                  icon="delete_outline"
+                  aria-label="Delete…"
+                  class="annotation-context__delete"
+                  :disable="review.running"
+                  data-testid="row-delete"
+                  @click="reviewFocused(ReviewAction.delete)"
+                >
+                  <q-tooltip>Delete: remove the annotation permanently; it cannot be restored. To keep it as negative feedback, use Reject</q-tooltip>
+                </q-btn>
               </div>
             </section>
             <div v-if="!selection.focusedGone" class="annotation-context__details" data-testid="annotation-context-details">
@@ -344,16 +336,16 @@
                 :definitions-route="{ name: 'collectionAttributes', params: { collectionId } }"
                 @assign="(attribute, change, done) => selection.focused && assignRow(selection.focused, attribute, change).then(done)"
               />
-              <section v-if="selection.focused.provenance" class="annotation-context__origin" aria-label="Origin">
-                <div class="annotation-context__title text-caption">Origin</div>
-                <ProvenanceSummary
-                  :provenance="selection.focused.provenance"
-                  :type="selection.focused.type"
-                  :people="store.people"
-                  :me="userStore.getUserId"
-                />
-              </section>
             </div>
+            <section v-if="!selection.focusedGone && selection.focused.provenance" class="annotation-context__origin" aria-label="Origin">
+              <div class="annotation-context__title text-caption">Origin</div>
+              <ProvenanceSummary
+                :provenance="selection.focused.provenance"
+                :type="selection.focused.type"
+                :people="store.people"
+                :me="userStore.getUserId"
+              />
+            </section>
           </div>
         </template>
       </ChunkContextPanel>
@@ -475,6 +467,10 @@ const highlight = computed(() => {
     : null
 })
 
+// A decision already in effect cannot be made again: such a button is shown greyed out, not
+// in a faded colour that would look like an active one (#669 review).
+const approveDisabled = computed(() => review.running || selection.focused?.type === SpanType.pos)
+const rejectDisabled = computed(() => review.running || selection.focused?.type === SpanType.neg)
 const focusedTag = computed(() => tags.value.find(t => t.id === selection.focused?.tagId) ?? null)
 
 // A long annotated text shows its first lines; the whole span is also marked in the passage.
@@ -1061,7 +1057,7 @@ watch(collectionId, async (id) => {
   gap: 2px 8px;
 }
 
-.annotation-context__menu {
+.annotation-context__delete {
   margin-left: auto;
 }
 
@@ -1164,7 +1160,7 @@ watch(collectionId, async (id) => {
 
 /* Attributes and origin can be long: capped, so the passage keeps room on short screens. */
 .annotation-context__details {
-  max-height: 22vh;
+  max-height: 18vh;
   overflow-y: auto;
   padding-top: 6px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);

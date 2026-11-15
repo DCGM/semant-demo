@@ -76,11 +76,11 @@ test('opening, checking and keyboard use are distinct; the source shows the exac
   // Checking a row does not open its source.
   await row(page, 'Prahy').getByRole('checkbox').click()
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
-  await expect(sidebarPanelButton(page, 'Document')).toHaveCount(0)
+  await expect(sidebarPanelButton(page, 'Annotation')).toHaveCount(0)
 
   // Clicking a row opens it in the shared sidebar without checking it.
   await row(page, 'Jan Novák').click()
-  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Document')
+  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
   await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Jan Novák')
   await expect(panel(page).getByTestId('chunk-context-header')).toContainText(fixture.document('chronicle').properties.title)
   await expect(panel(page).getByTestId('annotation-context-text')).toHaveText('Jan Novák')
@@ -447,6 +447,14 @@ test('the review comes first; the tag chip changes the tag (#659)', async ({ pag
   const y = async (locator: typeof chip) => (await locator.boundingBox())?.y ?? 0
   expect(await y(review)).toBeLessThan(await y(chip))
   expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
+  // Approve, Reject and Next decide; Delete is a quiet action of its own, apart from them.
+  await expect(review.getByRole('button')).toHaveText(['checkApprove', 'blockReject', 'skip_nextNext'])
+  await expect(review.getByRole('button', { name: 'Delete…' })).toHaveCount(0)
+  await expect(context.getByTestId('annotation-secondary-actions').getByRole('button', { name: 'Delete…' })).toBeVisible()
+  await expect(sidebarPanelButton(page, 'Annotation')).toHaveCount(1)
+  // Origin is outside the height-capped attributes.
+  await expect(context.getByTestId('annotation-context-details').getByTestId('annotation-provenance')).toHaveCount(0)
+  await expect(context.getByTestId('annotation-provenance')).toBeVisible()
 
   await chip.click()
   const menu = page.getByRole('menu', { name: 'Change tag' })
@@ -583,12 +591,10 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
     await expect(next).toHaveAttribute('aria-current', 'true')
 
     await row(page, first.slice(0, 4)).click()
-    await panel(page).getByRole('button', { name: 'More actions' }).click()
-    await page.getByRole('menuitem', { name: 'Delete…' }).click()
+    await panel(page).getByRole('button', { name: 'Delete…' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
     await expect(row(page, first.slice(0, 4))).toHaveCount(1)
-    await panel(page).getByRole('button', { name: 'More actions' }).click()
-    await page.getByRole('menuitem', { name: 'Delete…' }).click()
+    await panel(page).getByRole('button', { name: 'Delete…' }).click()
     await expect(page.getByRole('dialog')).toContainText('cannot be restored')
     await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Deleted 1 of 1 annotation.')
@@ -814,8 +820,7 @@ test('undoing a batch approval restores the proposals not changed since; a delet
 
     await page.getByTestId('concordance-status-pos').click() // all statuses again
     await row(page, 'Roku').click()
-    await page.getByTestId('annotation-context').getByRole('button', { name: 'More actions' }).click()
-    await page.getByRole('menuitem', { name: 'Delete…' }).click()
+    await page.getByTestId('annotation-context').getByRole('button', { name: 'Delete…' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
     await expect(page.getByTestId('undo-bar')).toHaveText('Deleted annotations cannot be restored.')
     await expect(page.getByTestId('undo')).toHaveCount(0)
