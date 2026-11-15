@@ -39,7 +39,7 @@ describe('ProvenanceSummary', () => {
       lastEditedAt: at(9)
     })
     expect(text(wrapper, 'provenance-created').text()).toMatch(/AI suggestion run by Jana Nováková, .* run 1a2b3c4d/)
-    expect(text(wrapper, 'provenance-reviewed').text()).toMatch(/^Approved by you, /)
+    expect(text(wrapper, 'provenance-reviewed').text()).toMatch(/^Confirmed by you, /)
     expect(text(wrapper, 'provenance-edited').text()).toMatch(/^Last changed by a former member, /)
   })
 

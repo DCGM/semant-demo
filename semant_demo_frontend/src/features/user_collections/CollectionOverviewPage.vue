@@ -414,7 +414,7 @@ const statCards = computed(() => {
       key: 'annotations',
       label: 'Annotations in Collection',
       value: stats?.annotationsCount ?? 0,
-      helper: 'Approved annotations in this collection',
+      helper: 'Confirmed annotations in this collection',
       icon: 'sell',
       color: 'accent'
     },
@@ -422,7 +422,7 @@ const statCards = computed(() => {
       key: 'suggestions',
       label: 'Unresolved AI Suggestions',
       value: suggestionsCount.value ?? '–',
-      helper: suggestionsError.value ? 'Could not be counted' : 'AI suggestions not yet approved or rejected',
+      helper: suggestionsError.value ? 'Could not be counted' : 'AI suggestions not yet confirmed or rejected',
       icon: 'auto_awesome',
       color: 'deep-purple'
     }

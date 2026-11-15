@@ -9,10 +9,10 @@ export async function countAnnotations (collectionId: string, tagIds?: string[])
   })
 }
 
-/** The annotations as text ("1 approved annotation and 2 rejected suggestions"); empty when there are none. */
+/** The annotations as text ("1 confirmed annotation and 2 rejected suggestions"); empty when there are none. */
 export function describeAnnotations ({ approved, suggestions, rejected }: AnnotationCounts): string {
   const parts = []
-  if (approved) parts.push(plural(approved, 'approved annotation'))
+  if (approved) parts.push(plural(approved, 'confirmed annotation'))
   if (suggestions) parts.push(plural(suggestions, 'unresolved AI suggestion'))
   if (rejected) parts.push(plural(rejected, 'rejected suggestion'))
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts.join('')
