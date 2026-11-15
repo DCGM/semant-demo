@@ -261,7 +261,7 @@ test.describe('switching annotations of one long document', () => {
       await page.mouse.wheel(0, -600)
       await expect.poll(() => body.evaluate(el => el.scrollTop), `${width}: the passage scrolls by the wheel`).toBeLessThan(before)
       expect((await actions.boundingBox())?.y, `${width}: the actions stay in place`).toBe(top)
-      await expect(actions.getByRole('button', { name: 'Approve' })).toBeInViewport()
+      await expect(actions.getByRole('button', { name: 'Confirm' })).toBeInViewport()
       // Scrolled away from the annotation, the passage offers the way back to it.
       const back = panel(page).getByTestId('chunk-context-back').filter({ visible: true })
       await body.evaluate(el => { el.scrollTop = 0 })
@@ -758,8 +758,8 @@ test('the review comes first; the tag chip changes the tag (#659)', async ({ pag
   const y = async (locator: typeof chip) => (await locator.boundingBox())?.y ?? 0
   expect(await y(review)).toBeLessThan(await y(chip))
   expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
-  // Approve, Reject and Next decide; Delete is a quiet action of its own, apart from them.
-  await expect(review.getByRole('button')).toHaveText(['checkApprove', 'blockReject', 'skip_nextNext'])
+  // Confirm, Reject and Next decide; Delete is a quiet action of its own, apart from them.
+  await expect(review.getByRole('button')).toHaveText(['checkConfirm', 'blockReject', 'skip_nextNext'])
   // The status in its colour, the tag's definition on the chip.
   await expect(context.getByTestId('annotation-context-status')).toHaveClass(/annotation-context__status--pos/)
   await chip.hover()
@@ -901,9 +901,9 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
   try {
     await row(page, 'Lhoty').click()
     const next = rows(page).nth((await rows(page).locator('.kwic__key-label').allTextContents()).indexOf('Lhoty') + 1)
-    await review.getByRole('button', { name: 'Approve' }).click()
+    await review.getByRole('button', { name: 'Confirm' }).click()
     await expect(row(page, 'Lhoty')).toContainText('Confirmed')
-    // Approving moves on to the next row.
+    // Confirming moves on to the next row.
     await expect(next).toHaveAttribute('aria-current', 'true')
 
     await row(page, first.slice(0, 4)).click()
@@ -937,7 +937,7 @@ test('the sidebar names who changed the open annotation and refuses a review of 
     const conflict = context.getByTestId('annotation-conflict')
     await expect(conflict).toContainText('now confirmed')
     await expect(conflict).toContainText('Your reject was not saved.')
-    await expect(context.getByTestId('provenance-reviewed')).toContainText('Approved by')
+    await expect(context.getByTestId('provenance-reviewed')).toContainText('Confirmed by')
     await expect(row(page, 'Lhoty')).toContainText('Confirmed')
 
     // Rejecting the version shown now is the user's explicit choice.
@@ -1122,8 +1122,8 @@ test('undoing a batch approval restores the proposals not changed since; a delet
     await page.getByTestId('concordance-status-pos').click() // proposals only
     await page.getByTestId('select-all-matches').click()
     await page.getByTestId('review-approve').click()
-    await expect(page.getByTestId('review-report')).toContainText('Approved 2 of 2 annotations.')
-    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you approved 2 annotations.')
+    await expect(page.getByTestId('review-report')).toContainText('Confirmed 2 of 2 annotations.')
+    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you confirmed 2 annotations.')
 
     // The owner rejects one of them meanwhile.
     await patchSpan(request, praha.id, { type: 'neg' })

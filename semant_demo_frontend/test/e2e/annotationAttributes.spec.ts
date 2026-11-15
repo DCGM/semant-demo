@@ -224,7 +224,7 @@ test('an assignment that changes nothing keeps the undo of the last review; one 
     await toggleOption(page, 'concordance-show-attribute', 'Role')
     await row(page, 'Lhoty').getByRole('checkbox').click()
     await page.getByTestId('review-approve').click()
-    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you approved 1 annotation.')
+    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you confirmed 1 annotation.')
 
     // A selection that already holds the value (#569).
     await page.getByTestId('clear-selection').click()
@@ -243,7 +243,7 @@ test('an assignment that changes nothing keeps the undo of the last review; one 
     await picker(page).getByText('chronicler', { exact: true }).click()
     await expect(cell(page, 'Jan Novák').getByTestId('attribute-chips')).toHaveText('statesmanchronicler')
     await expect(page.getByTestId('undo')).toBeVisible()
-    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you approved 1 annotation.')
+    await expect(page.getByTestId('undo-bar')).toContainText('Last change: you confirmed 1 annotation.')
 
     // Removing it is a change: the review can no longer be undone.
     await picker(page).getByText('chronicler', { exact: true }).click()

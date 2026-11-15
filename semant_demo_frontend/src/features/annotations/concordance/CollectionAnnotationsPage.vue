@@ -170,7 +170,7 @@
                   :color="approveDisabled ? 'grey-3' : 'positive'"
                   :text-color="approveDisabled ? 'grey-7' : 'white'"
                   icon="check"
-                  label="Approve"
+                  label="Confirm"
                   class="annotation-context__decision"
                   :disable="approveDisabled"
                   data-testid="row-approve"
@@ -630,7 +630,7 @@ async function selectAllMatches () {
 
 // ── Review (#459) ──
 const VERB: Record<ReviewAction, string> = {
-  [ReviewAction.approve]: 'Approve',
+  [ReviewAction.approve]: 'Confirm',
   [ReviewAction.reject]: 'Reject',
   [ReviewAction.retag]: 'Change the tag of',
   [ReviewAction.delete]: 'Delete'
