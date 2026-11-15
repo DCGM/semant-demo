@@ -574,7 +574,7 @@ These paths have different purposes:
 
 | Label | Runners | Jobs |
 |---|---|---|
-| `semant-ci` | ten CI runners (`actions-runner-semant-ci-01` through `actions-runner-semant-ci-10`) | `test-backend`, `test-frontend`, `test-integration-shard` (two shards, each with its own Weaviate service), `test-integration` (shard gate), `test-browser`, `api-client-drift`, `python-locks` |
+| `semant-ci` | ten CI runners (`actions-runner-semant-ci-01` through `actions-runner-semant-ci-10`) | `test-backend`, `test-frontend`, `test-integration-shard` (two shards, each with its own Weaviate service), `test-integration` (shard gate), `test-browser-shard` (two shards, each with its own Weaviate service and backend), `test-browser` (shard gate), `api-client-drift`, `python-locks` |
 | `semant-server` | one dedicated deployment runner (`actions-runner-semant-server`) | `deploy-production`, `deploy-test-main`, `deploy-test-pr`, `teardown-test-pr` |
 
 Jobs select runners with `runs-on: [self-hosted, <label>]`. The ten `semant-ci` runners

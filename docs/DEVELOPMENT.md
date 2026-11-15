@@ -316,6 +316,20 @@ the corpus lacks. For a long passage (previews, wrapping, expansion) use `useLon
 `semant_demo_frontend/test/fixtures/longPassage.ts`, which unit tests import too; do not
 hand-build long texts per test. Every test sets up its own state and passes alone or in any order.
 
+`make test-e2e` and the fast loop run the complete suite. CI splits the same
+`playwright test --list` inventory into two shard jobs (`Browser shard 1/2`, `2/2`, #685),
+each with its own Weaviate service, token, frontend build and backend profile, one worker
+each. `scripts/browser_shards.py` assigns whole spec files by measured time from
+`semant_demo_frontend/test/e2e/shard_durations.json` (new specs are weighted by test count
+until measured); Playwright's own `--shard` splits by test count and left the shards
+2:1 apart. The required `Browser smoke tests` check passes only when both shards passed
+and their JSON reports contain every listed test exactly once; traces of a failing shard
+are in its `playwright-traces-shard-N` artifact. When the shards become unbalanced (see
+each shard's job summary), refresh the measurements from the `report.json` files of a
+run's `browser-shard-*` artifacts:
+`python3 scripts/browser_shards.py durations <report.json>...`. To change the shard count,
+edit only the matrix of `test-browser-shard` in `.github/workflows/ci-cd.yml`.
+
 ### Which checks need Docker
 
 | Needs no Docker | Needs Docker (a working daemon and the Weaviate 1.40.1 image) |
