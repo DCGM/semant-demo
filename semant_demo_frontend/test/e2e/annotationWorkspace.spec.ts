@@ -254,7 +254,25 @@ test.describe('switching annotations of one long document', () => {
       await expect.poll(() => body.evaluate(el => el.scrollTop), `${width}: the passage scrolls by the wheel`).toBeLessThan(before)
       expect((await actions.boundingBox())?.y, `${width}: the actions stay in place`).toBe(top)
       await expect(actions.getByRole('button', { name: 'Approve' })).toBeInViewport()
+      // Scrolled away from the annotation, the passage offers the way back to it.
+      const back = panel(page).getByTestId('chunk-context-back').filter({ visible: true })
+      await body.evaluate(el => { el.scrollTop = 0 })
+      await expect(back).toHaveText('arrow_downwardBack to annotation')
+      await back.click()
+      await expect(mark(page)).toBeInViewport()
+      await expect(back).toHaveCount(0)
     }
+  })
+
+  test('closing the sidebar on a phone returns to the open row (#669)', async ({ page }) => {
+    await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 30 } })
+    await useViewport(page, 'phone')
+    await openWorkspace(page)
+    await row(page, 'Brně').click()
+    await expect(mark(page)).toHaveText('Brně')
+    await page.getByRole('button', { name: 'Close sidebar' }).click()
+    await expect(row(page, 'Brně')).toBeFocused()
+    await expect(row(page, 'Brně')).toBeInViewport()
   })
 
   test('with reduced motion the passage moves at once', async ({ page }) => {
@@ -294,7 +312,7 @@ test('filters, selection and the open row survive a visit to the document', asyn
   await row(page, 'Jan Novák').getByRole('checkbox').click()
   await row(page, 'Jan Novák').click()
 
-  await panel(page).getByRole('link', { name: 'Open document' }).click()
+  await panel(page).getByTestId('chunk-context-title').click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   await expect(page.locator('.text-segment.is-tagged', { hasText: 'Jan Novák' }).first()).toBeVisible()
 
@@ -448,7 +466,15 @@ test('the review comes first; the tag chip changes the tag (#659)', async ({ pag
   expect(await y(review)).toBeLessThan(await y(chip))
   expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
   // Approve, Reject and Next decide; Delete is a quiet action of its own, apart from them.
-  await expect(review.getByRole('button')).toHaveText(['checkApprove', 'blockReject', 'skip_nextNext'])
+  await expect(review.getByRole('button')).toHaveText(['checkApprove', 'blockReject', /^skip_nextNext\d+\/\d+$/])
+  // Next quietly says where the open row is among the matches.
+  const keys = await rows(page).locator('.kwic__key').allInnerTexts()
+  await expect(page.getByTestId('row-position')).toHaveText(`${keys.findIndex(k => k.includes(text)) + 1}/${keys.length}`)
+  // The status in its colour, the tag's definition on the chip.
+  await expect(context.getByTestId('annotation-context-status')).toHaveClass(/annotation-context__status--pos/)
+  await chip.hover()
+  await expect(page.getByTestId('tag-chip-tooltip')).toContainText('Click to change the tag')
+  await page.mouse.move(0, 0)
   await expect(review.getByRole('button', { name: 'Delete…' })).toHaveCount(0)
   await expect(context.getByTestId('annotation-secondary-actions').getByRole('button', { name: 'Delete…' })).toBeVisible()
   await expect(sidebarPanelButton(page, 'Annotation')).toHaveCount(1)
@@ -499,7 +525,7 @@ test('a review made in the document view shows in the workspace on return', asyn
   await useViewport(page, 'narrow')
   await openWorkspace(page)
   await row(page, 'Lhoty').click()
-  await panel(page).getByRole('link', { name: 'Open document' }).click()
+  await panel(page).getByTestId('chunk-context-title').click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   // The linked proposal is marked although AI Tagging (which shows proposals) is not open.
   await expect(page.locator('.text-segment.is-highlighted', { hasText: 'Lhoty' }).first()).toBeVisible()
@@ -519,7 +545,7 @@ test('the open row follows edits made in the document view', async ({ page, requ
   await openWorkspace(page)
   await row(page, 'Jan Novák').click()
   const openDocument = async () => {
-    await panel(page).getByRole('link', { name: 'Open document' }).click()
+    await panel(page).getByTestId('chunk-context-title').click()
     await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   }
   try {

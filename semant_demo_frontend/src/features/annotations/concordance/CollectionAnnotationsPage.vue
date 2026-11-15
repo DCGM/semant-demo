@@ -127,10 +127,11 @@
         document-heading="In the document"
         scroll-text
         :open-link="selection.focused.documentId ? documentRoute : null"
-        return-label="Focus on annotation"
+        link-title
+        back-label="Back to annotation"
         @extend="chunkContext.extend"
         @reload="chunkContext.load"
-        @return="returnToRow"
+        @focus="chunkContext.focus"
       >
         <template #header>
           <!-- The open annotation (#659): what it is and what can be done with it first, then its
@@ -191,12 +192,14 @@
                   no-caps
                   color="primary"
                   icon="skip_next"
-                  label="Next"
                   class="annotation-context__decision"
                   :disable="!nextRow"
                   data-testid="row-next"
                   @click="skip"
                 >
+                  <span>Next</span>
+                  <!-- Where the open row is among the matches, quietly. -->
+                  <span v-if="focusedPosition" class="annotation-context__position" data-testid="row-position">{{ focusedPosition }}</span>
                   <q-tooltip>Show the next row without a review decision</q-tooltip>
                 </q-btn>
               </div>
@@ -229,7 +232,11 @@
                   :disable="review.running || selection.focusedGone || editingBoundary"
                   @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
                 />
-                <span class="annotation-context__status text-caption" data-testid="annotation-context-status">{{ statusText }}</span>
+                <span
+                  class="annotation-context__status text-caption"
+                  :class="`annotation-context__status--${selection.focused.type ?? 'unknown'}`"
+                  data-testid="annotation-context-status"
+                >{{ statusText }}</span>
               </div>
               <div
                 v-if="selection.focusedGone"
@@ -517,6 +524,12 @@ function toggleTextFromClick () {
   if (window.getSelection()?.isCollapsed === false) return
   textExpanded.value = !textExpanded.value
 }
+/** "4/15": the open row's place among all matches (pages included), or null when not on this page. */
+const focusedPosition = computed(() => {
+  const index = store.rows.findIndex(r => r.id === selection.focused?.id)
+  return index < 0 || !store.total ? null : `${store.offset + index + 1}/${store.total}`
+})
+
 const statusText = computed(() => ({
   [SpanType.pos]: 'Confirmed',
   [SpanType.auto]: 'Proposal',
@@ -563,18 +576,16 @@ function findSimilar (row: AnnotationListRow) {
   void store.findSimilar(row)
 }
 
-function returnToRow () {
-  const row = selection.focused
-  if (!row) return
-  if (selection.focusedGone) {
-    $q.notify({ type: 'info', message: 'This annotation is no longer on this page.' })
-    return
-  }
-  // On narrow screens the sidebar covers the list.
-  if ($q.screen.lt.md) rightSidebar.open = false
-  if (store.rows.some(r => r.id === row.id)) table.value?.reveal(row.id)
-  else $q.notify({ type: 'info', message: 'This annotation is not on the current page.' })
-}
+// On a narrow screen the sidebar covers the list: closing it returns to the open row
+// (focused and in view), or to the first row when it left this page (#669 review).
+watch(() => rightSidebar.open, (open, was) => {
+  if (open || !was || !$q.screen.lt.md || !selection.focused) return
+  const id = selection.focused.id
+  void nextTick(() => {
+    const back = store.rows.some(r => r.id === id) ? id : store.rows[0]?.id
+    if (back) table.value?.reveal(back)
+  })
+})
 
 // ── Selection (#459) ──
 const allMatchesSelected = computed(() =>
@@ -1061,11 +1072,35 @@ watch(collectionId, async (id) => {
   margin-left: auto;
 }
 
+.annotation-context__position {
+  margin-left: 6px;
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
 .annotation-context__status {
   padding: 0 6px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid currentColor;
+  background: rgba(0, 0, 0, 0.04);
   color: rgba(0, 0, 0, 0.72);
+}
+
+/* The status in the colours of the concordance's status label. */
+.annotation-context__status--pos {
+  color: #1b5e20;
+  background: #e8f5e9;
+}
+
+.annotation-context__status--auto {
+  color: #8a5300;
+  background: #fff4e0;
+  border-style: dashed;
+}
+
+.annotation-context__status--neg {
+  color: #8e1b1b;
+  background: #fdecea;
 }
 
 .annotation-context__quote {

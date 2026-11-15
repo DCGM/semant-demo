@@ -18,7 +18,17 @@
           {{ documentHeading }}
         </div>
         <div v-if="document" class="chunk-context__document">
+          <!-- With `linkTitle`, the title itself opens the document (no separate button). -->
+          <router-link
+            v-if="linkTitle && openLink"
+            :to="openLink"
+            class="text-subtitle2 text-weight-medium chunk-context__title chunk-context__title--link"
+            :title="`${documentTitle}. Open the whole document with its page scans`"
+            :aria-label="`${documentTitle} (open the document)`"
+            data-testid="chunk-context-title"
+          >{{ documentTitle }}<q-icon name="open_in_new" size="1em" class="chunk-context__title-icon" /></router-link>
           <div
+            v-else
             class="text-subtitle2 text-weight-medium chunk-context__title"
             :title="documentTitle"
             data-testid="chunk-context-title"
@@ -31,7 +41,7 @@
         </div>
         <!-- The full document view (text and scans), unlike this passage beside the page. -->
         <q-btn
-          v-if="openLink"
+          v-if="openLink && !linkTitle"
           dense
           flat
           no-caps
@@ -67,7 +77,24 @@
       </div>
 
       <!-- The passage: laid out with the header (display: contents), or scrolled by itself. -->
-      <div class="chunk-context__body" data-testid="chunk-context-body">
+      <div ref="bodyEl" class="chunk-context__body" data-testid="chunk-context-body" @scroll.passive="checkTargetInView">
+        <!-- With `scrollText` and `backLabel`: a way back to the target when it is scrolled
+             out of view, on the side where it is. Always present, so showing it moves nothing. -->
+        <div v-if="scrollText && backLabel" class="chunk-context__back-anchor chunk-context__back-anchor--top">
+          <q-btn
+            v-show="targetAway === 'above'"
+            rounded
+            unelevated
+            dense
+            no-caps
+            color="primary"
+            icon="arrow_upward"
+            :label="backLabel"
+            class="chunk-context__back"
+            data-testid="chunk-context-back"
+            @click="emit('focus')"
+          />
+        </div>
         <div v-if="error" class="text-negative text-body2 row items-center q-gutter-x-sm" role="alert">
           <span>{{ error }}</span>
           <q-btn v-if="!chunks.length" dense flat no-caps color="primary" label="Retry" @click="emit('reload')" />
@@ -135,14 +162,29 @@
           />
           <div v-else class="chunk-context__edge text-caption text-grey-6">End of document</div>
         </template>
+        <div v-if="scrollText && backLabel" class="chunk-context__back-anchor chunk-context__back-anchor--bottom">
+          <q-btn
+            v-show="targetAway === 'below'"
+            rounded
+            unelevated
+            dense
+            no-caps
+            color="primary"
+            icon="arrow_downward"
+            :label="backLabel"
+            class="chunk-context__back"
+            data-testid="chunk-context-back"
+            @click="emit('focus')"
+          />
+        </div>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { QBtn, QSpinner } from 'quasar'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { QBtn, QIcon, QSpinner } from 'quasar'
 import type { RouteLocationRaw } from 'vue-router'
 import type { Document, DocumentChunk } from 'src/generated/api'
 import OriginalSourceLink from './OriginalSourceLink.vue'
@@ -193,6 +235,10 @@ const props = withDefaults(defineProps<{
   /** The passage scrolls by itself below a header that stays in place, instead of the
    * sidebar scrolling both; needs a definite height (`RightSidebarPanel` `fill`). */
   scrollText?: boolean
+  /** With `openLink`: the document title is the link to it, instead of an *Open document* button. */
+  linkTitle?: boolean
+  /** With `scrollText`: the label of the way back to the target when it is scrolled out of view. */
+  backLabel?: string | null
   /** Heading above the document title, separating it from the `header` slot; none by default. */
   documentHeading?: string | null
   emptyText?: string
@@ -213,6 +259,8 @@ const props = withDefaults(defineProps<{
   openLink: null,
   documentHeading: null,
   scrollText: false,
+  linkTitle: false,
+  backLabel: null,
   emptyText: 'Nothing selected.',
   visible: true
 })
@@ -222,6 +270,8 @@ const emit = defineEmits<{
   /** Load the passage around the target again (retry). */
   reload: []
   return: []
+  /** Bring the target into view again (it was scrolled away or dropped by extending). */
+  focus: []
 }>()
 
 const targetLoaded = computed(() => props.chunks.some(c => c.id === props.targetChunkId))
@@ -265,6 +315,40 @@ const documentTitle = computed(() => {
 })
 
 const headerEl = ref<HTMLElement | null>(null)
+
+// With `scrollText`: whether the target is scrolled out of the passage's view, and on which
+// side, for the way back to it (`backLabel`). Checked on scrolling and on layout changes.
+const bodyEl = ref<HTMLElement | null>(null)
+const targetAway = ref<'above' | 'below' | null>(null)
+let checkFrame = 0
+function checkTargetInView () {
+  if (checkFrame) return
+  checkFrame = requestAnimationFrame(() => {
+    checkFrame = 0
+    const body = bodyEl.value
+    if (!props.scrollText || !props.backLabel || !body || !props.targetChunkId || !props.chunks.length) {
+      targetAway.value = null
+      return
+    }
+    const target = body.querySelector<HTMLElement>('[data-testid="chunk-context-mark"]') ??
+      (props.targetChunkId ? chunkEls.get(props.targetChunkId) : undefined)
+    // Extending the passage dropped the target: the way back reloads it.
+    if (!target) { targetAway.value = 'below'; return }
+    const view = body.getBoundingClientRect()
+    const rect = target.getBoundingClientRect()
+    targetAway.value = rect.bottom < view.top + 4 ? 'above' : rect.top > view.bottom - 4 ? 'below' : null
+  })
+}
+const bodyObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => checkTargetInView())
+watch(bodyEl, (el, old) => {
+  if (old) bodyObserver?.unobserve(old)
+  if (el) bodyObserver?.observe(el)
+})
+watch(() => [props.chunks, props.highlight, props.targetChunkId] as const, () => { void nextTick(checkTargetInView) })
+onBeforeUnmount(() => {
+  bodyObserver?.disconnect()
+  if (checkFrame) cancelAnimationFrame(checkFrame)
+})
 
 /** The point of a DOM selection boundary in a chunk's text, or null outside the text. */
 function textPoint (node: Node, offset: number): ContextTextPoint | null {
@@ -310,7 +394,10 @@ function directionTo (documentId: string | undefined, order: number | null | und
   return Math.sign(order - lastScrolled.order) as -1 | 0 | 1
 }
 
-watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visible] as const, async ([, loading, loaded, visible]) => {
+watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visible] as const, async ([request, loading, loaded, visible], previous) => {
+  // A new request is noted here too: watchers of one change do not run in a fixed order, and
+  // with the target already loaded nothing else would run this again.
+  if (previous && request !== previous[0]) scrollPending = true
   if (loading || !loaded || !visible || !scrollPending) return
   await nextTick()
   // A panel just made visible is laid out in the next frame.
@@ -378,6 +465,54 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0 12px;
+}
+
+.chunk-context__title--link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.chunk-context__title--link:hover,
+.chunk-context__title--link:focus-visible {
+  color: var(--q-primary);
+  text-decoration: underline;
+}
+
+.chunk-context__title-icon {
+  margin-left: 4px;
+  vertical-align: -1px;
+  color: var(--q-primary);
+}
+
+/* Zero-height anchors at the passage's edges keep the way back to the target in view. */
+.chunk-context__back-anchor {
+  position: sticky;
+  z-index: 2;
+  height: 0;
+  margin: -4px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.chunk-context__back-anchor--top {
+  top: 0;
+}
+
+.chunk-context__back-anchor--bottom {
+  bottom: 0;
+}
+
+.chunk-context__back {
+  position: absolute;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.chunk-context__back-anchor--top .chunk-context__back {
+  top: 8px;
+}
+
+.chunk-context__back-anchor--bottom .chunk-context__back {
+  bottom: 8px;
 }
 
 .chunk-context__heading {

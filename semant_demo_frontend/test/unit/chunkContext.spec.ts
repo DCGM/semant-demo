@@ -448,6 +448,12 @@ describe('ChunkContextPanel', () => {
     await wrapper.setProps({ chunks: [chunk(2), ...chunks] })
     await flushPromises()
     expect(scroll).toHaveBeenCalledTimes(2)
+
+    // Regression (#669): a request alone, with the target loaded and nothing reloading,
+    // scrolls back too (*Back to annotation*, the chat's *Return to cited passage*).
+    await wrapper.setProps({ focusRequest: 3 })
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(3)
   })
 
   it('scrolls to the marked range, not to the start of its chunk', async () => {

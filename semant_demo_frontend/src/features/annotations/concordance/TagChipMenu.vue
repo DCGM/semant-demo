@@ -13,7 +13,10 @@
     <span class="tag-chip__dot" aria-hidden="true" />
     <span class="tag-chip__name">{{ tag?.name ?? 'Unknown tag' }}</span>
     <q-icon name="arrow_drop_down" size="20px" class="tag-chip__arrow" />
-    <q-tooltip>Change tag</q-tooltip>
+    <q-tooltip max-width="320px" data-testid="tag-chip-tooltip">
+      <div v-if="tag?.definition" class="tag-chip__definition">{{ tag.definition }}</div>
+      <div class="tag-chip__hint">Click to change the tag</div>
+    </q-tooltip>
     <q-menu anchor="bottom left" self="top left">
       <q-list dense class="tag-chip__menu" role="menu" aria-label="Change tag">
         <q-item
@@ -78,6 +81,16 @@ const emit = defineEmits<{ pick: [tagId: string] }>()
 .tag-chip__arrow {
   margin-left: 2px;
   color: rgba(0, 0, 0, 0.6);
+}
+
+.tag-chip__definition {
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.tag-chip__hint {
+  opacity: 0.8;
 }
 
 .tag-chip__menu {
