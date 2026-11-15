@@ -266,6 +266,17 @@ They never use the development container, `.dev-data/` or `local_data/`:
   `SEMANT_TEST_WEAVIATE_REST_PORT` and `SEMANT_TEST_WEAVIATE_GRPC_PORT` together with a
   fresh random `SEMANT_TEST_STORE_TOKEN`, and removes the container afterwards. The
   application's own `WEAVIATE_*` settings are not used. The CI job sets its own token.
+- CI splits the same `pytest -m integration` inventory into two shard jobs
+  (`Integration shard 1/2`, `2/2`), each with its own Weaviate service and token (#683).
+  `scripts/integration_shards.py` assigns whole test files by measured wall time, so new
+  files are included automatically (weighted by test count until measured), and the
+  required `Integration tests` check passes only when both shards passed and their JUnit
+  reports contain every collected test exactly once. When the shards become unbalanced
+  (see each shard's job summary), refresh the measurements from the `junit.xml` files of
+  a run's `integration-shard-*` artifacts or of a local full run:
+  `.venv/bin/python scripts/integration_shards.py durations <junit.xml>...` rewrites
+  `semant_demo_backend/tests/integration/shard_durations.json`. To change the shard count,
+  edit only the matrix of `test-integration-shard` in `.github/workflows/ci-cd.yml`.
 - Before creating or deleting anything, the tests verify that the instance belongs to the
   current run (`semant_demo_backend/tests/weaviate_store.py`): an empty instance is claimed
   with a marker collection holding the token, an instance whose marker holds the same
