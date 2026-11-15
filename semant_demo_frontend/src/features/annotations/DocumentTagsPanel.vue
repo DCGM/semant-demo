@@ -27,7 +27,7 @@
         :aria-pressed="sortMode === 'count'"
         @click="sortBy('count')"
       >
-        <q-tooltip>Sort by number of approved annotations</q-tooltip>
+        <q-tooltip>Sort by number of confirmed annotations</q-tooltip>
       </q-btn>
       <q-separator vertical class="q-mx-xs" />
       <q-btn flat dense round size="xs" icon="visibility" aria-label="Show all tags" @click="tagNav.showAllTags()">
@@ -125,7 +125,7 @@
             :loading="deletingTagSpansId === tag.id"
             @click="onDeleteAllTagSpans(tag)"
           >
-            <q-tooltip>Delete all approved annotations of this tag in this document</q-tooltip>
+            <q-tooltip>Delete all confirmed annotations of this tag in this document</q-tooltip>
           </q-btn>
         </div>
         <!-- Span navigation -->
@@ -167,7 +167,7 @@ import { useTagSearch } from './useTagSearch'
 import useTagSpans from './useTagSpans'
 
 // The tags of the collection in the document view: visibility, navigation between their
-// annotations, editing, ordering and deleting a tag's approved annotations.
+// annotations, editing, ordering and deleting a tag's confirmed annotations.
 const props = defineProps<{
   collectionId: string
   documentId: string
@@ -345,8 +345,8 @@ function onDeleteAllTagSpans(tag: Tag) {
   const count = posSpanCountByTag.value[tag.id] ?? 0
   if (!count) return
   $q.dialog({
-    title: 'Delete approved annotations',
-    message: `Delete all ${count} approved annotation${count === 1 ? '' : 's'} of "${tag.name}" in this document? Negative feedback and unresolved AI suggestions will be kept. This cannot be undone.`,
+    title: 'Delete confirmed annotations',
+    message: `Delete all ${count} confirmed annotation${count === 1 ? '' : 's'} of "${tag.name}" in this document? Negative feedback and unresolved AI suggestions will be kept. This cannot be undone.`,
     cancel: true,
     persistent: true,
     ok: { label: 'Delete', color: 'negative', flat: false }
@@ -366,7 +366,7 @@ function onDeleteAllTagSpans(tag: Tag) {
       if (result.outcome === WriteOutcome.complete) {
         $q.notify({
           type: 'positive',
-          message: `Deleted ${result.deleted} approved annotation${result.deleted === 1 ? '' : 's'} of "${tag.name}".`,
+          message: `Deleted ${result.deleted} confirmed annotation${result.deleted === 1 ? '' : 's'} of "${tag.name}".`,
           timeout: 2500
         })
       } else {

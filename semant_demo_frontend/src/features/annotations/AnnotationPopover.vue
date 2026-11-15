@@ -145,12 +145,12 @@
             :disable="busy"
             @click="emit('savePosition')"
           />
-          <!-- Approve / reject shortcut for auto spans (AI suggestions) -->
+          <!-- Confirm / reject shortcut for auto spans (AI suggestions) -->
           <template v-if="editingAuto">
             <q-btn
               no-caps unelevated
               icon="check"
-              label="Approve"
+              label="Confirm"
               color="positive"
               class="popover-btn"
               :disable="busy"

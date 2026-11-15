@@ -46,7 +46,7 @@
     <div v-else-if="!shown.length && !error" class="text-grey-8 q-pa-md" data-testid="attributes-empty">
       <template v-if="attributes.length && !search.hiddenMatches">No attributes match.</template>
       <template v-else-if="!attributes.length">
-        No attributes yet. An attribute classifies approved annotations, for example a speaker type with the values
+        No attributes yet. An attribute classifies confirmed annotations, for example a speaker type with the values
         politician and journalist; its values are assigned in the Annotations tab.
       </template>
     </div>

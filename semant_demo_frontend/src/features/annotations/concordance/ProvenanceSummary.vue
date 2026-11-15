@@ -39,9 +39,9 @@ const props = defineProps<{
 const unknown = computed(() => (props.provenance.origin ?? AnnotationOrigin.unknown) === AnnotationOrigin.unknown &&
   !props.provenance.createdBy)
 
-// The review is the last approve or reject; the current type tells which (unless changed since).
+// The review is the last confirm or reject; the current type tells which (unless changed since).
 const reviewVerb = computed(() => ({
-  [SpanType.pos]: 'Approved',
+  [SpanType.pos]: 'Confirmed',
   [SpanType.neg]: 'Rejected'
 } as Record<string, string>)[props.type ?? ''] ?? 'Reviewed')
 

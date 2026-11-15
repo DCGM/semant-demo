@@ -47,7 +47,7 @@
         no-caps
         color="positive"
         icon="check"
-        :label="`Approve ${selectedCount}`"
+        :label="`Confirm ${selectedCount}`"
         :disable="running"
         data-testid="review-approve"
         @click="emit('review', ReviewAction.approve)"
@@ -265,7 +265,7 @@ const assignSummary = computed(() =>
 const canSelectAll = computed(() => props.total > 0 && !props.allSelected)
 
 const PAST: Record<ReportAction, string> = {
-  [ReviewAction.approve]: 'Approved',
+  [ReviewAction.approve]: 'Confirmed',
   [ReviewAction.reject]: 'Rejected',
   [ReviewAction.retag]: 'Retagged',
   [ReviewAction.delete]: 'Deleted',
@@ -273,7 +273,7 @@ const PAST: Record<ReportAction, string> = {
 }
 
 const CHANGE: Record<ChangeKind, string> = {
-  [ReviewAction.approve]: 'approved',
+  [ReviewAction.approve]: 'confirmed',
   [ReviewAction.reject]: 'rejected',
   [ReviewAction.retag]: 'changed the tag of',
   boundary: 'changed the boundaries of'
