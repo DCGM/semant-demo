@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport } from './support'
 import { animatedPart, longDocument, recordScroll } from './longDocument'
@@ -367,11 +367,17 @@ test('column headers sort the whole result both ways and bring up their filters,
   await page.getByRole('button', { name: 'Remove filter Text in context: hejtman' }).click()
   await expect(rows(page)).toHaveCount(4)
 
-  // The annotation header's filter keeps a scope that already searches the annotation.
+  // From *Both*, each text header's filter selects exactly its own field, as it says (#665 review).
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Both' }).click()
-  await page.getByTestId('kwic-filter-annotation').click()
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Both')
+  await page.getByTestId('kwic-filter-annotation').click()
+  await expect(page.getByTestId('concordance-text-scope')).toContainText('Annotation')
+  await expect(page.getByLabel('Annotated text')).toBeFocused()
+  await page.getByTestId('concordance-text-scope').click()
+  await page.getByRole('option', { name: 'Both' }).click()
+  await page.getByTestId('kwic-filter-left').click()
+  await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
 })
 
 test('find similar from the sidebar, ranked by meaning, as a top k (#664)', async ({ page }) => {
@@ -467,6 +473,79 @@ test('a long cross-chunk annotation is cut in its middle in its row and complete
   const marks = panel(page).getByTestId('chunk-context-mark')
   await expect(marks).toHaveText([first.slice(10), second.slice(0, 30)])
   await expect(panel(page).getByTestId('annotation-context-text')).toHaveText(first.slice(10) + second.slice(0, 30))
+})
+
+test('copying from a row gives the source text unchanged, also of a cut annotation (#665 review)', async ({ page, request }) => {
+  const first = fixture.chunk('chronicle_1').text
+  const second = fixture.chunk('chronicle_2').text
+  await createSpan(request, 'chronicle_1', 10, first.length + 30)
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  const long = row(page, first.slice(10, 40))
+  await expect(long.locator('.kwic__key-head')).toBeVisible()
+  expect(await long.locator('.kwic__key-head').evaluate(e => e.scrollWidth > e.clientWidth), 'the long one is cut').toBe(true)
+
+  /** Selects from `start` characters into the first text of `from` to `end` into the last of `to`
+   * (both within the row), copies with the keyboard and returns the clipboard text. */
+  async function copy (text: Locator, from: string, start: number, to: string, end: number | 'end') {
+    await text.evaluate((el, [from, start, to, end]) => {
+      const texts = (s: string) => {
+        const walker = document.createTreeWalker(el.querySelector(s)!, NodeFilter.SHOW_TEXT)
+        const nodes: Text[] = []
+        while (walker.nextNode()) if ((walker.currentNode as Text).length) nodes.push(walker.currentNode as Text)
+        return nodes
+      }
+      const last = texts(to as string).at(-1)!
+      const range = document.createRange()
+      range.setStart(texts(from as string)[0], start as number)
+      range.setEnd(last, end === 'end' ? last.length : end as number)
+      const selection = getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }, [from, start, to, end] as const)
+    await page.keyboard.press('ControlOrMeta+c')
+    return await page.evaluate(() => navigator.clipboard.readText())
+  }
+
+  // A short annotation alone, then with the words around it.
+  const novak = rows(page).filter({ has: page.locator('.kwic__key', { hasText: /^Jan Novák$/ }) }).first().getByTestId('kwic-text')
+  expect(await copy(novak, '.kwic__key', 0, '.kwic__key', 'end')).toBe('Jan Novák')
+  const left = (await novak.locator('.kwic__left').textContent())!
+  const at = first.indexOf('hejtman Jan Novák')
+  expect(await copy(novak, '.kwic__left', left.length - 'hejtman '.length, '.kwic__right', ' a ubytoval'.length))
+    .toBe(first.slice(at, at + 'hejtman Jan Novák a ubytoval'.length))
+  // The cut annotation whole, though only its start and end are shown.
+  expect(await copy(long.getByTestId('kwic-text'), '.kwic__key', 0, '.kwic__key', 'end')).toBe(first.slice(10) + second.slice(0, 30))
+})
+
+test('narrow lists keep the tag and status and give up source and year first (#665 review)', async ({ page }) => {
+  const shown = (locator: Locator) => locator.evaluate(e => e.getBoundingClientRect().width > 8)
+  const check = async (wide: boolean) => {
+    const novak = row(page, 'Jan Novák')
+    expect(await shown(novak.locator('.kwic__status')), 'status').toBe(true)
+    expect(await shown(novak.locator('.kwic__tag')), 'tag').toBe(true)
+    expect(await shown(novak.locator('.kwic__source')), 'source').toBe(wide)
+    expect(await shown(novak.locator('.kwic__year')), 'year').toBe(wide)
+    await expect(page.getByTestId('kwic-sort-year')).toBeVisible({ visible: wide })
+    // Hidden only from view: the values stay in the row for assistive technology.
+    await expect(novak.locator('.kwic__year')).toHaveText('1851')
+  }
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await check(true)
+  // The sidebar narrows the list below 900 px.
+  await useViewport(page, 'narrow')
+  await row(page, 'Lhoty').click()
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+  await check(false)
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  await check(false)
+  // Without attribute columns the list fits: it does not scroll sideways.
+  expect(await page.getByTestId('kwic').evaluate(e => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0)
+  const [list, status] = await Promise.all([page.getByTestId('kwic').boundingBox(), row(page, 'Jan Novák').locator('.kwic__status').boundingBox()])
+  expect(status!.x + status!.width, 'status within the list').toBeLessThanOrEqual(list!.x + list!.width)
 })
 
 test('a shared user reads the same workspace', async ({ page }) => {

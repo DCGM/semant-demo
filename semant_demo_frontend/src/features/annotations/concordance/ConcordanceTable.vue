@@ -4,6 +4,7 @@
     :class="{ 'kwic--attributes': attributes.length > 0, 'kwic--scrolled': scrolled }"
     data-testid="kwic"
     @scroll.passive="onScroll"
+    @copy="onCopy"
   >
     <p :id="helpId" class="sr-only">
       Arrow keys move between rows, Enter shows the annotation in its document, Space checks the row.
@@ -32,7 +33,7 @@
         </div>
         <div
           v-for="column in TEXT_COLUMNS"
-          :key="column.field"
+          :key="column.id"
           class="kwic__cell kwic__head"
           :class="column.class"
           role="columnheader"
@@ -67,7 +68,7 @@
         <div class="kwic__cell kwic__meta kwic__head" role="columnheader">{{ rankStart !== null ? 'Rank · tag · status' : 'Tag · status' }}</div>
         <div
           v-for="column in DOCUMENT_COLUMNS"
-          :key="column.field"
+          :key="column.id"
           class="kwic__cell kwic__head"
           :class="column.class"
           role="columnheader"
@@ -479,6 +480,38 @@ function reveal (id: string) {
   })
 }
 
+/**
+ * Copies the selected text as it is in the source. A cut annotation's two halves are flex items,
+ * which the browser's plain text would separate by line breaks, and the contexts end in no-break
+ * spaces (`lineText`). So for a selection that touches an annotation, the text is joined from the
+ * selected text nodes: nothing between the parts of one row's text cell, a line break between
+ * cells, no-break spaces as spaces; screen-reader-only text is left out. Other selections copy as
+ * the browser does.
+ */
+function onCopy (event: ClipboardEvent) {
+  const selection = window.getSelection()
+  const list = event.currentTarget as HTMLElement
+  if (!selection || selection.isCollapsed || !selection.rangeCount || !event.clipboardData) return
+  const range = selection.getRangeAt(0)
+  if (!Array.from(list.querySelectorAll('.kwic__key')).some(key => range.intersectsNode(key))) return
+  const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT)
+  let text = ''
+  let lastCell: Element | null = null
+  for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
+    if (!range.intersectsNode(node) || node.parentElement?.closest('.sr-only, [aria-hidden="true"]')) continue
+    const value = node.textContent ?? ''
+    const part = value.slice(node === range.startContainer ? range.startOffset : 0,
+      node === range.endContainer ? range.endOffset : value.length)
+    if (!part) continue
+    const cell = node.parentElement?.closest('[role="gridcell"], [role="columnheader"]') ?? null
+    if (text && cell !== lastCell) text += '\n'
+    text += part
+    lastCell = cell
+  }
+  event.clipboardData.setData('text/plain', text.replace(/\u00a0/g, ' '))
+  event.preventDefault()
+}
+
 defineExpose({ reveal })
 </script>
 
@@ -775,7 +808,8 @@ defineExpose({ reveal })
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
+  /* The dot and the first letters stay when the column is narrow (the status does not shrink). */
+  min-width: 3.25em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -819,11 +853,13 @@ defineExpose({ reveal })
   font-variant-numeric: tabular-nums;
 }
 
-/* Secondary columns give way first when the list narrows: zero wide, their values still read
-   by assistive technology; their headers' controls are hidden (the toolbar has them). */
+/* When the list narrows, Source and Year give way first (zero wide, their values still read by
+   assistive technology, their headers' controls hidden: the toolbar sorts and filters by them).
+   The annotation, its tag, status and shown attribute values stay: they are what is reviewed
+   (#665 review). Several attribute columns scroll sideways instead. */
 @container (max-width: 900px) {
   .kwic__grid {
-    grid-template-columns: 2rem var(--kwic-text) 0 fit-content(9rem) auto;
+    grid-template-columns: 2rem var(--kwic-text) fit-content(9rem) 0 0;
   }
   .kwic__grid--attribute {
     --kwic-context-min: 6rem;
@@ -831,19 +867,22 @@ defineExpose({ reveal })
     grid-template-columns:
       2rem var(--kwic-text)
       repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-      0 fit-content(9rem) auto;
+      fit-content(9rem) 0 0;
   }
-  .kwic__meta {
+  .kwic__source,
+  .kwic__year {
     padding: 0;
   }
-  .kwic__row--head .kwic__meta {
+  .kwic__row--head .kwic__source,
+  .kwic__row--head .kwic__year {
     visibility: hidden;
   }
 }
 
+/* On a phone the tag name is cut first; the text keeps the rest. */
 @container (max-width: 560px) {
   .kwic__grid {
-    grid-template-columns: 2rem var(--kwic-text) 0 0 0;
+    grid-template-columns: 2rem var(--kwic-text) fit-content(9rem) 0 0;
     font-size: 0.85rem;
   }
   .kwic__grid--attribute {
@@ -854,15 +893,10 @@ defineExpose({ reveal })
     grid-template-columns:
       2rem var(--kwic-text)
       repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-      0 0 0;
+      fit-content(9rem) 0 0;
   }
-  .kwic__source,
-  .kwic__year {
-    padding: 0;
-  }
-  .kwic__row--head .kwic__source,
-  .kwic__row--head .kwic__year {
-    visibility: hidden;
+  .kwic__meta {
+    gap: 4px;
   }
 }
 </style>

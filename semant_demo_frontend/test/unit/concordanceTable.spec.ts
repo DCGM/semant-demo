@@ -5,6 +5,7 @@ import {
   AnnotationSort, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Tag
 } from 'src/generated/api'
 import ConcordanceTable from 'src/features/annotations/concordance/ConcordanceTable.vue'
+import ConcordanceToolbar from 'src/features/annotations/concordance/ConcordanceToolbar.vue'
 import { defaultFilters, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
 
 // #665: continuous KWIC rows under three text headers, header sorts and header filter buttons.
@@ -131,5 +132,32 @@ describe('concordance table', () => {
     const both = mountTable({ text: 'hejtman', textScope: TextScope.both })
     expect(label(both, 'annotation')).toBe('Filter by words in the annotation (active)')
     expect(label(both, 'left')).toBe('Filter by words in the context (active)')
+  })
+})
+
+describe('concordance toolbar header filters', () => {
+  function mountToolbar (filters: Partial<ConcordanceFilters>) {
+    return mount(ConcordanceToolbar, {
+      props: { filters: { ...defaultFilters(), ...filters }, tags: [tag], documents: [] },
+      global: { plugins: [[Quasar, {}]] }
+    })
+  }
+
+  it('selects exactly the header\'s field, also from Both, and keeps a scope that already is it', () => {
+    for (const [field, scope] of [['annotation', TextScope.annotation], ['context', TextScope.context]] as const) {
+      const fromBoth = mountToolbar({ textScope: TextScope.both, text: 'hejtman' })
+      fromBoth.vm.openFilter(field)
+      expect(fromBoth.emitted('change')).toEqual([[{ textScope: scope }]])
+      const same = mountToolbar({ textScope: scope })
+      same.vm.openFilter(field)
+      expect(same.emitted('change')).toBeUndefined()
+    }
+  })
+
+  it('changes no scope for the source and year filters', () => {
+    const toolbar = mountToolbar({ textScope: TextScope.both })
+    toolbar.vm.openFilter('source')
+    toolbar.vm.openFilter('year')
+    expect(toolbar.emitted('change')).toBeUndefined()
   })
 })

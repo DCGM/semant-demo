@@ -375,8 +375,8 @@ const sourcesSelect = ref<InstanceType<typeof QSelect> | null>(null)
 const yearInput = ref<InstanceType<typeof QInput> | null>(null)
 
 /** Brings the filter of a table column to the user (its header's filter button, #665): the text
- * search scoped to the annotation or its context (a scope that already searches the field is
- * kept), the source picker or the year range. */
+ * search scoped to exactly that field (annotation or context, also from *Both*, as the header
+ * promises), the source picker or the year range. */
 function openFilter (field: FilterField) {
   if (field === 'source') {
     sourcesSelect.value?.$el.scrollIntoView?.({ block: 'nearest' })
@@ -387,7 +387,7 @@ function openFilter (field: FilterField) {
   const input = field === 'year' ? yearInput.value : textInput.value
   if (field !== 'year') {
     const scope = field === 'annotation' ? TextScope.annotation : TextScope.context
-    if (props.filters.textScope !== scope && props.filters.textScope !== TextScope.both) emit('change', { textScope: scope })
+    if (props.filters.textScope !== scope) emit('change', { textScope: scope })
   }
   input?.$el.scrollIntoView?.({ block: 'nearest' })
   void nextTick(() => input?.focus())
