@@ -38,6 +38,9 @@ For server deployments, use the compose files in `deploy/` instead of the manual
 
 The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release). Production uses a pinned vLLM image and model revision for Qwen embeddings ([deploy/README](../deploy/README.md#qwen-embedding-service-385)), not the legacy `deploy/Dockerfile.embedder` (which still installs unpinned requirements). Topicer is built separately from a pinned upstream release tag with independently resolved dependencies ([Topicer deployment](../deploy/README.md#topicer)); it is not covered by the backend lock.
 
+CI deployment-image caching and its operational caveats are documented in
+[deploy/README.md](../deploy/README.md#docker-image-build-cache-for-deployment-jobs).
+
 ### Frontend build toolchain
 
 The `node-build` stage of `deploy/Dockerfile` uses a Node image pinned by patch release and multi-architecture digest (npm is the version bundled with it), and the `quasar` command from `@quasar/app-vite` in `package-lock.json`, not a global CLI (#261). The CI *Frontend checks* job runs in the same image and ends with the production `npx quasar build`.
