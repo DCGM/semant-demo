@@ -86,6 +86,8 @@ test-integration: deps-check-backend
 ## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.
 ## Headless Chromium needs no display; with a forwarded one (ssh -X) it stalls ~25 s.
 test-e2e: deps-check
+	@# Docker before the Chromium download; an external SEMANT_TEST_WEAVIATE_HOST needs none.
+	@test -n "$$SEMANT_TEST_WEAVIATE_HOST" || scripts/docker-preflight.sh --image
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
 	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON="$(PY)" npm run test:e2e'
 
@@ -95,6 +97,7 @@ test-e2e: deps-check
 ##   make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts --grep phone"
 ##   make e2e-dev-stop
 e2e-dev-start: deps-check
+	@scripts/docker-preflight.sh --image
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
 	PYTHON="$(PY)" scripts/e2e-dev.sh start
 

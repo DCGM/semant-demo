@@ -195,7 +195,7 @@ three ports apart. The development instance above stays one per machine.
 | `make dev-backend` says the stores are not initialized | Run `make dev-up` first. |
 | `docker-preflight: the docker command is not installed` | No Docker CLI on `PATH` (e.g. a cloud agent session, or WSL without Docker Desktop integration). Install Docker, or use only [the checks that need no Docker](#which-checks-need-docker). |
 | `docker-preflight: the Docker daemon is not available` | The CLI works but the daemon is stopped, unreachable (`DOCKER_HOST`, `docker context`) or your user may not use its socket. Start Docker Desktop or `sudo systemctl start docker`, or join the `docker` group. |
-| `docker-preflight: the Docker daemon did not answer within 10 s` | The daemon is starting or hung (seen with Docker Desktop). Wait or restart it; `SEMANT_DOCKER_TIMEOUT=<seconds>` allows a slow one. Every probe, including `make dev-status`, is bounded. |
+| `docker-preflight: the Docker daemon did not answer within 10 s` | The daemon is starting or hung (seen with Docker Desktop). Wait or restart it; `SEMANT_DOCKER_TIMEOUT=<seconds>` allows a slow one. Every probe and the read-only queries of the local-dev commands (`make dev-status` too) are bounded. |
 | `docker-preflight: could not pull cr.weaviate.io/...:1.40.1` | Docker works; the registry is blocked or down. See [Docker and the Weaviate image](#docker-and-the-weaviate-image). |
 | `... does not match semant_demo_backend/requirements-dev.lock` or `Frontend dependencies ... do not match package-lock.json` | `.venv` / `node_modules` predate a lock change (pull or branch switch). Run the printed repair command (`make setup`, or `npm ci` in `semant_demo_frontend`). `make deps-check` repeats the check without running anything else. |
 
@@ -207,7 +207,8 @@ Weaviate log. Removing everything by hand (only if you want to): `make dev-down`
 
 `make docker-check` (`scripts/docker-preflight.sh --image`) says whether Docker works here.
 `make dev-up` and the other local-dev commands, `make test-integration`, `make test-e2e` and
-`make e2e-dev-start` run the same preflight before they start anything and fail within
+`make e2e-dev-start` run the same preflight before they start anything (the last two before
+Playwright's Chromium download) and fail within
 seconds with one of four diagnoses: no Docker CLI, daemon not running or not accessible,
 daemon not answering (each probe is bounded by `SEMANT_DOCKER_TIMEOUT`, default 10 s), or
 the image is neither present nor pullable (the pull is bounded by
@@ -308,7 +309,10 @@ hand-build long texts per test. Every test sets up its own state and passes alon
 
 | Needs no Docker | Needs Docker (a working daemon and the Weaviate 1.40.1 image) |
 |---|---|
-| `make setup`, `make deps-check`, `make check` (`check-backend`, `check-frontend`, `api-check`), `make api-generate`, `make lock` / `lock-check` (network) | `make test-integration`, `make test-e2e`, `make e2e-dev-*`, `make dev-up` and the other `make dev-*` commands except `dev-frontend` |
+| `make setup`, `make deps-check`, `make check` (`check-backend`, `check-frontend`, `api-check`), `make api-generate`, `make lock` / `lock-check` (network), `make e2e-dev-rebuild` | `make test-integration`, `make test-e2e`, `make e2e-dev-start` / `e2e-dev-restart`, `make dev-up` and the other `make dev-*` commands except `dev-frontend` |
+
+`make e2e-dev-test` and `e2e-dev-capture` start no container: they need the profile that
+`e2e-dev-start` started, so only indirectly Docker.
 
 Where Docker is not available (for example a cloud agent session without it), run the
 left column and report the right column as not run for that reason, not as a failure of
