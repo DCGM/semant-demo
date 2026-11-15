@@ -723,6 +723,24 @@ the next run refills it:
 sudo find /var/cache/semant-ci/pip -mindepth 1 -delete
 ```
 
+### Docker image build cache for deployment jobs
+
+CI production, test-main and PR-preview jobs build the app image with the Docker build
+cache (without `--no-cache`). Each job sets `COMMIT` to the exact revision being
+deployed. A different `COMMIT` reruns the Git fetch and source-dependent build steps;
+unchanged runtime dependencies (`requirements-runtime.lock`) and frontend dependencies
+(`package.json`, `package-lock.json`, `.npmrc` and `test/unit/environment/`) can reuse
+cached installation layers.
+
+`--no-cache` disables reuse but still stores build layers. The previous deployment builds
+added about 1.5 GB each (~29 GB/day observed on 11–15 November 2026). Cache reuse cuts
+this redundant growth but does not cap disk usage: monitor Docker build-cache usage and
+schedule a controlled cleanup or BuildKit garbage-collection policy when needed.
+
+**Manual builds:** An empty `COMMIT` with a moving `BRANCH` can reuse a cached Git
+clone and build stale branch content. Supply an explicit commit SHA when freshness matters;
+the CI deployment jobs always do so.
+
 ### Production Deployment
 
 ```bash

@@ -38,9 +38,8 @@ For server deployments, use the compose files in `deploy/` instead of the manual
 
 The backend image installs `semant_demo_backend/requirements-runtime.lock` with `--require-hashes`: the same Python package versions that CI tests, with no resolution at build time (see [CONTRIBUTING.md](../CONTRIBUTING.md) for updating the locks). To audit a running instance, run `docker compose -p <project> -f <compose file> exec app python -m pip freeze --user` and compare it with the lock. The lock does not freeze the floating `python:3.12` / `python:3.12-slim` base images (OS packages and patch release). Production uses a pinned vLLM image and model revision for Qwen embeddings ([deploy/README](../deploy/README.md#qwen-embedding-service-385)), not the legacy `deploy/Dockerfile.embedder` (which still installs unpinned requirements). Topicer is built separately from a pinned upstream release tag with independently resolved dependencies ([Topicer deployment](../deploy/README.md#topicer)); it is not covered by the backend lock.
 
-### Image build cache
-
-The CI deploy jobs build the app image with the Docker build cache. Each build fetches the commit it deploys (`COMMIT`, a build argument, so a new commit re-runs the fetch and every step after it that uses the source), but the `pip install` of the runtime lock and the frontend `npm ci` are reused until `requirements-runtime.lock` or `package.json` / `package-lock.json` change. Building with `--no-cache` instead stores a new copy of those steps (about 1.5 GB) on every build without ever reusing it.
+CI deployment-image caching and its operational caveats are documented in
+[deploy/README.md](../deploy/README.md#docker-image-build-cache-for-deployment-jobs).
 
 ### Frontend build toolchain
 
