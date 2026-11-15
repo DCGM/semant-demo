@@ -7,7 +7,7 @@ PYTHON ?= $(VENV)/bin/python
 PY := $(if $(findstring /,$(PYTHON)),$(abspath $(PYTHON)),$(PYTHON))
 FAST_TESTS := not integration and not live and not benchmark
 
-.PHONY: setup check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e \
+.PHONY: setup deps-check deps-check-backend deps-check-frontend check check-backend check-frontend api-generate api-check lock lock-check test-integration test-e2e \
 	dev-up dev-down dev-backend dev-frontend dev-reset dev-status dev-verify dev-add-documents \
 	e2e-dev-start e2e-dev-test e2e-dev-capture e2e-dev-rebuild e2e-dev-restart e2e-dev-stop e2e-dev-status
 
@@ -17,6 +17,17 @@ setup:
 	$(PY) -m pip install -r semant_demo_backend/requirements-dev.lock
 	$(PY) -m pip install --no-deps -e semant_demo_backend
 	cd semant_demo_frontend && npm ci
+
+## Fail fast if .venv or node_modules no longer match their locks (after a pull or branch
+## switch). The targets below run it first; cheap: compares versions, installs nothing.
+deps-check: deps-check-backend deps-check-frontend
+
+deps-check-backend:
+	@test -x "$(PY)" || command -v "$(PY)" >/dev/null || { echo "no Python at $(PY); run make setup, or set PYTHON" >&2; exit 1; }
+	@$(PY) scripts/check_python_deps.py
+
+deps-check-frontend:
+	@node semant_demo_frontend/scripts/check-deps.mjs
 
 ## Seeded local development environment (scripts/local-dev.sh; docs/DEVELOPMENT.md). Needs
 ## Docker. `dev-up` starts the development Weaviate and seeds it and .dev-data/semant.db on
@@ -51,11 +62,11 @@ dev-add-documents:
 ## Fast offline checks: lint, types, unit tests and generated-client drift.
 check: check-backend check-frontend api-check
 
-check-backend:
+check-backend: deps-check-backend
 	cd semant_demo_backend && $(PY) -m ruff check .
 	cd semant_demo_backend && $(PY) -m pytest -m "$(FAST_TESTS)"
 
-check-frontend:
+check-frontend: deps-check-frontend
 	cd semant_demo_frontend && npm run lint
 	cd semant_demo_frontend && npm run typecheck
 	cd semant_demo_frontend && npm test
@@ -63,13 +74,13 @@ check-frontend:
 ## Real-Weaviate tests in a throwaway, test-owned Weaviate container (needs Docker).
 ## ARGS selects tests while iterating, e.g.
 ##   make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
-test-integration:
+test-integration: deps-check-backend
 	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && "$(PY)" -m pytest -m integration $(ARGS)'
 
 ## Browser smoke tests: build the frontend and run it against the deterministic backend
 ## profile (test-owned Weaviate, fixture corpus, fake AI providers). Needs Docker.
 ## Headless Chromium needs no display; with a forwarded one (ssh -X) it stalls ~25 s.
-test-e2e:
+test-e2e: deps-check
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
 	scripts/with-test-weaviate.sh sh -c 'cd semant_demo_frontend && env -u DISPLAY PYTHON="$(PY)" npm run test:e2e'
 
@@ -78,20 +89,20 @@ test-e2e:
 ##   make e2e-dev-start
 ##   make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts --grep phone"
 ##   make e2e-dev-stop
-e2e-dev-start:
+e2e-dev-start: deps-check
 	cd semant_demo_frontend && npx playwright install --only-shell chromium
 	PYTHON="$(PY)" scripts/e2e-dev.sh start
 
-e2e-dev-test:
+e2e-dev-test: deps-check-frontend
 	scripts/e2e-dev.sh test $(ARGS)
 
-e2e-dev-capture:
+e2e-dev-capture: deps-check-frontend
 	scripts/e2e-dev.sh capture $(ARGS)
 
-e2e-dev-rebuild:
+e2e-dev-rebuild: deps-check-frontend
 	scripts/e2e-dev.sh rebuild
 
-e2e-dev-restart:
+e2e-dev-restart: deps-check
 	PYTHON="$(PY)" scripts/e2e-dev.sh restart
 
 e2e-dev-stop:
@@ -101,10 +112,10 @@ e2e-dev-status:
 	scripts/e2e-dev.sh status
 
 ## Regenerate the TypeScript client from the backend schema (needs Java 11+).
-api-generate:
+api-generate: deps-check
 	cd semant_demo_frontend && PYTHON=$(PY) npm run api-generate
 
-api-check:
+api-check: deps-check
 	cd semant_demo_frontend && PYTHON=$(PY) npm run api-check
 
 ## Regenerate the backend Python locks after changing requirements*.txt (needs pip-tools).

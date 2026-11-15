@@ -43,7 +43,10 @@ REST="$SEMANT_DEV_WEAVIATE_REST_PORT"
 die() { echo "local-dev: $*" >&2; exit 1; }
 say() { echo "local-dev: $*" >&2; }
 
-need_python() { [[ -x "$PYTHON" ]] || die "no Python at $PYTHON (run make setup, or set PYTHON)"; }
+need_python() {
+  [[ -x "$PYTHON" ]] || die "no Python at $PYTHON (run make setup, or set PYTHON)"
+  "$PYTHON" "$ROOT/scripts/check_python_deps.py" || die "stale Python environment; repair it as shown above"
+}
 need_docker() { command -v docker >/dev/null || die "docker is required for the development Weaviate"; }
 local_dev() { (cd "$BACKEND" && "$PYTHON" -m tests.local_dev "$@"); }
 
@@ -139,7 +142,11 @@ cmd_backend() {
   for port in "$BACKEND_PORT" "$SEMANT_DEV_PROVIDER_PORT"; do
     listening "$port" && die "port $port is already in use (another backend or provider process?)"
   done
-  eval "$(local_dev environ)"
+  # `eval "$(...)"` would ignore a failure of the substitution and evaluate nothing.
+  local exports
+  exports="$(local_dev environ)" || die "could not derive the backend settings (see the error above); nothing was started"
+  [[ -n "$exports" ]] || die "the backend settings came out empty; nothing was started"
+  eval "$exports"
   (cd "$BACKEND" && exec "$PYTHON" -m tests.local_dev providers) &
   local providers=$!
   trap 'kill "$providers" 2>/dev/null || true; wait "$providers" 2>/dev/null || true' EXIT
@@ -156,7 +163,7 @@ cmd_backend() {
 }
 
 cmd_frontend() {
-  [[ -d "$FRONTEND/node_modules" ]] || die "frontend dependencies are missing; run make setup"
+  node "$FRONTEND/scripts/check-deps.mjs" || die "stale frontend dependencies; repair them as shown above"
   listening "$FRONTEND_PORT" && die "port $FRONTEND_PORT is already in use; the backend only allows the origin http://localhost:$FRONTEND_PORT"
   say "open http://localhost:$FRONTEND_PORT (log in e.g. as owner / owner-password-1)"
   cd "$FRONTEND"
