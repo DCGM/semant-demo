@@ -544,7 +544,9 @@ installation per runner:
 |-- actions-runner-semant-ci-02/
 |-- actions-runner-semant-ci-03/
 |-- actions-runner-semant-ci-04/
-`-- actions-runner-semant-ci-05/
+|-- actions-runner-semant-ci-05/
+|-- ...
+`-- actions-runner-semant-ci-10/
 ```
 
 Each installation is owned and run by `runner:runner`, contains its own `_work/`
@@ -563,7 +565,7 @@ These paths have different purposes:
 
 | Path | Purpose |
 |---|---|
-| `/opt/actions-runners/` | Installation root for the six runner applications |
+| `/opt/actions-runners/` | Installation root for eleven runner applications (ten CI, one deployment) |
 | `/opt/actions-runners/<runner>/_work/` | Job workspace local to one runner installation; GitHub Actions manages its contents |
 | `RUNNER_WORKDIR=/opt/runner-workdir` | Root for persistent CI-managed deployments used by the dedicated `semant-server` runner: production is in `semant-demo/`, `test-main` in `semant-demo-test-main/`, and PR previews in `semant-demo-test-pr-<N>/`. It is not a runner installation or runner-local `_work` directory |
 | `/opt/semant-demo/` | Operator-managed working directory for shared Compose services run outside CI (the production and test databases, embedder and Topicer). It may also contain app deployment files for manual operation; CI-managed app deployments do not run from this directory |
@@ -572,10 +574,10 @@ These paths have different purposes:
 
 | Label | Runners | Jobs |
 |---|---|---|
-| `semant-ci` | five CI runners (`actions-runner-semant-ci-01` through `actions-runner-semant-ci-05`) | `test-backend`, `test-frontend`, `test-integration`, `test-browser`, `api-client-drift`, `python-locks` |
+| `semant-ci` | ten CI runners (`actions-runner-semant-ci-01` through `actions-runner-semant-ci-10`) | `test-backend`, `test-frontend`, `test-integration-shard` (two shards, each with its own Weaviate service), `test-integration` (shard gate), `test-browser`, `api-client-drift`, `python-locks` |
 | `semant-server` | one dedicated deployment runner (`actions-runner-semant-server`) | `deploy-production`, `deploy-test-main`, `deploy-test-pr`, `teardown-test-pr` |
 
-Jobs select runners with `runs-on: [self-hosted, <label>]`. The five `semant-ci` runners
+Jobs select runners with `runs-on: [self-hosted, <label>]`. The ten `semant-ci` runners
 let eligible test jobs execute in parallel, while deployments stay on the dedicated
 `semant-server` runner that uses `RUNNER_WORKDIR`, the deployment Compose projects and
 database paths.
@@ -659,10 +661,12 @@ previews, test jobs and the other deployments share the same server and Docker d
 code running there with access to that daemon can reach more than its own `.env`. That is a
 known scope boundary; host separation is not planned.
 
-**Test results versus preview availability.** `deploy-test-pr` runs with `if: always()`
-after the backend tests, so a preview is built and deployed even when backend, frontend,
-integration, API client drift or dependency lock checks fail; this lets developers diagnose a
-failing PR by hand. A healthy preview (and a green "Deploy test PR" job) does **not** mean
+**Test results versus preview availability.** `deploy-test-pr` does not depend on any test
+job: it starts with the checks as soon as the `semant-server` runner is free (#689), so a
+preview is built and deployed while the tests run and even when backend, frontend,
+integration, browser, API client drift or dependency lock checks fail; this lets developers
+diagnose a failing PR by hand. The preview build shares the host and Docker daemon with the
+`semant-ci` test jobs. A healthy preview (and a green "Deploy test PR" job) does **not** mean
 the PR passed CI or can be merged: the failed checks stay visible on the PR, and branch
 protection, not the preview, blocks merging. The deploy job's summary repeats this.
 
@@ -681,7 +685,7 @@ sudo chown runner:runner /mnt/ssd2/semant_demo_app_test_data
 
 The backend, integration and browser test jobs mount `CI_PIP_CACHE_DIR` (default
 `/var/cache/semant-ci/pip`) into their containers as pip's cache (`PIP_CACHE_DIR=/pip-cache`),
-so pinned packages are not downloaded on every run. All five `semant-ci` runners use the same
+so pinned packages are not downloaded on every run. All ten `semant-ci` runners use the same
 directory: pip writes each cache entry to a temporary file and renames it into place, so
 concurrent jobs never read a partial entry. Runners on another host need their own
 directory.
@@ -722,6 +726,24 @@ the next run refills it:
 ```bash
 sudo find /var/cache/semant-ci/pip -mindepth 1 -delete
 ```
+
+### Docker image build cache for deployment jobs
+
+CI production, test-main and PR-preview jobs build the app image with the Docker build
+cache (without `--no-cache`). Each job sets `COMMIT` to the exact revision being
+deployed. A different `COMMIT` reruns the Git fetch and source-dependent build steps;
+unchanged runtime dependencies (`requirements-runtime.lock`) and frontend dependencies
+(`package.json`, `package-lock.json`, `.npmrc` and `test/unit/environment/`) can reuse
+cached installation layers.
+
+`--no-cache` disables reuse but still stores build layers. The previous deployment builds
+added about 1.5 GB each (~29 GB/day observed on 11–15 November 2026). Cache reuse cuts
+this redundant growth but does not cap disk usage: monitor Docker build-cache usage and
+schedule a controlled cleanup or BuildKit garbage-collection policy when needed.
+
+**Manual builds:** An empty `COMMIT` with a moving `BRANCH` can reuse a cached Git
+clone and build stale branch content. Supply an explicit commit SHA when freshness matters;
+the CI deployment jobs always do so.
 
 ### Production Deployment
 

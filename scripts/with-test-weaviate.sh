@@ -24,8 +24,12 @@ if [[ -n "${SEMANT_TEST_WEAVIATE_HOST:-}" ]]; then
   exec "$@"
 fi
 
-# Same version as the deployed and local development Weaviate (docs/DEVELOPMENT.md).
-IMAGE="${SEMANT_TEST_WEAVIATE_IMAGE:-cr.weaviate.io/semitechnologies/weaviate:1.40.1}"
+# Docker CLI, daemon and image, each with its own diagnosis (#674). The image is the one of
+# deployment and local development, or an explicit override with the same version tag.
+source "$(dirname "${BASH_SOURCE[0]}")/docker-preflight.sh"
+docker_ready || exit 1
+IMAGE="$(weaviate_image test)" || exit 1
+weaviate_image_ready "$IMAGE" || exit 1
 NAME="semant-weaviate-test-$(date +%s)-$$"
 
 cleanup() {
