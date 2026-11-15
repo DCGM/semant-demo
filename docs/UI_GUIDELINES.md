@@ -78,8 +78,8 @@ expect it. Browser-test requirements remain in
    titles and narrow toolbars, selected/hover/focus states, authorization/ownership-gated
    controls, keyboard/touch interaction and direct links/reloads. This is a review aid,
    not a requirement to add browser tests for every visual check.
-4. **Report verification honestly.** State actual commands/results and any outstanding
-   full `make test-e2e` run; targeted specs do not replace required final validation.
+4. **Report verification honestly.** State actual commands/results; targeted specs are not
+   the full browser suite, which required CI runs before merge.
 
 ### Screenshot uploads
 
