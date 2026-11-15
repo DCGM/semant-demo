@@ -516,6 +516,8 @@ function onKeydown (event: KeyboardEvent) {
     event.preventDefault()
     emit('toggle', row.id, !props.selected.has(row.id))
   } else if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+    // The platform's context menu keys. Firefox also shows its own menu on Shift+F10 (Shift bypasses
+    // a page's context menu there, which cannot be prevented); kept as the standard key (#665).
     event.preventDefault()
     openMenu(row)
   }
