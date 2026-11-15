@@ -275,7 +275,8 @@ class AnnotationSort(str, Enum):
     year = "year"
     """Document year (missing last), then as ``document``."""
     text = "text"
-    """Annotated text by code point (case-sensitive; rows without current text first)."""
+    """Annotated text as Weaviate orders it (ignoring case; rows without current text first,
+    last when descending)."""
 
 
 class TextStatus(str, Enum):

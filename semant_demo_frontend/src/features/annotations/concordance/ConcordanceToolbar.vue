@@ -61,6 +61,7 @@
         @update:model-value="value => emit('change', modeChange(value))"
       />
       <q-input
+        ref="textInput"
         :model-value="filters.text"
         dense
         outlined
@@ -115,6 +116,7 @@
     </div>
 
     <q-select
+      ref="sourcesSelect"
       :model-value="filters.documentIds"
       :options="filteredDocumentOptions"
       multiple
@@ -172,6 +174,7 @@
 
     <div class="concordance-toolbar__years" role="group" aria-label="Publication years">
       <q-input
+        ref="yearInput"
         :model-value="filters.documentFilters.yearMin ?? ''"
         dense
         outlined
@@ -279,10 +282,23 @@
       :display-value="ranked ? 'Relevance' : undefined"
       class="concordance-toolbar__sort"
       data-testid="concordance-sort"
-      @update:model-value="value => emit('change', { sort: value })"
+      @update:model-value="value => emit('change', { sort: value, descending: false })"
     >
       <q-tooltip v-if="ranked">Ranked results are in order of relevance</q-tooltip>
     </q-select>
+    <q-btn
+      v-if="!ranked"
+      flat
+      dense
+      round
+      :icon="filters.descending ? 'arrow_downward' : 'arrow_upward'"
+      :aria-label="filters.descending ? 'Descending; sort ascending' : 'Ascending; sort descending'"
+      :aria-pressed="filters.descending ? 'true' : 'false'"
+      data-testid="concordance-sort-direction"
+      @click="emit('change', { descending: !filters.descending })"
+    >
+      <q-tooltip>{{ filters.descending ? 'Descending' : 'Ascending' }}</q-tooltip>
+    </q-btn>
 
     <q-select
       v-if="attributes.length"
@@ -325,7 +341,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { QBtn, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QMenu, QSelect, QTooltip } from 'quasar'
 import {
   AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
@@ -333,6 +349,7 @@ import {
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
 import { TOP_K_OPTIONS, modeChange, type ConcordanceFilters } from './concordanceStore'
+import type { FilterField } from './ConcordanceTable.vue'
 import { MODE_LABELS, SCOPE_LABELS, modeHintText, titleProblem } from './filterChips'
 
 const props = defineProps<{
@@ -352,6 +369,31 @@ const emit = defineEmits<{
 }>()
 
 const attributes = computed(() => props.attributes ?? [])
+
+const textInput = ref<InstanceType<typeof QInput> | null>(null)
+const sourcesSelect = ref<InstanceType<typeof QSelect> | null>(null)
+const yearInput = ref<InstanceType<typeof QInput> | null>(null)
+
+/** Brings the filter of a table column to the user (its header's filter button, #665): the text
+ * search scoped to the annotation or its context (a scope that already searches the field is
+ * kept), the source picker or the year range. */
+function openFilter (field: FilterField) {
+  if (field === 'source') {
+    sourcesSelect.value?.$el.scrollIntoView?.({ block: 'nearest' })
+    sourcesSelect.value?.focus()
+    sourcesSelect.value?.showPopup()
+    return
+  }
+  const input = field === 'year' ? yearInput.value : textInput.value
+  if (field !== 'year') {
+    const scope = field === 'annotation' ? TextScope.annotation : TextScope.context
+    if (props.filters.textScope !== scope && props.filters.textScope !== TextScope.both) emit('change', { textScope: scope })
+  }
+  input?.$el.scrollIntoView?.({ block: 'nearest' })
+  void nextTick(() => input?.focus())
+}
+
+defineExpose({ openFilter })
 
 const tagOptions = computed(() => props.tags.map(t => ({ label: t.name, value: t.id, color: t.color })))
 

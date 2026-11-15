@@ -36,6 +36,8 @@ export interface ConcordanceFilters {
   attributeUnassigned: string[]
   /** Lexical mode only; ranked results are in relevance order. */
   sort: AnnotationSort
+  /** Reverses `sort` (missing titles, years and texts stay last). */
+  descending: boolean
   /** Every match (`lexical`) or a ranked top `k` (#664): by meaning of `text` (`semantic`),
    * meaning and words of `text` (`hybrid`), or like `similarTo` (`similar`; `text` then stays a
    * lexical filter). */
@@ -85,6 +87,7 @@ export function defaultFilters (): ConcordanceFilters {
     attributeValues: [],
     attributeUnassigned: [],
     sort: AnnotationSort.document,
+    descending: false,
     mode: RetrievalMode.lexical,
     k: DEFAULT_TOP_K,
     similarTo: null,
@@ -329,6 +332,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         attribute: f.attributeValues.length ? f.attributeValues : undefined,
         unassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
         sort: ranked ? undefined : f.sort,
+        descending: !ranked && f.descending ? true : undefined,
         mode: ranked?.mode,
         k: ranked?.k,
         similarTo: ranked?.similarTo ?? undefined,

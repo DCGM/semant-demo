@@ -1,5 +1,10 @@
 <template>
-  <div class="kwic" :class="{ 'kwic--attributes': attributes.length > 0 }" data-testid="kwic">
+  <div
+    class="kwic"
+    :class="{ 'kwic--attributes': attributes.length > 0, 'kwic--scrolled': scrolled }"
+    data-testid="kwic"
+    @scroll.passive="onScroll"
+  >
     <p :id="helpId" class="sr-only">
       Arrow keys move between rows, Enter shows the annotation in its document, Space checks the row.
     </p>
@@ -25,21 +30,62 @@
             @update:model-value="value => emit('select-page', !!value)"
           />
         </div>
-        <div class="kwic__cell kwic__left" role="columnheader">Left context</div>
-        <div class="kwic__cell kwic__key" role="columnheader">Annotation</div>
-        <div class="kwic__cell kwic__right" role="columnheader">Right context</div>
+        <div
+          v-for="column in TEXT_COLUMNS"
+          :key="column.field"
+          class="kwic__cell kwic__head"
+          :class="column.class"
+          role="columnheader"
+          :aria-sort="ariaSort(column.sort)"
+          :data-testid="`kwic-head-${column.id}`"
+        >
+          <HeaderControls
+            :label="column.label"
+            :sortable="column.sort !== null"
+            :sort-state="sortState(column.sort)"
+            :sort-disabled="ranked"
+            :not-sortable-hint="column.sort === null ? NOT_SORTABLE_YET : undefined"
+            :filter-label="filterLabel(column.field)"
+            :filter-active="filterActive(column.field)"
+            :filter-disabled="textFilterDisabled"
+            :filter-hint="textFilterDisabled ? 'The text is ranked by meaning, not matched as words' : undefined"
+            :testid="column.id"
+            @sort="sortBy(column.sort)"
+            @filter="emit('filter', column.field)"
+          />
+        </div>
         <div
           v-for="attribute in attributes"
           :key="attribute.id"
           class="kwic__cell kwic__attribute"
           role="columnheader"
-          :title="attribute.name"
+          :title="`${attribute.name} (${NOT_SORTABLE_YET.toLowerCase()})`"
           data-testid="kwic-attribute-head"
         >
           {{ attribute.name }}
         </div>
-        <div class="kwic__cell kwic__meta" role="columnheader">{{ rankStart !== null ? 'Rank · tag · status' : 'Tag · status' }}</div>
-        <div class="kwic__cell kwic__source" role="columnheader">Source</div>
+        <div class="kwic__cell kwic__meta kwic__head" role="columnheader">{{ rankStart !== null ? 'Rank · tag · status' : 'Tag · status' }}</div>
+        <div
+          v-for="column in DOCUMENT_COLUMNS"
+          :key="column.field"
+          class="kwic__cell kwic__head"
+          :class="column.class"
+          role="columnheader"
+          :aria-sort="ariaSort(column.sort)"
+          :data-testid="`kwic-head-${column.id}`"
+        >
+          <HeaderControls
+            :label="column.label"
+            sortable
+            :sort-state="sortState(column.sort)"
+            :sort-disabled="ranked"
+            :filter-label="filterLabel(column.field)"
+            :filter-active="filterActive(column.field)"
+            :testid="column.id"
+            @sort="sortBy(column.sort)"
+            @filter="emit('filter', column.field)"
+          />
+        </div>
       </div>
 
       <div
@@ -83,14 +129,19 @@
             @update:model-value="value => emit('toggle', row.id, !!value)"
           />
         </div>
-        <div class="kwic__cell kwic__left" role="gridcell">
-          <span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(row.leftContext, inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+        <!-- One cell under the three text headers: the left context ends in the Left context
+             column, the annotation starts in the Annotation column and the right context runs on
+             right after it, so the row reads as continuous text (#665). -->
+        <div class="kwic__text" role="gridcell" aria-colspan="3" data-testid="kwic-text">
+          <span class="kwic__cell kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(lineText(row.leftContext, true), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
+          <span class="kwic__cell kwic__flow">
+            <span class="kwic__key" :title="row.text ?? undefined">
+              <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(row.text, inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+              <span v-else class="kwic__missing">{{ missingText(row) }}</span>
+            </span>
+            <span class="kwic__right"><template v-for="(part, i) in marked(lineText(row.rightContext), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+          </span>
         </div>
-        <div class="kwic__cell kwic__key" role="gridcell" :title="row.text ?? undefined">
-          <span v-if="row.text !== null && row.text !== undefined" class="kwic__key-text"><template v-for="(part, i) in marked(row.text, inText)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
-          <span v-else class="kwic__missing">{{ missingText(row) }}</span>
-        </div>
-        <div class="kwic__cell kwic__right" role="gridcell"><template v-for="(part, i) in marked(row.rightContext, inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></div>
         <div
           v-for="attribute in attributes"
           :key="attribute.id"
@@ -147,21 +198,32 @@
           <span class="kwic__status" :class="`kwic__status--${row.type}`">{{ statusLabel(row.type) }}</span>
         </div>
         <div class="kwic__cell kwic__source" role="gridcell" :title="sourceLabel(row)">
-          <template v-if="row.documentAvailable">
-            <span class="kwic__title">{{ row.documentTitle || 'Untitled document' }}</span>
-            <span class="kwic__year">{{ row.documentYear ?? 'n.d.' }}</span>
-          </template>
+          <span v-if="row.documentAvailable" class="kwic__title">{{ row.documentTitle || 'Untitled document' }}</span>
           <span v-else class="kwic__missing">Source unavailable</span>
+        </div>
+        <div class="kwic__cell kwic__year" role="gridcell">
+          <template v-if="row.documentAvailable">{{ row.documentYear ?? 'n.d.' }}</template>
         </div>
       </div>
     </div>
   </div>
 </template>
 
+<script lang="ts">
+/** The fields a column header's filter button brings up (#665): the text search in the
+ * annotation or its context (#663 scopes; left and right context are one field), the source or
+ * the publication years. */
+export type FilterField = 'annotation' | 'context' | 'source' | 'year'
+</script>
+
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, ClosePopup as vClosePopup } from 'quasar'
-import { Cardinality, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag } from 'src/generated/api'
+import {
+  AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
+} from 'src/generated/api'
+import type { ConcordanceFilters } from './concordanceStore'
+import HeaderControls, { type SortState } from './KwicHeaderControls.vue'
 import { markMatches, queryWords, type TextPart } from './textMatches'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
@@ -186,6 +248,8 @@ const props = withDefaults(defineProps<{
   rankStart?: number | null
   /** Rows offer Find similar in their context menu (#664). */
   similar?: boolean
+  /** The query: its sort and the filters the column headers show as active (#665). */
+  filters?: ConcordanceFilters | null
 }>(), {
   focusedId: null,
   loading: false,
@@ -194,7 +258,8 @@ const props = withDefaults(defineProps<{
   query: '',
   queryScope: TextScope.annotation,
   rankStart: null,
-  similar: false
+  similar: false,
+  filters: null
 })
 
 const emit = defineEmits<{
@@ -207,7 +272,73 @@ const emit = defineEmits<{
   'select-page': [value: boolean]
   /** Assign values of a shown attribute to the row's annotation; `done` says whether it was saved. */
   assign: [row: AnnotationListRow, attribute: Attribute, change: AssignChange, done:(ok: boolean) => void]
+  /** Order the whole result by a column (its header): the first activation ascending, the next
+   * one of the same column descending, and so on. */
+  sort: [sort: AnnotationSort, descending: boolean]
+  /** Show the filter of a column (its header's filter button). */
+  filter: [field: FilterField]
 }>()
+
+// The column headers (#665). Left and right context sort by their nearest words in #666.
+const NOT_SORTABLE_YET = 'Not sortable yet'
+const TEXT_COLUMNS: { id: string, label: string, field: FilterField, sort: AnnotationSort | null, class: string }[] = [
+  { id: 'left', label: 'Left context', field: 'context', sort: null, class: 'kwic__left' },
+  { id: 'annotation', label: 'Annotation', field: 'annotation', sort: AnnotationSort.text, class: 'kwic__key' },
+  { id: 'right', label: 'Right context', field: 'context', sort: null, class: 'kwic__right' }
+]
+const DOCUMENT_COLUMNS: { id: string, label: string, field: FilterField, sort: AnnotationSort, class: string }[] = [
+  { id: 'source', label: 'Source', field: 'source', sort: AnnotationSort.document, class: 'kwic__source' },
+  { id: 'year', label: 'Year', field: 'year', sort: AnnotationSort.year, class: 'kwic__year' }
+]
+
+const ranked = computed(() => !!props.filters && props.filters.mode !== RetrievalMode.lexical)
+const textFilterDisabled = computed(() => props.filters?.mode === RetrievalMode.semantic)
+
+function sortState (sort: AnnotationSort | null): SortState {
+  const f = props.filters
+  if (!f || sort === null || ranked.value || f.sort !== sort) return null
+  return f.descending ? 'descending' : 'ascending'
+}
+
+function ariaSort (sort: AnnotationSort | null): 'ascending' | 'descending' | 'none' | undefined {
+  if (sort === null) return undefined
+  return sortState(sort) ?? 'none'
+}
+
+function sortBy (sort: AnnotationSort | null) {
+  if (sort === null || ranked.value) return
+  emit('sort', sort, sortState(sort) === 'ascending')
+}
+
+const FILTER_LABELS: Record<FilterField, string> = {
+  annotation: 'Filter by words in the annotation',
+  context: 'Filter by words in the context',
+  source: 'Filter by source',
+  year: 'Filter by publication year'
+}
+
+function filterActive (field: FilterField): boolean {
+  const f = props.filters
+  if (!f) return false
+  if (field === 'source') return f.documentIds.length > 0
+  if (field === 'year') return f.documentFilters.yearMin != null || f.documentFilters.yearMax != null
+  if (!f.text.trim() || f.mode === RetrievalMode.semantic || f.mode === RetrievalMode.hybrid) return false
+  return f.textScope === TextScope.both ||
+    f.textScope === (field === 'annotation' ? TextScope.annotation : TextScope.context)
+}
+
+function filterLabel (field: FilterField): string {
+  return filterActive(field) ? `${FILTER_LABELS[field]} (active)` : FILTER_LABELS[field]
+}
+
+// Scrolled sideways past the left context (attribute columns): the annotation sticks next to the
+// checkbox, without its right context.
+const scrolled = ref(false)
+function onScroll (event: Event) {
+  const list = event.target as HTMLElement
+  const left = list.querySelector<HTMLElement>('[data-testid="kwic-head-left"]')
+  scrolled.value = list.scrollLeft > 0 && list.scrollLeft >= (left?.offsetWidth ?? 0)
+}
 
 const helpId = `kwic-help-${Math.random().toString(36).slice(2, 8)}`
 
@@ -217,6 +348,14 @@ const inText = computed(() => props.queryScope !== TextScope.context)
 const inContext = computed(() => props.queryScope !== TextScope.annotation)
 function marked (text: string | null | undefined, searched: boolean): TextPart[] {
   return markMatches(text ?? '', searched ? words.value : [])
+}
+
+/** A context as one line of the row: line breaks as spaces; `endKept`: its trailing spaces (before
+ * the annotation) as no-break spaces, which neither collapse at the line end nor move to the far
+ * side of the right-to-left cell the left context is cut in. */
+function lineText (text: string | null | undefined, endKept = false): string {
+  const line = (text ?? '').replace(/[\n\r\t\f\v\u2028\u2029]/g, ' ')
+  return endKept ? line.replace(/\s+$/, spaces => '\u00a0'.repeat(spaces.length)) : line
 }
 const tagsById = computed(() => new Map(props.tags.map(t => [t.id, t])))
 
@@ -363,36 +502,38 @@ defineExpose({ reveal })
   overflow-x: auto;
 }
 
+/* check | left context | annotation | right context | [attributes] | tag · status | source | year.
+   The annotation column is as wide as its header: rows start their annotation there and run
+   their right context on after it, across the right context column (#665). */
 .kwic__grid {
+  --kwic-context-min: 0px;
+  /* The annotation column never collapses below its header's name and controls (cut). */
+  --kwic-key-min: 6.5rem;
+  --kwic-text:
+    minmax(var(--kwic-context-min), 9fr) minmax(var(--kwic-key-min), auto) minmax(var(--kwic-context-min), 11fr);
   display: grid;
-  /* check | left context | annotation | right context | tag · status | source */
-  grid-template-columns: 2rem minmax(0, 1fr) fit-content(24%) minmax(0, 1fr) fit-content(9rem) fit-content(13rem);
+  grid-template-columns: 2rem var(--kwic-text) fit-content(9rem) fit-content(13rem) auto;
   font-size: 0.9rem;
 }
 
 /* With attribute columns (their count in --kwic-attributes) after the right context. */
 .kwic__grid--attribute {
   --kwic-context-min: 8rem;
-  --kwic-key-min: 8rem;
   --kwic-attribute-min: 6rem;
   --kwic-attribute-max: min(14rem, 30rem / var(--kwic-attributes));
   grid-template-columns:
-    2rem minmax(var(--kwic-context-min), 1fr) fit-content(24%) minmax(var(--kwic-context-min), 1fr)
+    2rem var(--kwic-text)
     repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-    fit-content(9rem) fit-content(13rem);
+    fit-content(9rem) fit-content(13rem) auto;
 }
 
 .kwic__attribute {
   font-size: 0.78rem;
 }
 
-/* Minimum widths, so the annotation and the values stay identifiable (the list scrolls instead). */
+/* Minimum widths, so the values stay identifiable (the list scrolls instead). */
 .kwic__grid--attribute .kwic__cell.kwic__attribute {
   min-width: var(--kwic-attribute-min);
-}
-
-.kwic__grid--attribute .kwic__cell.kwic__key {
-  min-width: var(--kwic-key-min);
 }
 
 /* Opaque rows, for the sticky cells to inherit. Without specificity of its own (:where), so the
@@ -405,7 +546,8 @@ defineExpose({ reveal })
 
 /* The row's checkbox and annotation stay in view while the attribute columns scroll under. */
 .kwic__grid--attribute .kwic__check,
-.kwic__grid--attribute .kwic__key {
+.kwic__grid--attribute .kwic__row--head .kwic__key,
+.kwic__grid--attribute .kwic__flow {
   position: sticky;
   z-index: 1;
   background: inherit;
@@ -415,8 +557,14 @@ defineExpose({ reveal })
   left: 0;
 }
 
-.kwic__grid--attribute .kwic__key {
+.kwic__grid--attribute .kwic__row--head .kwic__key,
+.kwic__grid--attribute .kwic__flow {
   left: 2rem;
+}
+
+/* Once the annotation sticks, its right context gives way to the attribute columns. */
+.kwic--scrolled .kwic__flow .kwic__right {
+  display: none;
 }
 
 /* They cover the row's own marks, so they draw their part of them. */
@@ -428,7 +576,7 @@ defineExpose({ reveal })
   box-shadow: inset 2px 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
-.kwic__grid--attribute .kwic__row:focus-visible .kwic__key {
+.kwic__grid--attribute .kwic__row:focus-visible .kwic__flow {
   box-shadow: inset 0 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
@@ -493,10 +641,30 @@ defineExpose({ reveal })
   text-align: right;
 }
 
-/* Left context is cut at its start, so the words next to the annotation stay visible. */
+/* The text cell: no box of its own; its parts are cells of the row's grid, side by side with no
+   gap or padding between them. Rows have its background, for the sticky annotation. */
+.kwic__text {
+  display: contents;
+  background: inherit;
+}
+
+.kwic__row:not(.kwic__row--head) .kwic__left,
+.kwic__flow {
+  /* On the first line of a wrapped annotation; centered in a one-line row. */
+  align-self: start;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  line-height: 1.25;
+}
+
+/* Left context ends where the annotation starts, cut at its start, so the words next to the
+   annotation stay visible. Spaces are kept as in the text (`lineText`). */
 .kwic__row:not(.kwic__row--head) .kwic__left {
+  grid-column: 2;
+  padding-right: 0;
   direction: rtl;
   text-align: right;
+  white-space: pre;
   color: #444;
 }
 
@@ -504,16 +672,50 @@ defineExpose({ reveal })
   direction: ltr;
 }
 
-.kwic__key {
+/* The annotation, then its right context right after it, across the right context column. */
+.kwic__flow {
+  grid-column: 3 / span 2;
+  justify-self: start;
+  max-width: 100%;
+  display: flex;
+  align-items: baseline;
+  padding-left: 0;
+}
+
+.kwic__row--head .kwic__key {
+  padding-left: 0;
+}
+
+/* A long annotation wraps to a second line and is cut after it; the right context then gets no
+   room. The full text is in the sidebar and the title. */
+.kwic__flow .kwic__key {
+  flex: 0 1 auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-weight: 600;
   color: #1f2a37;
-  padding: 2px 2px;
 }
 
 .kwic__key-text {
-  padding: 1px 4px;
+  padding: 1px 0;
   border-radius: 2px;
   background: rgba(255, 213, 79, 0.35);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.kwic__flow .kwic__right {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  color: #444;
 }
 
 /* A lexical match: underlined, distinct from the annotation's own highlight. */
@@ -532,10 +734,6 @@ defineExpose({ reveal })
   text-decoration-color: rgba(0, 0, 0, 0.45);
 }
 
-.kwic__right {
-  color: #444;
-}
-
 .kwic__missing {
   font-style: italic;
   font-weight: 400;
@@ -547,6 +745,10 @@ defineExpose({ reveal })
   align-items: center;
   gap: 6px;
   font-size: 0.78rem;
+}
+
+.kwic__row--head .kwic__meta {
+  font-size: inherit;
 }
 
 .kwic__rank {
@@ -593,53 +795,60 @@ defineExpose({ reveal })
   color: #8e1b1b;
 }
 
-.kwic__source {
+.kwic__row:not(.kwic__row--head) .kwic__source,
+.kwic__row:not(.kwic__row--head) .kwic__year {
   font-size: 0.78rem;
   color: rgba(0, 0, 0, 0.7);
 }
 
 .kwic__year {
-  margin-left: 6px;
   font-variant-numeric: tabular-nums;
 }
 
-/* Secondary columns give way first when the list narrows. */
+/* Secondary columns give way first when the list narrows: zero wide, their values still read
+   by assistive technology; their headers' controls are hidden (the toolbar has them). */
 @container (max-width: 900px) {
   .kwic__grid {
-    grid-template-columns: 2rem minmax(0, 1fr) fit-content(28%) minmax(0, 1fr) 0 fit-content(9rem);
+    grid-template-columns: 2rem var(--kwic-text) 0 fit-content(9rem) auto;
   }
   .kwic__grid--attribute {
     --kwic-context-min: 6rem;
-    --kwic-key-min: 6rem;
     --kwic-attribute-max: min(10rem, 20rem / var(--kwic-attributes));
     grid-template-columns:
-      2rem minmax(var(--kwic-context-min), 1fr) fit-content(24%) minmax(var(--kwic-context-min), 1fr)
+      2rem var(--kwic-text)
       repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-      0 fit-content(9rem);
+      0 fit-content(9rem) auto;
   }
-  /* Zero width, still read by assistive technology. */
   .kwic__meta {
     padding: 0;
+  }
+  .kwic__row--head .kwic__meta {
+    visibility: hidden;
   }
 }
 
 @container (max-width: 560px) {
   .kwic__grid {
-    grid-template-columns: 2rem minmax(0, 1fr) fit-content(40%) minmax(0, 1fr) 0 0;
+    grid-template-columns: 2rem var(--kwic-text) 0 0 0;
     font-size: 0.85rem;
   }
   .kwic__grid--attribute {
     --kwic-context-min: 4rem;
-    --kwic-key-min: 6rem;
+    --kwic-key-min: 5.5rem;
     --kwic-attribute-min: 5rem;
     --kwic-attribute-max: 7rem;
     grid-template-columns:
-      2rem minmax(var(--kwic-context-min), 1fr) fit-content(30%) minmax(var(--kwic-context-min), 1fr)
+      2rem var(--kwic-text)
       repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-      0 0;
+      0 0 0;
   }
-  .kwic__source {
+  .kwic__source,
+  .kwic__year {
     padding: 0;
+  }
+  .kwic__row--head .kwic__source,
+  .kwic__row--head .kwic__year {
+    visibility: hidden;
   }
 }
 </style>

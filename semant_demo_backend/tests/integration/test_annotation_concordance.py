@@ -94,11 +94,12 @@ async def test_pages_partition_one_total_order(store, owner, ids, created, sort,
 async def test_descending_text_order_reverses_texts_and_puts_missing_text_last(store, owner, ids, created):
     ascending = (await query(store, owner, ids, sort=AnnotationSort.text, limit=200)).rows
     descending = (await query(store, owner, ids, sort=AnnotationSort.text, descending=True, limit=200)).rows
+    # Weaviate orders text ignoring case ("Brně", "elena…", "Jan…"); descending reverses it.
     texts = [r.text for r in descending if r.text is not None]
-    assert texts == sorted(texts, reverse=True)
-    assert texts == sorted((r.text for r in ascending if r.text is not None), reverse=True)
-    missing = [r for r in descending if r.text is None]
-    assert descending[len(descending) - len(missing):] == missing
+    assert texts == [r.text for r in reversed(ascending) if r.text is not None]
+    assert texts.index("elena.Kronikář") < texts.index("Brně") and texts.index("Jan Novák") < texts.index("elena.Kronikář")
+    missing = sum(r.text is None for r in descending)
+    assert missing and all(r.text is None for r in descending[len(descending) - missing:])
 
 
 async def test_api_takes_the_sort_direction(api_client, login, ids):

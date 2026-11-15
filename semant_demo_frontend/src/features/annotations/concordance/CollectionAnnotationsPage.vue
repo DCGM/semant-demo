@@ -1,6 +1,7 @@
 <template>
   <q-page class="collection-annotations q-px-md q-pb-lg" data-testid="collection-annotations">
     <ConcordanceToolbar
+      ref="toolbar"
       :filters="store.filters"
       :tags="tags"
       :documents="store.documents"
@@ -94,12 +95,15 @@
       :query="ranksText(store.filters.mode) ? '' : store.filters.text"
       :query-scope="store.filters.textScope"
       :rank-start="ranked ? store.offset + 1 : null"
+      :filters="store.filters"
       similar
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
       @similar="findSimilar"
       @toggle="toggleRow"
       @select-page="selectPage"
+      @sort="(sort, descending) => store.setFilters({ sort, descending })"
+      @filter="field => toolbar?.openFilter(field)"
       @assign="(row, attribute, change, done) => assignRow(row, attribute, change).then(done)"
     />
 
@@ -370,6 +374,7 @@ const { tags } = storeToRefs(tagsStore)
 const rightSidebar = useRightSidebarStore()
 const chunkContext = reactive(useChunkContext())
 const table = ref<InstanceType<typeof ConcordanceTable> | null>(null)
+const toolbar = ref<InstanceType<typeof ConcordanceToolbar> | null>(null)
 const panel = ref<InstanceType<typeof ChunkContextPanel> | null>(null)
 const spansRepo = useTagSpansRepository()
 

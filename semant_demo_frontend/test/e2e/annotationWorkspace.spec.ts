@@ -306,14 +306,64 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   await page.keyboard.press('Escape')
   await expect(chips).toContainText('Title contains:dopisy')
   await expect(page.getByTestId('concordance-document-filters')).toContainText('Document filters (1)')
+  await expect.poll(() => rows(page).count()).toBeLessThan(all)
   await expect(rows(page).first()).toBeVisible()
-  const letters = await rows(page).count()
-  expect(letters).toBeLessThan(all)
   for (const source of await rows(page).locator('.kwic__title').allTextContents()) expect(source).toBe('Dopisy z Prahy')
 
   await page.getByRole('button', { name: 'Remove filter Title contains: dopisy' }).click()
   await expect(rows(page)).toHaveCount(all)
   await expect(chips).toHaveCount(0)
+})
+
+test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  const keys = () => rows(page).locator('.kwic__key').allInnerTexts()
+  const annotation = page.getByTestId('kwic-head-annotation')
+
+  await page.getByTestId('kwic-sort-year').click()
+  await expect(page.getByTestId('kwic-head-year')).toHaveAttribute('aria-sort', 'ascending')
+  await expect(annotation).toHaveAttribute('aria-sort', 'none')
+  await expect.poll(() => rows(page).locator('.kwic__year').allInnerTexts()).toEqual(['1851', '1851', '1851', '1902'])
+  // The context headers name their field but do not pretend to sort.
+  await expect(page.getByTestId('kwic-head-left')).not.toHaveAttribute('aria-sort')
+  await expect(page.getByTestId('kwic-sort-left')).toHaveCount(0)
+
+  // With the sidebar open (the list narrows; source and year give way, the toolbar sorts by
+  // them), by keyboard: the annotation header sorts ascending, then descending, the whole result.
+  await row(page, 'Lhoty').click()
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+  await expect(page.getByTestId('kwic-sort-year')).toBeHidden()
+  await page.getByTestId('kwic-sort-annotation').focus()
+  await page.keyboard.press('Enter')
+  await expect(annotation).toHaveAttribute('aria-sort', 'ascending')
+  await expect.poll(keys).toEqual(['Brně', 'Jan Novák', 'Lhoty', 'Prahy'])
+  await page.keyboard.press('Enter')
+  await expect(annotation).toHaveAttribute('aria-sort', 'descending')
+  await expect.poll(keys).toEqual(['Prahy', 'Lhoty', 'Jan Novák', 'Brně'])
+  await expect(page.getByTestId('concordance-sort-direction')).toHaveAttribute('aria-pressed', 'true')
+  // Sorting kept the open row and the sidebar.
+  await expect(row(page, 'Lhoty')).toHaveAttribute('aria-current', 'true')
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+
+  // A context header's filter searches the context; it opens no row and checks none.
+  await page.getByTestId('kwic-filter-right').click()
+  await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
+  await expect(page.getByLabel('Context text')).toBeFocused()
+  await page.keyboard.type('hejtman')
+  // Only in the chronicle: the letter's annotation goes.
+  await expect(row(page, 'Prahy')).toHaveCount(0)
+  await expect(row(page, 'Jan Novák').locator('.kwic__left mark.kwic__match')).toHaveText('hejtman')
+  await expect(page.getByTestId('kwic-filter-left')).toHaveAccessibleName('Filter by words in the context (active)')
+  await expect(page.getByTestId('concordance-selected')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Remove filter Text in context: hejtman' }).click()
+  await expect(rows(page)).toHaveCount(4)
+
+  // The annotation header's filter keeps a scope that already searches the annotation.
+  await page.getByTestId('concordance-text-scope').click()
+  await page.getByRole('option', { name: 'Both' }).click()
+  await page.getByTestId('kwic-filter-annotation').click()
+  await expect(page.getByTestId('concordance-text-scope')).toContainText('Both')
 })
 
 test('find similar from the sidebar, ranked by meaning, as a top k (#664)', async ({ page }) => {
@@ -359,7 +409,7 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   await expect(range).toHaveText('Rows 1–2 of 2 ranked annotations')
 })
 
-test('a long cross-chunk annotation is elided in its row and complete in the sidebar', async ({ page, request }) => {
+test('a long cross-chunk annotation wraps to a second line in its row and is complete in the sidebar', async ({ page, request }) => {
   const first = fixture.chunk('chronicle_1').text
   const second = fixture.chunk('chronicle_2').text
   await createSpan(request, 'chronicle_1', 10, first.length + 30)
@@ -367,11 +417,13 @@ test('a long cross-chunk annotation is elided in its row and complete in the sid
   await openWorkspace(page)
   const long = row(page, first.slice(10, 40))
 
+  // Wrapped to a second line (at most; longer ones are cut after it), not cut in one.
   const key = long.locator('.kwic__key')
-  expect(await key.evaluate(e => e.scrollWidth > e.clientWidth), 'the key is elided').toBe(true)
   await expect(key).toHaveText(first.slice(10) + second.slice(0, 30))
-  const box = await long.boundingBox()
-  expect(box?.height).toBeLessThan(40)
+  const [box, line] = await Promise.all([key.boundingBox(), row(page, 'Brně').locator('.kwic__key').boundingBox()])
+  expect(box!.height, 'two lines').toBeGreaterThan(1.5 * line!.height)
+  expect(box!.height, 'two lines').toBeLessThan(2.5 * line!.height)
+  expect(await key.evaluate(e => getComputedStyle(e).webkitLineClamp)).toBe('2')
 
   await long.click()
   const marks = panel(page).getByTestId('chunk-context-mark')

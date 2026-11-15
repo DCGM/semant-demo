@@ -88,6 +88,19 @@ describe('concordance store', () => {
     expect([store.loading, store.error]).toEqual([false, null])
   })
 
+  it('asks for a reversed sort only when descending, and never for ranked results (#665)', async () => {
+    const store = await opened()
+    expect(rowCalls()[0].url.searchParams.has('descending')).toBe(false)
+    void store.setFilters({ sort: 'year' as never, descending: true })
+    await flush()
+    const reversed = rowCalls()[rowCalls().length - 1].url.searchParams
+    expect([reversed.get('sort'), reversed.get('descending')]).toEqual(['year', 'true'])
+    void store.setFilters({ mode: 'semantic' as never, text: 'hejtman' })
+    await flush()
+    const ranked = rowCalls()[rowCalls().length - 1].url.searchParams
+    expect([ranked.has('sort'), ranked.has('descending'), ranked.get('mode')]).toEqual([false, false, 'semantic'])
+  })
+
   it('sends the filters and drops the answer of a superseded query', async () => {
     const store = await opened()
     const first = store.setFilters({ tagIds: ['t1', 't2'], text: ' Novák ' })
