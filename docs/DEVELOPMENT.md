@@ -258,7 +258,9 @@ make test-e2e           # Playwright smoke suite against the deterministic app p
 While iterating, run only the affected integration tests: the container starts in about a
 second, so one file takes ~30 s instead of ~4 min for the whole suite, e.g.
 `make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"` (paths relative
-to `semant_demo_backend`). Run the full suite before review when the change needs it.
+to `semant_demo_backend`). Quote inside `ARGS` as on a shell command line, e.g.
+`ARGS="tests/integration/test_access.py -k 'case_a or case_b'"`; the arguments reach pytest
+intact. Run the full suite before review when the change needs it.
 
 They never use the development container, `.dev-data/` or `local_data/`:
 
@@ -339,11 +341,34 @@ run's `browser-shard-*` artifacts:
 `python3 scripts/browser_shards.py durations <report.json>...`. To change the shard count,
 edit only the matrix of `test-browser-shard` in `.github/workflows/ci-cd.yml`.
 
+### Change-aware CI and the `CI result` gate
+
+The `Classify changes` job (`scripts/ci_changes.py`, #687) classifies each PR's complete
+diff (GitHub's merge commit against its base parent, so renames, deletions and a moved
+base are included) and selects a mode. **Full validation is the default** and is used for
+pushes to `main`, tags, manual runs, PRs with the `ci:full` label (add it and re-run the
+workflow), any path outside a mode's allowlist and any classification error. The only
+reduced mode is `docs`: a PR that changes nothing but root-level Markdown, Markdown under
+`docs/`, `deploy/README.md` and the `.github` PR/issue templates runs `Documentation
+checks` (`make check-docs`: relative Markdown links resolve) and skips the application
+suites and the PR preview. Package READMEs, generated client docs and other files are not
+documentation for this purpose.
+
+The `CI result` job is the gate: it passes only when the classification succeeded and
+every suite its mode requires succeeded, and it lists the suites a mode omitted as not
+tested. The mode is applied only when the repository variable `CI_CHANGE_SELECTION`
+includes it (e.g. `docs`); unset, the classification is only reported and everything runs.
+Enable it after `CI result` is a required check of the `main` ruleset, because GitHub
+treats a skipped required check as passing. To try a classification locally:
+`python3 scripts/ci_changes.py paths <path>...`. A new mode or path needs a reviewed entry
+in the script's short registry; the workflow wiring is checked by
+`semant_demo_backend/tests/test_ci_changes.py`.
+
 ### Which checks need Docker
 
 | Needs no Docker | Needs Docker (a working daemon and the Weaviate 1.40.1 image) |
 |---|---|
-| `make setup`, `make deps-check`, `make check` (`check-backend`, `check-classifier`, `check-frontend`, `api-check`), `make api-generate`, `make lock` / `lock-check` (network), `make e2e-dev-rebuild` | `make test-integration`, `make test-e2e`, `make e2e-dev-start` / `e2e-dev-restart`, `make dev-up` and the other `make dev-*` commands except `dev-frontend` |
+| `make setup`, `make deps-check`, `make check` (`check-backend`, `check-classifier`, `check-frontend`, `check-docs`, `api-check`), `make api-generate`, `make lock` / `lock-check` (network), `make e2e-dev-rebuild` | `make test-integration`, `make test-e2e`, `make e2e-dev-start` / `e2e-dev-restart`, `make dev-up` and the other `make dev-*` commands except `dev-frontend` |
 
 `make e2e-dev-test` and `e2e-dev-capture` start no container: they need the profile that
 `e2e-dev-start` started, so only indirectly Docker.
