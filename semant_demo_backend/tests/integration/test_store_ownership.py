@@ -1,8 +1,14 @@
 """The test store is demonstrably isolated: owned by this run, reset per test, cleaned up selectively."""
+from uuid import uuid4
+
 import pytest
+from sqlalchemy import make_url, text
+from sqlalchemy.ext.asyncio import create_async_engine
+from weaviate.classes.tenants import Tenant, TenantActivityStatus
 from weaviate.collections.classes.batch import DeleteManyReturn
 from weaviate.collections.data.async_ import _DataCollectionAsync
 
+from tests.seed import annotation_tenants, seed_weaviate
 from tests.weaviate_store import (
     MARKER_COLLECTION,
     StoreNotOwned,
@@ -84,6 +90,54 @@ async def test_reset_empties_collections_without_recreating_them(
         assert total == 0, name
     after = (await seeded_store.collections.list_all(simple=False))[collection_names.chunks_collection_name]
     assert after == before
+
+
+async def test_reset_empties_kept_corpus_tenants_and_removes_the_others(
+        seeded_store, collection_names, store_token, created_app_schema, corpus):
+    annotations = seeded_store.collections.get(collection_names.annotation_collection_name)
+    corpus_tenants = annotation_tenants(corpus)
+    written, deactivated = sorted(corpus_tenants)[:2]
+    await annotations.with_tenant(written).data.insert({"start": 0, "end": 1, "type": "left behind"})
+    await annotations.tenants.update([Tenant(name=deactivated, activity_status=TenantActivityStatus.INACTIVE)])
+    await annotations.tenants.create([Tenant(name=str(uuid4()))])
+
+    await reset_app_collections(seeded_store, collection_names, store_token, created_app_schema,
+                                keep_tenants=corpus_tenants)
+
+    # Only active corpus tenants are kept, and they are empty.
+    kept = await annotations.tenants.get()
+    assert set(kept) == corpus_tenants - {deactivated}
+    for name in kept:
+        assert (await annotations.with_tenant(name).aggregate.over_all(total_count=True)).total_count == 0, name
+
+    await seed_weaviate(seeded_store, collection_names, corpus, store_token)
+
+    # The next test sees exactly the seeded spans, in active tenants.
+    tenants = await annotations.tenants.get()
+    assert set(tenants) == corpus_tenants
+    assert all(t.activity_status == TenantActivityStatus.ACTIVE for t in tenants.values())
+    stored = set()
+    for name in tenants:
+        stored |= {str(o.uuid) for o in (await annotations.with_tenant(name).query.fetch_objects(limit=1000)).objects}
+    assert stored == {span["id"] for span in corpus.spans.values()}
+
+
+async def test_each_app_gets_its_own_copy_of_the_seeded_users_database(api_app, seeded_users_db, corpus):
+    database = make_url(api_app.state.config.SQL_DB_URL).database
+    assert database != str(seeded_users_db)
+
+    engine = create_async_engine(api_app.state.config.SQL_DB_URL)
+    template = create_async_engine(f"sqlite+aiosqlite:///{seeded_users_db}")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text('DELETE FROM "user"'))
+        async with template.connect() as conn:
+            remaining = (await conn.execute(text('SELECT count(*) FROM "user"'))).scalar_one()
+    finally:
+        await engine.dispose()
+        await template.dispose()
+
+    assert remaining == len(corpus.users)
 
 
 async def test_reset_recreates_a_changed_schema(seeded_store, collection_names, store_token, created_app_schema):

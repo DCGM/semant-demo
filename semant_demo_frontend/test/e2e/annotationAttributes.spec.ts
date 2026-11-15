@@ -300,7 +300,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await expect(page.getByTestId('annotation-attributes')).toContainText('chronicler')
 
   // Kept on return from the document, like the rest of the workspace.
-  await page.getByTestId('chunk-context').getByRole('link', { name: 'Open in document' }).click()
+  await page.getByTestId('chunk-context').getByTestId('chunk-context-title').click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   await page.getByRole('link', { name: 'Back to annotations' }).click()
   await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])

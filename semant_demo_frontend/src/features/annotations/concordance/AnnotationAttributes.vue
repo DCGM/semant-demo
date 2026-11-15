@@ -13,7 +13,7 @@
       </div>
       <div v-else-if="reason" class="text-caption text-grey-7" data-testid="annotation-attributes-note">{{ reason }}</div>
       <div
-        v-for="attribute in applicable"
+        v-for="attribute in ordered"
         :key="attribute.id"
         class="annotation-attributes__row"
         :data-testid="`annotation-attribute-${attribute.id}`"
@@ -74,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { QBtn, QMenu } from 'quasar'
 import { Cardinality, SpanType, type AnnotationListRow, type Attribute } from 'src/generated/api'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
@@ -111,6 +111,19 @@ const held = (attribute: Attribute) => props.row.attributes?.[attribute.id] ?? [
 const applicable = computed(() =>
   props.row.tagId ? attributesOfTag(props.attributes, props.row.tagId).map(a => a.attribute) : [])
 
+// Attributes holding values first (#669 review), otherwise in the collection's order. The order
+// is set when the annotation opens or its attributes change, not after each edit, so a row
+// does not jump away from the menu just used.
+const order = ref<string[]>([])
+watch(() => `${props.row.id}|${applicable.value.map(a => a.id).join()}`, () => {
+  const ids = applicable.value.map(a => a.id)
+  order.value = [...ids.filter(id => (props.row.attributes?.[id] ?? []).length), ...ids.filter(id => !(props.row.attributes?.[id] ?? []).length)]
+}, { immediate: true })
+const ordered = computed(() => {
+  const rank = new Map(order.value.map((id, i) => [id, i]))
+  return [...applicable.value].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity))
+})
+
 // Values held of attributes retired or no longer applying to the tag (#500): shown, removable.
 const others = computed(() => {
   const shown = new Set(applicable.value.map(a => a.id))
@@ -126,9 +139,7 @@ const reason = computed(() => {
 
 <style scoped>
 .annotation-attributes {
-  margin: 6px 0;
-  padding-top: 4px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin: 0 0 6px;
 }
 
 .annotation-attributes__title {

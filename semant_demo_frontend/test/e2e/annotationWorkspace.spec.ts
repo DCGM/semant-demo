@@ -84,11 +84,11 @@ test('opening, checking and keyboard use are distinct; the source shows the exac
   // Checking a row does not open its source.
   await row(page, 'Prahy').getByRole('checkbox').click()
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
-  await expect(sidebarPanelButton(page, 'Document')).toHaveCount(0)
+  await expect(sidebarPanelButton(page, 'Annotation')).toHaveCount(0)
 
   // Clicking a row opens it in the shared sidebar without checking it.
   await row(page, 'Jan Novák').click()
-  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Document')
+  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
   await expect(panel(page).getByTestId('chunk-context-mark')).toHaveText('Jan Novák')
   await expect(panel(page).getByTestId('chunk-context-header')).toContainText(fixture.document('chronicle').properties.title)
   await expect(panel(page).getByTestId('annotation-context-text')).toHaveText('Jan Novák')
@@ -241,6 +241,48 @@ test.describe('switching annotations of one long document', () => {
     await expect(mark(page)).toBeInViewport()
   })
 
+  test('only the passage scrolls: the annotation above it stays in place (#659)', async ({ page }) => {
+    await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 30 } })
+    for (const width of ['wide', 'phone'] as const) {
+      await useViewport(page, width)
+      await openWorkspace(page)
+      await row(page, 'Brně').click()
+      await expect(mark(page)).toHaveText('Brně')
+      await expect(mark(page)).toBeInViewport()
+      const body = panel(page).getByTestId('chunk-context-body')
+      const actions = page.getByTestId('annotation-review')
+      const top = (await actions.boundingBox())?.y
+      // The passage is scrolled to Brně within itself; the sidebar does not scroll.
+      expect(await body.evaluate(el => el.scrollTop), `${width}: the passage scrolled`).toBeGreaterThan(0)
+      expect(await panel(page).evaluate(el => el.closest('.scroll')?.scrollTop ?? 0), `${width}: the sidebar did not`).toBe(0)
+      // Scrolling the passage by hand moves only the passage.
+      const before = await body.evaluate(el => el.scrollTop)
+      await body.hover()
+      await page.mouse.wheel(0, -600)
+      await expect.poll(() => body.evaluate(el => el.scrollTop), `${width}: the passage scrolls by the wheel`).toBeLessThan(before)
+      expect((await actions.boundingBox())?.y, `${width}: the actions stay in place`).toBe(top)
+      await expect(actions.getByRole('button', { name: 'Approve' })).toBeInViewport()
+      // Scrolled away from the annotation, the passage offers the way back to it.
+      const back = panel(page).getByTestId('chunk-context-back').filter({ visible: true })
+      await body.evaluate(el => { el.scrollTop = 0 })
+      await expect(back).toHaveText('arrow_downwardBack to annotation')
+      await back.click()
+      await expect(mark(page)).toBeInViewport()
+      await expect(back).toHaveCount(0)
+    }
+  })
+
+  test('closing the sidebar on a phone returns to the open row (#669)', async ({ page }) => {
+    await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 30 } })
+    await useViewport(page, 'phone')
+    await openWorkspace(page)
+    await row(page, 'Brně').click()
+    await expect(mark(page)).toHaveText('Brně')
+    await page.getByRole('button', { name: 'Close sidebar' }).click()
+    await expect(row(page, 'Brně')).toBeFocused()
+    await expect(row(page, 'Brně')).toBeInViewport()
+  })
+
   test('with reduced motion the passage moves at once', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 20 } })
@@ -278,7 +320,7 @@ test('filters, selection and the open row survive a visit to the document', asyn
   await row(page, 'Jan Novák').getByRole('checkbox').click()
   await row(page, 'Jan Novák').click()
 
-  await panel(page).getByRole('link', { name: 'Open in document' }).click()
+  await panel(page).getByTestId('chunk-context-title').click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   await expect(page.locator('.text-segment.is-tagged', { hasText: 'Jan Novák' }).first()).toBeVisible()
 
@@ -591,6 +633,93 @@ test('keyboard: Home shows the first row below the header, focus is drawn on che
   await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
 })
 
+test('a long annotated text shows its first lines in the sidebar, the whole text on request', async ({ page, request }) => {
+  const first = fixture.chunk('chronicle_1').text
+  const second = fixture.chunk('chronicle_2').text
+  await createSpan(request, 'chronicle_1', 0, first.length + second.length)
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  await row(page, first.slice(0, 30)).click()
+
+  const text = panel(page).getByTestId('annotation-context-text')
+  const toggle = panel(page).getByTestId('annotation-context-text-toggle')
+  await expect(toggle).toHaveAttribute('aria-label', 'Show all text')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(await text.evaluate(e => e.scrollHeight > e.clientHeight), 'the text is clamped').toBe(true)
+  const clamped = (await text.boundingBox())?.height ?? 0
+
+  // The arrow unfolds it, smoothly; a click on the text folds it again.
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-label', 'Show less text')
+  await expect.poll(async () => (await text.boundingBox())?.height ?? 0).toBeGreaterThan(clamped + 10)
+  await text.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect.poll(async () => (await text.boundingBox())?.height ?? 0).toBeLessThan(clamped + 2)
+
+  // Another annotation opens clamped again; a short one has no toggle.
+  await page.getByRole('button', { name: 'Close sidebar' }).click()
+  await row(page, 'Prahy').click()
+  await expect(text).toHaveText('Prahy')
+  await expect(toggle).toHaveCount(0)
+})
+
+test('the review comes first; the tag chip changes the tag (#659)', async ({ page, request }) => {
+  const text = fixture.chunk('chronicle_2').text.slice(0, 8)
+  await createSpan(request, 'chronicle_2', 0, 8)
+  await useViewport(page, 'narrow')
+  await openWorkspace(page)
+  await row(page, text).click()
+  const context = page.getByTestId('annotation-context')
+  const review = page.getByTestId('annotation-review')
+  const chip = page.getByTestId('row-retag')
+  await expect(chip).toHaveAccessibleName(`Tag: ${fixture.tag('person').name}. Change tag`)
+  // The decision is the first thing in the detail, above the tag and the text.
+  const y = async (locator: typeof chip) => (await locator.boundingBox())?.y ?? 0
+  expect(await y(review)).toBeLessThan(await y(chip))
+  expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
+  // Approve, Reject and Next decide; Delete is a quiet action of its own, apart from them.
+  await expect(review.getByRole('button')).toHaveText(['checkApprove', 'blockReject', 'skip_nextNext'])
+  // The status in its colour, the tag's definition on the chip.
+  await expect(context.getByTestId('annotation-context-status')).toHaveClass(/annotation-context__status--pos/)
+  await chip.hover()
+  await expect(page.getByTestId('tag-chip-tooltip')).toContainText('Click to change the tag')
+  await page.mouse.move(0, 0)
+  await expect(review.getByRole('button', { name: 'Delete…' })).toHaveCount(0)
+  await expect(context.getByTestId('annotation-secondary-actions').getByRole('button', { name: 'Delete…' })).toBeVisible()
+  await expect(sidebarPanelButton(page, 'Annotation')).toHaveCount(1)
+  // Origin is outside the height-capped attributes.
+  await expect(context.getByTestId('annotation-context-details').getByTestId('annotation-provenance')).toHaveCount(0)
+  await expect(context.getByTestId('annotation-provenance')).toBeVisible()
+
+  await chip.click()
+  const menu = page.getByRole('menu', { name: 'Change tag' })
+  await expect(menu.getByRole('menuitem', { name: fixture.tag('person').name })).toHaveAttribute('aria-disabled', 'true')
+  await menu.getByRole('menuitem', { name: fixture.tag('place').name }).click()
+  await expect(chip).toHaveAccessibleName(`Tag: ${fixture.tag('place').name}. Change tag`)
+  await expect(page.getByTestId('review-report')).toContainText('1 of 1')
+})
+
+test('a long document title takes two lines above the passage, the whole title in its tooltip (#659)', async ({ page }) => {
+  const title = 'Karlínské listy : politickohospodářský neodvislý týdenník města Karlína, Holešovic, Libně a Vysočan. 2. 28'
+  await page.route('**/api/documents/*/chunks/*/window*', async route => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.document = { ...body.document, title }
+    await route.fulfill({ response, json: body })
+  })
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  await row(page, 'Jan Novák').click()
+  const heading = panel(page).getByTestId('chunk-context-title')
+  await expect(heading).toHaveAttribute('title', new RegExp('^' + title))
+  const { lines, clipped } = await heading.evaluate(el => ({
+    lines: Math.round(el.clientHeight / parseFloat(getComputedStyle(el).lineHeight)),
+    clipped: el.scrollHeight > el.clientHeight
+  }))
+  expect(lines).toBe(2)
+  expect(clipped, 'the title is longer than two lines here').toBe(true)
+})
+
 test('a shared user reads the same workspace', async ({ page }) => {
   await useViewport(page, 'phone')
   await openWorkspace(page, 'annotator')
@@ -605,7 +734,7 @@ test('a review made in the document view shows in the workspace on return', asyn
   await useViewport(page, 'narrow')
   await openWorkspace(page)
   await row(page, 'Lhoty').click()
-  await panel(page).getByRole('link', { name: 'Open in document' }).click()
+  await panel(page).getByTestId('chunk-context-title').click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   // The linked proposal is marked although AI Tagging (which shows proposals) is not open.
   await expect(page.locator('.text-segment.is-highlighted', { hasText: 'Lhoty' }).first()).toBeVisible()
@@ -625,7 +754,7 @@ test('the open row follows edits made in the document view', async ({ page, requ
   await openWorkspace(page)
   await row(page, 'Jan Novák').click()
   const openDocument = async () => {
-    await panel(page).getByRole('link', { name: 'Open in document' }).click()
+    await panel(page).getByTestId('chunk-context-title').click()
     await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   }
   try {
@@ -697,10 +826,10 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
     await expect(next).toHaveAttribute('aria-current', 'true')
 
     await row(page, first.slice(0, 4)).click()
-    await review.getByRole('button', { name: 'Delete…' }).click()
+    await panel(page).getByRole('button', { name: 'Delete…' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
     await expect(row(page, first.slice(0, 4))).toHaveCount(1)
-    await review.getByRole('button', { name: 'Delete…' }).click()
+    await panel(page).getByRole('button', { name: 'Delete…' }).click()
     await expect(page.getByRole('dialog')).toContainText('cannot be restored')
     await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Deleted 1 of 1 annotation.')
@@ -926,7 +1055,7 @@ test('undoing a batch approval restores the proposals not changed since; a delet
 
     await page.getByTestId('concordance-status-pos').click() // all statuses again
     await row(page, 'Roku').click()
-    await page.getByTestId('annotation-review').getByRole('button', { name: 'Delete…' }).click()
+    await page.getByTestId('annotation-context').getByRole('button', { name: 'Delete…' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Delete 1' }).click()
     await expect(page.getByTestId('undo-bar')).toHaveText('Deleted annotations cannot be restored.')
     await expect(page.getByTestId('undo')).toHaveCount(0)

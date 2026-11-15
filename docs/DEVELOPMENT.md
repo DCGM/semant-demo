@@ -292,8 +292,15 @@ They never use the development container, `.dev-data/` or `local_data/`:
   diacritics, a combining mark and a non-BMP character). The collections are created once
   per run and are dropped and recreated only when their configuration no longer matches
   (e.g. a test dropped one or auto-schema added a property); dropping and recreating them
-  for every test was the main cost of the suite and could stall ~20 s in Weaviate. A
-  missing or unowned store is an error, never a skip.
+  for every test was the main cost of the suite and could stall ~20 s in Weaviate. The
+  corpus annotation tenants are likewise emptied and reused while active, and each app test
+  gets a copy of one per-run SQLite database holding the corpus users (#686). A missing or
+  unowned store is an error, never a skip.
+- To see where integration setup time goes, run the suite with
+  `SEMANT_FIXTURE_PROFILE=/tmp/fixture-profile.json make test-integration`: it prints the
+  total time of each fixture phase (reset, seed, Weaviate connect, SQLite users, app
+  startup, pytest setup/call/teardown) and writes the per-test records to the file. Without
+  the variable the timing is off.
 - `make test-e2e` builds the frontend into `semant_demo_frontend/dist/e2e` and starts
   `python -m tests.e2e_server` (from `semant_demo_backend`): the same seeded corpus, a
   temporary SQLite database with the corpus users, the synthetic page scans of
