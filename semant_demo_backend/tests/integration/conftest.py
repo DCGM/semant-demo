@@ -4,10 +4,13 @@ Tests in this package must carry ``pytestmark = pytest.mark.integration``. A mis
 unowned store is an error, not a skip, so a required integration run cannot pass
 without exercising Weaviate.
 """
+import shutil
+
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 from weaviate.classes.query import QueryReference
 from weaviate.collections.data.async_ import _DataCollectionAsync
@@ -25,10 +28,30 @@ from semant_demo.routes.dependencies import get_topicer
 from tests.app_support import make_test_config
 from tests.auth_support import auth_headers
 from tests.corpus import load_corpus
+from tests import fixture_profile
+from tests.fixture_profile import phase
 from tests.fake_providers import FAKE_TOPICER_CONFIGS, create_fake_provider_app
-from tests.seed import insert_documents, seed_users, seed_weaviate
+from tests.seed import annotation_tenants, insert_documents, seed_users, seed_weaviate
 from tests.weaviate_store import (
     StoreEndpoint, claim_store, connect, create_documents_collection, reset_app_collections)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    fixture_profile.start_test(item.nodeid)
+    return (yield)
+
+
+def pytest_runtest_logreport(report):
+    fixture_profile.record(report.nodeid, f"pytest.{report.when}", report.duration)
+
+
+def pytest_terminal_summary(terminalreporter):
+    path = fixture_profile.write()
+    if path:
+        terminalreporter.write_sep("-", f"fixture profile ({fixture_profile.ENV}={path})")
+        for line in fixture_profile.report_lines():
+            terminalreporter.write_line(line)
 
 
 @pytest.fixture
@@ -53,7 +76,8 @@ def store_token(store_endpoint) -> str:
 
 @pytest.fixture
 async def weaviate_client(store_endpoint):
-    client = await connect(store_endpoint)
+    with phase("connect"):
+        client = await connect(store_endpoint)
     try:
         yield client
     finally:
@@ -73,8 +97,11 @@ async def seeded_store(weaviate_client, collection_names, corpus, store_token, c
     Emptied (or recreated if their schema changed) before each test, which also removes
     whatever an earlier, possibly failed, test left in this owned instance.
     """
-    await reset_app_collections(weaviate_client, collection_names, store_token, created_app_schema)
-    await seed_weaviate(weaviate_client, collection_names, corpus, store_token)
+    with phase("reset"):
+        await reset_app_collections(weaviate_client, collection_names, store_token, created_app_schema,
+                                    keep_tenants=annotation_tenants(corpus))
+    with phase("seed"):
+        await seed_weaviate(weaviate_client, collection_names, corpus, store_token)
     return weaviate_client
 
 
@@ -113,18 +140,37 @@ def tags(seeded_store, collection_names, spans) -> TagRepository:
     return TagRepository(seeded_store, collection_names, spans)
 
 
+@pytest.fixture(scope="session")
+def seeded_users_db(tmp_path_factory):
+    """Path of this run's SQLite database holding only the corpus users, created by the
+    first ``api_app``; each app gets its own copy (#686)."""
+    return tmp_path_factory.mktemp("seeded-users") / "users.db"
+
+
 @pytest.fixture
-async def api_app(tmp_path, store_endpoint, seeded_store, corpus):
-    """A started app using the seeded store and a SQLite database with corpus users."""
+async def api_app(tmp_path, store_endpoint, seeded_store, corpus, seeded_users_db):
+    """A started app using the seeded store and its own SQLite database with corpus users."""
     config = make_test_config(tmp_path, **store_endpoint.app_environ())
-    engine = create_async_engine(config.SQL_DB_URL)
+    with phase("app.seed_users"):
+        if not seeded_users_db.exists():
+            partial = seeded_users_db.with_suffix(".partial")
+            engine = create_async_engine(f"sqlite+aiosqlite:///{partial}")
+            try:
+                await seed_users(engine, corpus)
+            finally:
+                await engine.dispose()
+            partial.rename(seeded_users_db)  # only a complete database is ever copied
+        shutil.copyfile(seeded_users_db, make_url(config.SQL_DB_URL).database)
+    with phase("app.create"):
+        app = create_app(config)
+    manager = LifespanManager(app)
+    with phase("app.startup"):
+        await manager.__aenter__()
     try:
-        await seed_users(engine, corpus)
-    finally:
-        await engine.dispose()
-    app = create_app(config)
-    async with LifespanManager(app):
         yield app
+    finally:
+        with phase("app.shutdown"):
+            await manager.__aexit__(None, None, None)
 
 
 @pytest.fixture
