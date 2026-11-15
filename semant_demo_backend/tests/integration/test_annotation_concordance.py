@@ -82,12 +82,33 @@ async def all_pages(store, owner, ids, size, filters=None, **kwargs):
             return [r.id for r in rows]
 
 
+@pytest.mark.parametrize("descending", [False, True])
 @pytest.mark.parametrize("sort", list(AnnotationSort))
-async def test_pages_partition_one_total_order(store, owner, ids, created, sort):
-    full = await query(store, owner, ids, sort=sort, limit=200)
+async def test_pages_partition_one_total_order(store, owner, ids, created, sort, descending):
+    full = await query(store, owner, ids, sort=sort, descending=descending, limit=200)
     assert full.total == len(full.rows) == 10  # 6 created; seeded: pos Novák, Brně, auto Lhoty, Prahy
     for size in (1, 2, 3, 5):
-        assert await all_pages(store, owner, ids, size, sort=sort) == [r.id for r in full.rows], size
+        assert await all_pages(store, owner, ids, size, sort=sort, descending=descending) == [r.id for r in full.rows], size
+
+
+async def test_descending_text_order_reverses_texts_and_puts_missing_text_last(store, owner, ids, created):
+    ascending = (await query(store, owner, ids, sort=AnnotationSort.text, limit=200)).rows
+    descending = (await query(store, owner, ids, sort=AnnotationSort.text, descending=True, limit=200)).rows
+    texts = [r.text for r in descending if r.text is not None]
+    assert texts == sorted(texts, reverse=True)
+    assert texts == sorted((r.text for r in ascending if r.text is not None), reverse=True)
+    missing = [r for r in descending if r.text is None]
+    assert descending[len(descending) - len(missing):] == missing
+
+
+async def test_api_takes_the_sort_direction(api_client, login, ids):
+    path = f"/api/user_collections/{ids.col['chronicles']}/annotations"
+    owner = await login("owner")
+    ascending = (await api_client.get(path, headers=owner, params={"sort": "year"})).json()["rows"]
+    descending = (await api_client.get(path, headers=owner, params={"sort": "year", "descending": "true"})).json()["rows"]
+    assert {r["id"] for r in descending} == {r["id"] for r in ascending}
+    years = [r["documentYear"] for r in descending if r["documentYear"] is not None]
+    assert years == sorted(years, reverse=True)
 
 
 async def test_document_order_and_row_fields(store, owner, ids, corpus, created):

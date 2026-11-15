@@ -132,10 +132,18 @@ class FakeSpans:
     async def count_rows(self, cid, query, document_ids=None):
         return len(self._match(query, document_ids))
 
-    async def query_rows(self, cid, query, *, by_text, document_ids=None, limit, offset=0):
+    async def query_rows(self, cid, query, *, by_text, document_ids=None, limit, offset=0, descending=False):
         self.queries += 1
-        key = (lambda r: (r.text is not None, r.text or "", str(r.id))) if by_text else _position_key
-        return sorted(self._match(query, document_ids), key=key)[offset:offset + limit]
+        rows = self._match(query, document_ids)
+        if not by_text:
+            ordered = sorted(rows, key=_position_key)
+        elif descending:  # as Weaviate: without text last, then the id ascending
+            by_id = sorted(rows, key=lambda r: str(r.id))
+            ordered = (sorted([r for r in by_id if r.text is not None], key=lambda r: r.text, reverse=True)
+                       + [r for r in by_id if r.text is None])
+        else:
+            ordered = sorted(rows, key=lambda r: (r.text is not None, r.text or "", str(r.id)))
+        return ordered[offset:offset + limit]
 
 
     async def query_ids(self, cid, query, *, document_ids=None, limit):
@@ -190,6 +198,32 @@ async def test_year_order_puts_documents_without_year_last(store):
     store.spans.rows = [row(DOC_NO_YEAR, 0), row(DOC_A, 0), row(DOC_B, 0)]
     page = await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.year)
     assert [r.documentId for r in page.rows] == [DOC_B, DOC_A, DOC_NO_YEAR]
+
+
+async def test_descending_document_order_reverses_titles_keeps_reading_order_and_missing_last(store):
+    later, earlier = row(DOC_A, 30), row(DOC_A, 10)
+    store.spans.rows = [later, earlier, row(DOC_NO_YEAR, 1), row(DOC_B, 1), row(DOC_GONE, 0)]
+    ascending = await service.query_annotations(store, OWNER, COLLECTION)
+    descending = await service.query_annotations(store, OWNER, COLLECTION, descending=True)
+    documents = [r.documentId for r in ascending.rows]
+    titled = [d for d in dict.fromkeys(documents) if d != DOC_GONE]
+    assert list(dict.fromkeys(r.documentId for r in descending.rows)) == [*reversed(titled), DOC_GONE]
+    assert [r.id for r in descending.rows if r.documentId == DOC_A] == [earlier.id, later.id]
+    for size in range(1, 6):
+        rows, _ = await all_pages(store, size, descending=True)
+        assert rows == [r.id for r in descending.rows], size
+
+
+async def test_descending_year_order_keeps_documents_without_year_last(store):
+    store.spans.rows = [row(DOC_NO_YEAR, 0), row(DOC_A, 0), row(DOC_B, 0)]
+    page = await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.year, descending=True)
+    assert [r.documentId for r in page.rows] == [DOC_A, DOC_B, DOC_NO_YEAR]
+
+
+async def test_descending_text_order_is_passed_to_the_store(store):
+    store.spans.rows = [row(DOC_A, 0, "zebra"), row(DOC_B, 0, "Ahoj"), row(DOC_A, 9, "beta"), row(DOC_B, 5, current=False)]
+    page = await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.text, descending=True)
+    assert [r.text for r in page.rows] == ["zebra", "beta", "Ahoj", None]
 
 
 async def test_text_order_reads_no_document_counts_and_joins_only_the_page(store):
