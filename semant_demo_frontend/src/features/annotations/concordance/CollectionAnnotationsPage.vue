@@ -70,8 +70,32 @@
         </q-btn>
       </span>
       <q-space />
+      <q-btn
+        flat
+        dense
+        no-caps
+        color="primary"
+        icon="file_download"
+        label="Export CSV"
+        data-testid="export-csv"
+        @click="exportOpen = true"
+      >
+        <q-tooltip>Download the selected annotations, the filter matches or all annotations as a spreadsheet file</q-tooltip>
+      </q-btn>
       <PagerButtons v-if="store.total > PAGE_SIZE" />
     </div>
+
+    <AnnotationExportDialog
+      v-model="exportOpen"
+      :collection-id="collectionId"
+      :filters="store.filters"
+      :filter-summary="filterSummary"
+      :selected-ids="selection.ids"
+      :hidden-selected="store.hiddenSelected"
+      :total="store.total"
+      :ranked="ranked"
+      :needs-text="store.needsText"
+    />
 
     <div v-if="store.error" class="collection-annotations__state text-negative" role="alert" data-testid="concordance-error">
       {{ store.error }}
@@ -423,6 +447,8 @@ import TagChipMenu from './TagChipMenu.vue'
 import ProvenanceSummary from './ProvenanceSummary.vue'
 import BoundaryEditor from './BoundaryEditor.vue'
 import AnnotationAttributes from './AnnotationAttributes.vue'
+import AnnotationExportDialog from './AnnotationExportDialog.vue'
+import { exportFilterSummary } from './annotationExport'
 import { useAttributesStore } from 'src/features/attributes/attributesStore'
 import { assignMayHaveChanged, useAttributeAssignStore } from 'src/features/attributes/attributeAssignStore'
 import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
@@ -432,7 +458,7 @@ import {
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, ranksText, useConcordanceStore } from './concordanceStore'
-import { rankedLabel } from './filterChips'
+import { concordanceChips, rankedLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
@@ -467,6 +493,12 @@ const rangeLabel = computed(() => {
   const last = store.offset + store.rows.length
   return `Rows ${first}–${last} of ${store.total} ${ranked.value ? 'ranked' : 'matching'} annotations`
 })
+
+// ── CSV export (#719) ──
+const exportOpen = ref(false)
+/** The active filters in words, for the export's filter scope. */
+const filterSummary = computed(() => exportFilterSummary(store.filters,
+  concordanceChips(store.filters, tags.value, store.documents, attributesStore.attributes)))
 
 /** A ranked page's description (#664): top k, truncation and vector coverage. */
 const rankedText = computed(() => rankedLabel(store.page?.result, store.total))

@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { readFileSync } from 'fs'
+import { expect, test, type APIRequestContext, type Download, type Locator, type Page } from '@playwright/test'
 
 import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport, viewports } from './support'
 import { animatedPart, longDocument, recordScroll } from './longDocument'
@@ -452,12 +453,12 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   // A document filter of the shared criteria: only the letters' title matches.
   await page.getByLabel('Context text').clear()
   await expect(rows(page)).toHaveCount(all)
-  await page.getByTestId('concordance-document-filters').click()
+  await page.getByTestId('concordance-more-filters').click()
+  await expect(page.getByTestId('concordance-more-filters')).toHaveAttribute('aria-expanded', 'true')
   await page.getByLabel('Title contains').fill('dopisy')
   await page.getByLabel('Title contains').press('Enter')
-  await page.keyboard.press('Escape')
   await expect(chips).toContainText('Title contains:dopisy')
-  await expect(page.getByTestId('concordance-document-filters')).toContainText('Document filters (1)')
+  await expect(page.getByTestId('concordance-more-filters')).toContainText('More filters (1)')
   await expect.poll(() => rows(page).count()).toBeLessThan(all)
   await expect(rows(page).first()).toBeVisible()
   for (const source of await rows(page).locator('.kwic__title').allTextContents()) expect(source).toBe('Dopisy z Prahy')
@@ -465,6 +466,24 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   await page.getByRole('button', { name: 'Remove filter Title contains: dopisy' }).click()
   await expect(rows(page)).toHaveCount(all)
   await expect(chips).toHaveCount(0)
+})
+
+test('on a phone the filter form is closed behind a summary and keeps what was entered (#660 review)', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const toggle = page.getByTestId('concordance-filters-toggle')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByTestId('concordance-text')).toBeHidden()
+  await expect(rows(page).first()).toBeVisible()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await page.getByLabel('Annotated text').fill('nová')
+  await expect(page.getByTestId('concordance-chips')).toContainText('nová')
+  await toggle.click()
+  await expect(page.getByTestId('concordance-text')).toBeHidden()
+  await expect(page.getByTestId('concordance-summary')).toContainText('nová')
+  await toggle.click()
+  await expect(page.getByLabel('Annotated text')).toHaveValue('nová')
 })
 
 test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
@@ -493,7 +512,6 @@ test('column headers sort the whole result both ways and bring up their filters,
   await page.keyboard.press('Enter')
   await expect(annotation).toHaveAttribute('aria-sort', 'descending')
   await expect.poll(keys).toEqual(['Prahy', 'Lhoty', 'Jan Novák', 'Brně'])
-  await expect(page.getByTestId('concordance-sort-direction')).toHaveAttribute('aria-pressed', 'true')
   // Sorting kept the open row and the sidebar.
   await expect(row(page, 'Lhoty')).toHaveAttribute('aria-current', 'true')
   await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
@@ -618,8 +636,6 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   await expect(ranked).toHaveText('Top 100 most similar (3 found)')
   await expect(row(page, 'Jan Novák')).toHaveCount(0)
   await expect(rows(page).getByTestId('kwic-rank')).toHaveText(['#1', '#2', '#3'])
-  await expect(page.getByTestId('concordance-sort')).toHaveText('Relevance')
-  await expect(page.locator('label', { has: page.getByTestId('concordance-sort') })).toHaveClass(/q-field--disabled/)
   await expect(page.getByTestId('select-all-matches')).toHaveText('Select these top 3')
   const chip = page.getByTestId('concordance-chip-similar')
   await expect(chip).toContainText('Similar to:\'Jan Novák\'')
@@ -1260,4 +1276,50 @@ test('undoing a batch approval restores the proposals not changed since; a delet
   } finally {
     for (const span of [lhota, praha]) await patchSpan(request, span.id, { type: 'auto' })
   }
+})
+
+test('the selection, outside the filters too, and the filter matches download as CSV (#719)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  /** The rows of a downloaded file of simple cells (no quoted commas or line breaks in this fixture). */
+  const csvRows = async (download: Download): Promise<Record<string, string>[]> => {
+    const bytes: Uint8Array = readFileSync(await download.path())
+    expect([...bytes.subarray(0, 3)], 'UTF-8 byte order mark').toEqual([0xef, 0xbb, 0xbf])
+    const [header, ...lines] = new TextDecoder().decode(bytes.subarray(3)).trimEnd().split('\r\n')
+    const columns = header.split(',')
+    return lines.map((line: string) => Object.fromEntries(line.split(',').map((cell: string, i: number) => [columns[i], cell])))
+  }
+
+  // The two proposals selected, then shown only the confirmed annotations: both selected are hidden.
+  await page.getByTestId('concordance-status-pos').click()
+  await expect(rows(page)).toHaveCount(2)
+  await page.getByTestId('select-all-matches').click()
+  await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
+  await page.getByTestId('concordance-status-pos').click()
+  await page.getByTestId('concordance-status-auto').click()
+  await expect(rows(page)).toHaveCount(2)
+  await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown')
+
+  await page.getByTestId('export-csv').click()
+  const dialog = page.getByTestId('export-dialog')
+  await expect(dialog.getByTestId('export-scope-selection')).toHaveAttribute('aria-checked', 'true')
+  await expect(dialog.getByTestId('export-hidden-selected')).toContainText('2 of them are not shown by the current filters')
+  await expect(dialog.getByTestId('export-target')).toHaveText('Exports 2 selected annotations.')
+  let downloading = page.waitForEvent('download')
+  await dialog.getByTestId('export-download').click()
+  const selected = await csvRows(await downloading)
+  expect(selected.map(r => [r.text, r.status]).sort()).toEqual([['Lhoty', 'proposal'], ['Prahy', 'proposal']])
+  expect(selected.every(r => r.document_id && r.document_start_char !== '')).toBe(true)
+  await expect(dialog.getByTestId('export-result')).toContainText('2 annotations (selected annotations)')
+
+  // The current filters: every confirmed annotation, not the selection.
+  await dialog.getByTestId('export-scope-filters').click()
+  await expect(dialog.getByTestId('export-filter-summary')).toContainText('Status: Confirmed')
+  downloading = page.waitForEvent('download')
+  await dialog.getByTestId('export-download').click()
+  const matches = await csvRows(await downloading)
+  expect(matches.map(r => r.status)).toEqual(['confirmed', 'confirmed'])
+  expect((await downloading).suggestedFilename()).toMatch(/^annotations-filters-\d{4}-\d{2}-\d{2}\.csv$/)
+  await dialog.getByRole('button', { name: 'Close' }).last().click()
+  await expect(dialog).toHaveCount(0)
 })

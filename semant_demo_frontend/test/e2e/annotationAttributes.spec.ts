@@ -113,6 +113,8 @@ test('a row is classified in the attribute column and in the sidebar, and filter
   await closePicker(page)
 
   // Exact filters: the value, and "not assigned".
+  await page.getByTestId('concordance-more-filters').click()
+  await expect(page.getByTestId('concordance-attribute-rule')).toContainText('any')
   await toggleOption(page, 'concordance-attributes', 'Role: statesman')
   await expect(rows(page)).toHaveCount(1)
   await expect(row(page, 'Jan Novák')).toHaveCount(1)
