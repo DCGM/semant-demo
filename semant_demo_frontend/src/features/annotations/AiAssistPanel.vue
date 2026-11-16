@@ -202,7 +202,10 @@
           :disable="isBulkResolving"
           @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
         >
-          <span class="text-caption text-grey-7">
+          <span v-if="bulkProgress" class="text-caption text-grey-7" data-testid="bulk-resolve-progress">
+            Saving {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} not saved</template>…
+          </span>
+          <span v-else class="text-caption text-grey-7">
             {{ selectedSuggestionIds.size }} / {{ pendingAutoSpans.length }} selected
           </span>
         </q-checkbox>
@@ -230,6 +233,13 @@
           <q-tooltip>Reject all selected suggestions</q-tooltip>
         </q-btn>
       </div>
+      <q-linear-progress
+        v-if="bulkProgress"
+        :value="bulkProgress.total ? bulkProgress.processed / bulkProgress.total : 0"
+        color="primary"
+        size="3px"
+        class="q-mb-xs"
+      />
       <div class="auto-span-list">
         <div
           v-for="entry in pendingAutoSpans"
@@ -330,6 +340,7 @@ import useAiAssistance, {
 import { useTagEditing } from './useTagEditing'
 import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
+import { describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
 
 // AI annotation suggestions for a document: runs over the selected tags, the pending
 // suggestions with approve/reject, and two-way highlighting with the spans in the text
@@ -549,6 +560,7 @@ const rejectAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.neg)
 // ── Bulk approve / reject of selected suggestions ──
 const selectedSuggestionIds = ref<Set<string>>(new Set())
 const isBulkResolving = ref(false)
+const bulkProgress = ref<BulkResolveProgress | null>(null)
 
 const allSuggestionsSelected = computed(() => {
   const ids = pendingAutoSpans.value
@@ -594,40 +606,50 @@ watch(pendingAutoSpans, (entries) => {
 })
 
 async function bulkResolveSelected(type: SpanType) {
-  if (!selectedSuggestionIds.value.size) return
-  // Snapshot the spans we want to act on (id -> chunkId) before any mutations
-  // start removing them from the pending list.
-  const targets: Array<{ id: string; chunkId: string }> = []
+  if (!selectedSuggestionIds.value.size || isBulkResolving.value) return
+  // Snapshot the spans we want to act on before any mutations start removing them from
+  // the pending list.
   const idSet = selectedSuggestionIds.value
-  for (const entry of pendingAutoSpans.value) {
-    if (entry.span.id && idSet.has(entry.span.id)) {
-      targets.push({ id: entry.span.id, chunkId: entry.span.chunkId })
-    }
-  }
+  const targets = pendingAutoSpans.value.flatMap((e) => e.span.id && idSet.has(e.span.id) ? [e.span.id] : [])
   if (!targets.length) return
 
   // Pre-compute which suggestion should be highlighted once these resolve.
-  const targetIds = new Set(targets.map((t) => t.id))
+  const targetIds = new Set(targets)
   const nextHighlight =
     pendingAutoSpans.value.find((e) => e.span.id && !targetIds.has(e.span.id))?.span.id ?? null
 
+  const isCurrent = resolveRequests.capture()
   isBulkResolving.value = true
-  for (const t of targets) busyAutoSpanIds.value.add(t.id)
+  bulkProgress.value = { total: targets.length, processed: 0, saved: 0, notSaved: 0 }
+  for (const id of targets) busyAutoSpanIds.value.add(id)
+  let summary: BulkResolveSummary | null = null
   try {
-    await tagSpans
-      .bulkUpdateSpans(
-        targets.map((t) => t.id),
-        { type }
-      )
-      .catch((e: unknown) => {
-        console.error('Bulk resolve failed', e)
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : 'Failed to update the selected suggestions.' })
-      })
-    aiAssist.highlightedAutoSpanId.value = nextHighlight
+    summary = await runBulkResolve(
+      targets,
+      async (ids) => {
+        if (!isCurrent()) return null
+        try {
+          return await tagSpans.applyBulkUpdate(ids, { type })
+        } finally {
+          for (const id of ids) busyAutoSpanIds.value.delete(id)
+        }
+      },
+      (progress) => { if (isCurrent()) bulkProgress.value = progress }
+    )
   } finally {
-    for (const t of targets) busyAutoSpanIds.value.delete(t.id)
+    for (const id of targets) busyAutoSpanIds.value.delete(id)
     isBulkResolving.value = false
-    selectedSuggestionIds.value = new Set()
+    bulkProgress.value = null
+  }
+  if (!isCurrent() || summary.abandoned) return
+  // Keep the suggestions that were not saved selected, so they can be retried.
+  const unresolved = new Set(summary.unresolved)
+  selectedSuggestionIds.value = new Set([...selectedSuggestionIds.value].filter((id) => unresolved.has(id)))
+  if (summary.saved) aiAssist.highlightedAutoSpanId.value = nextHighlight
+  if (summary.error) console.error('Bulk resolve failed', summary.error)
+  const message = describeBulkResolve(summary, type === SpanType.pos ? 'Confirmed' : 'Rejected')
+  if (message) {
+    $q.notify({ type: summary.saved === summary.total ? 'warning' : 'negative', message, timeout: 10000 })
   }
 }
 
