@@ -385,7 +385,7 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
     // The confirmed row stays in place, at its new state, marked as out of the filters.
     await expect(rows(page)).toHaveCount(2)
     await expect(first).toContainText('Confirmed')
-    await expect(first.getByTestId('kwic-unmatched')).toBeVisible()
+    await expect(first).toHaveClass(/kwic__row--unmatched/)
     await expect(page.getByTestId('concordance-unmatched')).toContainText('1 reviewed row no longer matches the filters')
     await expect(page.getByTestId('row-next')).toBeDisabled()
 
@@ -904,7 +904,7 @@ test('all matches are a fixed selection that a shared user reviews in one batch'
     // Rejected annotations leave the default filters but stay selected, and the bar says so. Their
     // rows stay, marked, until the list is read again (#690).
     await expect(rows(page)).toHaveCount(4)
-    await expect(page.getByTestId('kwic-unmatched')).toHaveCount(2)
+    await expect(page.locator('.kwic__row--unmatched')).toHaveCount(2)
     await page.getByTestId('concordance-refresh').click()
     await expect(rows(page)).toHaveCount(2)
     await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown by these filters')
@@ -977,7 +977,7 @@ test('the sidebar names who changed the open annotation and refuses a review of 
     await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
     // Rejected: out of the default filters, but the row stays until the list is read again (#690).
     await expect(row(page, 'Lhoty')).toContainText('Rejected')
-    await expect(row(page, 'Lhoty').getByTestId('kwic-unmatched')).toBeVisible()
+    await expect(row(page, 'Lhoty')).toHaveClass(/kwic__row--unmatched/)
     await page.getByTestId('concordance-refresh').click()
     await expect(row(page, 'Lhoty')).toHaveCount(0)
   } finally {
@@ -1002,7 +1002,7 @@ test('a refused review keeps its conflict when the change took the annotation ou
     // The row stays where it was, at its current state, marked as out of the filters (#690).
     await expect(conflict).toContainText('It no longer matches the filters.')
     await expect(row(page, 'Lhoty')).toContainText('Confirmed')
-    await expect(row(page, 'Lhoty').getByTestId('kwic-unmatched')).toBeVisible()
+    await expect(row(page, 'Lhoty')).toHaveClass(/kwic__row--unmatched/)
     await expect(context.getByTestId('annotation-context-gone')).toHaveCount(0)
 
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()

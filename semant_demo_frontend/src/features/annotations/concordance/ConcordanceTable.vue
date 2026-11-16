@@ -100,6 +100,7 @@
           'kwic__row--rejected': row.type === SpanType.neg,
           'kwic__row--unmatched': unmatched.has(row.id)
         }"
+        :title="unmatched.has(row.id) ? 'No longer matches the filters; it leaves the list when the list is read again' : undefined"
         role="row"
         :aria-selected="selected.has(row.id) ? 'true' : 'false'"
         :aria-current="row.id === focusedId ? 'true' : undefined"
@@ -207,15 +208,8 @@
             :aria-busy="saving.has(row.id) ? 'true' : undefined"
             data-testid="kwic-status"
           >{{ statusLabel(row.type) }}<q-spinner v-if="saving.has(row.id)" class="kwic__status-spinner" size="0.9em" aria-label="Saving" /></span>
-          <!-- Reviewed here and out of the filters now: it stays until the query is read again (#690). -->
-          <q-icon
-            v-if="unmatched.has(row.id)"
-            name="filter_alt_off"
-            size="1rem"
-            class="kwic__unmatched"
-            title="No longer matches the filters; it leaves the list when the list is read again"
-            data-testid="kwic-unmatched"
-          />
+          <!-- Reviewed here and out of the filters now: dimmed until the query is read again (#690);
+               the summary line counts these rows. -->
           <span v-if="unmatched.has(row.id)" class="sr-only">No longer matches the filters</span>
         </div>
         <div class="kwic__cell kwic__source" role="gridcell" :title="sourceLabel(row)">
@@ -903,11 +897,6 @@ defineExpose({ reveal })
   inset: 0;
   margin: auto;
   color: var(--q-primary);
-}
-
-.kwic__unmatched {
-  flex: 0 0 auto;
-  color: rgba(0, 0, 0, 0.6);
 }
 
 /* Reviewed out of the filters (#690): still there, but visibly no longer part of the result. */
