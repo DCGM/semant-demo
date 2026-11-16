@@ -36,6 +36,8 @@ import type {
   ChunkTagSyncRequest,
   Collection,
   CollectionChunk,
+  CollectionExportRequest,
+  CollectionExportTicket,
   CollectionPerson,
   CollectionStats,
   ContextChatRequest,
@@ -151,6 +153,10 @@ import {
     CollectionToJSON,
     CollectionChunkFromJSON,
     CollectionChunkToJSON,
+    CollectionExportRequestFromJSON,
+    CollectionExportRequestToJSON,
+    CollectionExportTicketFromJSON,
+    CollectionExportTicketToJSON,
     CollectionPersonFromJSON,
     CollectionPersonToJSON,
     CollectionStatsFromJSON,
@@ -421,6 +427,10 @@ export interface DiscussSpanApiAiDiscussSpanPostRequest {
     discussSpanRequest: DiscussSpanRequest;
 }
 
+export interface DownloadCollectionExportApiExportsCollectionsTokenGetRequest {
+    token: string;
+}
+
 export interface ExplainSelectionApiRagExplainPostRequest {
     explainRequest: ExplainRequest;
 }
@@ -609,6 +619,10 @@ export interface RemoveChunkFromCollectionApiUserCollectionsCollectionIdChunksCh
 export interface RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest {
     collectionId: string;
     documentId: string;
+}
+
+export interface RequestCollectionExportApiExportsCollectionsPostRequest {
+    collectionExportRequest: CollectionExportRequest;
 }
 
 export interface ResolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPostRequest {
@@ -1388,6 +1402,30 @@ export interface DefaultApiInterface {
      * Discuss Span
      */
     discussSpanApiAiDiscussSpanPost(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for downloadCollectionExportApiExportsCollectionsTokenGet without sending the request
+     * @param {string} token 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    downloadCollectionExportApiExportsCollectionsTokenGetRequestOpts(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
+     * @summary Download Collection Export
+     * @param {string} token 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    downloadCollectionExportApiExportsCollectionsTokenGetRaw(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
+     * Download Collection Export
+     */
+    downloadCollectionExportApiExportsCollectionsTokenGet(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for explainSelectionApiRagExplainPost without sending the request
@@ -2443,6 +2481,30 @@ export interface DefaultApiInterface {
      * Remove Document From Collection
      */
     removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
+
+    /**
+     * Creates request options for requestCollectionExportApiExportsCollectionsPost without sending the request
+     * @param {CollectionExportRequest} collectionExportRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    requestCollectionExportApiExportsCollectionsPostRequestOpts(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
+     * @summary Request Collection Export
+     * @param {CollectionExportRequest} collectionExportRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    requestCollectionExportApiExportsCollectionsPostRaw(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionExportTicket>>;
+
+    /**
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
+     * Request Collection Export
+     */
+    requestCollectionExportApiExportsCollectionsPost(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionExportTicket>;
 
     /**
      * Creates request options for resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost without sending the request
@@ -4513,6 +4575,52 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async discussSpanApiAiDiscussSpanPost(requestParameters: DiscussSpanApiAiDiscussSpanPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.discussSpanApiAiDiscussSpanPostRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for downloadCollectionExportApiExportsCollectionsTokenGet without sending the request
+     */
+    async downloadCollectionExportApiExportsCollectionsTokenGetRequestOpts(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['token'] == null) {
+            throw new runtime.RequiredError(
+                'token',
+                'Required parameter "token" was null or undefined when calling downloadCollectionExportApiExportsCollectionsTokenGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/exports/collections/{token}`;
+        urlPath = urlPath.replace(`{${"token"}}`, encodeURIComponent(String(requestParameters['token'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
+     * Download Collection Export
+     */
+    async downloadCollectionExportApiExportsCollectionsTokenGetRaw(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.downloadCollectionExportApiExportsCollectionsTokenGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Downloads the export a ticket from ``POST /api/exports/collections`` names (no sign-in header: the path is the credential, valid once). Access is checked again; 404 for an unknown, used or expired path or a collection no longer readable.
+     * Download Collection Export
+     */
+    async downloadCollectionExportApiExportsCollectionsTokenGet(requestParameters: DownloadCollectionExportApiExportsCollectionsTokenGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.downloadCollectionExportApiExportsCollectionsTokenGetRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -6819,6 +6927,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDelete(requestParameters: RemoveDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
         const response = await this.removeDocumentFromCollectionApiUserCollectionsCollectionIdDocumentsDocumentIdDeleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for requestCollectionExportApiExportsCollectionsPost without sending the request
+     */
+    async requestCollectionExportApiExportsCollectionsPostRequestOpts(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionExportRequest'] == null) {
+            throw new runtime.RequiredError(
+                'collectionExportRequest',
+                'Required parameter "collectionExportRequest" was null or undefined when calling requestCollectionExportApiExportsCollectionsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/exports/collections`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CollectionExportRequestToJSON(requestParameters['collectionExportRequest']),
+        };
+    }
+
+    /**
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
+     * Request Collection Export
+     */
+    async requestCollectionExportApiExportsCollectionsPostRaw(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionExportTicket>> {
+        const requestOptions = await this.requestCollectionExportApiExportsCollectionsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionExportTicketFromJSON(jsonValue));
+    }
+
+    /**
+     * Starts an export of whole collections (#656, docs/EXPORT_FORMAT.md): checks read access to each (404 for a collection the user cannot read) and returns a one-time download path, valid for ``expires_in`` seconds. Ends the user\'s running export, if any (one per user).
+     * Request Collection Export
+     */
+    async requestCollectionExportApiExportsCollectionsPost(requestParameters: RequestCollectionExportApiExportsCollectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionExportTicket> {
+        const response = await this.requestCollectionExportApiExportsCollectionsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
