@@ -27,7 +27,7 @@ ci = load("ci_changes")
 links = load("check_doc_links")
 WORKFLOW = yaml.safe_load((ROOT / ".github" / "workflows" / "ci-cd.yml").read_text())["jobs"]
 DOCS_ON = {ci.DOCS}
-ALL_ON = {ci.DOCS, ci.FRONTEND}
+ALL_ON = {ci.DOCS, ci.FRONTEND, ci.DEPLOY}
 FE = "semant_demo_frontend/"
 
 
@@ -52,7 +52,6 @@ def test_documentation_only_paths_select_the_docs_mode(files):
     "docs/weaviate-audit-2026-10/inventory-2026-10-16b.json",
     "docs/screenshot.png",
     "docs/README.MD",
-    "deploy/docker-compose.app.yaml",
     ".github/workflows/ci-cd.yml",
     ".github/ISSUE_TEMPLATE/nested/x.md",
     "scripts/ci_changes.py",
@@ -131,7 +130,6 @@ def test_frontend_only_change_runs_everything_until_the_mode_is_enabled():
     FE + "new-config.json",
     "semant_demo_backend/semant_demo/main.py",
     "semant_demo_backend/tests/fixtures/text_offsets.json",  # read by a frontend unit test
-    "deploy/Dockerfile",
     "scripts/browser_shards.py",
     "Makefile",
 ])
@@ -162,6 +160,83 @@ def test_frontend_paths_named_in_backend_code_force_full_validation():
     assert FE + "src/features/documents/originalSource.ts" in named
     for path in named:
         assert not ci.MODES[ci.FRONTEND].fits(path), path
+
+
+# --- the deploy mode ------------------------------------------------------------------------
+
+DEPLOY_PATHS = [
+    "deploy/Dockerfile",
+    "deploy/docker-compose.app-test.yml",
+    "deploy/.env.test.example",
+    "semant_demo_backend/tests/test_deploy_mcp_rate_limit.py",
+    "docs/DEPLOYMENT.md",
+]
+
+
+def test_deployment_only_paths_select_the_deploy_mode():
+    decision = ci.classify_paths(DEPLOY_PATHS, ALL_ON)
+
+    assert (decision.mode, decision.classification) == (ci.DEPLOY, ci.DEPLOY)
+
+
+def test_deployment_only_change_runs_everything_until_the_mode_is_enabled():
+    decision = ci.classify_paths(DEPLOY_PATHS, {ci.DOCS, ci.FRONTEND})
+
+    assert (decision.mode, decision.classification) == (ci.FULL, ci.DEPLOY)
+
+
+@pytest.mark.parametrize("path", [
+    ".github/workflows/ci-cd.yml",
+    "deploy/docker-compose.app.yaml",  # production-only, not previewed
+    "deploy/docker-compose.database.yml",
+    "deploy/docker-compose.topicer-test.yml",
+    "deploy/update.sh",
+    "deploy/.env.example",
+    "deploy/test_sqlite_backup.sh",
+    "scripts/python-locks.sh",
+    "scripts/with-test-weaviate.sh",
+    "semant_demo_backend/requirements-runtime.lock",
+    "semant_demo_backend/pyproject.toml",
+    "semant_demo_backend/tests/conftest.py",
+    "semant_demo_backend/tests/test_dependency_locks.py",
+    "semant_demo_backend/tests/integration/test_deploy_x.py",
+    "semant_demo_backend/semant_demo/config.py",
+    "data_tools/embedder/config.qwen.yaml",
+])
+def test_shared_paths_with_deployment_changes_select_full_validation(path):
+    # Start with an allowed preview-tested file; the added path must force full CI.
+    decision = ci.classify_paths(["deploy/Dockerfile", path], ALL_ON)
+
+    assert (decision.mode, decision.classification) == (ci.FULL, ci.FULL)
+    assert decision.outside == [path]
+
+
+def test_deleting_a_deployment_contract_test_selects_full_validation():
+    path = "semant_demo_backend/tests/test_deploy_image.py"
+    assert ci.classify_paths([path], ALL_ON, deleted=frozenset({path})).mode == ci.FULL
+
+
+def test_deployment_and_frontend_changes_together_select_full_validation():
+    decision = ci.classify_paths(["deploy/Dockerfile", FE + "src/App.vue"], ALL_ON)
+
+    assert decision.mode == ci.FULL
+    assert decision.outside == []
+    assert "several components" in decision.reason
+
+
+def test_suites_the_deploy_mode_omits_do_not_read_deploy_files():
+    """The frontend, integration and browser suites run from source, never from deploy/."""
+    import re
+    sources = [*(ROOT / FE / "src").rglob("*.[tj]s"), *(ROOT / FE / "src").rglob("*.vue"),
+               *(ROOT / FE / "test").rglob("*.ts"), *(ROOT / FE).glob("*.[tj]s"),
+               *(ROOT / "semant_demo_backend" / "tests" / "integration").rglob("*.py"),
+               ROOT / "semant_demo_backend" / "tests" / "e2e_server.py",
+               ROOT / "scripts" / "with-test-weaviate.sh", ROOT / "scripts" / "integration_shards.py",
+               ROOT / "scripts" / "browser_shards.py"]
+    sources = [path for path in sources if "generated" not in path.parts]
+    assert len(sources) > 100
+    for source in sources:
+        assert not re.search(r"\bdeploy/|[\"']deploy[\"']", source.read_text(encoding="utf-8")), source
 
 
 def test_summary_lists_omitted_suites_and_the_paths():
@@ -308,6 +383,7 @@ def needs(default="success", **results):
     data = {"classify": {"result": "success", "outputs": {}}}
     for job in ci.SUITES:
         data[job] = {"result": results.get(job.replace("-", "_"), default), "outputs": {}}
+    data[ci.PREVIEW_JOB] = {"result": results.get("deploy_test_pr", "skipped"), "outputs": {}}
     return data
 
 
@@ -352,6 +428,39 @@ def test_gate_fails_frontend_mode_when_a_required_suite_did_not_succeed(job, res
     ok, _ = ci.gate(ci.FRONTEND, "success", needs(**{**FRONTEND_SKIPPED, job: result}))
 
     assert not ok
+
+
+def test_gate_passes_deploy_mode_with_app_suites_omitted():
+    omitted = {job.replace("-", "_"): "skipped" for job in ci.SUITES if job not in ci.MODES[ci.DEPLOY].required}
+    ok, report = ci.gate(ci.DEPLOY, "success", needs(**omitted, deploy_test_pr="success"))
+
+    assert ok, report
+    assert set(omitted) == {"test_frontend", "test_integration", "test_browser", "python_locks"}
+    assert "| Backend tests | required | success | ok |" in report
+    assert "| PR preview deployment | required | success | ok |" in report
+
+
+@pytest.mark.parametrize("job", ["docs_check", "test_backend", "api_client_drift"])
+def test_gate_fails_deploy_mode_when_a_required_suite_was_skipped(job):
+    omitted = {j.replace("-", "_"): "skipped" for j in ci.SUITES if j not in ci.MODES[ci.DEPLOY].required}
+
+    assert not ci.gate(ci.DEPLOY, "success", needs(**{**omitted, job: "skipped", "deploy_test_pr": "success"}))[0]
+
+
+@pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", "missing"])
+def test_deploy_mode_requires_successful_preview(result):
+    omitted = {j.replace("-", "_"): "skipped" for j in ci.SUITES if j not in ci.MODES[ci.DEPLOY].required}
+    ok, report = ci.gate(ci.DEPLOY, "success", needs(**{**omitted, "deploy_test_pr": result}))
+    assert not ok
+    assert "PR preview deployment (required)" in report
+
+
+@pytest.mark.parametrize("mode", [ci.FULL, ci.DOCS, ci.FRONTEND])
+def test_other_modes_keep_preview_failures_non_blocking(mode):
+    omitted = {j.replace("-", "_"): "skipped" for j in ci.SUITES if j not in ci.MODES[mode].required}
+    ok, report = ci.gate(mode, "success", needs(**{**omitted, "deploy_test_pr": "failure"}))
+    assert ok, report
+    assert "| PR preview deployment | not required | failure | n/a |" in report
 
 
 @pytest.mark.parametrize("result", ["failure", "cancelled", "skipped"])
@@ -407,7 +516,7 @@ def selection_condition(mode):
 
 
 def test_gate_job_needs_exactly_the_registered_suites():
-    assert set(WORKFLOW["ci-result"]["needs"]) == {"classify", *ci.SUITES}
+    assert set(WORKFLOW["ci-result"]["needs"]) == {"classify", ci.PREVIEW_JOB, *ci.SUITES}
     assert "always()" in WORKFLOW["ci-result"]["if"]
 
 
@@ -439,6 +548,10 @@ def test_jobs_conditioned_on_the_classification_need_it_and_tolerate_its_failure
             assert "classify" in spec["needs"], job
             # Without !cancelled()/always(), a failed classification would skip the job.
             assert "!cancelled()" in condition or "always()" in condition, job
+
+
+def test_preview_still_starts_without_waiting_for_application_tests():
+    assert WORKFLOW[ci.PREVIEW_JOB]["needs"] == ["classify"]
 
 
 def test_deployments_require_the_gate():
