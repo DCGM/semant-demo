@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import {
@@ -134,6 +134,64 @@ describe('concordance table', () => {
     const both = mountTable({ text: 'hejtman', textScope: TextScope.both })
     expect(label(both, 'annotation')).toBe('Filter by words in the annotation (active)')
     expect(label(both, 'left')).toBe('Filter by words in the context (active)')
+  })
+})
+
+describe('concordance table open row (#704)', () => {
+  const original = { scroll: HTMLElement.prototype.scrollIntoView, matchMedia: window.matchMedia }
+  afterEach(() => {
+    HTMLElement.prototype.scrollIntoView = original.scroll
+    window.matchMedia = original.matchMedia
+  })
+
+  function mountRows (attachTo?: HTMLElement) {
+    const scrolled: Array<{ id: string | null, options: ScrollIntoViewOptions }> = []
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement, options?: boolean | ScrollIntoViewOptions) {
+      scrolled.push({ id: this.closest('[data-testid="kwic-row"]') ? this.textContent : null, options: options as ScrollIntoViewOptions })
+    }
+    const wrapper = mount(ConcordanceTable, {
+      props: {
+        rows: [annotation('a'), annotation('b', { text: 'Lhoty' }), annotation('c', { text: 'Brně' })],
+        tags: [tag],
+        selected: new Set<string>(),
+        filters: defaultFilters(),
+        focusedId: 'a'
+      },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo
+    })
+    return { wrapper, scrolled }
+  }
+
+  it('scrolls a newly open row into view minimally and vertically, without moving focus', async () => {
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.focus()
+    const host = document.body.appendChild(document.createElement('div'))
+    const { wrapper, scrolled } = mountRows(host)
+    await wrapper.setProps({ focusedId: 'c' })
+    await wrapper.vm.$nextTick()
+    expect(scrolled).toHaveLength(1)
+    expect(scrolled[0].id).toContain('Brně')
+    expect(scrolled[0].options).toEqual({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+    expect(document.activeElement).toBe(outside)
+    // The row stays the grid's tab stop for a return by keyboard.
+    expect(wrapper.findAll('[data-testid="kwic-row"]')[2].attributes('tabindex')).toBe('0')
+    wrapper.unmount()
+    host.remove()
+    outside.remove()
+  })
+
+  it('does not animate with reduced motion, and ignores rows of another page', async () => {
+    window.matchMedia = ((query: string) => ({ matches: query.includes('reduce') })) as unknown as typeof window.matchMedia
+    const { wrapper, scrolled } = mountRows()
+    await wrapper.setProps({ focusedId: 'b' })
+    await wrapper.vm.$nextTick()
+    expect(scrolled.map(s => s.options.behavior)).toEqual(['auto'])
+    await wrapper.setProps({ focusedId: 'elsewhere' })
+    await wrapper.setProps({ focusedId: null })
+    await wrapper.vm.$nextTick()
+    expect(scrolled).toHaveLength(1)
   })
 })
 

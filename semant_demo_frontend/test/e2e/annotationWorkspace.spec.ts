@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
-import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport } from './support'
+import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport, viewports } from './support'
 import { animatedPart, longDocument, recordScroll } from './longDocument'
 
 // The collection's annotation workspace (#329): one aligned line per annotation (KWIC),
@@ -310,6 +310,33 @@ test.describe('switching annotations of one long document', () => {
     expect(steps.slice(0, -1).every(step => Math.abs(step) < 50), `no animation: ${path.join(' ')}`).toBe(true)
     await expect(mark(page)).toBeInViewport()
   })
+})
+
+test('Next brings the open row into view and keeps focus on the sidebar (#704)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await rows(page).first().click()
+  const open = page.locator('[data-testid="kwic-row"][aria-current="true"]')
+  await expect(open).toHaveCount(1)
+  // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
+  // and the later ones do not.
+  const second = await rows(page).nth(1).boundingBox()
+  await page.setViewportSize({ width: viewports.wide.width, height: Math.ceil(second!.y + second!.height + 12) })
+  await expect(rows(page).nth(2)).not.toBeInViewport({ ratio: 1 })
+
+  const next = page.getByTestId('row-next')
+  const top = async () => (await rows(page).first().boundingBox())!.y
+  const before = await top()
+  await next.click()
+  await expect(rows(page).nth(1)).toHaveAttribute('aria-current', 'true')
+  // A visible row does not move the list.
+  expect(await top()).toBe(before)
+  await expect(next).toBeFocused()
+
+  await next.click()
+  await expect(rows(page).nth(2)).toHaveAttribute('aria-current', 'true')
+  await expect(rows(page).nth(2)).toBeInViewport({ ratio: 1 })
+  await expect(next).toBeFocused()
 })
 
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {

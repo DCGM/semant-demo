@@ -232,6 +232,7 @@ import { markMatches, queryWords, splitParts, type TextPart } from './textMatche
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
+import { prefersReducedMotion } from 'src/features/documents/contextScroll'
 
 const props = withDefaults(defineProps<{
   rows: AnnotationListRow[]
@@ -470,6 +471,17 @@ function onKeydown (event: KeyboardEvent) {
     emit('toggle', row.id, !props.selected.has(row.id))
   }
 }
+
+// The open row follows the sidebar (Next, the advance after a review, #704): when it changes to a
+// row of this page, the list scrolls it into view, minimally and only vertically (a list scrolled
+// sideways keeps its scroll). Keyboard focus stays where it is, e.g. on the sidebar's button.
+watch(() => props.focusedId, (id) => {
+  if (!id || !props.rows.some(r => r.id === id)) return
+  activeIndex.value = props.rows.findIndex(r => r.id === id)
+  void nextTick(() => rowEls.get(id)?.scrollIntoView?.({
+    block: 'nearest', inline: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth'
+  }))
+})
 
 /** Scrolls the row into view and gives it keyboard focus. */
 function reveal (id: string) {
