@@ -24,6 +24,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from semant_demo.mcp import server as mcp_server
 from semant_demo.adapters.sql.tables import create_tables
 from semant_demo.routes import export_router
+from semant_demo.features.annotations.routes import EXPORT_HEADERS
 from semant_demo.users.auth import auth_router, register_router, users_router
 
 logging.basicConfig(level=config.LOG_LEVEL)
@@ -135,6 +136,7 @@ def create_app(app_config: Config | None = None, *, weaviate_connector: Weaviate
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=EXPORT_HEADERS,
     )
 
     if os.path.isdir(app_config.STATIC_PATH):

@@ -4,6 +4,12 @@ import {
   sidebarPanelButton
 } from '../e2e/support'
 
+/** A phone keeps the filter form closed until asked for; open it before using a filter control. */
+async function expandFilters (page: Page) {
+  const toggle = page.getByTestId('concordance-filters-toggle')
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
+}
+
 // UI review captures (`scripts/e2e-dev.sh capture`), not part of `make test-e2e`. The
 // capture projects in playwright.config.ts run this file at wide desktop, narrow desktop
 // and phone widths; each view is saved as test-results/ui-capture/<view>-<project>.png.
@@ -272,7 +278,11 @@ test('annotation workspace columns (#665)', async ({ page, request }, testInfo) 
     await expect(page.getByTestId('kwic-head-annotation')).toHaveAttribute('aria-sort', 'descending')
     const year = page.getByTestId('kwic-filter-year')
     if (await year.isVisible()) await year.click()
-    else await page.getByTestId('concordance-year-from').click()
+    else {
+      await expandFilters(page)
+      await page.getByTestId('concordance-more-filters').click()
+      await page.getByTestId('concordance-year-from').click()
+    }
     await page.keyboard.type('1800')
     await expect(page.getByTestId('concordance-chips')).toContainText('1800')
     await expect(page.getByRole('grid')).not.toHaveAttribute('aria-busy', 'true')
@@ -305,18 +315,21 @@ test('annotation workspace query (#663)', async ({ page }, testInfo) => {
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
   await page.reload() // without the sign-in notification
   await expect(page.getByTestId('kwic-row').first()).toBeVisible()
+  await expandFilters(page)
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Both' }).click()
+  await expandFilters(page)
   await page.getByLabel('Annotation or context text').fill('jan')
-  await page.getByTestId('concordance-document-filters').click()
+  await expandFilters(page)
+  await page.getByTestId('concordance-more-filters').click()
   await page.getByLabel('Title contains').fill('kronika')
   await page.getByLabel('Title contains').press('Enter')
   await expect(page.getByTestId('concordance-chips')).toContainText('Title contains')
-  const menu = page.getByTestId('concordance-document-form')
-  await expect.poll(() => menu.evaluate(el => getComputedStyle(el.closest('.q-menu')!).opacity)).toBe('1')
-  await save(page, testInfo, 'annotation-workspace-document-filters')
-  await page.keyboard.press('Escape')
-  await expect(page.locator('.q-menu')).toHaveCount(0)
+  await expect(page.getByTestId('concordance-more-panel')).toBeVisible()
+  await save(page, testInfo, 'annotation-workspace-more-filters')
+  await expandFilters(page)
+  await page.getByTestId('concordance-more-filters').click()
+  await expect(page.getByTestId('concordance-more-panel')).toBeHidden()
   await expect(page.locator('mark.kwic__match').first()).toBeVisible()
   if (testInfo.project.name === 'narrow') {
     // Both sidebars open: the list as narrow as it gets on a desktop.
@@ -349,6 +362,7 @@ test('annotation workspace ranked (#664)', async ({ page }, testInfo) => {
   await save(page, testInfo, 'annotation-workspace-similar')
 
   await page.getByRole('button', { name: 'Stop finding annotations similar to \'Jan Novák\'' }).click()
+  await expandFilters(page)
   await page.getByTestId('concordance-mode').click()
   await page.getByRole('option', { name: 'Meaning', exact: true }).click()
   await page.getByLabel('Meaning of').fill('hejtman v obci')
@@ -366,9 +380,11 @@ test('annotation workspace review (#459)', async ({ page, request }, testInfo) =
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
     await page.reload() // without the sign-in notification
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
+    await expandFilters(page)
     await page.getByTestId('concordance-status-pos').click()
     await expect(page.getByTestId('kwic-row')).toHaveCount(2)
     await page.getByTestId('select-all-matches').click()
+    await expandFilters(page)
     await page.getByTestId('concordance-status-pos').click()
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
     const novak = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
@@ -423,7 +439,9 @@ test('annotation provenance and edit conflicts (#460)', async ({ page, request }
 
     // Created by the owner, then retagged by the shared annotator.
     await patch(created.id, { tagId: fixture.tag('place').id }, 'annotator')
+    await expandFilters(page)
     await page.getByTestId('concordance-status-pos').click() // reload with the change
+    await expandFilters(page)
     await page.getByTestId('concordance-status-pos').click()
     await page.locator(`[data-testid="kwic-row"][data-annotation-id="${created.id}"]`).click()
     await expect(page.getByTestId('provenance-edited')).toBeVisible()
@@ -444,6 +462,7 @@ test('annotation provenance and edit conflicts (#460)', async ({ page, request }
     // A batch: one of the selected proposals changed after it was selected.
     await backToList()
     await patch(lhota.id, { type: 'auto' })
+    await expandFilters(page)
     await page.getByTestId('concordance-status-pos').click()
     await expect(page.getByTestId('kwic-row')).toHaveCount(2)
     await page.getByTestId('select-all-matches').click()
