@@ -912,25 +912,48 @@ search keeps working during the whole procedure.
   the attribute sort (12 values) 146–168 ms on the first and the last page; document order
   89–104 ms. Production counts and durations are unknown until `status` runs there.
 
-Rollout on an existing store (an operator task; needs authorization for that store). The
-application stays **stopped from step 1 to step 6**:
+Rollout on an existing store (operator task; requires authorization for that store).
+**Add the schema while the old backend is still running; deploy the new backend normally;
+stop writers only for the short backfill; then restart.** The keys of old annotations may
+be missing between deployment and backfill, so their text/context ordering is temporarily
+incomplete. This does not affect ordinary annotation storage, retrieval or vectors.
 
-1. Stop every writer of the target annotation store, as for #328 above (all backend instances
-   using it, Topicer-driven suggestion runs, scripts). Confirm that none is running.
-2. Back up the store and record the backup id or path.
-3. With the new release's image: `add-schema` (dry run: `missing_properties` lists the five sort
-   key properties), then `add-schema --execute --confirm-endpoint HOST:PORT`. Run it again: it
-   adds nothing.
-4. `status`: `sort_keys` shows `missing` (current text, no keys) and `pending` (text not
-   current; those get keys when their text is derived). Note the totals.
-5. `backfill --limit N --no-vectors --execute --confirm-endpoint HOST:PORT` in bounded runs until
-   `status` shows no `missing` or `stale` sort keys and `failed` is empty (`sort_keys_written`
-   counts the keys written; `remaining_incomplete` also counts other incomplete text or vectors).
-6. `status`: every tenant's `sort_keys` is `current` (plus `pending` for spans whose text is not
-   current). Start the new release; its startup no longer logs that the sort keys are missing.
-7. Check in the workspace: sort by *Left context*, *Annotation* and *Right context* in both
-   directions (`č` after `c`, `ch` after `h`) and by an attribute column; the summary shows no
-   "not sortable yet" note once every row has keys.
+1. **Backup and schema, before deploying the new backend.** Verify a recoverable backup
+   and record its identifier. Use the candidate/release backend image against the target
+   Weaviate store to run `add-schema` as a dry run (check that `missing_properties` lists
+   the five sort-key fields), then `add-schema --execute --confirm-endpoint HOST:PORT`.
+   Re-run the dry run to verify that no properties remain missing. The old backend keeps
+   running and ignores these optional properties; no application shutdown is required
+   for this additive schema step. Use an image containing this PR's maintenance command.
+2. **Deploy the new backend normally.** Once the schema exists, the new backend detects the
+   fields at startup and writes sort keys for newly created or changed annotations.
+   Check health and the startup log for the sort-key collator; if the properties were
+   added after the backend started, restart it so detection is refreshed. Existing
+   annotations still need backfilling.
+3. **Stop all annotation writers** (every backend instance, Topicer-driven suggestion jobs
+   and other scripts) and confirm they are stopped. Leave Weaviate running so the
+   maintenance command can connect. This is the short maintenance window: the backfill's
+   revision check and write are not atomic against concurrent edits.
+4. **Backfill using the same backend image/ICU as the running release**, with the same
+   Weaviate connection configuration:
+   `backfill --limit N --no-vectors --execute --confirm-endpoint HOST:PORT`.
+   Run in bounded batches as needed, then `status`. Continue until every tenant has
+   zero `sort_keys.missing` and zero `sort_keys.stale` and there are no backfill
+   failures. `sort_keys.pending` may remain for annotations without current text and
+   is not a sort-key-only backfill failure. `remaining_incomplete` can include unrelated
+   vectors because `--no-vectors` intentionally skips them.
+5. **Start the backend and other writers.** Check health and KWIC ascending/descending
+   sorts for *Left context*, *Annotation* and *Right context* (`č` after `c`, `ch` after
+   `h`), attribute ordering and page traversal. Recheck `status` if unexpected
+   unsortable counts remain.
+
+**Environment order:** For the shared test store, add the properties before merging
+because a merge to `main` automatically deploys the new test backend; then stop the
+test writers, backfill and verify. For production, add the properties **before creating
+the release tag**, because a `v*.*.*` tag automatically deploys production; after
+deployment, stop the production writers, run the backfill with that deployed image and
+restart. No special deployment checkpoint or concurrent-safe backfill implementation
+is required. Do not run the backfill against a live writing backend.
 
 Rolling back the release needs no data change: older releases neither read nor write the sort
 keys. Boundary edits made by an older release leave keys of the previous revision, which count as
