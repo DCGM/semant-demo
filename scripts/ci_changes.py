@@ -20,7 +20,7 @@ below positively passes; anything else, including an error, is full validation:
   it the would-be reduction is reported and the full suites still run).
 
 The narrowest enabled mode that fits is used: a documentation-only PR runs ``docs`` even
-when ``frontend`` is enabled as well.
+when ``frontend`` or ``deploy`` is enabled as well.
 
 ``classify`` appends ``mode=<mode>`` to $GITHUB_OUTPUT and a report to $GITHUB_STEP_SUMMARY.
 Jobs omitted in a mode skip only on the exact output ``mode == '<mode>'``, so a failed
@@ -48,8 +48,11 @@ from dataclasses import dataclass, field
 FULL = "full"
 DOCS = "docs"
 FRONTEND = "frontend"
+DEPLOY = "deploy"
 FORCE_FULL_LABEL = "ci:full"
 SELECTION_VARIABLE = "CI_CHANGE_SELECTION"
+# The PR preview is not a test suite; require its success only in deploy mode.
+PREVIEW_JOB = "deploy-test-pr"
 
 # Gate-checked jobs: workflow job id -> check name. The full mode requires all of them.
 SUITES = {
@@ -97,6 +100,17 @@ FRONTEND_FORCE_FULL = (
 # one runs everything.
 FRONTEND_NO_DELETE = ("semant_demo_frontend/test/e2e/*.spec.ts",)
 
+# Only files actually exercised by the PR preview's image build and startup.
+# Other deploy/ files (production-only Compose, database, Topicer, backups,
+# operator scripts) get full CI until they have positive validation. Deleting
+# a deployment contract test must not silently reduce test coverage.
+DEPLOY_ONLY = DOCS_ONLY + (
+    "deploy/Dockerfile",
+    "deploy/docker-compose.app-test.yml",
+    "deploy/.env.test.example",
+    "semant_demo_backend/tests/test_deploy_*.py",
+)
+DEPLOY_NO_DELETE = ("semant_demo_backend/tests/test_deploy_*.py",)
 
 @dataclass(frozen=True)
 class Mode:
@@ -119,9 +133,13 @@ MODES = {
     FRONTEND: Mode(FRONTEND, "Frontend only", FRONTEND_ONLY,
                    frozenset({"docs-check", "test-frontend", "test-browser"}),
                    force_full=FRONTEND_FORCE_FULL, no_delete=FRONTEND_NO_DELETE),
+    DEPLOY: Mode(DEPLOY, "Deployment only", DEPLOY_ONLY,
+                 frozenset({"docs-check", "test-backend", "api-client-drift"}),
+                 no_delete=DEPLOY_NO_DELETE),
 }
-# Reduced modes from the narrowest; each one's allowlist contains the previous one's.
-REDUCED = (MODES[DOCS], MODES[FRONTEND])
+# Reduced modes, narrowest first. Each contains the documentation allowlist and otherwise
+# they are disjoint, so at most one mode beyond `docs` fits a PR.
+REDUCED = (MODES[DOCS], MODES[FRONTEND], MODES[DEPLOY])
 
 
 def _matches(path: str, pattern: str) -> bool:
@@ -173,9 +191,9 @@ def classify_paths(files: list[str], enabled: set[str], deleted: frozenset[str] 
     fitting = [mode for mode in REDUCED if all(mode.fits(path, deleted) for path in files)]
     if not fitting:
         outside = [path for path in files if not any(m.fits(path, deleted) for m in REDUCED)]
-        return Decision(files=files, outside=outside,
-                        reason=f"{len(outside)} changed path(s) fit no reduced mode, or the paths "
-                               "span several components.")
+        reason = (f"{len(outside)} changed path(s) fit no reduced mode." if outside else
+                  "The changed paths span several components (no single reduced mode fits them all).")
+        return Decision(files=files, outside=outside, reason=reason)
     narrowest = fitting[0]
     selected = next((mode for mode in fitting if mode.name in enabled), None)
     if selected is None:
@@ -253,9 +271,10 @@ def gate(mode_name: str, classify_result: str, needs: dict) -> tuple[bool, str]:
         errors.append(f"Unknown or missing classification mode '{mode_name}'.")
         mode = MODES[FULL]  # judge every suite as required
     gated = set(needs) - {"classify"}
-    if gated != set(SUITES):
+    expected = set(SUITES) | {PREVIEW_JOB}
+    if gated != expected:
         errors.append("The gate's needs do not match the suite registry in scripts/ci_changes.py: "
-                      f"missing {sorted(set(SUITES) - gated)}, unregistered {sorted(gated - set(SUITES))}.")
+                      f"missing {sorted(expected - gated)}, unregistered {sorted(gated - expected)}.")
     for job, name in SUITES.items():
         result = needs.get(job, {}).get("result", "missing")
         if job in mode.required:
@@ -266,6 +285,17 @@ def gate(mode_name: str, classify_result: str, needs: dict) -> tuple[bool, str]:
             errors.append(f"{name} ({selection}) finished with result '{result}'.")
         shown = "skipped, not tested" if result == "skipped" else result
         rows.append(f"| {name} | {selection} | {shown} | {'ok' if ok else '**FAIL**'} |")
+    # The static Actions needs graph waits for the preview on all PRs. Require a
+    # healthy preview only for deploy mode; other previews remain non-blocking.
+    preview = needs.get(PREVIEW_JOB, {}).get("result", "missing")
+    if mode.name == DEPLOY:
+        preview_ok = preview == "success"
+        if not preview_ok:
+            errors.append(f"PR preview deployment (required) finished with result '{preview}'.")
+        rows.append(f"| PR preview deployment | required | {preview} | "
+                    f"{'ok' if preview_ok else '**FAIL**'} |")
+    else:
+        rows.append(f"| PR preview deployment | not required | {preview} | n/a |")
     report = ["### CI result (#687)", "", f"Mode: {mode.description} (`{mode_name or 'missing'}`).", "",
               "| Suite | Selection | Result | Gate |", "| --- | --- | --- | --- |", *rows, ""]
     report += [f"- {error}" for error in errors] or ["All required suites passed."]
