@@ -36,7 +36,10 @@ export interface ConcordanceFilters {
   attributeUnassigned: string[]
   /** Lexical mode only; ranked results are in relevance order. */
   sort: AnnotationSort
-  /** Reverses `sort` (missing titles, years and texts stay last). */
+  /** The attribute whose values order the rows (#666), with `sort` `attribute`; otherwise null. */
+  sortAttribute: string | null
+  /** Reverses `sort` (missing titles, years and attribute values stay last; rows without a text
+   * or context sort key move from first to last). */
   descending: boolean
   /** Every match (`lexical`) or a ranked top `k` (#664): by meaning of `text` (`semantic`),
    * meaning and words of `text` (`hybrid`), or like `similarTo` (`similar`; `text` then stays a
@@ -87,6 +90,7 @@ export function defaultFilters (): ConcordanceFilters {
     attributeValues: [],
     attributeUnassigned: [],
     sort: AnnotationSort.document,
+    sortAttribute: null,
     descending: false,
     mode: RetrievalMode.lexical,
     k: DEFAULT_TOP_K,
@@ -332,6 +336,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         attribute: f.attributeValues.length ? f.attributeValues : undefined,
         unassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
         sort: ranked ? undefined : f.sort,
+        sortAttribute: !ranked && f.sort === AnnotationSort.attribute ? f.sortAttribute ?? undefined : undefined,
         descending: !ranked && f.descending ? true : undefined,
         mode: ranked?.mode,
         k: ranked?.k,
@@ -357,10 +362,13 @@ export const useConcordanceStore = defineStore('concordance', () => {
       page.value = null
       const status = errorStatus(e)
       // A ranked query is refused with a message of its own: no vector of the source (400), no
-      // embedding service (503).
+      // embedding service (503); so is a sort this store cannot give (503: no sort keys or
+      // attributes, #666; 404: the sort attribute was deleted).
       const message = ranked && (status === 400 || status === 503)
         ? await apiErrorMessage(e, 'Search by meaning is not available now.')
-        : failure(e, 'annotations')
+        : !ranked && (status === 503 || (status === 404 && f.sort === AnnotationSort.attribute))
+            ? await apiErrorMessage(e, 'This sort is not available now.')
+            : failure(e, 'annotations')
       if (applies()) error.value = message
     } finally {
       if (applies()) {
@@ -493,6 +501,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     const before = filters.value
     filters.value = { ...before, ...change }
     if (change.documentFilters) filters.value.documentFilters = normalizeDocumentFilters(change.documentFilters)
+    if (filters.value.sort !== AnnotationSort.attribute) filters.value.sortAttribute = null
     offset.value = 0
     stopResolving()
     shown.value = new Set()

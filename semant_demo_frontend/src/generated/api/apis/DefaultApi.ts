@@ -512,6 +512,7 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     collectionId: string;
     sort?: AnnotationSort | null;
     descending?: boolean;
+    sortAttribute?: string | null;
     limit?: number;
     offset?: number;
     annotationId?: Array<string> | null;
@@ -1985,7 +1986,8 @@ export interface DefaultApiInterface {
      * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
      * @param {string} collectionId 
      * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
-     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id
+     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows without a text or context sort key move from first to last, ties stay by id
+     * @param {string} [sortAttribute] Sort attribute: the attribute whose values order the rows
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
@@ -2011,11 +2013,12 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * @summary List Collection Annotations
      * @param {string} collectionId 
      * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
-     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id
+     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows without a text or context sort key move from first to last, ties stay by id
+     * @param {string} [sortAttribute] Sort attribute: the attribute whose values order the rows
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
@@ -2042,7 +2045,7 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>>;
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
@@ -5797,6 +5800,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['descending'] = requestParameters['descending'];
         }
 
+        if (requestParameters['sortAttribute'] != null) {
+            queryParameters['sort_attribute'] = requestParameters['sortAttribute'];
+        }
+
         if (requestParameters['limit'] != null) {
             queryParameters['limit'] = requestParameters['limit'];
         }
@@ -5893,7 +5900,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>> {
@@ -5904,7 +5911,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage> {

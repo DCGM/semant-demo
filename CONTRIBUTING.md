@@ -22,7 +22,8 @@ contracts. Include relevant tests, documentation and generated-client changes.
 ## 2. Setup and commands
 
 Use an isolated checkout and local services, never production credentials/data. Toolchain:
-Python 3.12, Node 22, npm, Make and Java 11+ (API generator). Use the repository `.venv`.
+Python 3.12 with the ICU headers and `pkg-config` (PyICU, [backend guide](semant_demo_backend/README.md#installation-and-checks)),
+Node 22, npm, Make and Java 11+ (API generator). Use the repository `.venv`.
 Docker is needed for local application, integration and browser workflows, not fast tests
 ([which checks need Docker](docs/DEVELOPMENT.md#which-checks-need-docker)).
 

@@ -12,6 +12,7 @@ Name | Type
 `offset` | number
 `limit` | number
 `result` | [AnnotationResultSet](AnnotationResultSet.md)
+`unsortable` | number
 
 ## Example
 
@@ -25,6 +26,7 @@ const example = {
   "offset": null,
   "limit": null,
   "result": null,
+  "unsortable": null,
 } satisfies AnnotationPage
 
 console.log(example)

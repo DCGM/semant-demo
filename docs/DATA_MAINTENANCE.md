@@ -828,8 +828,10 @@ python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--
   [--no-vectors] --execute --confirm-endpoint HOST:PORT                                 # without --execute: status
 ```
 
-- `add-schema` adds the missing derived properties and the named vector (`target_vector` of
-  the configured vector) to the existing collection; it changes no object and is idempotent.
+- `add-schema` adds the missing derived properties, the sort keys of #666 (`leftSortKey`,
+  `rightSortKey`, `textSortKey`, `sortKeyVersion`, `sortKeyRevision`) and the named vector
+  (`target_vector` of the configured vector) to the existing collection; it changes no object
+  and is idempotent.
   Restart the backend afterwards: it decides at startup what it stores and logs an error while
   properties or the vector are missing.
 - Contextual annotation vectors may set `max_input_chars` to limit the rendered embedding input.
@@ -838,11 +840,14 @@ python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--
   Existing successful vectors remain current. Failed or incomplete vectors can be retried during
   the next scheduled annotation enrichment maintenance; no immediate backfill is required.
 - `status` counts each tenant's spans by text state (`current`, `outdated` derivation policy,
-  `missing`, `failed`, `invalid`) and vector state (`current`, `pending`, `failed`, `stale`),
-  and `incomplete` (what a backfill would write). Reading a tenant activates it.
+  `missing`, `failed`, `invalid`), vector state (`current`, `pending`, `failed`, `stale`) and
+  sort key state (`current`, `missing`, `stale`: another collator or revision, `pending`: written
+  with text that is not current yet; `unconfigured` without the properties), and `incomplete`
+  (what a backfill would write); `sort_key_version` is the collator of the running code. Reading
+  a tenant activates it.
 - `backfill` writes only derived properties of at most `--limit` incomplete spans, never offsets,
   chunk, tag, type or revision, and deletes nothing. It reports `processed`, `text_written`,
-  `vector_written`, `not_processed` (incomplete spans skipped because of `--limit`),
+  `vector_written`, `sort_keys_written`, `not_processed` (incomplete spans skipped because of `--limit`),
   `remaining_incomplete` (every span still incomplete for the configured vector when the run
   ended, read again afterwards: not processed ones, failed steps and, with `--no-vectors`, vectors
   still to embed) and `failed`. Text re-derived under a new derivation policy marks its vector
@@ -877,6 +882,63 @@ Rolling back the release needs no data change (older releases ignore the
 derived properties). Rehearsed only on disposable Weaviate 1.40.1
 (`tests/integration/test_annotation_enrichment.py`); production counts and duration are unknown
 until `status` runs there.
+
+### Czech sort keys (#666)
+
+The text and context sorts of the workspace read the sort keys stored on each annotation
+([DATABASE.md](DATABASE.md#collection-annotation-multi-tenant-327)); they are computed by ICU
+(PyICU against the image's system ICU). Until a collection has the properties, the backend sorts
+the annotated text in Weaviate's code-point order and refuses the context sorts (503); once it
+has them, new and edited annotations get their keys, and existing annotations get theirs from
+the backfill. Until then they are listed as "not sortable yet" (first ascending, last
+descending). Nothing else changes: text, vectors and `derivationVersion` stay as they are, so
+search keeps working during the whole procedure.
+
+- **Run the commands with the release's image** (`docker run --rm --env-file … <backend image>
+  python -m semant_demo.maintenance.annotation_enrichment …`, or `docker exec` into the stopped
+  release's container started with a shell), not with a development `.venv`: the keys depend on
+  the ICU version, and keys computed by another ICU than the backend's count as `stale` there.
+  `status` prints the `sort_key_version` of the code that runs it; it must equal the one the
+  deployed backend logs at startup ("Annotation sort keys: collator …").
+- Keys alone need no chunk read and no embedding: on spans with current text, `backfill
+  --no-vectors` writes only `leftSortKey`, `rightSortKey`, `textSortKey`, `sortKeyVersion` and
+  `sortKeyRevision` (one read and one write per span). Without `--no-vectors` it also embeds
+  vectors that are not current, as before.
+- Measured on a disposable Weaviate 1.40.1 tenant of 28,000 synthetic annotations (the size of
+  the largest production tenant; `tests/integration/test_annotation_sort_benchmark.py`, 2026-11-16,
+  development machine): the key backfill of 1,000 spans took 13.5 s including two full reads of
+  the tenant (~13 ms per span, so ~6 min for 28,000); the deepest sortable page (rows
+  9,950–10,000) of the text, left and right sorts 307–363 ms median, the first page 112–159 ms;
+  the attribute sort (12 values) 146–168 ms on the first and the last page; document order
+  89–104 ms. Production counts and durations are unknown until `status` runs there.
+
+Rollout on an existing store (an operator task; needs authorization for that store). The
+application stays **stopped from step 1 to step 6**:
+
+1. Stop every writer of the target annotation store, as for #328 above (all backend instances
+   using it, Topicer-driven suggestion runs, scripts). Confirm that none is running.
+2. Back up the store and record the backup id or path.
+3. With the new release's image: `add-schema` (dry run: `missing_properties` lists the five sort
+   key properties), then `add-schema --execute --confirm-endpoint HOST:PORT`. Run it again: it
+   adds nothing.
+4. `status`: `sort_keys` shows `missing` (current text, no keys) and `pending` (text not
+   current; those get keys when their text is derived). Note the totals.
+5. `backfill --limit N --no-vectors --execute --confirm-endpoint HOST:PORT` in bounded runs until
+   `status` shows no `missing` or `stale` sort keys and `failed` is empty (`sort_keys_written`
+   counts the keys written; `remaining_incomplete` also counts other incomplete text or vectors).
+6. `status`: every tenant's `sort_keys` is `current` (plus `pending` for spans whose text is not
+   current). Start the new release; its startup no longer logs that the sort keys are missing.
+7. Check in the workspace: sort by *Left context*, *Annotation* and *Right context* in both
+   directions (`č` after `c`, `ch` after `h`) and by an attribute column; the summary shows no
+   "not sortable yet" note once every row has keys.
+
+Rolling back the release needs no data change: older releases neither read nor write the sort
+keys. Boundary edits made by an older release leave keys of the previous revision, which count as
+`stale` (`sortKeyRevision`); after returning to the new release, run step 5 again. The same
+applies after any change of the image's ICU (e.g. a new Debian base image): `status` then reports
+every key `stale` and the sorts list rows by their old keys until the backfill has run, so plan
+step 5 with such an upgrade. Rehearsed only on disposable Weaviate 1.40.1
+(`tests/integration/test_annotation_sorting.py`).
 
 ## Annotation provenance (`annotation_provenance`, #460)
 

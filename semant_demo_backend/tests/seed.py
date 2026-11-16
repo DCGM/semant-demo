@@ -235,6 +235,7 @@ async def derive_annotations(client: WeaviateAsyncClient, config, corpus: Corpus
     vector = load_annotation_vector(config, transport)
     repos = WeaviateRepositories.create(client, config)
     enrichment = await detect_enrichment(client, config, vector)
+    repos.spans.sort_keys = enrichment.sort_keys
     repos.documents.positions = await detect_chunk_positions(client, config)
     store = AnnotationStore(collections=repos.user_collections, tags=repos.tags, spans=repos.spans,
                             chunk_tags=repos.chunk_tags, documents=repos.documents, enrichment=enrichment)

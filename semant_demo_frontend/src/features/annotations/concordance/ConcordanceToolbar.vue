@@ -270,7 +270,7 @@
     </q-btn>
 
     <q-select
-      :model-value="filters.sort"
+      :model-value="sortValue"
       :options="sortOptions"
       emit-value
       map-options
@@ -282,7 +282,7 @@
       :display-value="ranked ? 'Relevance' : undefined"
       class="concordance-toolbar__sort"
       data-testid="concordance-sort"
-      @update:model-value="value => emit('change', { sort: value, descending: false })"
+      @update:model-value="chooseSort"
     >
       <q-tooltip v-if="ranked">Ranked results are in order of relevance</q-tooltip>
     </q-select>
@@ -403,11 +403,26 @@ const statusOptions = [
   { value: SpanType.neg, label: 'Rejected', hint: 'Rejected proposals, kept as negative examples' }
 ]
 
-const sortOptions = [
+// An attribute sort (#666) is chosen as `attribute:<id>`.
+const ATTRIBUTE_SORT = `${AnnotationSort.attribute}:`
+const sortOptions = computed(() => [
   { value: AnnotationSort.document, label: 'Document' },
   { value: AnnotationSort.year, label: 'Year' },
-  { value: AnnotationSort.text, label: 'Annotated text' }
-]
+  { value: AnnotationSort.text, label: 'Annotated text' },
+  { value: AnnotationSort.left, label: 'Left context (nearest word first)' },
+  { value: AnnotationSort.right, label: 'Right context' },
+  ...(props.attributes ?? []).map(a => ({ value: `${ATTRIBUTE_SORT}${a.id}`, label: `Attribute: ${a.name}` }))
+])
+const sortValue = computed(() => props.filters.sort === AnnotationSort.attribute
+  ? `${ATTRIBUTE_SORT}${props.filters.sortAttribute ?? ''}`
+  : props.filters.sort)
+
+function chooseSort (value: string) {
+  const attribute = value.startsWith(ATTRIBUTE_SORT) ? value.slice(ATTRIBUTE_SORT.length) : null
+  emit('change', attribute
+    ? { sort: AnnotationSort.attribute, sortAttribute: attribute, descending: false }
+    : { sort: value as AnnotationSort, sortAttribute: null, descending: false })
+}
 
 const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOPE_LABELS[value] }))
 const scopeLabel = computed(() => props.filters.textScope === TextScope.annotation ? 'Annotated text'

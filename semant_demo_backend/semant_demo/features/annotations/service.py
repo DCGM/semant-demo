@@ -71,6 +71,7 @@ from semant_demo.core.errors import (
     EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
 )
 from semant_demo.features.annotations import attribute_codec as codec
+from semant_demo.features.annotations.collation import NO_SORT_KEYS, sort_key_version, sort_keys
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, MissingChunkPositions, derive
 from semant_demo.features.annotations.enrichment import Enrichment, text_current, vector_current
 from semant_demo.features.annotations.offsets import InvalidSpanRange, check_span_range
@@ -452,6 +453,7 @@ async def _patch_with_derived(store: AnnotationStore, collection_id: UUID, span_
     moved = (chunk_id, start, end) != (row.chunkId, row.start, row.end)
     vector = store.enrichment.vector
     stale_vector = vector is not None and not vector_current(row, vector.id)
+    # Sort keys of another collator alone are left to the backfill: re-deriving here would re-embed.
     if not moved and text_current(row) and not stale_vector:
         await store.spans.update(collection_id, span_id, patch, provenance=provenance)
         return None
@@ -584,6 +586,8 @@ class Refresh:
     needs_vector: bool = True
     vector_stored: bool = False
     """Set by ``refresh_vector`` when the vector was written."""
+    sort_keys: bool = False
+    """The collection holds the sort keys (#666): they are written with the text."""
 
     def properties(self, *, reset_vector: bool, with_revision: bool = True) -> dict:
         """The derived fields (when derived) and their state; with ``reset_vector`` the
@@ -600,11 +604,15 @@ class Refresh:
         if d is None:
             # Text of an earlier revision or policy must not stay searchable or sortable (#329).
             props |= {"text": "", "leftContext": "", "rightContext": ""}
+            if self.sort_keys:
+                props |= NO_SORT_KEYS
         else:
             props |= {"text": d.text, "leftContext": d.left_context, "rightContext": d.right_context,
                       "documentStartChar": d.start_char,
                       "documentEndChar": d.end_char, "documentStartWord": d.start_word,
                       "documentEndWord": d.end_word}
+            if self.sort_keys:
+                props |= sort_keys(d.text, d.left_context, d.right_context).properties(self.revision)
         return props
 
 
@@ -625,16 +633,17 @@ async def derive_refresh(store: AnnotationStore, chunk_id: Id, start: int, end: 
     a ``derive_annotation`` failure (never a reason to read the whole document); offsets
     that describe no text (or a missing anchor chunk or document) are ``invalid``."""
     source = source or ChunkSource(store.documents)
+    keys = store.enrichment.sort_keys
     try:
         anchor = await source.chunk(access.parse_id(chunk_id, "Chunk"))
         if anchor is None or anchor.document_id is None:
-            return Refresh(revision, None, EnrichmentStatus.invalid)
+            return Refresh(revision, None, EnrichmentStatus.invalid, sort_keys=keys)
         derived = derive(await source.span_source(anchor, start, end), start, end)
-        return Refresh(revision, derived, EnrichmentStatus.ready)
+        return Refresh(revision, derived, EnrichmentStatus.ready, sort_keys=keys)
     except InvalidSpanRange:
-        return Refresh(revision, None, EnrichmentStatus.invalid)
+        return Refresh(revision, None, EnrichmentStatus.invalid, sort_keys=keys)
     except Exception as e:
-        return Refresh(revision, None, EnrichmentStatus.failed, [_derivation_failure(chunk_id, e)])
+        return Refresh(revision, None, EnrichmentStatus.failed, [_derivation_failure(chunk_id, e)], sort_keys=keys)
 
 
 async def write_if_revision(store: AnnotationStore, collection_id: UUID, span_id: UUID, revision: int,
@@ -1021,12 +1030,12 @@ async def _rows_in_document_order(store: AnnotationStore, cid: UUID, query: Anno
     async def cut(document: UUID, skip: int, take: int) -> list[AnnotationRow]:
         if skip + take > _MAX_WINDOW:
             raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} of one document cannot be paged.")
-        return await store.spans.query_rows(cid, query, by_text=False, document_ids=[document], limit=take, offset=skip)
+        return await store.spans.query_rows(cid, query, document_ids=[document], limit=take, offset=skip)
 
     async def read_whole() -> list[AnnotationRow]:
         if not whole:
             return []
-        return await store.spans.query_rows(cid, query, by_text=False, document_ids=whole,
+        return await store.spans.query_rows(cid, query, document_ids=whole,
                                             limit=sum(found.counts[d] for d in whole))
 
     parts = await asyncio.gather(read_whole(), *(cut(d, s, t) for d, s, t in slices if d not in whole))
@@ -1143,6 +1152,91 @@ def _check_ranking(store: AnnotationStore, ranking: AnnotationRanking, sort: Ann
         raise ServiceUnavailableError(SEMANTIC_NOT_CONFIGURED)
 
 
+_TEXT_SORTS = (AnnotationSort.text, AnnotationSort.left, AnnotationSort.right)
+_SORT_KEY_PROPERTIES = {AnnotationSort.text: "textSortKey", AnnotationSort.left: "leftSortKey",
+                        AnnotationSort.right: "rightSortKey"}
+SORT_KEYS_NOT_ENABLED = ("Sorting by the context needs the annotation sort keys, which this store does not hold yet: run "
+                         "python -m semant_demo.maintenance.annotation_enrichment add-schema and restart the backend.")
+_MAX_PARTITION_QUERIES = 16
+"""Partition counts of the attribute sort run at once."""
+
+
+async def _none() -> None:
+    return None
+
+
+def _sort_property(store: AnnotationStore, sort: AnnotationSort) -> str:
+    """The property a text or context sort orders by: its sort key (#666), or, on a store without
+    the keys, ``text`` for the text sort (the code-point order of before)."""
+    if store.enrichment.sort_keys:
+        return _SORT_KEY_PROPERTIES[sort]
+    if sort == AnnotationSort.text:
+        return "text"
+    raise ServiceUnavailableError(SORT_KEYS_NOT_ENABLED)
+
+
+class AttributeDefinitions(Protocol):
+    """The collection's attribute definitions (``adapters/sql/attributes.py``): the value order of
+    the attribute sort (#666). ``read`` returns an attribute with ``values`` in definition order,
+    each with ``id`` and ``retired``, or None."""
+
+    async def read(self, collection_id: UUID, attribute_id: UUID): ...
+
+
+async def _attribute_order(store: AnnotationStore, collection_id: UUID, attribute_id: Id | None,
+                           attributes: AttributeDefinitions | None, descending: bool) -> list[str]:
+    """The stored elements (``<attribute id>:<value id>``) of the sort attribute's values in sort
+    order: active values in definition order, then retired ones; ``descending`` reverses each
+    group (retired values stay after active ones)."""
+    if attribute_id is None:
+        raise InvalidRequestError("Choose the attribute to sort by (sort_attribute)")
+    if not store.spans.attributes:
+        raise ServiceUnavailableError(ATTRIBUTES_NOT_ENABLED)
+    attribute = await attributes.read(collection_id, access.parse_id(attribute_id, "Attribute")) \
+        if attributes is not None else None
+    if attribute is None:
+        raise NotFoundError("Attribute not found")
+    active = [v.id for v in attribute.values if not v.retired]
+    retired = [v.id for v in attribute.values if v.retired]
+    if descending:
+        active, retired = active[::-1], retired[::-1]
+    return [codec.encode(attribute.id, v) for v in active + retired]
+
+
+async def _rows_by_attribute(store: AnnotationStore, cid: UUID, query: AnnotationQuery, found: _Documents,
+                             document_ids: list[UUID] | None, values: list[str], limit: int,
+                             offset: int) -> list[AnnotationRow]:
+    """The page ``[offset, offset + limit)`` of the attribute sort: one partition per value in
+    ``values`` order, holding the approved annotations with that value and none before it (so an
+    annotation with several values appears once, under its first), then the rest (no value of the
+    attribute, or not approved); each partition in ``found``'s document order. Counts every
+    partition per document (one aggregation each, bounded by the attribute's value count), then
+    reads only the partitions the page touches, as ``_rows_in_document_order``. ``document_ids``:
+    the documents the query is restricted to (``None``: those of ``found``, all annotated ones)."""
+    partitions = [query.model_copy(update={"holds_value": v, "holds_none_of": values[:i]})
+                  for i, v in enumerate(values)]
+    partitions.append(query.model_copy(update={"holds_none_of": values}))
+    limiter = asyncio.Semaphore(_MAX_PARTITION_QUERIES)
+
+    async def count(partition: AnnotationQuery) -> dict[UUID, int]:
+        async with limiter:
+            return await store.spans.count_by_document(cid, partition, _MAX_DOCUMENTS + 1, document_ids)
+    counts = await asyncio.gather(*(count(p) for p in partitions))
+    rows: list[AnnotationRow] = []
+    position = 0
+    for partition, by_document in zip(partitions, counts):
+        within = _Documents(order=[d for d in found.order if by_document.get(d)], counts=by_document,
+                            documents=found.documents)
+        size = sum(by_document[d] for d in within.order)
+        skip, end = max(0, offset - position), min(size, offset + limit - position)
+        if end > skip:
+            rows += await _rows_in_document_order(store, cid, partition, within, end - skip, skip)
+        position += size
+        if position >= offset + limit:
+            break
+    return rows
+
+
 async def count_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
                             tag_ids: list[Id] | None = None) -> AnnotationCounts:
     """
@@ -1159,7 +1253,9 @@ async def count_annotations(store: AnnotationStore, user: Principal | None, coll
 async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id,
                             filters: AnnotationFilters | None = None, *,
                             ranking: AnnotationRanking | None = None, sort: AnnotationSort | None = None,
-                            descending: bool = False, limit: int = 50, offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
+                            descending: bool = False, limit: int = 50, offset: int = 0, annotation_ids: list[Id] | None = None,
+                            sort_attribute: Id | None = None,
+                            attributes: "AttributeDefinitions | None" = None) -> AnnotationPage:
     """
     One page of the collection's annotations matching the annotation query ``filters``
     (``AnnotationFilters``, #663) as concordance (KWIC) rows, and the number of all that match.
@@ -1167,6 +1263,12 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     title or year and rows without text last, rows of one document still in reading order, ties
     by id), so pages do not overlap or skip rows while the annotations do not change. ``annotation_ids``: only these annotations (the workspace reads
     one it shows as it is now, whether or not it still matches the page's filters; #460).
+
+    Text and context sorts (#666) use the stored Czech sort keys (``collation.py``) when the
+    collection holds them (the text sort falls back to Weaviate's order of the text otherwise; the
+    context sorts are unavailable, 503) and report how many rows have no current keys
+    (``unsortable``). The attribute sort (``sort_attribute``, read from ``attributes`` after
+    authorization) pages through one partition per value of the attribute (``_rows_by_attribute``).
 
     Reads the annotations and, for document order or document filters, the metadata of the
     annotated documents once (at most ``_MAX_DOCUMENTS``); never the source chunks.
@@ -1187,8 +1289,14 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
         query, text = _filters_query(filters, ids), None
     sort = sort or AnnotationSort.document
     _require_attribute_properties(store, query)
+    if sort_attribute is not None and sort != AnnotationSort.attribute:
+        raise InvalidRequestError("sort_attribute is only used with the attribute sort")
+    sort_by = _sort_property(store, sort) if sort in _TEXT_SORTS else None
     documents = filters.document_ids or None
     conditions = document_conditions(filters.document_filters)
+    values = None
+    if sort == AnnotationSort.attribute:
+        values = await _attribute_order(store, grant.collection_id, sort_attribute, attributes, descending)
     cid = await use_tenant(store, grant)
     if ranking.ranked:
         ranked = await _rank(store, cid, filters, ranking, query, text, conditions)
@@ -1199,27 +1307,37 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
             list({r.documentId for r in rows if r.documentId is not None}))
         return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
                               total=len(ranked.ids), offset=offset, limit=limit, result=ranked.result)
-    if sort == AnnotationSort.text and not conditions:
+    unsortable = None
+    if sort in _TEXT_SORTS:
         if offset + limit > _MAX_WINDOW:
             raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
-        total, rows = await asyncio.gather(
-            store.spans.count_rows(cid, query, documents),
-            store.spans.query_rows(cid, query, by_text=True, document_ids=documents, limit=limit, offset=offset,
-                                   descending=descending))
-        joined = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
+        if conditions:
+            found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents, conditions)
+            total, documents, joined = sum(found.counts.values()), found.order, found.documents
+        else:
+            total, joined = await store.spans.count_rows(cid, query, documents), None
+        keyed = query.model_copy(update={"sort_key_version": sort_key_version()})
+        rows, sortable = await asyncio.gather(
+            store.spans.query_rows(cid, query, sort_by=sort_by, document_ids=documents, limit=limit, offset=offset,
+                                   descending=descending),
+            store.spans.count_rows(cid, keyed, documents) if store.enrichment.sort_keys else _none())
+        if sortable is not None:
+            unsortable = max(0, total - sortable)
+        if joined is None:
+            joined = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
     else:
-        found = await _annotated_documents(store, cid, query, sort, documents, conditions, descending)
+        found = await _annotated_documents(store, cid, query, sort if sort != AnnotationSort.attribute
+                                           else AnnotationSort.document, documents, conditions,
+                                           descending and sort != AnnotationSort.attribute)
         total = sum(found.counts.values())
-        if sort == AnnotationSort.text:
-            if offset + limit > _MAX_WINDOW:
-                raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
-            rows = await store.spans.query_rows(cid, query, by_text=True, document_ids=found.order,
-                                                limit=limit, offset=offset, descending=descending)
+        if sort == AnnotationSort.attribute:
+            rows = await _rows_by_attribute(store, cid, query, found, found.order if conditions else documents,
+                                            values, limit, offset)
         else:
             rows = await _rows_in_document_order(store, cid, query, found, limit, offset)
         joined = found.documents
     return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
-                          total=total, offset=offset, limit=limit)
+                          total=total, offset=offset, limit=limit, unsortable=unsortable)
 
 
 async def list_annotated_documents(store: AnnotationStore, user: Principal | None, collection_id: Id,

@@ -286,12 +286,15 @@ async def list_collection_annotations(
     sort: AnnotationSort | None = Query(default=None, description=(
         "Lexical mode: the row order, default document; ranked modes are in relevance order and take none")),
     descending: bool = Query(default=False, description=(
-        "Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id")),
+        "Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows "
+        "without a text or context sort key move from first to last, ties stay by id")),
+    sort_attribute: str | None = Query(default=None, description="Sort attribute: the attribute whose values order the rows"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     annotation_id: list[str] | None = Query(default=None, max_length=200,
                                             description="Only these annotations"),
     store: AnnotationStore = Depends(get_annotation_store),
+    attributes: AttributeRepository = Depends(get_attribute_definitions),
     current_user: User = Depends(current_active_user),
 ) -> AnnotationPage:
     """
@@ -302,12 +305,16 @@ async def list_collection_annotations(
     and no text. A document filter this corpus database cannot evaluate is refused (422).
 
     A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result``
-    describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a
+    describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech
+    dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by
+    context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a
     usable embedding service answer 503; a similar source without a current vector 400.
     """
     try:
         return await service.query_annotations(store, current_user, collection_id, filters, ranking=ranking,
-                                               sort=sort, descending=descending, limit=limit, offset=offset, annotation_ids=annotation_id)
+                                               sort=sort, descending=descending, limit=limit, offset=offset,
+                                               annotation_ids=annotation_id, sort_attribute=sort_attribute,
+                                               attributes=attributes)
     except UnavailableFilter as e:
         raise _unavailable(e) from e
 

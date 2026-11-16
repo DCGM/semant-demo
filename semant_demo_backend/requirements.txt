@@ -29,3 +29,6 @@ httpx
 anyio
 # Public read-only MCP endpoint (#635): the official SDK (FastMCP, Streamable HTTP).
 mcp
+# Czech collation of the annotation sort keys (#666). Built from source against the system ICU:
+# needs libicu-dev and pkg-config (deploy/Dockerfile, semant_demo_backend/README.md).
+PyICU

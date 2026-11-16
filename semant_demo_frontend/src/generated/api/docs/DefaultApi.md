@@ -3674,11 +3674,11 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, descending, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, mode, k, similarTo, includeSource)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, descending, sortAttribute, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, mode, k, similarTo, includeSource)
 
 List Collection Annotations
 
-One page of the collection\&#39;s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have &#x60;&#x60;textStatus&#x60;&#x60; other than &#x60;&#x60;ready&#x60;&#x60; and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked &#x60;&#x60;mode&#x60;&#x60; (#664) pages through its top &#x60;&#x60;k&#x60;&#x60; in relevance order, and &#x60;&#x60;result&#x60;&#x60; describes it (&#x60;&#x60;top_k&#x60;&#x60;, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+One page of the collection\&#39;s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have &#x60;&#x60;textStatus&#x60;&#x60; other than &#x60;&#x60;ready&#x60;&#x60; and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked &#x60;&#x60;mode&#x60;&#x60; (#664) pages through its top &#x60;&#x60;k&#x60;&#x60; in relevance order, and &#x60;&#x60;result&#x60;&#x60; describes it (&#x60;&#x60;top_k&#x60;&#x60;, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report &#x60;&#x60;unsortable&#x60;&#x60; rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
 
 ### Example
 
@@ -3702,8 +3702,10 @@ async function example() {
     collectionId: collectionId_example,
     // AnnotationSort | Lexical mode: the row order, default document; ranked modes are in relevance order and take none (optional)
     sort: ...,
-    // boolean | Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id (optional)
+    // boolean | Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows without a text or context sort key move from first to last, ties stay by id (optional)
     descending: true,
+    // string | Sort attribute: the attribute whose values order the rows (optional)
+    sortAttribute: sortAttribute_example,
     // number (optional)
     limit: 56,
     // number (optional)
@@ -3762,8 +3764,9 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
-| **sort** | `AnnotationSort` | Lexical mode: the row order, default document; ranked modes are in relevance order and take none | [Optional] [Defaults to `undefined`] [Enum: document, year, text] |
-| **descending** | `boolean` | Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id | [Optional] [Defaults to `false`] |
+| **sort** | `AnnotationSort` | Lexical mode: the row order, default document; ranked modes are in relevance order and take none | [Optional] [Defaults to `undefined`] [Enum: document, year, text, left, right, attribute] |
+| **descending** | `boolean` | Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows without a text or context sort key move from first to last, ties stay by id | [Optional] [Defaults to `false`] |
+| **sortAttribute** | `string` | Sort attribute: the attribute whose values order the rows | [Optional] [Defaults to `undefined`] |
 | **limit** | `number` |  | [Optional] [Defaults to `50`] |
 | **offset** | `number` |  | [Optional] [Defaults to `0`] |
 | **annotationId** | `Array<string>` | Only these annotations | [Optional] |

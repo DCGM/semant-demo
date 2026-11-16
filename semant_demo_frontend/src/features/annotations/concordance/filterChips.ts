@@ -102,6 +102,15 @@ export function rankedLabel (result: { kind?: string, mode?: RetrievalMode, k?: 
   return parts.join(' · ')
 }
 
+/** A text or context sorted page's note on rows without a current sort key (#666), e.g. "3
+ * annotations are not sortable yet and are listed first"; null when every row has one. Rows
+ * without a key are placed by Weaviate: first ascending, last descending. */
+export function unsortableLabel (unsortable: number | null | undefined, descending: boolean): string | null {
+  if (!unsortable) return null
+  const subject = unsortable === 1 ? '1 annotation is' : `${unsortable} annotations are`
+  return `${subject} not sortable yet and listed ${descending ? 'last' : 'first'}`
+}
+
 const STATUS_LABELS: Record<SpanType, string> = {
   [SpanType.pos]: 'Confirmed',
   [SpanType.auto]: 'Proposals',

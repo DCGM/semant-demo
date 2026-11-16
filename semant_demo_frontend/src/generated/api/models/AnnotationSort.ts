@@ -20,7 +20,10 @@
 export const AnnotationSort = {
     document: 'document',
     year: 'year',
-    text: 'text'
+    text: 'text',
+    left: 'left',
+    right: 'right',
+    attribute: 'attribute'
 } as const;
 export type AnnotationSort = typeof AnnotationSort[keyof typeof AnnotationSort];
 

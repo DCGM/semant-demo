@@ -11,7 +11,7 @@ import SelectionBar from 'src/features/annotations/concordance/SelectionBar.vue'
 import {
   defaultFilters, modeChange, similarChange, useConcordanceStore, type ConcordanceFilters
 } from 'src/features/annotations/concordance/concordanceStore'
-import { concordanceChips, modeHintText, rankedLabel } from 'src/features/annotations/concordance/filterChips'
+import { concordanceChips, modeHintText, rankedLabel, unsortableLabel } from 'src/features/annotations/concordance/filterChips'
 import { useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 
 // Ranked annotation retrieval in the workspace (#664): the mode, k and source are sent with
@@ -279,5 +279,12 @@ describe('ranked components', () => {
     })
     expect(bar.findAllComponents(QBtn).find(b => b.attributes('data-testid') === 'select-all-matches')!.text())
       .toBe('Select these top 100')
+  })
+
+  it('says how many rows have no sort key yet and where they are listed (#666)', () => {
+    expect(unsortableLabel(null, false)).toBeNull()
+    expect(unsortableLabel(0, false)).toBeNull()
+    expect(unsortableLabel(1, false)).toBe('1 annotation is not sortable yet and listed first')
+    expect(unsortableLabel(37, true)).toBe('37 annotations are not sortable yet and listed last')
   })
 })

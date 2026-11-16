@@ -2956,6 +2956,9 @@ pygments==2.21.0 \
     #   pytest
     #   rich
     #   rich-rst
+pyicu==2.17 \
+    --hash=sha256:6138b95ac9592fa3983bf489e0c625e8fcfffd0c562a36a08269cecc4ffb48be
+    # via -r requirements.txt
 pyjwt==2.15.1 \
     --hash=sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193 \
     --hash=sha256:4f259e80cdfb6b3fc18a7de51fd1ef9ec79652f25019bae68975ca2468a34df8

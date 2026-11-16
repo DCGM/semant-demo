@@ -61,6 +61,7 @@
     <div class="collection-annotations__summary" aria-live="polite">
       <span data-testid="concordance-range">{{ rangeLabel }}</span>
       <span v-if="rankedText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-ranked">{{ rankedText }}</span>
+      <span v-if="unsortableText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-unsortable">{{ unsortableText }}</span>
       <q-spinner v-if="store.loading" color="primary" size="1.2em" aria-label="Loading annotations" />
       <q-space />
       <PagerButtons v-if="store.total > PAGE_SIZE" />
@@ -102,7 +103,7 @@
       @similar="findSimilar"
       @toggle="toggleRow"
       @select-page="selectPage"
-      @sort="(sort, descending) => store.setFilters({ sort, descending })"
+      @sort="(sort, descending, sortAttribute) => store.setFilters({ sort, descending, sortAttribute })"
       @filter="field => toolbar?.openFilter(field)"
       @assign="(row, attribute, change, done) => assignRow(row, attribute, change).then(done)"
     />
@@ -398,7 +399,7 @@ import {
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, ranksText, useConcordanceStore } from './concordanceStore'
-import { rankedLabel } from './filterChips'
+import { rankedLabel, unsortableLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
@@ -436,6 +437,9 @@ const rangeLabel = computed(() => {
 
 /** A ranked page's description (#664): top k, truncation and vector coverage. */
 const rankedText = computed(() => rankedLabel(store.page?.result, store.total))
+
+/** Text and context sorts (#666): how many rows have no current sort key, and where they are. */
+const unsortableText = computed(() => unsortableLabel(store.page?.unsortable, store.filters.descending))
 
 const emptyText = computed(() => {
   if (ranked.value) return 'No annotation matching these filters has a current vector to rank by.'
