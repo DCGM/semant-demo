@@ -8,8 +8,8 @@ import type { ConcordanceChip } from './filterChips'
 
 /**
  * CSV export of the workspace's annotations (#719): what to export and which column groups,
- * the request for the server, and the download. The server writes the file in document order
- * and aborts it, rather than ending it early, when it cannot complete it; a download that does
+ * the request for the server, and the download. The server 
+ * aborts it, rather than ending it early, when it cannot complete it; a download that does
  * not arrive whole is reported as failed and nothing is saved.
  */
 export interface ExportOptions {
