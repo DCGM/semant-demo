@@ -204,7 +204,8 @@ def test_deployment_only_change_runs_everything_until_the_mode_is_enabled():
     "data_tools/embedder/config.qwen.yaml",
 ])
 def test_shared_paths_with_deployment_changes_select_full_validation(path):
-    decision = ci.classify_paths(["deploy/docker-compose.app.yaml", path], ALL_ON)
+    # Start with an allowed preview-tested file; the added path must force full CI.
+    decision = ci.classify_paths(["deploy/Dockerfile", path], ALL_ON)
 
     assert (decision.mode, decision.classification) == (ci.FULL, ci.FULL)
     assert decision.outside == [path]
