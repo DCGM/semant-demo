@@ -229,7 +229,7 @@
                   data-testid="row-approve"
                   @click="decide(ReviewAction.approve)"
                 >
-                  <q-tooltip>{{ isConfirmed ? 'Confirmed; Alt+C goes on to the next one' : 'Confirm (Alt+C)' }}</q-tooltip>
+                  <q-tooltip>{{ isConfirmed ? 'Confirmed (Alt+C)' : 'Confirm (Alt+C)' }}</q-tooltip>
                 </q-btn>
                 <q-btn
                   :unelevated="isRejected"
@@ -247,7 +247,7 @@
                   @click="decide(ReviewAction.reject)"
                 >
                   <q-tooltip>
-                    {{ isRejected ? 'Rejected; Alt+R goes on to the next one' : 'Reject (Alt+R)' }}: kept as a rejected
+                    {{ isRejected ? 'Rejected (Alt+R)' : 'Reject (Alt+R)' }}: kept as a rejected
                     annotation (negative feedback); to remove it for good, use Delete
                   </q-tooltip>
                 </q-btn>
