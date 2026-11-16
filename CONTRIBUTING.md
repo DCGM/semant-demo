@@ -98,7 +98,7 @@ schema/migration, shared Weaviate adapters, API contracts (always `make api-chec
 and cross-feature changes. Cross-layer changes may require all three suites. Also run
 relevant full suites before a release, and when CI is unavailable or cannot exercise
 the change. This is local policy;
-CI runs full validation except for documentation-only and frontend-only PRs
+CI runs full validation except for documentation-only, frontend-only and deployment-only PRs
 ([change-aware CI](docs/DEVELOPMENT.md#change-aware-ci-and-the-ci-result-gate), #687). **Documentation-only PRs
 need link/format checks, not application suites.** Report unavailable checks honestly;
 never imply they passed.
