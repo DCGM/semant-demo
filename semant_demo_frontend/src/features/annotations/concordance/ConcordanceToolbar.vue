@@ -1,234 +1,297 @@
 <template>
   <div class="concordance-toolbar" data-testid="concordance-toolbar">
-    <q-select
-      :model-value="filters.tagIds"
-      :options="tagOptions"
-      multiple
-      emit-value
-      map-options
-      use-chips
-      clearable
-      dense
-      outlined
-      options-dense
-      label="Tags"
-      class="concordance-toolbar__tags"
-      data-testid="concordance-tags"
-      @update:model-value="value => emit('change', { tagIds: value ?? [] })"
-    >
-      <template #option="{ itemProps, opt, selected, toggleOption }">
-        <q-item v-bind="itemProps">
-          <q-item-section side>
-            <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label>
-              <span class="concordance-toolbar__dot" :style="{ backgroundColor: opt.color }" aria-hidden="true" />
-              {{ opt.label }}
-            </q-item-label>
-          </q-item-section>
-        </q-item>
-      </template>
-    </q-select>
+    <div class="concordance-toolbar__row">
+      <!-- A phone shows only this summary until the filters are asked for. -->
+      <div v-if="phone" class="concordance-toolbar__phone-bar">
+        <q-btn
+          outline
+          dense
+          no-caps
+          color="primary"
+          icon="filter_list"
+          :label="activeCount ? `Filters (${activeCount})` : 'Filters'"
+          class="concordance-toolbar__phone-toggle"
+          aria-controls="concordance-filter-form"
+          :aria-expanded="formOpen ? 'true' : 'false'"
+          data-testid="concordance-filters-toggle"
+          @click="formOpen = !formOpen"
+        >
+          <q-icon :name="formOpen ? 'expand_less' : 'expand_more'" right />
+        </q-btn>
+        <span v-if="!formOpen && queryText" class="concordance-toolbar__summary" data-testid="concordance-summary">{{ queryText }}</span>
+      </div>
 
-    <div class="concordance-toolbar__status" role="group" aria-label="Status">
-      <q-checkbox
-        v-for="option in statusOptions"
-        :key="option.value"
-        dense
-        :model-value="filters.types.includes(option.value)"
-        :label="option.label"
-        :disable="filters.types.length === 1 && filters.types.includes(option.value)"
-        :data-testid="`concordance-status-${option.value}`"
-        @update:model-value="value => toggleType(option.value, !!value)"
+      <div v-show="formVisible" id="concordance-filter-form" class="concordance-toolbar__primary">
+        <q-select
+          :model-value="filters.tagIds"
+          :options="tagOptions"
+          multiple
+          emit-value
+          map-options
+          clearable
+          dense
+          outlined
+          options-dense
+          hide-bottom-space
+          label="Tags"
+          :display-value="tagsLabel"
+          class="concordance-toolbar__tags"
+          data-testid="concordance-tags"
+          @update:model-value="value => emit('change', { tagIds: value ?? [] })"
+        >
+          <template #option="{ itemProps, opt, selected, toggleOption }">
+            <q-item v-bind="itemProps">
+              <q-item-section side>
+                <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>
+                  <span class="concordance-toolbar__dot" :style="{ backgroundColor: opt.color }" aria-hidden="true" />
+                  {{ opt.label }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+
+        <!-- One segmented control: any combination of the statuses, at least one. -->
+        <q-btn-group outline class="concordance-toolbar__status" role="group" aria-label="Status">
+          <q-btn
+            v-for="option in statusOptions"
+            :key="option.value"
+            dense
+            no-caps
+            :unelevated="statusActive(option.value)"
+            :outline="!statusActive(option.value)"
+            :color="statusActive(option.value) ? 'primary' : 'grey-8'"
+            :icon="statusActive(option.value) ? 'check' : undefined"
+            :label="option.label"
+            :aria-pressed="statusActive(option.value) ? 'true' : 'false'"
+            :disable="filters.types.length === 1 && statusActive(option.value)"
+            :data-testid="`concordance-status-${option.value}`"
+            @click="toggleType(option.value, !statusActive(option.value))"
+          >
+            <q-tooltip v-if="option.hint">{{ option.hint }}</q-tooltip>
+          </q-btn>
+        </q-btn-group>
+
+        <div class="concordance-toolbar__search" role="group" aria-label="Text search">
+          <q-select
+            :model-value="filters.mode"
+            :options="modeOptions"
+            emit-value
+            map-options
+            dense
+            outlined
+            options-dense
+            hide-bottom-space
+            label="Find by"
+            class="concordance-toolbar__mode"
+            data-testid="concordance-mode"
+            @update:model-value="value => emit('change', modeChange(value))"
+          />
+          <q-input
+            ref="textInput"
+            :model-value="filters.text"
+            dense
+            outlined
+            clearable
+            debounce="400"
+            :label="textLabel"
+            hide-bottom-space
+            class="concordance-toolbar__text"
+            data-testid="concordance-text"
+            @update:model-value="value => emit('change', { text: String(value ?? '') })"
+          >
+            <template #prepend><q-icon name="search" /></template>
+            <template #append>
+              <q-btn
+                flat
+                round
+                dense
+                size="sm"
+                icon="help_outline"
+                aria-label="How the text is matched"
+                data-testid="concordance-text-help"
+              >
+                <q-popup-proxy>
+                  <p class="concordance-toolbar__help">{{ textHint }}</p>
+                </q-popup-proxy>
+              </q-btn>
+            </template>
+          </q-input>
+          <q-select
+            v-if="filters.mode !== RetrievalMode.semantic"
+            :model-value="filters.textScope"
+            :options="scopeOptions"
+            emit-value
+            map-options
+            dense
+            outlined
+            options-dense
+            hide-bottom-space
+            label="Search in"
+            class="concordance-toolbar__scope"
+            data-testid="concordance-text-scope"
+            @update:model-value="value => emit('change', { textScope: value })"
+          />
+          <q-checkbox
+            v-if="filters.mode === RetrievalMode.similar"
+            dense
+            :model-value="filters.includeSource"
+            label="Include source"
+            data-testid="concordance-include-source"
+            @update:model-value="value => emit('change', { includeSource: !!value })"
+          />
+        </div>
+
+        <q-btn
+          outline
+          dense
+          no-caps
+          color="primary"
+          :icon="moreOpen ? 'expand_less' : 'tune'"
+          :label="moreFilterCount ? `More filters (${moreFilterCount})` : 'More filters'"
+          class="concordance-toolbar__more-button"
+          aria-controls="concordance-more-filters"
+          :aria-expanded="moreOpen ? 'true' : 'false'"
+          data-testid="concordance-more-filters"
+          @click="toggleMore"
+        >
+          <q-tooltip>Sources, years, document title, library, language and attributes</q-tooltip>
+        </q-btn>
+      </div>
+
+      <div
+        v-if="attributes.length"
+        class="concordance-toolbar__display"
+        role="group"
+        aria-label="Display settings, they do not limit the results"
+        data-testid="concordance-display"
       >
-        <q-tooltip v-if="option.hint">{{ option.hint }}</q-tooltip>
-      </q-checkbox>
+        <span class="concordance-toolbar__group-label">Display<q-tooltip>Display settings change how the results are shown, not which annotations match</q-tooltip></span>
+        <q-select
+          :model-value="shownIds"
+          :options="shownAttributeOptions"
+          multiple
+          emit-value
+          map-options
+          clearable
+          dense
+          outlined
+          options-dense
+          label="Show attributes"
+          :display-value="shownLabel"
+          class="concordance-toolbar__show-attribute"
+          data-testid="concordance-show-attribute"
+          @update:model-value="value => emit('show-attributes', value ?? [])"
+        >
+          <!-- The option carries role and state (itemProps); its checkbox only shows them. -->
+          <template #option="{ itemProps, opt, selected, toggleOption }">
+            <q-item v-bind="itemProps">
+              <q-item-section side>
+                <q-checkbox
+                  dense
+                  tabindex="-1"
+                  aria-hidden="true"
+                  :model-value="selected"
+                  @update:model-value="toggleOption(opt)"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>{{ opt.label }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+          <q-tooltip>Shows each chosen attribute's values in a column of their own, where they can be assigned</q-tooltip>
+        </q-select>
+      </div>
     </div>
 
-    <div class="concordance-toolbar__search" role="group" aria-label="Text search">
-      <q-select
-        :model-value="filters.mode"
-        :options="modeOptions"
-        emit-value
-        map-options
-        dense
-        outlined
-        options-dense
-        label="Find by"
-        class="concordance-toolbar__mode"
-        data-testid="concordance-mode"
-        @update:model-value="value => emit('change', modeChange(value))"
-      />
-      <q-input
-        ref="textInput"
-        :model-value="filters.text"
-        dense
-        outlined
-        clearable
-        debounce="400"
-        :label="textLabel"
-        :hint="textHint"
-        hide-hint
-        hide-bottom-space
-        class="concordance-toolbar__text"
-        data-testid="concordance-text"
-        @update:model-value="value => emit('change', { text: String(value ?? '') })"
-      >
-        <template #prepend><q-icon name="search" /></template>
-      </q-input>
-      <q-select
-        v-if="filters.mode !== RetrievalMode.semantic"
-        :model-value="filters.textScope"
-        :options="scopeOptions"
-        emit-value
-        map-options
-        dense
-        outlined
-        options-dense
-        label="Search in"
-        class="concordance-toolbar__scope"
-        data-testid="concordance-text-scope"
-        @update:model-value="value => emit('change', { textScope: value })"
-      />
-      <q-select
-        v-if="ranked"
-        :model-value="filters.k"
-        :options="TOP_K_OPTIONS"
-        dense
-        outlined
-        options-dense
-        label="Top"
-        class="concordance-toolbar__k"
-        data-testid="concordance-k"
-        @update:model-value="value => emit('change', { k: value })"
-      >
-        <q-tooltip>How many annotations to rank at most</q-tooltip>
-      </q-select>
-      <q-checkbox
-        v-if="filters.mode === RetrievalMode.similar"
-        dense
-        :model-value="filters.includeSource"
-        label="Include source"
-        data-testid="concordance-include-source"
-        @update:model-value="value => emit('change', { includeSource: !!value })"
-      />
-    </div>
-
-    <q-select
-      ref="sourcesSelect"
-      :model-value="filters.documentIds"
-      :options="filteredDocumentOptions"
-      multiple
-      emit-value
-      map-options
-      use-input
-      clearable
-      dense
-      outlined
-      options-dense
-      input-debounce="0"
-      label="Sources"
-      class="concordance-toolbar__sources"
-      :display-value="sourcesLabel"
-      hide-bottom-space
-      :error="!!documentsError"
-      :error-message="documentsError ?? undefined"
-      data-testid="concordance-sources"
-      @filter="filterDocuments"
-      @update:model-value="value => emit('change', { documentIds: value ?? [] })"
-    />
-
-    <q-select
-      v-if="attributes.length"
-      :model-value="attributeFilter"
-      :options="filteredAttributeOptions"
-      multiple
-      emit-value
-      map-options
-      use-input
-      clearable
-      dense
-      outlined
-      options-dense
-      input-debounce="0"
-      label="Attributes"
-      class="concordance-toolbar__attributes"
-      :display-value="attributesLabel"
-      data-testid="concordance-attributes"
-      @filter="filterAttributes"
-      @update:model-value="setAttributeFilter"
+    <div
+      v-show="formVisible && moreOpen"
+      id="concordance-more-filters"
+      ref="morePanel"
+      class="concordance-toolbar__more"
+      role="group"
+      aria-label="More filters"
+      data-testid="concordance-more-panel"
     >
-      <template #option="{ itemProps, opt, selected, toggleOption }">
-        <q-item v-bind="itemProps">
-          <q-item-section side>
-            <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label :class="{ 'text-italic': opt.unassigned }">{{ opt.label }}</q-item-label>
-          </q-item-section>
-        </q-item>
-      </template>
-      <q-tooltip>Values of one attribute match any of them; different attributes must all match</q-tooltip>
-    </q-select>
-
-    <div class="concordance-toolbar__years" role="group" aria-label="Publication years">
-      <q-input
-        ref="yearInput"
-        :model-value="filters.documentFilters.yearMin ?? ''"
-        dense
-        outlined
-        type="number"
-        debounce="500"
-        label="From year"
-        class="concordance-toolbar__year"
-        data-testid="concordance-year-from"
-        @update:model-value="value => setDocumentFilters({ yearMin: toYear(value) })"
-      />
-      <q-input
-        :model-value="filters.documentFilters.yearMax ?? ''"
-        dense
-        outlined
-        type="number"
-        debounce="500"
-        label="To year"
-        class="concordance-toolbar__year"
-        data-testid="concordance-year-to"
-        @update:model-value="value => setDocumentFilters({ yearMax: toYear(value) })"
-      />
-    </div>
-
-    <q-btn
-      outline
-      dense
-      no-caps
-      color="primary"
-      icon="tune"
-      :label="documentFilterCount ? `Document filters (${documentFilterCount})` : 'Document filters'"
-      class="concordance-toolbar__document-filters"
-      data-testid="concordance-document-filters"
-    >
-      <q-menu anchor="bottom left" self="top left" class="concordance-toolbar__menu">
-        <div class="concordance-toolbar__document-form" data-testid="concordance-document-form">
-          <p class="concordance-toolbar__menu-hint">
-            The same document filters as in Search and the corpus overview: annotations in documents that match
-            every kind, and any of several values of one kind.
-          </p>
+      <div class="concordance-toolbar__more-section" data-testid="concordance-document-form">
+        <p class="concordance-toolbar__more-title">Documents</p>
+        <div class="concordance-toolbar__more-fields">
+          <q-select
+            ref="sourcesSelect"
+            :model-value="filters.documentIds"
+            :options="filteredDocumentOptions"
+            multiple
+            emit-value
+            map-options
+            use-input
+            clearable
+            dense
+            outlined
+            options-dense
+            input-debounce="0"
+            label="Sources"
+            class="concordance-toolbar__sources"
+            :display-value="sourcesLabel"
+            hide-bottom-space
+            :error="!!documentsError"
+            :error-message="documentsError ?? undefined"
+            data-testid="concordance-sources"
+            @filter="filterDocuments"
+            @update:model-value="value => emit('change', { documentIds: value ?? [] })"
+          />
+          <div class="concordance-toolbar__years" role="group" aria-label="Publication years">
+            <q-input
+              ref="yearInput"
+              :model-value="filters.documentFilters.yearMin ?? ''"
+              dense
+              outlined
+              type="number"
+              debounce="500"
+              label="From year"
+              class="concordance-toolbar__year"
+              data-testid="concordance-year-from"
+              @update:model-value="value => setDocumentFilters({ yearMin: toYear(value) })"
+            />
+            <q-input
+              :model-value="filters.documentFilters.yearMax ?? ''"
+              dense
+              outlined
+              type="number"
+              debounce="500"
+              label="To year"
+              class="concordance-toolbar__year"
+              data-testid="concordance-year-to"
+              @update:model-value="value => setDocumentFilters({ yearMax: toYear(value) })"
+            />
+          </div>
           <q-input
             v-model="titleDraft"
             dense
             outlined
             clearable
             maxlength="100"
+            hide-bottom-space
             label="Title contains"
-            hint="Enter adds it; several titles match any of them. Each word inside a title word, in any order; ignores case, not diacritics."
             :error="!!titleError"
             :error-message="titleError ?? undefined"
+            class="concordance-toolbar__title"
             data-testid="concordance-title"
             @keydown.enter.prevent="addTitle"
           >
             <template #append>
               <q-btn flat dense round icon="add" aria-label="Add title filter" :disable="!titleDraft?.trim()" @click="addTitle" />
+              <q-btn flat round dense size="sm" icon="help_outline" aria-label="How titles are matched" data-testid="concordance-title-help">
+                <q-popup-proxy>
+                  <p class="concordance-toolbar__help">
+                    Enter adds it; several titles match any of them. Each word inside a title word, in any order;
+                    ignores case, not diacritics.
+                  </p>
+                </q-popup-proxy>
+              </q-btn>
             </template>
           </q-input>
           <q-select
@@ -242,9 +305,9 @@
             dense
             outlined
             options-dense
-            label="Source library"
+            hide-bottom-space
+            :label="libraryOptions.length ? 'Source library' : 'Source library (none recorded)'"
             :disable="!libraryOptions.length"
-            :hint="libraryOptions.length ? 'Any of the selected libraries' : 'The annotated documents record no library'"
             data-testid="concordance-libraries"
             @update:model-value="value => setDocumentFilters({ libraries: value ?? [] })"
           />
@@ -259,98 +322,71 @@
             dense
             outlined
             options-dense
-            label="Document language"
+            hide-bottom-space
+            :label="languageOptions.length ? 'Document language' : 'Document language (none recorded)'"
             :disable="!languageOptions.length"
-            :hint="languageOptions.length ? 'Any of the selected languages' : 'The annotated documents record no language'"
             data-testid="concordance-languages"
             @update:model-value="value => setDocumentFilters({ languages: value ?? [] })"
           />
         </div>
-      </q-menu>
-    </q-btn>
-
-    <q-select
-      :model-value="sortValue"
-      :options="sortOptions"
-      emit-value
-      map-options
-      dense
-      outlined
-      options-dense
-      label="Sort by"
-      :disable="ranked"
-      :display-value="ranked ? 'Relevance' : undefined"
-      class="concordance-toolbar__sort"
-      data-testid="concordance-sort"
-      @update:model-value="chooseSort"
-    >
-      <q-tooltip v-if="ranked">Ranked results are in order of relevance</q-tooltip>
-    </q-select>
-    <q-btn
-      v-if="!ranked"
-      flat
-      dense
-      round
-      :icon="filters.descending ? 'arrow_downward' : 'arrow_upward'"
-      :aria-label="filters.descending ? 'Descending; sort ascending' : 'Ascending; sort descending'"
-      :aria-pressed="filters.descending ? 'true' : 'false'"
-      data-testid="concordance-sort-direction"
-      @click="emit('change', { descending: !filters.descending })"
-    >
-      <q-tooltip>{{ filters.descending ? 'Descending' : 'Ascending' }}</q-tooltip>
-    </q-btn>
-
-    <q-select
-      v-if="attributes.length"
-      :model-value="shownIds"
-      :options="shownAttributeOptions"
-      multiple
-      emit-value
-      map-options
-      clearable
-      dense
-      outlined
-      options-dense
-      label="Show attributes"
-      :display-value="shownLabel"
-      class="concordance-toolbar__show-attribute"
-      data-testid="concordance-show-attribute"
-      @update:model-value="value => emit('show-attributes', value ?? [])"
-    >
-      <!-- The option carries role and state (itemProps); its checkbox only shows them. -->
-      <template #option="{ itemProps, opt, selected, toggleOption }">
-        <q-item v-bind="itemProps">
-          <q-item-section side>
-            <q-checkbox
-              dense
-              tabindex="-1"
-              aria-hidden="true"
-              :model-value="selected"
-              @update:model-value="toggleOption(opt)"
-            />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label>{{ opt.label }}</q-item-label>
-          </q-item-section>
-        </q-item>
-      </template>
-      <q-tooltip>Shows each chosen attribute's values in a column of their own, where they can be assigned</q-tooltip>
-    </q-select>
-
+      </div>
+      <div v-if="attributes.length" class="concordance-toolbar__more-section">
+        <p class="concordance-toolbar__more-title">Attributes</p>
+        <div class="concordance-toolbar__more-fields">
+          <q-select
+            :model-value="attributeFilter"
+            :options="filteredAttributeOptions"
+            multiple
+            emit-value
+            map-options
+            use-input
+            clearable
+            dense
+            outlined
+            options-dense
+            input-debounce="0"
+            hide-bottom-space
+            label="Attributes"
+            class="concordance-toolbar__attributes"
+            aria-describedby="concordance-attribute-rule"
+            :display-value="attributesLabel"
+            data-testid="concordance-attributes"
+            @filter="filterAttributes"
+            @update:model-value="setAttributeFilter"
+          >
+            <template #option="{ itemProps, opt, selected, toggleOption }">
+              <q-item v-bind="itemProps">
+                <q-item-section side>
+                  <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label :class="{ 'text-italic': opt.unassigned }">{{ opt.label }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+          <p id="concordance-attribute-rule" class="concordance-toolbar__rule" data-testid="concordance-attribute-rule">
+            Values of one attribute match <strong>any</strong> of them (OR); different attributes must <strong>all</strong> match (AND).
+          </p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { QBtn, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QMenu, QSelect, QTooltip } from 'quasar'
 import {
-  AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+  QBtn, QBtnGroup, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
+} from 'quasar'
+import {
+  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
-import { TOP_K_OPTIONS, modeChange, type ConcordanceFilters } from './concordanceStore'
+import { modeChange, type ConcordanceFilters } from './concordanceStore'
 import type { FilterField } from './ConcordanceTable.vue'
-import { MODE_LABELS, SCOPE_LABELS, modeHintText, titleProblem } from './filterChips'
+import { MODE_LABELS, SCOPE_LABELS, concordanceChips, modeHintText, titleProblem } from './filterChips'
 
 const props = defineProps<{
   filters: ConcordanceFilters
@@ -373,15 +409,39 @@ const attributes = computed(() => props.attributes ?? [])
 const textInput = ref<InstanceType<typeof QInput> | null>(null)
 const sourcesSelect = ref<InstanceType<typeof QSelect> | null>(null)
 const yearInput = ref<InstanceType<typeof QInput> | null>(null)
+const morePanel = ref<HTMLElement | null>(null)
+
+const $q = useQuasar()
+/** A phone shows the whole filter form only when asked for; the entered values stay meanwhile. */
+const phone = computed(() => $q.screen.lt.sm)
+const formOpen = ref(false)
+const formVisible = computed(() => !phone.value || formOpen.value)
+
+/** The secondary filters live in an inline panel under the primary row, closed until asked for. */
+const moreOpen = ref(false)
+
+function focusPanel () {
+  const target = morePanel.value?.querySelector<HTMLElement>('input:not([disabled]), [tabindex="0"]')
+  target?.focus()
+}
+
+function toggleMore () {
+  moreOpen.value = !moreOpen.value
+  if (moreOpen.value) void nextTick(focusPanel)
+}
 
 /** Brings the filter of a table column to the user (its header's filter button, #665): the text
  * search scoped to exactly that field (annotation or context, also from *Both*, as the header
  * promises), the source picker or the year range. */
 function openFilter (field: FilterField) {
+  formOpen.value = true
+  if (field === 'source' || field === 'year') moreOpen.value = true
   if (field === 'source') {
-    sourcesSelect.value?.$el.scrollIntoView?.({ block: 'nearest' })
-    sourcesSelect.value?.focus()
-    sourcesSelect.value?.showPopup()
+    void nextTick(() => {
+      sourcesSelect.value?.$el.scrollIntoView?.({ block: 'nearest' })
+      sourcesSelect.value?.focus()
+      sourcesSelect.value?.showPopup()
+    })
     return
   }
   const input = field === 'year' ? yearInput.value : textInput.value
@@ -389,13 +449,25 @@ function openFilter (field: FilterField) {
     const scope = field === 'annotation' ? TextScope.annotation : TextScope.context
     if (props.filters.textScope !== scope) emit('change', { textScope: scope })
   }
-  input?.$el.scrollIntoView?.({ block: 'nearest' })
-  void nextTick(() => input?.focus())
+  void nextTick(() => {
+    input?.$el.scrollIntoView?.({ block: 'nearest' })
+    input?.focus()
+  })
 }
 
 defineExpose({ openFilter })
 
 const tagOptions = computed(() => props.tags.map(t => ({ label: t.name, value: t.id, color: t.color })))
+/** The chosen tags in a line of their own, however many: the first name and how many more. */
+const tagsLabel = computed(() => {
+  const names = props.filters.tagIds.map(id => props.tags.find(t => t.id === id)?.name ?? 'Unknown tag')
+  return names.length > 1 ? `${names[0]} +${names.length - 1}` : (names[0] ?? '')
+})
+
+const activeCount = computed(() =>
+  concordanceChips(props.filters, props.tags, props.documents, attributes.value).length)
+const queryText = computed(() => props.filters.text.trim() ? `\u201c${props.filters.text.trim()}\u201d` : '')
+const statusActive = (type: SpanType) => props.filters.types.includes(type)
 
 const statusOptions = [
   { value: SpanType.pos, label: 'Confirmed', hint: 'Created by hand or confirmed proposals' },
@@ -403,31 +475,9 @@ const statusOptions = [
   { value: SpanType.neg, label: 'Rejected', hint: 'Rejected proposals, kept as negative examples' }
 ]
 
-// An attribute sort (#666) is chosen as `attribute:<id>`.
-const ATTRIBUTE_SORT = `${AnnotationSort.attribute}:`
-const sortOptions = computed(() => [
-  { value: AnnotationSort.document, label: 'Document' },
-  { value: AnnotationSort.year, label: 'Year' },
-  { value: AnnotationSort.text, label: 'Annotated text' },
-  { value: AnnotationSort.left, label: 'Left context (nearest word first)' },
-  { value: AnnotationSort.right, label: 'Right context' },
-  ...(props.attributes ?? []).map(a => ({ value: `${ATTRIBUTE_SORT}${a.id}`, label: `Attribute: ${a.name}` }))
-])
-const sortValue = computed(() => props.filters.sort === AnnotationSort.attribute
-  ? `${ATTRIBUTE_SORT}${props.filters.sortAttribute ?? ''}`
-  : props.filters.sort)
-
-function chooseSort (value: string) {
-  const attribute = value.startsWith(ATTRIBUTE_SORT) ? value.slice(ATTRIBUTE_SORT.length) : null
-  emit('change', attribute
-    ? { sort: AnnotationSort.attribute, sortAttribute: attribute, descending: false }
-    : { sort: value as AnnotationSort, sortAttribute: null, descending: false })
-}
-
 const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOPE_LABELS[value] }))
 const scopeLabel = computed(() => props.filters.textScope === TextScope.annotation ? 'Annotated text'
   : props.filters.textScope === TextScope.context ? 'Context text' : 'Annotation or context text')
-const ranked = computed(() => props.filters.mode !== RetrievalMode.lexical)
 // Find similar is entered from an annotation; the selector only shows it while it is active.
 const modeOptions = computed(() => Object.values(RetrievalMode)
   .filter(value => value !== RetrievalMode.similar || props.filters.mode === RetrievalMode.similar)
@@ -440,9 +490,13 @@ function setDocumentFilters (change: Partial<DocumentFilters>) {
   emit('change', { documentFilters: { ...props.filters.documentFilters, ...change } })
 }
 
-const documentFilterCount = computed(() => {
-  const f = props.filters.documentFilters
-  return (f.titleContains?.length ?? 0) + (f.libraries?.length ?? 0) + (f.languages?.length ?? 0)
+/** The active filters inside the panel, one per value, as the chips list them. */
+const moreFilterCount = computed(() => {
+  const f = props.filters
+  const d = f.documentFilters
+  return f.documentIds.length + f.attributeValues.length + f.attributeUnassigned.length +
+    (d.yearMin != null ? 1 : 0) + (d.yearMax != null ? 1 : 0) +
+    (d.titleContains?.length ?? 0) + (d.libraries?.length ?? 0) + (d.languages?.length ?? 0)
 })
 
 const titleDraft = ref<string | null>(null)
@@ -552,25 +606,64 @@ const shownLabel = computed(() => {
 </script>
 
 <style scoped>
+/* The layout follows the width of the toolbar's own container, not the viewport: the sidebars
+ * take width from the list. */
 .concordance-toolbar {
+  container: concordance-toolbar / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.concordance-toolbar__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
 }
 
+/* The controls take part in the row directly; the wrapper only shows and hides them. */
+.concordance-toolbar__primary {
+  display: contents;
+}
+
 .concordance-toolbar__tags {
-  flex: 1 1 220px;
-  max-width: 360px;
+  flex: 0 1 190px;
+  min-width: 130px;
+}
+
+.concordance-toolbar__status {
+  flex: 0 0 auto;
+}
+
+.concordance-toolbar__status :deep(.q-btn) {
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+/* The check mark and the label stay on one line, whatever the width. */
+.concordance-toolbar__status :deep(.q-btn__content) {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.concordance-toolbar__more-button {
+  min-height: 40px;
+  flex: 0 0 auto;
 }
 
 .concordance-toolbar__search {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  flex: 1 1 420px;
-  max-width: 760px;
-  gap: 6px;
+  flex: 1 1 380px;
+  min-width: 0;
+  gap: 8px;
+}
+
+.concordance-toolbar__mode {
+  flex: 0 1 150px;
+  min-width: 120px;
 }
 
 .concordance-toolbar__text {
@@ -579,35 +672,37 @@ const shownLabel = computed(() => {
 }
 
 .concordance-toolbar__scope {
-  width: 130px;
+  flex: 0 1 140px;
+  min-width: 110px;
 }
 
-.concordance-toolbar__document-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: min(360px, calc(100vw - 32px));
-  padding: 12px;
-}
-
-.concordance-toolbar__menu-hint {
+.concordance-toolbar__help {
+  max-width: 320px;
   margin: 0;
-  font-size: 0.8rem;
-  color: rgba(0, 0, 0, 0.65);
+  padding: 10px 12px;
+  font-size: 0.85rem;
 }
 
-.concordance-toolbar__sources {
-  flex: 1 1 180px;
-  max-width: 280px;
+/* Display settings: apart from the filters, to the right where there is room. */
+.concordance-toolbar__display {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid rgba(0, 0, 0, 0.18);
 }
 
-.concordance-toolbar__attributes {
-  flex: 1 1 180px;
-  max-width: 280px;
+.concordance-toolbar__group-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .concordance-toolbar__show-attribute {
-  width: 180px;
+  width: 190px;
 }
 
 /* One line, cut short, whatever the number of names. */
@@ -621,32 +716,75 @@ const shownLabel = computed(() => {
   text-overflow: ellipsis;
 }
 
-.concordance-toolbar__status {
+.concordance-toolbar__phone-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  order: -2;
+}
+
+.concordance-toolbar__phone-toggle {
+  min-height: 40px;
+}
+
+.concordance-toolbar__summary {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.concordance-toolbar__more {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 12px 24px;
+  padding: 8px 12px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+}
+
+.concordance-toolbar__more-section {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.concordance-toolbar__more-title {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.concordance-toolbar__more-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+}
+
+.concordance-toolbar__more-fields > .q-field {
+  flex: 1 1 220px;
+  max-width: 340px;
+}
+
+.concordance-toolbar__rule {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(0, 0, 0, 0.7);
 }
 
 .concordance-toolbar__years {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .concordance-toolbar__year {
   width: 104px;
-}
-
-.concordance-toolbar__sort {
-  width: 160px;
-}
-
-.concordance-toolbar__mode {
-  flex: 0 1 170px;
-  min-width: 120px;
-}
-
-.concordance-toolbar__k {
-  width: 84px;
 }
 
 .concordance-toolbar__dot {
@@ -655,5 +793,52 @@ const shownLabel = computed(() => {
   height: 9px;
   border-radius: 50%;
   margin-right: 6px;
+}
+
+/* Too narrow for one row: the text search gets a row of its own, below the other controls. */
+@container concordance-toolbar (max-width: 899px) {
+  .concordance-toolbar__search {
+    order: 10;
+    flex-basis: 100%;
+  }
+}
+
+@media (max-width: 599px) {
+  /* Next to the Filters button, the select taking the rest of the row. */
+  .concordance-toolbar__display {
+    order: -1;
+    padding-left: 0;
+    border-left: 0;
+    flex: 1 1 0;
+    min-width: 150px;
+    margin-left: 0;
+  }
+
+  .concordance-toolbar__group-label {
+    display: none;
+  }
+
+  .concordance-toolbar__show-attribute {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+
+  .concordance-toolbar__tags,
+  .concordance-toolbar__status,
+  .concordance-toolbar__more-button {
+    flex: 1 1 100%;
+  }
+
+  .concordance-toolbar__status :deep(.q-btn) {
+    flex: 1 1 auto;
+    padding: 0 8px;
+  }
+
+  .concordance-toolbar__more-fields > .q-field,
+  .concordance-toolbar__more-section {
+    flex-basis: 100%;
+    max-width: none;
+  }
 }
 </style>

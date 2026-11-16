@@ -18,6 +18,7 @@ import type {
   AdjacentChunks,
   AnnotatedDocument,
   AnnotationCounts,
+  AnnotationExportRequest,
   AnnotationIds,
   AnnotationIdsRequest,
   AnnotationPage,
@@ -114,6 +115,8 @@ import {
     AnnotatedDocumentToJSON,
     AnnotationCountsFromJSON,
     AnnotationCountsToJSON,
+    AnnotationExportRequestFromJSON,
+    AnnotationExportRequestToJSON,
     AnnotationIdsFromJSON,
     AnnotationIdsToJSON,
     AnnotationIdsRequestFromJSON,
@@ -420,6 +423,11 @@ export interface DiscussSpanApiAiDiscussSpanPostRequest {
 
 export interface ExplainSelectionApiRagExplainPostRequest {
     explainRequest: ExplainRequest;
+}
+
+export interface ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest {
+    collectionId: string;
+    annotationExportRequest: AnnotationExportRequest;
 }
 
 export interface FetchCollectionApiUserCollectionsCollectionIdGetRequest {
@@ -1403,6 +1411,32 @@ export interface DefaultApiInterface {
      * Explain Selection
      */
     explainSelectionApiRagExplainPost(requestParameters: ExplainSelectionApiRagExplainPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any>;
+
+    /**
+     * Creates request options for exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost without sending the request
+     * @param {string} collectionId 
+     * @param {AnnotationExportRequest} annotationExportRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequestOpts(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * A CSV file of the collection\'s annotations (#719): the selected ones (``selection``, every status, whatever the filters), every match of the annotation query (``filters``) or every annotation of the chosen statuses (``collection``), in no particular order. The annotations are resolved by id before the first row: ``X-Export-Count`` is the number of rows, one created later is not exported, ``X-Export-Missing`` the selected ids that are no annotation of the collection. A scope that cannot be resolved completely is refused (400) before any row; when a resolved annotation is deleted or a read fails during the export the download is aborted, never ended early as a shorter file. Collection read access.
+     * @summary Export Collection Annotations
+     * @param {string} collectionId 
+     * @param {AnnotationExportRequest} annotationExportRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRaw(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>>;
+
+    /**
+     * A CSV file of the collection\'s annotations (#719): the selected ones (``selection``, every status, whatever the filters), every match of the annotation query (``filters``) or every annotation of the chosen statuses (``collection``), in no particular order. The annotations are resolved by id before the first row: ``X-Export-Count`` is the number of rows, one created later is not exported, ``X-Export-Missing`` the selected ids that are no annotation of the collection. A scope that cannot be resolved completely is refused (400) before any row; when a resolved annotation is deleted or a read fails during the export the download is aborted, never ended early as a shorter file. Collection read access.
+     * Export Collection Annotations
+     */
+    exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string>;
 
     /**
      * Creates request options for fetchCollectionApiUserCollectionsCollectionIdGet without sending the request
@@ -4534,6 +4568,72 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async explainSelectionApiRagExplainPost(requestParameters: ExplainSelectionApiRagExplainPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<any> {
         const response = await this.explainSelectionApiRagExplainPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost without sending the request
+     */
+    async exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequestOpts(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost().'
+            );
+        }
+
+        if (requestParameters['annotationExportRequest'] == null) {
+            throw new runtime.RequiredError(
+                'annotationExportRequest',
+                'Required parameter "annotationExportRequest" was null or undefined when calling exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/export`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AnnotationExportRequestToJSON(requestParameters['annotationExportRequest']),
+        };
+    }
+
+    /**
+     * A CSV file of the collection\'s annotations (#719): the selected ones (``selection``, every status, whatever the filters), every match of the annotation query (``filters``) or every annotation of the chosen statuses (``collection``), in no particular order. The annotations are resolved by id before the first row: ``X-Export-Count`` is the number of rows, one created later is not exported, ``X-Export-Missing`` the selected ids that are no annotation of the collection. A scope that cannot be resolved completely is refused (400) before any row; when a resolved annotation is deleted or a read fails during the export the download is aborted, never ended early as a shorter file. Collection read access.
+     * Export Collection Annotations
+     */
+    async exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRaw(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<string>> {
+        const requestOptions = await this.exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        if (this.isJsonMime(response.headers.get('content-type'))) {
+            return new runtime.JSONApiResponse<string>(response);
+        } else {
+            return new runtime.TextApiResponse(response) as any;
+        }
+    }
+
+    /**
+     * A CSV file of the collection\'s annotations (#719): the selected ones (``selection``, every status, whatever the filters), every match of the annotation query (``filters``) or every annotation of the chosen statuses (``collection``), in no particular order. The annotations are resolved by id before the first row: ``X-Export-Count`` is the number of rows, one created later is not exported, ``X-Export-Missing`` the selected ids that are no annotation of the collection. A scope that cannot be resolved completely is refused (400) before any row; when a resolved annotation is deleted or a read fails during the export the download is aborted, never ended early as a shorter file. Collection read access.
+     * Export Collection Annotations
+     */
+    async exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
+        const response = await this.exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

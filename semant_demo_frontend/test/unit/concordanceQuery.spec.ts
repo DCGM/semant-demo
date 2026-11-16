@@ -3,7 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { QBtn, QChip, QInput, QSelect, Quasar } from 'quasar'
 
 import {
-  Cardinality, SpanType, TextScope, ValueKind, type AnnotatedDocument, type AnnotationListRow, type Attribute
+  Cardinality, RetrievalMode, SpanType, TextScope, ValueKind, type AnnotatedDocument, type AnnotationListRow, type Attribute
 } from 'src/generated/api'
 import ConcordanceFilterChips from 'src/features/annotations/concordance/ConcordanceFilterChips.vue'
 import ConcordanceTable from 'src/features/annotations/concordance/ConcordanceTable.vue'
@@ -166,17 +166,46 @@ describe('components', () => {
 
     await toolbar.setProps({ filters: filters({ textScope: TextScope.context }) } as never)
     const text = toolbar.findAllComponents(QInput).find(i => i.props('label') === 'Context text')!
-    expect(text.props('hint')).toBe(scopeHintText(TextScope.context))
+    expect(text.props('hint')).toBeUndefined() // no hint under the field, whether focused or not
+    await toolbar.find('[data-testid="concordance-text-help"]').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain(scopeHintText(TextScope.context))
+  })
+
+  it('summarises several tags in one line and groups the statuses as one control', async () => {
+    const tags = [{ id: 't1', name: 'Person' }, { id: 't2', name: 'Place' }, { id: 't3', name: 'A very long name of a tag' }]
+    const toolbar = mountIt(ConcordanceToolbar, { filters: filters({ tagIds: ['t1', 't2', 't3'] }), tags, documents })
+    const select = toolbar.findAllComponents(QSelect).find(s => s.props('label') === 'Tags')!
+    expect(select.props('displayValue')).toBe('Person +2')
+    await toolbar.setProps({ filters: filters({ tagIds: ['t3'] }) } as never)
+    expect(select.props('displayValue')).toBe('A very long name of a tag')
+
+    const group = toolbar.find('[role="group"][aria-label="Status"]')
+    const pressed = () => ['pos', 'auto', 'neg'].map(t => group.find(`[data-testid="concordance-status-${t}"]`).attributes('aria-pressed'))
+    expect(pressed()).toEqual(['true', 'true', 'false'])
+    await group.find('[data-testid="concordance-status-neg"]').trigger('click')
+    expect(toolbar.emitted('change')!.at(-1)).toEqual([{ types: [SpanType.pos, SpanType.auto, SpanType.neg] }])
+    // The last status cannot be switched off.
+    await toolbar.setProps({ filters: filters({ types: [SpanType.pos] }) } as never)
+    expect(group.find('[data-testid="concordance-status-pos"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('has no top-k selector and no hint under the text field', () => {
+    const toolbar = mountIt(ConcordanceToolbar, { filters: filters({ mode: RetrievalMode.semantic }), tags: [], documents })
+    expect(toolbar.find('[data-testid="concordance-k"]').exists()).toBe(false)
+    expect(toolbar.findAllComponents(QInput).every(i => !i.props('hint'))).toBe(true)
   })
 
   it('edits the shared document filters, with the annotated documents\' libraries and languages', async () => {
     const toolbar = mountIt(ConcordanceToolbar, {
       filters: filters({ documentFilters: { yearMin: 1800, libraries: ['mzk'] } }), tags: [], documents
     })
-    const open = toolbar.findAllComponents(QBtn).find(b => b.attributes('data-testid') === 'concordance-document-filters')!
-    expect(open.text()).toContain('Document filters (1)')
+    const open = toolbar.findAllComponents(QBtn).find(b => b.attributes('data-testid') === 'concordance-more-filters')!
+    expect(open.text()).toContain('More filters (2)')
+    expect(open.attributes('aria-expanded')).toBe('false')
     await open.trigger('click')
     await flushPromises()
+    expect(open.attributes('aria-expanded')).toBe('true')
     const select = (label: string) => toolbar.findAllComponents(QSelect).find(s => s.props('label') === label)!
     expect(select('Source library').props('options')).toEqual([
       { value: 'mzk', label: 'Moravian Library (mzk) (4)' }, { value: 'nkp', label: 'National Library of the Czech Republic (nkp) (2)' }

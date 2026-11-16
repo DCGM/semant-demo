@@ -63,9 +63,40 @@
       <span v-if="rankedText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-ranked">{{ rankedText }}</span>
       <span v-if="unsortableText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-unsortable">{{ unsortableText }}</span>
       <q-spinner v-if="store.loading" color="primary" size="1.2em" aria-label="Loading annotations" />
+      <!-- Reviewed rows stay in place until the list is read again (#690). -->
+      <span v-if="store.unmatched.size" class="collection-annotations__unmatched text-grey-8" data-testid="concordance-unmatched">
+        {{ plural(store.unmatched.size, 'reviewed row') }} no longer {{ store.unmatched.size === 1 ? 'matches' : 'match' }} the filters
+        <q-btn flat dense no-caps color="primary" label="Refresh" :disable="store.loading" data-testid="concordance-refresh" @click="store.load">
+          <q-tooltip>Read the list again: rows that no longer match leave it</q-tooltip>
+        </q-btn>
+      </span>
       <q-space />
+      <q-btn
+        flat
+        dense
+        no-caps
+        color="primary"
+        icon="file_download"
+        label="Export CSV"
+        data-testid="export-csv"
+        @click="exportOpen = true"
+      >
+        <q-tooltip>Download the selected annotations, the filter matches or all annotations as a spreadsheet file</q-tooltip>
+      </q-btn>
       <PagerButtons v-if="store.total > PAGE_SIZE" />
     </div>
+
+    <AnnotationExportDialog
+      v-model="exportOpen"
+      :collection-id="collectionId"
+      :filters="store.filters"
+      :filter-summary="filterSummary"
+      :selected-ids="selection.ids"
+      :hidden-selected="store.hiddenSelected"
+      :total="store.total"
+      :ranked="ranked"
+      :needs-text="store.needsText"
+    />
 
     <div v-if="store.error" class="collection-annotations__state text-negative" role="alert" data-testid="concordance-error">
       {{ store.error }}
@@ -93,6 +124,8 @@
       :loading="store.loading"
       :attributes="shownAttributes"
       :pending="assignWaiting"
+      :saving="savingIds"
+      :unmatched="store.unmatched"
       :query="ranksText(store.filters.mode) ? '' : store.filters.text"
       :query-scope="store.filters.textScope"
       :rank-start="ranked ? store.offset + 1 : null"
@@ -105,6 +138,7 @@
       @select-page="selectPage"
       @sort="(sort, descending, sortAttribute) => store.setFilters({ sort, descending, sortAttribute })"
       @filter="field => toolbar?.openFilter(field)"
+      @refine="store.setFilters"
       @assign="(row, attribute, change, done) => assignRow(row, attribute, change).then(done)"
     />
 
@@ -143,6 +177,46 @@
                attributes and origin (scrolled within a capped height), then its document. -->
           <div class="annotation-context" data-testid="annotation-context">
             <section class="annotation-context__main" aria-label="Annotation">
+              <!-- Its tag (choosing another one retags it) and its place in the result (#690). -->
+              <div class="annotation-context__head">
+                <TagChipMenu
+                  :tag="focusedTag"
+                  :tags="tags"
+                  :disable="review.running || selection.focusedGone || editingBoundary"
+                  @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
+                />
+                <nav class="annotation-context__nav" aria-label="Annotations in the list" data-testid="annotation-nav">
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="primary"
+                    icon="chevron_left"
+                    aria-label="Previous annotation"
+                    aria-keyshortcuts="Alt+ArrowUp"
+                    :disable="!canStep(-1)"
+                    data-testid="row-prev"
+                    @click="stepAndAnnounce(-1)"
+                  >
+                    <q-tooltip>Previous (Alt+↑)</q-tooltip>
+                  </q-btn>
+                  <span v-if="position" class="annotation-context__position text-caption" data-testid="annotation-position">{{ position }}</span>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="primary"
+                    icon="chevron_right"
+                    aria-label="Next annotation"
+                    aria-keyshortcuts="Alt+ArrowDown"
+                    :disable="!canStep(1)"
+                    data-testid="row-next"
+                    @click="stepAndAnnounce(1)"
+                  >
+                    <q-tooltip>Next (Alt+↓)</q-tooltip>
+                  </q-btn>
+                </nav>
+              </div>
               <BoundaryEditor
                 v-if="editingBoundary && boundary"
                 ref="boundaryEditor"
@@ -156,56 +230,56 @@
                 @save="saveBoundary"
                 @cancel="cancelBoundary"
               />
-              <!-- The review decision first: the quick check of one row after another. -->
+              <!-- The review decision as a choice of state (#690): the current one is pressed and named
+                   as the state (Confirmed / Rejected), an unpressed one as the action it takes (Confirm /
+                   Reject); a proposal has neither pressed. The buttons share the row equally, so a label
+                   change does not move them. After a decision the next row opens. -->
               <div
                 v-else-if="!selection.focusedGone"
                 class="annotation-context__review"
                 role="group"
-                aria-label="Review this annotation"
+                :aria-label="`Review this annotation, now ${statusText.toLowerCase()}`"
                 data-testid="annotation-review"
               >
                 <q-btn
-                  unelevated
+                  :unelevated="isConfirmed"
+                  :outline="!isConfirmed"
                   no-caps
-                  :color="approveDisabled ? 'grey-3' : 'positive'"
-                  :text-color="approveDisabled ? 'grey-7' : 'white'"
+                  color="positive"
                   icon="check"
-                  label="Confirm"
+                  :label="isConfirmed ? 'Confirmed' : 'Confirm'"
                   class="annotation-context__decision"
-                  :disable="approveDisabled"
+                  :aria-pressed="isConfirmed ? 'true' : 'false'"
+                  aria-keyshortcuts="Alt+C"
+                  :loading="savingAction === ReviewAction.approve"
+                  :disable="decisionDisabled"
                   data-testid="row-approve"
-                  @click="reviewFocused(ReviewAction.approve)"
+                  @click="decide(ReviewAction.approve)"
                 >
-                  <q-tooltip>Confirm the annotation</q-tooltip>
+                  <q-tooltip>{{ isConfirmed ? 'Confirmed (Alt+C)' : 'Confirm (Alt+C)' }}</q-tooltip>
                 </q-btn>
                 <q-btn
-                  unelevated
+                  :unelevated="isRejected"
+                  :outline="!isRejected"
                   no-caps
-                  :color="rejectDisabled ? 'grey-3' : 'deep-orange-9'"
-                  :text-color="rejectDisabled ? 'grey-7' : 'white'"
+                  color="deep-orange-9"
                   icon="block"
-                  label="Reject"
+                  :label="isRejected ? 'Rejected' : 'Reject'"
                   class="annotation-context__decision"
-                  :disable="rejectDisabled"
+                  :aria-pressed="isRejected ? 'true' : 'false'"
+                  aria-keyshortcuts="Alt+R"
+                  :loading="savingAction === ReviewAction.reject"
+                  :disable="decisionDisabled"
                   data-testid="row-reject"
-                  @click="reviewFocused(ReviewAction.reject)"
+                  @click="decide(ReviewAction.reject)"
                 >
-                  <q-tooltip>Mark it as wrong. It is kept as a rejected annotation (negative feedback); to remove it for good, use Delete</q-tooltip>
-                </q-btn>
-                <q-btn
-                  outline
-                  no-caps
-                  color="primary"
-                  icon="skip_next"
-                  class="annotation-context__decision"
-                  :disable="!nextRow"
-                  data-testid="row-next"
-                  @click="skip"
-                >
-                  <span>Next</span>
-                  <q-tooltip>Show the next row without a review decision</q-tooltip>
+                  <q-tooltip>
+                    {{ isRejected ? 'Rejected (Alt+R)' : 'Reject (Alt+R)' }}: kept as a rejected
+                    annotation (negative feedback); to remove it for good, use Delete
+                  </q-tooltip>
                 </q-btn>
               </div>
+              <div class="sr-only" aria-live="polite" data-testid="annotation-announcement">{{ announcement }}</div>
               <div
                 v-if="focusedConflict && !selection.focusedGone"
                 class="annotation-context__conflict text-body2"
@@ -226,20 +300,6 @@
                   />
                   <q-btn dense flat no-caps color="primary" label="Keep" data-testid="conflict-keep" @click="keepCurrent" />
                 </div>
-              </div>
-              <div class="annotation-context__meta">
-                <!-- The tag; choosing another one retags the annotation. -->
-                <TagChipMenu
-                  :tag="focusedTag"
-                  :tags="tags"
-                  :disable="review.running || selection.focusedGone || editingBoundary"
-                  @pick="tagId => reviewFocused(ReviewAction.retag, tagId)"
-                />
-                <span
-                  class="annotation-context__status text-caption"
-                  :class="`annotation-context__status--${selection.focused.type ?? 'unknown'}`"
-                  data-testid="annotation-context-status"
-                >{{ statusText }}</span>
               </div>
               <div
                 v-if="selection.focusedGone"
@@ -390,6 +450,8 @@ import TagChipMenu from './TagChipMenu.vue'
 import ProvenanceSummary from './ProvenanceSummary.vue'
 import BoundaryEditor from './BoundaryEditor.vue'
 import AnnotationAttributes from './AnnotationAttributes.vue'
+import AnnotationExportDialog from './AnnotationExportDialog.vue'
+import { exportFilterSummary } from './annotationExport'
 import { useAttributesStore } from 'src/features/attributes/attributesStore'
 import { assignMayHaveChanged, useAttributeAssignStore } from 'src/features/attributes/attributeAssignStore'
 import AssignAttributeDialog from 'src/features/attributes/AssignAttributeDialog.vue'
@@ -399,7 +461,7 @@ import {
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, ranksText, useConcordanceStore } from './concordanceStore'
-import { rankedLabel, unsortableLabel } from './filterChips'
+import { concordanceChips, rankedLabel, unsortableLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
@@ -435,6 +497,12 @@ const rangeLabel = computed(() => {
   return `Rows ${first}–${last} of ${store.total} ${ranked.value ? 'ranked' : 'matching'} annotations`
 })
 
+// ── CSV export (#719) ──
+const exportOpen = ref(false)
+/** The active filters in words, for the export's filter scope. */
+const filterSummary = computed(() => exportFilterSummary(store.filters,
+  concordanceChips(store.filters, tags.value, store.documents, attributesStore.attributes)))
+
 /** A ranked page's description (#664): top k, truncation and vector coverage. */
 const rankedText = computed(() => rankedLabel(store.page?.result, store.total))
 
@@ -458,7 +526,7 @@ const PagerButtons = defineComponent(() => () => h('div', { class: 'row no-wrap 
     icon: 'chevron_left',
     label: 'Previous',
     disable: store.offset === 0 || store.loading,
-    onClick: () => store.goTo(store.offset - PAGE_SIZE)
+    onClick: () => store.goTo(Math.max(0, store.offset - PAGE_SIZE))
   }),
   h(QBtn, {
     dense: true,
@@ -467,8 +535,8 @@ const PagerButtons = defineComponent(() => () => h('div', { class: 'row no-wrap 
     color: 'primary',
     iconRight: 'chevron_right',
     label: 'Next',
-    disable: store.offset + PAGE_SIZE >= store.total || store.loading,
-    onClick: () => store.goTo(store.offset + PAGE_SIZE)
+    disable: !store.hasNextPage || store.loading,
+    onClick: () => store.goTo(store.nextOffset)
   })
 ]))
 
@@ -481,10 +549,10 @@ const highlight = computed(() => {
     : null
 })
 
-// A decision already in effect cannot be made again: such a button is shown greyed out, not
-// in a faded colour that would look like an active one (#669 review).
-const approveDisabled = computed(() => review.running || selection.focused?.type === SpanType.pos)
-const rejectDisabled = computed(() => review.running || selection.focused?.type === SpanType.neg)
+// The decision is a choice of state (#690): the state in effect is pressed, not disabled.
+const isConfirmed = computed(() => selection.focused?.type === SpanType.pos)
+const isRejected = computed(() => selection.focused?.type === SpanType.neg)
+const decisionDisabled = computed(() => review.running || savingBoundary.value)
 const focusedTag = computed(() => tags.value.find(t => t.id === selection.focused?.tagId) ?? null)
 
 // A long annotated text shows its first lines; the whole span is also marked in the passage.
@@ -639,10 +707,51 @@ const VERB: Record<ReviewAction, string> = {
   [ReviewAction.delete]: 'Delete'
 }
 
-const nextRow = computed(() => {
-  const index = store.rows.findIndex(r => r.id === selection.focused?.id)
-  return index >= 0 ? store.rows[index + 1] ?? null : null
-})
+// ── Moving through the result in the sidebar (#690) ──
+/** The open row's index on this page; -1 when it is not listed here. */
+const focusedIndex = computed(() =>
+  selection.focusedGone ? -1 : store.rows.findIndex(r => r.id === selection.focused?.id))
+/** "3 / 50": its place in the result as read (the total changes only when the list is read again). */
+const position = computed(() =>
+  focusedIndex.value < 0 ? '' : `${store.offset + focusedIndex.value + 1} / ${store.total}`)
+
+function canStep (direction: 1 | -1): boolean {
+  const index = focusedIndex.value
+  if (index < 0 || store.loading) return false
+  if (store.rows[index + direction]) return true
+  return direction > 0 ? store.hasNextPage : store.offset > 0
+}
+
+/** Opens the next or previous row of the result, reading the adjacent page at the end of this
+ * one; the row opened, or null when there is none. Keyboard focus stays where it is. */
+async function step (direction: 1 | -1): Promise<AnnotationListRow | null> {
+  if (!canStep(direction)) return null
+  let row = store.rows[focusedIndex.value + direction] ?? null
+  if (!row) {
+    await store.goTo(direction > 0 ? store.nextOffset : Math.max(0, store.offset - PAGE_SIZE))
+    row = (direction > 0 ? store.rows[0] : store.rows[store.rows.length - 1]) ?? null
+    if (!row) return null
+  }
+  void openContext(row)
+  return row
+}
+
+/** What the polite live region says after a move or decision (#690). */
+const announcement = ref('')
+const ANNOUNCED_TEXT = 60
+
+function announce (prefix: string, row: AnnotationListRow | null) {
+  const text = (row?.text ?? '').replace(/\s+/g, ' ').trim()
+  const clipped = text.length > ANNOUNCED_TEXT ? `${text.slice(0, ANNOUNCED_TEXT - 1)}…` : text
+  const parts = [prefix]
+  if (row && position.value) parts.push(`${position.value}${clipped ? `: ${clipped}` : ''}.`)
+  if (!canStep(1)) parts.push('Last annotation.')
+  announcement.value = parts.filter(Boolean).join(' ')
+}
+
+async function stepAndAnnounce (direction: 1 | -1) {
+  announce('', await step(direction))
+}
 
 /** Asks before deleting, and before a change to annotations not on this page. */
 function confirmed (action: ReviewAction, ids: string[], tagId?: string): Promise<boolean> {
@@ -665,22 +774,37 @@ function confirmed (action: ReviewAction, ids: string[], tagId?: string): Promis
   })
 }
 
-/** Shows the review's effect: rows read again (also the changed ones, at their current state),
- * deleted and missing ones leave the selection. Resolves when the page has been read again. */
+/** Shows the review's effect: the listed rows it touched are read again where they are (#690),
+ * at their current state, also those out of the filters now; deleted and missing ones leave the
+ * page and the selection. Resolves when the rows have been read. */
 function afterReview (report: ReviewReport) {
   const gone = report.action === ReviewAction.delete ? [...report.saved, ...report.missing] : report.missing
   if (gone.length) selection.remove(gone)
-  const loading = store.load()
+  const loading = store.refreshRows([
+    ...report.saved, ...report.missing, ...report.failed.map(f => f.id), ...report.conflicts.map(c => c.id)
+  ])
   void store.loadShown()
   if (report.action !== ReviewAction.approve) void store.loadDocuments()
   return loading
+}
+
+/** Annotations whose review is being saved; their rows show a spinner (#690). */
+const savingIds = ref<Set<string>>(new Set())
+
+async function saving<T> (ids: Iterable<string>, write: () => Promise<T>): Promise<T> {
+  savingIds.value = new Set(ids)
+  try {
+    return await write()
+  } finally {
+    savingIds.value = new Set()
+  }
 }
 
 async function runReview (action: ReviewAction, items: SelectionEntry[], tagId?: string) {
   const id = collectionId.value
   if (!id || !items.length || !await confirmed(action, items.map(([i]) => i), tagId)) return null
   assign.dismiss()
-  const report = await review.review(id, action, items, tagId ?? null)
+  const report = await saving(items.map(([i]) => i), () => review.review(id, action, items, tagId ?? null))
   return report ? { report, loaded: afterReview(report) } : null
 }
 
@@ -701,7 +825,7 @@ function showChanged () {
 async function retryReview () {
   const id = collectionId.value
   if (!id) return
-  const report = await review.retry(id)
+  const report = await saving(review.report?.failed.map(f => f.id) ?? [], () => review.retry(id))
   if (report) void afterReview(report)
 }
 
@@ -718,17 +842,39 @@ const conflictText = computed(() => {
   const when = formatWhen(p?.lastEditedAt)
   const by = who === 'you' ? 'Changed in another window' : `Changed by ${who}`
   const now = `now ${statusText.value.toLowerCase()}, tag "${focusedTag.value?.name ?? 'unknown'}"`
-  const away = store.rows.some(r => r.id === row.id) ? '' : ' It is no longer on this page.'
+  const away = !store.rows.some(r => r.id === row.id)
+    ? ' It is no longer on this page.'
+    : store.unmatched.has(row.id) ? ' It no longer matches the filters.' : ''
   const yours = conflict.action === 'boundary' ? 'boundary change' : VERB[conflict.action].toLowerCase()
   return `${by}${when ? ` at ${when}` : ''}: ${now}. Your ${yours} was not saved.${away}`
 })
 
-/** Reviews the open annotation; approving or rejecting it moves on to the next row. */
+/** The sidebar control whose review is being saved; it shows a spinner (#690). */
+const savingAction = ref<ReviewAction | null>(null)
+
+/** Confirms or rejects the open annotation. Choosing the state it has writes nothing and only
+ * goes on to the next row (#690). */
+async function decide (action: typeof ReviewAction.approve | typeof ReviewAction.reject) {
+  const row = selection.focused
+  if (!row || selection.focusedGone || decisionDisabled.value || editingBoundary.value) return
+  if (row.type === (action === ReviewAction.approve ? SpanType.pos : SpanType.neg)) {
+    await advance(action === ReviewAction.approve ? 'Already confirmed.' : 'Already rejected.')
+    return
+  }
+  savingAction.value = action
+  try {
+    await reviewFocused(action)
+  } finally {
+    savingAction.value = null
+  }
+}
+
+/** Reviews the open annotation; approving or rejecting it moves on to the next row, also on
+ * the next page. A conflict or failure does not move on. */
 async function reviewFocused (action: ReviewAction, tagId?: string) {
   const row = selection.focused
   if (!row) return
   focusedConflict.value = null
-  const next = nextRow.value
   const reviewed = await runReview(action, [[row.id, row.editVersion ?? 0]], tagId)
   if (!reviewed) return
   const { report } = reviewed
@@ -750,7 +896,26 @@ async function reviewFocused (action: ReviewAction, tagId?: string) {
     $q.notify({ type: 'warning', message: report.missing.length ? 'This annotation no longer exists.' : 'The change was not saved; see the result above the list.' })
     return
   }
-  if (next && (action === ReviewAction.approve || action === ReviewAction.reject)) void openContext(next)
+  if ((action !== ReviewAction.approve && action !== ReviewAction.reject) || selection.focused?.id !== row.id) return
+  // The next page starts after the rows that left the result: known once they are read again.
+  if (!store.rows[focusedIndex.value + 1]) await reviewed.loaded
+  if (selection.focused?.id !== row.id) return
+  await advance(action === ReviewAction.approve ? 'Confirmed.' : 'Rejected.')
+}
+
+/**
+ * After a decision: opens the next row when it is a proposal still to review (#690 review). A
+ * next row already confirmed or rejected means the user is going back over decided ones: the
+ * sidebar stays, instead of jumping to an annotation already settled. At the end of a page the
+ * next page is read and its first row opened (its state is not known before).
+ */
+async function advance (said: string) {
+  const next = store.rows[focusedIndex.value + 1]
+  if (next && next.type !== SpanType.auto) {
+    announcement.value = `${said} The next annotation is already reviewed; staying here.`
+    return
+  }
+  announce(said, await step(1))
 }
 
 /** Repeats the refused review or boundary edit against the version the sidebar shows now. */
@@ -912,7 +1077,7 @@ async function undoLast () {
   const id = collectionId.value
   if (!id) return
   focusedConflict.value = null
-  const report = await review.undo(id)
+  const report = await saving(review.undoable?.items.map(i => i.id) ?? [], () => review.undo(id))
   if (!report) return
   await afterReview(report)
   const current = selection.focusedGone ? null : selection.focused
@@ -1019,9 +1184,32 @@ function showChangedAssign () {
   void store.loadShown()
 }
 
-function skip () {
-  if (nextRow.value) void openContext(nextRow.value)
+/**
+ * Review shortcuts of the sidebar (#690): Alt+C confirms, Alt+R rejects the open annotation,
+ * Alt+↓ / Alt+↑ open the next / previous one. Matched by `event.code` (macOS Option+C types
+ * "ç"). Tab stays native. Ignored in fields, menus and dialogs, in the list's grid (its own
+ * shortcuts come with inline review), while a write is saved and while boundaries are edited.
+ */
+const SHORTCUTS: Record<string, 'approve' | 'reject' | 'next' | 'previous'> = {
+  KeyC: 'approve', KeyR: 'reject', ArrowDown: 'next', ArrowUp: 'previous'
 }
+
+function onReviewShortcut (event: KeyboardEvent) {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.defaultPrevented) return
+  const shortcut = SHORTCUTS[event.code]
+  if (!shortcut || !selection.focused || !rightSidebar.open || rightSidebar.activePanelId !== CONTEXT_PANEL_ID) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"], [role="listbox"], [role="menu"], [role="grid"], .q-field, .q-menu, .q-dialog')) return
+  if (document.querySelector('.q-menu, .q-dialog')) return
+  event.preventDefault()
+  if (event.repeat && (shortcut === 'approve' || shortcut === 'reject')) return
+  if (review.running || savingBoundary.value || editingBoundary.value) return
+  if (shortcut === 'approve') void decide(ReviewAction.approve)
+  else if (shortcut === 'reject') void decide(ReviewAction.reject)
+  else void stepAndAnnounce(shortcut === 'next' ? 1 : -1)
+}
+onMounted(() => window.addEventListener('keydown', onReviewShortcut))
+onBeforeUnmount(() => window.removeEventListener('keydown', onReviewShortcut))
 
 // ── Workspace state across navigation ──
 onBeforeRouteLeave(() => {
@@ -1061,6 +1249,12 @@ watch(collectionId, async (id) => {
   color: rgba(0, 0, 0, 0.72);
 }
 
+.collection-annotations__unmatched {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .collection-annotations__state {
   padding: 24px 0;
 }
@@ -1078,40 +1272,34 @@ watch(collectionId, async (id) => {
   padding-bottom: 6px;
 }
 
-.annotation-context__meta {
+.annotation-context__head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 2px 8px;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.annotation-context__head > :first-child {
+  min-width: 0;
+}
+
+.annotation-context__nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.annotation-context__position {
+  min-width: 4.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.72);
 }
 
 .annotation-context__delete {
   margin-left: auto;
-}
-
-.annotation-context__status {
-  padding: 0 6px;
-  border-radius: 8px;
-  border: 1px solid currentColor;
-  background: rgba(0, 0, 0, 0.04);
-  color: rgba(0, 0, 0, 0.72);
-}
-
-/* The status in the colours of the concordance's status label. */
-.annotation-context__status--pos {
-  color: #1b5e20;
-  background: #e8f5e9;
-}
-
-.annotation-context__status--auto {
-  color: #8a5300;
-  background: #fff4e0;
-  border-style: dashed;
-}
-
-.annotation-context__status--neg {
-  color: #8e1b1b;
-  background: #fdecea;
 }
 
 .annotation-context__quote {

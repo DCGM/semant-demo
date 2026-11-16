@@ -1,6 +1,7 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { readFileSync } from 'fs'
+import { expect, test, type APIRequestContext, type Download, type Locator, type Page } from '@playwright/test'
 
-import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport } from './support'
+import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport, viewports } from './support'
 import { animatedPart, longDocument, recordScroll } from './longDocument'
 
 // The collection's annotation workspace (#329): one aligned line per annotation (KWIC),
@@ -312,6 +313,115 @@ test.describe('switching annotations of one long document', () => {
   })
 })
 
+test('Next brings the open row into view and keeps focus on the sidebar (#704)', async ({ page }) => {
+  // Without smooth scrolling, so that each scroll is complete when it is measured.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await rows(page).first().click()
+  await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
+  // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
+  // and the later ones do not.
+  const second = await rows(page).nth(1).boundingBox()
+  await page.setViewportSize({ width: viewports.wide.width, height: Math.ceil(second!.y + second!.height + 12) })
+  await expect(rows(page).nth(2)).not.toBeInViewport({ ratio: 1 })
+
+  const next = page.getByTestId('row-next')
+  // A mouse press leaves focus in the button (Quasar's focus helper inside it), a key press on
+  // the button itself; either way Enter presses it again.
+  const focusInNext = () => next.evaluate(el => el.contains(document.activeElement))
+  const scrollY = () => page.evaluate(() => window.scrollY)
+  const before = await scrollY()
+  await next.click()
+  await expect(rows(page).nth(1)).toHaveAttribute('aria-current', 'true')
+  // A visible row does not move the list.
+  expect(await scrollY()).toBe(before)
+  expect(await focusInNext()).toBe(true)
+
+  await page.keyboard.press('Enter')
+  await expect(rows(page).nth(2)).toHaveAttribute('aria-current', 'true')
+  await expect(rows(page).nth(2)).toBeInViewport({ ratio: 1 })
+  await expect(next).toBeFocused()
+
+  // A row hidden under the fixed app header is brought out below it, not just to the
+  // viewport's top edge. Room below the list lets the page scroll the next row under the header.
+  await page.evaluate(() => { document.body.style.paddingBottom = '2000px' })
+  const header = (await page.locator('.q-header').boundingBox())!
+  const headerBottom = header.y + header.height
+  const fourth = rows(page).nth(3)
+  await fourth.evaluate((el, bottom) => {
+    window.scrollBy(0, el.getBoundingClientRect().top - bottom / 2)
+  }, headerBottom)
+  expect((await fourth.boundingBox())!.y).toBeLessThan(headerBottom)
+  await page.keyboard.press('Enter')
+  await expect(fourth).toHaveAttribute('aria-current', 'true')
+  // (The last row: Next is disabled now, so it cannot keep focus.)
+  await expect.poll(async () => (await fourth.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom)
+})
+
+test('a review queue: reviewed rows stay in place, shortcuts decide and move, the position is announced (#690)', async ({ page, request }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  const context = page.getByTestId('annotation-context')
+  const announcement = page.getByTestId('annotation-announcement')
+  try {
+    await page.getByTestId('concordance-status-pos').click() // proposals only
+    await expect(rows(page)).toHaveCount(2)
+    const [first, second] = [rows(page).nth(0), rows(page).nth(1)]
+    const secondText = (await second.locator('.kwic__key-label').textContent()) ?? ''
+    await first.click()
+    await expect(context.getByTestId('annotation-position')).toHaveText('1 / 2')
+    // A proposal has neither state pressed; both name the action they take.
+    await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('annotation-review').getByRole('button')).toHaveText(['checkConfirm', 'blockReject'])
+    await expect(page.getByTestId('row-prev')).toBeDisabled()
+
+    // Shortcuts act on the sidebar while it has focus; not while focus is in the list.
+    await page.getByTestId('row-next').focus()
+    await page.keyboard.press('Alt+C')
+    await expect(second).toHaveAttribute('aria-current', 'true')
+    await expect(announcement).toContainText(`Confirmed. 2 / 2: ${secondText.trim().slice(0, 20)}`)
+    await expect(announcement).toContainText('Last annotation.')
+    // The confirmed row stays in place, at its new state, marked as out of the filters.
+    await expect(rows(page)).toHaveCount(2)
+    await expect(first).toContainText('Confirmed')
+    await expect(first).toHaveClass(/kwic__row--unmatched/)
+    await expect(page.getByTestId('concordance-unmatched')).toContainText('1 reviewed row no longer matches the filters')
+    await expect(page.getByTestId('row-next')).toBeDisabled()
+
+    // Back to it: Confirmed is pressed now; choosing it again writes nothing.
+    await page.getByTestId('row-reject').focus()
+    await page.keyboard.press('Alt+ArrowUp')
+    await expect(first).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('annotation-review').getByRole('button')).toHaveText(['checkConfirmed', 'blockReject'])
+    await expect(page.getByTestId('row-reject')).toBeFocused()
+    let reviews = 0
+    page.on('request', r => { if (r.url().endsWith('/annotations/review')) reviews++ })
+    await page.keyboard.press('Alt+C')
+    await expect(second).toHaveAttribute('aria-current', 'true')
+    await expect(announcement).toContainText('Already confirmed. 2 / 2')
+    expect(reviews).toBe(0)
+
+    // Rejecting the second keeps both rows; the list changes when it is read again.
+    await page.keyboard.press('Alt+R')
+    await expect(second).toContainText('Rejected')
+    await expect(announcement).toContainText('Rejected.')
+    // The last row stays open: Rejected is pressed and named as the state, Confirm as the action.
+    await expect(second).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('annotation-review').getByRole('button')).toHaveText(['checkConfirm', 'blockRejected'])
+    await expect(page.getByTestId('concordance-unmatched')).toContainText('2 reviewed rows no longer match the filters')
+    await page.getByTestId('concordance-refresh').click()
+    await expect(page.getByTestId('concordance-empty')).toBeVisible()
+  } finally {
+    for (const span of proposals) await patchSpan(request, span.id, { type: 'auto' })
+  }
+})
+
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
@@ -350,12 +460,12 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   // A document filter of the shared criteria: only the letters' title matches.
   await page.getByLabel('Context text').clear()
   await expect(rows(page)).toHaveCount(all)
-  await page.getByTestId('concordance-document-filters').click()
+  await page.getByTestId('concordance-more-filters').click()
+  await expect(page.getByTestId('concordance-more-filters')).toHaveAttribute('aria-expanded', 'true')
   await page.getByLabel('Title contains').fill('dopisy')
   await page.getByLabel('Title contains').press('Enter')
-  await page.keyboard.press('Escape')
   await expect(chips).toContainText('Title contains:dopisy')
-  await expect(page.getByTestId('concordance-document-filters')).toContainText('Document filters (1)')
+  await expect(page.getByTestId('concordance-more-filters')).toContainText('More filters (1)')
   await expect.poll(() => rows(page).count()).toBeLessThan(all)
   await expect(rows(page).first()).toBeVisible()
   for (const source of await rows(page).locator('.kwic__title').allTextContents()) expect(source).toBe('Dopisy z Prahy')
@@ -363,6 +473,24 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   await page.getByRole('button', { name: 'Remove filter Title contains: dopisy' }).click()
   await expect(rows(page)).toHaveCount(all)
   await expect(chips).toHaveCount(0)
+})
+
+test('on a phone the filter form is closed behind a summary and keeps what was entered (#660 review)', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const toggle = page.getByTestId('concordance-filters-toggle')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByTestId('concordance-text')).toBeHidden()
+  await expect(rows(page).first()).toBeVisible()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await page.getByLabel('Annotated text').fill('nová')
+  await expect(page.getByTestId('concordance-chips')).toContainText('nová')
+  await toggle.click()
+  await expect(page.getByTestId('concordance-text')).toBeHidden()
+  await expect(page.getByTestId('concordance-summary')).toContainText('nová')
+  await toggle.click()
+  await expect(page.getByLabel('Annotated text')).toHaveValue('nová')
 })
 
 test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
@@ -398,7 +526,6 @@ test('column headers sort the whole result both ways and bring up their filters,
   await page.keyboard.press('Enter')
   await expect(annotation).toHaveAttribute('aria-sort', 'descending')
   await expect.poll(keys).toEqual(['Prahy', 'Lhoty', 'Jan Novák', 'Brně'])
-  await expect(page.getByTestId('concordance-sort-direction')).toHaveAttribute('aria-pressed', 'true')
   // Sorting kept the open row and the sidebar.
   await expect(row(page, 'Lhoty')).toHaveAttribute('aria-current', 'true')
   await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
@@ -429,6 +556,87 @@ test('column headers sort the whole result both ways and bring up their filters,
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
 })
 
+test('in-cell value filters compose as chips and never open, check or unselect rows (#665)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  const chips = page.getByTestId('concordance-chips')
+  const menu = page.getByTestId('kwic-row-menu')
+  const chronicle = fixture.document('chronicle').properties.title as string
+  const checked = page.getByTestId('concordance-selected')
+
+  // Right click on a displayed source: Only this source. No row opens or is checked.
+  await row(page, 'Jan Novák').locator('.kwic__source').click({ button: 'right' })
+  await expect(menu.getByTestId('kwic-refine-group-source')).toContainText(`Source · ${chronicle}`)
+  await menu.getByTestId('kwic-refine-source-only').click()
+  await expect(chips).toContainText(`Source:${chronicle}`)
+  await expect(row(page, 'Prahy')).toHaveCount(0)
+  for (const source of await rows(page).locator('.kwic__title').allTextContents()) expect(source).toBe(chronicle)
+  await expect(panel(page)).toHaveCount(0)
+  await expect(checked).toHaveCount(0)
+  await expect(menu, 'the menu closed').toHaveCount(0)
+
+  // By keyboard (Shift+F10 on the focused row): exclude the proposals' status; it composes.
+  await row(page, 'Lhoty').focus()
+  await page.keyboard.press('Shift+F10')
+  await expect(menu.getByTestId('kwic-refine-group-status')).toContainText('Status · Proposal')
+  await menu.getByTestId('kwic-refine-status-exclude').click()
+  await expect(row(page, 'Lhoty')).toHaveCount(0)
+  await expect(chips).toContainText('Status:Confirmed')
+  await expect(chips).toContainText(`Source:${chronicle}`)
+
+  // Removing a chip undoes its filter.
+  await page.getByRole('button', { name: 'Remove filter Status: Confirmed' }).click()
+  await expect(row(page, 'Lhoty')).toBeVisible()
+  await expect(row(page, 'Prahy')).toHaveCount(0)
+  await page.getByRole('button', { name: `Remove filter Source: ${chronicle}` }).click()
+  await expect(rows(page)).toHaveCount(4)
+
+  // With the sidebar open (narrow), the row's menu button: Only this year.
+  await useViewport(page, 'narrow')
+  await row(page, 'Jan Novák').click()
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+  await rows(page).filter({ hasText: 'Prahy' }).hover()
+  await row(page, 'Prahy').getByTestId('kwic-row-more').click()
+  await menu.getByTestId('kwic-refine-year-only').click()
+  await expect(chips).toContainText('Years:1902')
+  await expect(row(page, 'Jan Novák')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Remove filter Years: 1902' }).click()
+  await expect(rows(page)).toHaveCount(4)
+  // The open row stayed open.
+  await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
+
+  // Selecting a word with the mouse opens no row; right click on it filters by it, in the field
+  // it was selected in, with the matching rules said.
+  const right = row(page, 'Lhoty').locator('.kwic__right')
+  const box = (await right.boundingBox())!
+  const word = await right.evaluate(el => {
+    const text = el.textContent ?? ''
+    const match = /[\p{L}]{4,}/u.exec(text)!
+    const node = Array.from(el.childNodes).find(n => n.textContent?.includes(match[0]))!
+    const range = document.createRange()
+    const at = node.textContent!.indexOf(match[0])
+    range.setStart(node, at)
+    range.setEnd(node, at + match[0].length)
+    const r = range.getBoundingClientRect()
+    return { text: match[0], x: r.left, y: r.top + r.height / 2, width: r.width }
+  })
+  expect(word.x).toBeGreaterThanOrEqual(box.x)
+  await page.mouse.move(word.x + 1, word.y)
+  await page.mouse.down()
+  await page.mouse.move(word.x + word.width - 1, word.y, { steps: 5 })
+  await page.mouse.up()
+  expect((await page.evaluate(() => getSelection()!.toString())).length).toBeGreaterThan(0)
+  await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
+  await page.mouse.click(word.x + word.width / 2, word.y, { button: 'right' })
+  const words = menu.getByTestId('kwic-refine-group-words')
+  await expect(words).toContainText('Each word must appear inside a word of the left or right context')
+  await menu.getByTestId('kwic-refine-words').click()
+  await expect(chips).toContainText('Text in context:')
+  await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
+  await expect(row(page, 'Lhoty').locator('.kwic__right mark.kwic__match').first()).toBeVisible()
+  await expect(checked).toHaveCount(0)
+})
+
 test('find similar from the sidebar, ranked by meaning, as a top k (#664)', async ({ page }) => {
   await useViewport(page, 'wide')
   await openWorkspace(page)
@@ -442,8 +650,6 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   await expect(ranked).toHaveText('Top 100 most similar (3 found)')
   await expect(row(page, 'Jan Novák')).toHaveCount(0)
   await expect(rows(page).getByTestId('kwic-rank')).toHaveText(['#1', '#2', '#3'])
-  await expect(page.getByTestId('concordance-sort')).toHaveText('Relevance')
-  await expect(page.locator('label', { has: page.getByTestId('concordance-sort') })).toHaveClass(/q-field--disabled/)
   await expect(page.getByTestId('select-all-matches')).toHaveText('Select these top 3')
   const chip = page.getByTestId('concordance-chip-similar')
   await expect(chip).toContainText('Similar to:\'Jan Novák\'')
@@ -670,7 +876,7 @@ test('a long annotated text shows its first lines in the sidebar, the whole text
   await expect(toggle).toHaveCount(0)
 })
 
-test('the review comes first; the tag chip changes the tag (#659)', async ({ page, request }) => {
+test('the tag and the position head the sidebar, the review is a choice of state; the tag chip changes the tag (#659, #690)', async ({ page, request }) => {
   const text = fixture.chunk('chronicle_2').text.slice(0, 8)
   await createSpan(request, 'chronicle_2', 0, 8)
   await useViewport(page, 'narrow')
@@ -680,14 +886,20 @@ test('the review comes first; the tag chip changes the tag (#659)', async ({ pag
   const review = page.getByTestId('annotation-review')
   const chip = page.getByTestId('row-retag')
   await expect(chip).toHaveAccessibleName(`Tag: ${fixture.tag('person').name}. Change tag`)
-  // The decision is the first thing in the detail, above the tag and the text.
+  // The tag and the place in the result first, then the decision, then the text.
   const y = async (locator: typeof chip) => (await locator.boundingBox())?.y ?? 0
-  expect(await y(review)).toBeLessThan(await y(chip))
-  expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
-  // Confirm, Reject and Next decide; Delete is a quiet action of its own, apart from them.
-  await expect(review.getByRole('button')).toHaveText(['checkConfirm', 'blockReject', 'skip_nextNext'])
-  // The status in its colour, the tag's definition on the chip.
-  await expect(context.getByTestId('annotation-context-status')).toHaveClass(/annotation-context__status--pos/)
+  expect(await y(chip)).toBeLessThan(await y(review))
+  expect(await y(review)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
+  await expect(context.getByTestId('annotation-position')).toHaveText(/^\d+ \/ \d+$/)
+  // Confirmed and Rejected are the states to choose; the one in effect is pressed, not disabled,
+  // and named as the state, the other as the action. Delete is a quiet action of its own.
+  await expect(review.getByRole('button')).toHaveText(['checkConfirmed', 'blockReject'])
+  await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('row-approve')).toBeEnabled()
+  await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByTestId('row-reject')).toBeEnabled()
+  await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-keyshortcuts', 'Alt+C')
+  // The tag's definition on the chip.
   await chip.hover()
   await expect(page.getByTestId('tag-chip-tooltip')).toContainText('Click to change the tag')
   await page.mouse.move(0, 0)
@@ -801,7 +1013,11 @@ test('all matches are a fixed selection that a shared user reviews in one batch'
 
     await page.getByTestId('review-reject').click()
     await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2 annotations.')
-    // Rejected annotations leave the default filters but stay selected, and the bar says so.
+    // Rejected annotations leave the default filters but stay selected, and the bar says so. Their
+    // rows stay, marked, until the list is read again (#690).
+    await expect(rows(page)).toHaveCount(4)
+    await expect(page.locator('.kwic__row--unmatched')).toHaveCount(2)
+    await page.getByTestId('concordance-refresh').click()
     await expect(rows(page)).toHaveCount(2)
     await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown by these filters')
     await page.getByTestId('concordance-status-neg').click()
@@ -827,10 +1043,12 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
   try {
     await row(page, 'Lhoty').click()
     const next = rows(page).nth((await rows(page).locator('.kwic__key-label').allTextContents()).indexOf('Lhoty') + 1)
+    await expect(next).toContainText('Confirmed')
     await review.getByRole('button', { name: 'Confirm' }).click()
     await expect(row(page, 'Lhoty')).toContainText('Confirmed')
-    // Confirming moves on to the next row.
-    await expect(next).toHaveAttribute('aria-current', 'true')
+    // The next row is already decided: the sidebar stays on this one (#690 review).
+    await expect(page.getByTestId('annotation-announcement')).toContainText('already reviewed; staying here')
+    await expect(row(page, 'Lhoty')).toHaveAttribute('aria-current', 'true')
 
     await row(page, first.slice(0, 4)).click()
     await panel(page).getByRole('button', { name: 'Delete…' }).click()
@@ -869,7 +1087,11 @@ test('the sidebar names who changed the open annotation and refuses a review of 
     // Rejecting the version shown now is the user's explicit choice.
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
-    await expect(row(page, 'Lhoty')).toHaveCount(0) // rejected: out of the default filters
+    // Rejected: out of the default filters, but the row stays until the list is read again (#690).
+    await expect(row(page, 'Lhoty')).toContainText('Rejected')
+    await expect(row(page, 'Lhoty')).toHaveClass(/kwic__row--unmatched/)
+    await page.getByTestId('concordance-refresh').click()
+    await expect(row(page, 'Lhoty')).toHaveCount(0)
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })
   }
@@ -889,15 +1111,15 @@ test('a refused review keeps its conflict when the change took the annotation ou
     await context.getByRole('button', { name: 'Reject' }).click()
     const conflict = context.getByTestId('annotation-conflict')
     await expect(conflict).toContainText('now confirmed')
-    await expect(conflict).toContainText('It is no longer on this page.')
-    await expect(row(page, 'Lhoty')).toHaveCount(0)
+    // The row stays where it was, at its current state, marked as out of the filters (#690).
+    await expect(conflict).toContainText('It no longer matches the filters.')
+    await expect(row(page, 'Lhoty')).toContainText('Confirmed')
+    await expect(row(page, 'Lhoty')).toHaveClass(/kwic__row--unmatched/)
     await expect(context.getByTestId('annotation-context-gone')).toHaveCount(0)
 
-    // Reviewing an annotation the page does not show asks first, as for hidden selected ones.
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
-    await expect(page.getByRole('dialog')).toContainText('not on this page')
-    await page.getByRole('dialog').getByRole('button', { name: 'Reject 1' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
+    await expect(row(page, 'Lhoty')).toContainText('Rejected')
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })
   }
@@ -1069,4 +1291,50 @@ test('undoing a batch approval restores the proposals not changed since; a delet
   } finally {
     for (const span of [lhota, praha]) await patchSpan(request, span.id, { type: 'auto' })
   }
+})
+
+test('the selection, outside the filters too, and the filter matches download as CSV (#719)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  /** The rows of a downloaded file of simple cells (no quoted commas or line breaks in this fixture). */
+  const csvRows = async (download: Download): Promise<Record<string, string>[]> => {
+    const bytes: Uint8Array = readFileSync(await download.path())
+    expect([...bytes.subarray(0, 3)], 'UTF-8 byte order mark').toEqual([0xef, 0xbb, 0xbf])
+    const [header, ...lines] = new TextDecoder().decode(bytes.subarray(3)).trimEnd().split('\r\n')
+    const columns = header.split(',')
+    return lines.map((line: string) => Object.fromEntries(line.split(',').map((cell: string, i: number) => [columns[i], cell])))
+  }
+
+  // The two proposals selected, then shown only the confirmed annotations: both selected are hidden.
+  await page.getByTestId('concordance-status-pos').click()
+  await expect(rows(page)).toHaveCount(2)
+  await page.getByTestId('select-all-matches').click()
+  await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
+  await page.getByTestId('concordance-status-pos').click()
+  await page.getByTestId('concordance-status-auto').click()
+  await expect(rows(page)).toHaveCount(2)
+  await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown')
+
+  await page.getByTestId('export-csv').click()
+  const dialog = page.getByTestId('export-dialog')
+  await expect(dialog.getByTestId('export-scope-selection')).toHaveAttribute('aria-checked', 'true')
+  await expect(dialog.getByTestId('export-hidden-selected')).toContainText('2 of them are not shown by the current filters')
+  await expect(dialog.getByTestId('export-target')).toHaveText('Exports 2 selected annotations.')
+  let downloading = page.waitForEvent('download')
+  await dialog.getByTestId('export-download').click()
+  const selected = await csvRows(await downloading)
+  expect(selected.map(r => [r.text, r.status]).sort()).toEqual([['Lhoty', 'proposal'], ['Prahy', 'proposal']])
+  expect(selected.every(r => r.document_id && r.document_start_char !== '')).toBe(true)
+  await expect(dialog.getByTestId('export-result')).toContainText('2 annotations (selected annotations)')
+
+  // The current filters: every confirmed annotation, not the selection.
+  await dialog.getByTestId('export-scope-filters').click()
+  await expect(dialog.getByTestId('export-filter-summary')).toContainText('Status: Confirmed')
+  downloading = page.waitForEvent('download')
+  await dialog.getByTestId('export-download').click()
+  const matches = await csvRows(await downloading)
+  expect(matches.map(r => r.status)).toEqual(['confirmed', 'confirmed'])
+  expect((await downloading).suggestedFilename()).toMatch(/^annotations-filters-\d{4}-\d{2}-\d{2}\.csv$/)
+  await dialog.getByRole('button', { name: 'Close' }).last().click()
+  await expect(dialog).toHaveCount(0)
 })

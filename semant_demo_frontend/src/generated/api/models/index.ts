@@ -3,6 +3,9 @@
 export * from './AdjacentChunks';
 export * from './AnnotatedDocument';
 export * from './AnnotationCounts';
+export * from './AnnotationExportRequest';
+export * from './AnnotationExportScope';
+export * from './AnnotationFilters';
 export * from './AnnotationIds';
 export * from './AnnotationIdsRequest';
 export * from './AnnotationListRow';
@@ -45,6 +48,7 @@ export * from './CorpusDistributions';
 export * from './CorpusDistributionsRequest';
 export * from './CorpusOverview';
 export * from './CreateResponse';
+export * from './CsvDelimiter';
 export * from './DeleteAutoSpansRequest';
 export * from './DeleteAutoSpansResponse';
 export * from './DeleteSpansForTagsRequest';

@@ -864,3 +864,62 @@ class SpanChatDelta(BaseModel):
     delta: str | None = None
     done: bool | None = None
     error: str | None = None
+
+
+##########################
+# CSV export (#719)      #
+##########################
+
+class AnnotationExportScope(str, Enum):
+    """Which annotations of a collection a CSV export holds (#719)."""
+    selection = "selection"
+    """The annotations ``annotation_ids`` (the workspace selection), whatever the current filters;
+    every type. Ids that are no annotation of the collection (any more) are counted as missing."""
+    filters = "filters"
+    """Every annotation matching the annotation query ``filters`` (#663), never only a page."""
+    collection = "collection"
+    """Every annotation of the collection of the types ``types``; no other filter."""
+
+
+class CsvDelimiter(str, Enum):
+    comma = "comma"
+    semicolon = "semicolon"
+    """For spreadsheets whose regional settings use a decimal comma (e.g. Czech Excel)."""
+
+
+class AnnotationExportRequest(BaseModel):
+    """A CSV export of a collection's annotations (#719): one row per annotation, in no particular
+    order; the annotations are resolved by id when the export starts. The identity,
+    status, text, context, document position and accepted attribute columns are always present;
+    the optional groups add columns only."""
+    model_config = ConfigDict(extra="forbid")
+
+    scope: AnnotationExportScope
+    annotation_ids: list[UUID] | None = Field(default=None, max_length=MAX_RESOLVED_IDS)
+    """Scope ``selection`` (required there, only allowed there)."""
+    filters: AnnotationFilters | None = None
+    """Scope ``filters`` (required there, only allowed there); lexical: every match."""
+    types: list[SpanType] | None = None
+    """Scope ``collection`` (required there, at least one; only allowed there)."""
+    chunk_metadata: bool = False
+    """Add the anchor chunk's language and configured classifications."""
+    document_metadata: bool = True
+    """Add the document's bibliographic fields (the document id is always present)."""
+    provenance: bool = False
+    """Add who created, reviewed and last changed each annotation, when, its revision and AI metadata."""
+    delimiter: CsvDelimiter = CsvDelimiter.comma
+
+    @model_validator(mode="after")
+    def _scope_fields(self) -> "AnnotationExportRequest":
+        given = {"annotation_ids": self.annotation_ids is not None, "filters": self.filters is not None,
+                 "types": self.types is not None}
+        needed = {AnnotationExportScope.selection: "annotation_ids", AnnotationExportScope.filters: "filters",
+                  AnnotationExportScope.collection: "types"}[self.scope]
+        if not given[needed]:
+            raise ValueError(f"Scope {self.scope.value} needs {needed}")
+        extra = [name for name, present in given.items() if present and name != needed]
+        if extra:
+            raise ValueError(f"Scope {self.scope.value} does not take {', '.join(extra)}")
+        if self.scope == AnnotationExportScope.collection and not self.types:
+            raise ValueError("Choose at least one annotation status to export")
+        return self

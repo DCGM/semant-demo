@@ -348,7 +348,7 @@ diff (GitHub's merge commit against its base parent, so renames, deletions and a
 base are included) and selects a mode. **Full validation is the default** and is used for
 pushes to `main`, tags, manual runs, PRs with the `ci:full` label (add it and re-run the
 workflow), any path outside a mode's allowlist and any classification error. The narrowest
-enabled mode that fits every changed path is used; there are two reduced modes:
+enabled mode that fits every changed path is used; there are three reduced modes:
 
 - `docs`: a PR that changes nothing but root-level Markdown, Markdown under `docs/`,
   `deploy/README.md` and the `.github` PR/issue templates runs `Documentation checks`
@@ -364,11 +364,30 @@ enabled mode that fits every changed path is used; there are two reduced modes:
   renamed browser specs run everything. A backend test that starts reading a frontend
   file must add it to `FRONTEND_FORCE_FULL` in the script; the tests check the frontend
   paths named literally in backend code.
+- `deploy`: a PR that changes only preview-exercised deployment inputs
+  (`deploy/Dockerfile`, `deploy/docker-compose.app-test.yml`, `deploy/.env.test.example`)
+  and/or `semant_demo_backend/tests/test_deploy_*.py` contracts (plus documentation)
+  runs `Documentation checks`, `Backend tests` and `Generated API client drift`.
+  **The PR preview must build, start and pass its health check** for the required `CI
+  result` gate to pass. `Frontend checks`, `Integration tests`, `Browser smoke tests`
+  and `Python dependency locks` may be omitted. Other `deploy/` paths, including
+  production-only Compose, database, Topicer, backup and operator scripts, force full CI
+  until relevant validation is available. Deleting a deployment contract test also
+  forces full CI. The workflow, shared `scripts/` and other backend files remain full
+  validation.
+
+Standalone data tools (`data_tools/`) and database maintenance have no mode: in the month
+before 2026-11-16, no PR changed only a data tool and two changed only maintenance code
+and its tests, and maintenance changes need the backend and real-store suites anyway, so
+the saving would not justify the classification rules.
 
 The `CI result` job is the gate: it passes only when the classification succeeded and
 every suite its mode requires succeeded, and it lists the suites a mode omitted as not
 tested. The mode is applied only when the repository variable `CI_CHANGE_SELECTION`
-includes it (e.g. `docs,frontend`); unset, the classification is only reported and everything runs.
+includes it (e.g. `docs,frontend,deploy`); unset, the classification is only reported and everything runs.
+The gate waits for preview completion on all PRs (static GitHub Actions dependencies),
+but requires preview success **only** for deployment-mode PRs. Other previews remain
+non-blocking even if they fail.
 Enable it after `CI result` is a required check of the `main` ruleset, because GitHub
 treats a skipped required check as passing. To try a classification locally:
 `python3 scripts/ci_changes.py paths <path>...`. A new mode or path needs a reviewed entry

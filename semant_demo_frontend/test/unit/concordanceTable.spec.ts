@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import {
@@ -160,6 +160,92 @@ describe('concordance table', () => {
   })
 })
 
+describe('concordance table open row (#704)', () => {
+  const original = { scroll: HTMLElement.prototype.scrollIntoView, matchMedia: window.matchMedia }
+  afterEach(() => {
+    HTMLElement.prototype.scrollIntoView = original.scroll
+    window.matchMedia = original.matchMedia
+  })
+
+  function mountRows (attachTo?: HTMLElement) {
+    const scrolled: Array<{ id: string | null, options: ScrollIntoViewOptions }> = []
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement, options?: boolean | ScrollIntoViewOptions) {
+      scrolled.push({ id: this.closest('[data-testid="kwic-row"]') ? this.textContent : null, options: options as ScrollIntoViewOptions })
+    }
+    const wrapper = mount(ConcordanceTable, {
+      props: {
+        rows: [annotation('a'), annotation('b', { text: 'Lhoty' }), annotation('c', { text: 'Brně' })],
+        tags: [tag],
+        selected: new Set<string>(),
+        filters: defaultFilters(),
+        focusedId: 'a'
+      },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo
+    })
+    return { wrapper, scrolled }
+  }
+
+  it('scrolls a newly open row into view minimally and vertically, without moving focus', async () => {
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.focus()
+    const host = document.body.appendChild(document.createElement('div'))
+    const { wrapper, scrolled } = mountRows(host)
+    await wrapper.setProps({ focusedId: 'c' })
+    await wrapper.vm.$nextTick()
+    expect(scrolled).toHaveLength(1)
+    expect(scrolled[0].id).toContain('Brně')
+    expect(scrolled[0].options).toEqual({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+    expect(document.activeElement).toBe(outside)
+    // The row stays the grid's tab stop for a return by keyboard.
+    expect(wrapper.findAll('[data-testid="kwic-row"]')[2].attributes('tabindex')).toBe('0')
+    wrapper.unmount()
+    host.remove()
+    outside.remove()
+  })
+
+  it('keeps the row clear of the fixed app header and of a sticky header stuck at the top', async () => {
+    const cover = (className: string, position: string, top: number, bottom: number) => {
+      const el = document.body.appendChild(document.createElement('div'))
+      el.className = className
+      el.style.position = position
+      el.getBoundingClientRect = () => ({ top, bottom, height: bottom - top } as DOMRect)
+      return el
+    }
+    const covers = [
+      cover('q-header', 'fixed', 0, 64),
+      cover('', 'sticky', 0, 100), // not marked as a cover
+      cover('later', 'sticky', 300, 340) // marked, but not stuck at the top
+    ]
+    covers[2].setAttribute('data-covers-top', '')
+    const { wrapper } = mountRows()
+    await wrapper.setProps({ focusedId: 'b' })
+    await wrapper.vm.$nextTick()
+    const rowEl = () => wrapper.findAll('[data-testid="kwic-row"]')[1].element as HTMLElement
+    expect(rowEl().style.scrollMarginTop).toBe('72px')
+    // A sticky header stuck below the app header (e.g. a toolbar) is covered too.
+    covers[2].getBoundingClientRect = () => ({ top: 64, bottom: 112, height: 48 } as DOMRect)
+    await wrapper.setProps({ focusedId: 'a' })
+    await wrapper.setProps({ focusedId: 'b' })
+    await wrapper.vm.$nextTick()
+    expect(rowEl().style.scrollMarginTop).toBe('120px')
+    covers.forEach(el => el.remove())
+  })
+
+  it('does not animate with reduced motion, and ignores rows of another page', async () => {
+    window.matchMedia = ((query: string) => ({ matches: query.includes('reduce') })) as unknown as typeof window.matchMedia
+    const { wrapper, scrolled } = mountRows()
+    await wrapper.setProps({ focusedId: 'b' })
+    await wrapper.vm.$nextTick()
+    expect(scrolled.map(s => s.options.behavior)).toEqual(['auto'])
+    await wrapper.setProps({ focusedId: 'elsewhere' })
+    await wrapper.setProps({ focusedId: null })
+    await wrapper.vm.$nextTick()
+    expect(scrolled).toHaveLength(1)
+  })
+})
+
 describe('concordance toolbar header filters', () => {
   function mountToolbar (filters: Partial<ConcordanceFilters>) {
     return mount(ConcordanceToolbar, {
@@ -184,5 +270,88 @@ describe('concordance toolbar header filters', () => {
     toolbar.vm.openFilter('source')
     toolbar.vm.openFilter('year')
     expect(toolbar.emitted('change')).toBeUndefined()
+  })
+})
+
+describe('concordance row value filters', () => {
+  const menuItem = (testid: string) => document.body.querySelector<HTMLElement>(`[data-testid="${testid}"]`)
+  async function until (found: () => unknown) {
+    for (let i = 0; i < 50 && !found(); i++) await new Promise(resolve => setTimeout(resolve, 10))
+    expect(found()).toBeTruthy()
+  }
+
+  it('opens the row menu from the keyboard and refines the query without opening or checking the row', async () => {
+    const wrapper = mount(ConcordanceTable, {
+      props: { rows: [annotation('a')], tags: [tag], selected: new Set<string>(), filters: defaultFilters() },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+    const row = wrapper.get('[data-testid="kwic-row"]')
+    await row.trigger('keydown', { key: 'F10', shiftKey: true })
+    await until(() => menuItem('kwic-refine-source-only'))
+    expect(menuItem('kwic-refine-group-source')?.textContent).toContain('Source · Kronika obce Lhota')
+    // The row whose menu is open is marked.
+    expect(row.classes()).toContain('kwic__row--menu')
+    // No selected words: no word filter.
+    expect(menuItem('kwic-refine-words')).toBeNull()
+    // A click on the row while its menu is shown (lifting the finger after a long press) opens nothing.
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toBeUndefined()
+    menuItem('kwic-refine-year-only')?.click()
+    expect(wrapper.emitted('refine')).toEqual([[{ documentFilters: { yearMin: 1851, yearMax: 1851 } }]])
+    await wrapper.vm.$nextTick()
+    expect(row.classes()).not.toContain('kwic__row--menu')
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(wrapper.emitted('toggle')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('opens rows again after the row whose menu was open left the page', async () => {
+    const wrapper = mount(ConcordanceTable, {
+      props: { rows: [annotation('a'), annotation('b')], tags: [tag], selected: new Set<string>(), filters: defaultFilters() },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+    await wrapper.findAll('[data-testid="kwic-row"]')[0].trigger('keydown', { key: 'ContextMenu' })
+    await until(() => menuItem('kwic-refine-source-only'))
+    // The filter took the row out: its menu goes without closing.
+    await wrapper.setProps({ rows: [annotation('b')] })
+    await new Promise(resolve => setTimeout(resolve, 450))
+    await wrapper.get('[data-testid="kwic-row"]').trigger('click')
+    expect(wrapper.emitted('open')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('offers the words selected in the row\'s text, and a click that ends a selection does not open the row', async () => {
+    const wrapper = mount(ConcordanceTable, {
+      props: { rows: [annotation('a')], tags: [tag], selected: new Set<string>(), filters: defaultFilters() },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+    const cell = wrapper.get('.kwic__text .kwic__right').element
+    const right = Array.from(cell.childNodes).find(n => n.textContent?.includes('ubytoval')) as Text
+    const range = document.createRange()
+    range.setStart(right, 3) // " a |ubytoval| se"
+    range.setEnd(right, 11)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    const row = wrapper.get('[data-testid="kwic-row"]')
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toBeUndefined()
+
+    await row.trigger('keydown', { key: 'ContextMenu' })
+    await until(() => menuItem('kwic-refine-words'))
+    expect(menuItem('kwic-refine-words')?.textContent).toContain('Filter annotations with “ubytoval” in their context')
+    menuItem('kwic-refine-words')?.click()
+    expect(wrapper.emitted('refine')).toEqual([[{ text: 'ubytoval', textScope: TextScope.context }]])
+
+    // Right after the menu closed, a click still belongs to its long press; later ones open the row.
+    window.getSelection()?.removeAllRanges()
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toBeUndefined()
+    await new Promise(resolve => setTimeout(resolve, 450))
+    await row.trigger('click')
+    expect(wrapper.emitted('open')).toHaveLength(1)
+    wrapper.unmount()
   })
 })

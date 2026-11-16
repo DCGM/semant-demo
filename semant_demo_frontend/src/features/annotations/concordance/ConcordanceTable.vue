@@ -7,7 +7,8 @@
     @copy="onCopy"
   >
     <p :id="helpId" class="sr-only">
-      Arrow keys move between rows, Enter shows the annotation in its document, Space checks the row.
+      Arrow keys move between rows, Enter shows the annotation in its document, Space checks the row,
+      the context menu key or Shift+F10 opens the row's actions and the filters of its values.
     </p>
     <div
       class="kwic__grid"
@@ -105,28 +106,66 @@
         class="kwic__row"
         :class="{
           'kwic__row--focused': row.id === focusedId,
+          'kwic__row--menu': row.id === menuOpen,
           'kwic__row--selected': selected.has(row.id),
-          'kwic__row--rejected': row.type === SpanType.neg
+          'kwic__row--rejected': row.type === SpanType.neg,
+          'kwic__row--unmatched': unmatched.has(row.id)
         }"
+        :title="unmatched.has(row.id) ? 'No longer matches the filters; it leaves the list when the list is read again' : undefined"
         role="row"
         :aria-selected="selected.has(row.id) ? 'true' : 'false'"
         :aria-current="row.id === focusedId ? 'true' : undefined"
         :tabindex="index === activeIndex ? 0 : -1"
         :data-annotation-id="row.id"
         data-testid="kwic-row"
-        @click="emit('open', row)"
+        @click="onRowClick(row, $event)"
+        @contextmenu="prepareMenu(row)"
+        v-touch-hold:500="() => onHold(row)"
         @focus="activeIndex = index"
       >
-        <q-menu v-if="similar" context-menu touch-position data-testid="kwic-row-menu">
-          <q-list dense style="min-width: 180px">
-            <q-item v-close-popup clickable data-testid="kwic-row-open" @click="emit('open', row)">
+        <!-- The row's actions and the filters of its values (#665): right click (with the words
+             selected in its text), the context menu key or Shift+F10, or its menu button; on a phone a
+             long press (`onHold`). -->
+        <q-menu
+          v-if="hasMenu"
+          :ref="(el: unknown) => setMenu(row.id, el as QMenu | null)"
+          :context-menu="!phone"
+          :no-parent-event="phone"
+          :touch-position="!phone"
+          :anchor="phone ? 'bottom right' : undefined"
+          :self="phone ? 'top right' : undefined"
+          data-testid="kwic-row-menu"
+          :persistent="pressHeld"
+          @before-show="onMenuOpening(row)"
+          @before-hide="onMenuClosing(row)"
+          @hide="onMenuHide(row)"
+        >
+          <q-list dense class="kwic__menu" :class="{ 'kwic__menu--phone': phone }">
+            <q-item clickable data-testid="kwic-row-open" @click="menuAction(row, () => emit('open', row))">
               <q-item-section avatar><q-icon name="menu_book" /></q-item-section>
               <q-item-section>Show in document</q-item-section>
             </q-item>
-            <q-item v-close-popup clickable data-testid="kwic-row-similar" @click="emit('similar', row)">
+            <q-item v-if="similar" clickable data-testid="kwic-row-similar" @click="menuAction(row, () => emit('similar', row))">
               <q-item-section avatar><q-icon name="join_inner" /></q-item-section>
               <q-item-section>Find similar</q-item-section>
             </q-item>
+            <template v-for="group in menuGroups(row)" :key="group.key">
+              <q-separator />
+              <q-item-label header class="kwic__menu-group" :data-testid="`kwic-refine-group-${group.key}`">
+                <span class="kwic__menu-label">{{ group.label }}</span>
+                <span v-if="group.caption" class="kwic__menu-caption">{{ group.caption }}</span>
+              </q-item-label>
+              <q-item
+                v-for="action in group.actions"
+                :key="action.key"
+                clickable
+                :data-testid="`kwic-refine-${action.key}`"
+                @click="menuAction(row, () => emit('refine', action.change))"
+              >
+                <q-item-section avatar><q-icon :name="action.icon" /></q-item-section>
+                <q-item-section>{{ action.label }}</q-item-section>
+              </q-item>
+            </template>
           </q-list>
         </q-menu>
         <div class="kwic__cell kwic__check" role="gridcell" @click.stop>
@@ -208,7 +247,30 @@
             <span class="kwic__tag-dot" :style="{ backgroundColor: tagColor(row) }" aria-hidden="true" />
             {{ tagName(row) }}
           </span>
-          <span class="kwic__status" :class="`kwic__status--${row.type}`">{{ statusLabel(row.type) }}</span>
+          <!-- While its review is saved, a spinner covers the status, which keeps its width. -->
+          <span
+            class="kwic__status"
+            :class="[`kwic__status--${row.type}`, { 'kwic__status--saving': saving.has(row.id) }]"
+            :aria-busy="saving.has(row.id) ? 'true' : undefined"
+            data-testid="kwic-status"
+          >{{ statusLabel(row.type) }}<q-spinner v-if="saving.has(row.id)" class="kwic__status-spinner" size="0.9em" aria-label="Saving" /></span>
+          <!-- Reviewed here and out of the filters now: dimmed until the query is read again (#690);
+               the summary line counts these rows. -->
+          <span v-if="unmatched.has(row.id)" class="sr-only">No longer matches the filters</span>
+          <q-btn
+            v-if="hasMenu"
+            flat
+            round
+            dense
+            size="xs"
+            icon="more_vert"
+            tabindex="-1"
+            class="kwic__more"
+            :aria-label="`Actions and filters for ${rowLabel(row)}`"
+            title="Actions and filters (context menu key or Shift+F10)"
+            data-testid="kwic-row-more"
+            @click.stop="event => openMenu(row, event)"
+          />
         </div>
         <div class="kwic__cell kwic__source" role="gridcell" :title="sourceLabel(row)">
           <span v-if="row.documentAvailable" class="kwic__title">{{ row.documentTitle || 'Untitled document' }}</span>
@@ -231,16 +293,19 @@ export type FilterField = 'annotation' | 'context' | 'source' | 'year'
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, ClosePopup as vClosePopup } from 'quasar'
+import { QBtn, QCheckbox, QIcon, QItem, QItemLabel, QItemSection, QList, QMenu, QSeparator, QSpinner, TouchHold as vTouchHold, useQuasar } from 'quasar'
 import {
   AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
 } from 'src/generated/api'
 import type { ConcordanceFilters } from './concordanceStore'
+import { rowFilterGroups, wordFilterGroup, type CellFilterGroup } from './cellFilters'
 import HeaderControls, { type SortState } from './KwicHeaderControls.vue'
 import { markMatches, queryWords, splitParts, type TextPart } from './textMatches'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
+import { prefersReducedMotion } from 'src/features/documents/contextScroll'
+import { scrollRowIntoView } from './rowScroll'
 
 const props = withDefaults(defineProps<{
   rows: AnnotationListRow[]
@@ -254,6 +319,10 @@ const props = withDefaults(defineProps<{
   attributes?: Attribute[]
   /** Annotations with an assignment under way. */
   pending?: Set<string>
+  /** Annotations whose review is being saved (#690). */
+  saving?: Set<string>
+  /** Rows a review took out of the filters; they stay, marked, until the list is read again (#690). */
+  unmatched?: Set<string>
   /** The lexical query whose matches are marked (#663), and where it searches. */
   query?: string
   queryScope?: TextScope
@@ -268,6 +337,8 @@ const props = withDefaults(defineProps<{
   loading: false,
   attributes: () => [],
   pending: () => new Set(),
+  saving: () => new Set(),
+  unmatched: () => new Set(),
   query: '',
   queryScope: TextScope.annotation,
   rankStart: null,
@@ -290,6 +361,8 @@ const emit = defineEmits<{
   sort: [sort: AnnotationSort, descending: boolean, attributeId: string | null]
   /** Show the filter of a column (its header's filter button). */
   filter: [field: FilterField]
+  /** Change the query by a filter of a row's value or of the words selected in its text (its menu). */
+  refine: [change: Partial<ConcordanceFilters>]
 }>()
 
 // The column headers (#665); text and context sort in Czech dictionary order by their words (#666).
@@ -408,7 +481,8 @@ function sourceLabel (row: AnnotationListRow): string {
 
 function rowLabel (row: AnnotationListRow): string {
   const text = row.text ?? missingText(row)
-  return `${text} (${tagName(row)}, ${statusLabel(row.type)}, ${sourceLabel(row)})`
+  const away = props.unmatched.has(row.id) ? ', no longer matches the filters' : ''
+  return `${text} (${tagName(row)}, ${statusLabel(row.type)}${away}, ${sourceLabel(row)})`
 }
 
 // The open value picker (one at a time, of one row's one attribute). Choosing one value of a
@@ -447,11 +521,11 @@ function focusRow (index: number) {
   const row = props.rows[index]
   if (!row) return
   activeIndex.value = index
-  // Into view vertically only: a list scrolled sideways keeps its scroll (the row is wider).
   void nextTick(() => {
     const el = rowEls.get(row.id)
-    el?.focus({ preventScroll: true })
-    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    if (!el) return
+    el.focus({ preventScroll: true })
+    scrollRowIntoView(el)
   })
 }
 
@@ -476,8 +550,131 @@ function onKeydown (event: KeyboardEvent) {
   } else if (event.key === ' ') {
     event.preventDefault()
     emit('toggle', row.id, !props.selected.has(row.id))
+  } else if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+    // The platform's context menu keys. Firefox also shows its own menu on Shift+F10 (Shift bypasses
+    // a page's context menu there, which cannot be prevented); kept as the standard key (#665).
+    event.preventDefault()
+    openMenu(row)
   }
 }
+
+// The row menus (#665): the row's actions, the filters of its values and, when it was opened with
+// words selected in the row's text, the filter by them.
+const hasMenu = computed(() => props.similar || !!props.filters)
+const menus = new Map<string, QMenu>()
+function setMenu (id: string, menu: QMenu | null) {
+  if (menu) menus.set(id, menu)
+  else menus.delete(id)
+}
+
+/** The words selected in a row's text when its menu was opened, and the field(s) they are in. */
+const selectedWords = ref<{ rowId: string, text: string, scope: TextScope } | null>(null)
+
+/** Notes what the menu of `row` is opened for (before it opens: right click, key, button). */
+function prepareMenu (row: AnnotationListRow) {
+  selectedWords.value = null
+  const cell = rowEls.get(row.id)?.querySelector('.kwic__text')
+  const selection = window.getSelection()
+  if (!cell || !selection || selection.isCollapsed || !selection.rangeCount) return
+  const range = selection.getRangeAt(0)
+  if (!cell.contains(range.startContainer) || !cell.contains(range.endContainer)) return
+  const parts = selectedParts(range, cell)
+  // The fields with a selected word (a selected space next to the annotation does not count).
+  const fields = new Set(parts.filter(p => /[\p{L}\p{N}]/u.test(p.text))
+    .map(p => p.node.parentElement?.closest('.kwic__key') ? 'annotation' : 'context'))
+  if (!fields.size) return
+  const scope = fields.size > 1 ? TextScope.both : fields.has('annotation') ? TextScope.annotation : TextScope.context
+  selectedWords.value = { rowId: row.id, text: parts.map(p => p.text).join(''), scope }
+}
+
+function openMenu (row: AnnotationListRow, event?: Event) {
+  prepareMenu(row)
+  menus.get(row.id)?.show(event)
+}
+
+/** Does what an item of the row's menu does, after closing the menu (a filter changes the menu's
+ * items, and an item removed before `v-close-popup` acts would leave it open). Nothing while the
+ * long press that opened the menu is being released: the browser may report it as a click on the
+ * item under the finger. */
+function menuAction (row: AnnotationListRow, action: () => void) {
+  if (pressHeld.value) return
+  menus.get(row.id)?.hide()
+  action()
+}
+
+/** A long press opened the menu and its finger is still down: on a phone the menu is not under it,
+ * and the browser may report its release as a tap outside, which would close the menu. */
+const pressHeld = ref(false)
+
+function onMenuOpening (row: AnnotationListRow) {
+  menuOpen.value = row.id
+}
+
+/** On a phone a long press opens the menu (Quasar's context menu would place it at the finger, and
+ * narrow it at the viewport's edge until it scrolls sideways): as wide as the row, under or above it. */
+const $q = useQuasar()
+// A phone, not a narrow window of a desktop browser (which keeps the right click).
+const phone = computed(() => $q.platform.is.mobile === true && $q.screen.lt.sm)
+function onHold (row: AnnotationListRow) {
+  if (!phone.value) return
+  pressHeld.value = true
+  // The menu takes taps outside again a moment after the finger is lifted.
+  const release = () => setTimeout(() => { pressHeld.value = false }, 400)
+  document.addEventListener('touchend', release, { once: true, capture: true })
+  document.addEventListener('touchcancel', release, { once: true, capture: true })
+  openMenu(row)
+}
+
+function onMenuClosing (row: AnnotationListRow) {
+  if (menuOpen.value !== row.id) return
+  menuOpen.value = null
+  menuClosed = { rowId: row.id, at: Date.now() }
+}
+
+function onMenuHide (row: AnnotationListRow) {
+  if (selectedWords.value?.rowId === row.id) selectedWords.value = null
+}
+
+function menuGroups (row: AnnotationListRow): CellFilterGroup[] {
+  const f = props.filters
+  if (!f) return []
+  const words = selectedWords.value?.rowId === row.id
+    ? wordFilterGroup(selectedWords.value.text, selectedWords.value.scope, f)
+    : null
+  const groups = rowFilterGroups(row, f, { tagName: tagName(row), attributes: props.attributes })
+  return words ? [words, ...groups] : groups
+}
+
+/** The row whose menu is shown, and the last one closed: a long press opens the menu on touch
+ * screens, and lifting the finger may then click the row. */
+const menuOpen = ref<string | null>(null)
+let menuClosed: { rowId: string, at: number } | null = null
+// A menu of a row the new page no longer has went with it, without closing.
+watch(() => props.rows, rows => {
+  if (menuOpen.value && !rows.some(r => r.id === menuOpen.value)) menuOpen.value = null
+})
+
+/** A click opens the row, unless it ended selecting text in it (the selection is kept) or the long
+ * press that opened its menu. */
+function onRowClick (row: AnnotationListRow, event: MouseEvent) {
+  if (menuOpen.value || (menuClosed?.rowId === row.id && Date.now() - menuClosed.at < 400)) return
+  const selection = window.getSelection()
+  const el = event.currentTarget as HTMLElement
+  if (selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(el)) return
+  emit('open', row)
+}
+
+// The open row follows the sidebar (Next, the advance after a review, #704): when it changes to a
+// row of this page, the list scrolls it into view below the page's header (`scrollRowIntoView`).
+// Keyboard focus stays where it is, e.g. on the sidebar's button.
+watch(() => props.focusedId, (id) => {
+  if (!id || !props.rows.some(r => r.id === id)) return
+  activeIndex.value = props.rows.findIndex(r => r.id === id)
+  void nextTick(() => {
+    const el = rowEls.get(id)
+    if (el) scrollRowIntoView(el, prefersReducedMotion() ? 'auto' : 'smooth')
+  })
+})
 
 /** Scrolls the row into view and gives it keyboard focus. */
 function reveal (id: string) {
@@ -505,25 +702,33 @@ function onCopy (event: ClipboardEvent) {
   if (!selection || selection.isCollapsed || !selection.rangeCount || !event.clipboardData) return
   const range = selection.getRangeAt(0)
   if (!Array.from(list.querySelectorAll('.kwic__key')).some(key => range.intersectsNode(key))) return
-  const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT)
   let text = ''
   let lastCell: Element | null = null
-  for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
-    // Screen-reader texts are left out, and hidden decorations, but not the annotation's halves
-    // (their screen-reader copy is the one left out).
-    if (!range.intersectsNode(node) ||
-      node.parentElement?.closest('.sr-only, [aria-hidden="true"]:not(.kwic__key-head, .kwic__key-tail)')) continue
-    const value = node.textContent ?? ''
-    const part = value.slice(node === range.startContainer ? range.startOffset : 0,
-      node === range.endContainer ? range.endOffset : value.length)
-    if (!part) continue
+  for (const { node, text: part } of selectedParts(range, range.commonAncestorContainer)) {
     const cell = node.parentElement?.closest('[role="gridcell"], [role="columnheader"]') ?? null
     if (text && cell !== lastCell) text += '\n'
     text += part
     lastCell = cell
   }
-  event.clipboardData.setData('text/plain', text.replace(/\u00a0/g, ' '))
+  event.clipboardData.setData('text/plain', text)
   event.preventDefault()
+}
+
+/** The selected text of the text nodes under `root`, in order, as the source has it: no-break
+ * spaces as spaces; screen-reader texts and hidden decorations are left out, but not the
+ * annotation's halves (their screen-reader copy is the one left out). */
+function selectedParts (range: Range, root: Node): { node: Node, text: string }[] {
+  const parts: { node: Node, text: string }[] = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
+    if (!range.intersectsNode(node) ||
+      node.parentElement?.closest('.sr-only, [aria-hidden="true"]:not(.kwic__key-head, .kwic__key-tail)')) continue
+    const value = node.textContent ?? ''
+    const part = value.slice(node === range.startContainer ? range.startOffset : 0,
+      node === range.endContainer ? range.endOffset : value.length)
+    if (part) parts.push({ node, text: part.replace(/\u00a0/g, ' ') })
+  }
+  return parts
 }
 
 defineExpose({ reveal })
@@ -632,12 +837,21 @@ defineExpose({ reveal })
   box-shadow: inset 3px 0 0 var(--q-primary);
 }
 
+.kwic__grid--attribute .kwic__row--menu .kwic__check,
 .kwic__grid--attribute .kwic__row:focus-visible .kwic__check {
   box-shadow: inset 2px 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
 
+/* The row whose menu is open is marked like a focused one, so the menu's row stays recognizable
+   (on a phone the menu is under or above it, not at the finger). */
+.kwic__row.kwic__row--menu {
+  background: #eef4fd;
+  box-shadow: inset 0 0 0 2px var(--q-primary);
+}
+
 /* The text cell is opaque (it may stick), so it draws its part of the focus ring, also on a
    checked or open row. */
+.kwic__row--menu .kwic__text,
 .kwic__row:focus-visible .kwic__text {
   box-shadow: inset 0 2px 0 var(--q-primary), inset 0 -2px 0 var(--q-primary);
 }
@@ -653,7 +867,8 @@ defineExpose({ reveal })
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
-  /* A row moved to by keyboard (Home, arrows) comes into view below the fixed app header. */
+  /* A row scrolled into view clears the fixed app header: `scrollRowIntoView` measures it and
+     sets the top margin; this is the fallback before the first measurement. */
   scroll-margin-top: 4.5rem;
   scroll-margin-bottom: 0.5rem;
   align-items: center;
@@ -849,6 +1064,68 @@ defineExpose({ reveal })
   line-height: 1.4;
 }
 
+/* The row menu fits a phone's width: long values are cut, never scrolled sideways. */
+.kwic__menu {
+  min-width: min(260px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
+}
+
+/* On a phone as wide as its content, never wider than the list (its 16 px gutters), at the held
+   row's right edge. */
+.kwic__menu--phone {
+  min-width: min(220px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+
+/* A group of the row menu: the field and the row's value, cut to one line, and what it does. */
+.kwic__menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px 2px;
+}
+
+.kwic__menu-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kwic__menu-caption {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* The row's menu button: over the row's right end (it takes no column), shown on the hovered or
+   keyboard-focused row, on touch screens also on the open one (a long press opens the menu too). */
+.kwic__row {
+  position: relative;
+}
+
+.kwic__more {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  color: rgba(0, 0, 0, 0.65);
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  visibility: hidden;
+}
+
+.kwic__row:hover .kwic__more,
+.kwic__row:focus-visible .kwic__more {
+  visibility: visible;
+}
+
+@media (hover: none) {
+  .kwic__row--focused .kwic__more {
+    visibility: visible;
+  }
+}
+
 .kwic__status--pos {
   color: #1b5e20;
 }
@@ -860,6 +1137,25 @@ defineExpose({ reveal })
 
 .kwic__status--neg {
   color: #8e1b1b;
+}
+
+.kwic__status--saving {
+  position: relative;
+  color: transparent;
+}
+
+.kwic__status-spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  color: var(--q-primary);
+}
+
+/* Reviewed out of the filters (#690): still there, but visibly no longer part of the result. */
+.kwic__row--unmatched .kwic__text,
+.kwic__row--unmatched .kwic__source,
+.kwic__row--unmatched .kwic__year {
+  opacity: 0.5;
 }
 
 .kwic__row:not(.kwic__row--head) .kwic__source,
