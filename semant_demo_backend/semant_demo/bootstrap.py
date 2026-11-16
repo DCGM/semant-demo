@@ -27,7 +27,10 @@ from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository, missing_position_properties
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository, attribute_schema, enrichment_schema, provenance_schema
+from semant_demo.features.annotations.collation import sort_key_version
+from semant_demo.adapters.weaviate.spans import (
+    SpanRepository, attribute_schema, enrichment_schema, provenance_schema, sort_key_schema,
+)
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
@@ -123,7 +126,18 @@ async def detect_enrichment(client: WeaviateAsyncClient, config: Config,
     if vector is not None and not has_vector:
         logger.error("The annotation collection has no named vector %s: contextual annotation vectors are not "
                      "stored until annotation_enrichment add-schema adds it.", vector.target_vector)
-    return Enrichment(derived=True, vector=vector if has_vector else None)
+    try:
+        missing_keys = await sort_key_schema(client, config.collectionNames)
+    except Exception as e:
+        logger.warning("Could not read the annotation sort keys schema; Czech sorting is off: %s", type(e).__name__)
+        missing_keys = ["?"]
+    if not missing_keys:
+        logger.info("Annotation sort keys: collator %s", sort_key_version())
+    else:
+        logger.error("The annotation collection lacks the sort keys of #666: annotations are sorted by text in "
+                     "code-point order and not by context until annotation_enrichment add-schema adds them "
+                     "(then run its backfill).")
+    return Enrichment(derived=True, vector=vector if has_vector else None, sort_keys=not missing_keys)
 
 
 async def detect_chunk_positions(client: WeaviateAsyncClient, config: Config) -> bool:
@@ -265,6 +279,7 @@ class AppResources:
                          "(docs/DATA_MAINTENANCE.md).", name)
             return
         self.annotation_enrichment = await detect_enrichment(client, self.config, self.annotation_vector)
+        self.weaviate.spans.sort_keys = self.annotation_enrichment.sort_keys
         self.weaviate.spans.provenance = await detect_provenance(client, self.config)
         attributes = await detect_attributes(client, self.config)
         self.weaviate.spans.attributes = attributes is True

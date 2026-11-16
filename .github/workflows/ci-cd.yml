@@ -314,9 +314,11 @@ jobs:
             exit 1
           fi
 
-  # Playwright smoke tests against the deterministic backend profile. The image supplies
-  # the Chromium revision and system libraries for the exact Playwright version pinned in
-  # package-lock.json; setup-node keeps the project toolchain on Node 22.
+  # Playwright smoke tests against the deterministic backend profile. The image
+  # (deploy/ci/Dockerfile.browser, served by the local CI registry) is python:3.12 plus the
+  # Chromium revision and system libraries for the exact Playwright version pinned in
+  # package-lock.json, so PyICU builds against the same ICU as in the other jobs (#715);
+  # setup-node keeps the project toolchain on Node 22.
   # Two shards (#685), each a separate job with its own Weaviate service, frontend build,
   # backend, SQLite and ownership token, running whole spec files on one worker;
   # scripts/browser_shards.py balances the files by measured time. The required check is
@@ -333,7 +335,8 @@ jobs:
       matrix:
         shard: [1, 2]
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      # Rebuild with deploy/ci/build-browser-image.sh; see deploy/README.md ("CI images").
+      image: localhost:5000/semant-ci-browser@sha256:f6f146934bf8dbb286010ceab24e30cc682a9997e418cf99bd3a68ec2f3a1d66
       options: --user 1025:1027 --shm-size=1gb -v ${{ vars.CI_PIP_CACHE_DIR || '/var/cache/semant-ci/pip' }}:/pip-cache
     services:
       weaviate:
@@ -366,10 +369,6 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: semant_demo_frontend/.nvmrc
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
       - name: Set up virtual environment
         run: python -m venv /tmp/venv
       - name: Install pinned backend dependencies
@@ -392,6 +391,12 @@ jobs:
           node --version
           /tmp/venv/bin/python --version
           npx playwright --version
+          image=$(cat "$PLAYWRIGHT_BROWSERS_PATH/PLAYWRIGHT_VERSION")
+          locked=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          if [ "$image" != "$locked" ]; then
+            echo "::error title=Browser CI image out of date::The image has Playwright $image but package-lock.json pins $locked. Rebuild it with deploy/ci/build-browser-image.sh and update the digest in this job."
+            exit 1
+          fi
       - name: Wait for Weaviate
         run: |
           for _ in $(seq 1 60); do

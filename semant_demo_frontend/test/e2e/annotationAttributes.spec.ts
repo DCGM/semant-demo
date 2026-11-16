@@ -277,7 +277,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   // Shown in the collection's order (by name), whatever order they are chosen in.
   await toggleOption(page, 'concordance-show-attribute', 'Role')
   await toggleOption(page, 'concordance-show-attribute', 'Place type')
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type', 'Role'])
   await expect(page.getByTestId('concordance-show-attribute')).toContainText('Place type, Role')
   // Each option says its state itself; its checkbox is only a picture of it, not a tab stop.
   await page.getByTestId('concordance-show-attribute').click()
@@ -321,11 +321,11 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await page.getByTestId('chunk-context').getByTestId('chunk-context-title').click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   await page.getByRole('link', { name: 'Back to annotations' }).click()
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type', 'Role'])
 
   // Hiding one changes nothing else either.
   await toggleOption(page, 'concordance-show-attribute', 'Role')
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type'])
   await expect(rows(page).locator('.kwic__key-label')).toHaveText(order)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
 })
@@ -343,7 +343,7 @@ test('on a phone several attribute columns scroll sideways under the annotation'
   await expect.poll(overflow).toBeLessThanOrEqual(0)
   await toggleOption(page, 'concordance-show-attribute', 'Place type')
   await toggleOption(page, 'concordance-show-attribute', 'Stance')
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role', 'Stance'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type', 'Role', 'Stance'])
   await expect.poll(overflow).toBeGreaterThan(0)
   // The annotation header keeps room for its name and controls (#665).
   await expect(page.getByTestId('kwic-sort-annotation')).toBeVisible()

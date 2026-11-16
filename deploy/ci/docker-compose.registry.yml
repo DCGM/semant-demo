@@ -1,0 +1,15 @@
+# Local Docker registry for CI job images (#715). The GitHub Actions runner always pulls a
+# job's container image, so images built on this host must be served by a registry.
+# CI runs only on this server, so the registry listens on localhost only; Docker treats
+# localhost registries as trusted without TLS. See deploy/README.md ("CI images").
+name: semant-ci-registry
+services:
+  registry:
+    image: registry:2.8.3
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+volumes:
+  registry-data:

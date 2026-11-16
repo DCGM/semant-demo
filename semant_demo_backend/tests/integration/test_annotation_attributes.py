@@ -34,7 +34,7 @@ def _query(**kwargs) -> AnnotationQuery:
 
 
 async def _matching(spans: SpanRepository, collection: UUID, **kwargs) -> set[str]:
-    rows = await spans.query_rows(collection, _query(**kwargs), by_text=False, limit=100)
+    rows = await spans.query_rows(collection, _query(**kwargs), limit=100)
     return {str(r.id) for r in rows}
 
 

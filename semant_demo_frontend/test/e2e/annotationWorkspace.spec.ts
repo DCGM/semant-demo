@@ -574,9 +574,16 @@ test('column headers sort the whole result both ways and bring up their filters,
   await expect(page.getByTestId('kwic-head-year')).toHaveAttribute('aria-sort', 'ascending')
   await expect(annotation).toHaveAttribute('aria-sort', 'none')
   await expect.poll(() => rows(page).locator('.kwic__year').allInnerTexts()).toEqual(['1851', '1851', '1851', '1902'])
-  // The context headers name their field but do not pretend to sort.
-  await expect(page.getByTestId('kwic-head-left')).not.toHaveAttribute('aria-sort')
-  await expect(page.getByTestId('kwic-sort-left')).toHaveCount(0)
+  // The left context sorts by its nearest word, in Czech dictionary order (#666).
+  await page.getByTestId('kwic-sort-left').click()
+  await expect(page.getByTestId('kwic-head-left')).toHaveAttribute('aria-sort', 'ascending')
+  await expect(page.getByTestId('kwic-head-year')).toHaveAttribute('aria-sort', 'none')
+  const nearest = async () => (await rows(page).locator('.kwic__left').allTextContents())
+    .map(t => t.match(/[\p{L}\p{M}\p{N}]+/gu)?.at(-1) ?? '')
+  await expect.poll(async () => {
+    const words = await nearest()
+    return words.length > 1 && words.join('|') === [...words].sort((a, b) => a.localeCompare(b, 'cs')).join('|')
+  }).toBe(true)
 
   // With the sidebar open (the list narrows; source and year give way, the toolbar sorts by
   // them), by keyboard: the annotation header sorts ascending, then descending, the whole result.
