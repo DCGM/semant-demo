@@ -240,9 +240,9 @@
         size="3px"
         class="q-mb-xs"
       />
-      <div class="auto-span-list">
+      <div class="auto-span-list" @scroll.passive="onSuggestionListScroll">
         <div
-          v-for="entry in pendingAutoSpans"
+          v-for="entry in renderedAutoSpans"
           :key="entry.span.id || `${entry.span.chunkId}:${entry.span.start}:${entry.span.end}:${entry.span.tagId}`"
           class="auto-span-card"
           :class="{
@@ -319,6 +319,13 @@
               {{ entry.span.reason }}
             </q-tooltip>
           </div>
+        </div>
+        <div
+          v-if="renderedAutoSpans.length < pendingAutoSpans.length"
+          class="text-caption text-grey-6 q-pa-xs text-center"
+          data-testid="suggestions-more"
+        >
+          Showing {{ renderedAutoSpans.length }} of {{ pendingAutoSpans.length }}; scroll for more
         </div>
       </div>
     </template>
@@ -398,10 +405,26 @@ function onSuggestionClick(span: TagSpan) {
 // Track card DOM nodes so we can scroll to whichever one is highlighted from
 // the document side (i.e. the user clicked an auto span in the text).
 const suggestionCardRefs = ref<Record<string, HTMLElement | null>>({})
+
+// Only the first cards are rendered and more as the list is scrolled (#464): with every
+// card rendered, each change of a long list (a bulk approval batch) re-rendered over a
+// thousand cards and blocked the page for hundreds of milliseconds.
+const SUGGESTION_RENDER_STEP = 60
+const suggestionRenderLimit = ref(SUGGESTION_RENDER_STEP)
+const renderedAutoSpans = computed(() => pendingAutoSpans.value.slice(0, suggestionRenderLimit.value))
+function onSuggestionListScroll(e: Event) {
+  const el = e.target as HTMLElement
+  if (suggestionRenderLimit.value >= pendingAutoSpans.value.length) return
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) suggestionRenderLimit.value += SUGGESTION_RENDER_STEP
+}
+
 watch(
   () => aiAssist.highlightedAutoSpanId.value,
   (id) => {
     if (!id) return
+    // A suggestion highlighted from the text may be past the rendered cards.
+    const index = pendingAutoSpans.value.findIndex((e) => e.span.id === id)
+    if (index >= suggestionRenderLimit.value) suggestionRenderLimit.value = index + SUGGESTION_RENDER_STEP
     void nextTick(() => {
       const el = suggestionCardRefs.value[id]
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -695,6 +718,7 @@ watch(
   () => {
     resolveRequests.enter()
     selectedSuggestionIds.value = new Set()
+    suggestionRenderLimit.value = SUGGESTION_RENDER_STEP
     lastDeletedCount.value = null
     lastStatusKind.value = null
   }
