@@ -337,6 +337,19 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await expect(rows(page).nth(2)).toHaveAttribute('aria-current', 'true')
   await expect(rows(page).nth(2)).toBeInViewport({ ratio: 1 })
   await expect(next).toBeFocused()
+
+  // A row hidden under the fixed app header is brought out below it, not just to the
+  // viewport's top edge. Room below the list lets the page scroll the next row under the header.
+  await page.evaluate(() => { document.body.style.paddingBottom = '2000px' })
+  const header = (await page.locator('.q-header').boundingBox())!
+  const fourth = rows(page).nth(3)
+  await fourth.evaluate((el, headerBottom) => {
+    window.scrollBy(0, el.getBoundingClientRect().top - headerBottom / 2)
+  }, header.y + header.height)
+  expect((await fourth.boundingBox())!.y).toBeLessThan(header.y + header.height)
+  await next.click()
+  await expect(fourth).toHaveAttribute('aria-current', 'true')
+  await expect.poll(async () => (await fourth.boundingBox())!.y).toBeGreaterThanOrEqual(header.y + header.height)
 })
 
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {

@@ -182,6 +182,34 @@ describe('concordance table open row (#704)', () => {
     outside.remove()
   })
 
+  it('keeps the row clear of the fixed app header and of a sticky header stuck at the top', async () => {
+    const cover = (className: string, position: string, top: number, bottom: number) => {
+      const el = document.body.appendChild(document.createElement('div'))
+      el.className = className
+      el.style.position = position
+      el.getBoundingClientRect = () => ({ top, bottom, height: bottom - top } as DOMRect)
+      return el
+    }
+    const covers = [
+      cover('q-header', 'fixed', 0, 64),
+      cover('', 'sticky', 0, 100), // not marked as a cover
+      cover('later', 'sticky', 300, 340) // marked, but not stuck at the top
+    ]
+    covers[2].setAttribute('data-covers-top', '')
+    const { wrapper } = mountRows()
+    await wrapper.setProps({ focusedId: 'b' })
+    await wrapper.vm.$nextTick()
+    const rowEl = () => wrapper.findAll('[data-testid="kwic-row"]')[1].element as HTMLElement
+    expect(rowEl().style.scrollMarginTop).toBe('72px')
+    // A sticky header stuck below the app header (e.g. a toolbar) is covered too.
+    covers[2].getBoundingClientRect = () => ({ top: 64, bottom: 112, height: 48 } as DOMRect)
+    await wrapper.setProps({ focusedId: 'a' })
+    await wrapper.setProps({ focusedId: 'b' })
+    await wrapper.vm.$nextTick()
+    expect(rowEl().style.scrollMarginTop).toBe('120px')
+    covers.forEach(el => el.remove())
+  })
+
   it('does not animate with reduced motion, and ignores rows of another page', async () => {
     window.matchMedia = ((query: string) => ({ matches: query.includes('reduce') })) as unknown as typeof window.matchMedia
     const { wrapper, scrolled } = mountRows()
