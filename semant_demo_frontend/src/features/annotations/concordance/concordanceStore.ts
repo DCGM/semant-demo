@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import {
-  AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationListRow, type AnnotationPage,
+  AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationFilters, type AnnotationListRow, type AnnotationPage,
   type AnnotationRanking, type AttributeAssignResult, type CollectionPerson, type DocumentFilters
 } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
@@ -114,8 +114,8 @@ function failure (e: unknown, what: string): string {
   return `Failed to load the ${what}.`
 }
 
-/** The request body of the concordance filters for resolving annotation ids. */
-function idsRequest (f: ConcordanceFilters, within?: string[]) {
+/** The annotation query (`AnnotationFilters`, #663) of the concordance filters, for request bodies. */
+export function annotationFilters (f: ConcordanceFilters): AnnotationFilters {
   return {
     tagIds: f.tagIds.length ? f.tagIds : null,
     types: f.types,
@@ -124,10 +124,13 @@ function idsRequest (f: ConcordanceFilters, within?: string[]) {
     documentIds: f.documentIds.length ? f.documentIds : null,
     documentFilters: normalizeDocumentFilters(f.documentFilters),
     attributeValues: f.attributeValues.length ? f.attributeValues : undefined,
-    attributeUnassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
-    within: within ?? null,
-    ranking: ranking(f)
+    attributeUnassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined
   }
+}
+
+/** The request body of the concordance filters for resolving annotation ids. */
+function idsRequest (f: ConcordanceFilters, within?: string[]) {
+  return { ...annotationFilters(f), within: within ?? null, ranking: ranking(f) }
 }
 
 /**

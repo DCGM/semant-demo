@@ -114,6 +114,7 @@ USER_COLLECTION_ROUTES = {
     ("get", "/api/user_collections/{collection_id}/annotations/documents"),
     ("get", "/api/user_collections/{collection_id}/annotations/counts"),
     ("post", "/api/user_collections/{collection_id}/annotations/ids"),
+    ("post", "/api/user_collections/{collection_id}/annotations/export"),
     ("post", "/api/user_collections/{collection_id}/annotations/review"),
     ("post", "/api/user_collections/{collection_id}/annotations/restore"),
     ("post", "/api/user_collections/{collection_id}/annotations/chunk-tags/sync"),

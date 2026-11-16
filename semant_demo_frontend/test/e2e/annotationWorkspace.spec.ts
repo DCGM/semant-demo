@@ -1,4 +1,5 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
+import { readFileSync } from 'fs'
+import { expect, test, type APIRequestContext, type Download, type Locator, type Page } from '@playwright/test'
 
 import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport, viewports } from './support'
 import { animatedPart, longDocument, recordScroll } from './longDocument'
@@ -1189,4 +1190,50 @@ test('undoing a batch approval restores the proposals not changed since; a delet
   } finally {
     for (const span of [lhota, praha]) await patchSpan(request, span.id, { type: 'auto' })
   }
+})
+
+test('the selection, outside the filters too, and the filter matches download as CSV (#719)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  /** The rows of a downloaded file of simple cells (no quoted commas or line breaks in this fixture). */
+  const csvRows = async (download: Download): Promise<Record<string, string>[]> => {
+    const bytes: Uint8Array = readFileSync(await download.path())
+    expect([...bytes.subarray(0, 3)], 'UTF-8 byte order mark').toEqual([0xef, 0xbb, 0xbf])
+    const [header, ...lines] = new TextDecoder().decode(bytes.subarray(3)).trimEnd().split('\r\n')
+    const columns = header.split(',')
+    return lines.map((line: string) => Object.fromEntries(line.split(',').map((cell: string, i: number) => [columns[i], cell])))
+  }
+
+  // The two proposals selected, then shown only the confirmed annotations: both selected are hidden.
+  await page.getByTestId('concordance-status-pos').click()
+  await expect(rows(page)).toHaveCount(2)
+  await page.getByTestId('select-all-matches').click()
+  await expect(page.getByTestId('concordance-selected')).toHaveText('2 selected')
+  await page.getByTestId('concordance-status-pos').click()
+  await page.getByTestId('concordance-status-auto').click()
+  await expect(rows(page)).toHaveCount(2)
+  await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown')
+
+  await page.getByTestId('export-csv').click()
+  const dialog = page.getByTestId('export-dialog')
+  await expect(dialog.getByTestId('export-scope-selection')).toHaveAttribute('aria-checked', 'true')
+  await expect(dialog.getByTestId('export-hidden-selected')).toContainText('2 of them are not shown by the current filters')
+  await expect(dialog.getByTestId('export-target')).toHaveText('Exports 2 selected annotations.')
+  let downloading = page.waitForEvent('download')
+  await dialog.getByTestId('export-download').click()
+  const selected = await csvRows(await downloading)
+  expect(selected.map(r => [r.text, r.status]).sort()).toEqual([['Lhoty', 'proposal'], ['Prahy', 'proposal']])
+  expect(selected.every(r => r.document_id && r.document_start_char !== '')).toBe(true)
+  await expect(dialog.getByTestId('export-result')).toContainText('2 annotations (selected annotations)')
+
+  // The current filters: every confirmed annotation, not the selection.
+  await dialog.getByTestId('export-scope-filters').click()
+  await expect(dialog.getByTestId('export-filter-summary')).toContainText('Status: Confirmed')
+  downloading = page.waitForEvent('download')
+  await dialog.getByTestId('export-download').click()
+  const matches = await csvRows(await downloading)
+  expect(matches.map(r => r.status)).toEqual(['confirmed', 'confirmed'])
+  expect((await downloading).suggestedFilename()).toMatch(/^annotations-filters-\d{4}-\d{2}-\d{2}\.csv$/)
+  await dialog.getByRole('button', { name: 'Close' }).last().click()
+  await expect(dialog).toHaveCount(0)
 })

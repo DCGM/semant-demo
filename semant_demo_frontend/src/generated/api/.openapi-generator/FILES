@@ -5,6 +5,9 @@ apis/index.ts
 docs/AdjacentChunks.md
 docs/AnnotatedDocument.md
 docs/AnnotationCounts.md
+docs/AnnotationExportRequest.md
+docs/AnnotationExportScope.md
+docs/AnnotationFilters.md
 docs/AnnotationIds.md
 docs/AnnotationIdsRequest.md
 docs/AnnotationListRow.md
@@ -48,6 +51,7 @@ docs/CorpusDistributions.md
 docs/CorpusDistributionsRequest.md
 docs/CorpusOverview.md
 docs/CreateResponse.md
+docs/CsvDelimiter.md
 docs/DefaultApi.md
 docs/DeleteAutoSpansRequest.md
 docs/DeleteAutoSpansResponse.md
@@ -169,6 +173,9 @@ index.ts
 models/AdjacentChunks.ts
 models/AnnotatedDocument.ts
 models/AnnotationCounts.ts
+models/AnnotationExportRequest.ts
+models/AnnotationExportScope.ts
+models/AnnotationFilters.ts
 models/AnnotationIds.ts
 models/AnnotationIdsRequest.ts
 models/AnnotationListRow.ts
@@ -211,6 +218,7 @@ models/CorpusDistributions.ts
 models/CorpusDistributionsRequest.ts
 models/CorpusOverview.ts
 models/CreateResponse.ts
+models/CsvDelimiter.ts
 models/DeleteAutoSpansRequest.ts
 models/DeleteAutoSpansResponse.ts
 models/DeleteSpansForTagsRequest.ts
