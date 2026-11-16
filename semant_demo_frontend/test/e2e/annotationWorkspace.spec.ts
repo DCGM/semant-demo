@@ -659,14 +659,12 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   await expect(range).toHaveText('Rows 1–4 of 4 matching annotations')
   await expect(ranked).toHaveCount(0)
 
-  // By meaning: nothing is read until a text is entered; then a ranked top k of the filters.
-  await page.getByTestId('concordance-mode').click()
-  await page.getByRole('option', { name: 'Meaning', exact: true }).click()
-  await expect(page.getByTestId('concordance-needs-text')).toBeVisible()
-  await page.getByLabel('Meaning of').fill('hejtman')
+  // Similarity text: a ranked top k of the filters (no mode selector, no top-k control).
+  await expect(page.getByTestId('concordance-mode')).toHaveCount(0)
+  await page.getByLabel('Similarity').fill('hejtman')
   await expect(range).toHaveText('Rows 1–4 of 4 ranked annotations')
   await expect(ranked).toContainText('Top 100 by meaning')
-  await expect(page.getByTestId('concordance-chips')).toContainText('Meaning:hejtman')
+  await expect(page.getByTestId('concordance-chips')).toContainText('Similarity:hejtman')
   await page.getByTestId('concordance-status-pos').click() // proposals only: filters apply before ranking
   await expect(range).toHaveText('Rows 1–2 of 2 ranked annotations')
 })

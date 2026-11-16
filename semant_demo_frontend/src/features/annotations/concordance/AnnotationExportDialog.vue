@@ -40,15 +40,14 @@
               v-model="options.scope"
               :val="AnnotationExportScope.filters"
               :disable="!filtersExportable || running"
-              :label="ranked || needsText ? 'Current filter matches' : `Current filter matches (${total})`"
+              :label="ranked ? 'Current filter matches' : `Current filter matches (${total})`"
               data-testid="export-scope-filters"
             />
             <div class="annotation-export__caption text-caption text-grey-8">
               <template v-if="ranked">
-                Results ranked by meaning or similarity cannot be exported yet; choose <em>Words</em> under
-                <em>Find by</em> to export every match.
+                A ranked result is a bounded top list, not every match; clear <em>Similarity</em> (or Find
+                similar) to export every match.
               </template>
-              <template v-else-if="needsText">Enter a text first.</template>
               <template v-else>
                 Every match on all pages, not only the rows shown.
                 <span data-testid="export-filter-summary">{{ filterSummary }}</span>
@@ -184,7 +183,6 @@ const props = defineProps<{
   /** The results are a ranked top k (#664): not exportable as filter matches yet. */
   ranked: boolean
   /** A ranked mode waits for its text. */
-  needsText: boolean
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
@@ -203,7 +201,7 @@ const result = ref<ExportResult | null>(null)
 let controller: AbortController | null = null
 
 const selectedCount = computed(() => props.selectedIds.size)
-const filtersExportable = computed(() => !props.ranked && !props.needsText)
+const filtersExportable = computed(() => !props.ranked)
 
 function statusLabel (type: SpanType): string {
   const n = counts.value && { [SpanType.pos]: counts.value.approved, [SpanType.auto]: counts.value.suggestions, [SpanType.neg]: counts.value.rejected }[type]

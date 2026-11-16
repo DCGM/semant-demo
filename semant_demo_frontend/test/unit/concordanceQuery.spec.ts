@@ -115,13 +115,13 @@ describe('active filter chips', () => {
     })
     const chips = concordanceChips(f, tags, documents, [attribute])
     expect(chips.map(c => `${c.group}: ${c.label}`)).toEqual([
-      'Tag: Person', 'Status: Rejected', 'Text in context: praha', 'Source: Kronika', 'Source: Unavailable source',
+      'Tag: Person', 'Status: Rejected', 'Words in context: praha', 'Source: Kronika', 'Source: Unavailable source',
       'Years: 1850–1900', 'Title contains: kronika', 'Library: Moravian Library (mzk)', 'Language: Czech (ces)',
       'Speaker: politician', 'Speaker: not assigned'
     ])
     const remove = (label: string) => chips.find(c => `${c.group}: ${c.label}` === label)!.remove
     expect(remove('Status: Rejected')).toEqual({ types: defaultFilters().types })
-    expect(remove('Text in context: praha')).toEqual({ text: '' })
+    expect(remove('Words in context: praha')).toEqual({ text: '' })
     expect(remove('Source: Kronika')).toEqual({ documentIds: ['d3'] })
     expect(remove('Years: 1850–1900').documentFilters).toMatchObject({ yearMin: undefined, yearMax: undefined, libraries: ['mzk'] })
     expect(remove('Library: Moravian Library (mzk)').documentFilters).toMatchObject({ libraries: [], languages: ['ces'] })
@@ -147,7 +147,7 @@ describe('components', () => {
     })
     const all = chips.findAllComponents(QChip)
     expect(all.map(c => c.find('.filter-chips__value').text())).toEqual(['Person', 'praha'])
-    expect(all[1].props('removeAriaLabel')).toBe('Remove filter Text in annotation: praha')
+    expect(all[1].props('removeAriaLabel')).toBe('Remove filter Words in annotation: praha')
     all[0].vm.$emit('remove')
     chips.findComponent(QBtn).vm.$emit('click')
     expect(chips.emitted('change')).toEqual([[{ tagIds: [] }]])
@@ -165,7 +165,7 @@ describe('components', () => {
     expect(toolbar.emitted('change')).toEqual([[{ textScope: TextScope.both }]])
 
     await toolbar.setProps({ filters: filters({ textScope: TextScope.context }) } as never)
-    const text = toolbar.findAllComponents(QInput).find(i => i.props('label') === 'Context text')!
+    const text = toolbar.findAllComponents(QInput).find(i => i.props('label') === 'Words in context')!
     expect(text.props('hint')).toBeUndefined() // no hint under the field, whether focused or not
     await toolbar.find('[data-testid="concordance-text-help"]').trigger('click')
     await flushPromises()

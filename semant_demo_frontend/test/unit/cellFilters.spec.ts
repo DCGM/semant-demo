@@ -133,12 +133,11 @@ describe('the filter by selected words', () => {
     expect(other?.caption).toContain('Replaces the text filter “Jan”.')
   })
 
-  it('offers nothing without a new word, or while the text ranks by meaning', () => {
+  it('offers nothing without a new word', () => {
     expect(wordFilterGroup(' , – ', TextScope.annotation, filters())).toBeNull()
     expect(wordFilterGroup('jan', TextScope.annotation, filters({ text: 'Jan' }))).toBeNull()
-    expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.semantic, text: 'x' }))).toBeNull()
-    expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.hybrid, text: 'x' }))).toBeNull()
-    // Find similar keeps the text as a word filter.
+    // A similarity text ranks and never changes the words filter; Find similar keeps it too.
+    expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.hybrid, similarity: 'x' }))).not.toBeNull()
     expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.similar }))).not.toBeNull()
   })
 })

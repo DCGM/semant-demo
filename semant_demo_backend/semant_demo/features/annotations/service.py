@@ -1058,15 +1058,18 @@ class _Ranked:
 
 def _ranking_query(filters: AnnotationFilters, ranking: AnnotationRanking,
                    ids: list[UUID] | None = None) -> tuple[AnnotationQuery, str | None]:
-    """The stored-field conditions of a ranked query and the text it ranks by: ``semantic`` and
-    ``hybrid`` rank by ``q`` (required), which then filters nothing; ``similar`` keeps ``q`` as
-    a lexical filter. Checked before any read or provider call."""
+    """The stored-field conditions of a ranked query and the text it ranks by (#716): ``semantic``
+    and ``hybrid`` rank by ``ranking_query`` (required); ``similar`` ranks by its source and takes
+    none. ``q`` is a lexical filter in every mode, applied before ranking. Checked before any read
+    or provider call."""
+    text = " ".join((filters.ranking_query or "").split())
     if ranking.mode == RetrievalMode.similar:
+        if text:
+            raise InvalidRequestError("Find similar ranks by its source annotation; it takes no similarity text.")
         return _filters_query(filters, ids), None
-    text = " ".join((filters.q or "").split())
     if not text:
         raise InvalidRequestError("Enter a text to search by meaning.")
-    return _filters_query(filters.model_copy(update={"q": None}), ids), text
+    return _filters_query(filters, ids), text
 
 
 async def _query_vector(store: AnnotationStore, cid: UUID, ranking: AnnotationRanking,
@@ -1184,6 +1187,8 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
         _check_ranking(store, ranking, sort, descending)
         query, text = _ranking_query(filters, ranking, ids)
     else:
+        if filters.ranking_query:
+            raise InvalidRequestError("A similarity text needs a ranked mode (semantic or hybrid).")
         query, text = _filters_query(filters, ids), None
     sort = sort or AnnotationSort.document
     _require_attribute_properties(store, query)
@@ -1264,6 +1269,8 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
         _check_ranking(store, ranking, None)
         query, text = _ranking_query(filters, ranking)  # ``within`` is applied to the top k, not before ranking
     else:
+        if filters.ranking_query:
+            raise InvalidRequestError("A similarity text needs a ranked mode (semantic or hybrid).")
         query, text = _filters_query(filters, within), None
     _require_attribute_properties(store, query)
     documents = request.document_ids or None

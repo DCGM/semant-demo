@@ -111,7 +111,7 @@ def ids_of(page):
 
 async def test_semantic_ranks_the_filtered_annotations_by_distance_with_their_coverage(store, owner, ids, ranked,
                                                                                          embedder):
-    filters = AnnotationFilters(q="dopis", document_filters=DocumentFilters(year_min=1900))
+    filters = AnnotationFilters(ranking_query="dopis", document_filters=DocumentFilters(year_min=1900))
     page = await query(store, owner, ids, filters, semantic())
     lexical = await service.query_annotations(store, owner, ids.col["chronicles"],
                                               AnnotationFilters(document_filters=DocumentFilters(year_min=1900)))
@@ -125,8 +125,8 @@ async def test_semantic_ranks_the_filtered_annotations_by_distance_with_their_co
 
 
 async def test_the_top_k_is_paged_in_relevance_order_and_reports_truncation(store, owner, ids, ranked):
-    full = await query(store, owner, ids, AnnotationFilters(q="x"), semantic(k=4), limit=200)
-    pages = [await query(store, owner, ids, AnnotationFilters(q="x"), semantic(k=4), limit=3, offset=o)
+    full = await query(store, owner, ids, AnnotationFilters(ranking_query="x"), semantic(k=4), limit=200)
+    pages = [await query(store, owner, ids, AnnotationFilters(ranking_query="x"), semantic(k=4), limit=3, offset=o)
              for o in (0, 3)]
 
     assert ids_of(full) == [ranked.lhota, ranked.karel, ranked.zdenka, ranked.novak]
@@ -135,27 +135,27 @@ async def test_the_top_k_is_paged_in_relevance_order_and_reports_truncation(stor
 
 
 async def test_tag_and_title_filters_apply_before_ranking(store, owner, ids, ranked):
-    by_tag = await query(store, owner, ids, AnnotationFilters(q="x", tag_ids=[ids.tag["place"]]), semantic(k=1))
+    by_tag = await query(store, owner, ids, AnnotationFilters(ranking_query="x", tag_ids=[ids.tag["place"]]), semantic(k=1))
     by_title = await query(store, owner, ids, AnnotationFilters(
-        q="x", document_filters=DocumentFilters(title_contains=["kronika"])), semantic(k=2))
+        ranking_query="x", document_filters=DocumentFilters(title_contains=["kronika"])), semantic(k=2))
 
     assert ids_of(by_tag) == [ranked.brno] and not by_tag.result.truncated
     assert ids_of(by_title) == [ranked.lhota, ranked.novak] and by_title.result.truncated
 
 
 async def test_a_ready_vector_of_an_older_revision_is_not_ranked_and_counted_as_uncovered(store, owner, ids, ranked):
-    before = await query(store, owner, ids, AnnotationFilters(q="x"), semantic())
+    before = await query(store, owner, ids, AnnotationFilters(ranking_query="x"), semantic())
     await store.spans._tenant(UUID(ids.col["chronicles"])).data.update(uuid=ranked.lhota, properties={"revision": 2})
 
-    after = await query(store, owner, ids, AnnotationFilters(q="x"), semantic())
+    after = await query(store, owner, ids, AnnotationFilters(ranking_query="x"), semantic())
 
     assert ids_of(after) == [i for i in ids_of(before) if i != ranked.lhota]
     assert after.result.coverage.with_vector == before.result.coverage.with_vector - 1
 
 
 async def test_hybrid_combines_the_vector_with_bm25_of_the_text_scope(store, owner, ids, ranked):
-    vector_only = await query(store, owner, ids, AnnotationFilters(q="Novák"), semantic(k=1))
-    hybrid = await query(store, owner, ids, AnnotationFilters(q="Novák"),
+    vector_only = await query(store, owner, ids, AnnotationFilters(ranking_query="Novák"), semantic(k=1))
+    hybrid = await query(store, owner, ids, AnnotationFilters(ranking_query="Novák"),
                          AnnotationRanking(mode=RetrievalMode.hybrid, k=2))
 
     assert ids_of(vector_only) == [ranked.lhota]
@@ -183,5 +183,5 @@ async def test_a_source_of_another_collection_is_not_found(store, owner, ids, ra
     with pytest.raises(NotFoundError):
         await query(store, owner, ids, AnnotationFilters(),
                     AnnotationRanking(mode=RetrievalMode.similar, similar_to=elsewhere))
-    ranked_here = await query(store, owner, ids, AnnotationFilters(q="x"), semantic())
+    ranked_here = await query(store, owner, ids, AnnotationFilters(ranking_query="x"), semantic())
     assert elsewhere not in ids_of(ranked_here)
