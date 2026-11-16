@@ -244,16 +244,9 @@ describe('ranked components', () => {
     expect(toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')).toBeUndefined()
 
     await toolbar.setProps({ filters: withMode(filters({ similarTo: row('a') })) } as never)
-    // The source shows inside the Similar meaning field; removing it or opening it acts as the reference chip does.
-    const chip = toolbar.findComponent(QChip)
-    expect(chip.props('label')).toBe("Similar to 'a'")
-    chip.vm.$emit('remove')
-    expect(toolbar.emitted('change')![2]).toEqual([{ similarTo: null, includeSource: false }])
-    await chip.trigger('click')
-    expect(toolbar.emitted('open')).toEqual([[row('a')]])
     const include = toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')!
     include.vm.$emit('update:modelValue', true)
-    expect(toolbar.emitted('change')![3]).toEqual([{ includeSource: true }])
+    expect(toolbar.emitted('change')![2]).toEqual([{ includeSource: true }])
   })
 
   it('opens the source from its reference chip', async () => {

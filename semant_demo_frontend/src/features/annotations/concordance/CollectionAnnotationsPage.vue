@@ -11,7 +11,6 @@
       class="q-mb-sm"
       @change="store.setFilters"
       @show-attributes="ids => { store.shownAttributeIds = ids }"
-      @open="openContext"
     />
 
     <ConcordanceFilterChips
