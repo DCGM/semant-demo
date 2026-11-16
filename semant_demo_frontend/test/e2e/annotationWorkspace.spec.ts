@@ -372,9 +372,10 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
     const secondText = (await second.locator('.kwic__key-label').textContent()) ?? ''
     await first.click()
     await expect(context.getByTestId('annotation-position')).toHaveText('1 / 2')
-    // A proposal has neither state pressed.
+    // A proposal has neither state pressed; both name the action they take.
     await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'false')
     await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('annotation-review').getByRole('button')).toHaveText(['checkConfirm', 'blockReject'])
     await expect(page.getByTestId('row-prev')).toBeDisabled()
 
     // Shortcuts act on the sidebar while it has focus; not while focus is in the list.
@@ -395,6 +396,7 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
     await page.keyboard.press('Alt+ArrowUp')
     await expect(first).toHaveAttribute('aria-current', 'true')
     await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('annotation-review').getByRole('button')).toHaveText(['checkConfirmed', 'blockReject'])
     await expect(page.getByTestId('row-reject')).toBeFocused()
     let reviews = 0
     page.on('request', r => { if (r.url().endsWith('/annotations/review')) reviews++ })
@@ -407,6 +409,11 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
     await page.keyboard.press('Alt+R')
     await expect(second).toContainText('Rejected')
     await expect(announcement).toContainText('Rejected.')
+    // The last row stays open: Rejected is pressed and named as the state, Confirm as the action.
+    await expect(second).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('annotation-review').getByRole('button')).toHaveText(['checkConfirm', 'blockRejected'])
     await expect(page.getByTestId('concordance-unmatched')).toContainText('2 reviewed rows no longer match the filters')
     await page.getByTestId('concordance-refresh').click()
     await expect(page.getByTestId('concordance-empty')).toBeVisible()
@@ -877,12 +884,13 @@ test('the tag and the position head the sidebar, the review is a choice of state
   expect(await y(chip)).toBeLessThan(await y(review))
   expect(await y(review)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
   await expect(context.getByTestId('annotation-position')).toHaveText(/^\d+ \/ \d+$/)
-  // Confirmed and Rejected are the states to choose; the one in effect is pressed, not disabled.
-  // Delete is a quiet action of its own, apart from them.
-  await expect(review.getByRole('button')).toHaveText(['checkConfirmed', 'blockRejected'])
+  // Confirmed and Rejected are the states to choose; the one in effect is pressed, not disabled,
+  // and named as the state, the other as the action. Delete is a quiet action of its own.
+  await expect(review.getByRole('button')).toHaveText(['checkConfirmed', 'blockReject'])
   await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByTestId('row-approve')).toBeEnabled()
   await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByTestId('row-reject')).toBeEnabled()
   await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-keyshortcuts', 'Alt+C')
   // The tag's definition on the chip.
   await chip.hover()

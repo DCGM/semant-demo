@@ -229,8 +229,10 @@
                 @save="saveBoundary"
                 @cancel="cancelBoundary"
               />
-              <!-- The review decision as a choice of state (#690): the current one is pressed, the
-                   other changes it; a proposal has neither. After a decision the next row opens. -->
+              <!-- The review decision as a choice of state (#690): the current one is pressed and named
+                   as the state (Confirmed / Rejected), an unpressed one as the action it takes (Confirm /
+                   Reject); a proposal has neither pressed. The buttons share the row equally, so a label
+                   change does not move them. After a decision the next row opens. -->
               <div
                 v-else-if="!selection.focusedGone"
                 class="annotation-context__review"
@@ -244,7 +246,7 @@
                   no-caps
                   color="positive"
                   icon="check"
-                  label="Confirmed"
+                  :label="isConfirmed ? 'Confirmed' : 'Confirm'"
                   class="annotation-context__decision"
                   :aria-pressed="isConfirmed ? 'true' : 'false'"
                   aria-keyshortcuts="Alt+C"
@@ -261,7 +263,7 @@
                   no-caps
                   color="deep-orange-9"
                   icon="block"
-                  label="Rejected"
+                  :label="isRejected ? 'Rejected' : 'Reject'"
                   class="annotation-context__decision"
                   :aria-pressed="isRejected ? 'true' : 'false'"
                   aria-keyshortcuts="Alt+R"
