@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
-import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport } from './support'
+import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport, viewports } from './support'
 import { animatedPart, longDocument, recordScroll } from './longDocument'
 
 // The collection's annotation workspace (#329): one aligned line per annotation (KWIC),
@@ -310,6 +310,52 @@ test.describe('switching annotations of one long document', () => {
     expect(steps.slice(0, -1).every(step => Math.abs(step) < 50), `no animation: ${path.join(' ')}`).toBe(true)
     await expect(mark(page)).toBeInViewport()
   })
+})
+
+test('Next brings the open row into view and keeps focus on the sidebar (#704)', async ({ page }) => {
+  // Without smooth scrolling, so that each scroll is complete when it is measured.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await rows(page).first().click()
+  await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
+  // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
+  // and the later ones do not.
+  const second = await rows(page).nth(1).boundingBox()
+  await page.setViewportSize({ width: viewports.wide.width, height: Math.ceil(second!.y + second!.height + 12) })
+  await expect(rows(page).nth(2)).not.toBeInViewport({ ratio: 1 })
+
+  const next = page.getByTestId('row-next')
+  // A mouse press leaves focus in the button (Quasar's focus helper inside it), a key press on
+  // the button itself; either way Enter presses it again.
+  const focusInNext = () => next.evaluate(el => el.contains(document.activeElement))
+  const scrollY = () => page.evaluate(() => window.scrollY)
+  const before = await scrollY()
+  await next.click()
+  await expect(rows(page).nth(1)).toHaveAttribute('aria-current', 'true')
+  // A visible row does not move the list.
+  expect(await scrollY()).toBe(before)
+  expect(await focusInNext()).toBe(true)
+
+  await page.keyboard.press('Enter')
+  await expect(rows(page).nth(2)).toHaveAttribute('aria-current', 'true')
+  await expect(rows(page).nth(2)).toBeInViewport({ ratio: 1 })
+  await expect(next).toBeFocused()
+
+  // A row hidden under the fixed app header is brought out below it, not just to the
+  // viewport's top edge. Room below the list lets the page scroll the next row under the header.
+  await page.evaluate(() => { document.body.style.paddingBottom = '2000px' })
+  const header = (await page.locator('.q-header').boundingBox())!
+  const headerBottom = header.y + header.height
+  const fourth = rows(page).nth(3)
+  await fourth.evaluate((el, bottom) => {
+    window.scrollBy(0, el.getBoundingClientRect().top - bottom / 2)
+  }, headerBottom)
+  expect((await fourth.boundingBox())!.y).toBeLessThan(headerBottom)
+  await page.keyboard.press('Enter')
+  await expect(fourth).toHaveAttribute('aria-current', 'true')
+  // (The last row: Next is disabled now, so it cannot keep focus.)
+  await expect.poll(async () => (await fourth.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom)
 })
 
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
