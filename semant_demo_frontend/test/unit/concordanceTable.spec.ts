@@ -439,3 +439,53 @@ describe('concordance inline review (#690 phase B)', () => {
     wrapper.unmount()
   })
 })
+
+describe('concordance grid keys target the focused row (#690 review)', () => {
+  function mountRows (rows: AnnotationListRow[], props: Record<string, unknown> = {}) {
+    return mount(ConcordanceTable, {
+      props: { rows, tags: [tag], selected: new Set<string>(), filters: defaultFilters(), ...props },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+  }
+
+  it('A open in the sidebar, B focused: after an inline review of B and a refresh, Alt+R reviews B', async () => {
+    const rows = [annotation('a', { type: SpanType.auto }), annotation('b', { type: SpanType.auto })]
+    const wrapper = mountRows(rows, { focusedId: 'a' })
+    const b = wrapper.findAll('[data-testid="kwic-row"]')[1]
+    ;(b.element as HTMLElement).focus()
+    await b.get('[data-testid="kwic-approve"]').trigger('click')
+    // The rows are read again in place (refreshRows): a new array, B confirmed.
+    await wrapper.setProps({ rows: [rows[0], { ...rows[1], type: SpanType.pos }] })
+    expect(document.activeElement).toBe(b.element)
+    // B stays the row in the tab order, not the one open in the sidebar.
+    expect(b.attributes('tabindex')).toBe('0')
+    await b.trigger('keydown', { key: 'r', code: 'KeyR', altKey: true })
+    const reviews = wrapper.emitted('review') as [AnnotationListRow, string][]
+    expect(reviews.map(([row, action]) => [row.id, action])).toEqual([['b', 'approve'], ['b', 'reject']])
+    wrapper.unmount()
+  })
+
+  it('the sidebar opening another row does not move the grid\'s tab order off the focused row', async () => {
+    const wrapper = mountRows([annotation('a'), annotation('b'), annotation('c')])
+    const rows = wrapper.findAll('[data-testid="kwic-row"]')
+    ;(rows[1].element as HTMLElement).focus()
+    await rows[1].trigger('focus')
+    await wrapper.setProps({ focusedId: 'c' })
+    expect(rows[1].attributes('tabindex')).toBe('0')
+    await rows[1].trigger('keydown', { key: 'ArrowDown', code: 'ArrowDown', altKey: true })
+    expect((wrapper.emitted('open') as AnnotationListRow[][])[0][0].id).toBe('c')
+    wrapper.unmount()
+  })
+
+  it('ignores Alt+↓ / Alt+↑ while a review is saved', async () => {
+    const wrapper = mountRows([annotation('a'), annotation('b')], { saving: new Set(['a']) })
+    const first = wrapper.findAll('[data-testid="kwic-row"]')[0]
+    ;(first.element as HTMLElement).focus()
+    await first.trigger('keydown', { key: 'ArrowDown', code: 'ArrowDown', altKey: true })
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(wrapper.emitted('step')).toBeUndefined()
+    expect(document.activeElement).toBe(first.element)
+    wrapper.unmount()
+  })
+})

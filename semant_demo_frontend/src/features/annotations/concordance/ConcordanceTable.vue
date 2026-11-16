@@ -575,9 +575,20 @@ function setRowEl (id: string, el: HTMLElement | null) {
   else rowEls.delete(id)
 }
 
+/** The id of the row that has keyboard focus in this list, if one has (#690 review): the target
+ * of the grid's keys, which need not be the row open in the sidebar. */
+function keyboardRowId (): string | null {
+  const el = document.activeElement as HTMLElement | null
+  if (el?.getAttribute('role') !== 'row' || !rowEls.has(el.dataset.annotationId ?? '')) return null
+  return el.dataset.annotationId ?? null
+}
+
+// Rows read again (a review, a new page): the row in the tab order stays the one with keyboard
+// focus, else the open one.
 watch(() => props.rows, (rows) => {
-  const focused = rows.findIndex(r => r.id === props.focusedId)
-  activeIndex.value = focused >= 0 ? focused : Math.min(activeIndex.value, Math.max(0, rows.length - 1))
+  const id = keyboardRowId() ?? props.focusedId
+  const kept = rows.findIndex(r => r.id === id)
+  activeIndex.value = kept >= 0 ? kept : Math.min(activeIndex.value, Math.max(0, rows.length - 1))
 })
 
 function focusRow (index: number) {
@@ -629,7 +640,7 @@ function onReviewKey (event: KeyboardEvent, row: AnnotationListRow, index: numbe
     })
     return true
   }
-  if (props.loading) return true
+  if (props.loading || decisionsBlocked()) return true
   const next = props.rows[index + direction]
   if (next) {
     focusRow(index + direction)
@@ -646,9 +657,13 @@ function focusRowById (id: string) {
 }
 
 function onKeydown (event: KeyboardEvent) {
-  const index = activeIndex.value
+  const target = event.target as HTMLElement
+  if (target.getAttribute('role') !== 'row') return
+  // The keys act on the row that has focus, never on the one open in the sidebar (#690 review).
+  const index = props.rows.findIndex(r => r.id === target.dataset.annotationId)
   const row = props.rows[index]
-  if (!row || (event.target as HTMLElement).getAttribute('role') !== 'row') return
+  if (!row) return
+  activeIndex.value = index
   if (onReviewKey(event, row, index)) return
   const moves: Record<string, number> = {
     ArrowDown: index + 1,
@@ -786,7 +801,8 @@ function onRowClick (row: AnnotationListRow, event: MouseEvent) {
 // Keyboard focus stays where it is, e.g. on the sidebar's button.
 watch(() => props.focusedId, (id) => {
   if (!id || !props.rows.some(r => r.id === id)) return
-  activeIndex.value = props.rows.findIndex(r => r.id === id)
+  // A row with keyboard focus keeps the tab order; the sidebar does not follow grid focus.
+  if (!keyboardRowId()) activeIndex.value = props.rows.findIndex(r => r.id === id)
   void nextTick(() => {
     const el = rowEls.get(id)
     if (el) scrollRowIntoView(el, prefersReducedMotion() ? 'auto' : 'smooth')
