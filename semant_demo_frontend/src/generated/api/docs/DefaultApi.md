@@ -30,6 +30,7 @@ All URIs are relative to *http://localhost*
 | [**deleteTagSpanApiTagSpansSpanIdDelete**](DefaultApi.md#deletetagspanapitagspansspaniddelete) | **DELETE** /api/tag_spans/{span_id} | Delete Tag Span |
 | [**discussSpanApiAiDiscussSpanPost**](DefaultApi.md#discussspanapiaidiscussspanpost) | **POST** /api/ai/discuss_span | Discuss Span |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
+| [**exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost**](DefaultApi.md#exportcollectionannotationsapiusercollectionscollectionidannotationsexportpost) | **POST** /api/user_collections/{collection_id}/annotations/export | Export Collection Annotations |
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#fetchcollectiondocumentapiusercollectionscollectioniddocumentsdocumentidget) | **GET** /api/user_collections/{collection_id}/documents/{document_id} | Fetch Collection Document |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
@@ -2032,6 +2033,81 @@ example().catch(console.error);
 |-------------|-------------|------------------|
 | **200** | Successful Response |  -  |
 | **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost
+
+> string exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost(collectionId, annotationExportRequest)
+
+Export Collection Annotations
+
+A CSV file of the collection\&#39;s annotations (#719): the selected ones (&#x60;&#x60;selection&#x60;&#x60;, every status, whatever the filters), every match of the annotation query (&#x60;&#x60;filters&#x60;&#x60;) or every annotation of the chosen statuses (&#x60;&#x60;collection&#x60;&#x60;), in document order. &#x60;&#x60;X-Export-Count&#x60;&#x60; is the number of rows, &#x60;&#x60;X-Export-Missing&#x60;&#x60; the selected ids that are no annotation of the collection. A scope that cannot be exported completely is refused (400) before any row; when the annotations change or a read fails during the export the download is aborted, never ended early as a shorter file. Collection read access.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // AnnotationExportRequest
+    annotationExportRequest: ...,
+  } satisfies ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest;
+
+  try {
+    const data = await api.exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **annotationExportRequest** | [AnnotationExportRequest](AnnotationExportRequest.md) |  | |
+
+### Return type
+
+**string**
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `text/csv`, `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | UTF-8 CSV with a byte order mark, one row per annotation |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

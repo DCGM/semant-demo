@@ -1,13 +1,16 @@
 """HTTP routes of the Annotations feature (tags and spans); the rules live in ``service.py``."""
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from semant_demo.features.annotations.schemas import TagSpan
-from semant_demo.features.annotations import service
+from semant_demo.features.annotations import export, service
 from semant_demo.features.annotations.schemas import (
     MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
-    AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
+    AnnotationExportRequest, AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
     AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
@@ -15,7 +18,11 @@ from semant_demo.features.annotations.schemas import (
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.adapters.sql.attributes import AttributeRepository
-from semant_demo.routes.dependencies import get_annotation_store, get_attribute_definitions
+from semant_demo.adapters.sql.users import UserLookup
+from semant_demo.features.documents.criteria import ChunkVocabulary
+from semant_demo.routes.dependencies import (
+    get_annotation_store, get_attribute_definitions, get_chunk_vocabulary, get_user_lookup,
+)
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
@@ -412,3 +419,53 @@ async def sync_collection_annotation_chunk_tags(
     review, also after a deletion. Needs annotation-edit access.
     """
     return await service.sync_annotation_chunk_tags(store, current_user, collection_id, body)
+
+
+#############################
+# CSV export (#719)         #
+#############################
+
+EXPORT_COUNT_HEADER = "X-Export-Count"
+EXPORT_MISSING_HEADER = "X-Export-Missing"
+EXPORT_SCOPE_HEADER = "X-Export-Scope"
+EXPORT_HEADERS = [EXPORT_COUNT_HEADER, EXPORT_MISSING_HEADER, EXPORT_SCOPE_HEADER, "Content-Disposition"]
+"""Response headers of an export the browser may read (CORS ``expose_headers``)."""
+
+
+@span_router.post(
+    "/api/user_collections/{collection_id}/annotations/export",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}},
+                     "description": "UTF-8 CSV with a byte order mark, one row per annotation"}},
+)
+async def export_collection_annotations(
+    collection_id: str,
+    body: AnnotationExportRequest,
+    store: AnnotationStore = Depends(get_annotation_store),
+    definitions: AttributeRepository = Depends(get_attribute_definitions),
+    users: UserLookup = Depends(get_user_lookup),
+    vocabulary: ChunkVocabulary = Depends(get_chunk_vocabulary),
+    current_user: User = Depends(current_active_user),
+) -> StreamingResponse:
+    """
+    A CSV file of the collection's annotations (#719): the selected ones (``selection``, every
+    status, whatever the filters), every match of the annotation query (``filters``) or every
+    annotation of the chosen statuses (``collection``), in document order. ``X-Export-Count`` is the
+    number of rows, ``X-Export-Missing`` the selected ids that are no annotation of the collection.
+    A scope that cannot be exported completely is refused (400) before any row; when the
+    annotations change or a read fails during the export the download is aborted, never ended
+    early as a shorter file. Collection read access.
+    """
+    try:
+        result = await export.export_annotations(store, definitions, users, vocabulary, current_user,
+                                                 collection_id, body)
+    except UnavailableFilter as e:
+        raise _unavailable(e) from e
+    filename = f"annotations-{result.scope.value}-{date.today().isoformat()}.csv"
+    return StreamingResponse(result.content, media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        EXPORT_COUNT_HEADER: str(result.count),
+        EXPORT_MISSING_HEADER: str(result.missing),
+        EXPORT_SCOPE_HEADER: result.scope.value,
+        "Cache-Control": "no-store",
+    })
