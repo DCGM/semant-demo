@@ -1401,17 +1401,20 @@ defineExpose({ reveal, focusRowById })
   /* The switch in small, the same shape: the text keeps its room (one attribute column still
      fits). Review on a phone is in the sidebar. */
   .kwic__grid {
-    --kwic-status: 1.75rem;
+    --kwic-status: 1.375rem;
   }
   .kwic__review {
     padding: 0;
   }
+  .kwic__switch {
+    border: none;
+  }
   .kwic__half {
-    width: 12px;
-    height: 14px;
+    width: 10px;
+    height: 13px;
   }
   .kwic__half :deep(.q-icon) {
-    font-size: 10px;
+    font-size: 9px;
   }
   .kwic__review-label {
     position: absolute;
