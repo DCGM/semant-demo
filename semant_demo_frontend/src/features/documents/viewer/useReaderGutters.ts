@@ -11,6 +11,28 @@ export interface ChunkRow {
   height: number
 }
 
+/** A rendered text segment of a chunk and its offsets in the chunk text. */
+interface TextSegment {
+  el: HTMLElement
+  start: number
+  end: number
+}
+
+/**
+ * The index of the first segment ending after `offset` (`segments.length` if none);
+ * `segments` are consecutive, in text order.
+ */
+export function firstSegmentEndingAfter (segments: readonly { end: number }[], offset: number): number {
+  let lo = 0
+  let hi = segments.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (segments[mid]!.end > offset) hi = mid
+    else lo = mid + 1
+  }
+  return lo
+}
+
 /**
  * Positions of the reader's gutters, measured from the rendered text:
  * a row per displayed chunk and a marker per shown annotation.
@@ -103,16 +125,21 @@ export function useReaderGutters (
     // for every span part.
     const chunkElements = chunkElementsOf(container)
 
-    // Load text segments lazily, only for chunks containing shown spans.
-    const segmentsByChunkId = new Map<string, HTMLElement[]>()
+    // Load text segments lazily, only for chunks containing shown spans, with their
+    // offsets parsed once. Segments follow each other in text order.
+    const segmentsByChunkId = new Map<string, TextSegment[]>()
 
-    const segmentsFor = (chunkId: string): HTMLElement[] => {
+    const segmentsFor = (chunkId: string): TextSegment[] => {
       const cached = segmentsByChunkId.get(chunkId)
       if (cached) return cached
 
       const chunkEl = chunkElements.get(chunkId)
       const segments = chunkEl
-        ? Array.from(chunkEl.querySelectorAll<HTMLElement>('.text-segment'))
+        ? Array.from(chunkEl.querySelectorAll<HTMLElement>('.text-segment'), (el) => ({
+          el,
+          start: parseInt(el.dataset.start || '0', 10),
+          end: parseInt(el.dataset.end || '0', 10)
+        }))
         : []
 
       segmentsByChunkId.set(chunkId, segments)
@@ -151,12 +178,15 @@ export function useReaderGutters (
 
         // Hidden chunks have no DOM elements. Their text lengths were
         // already accounted for by useAnnotations during projection.
-        for (const segEl of segmentsFor(chunk.id)) {
-          const segStart = parseInt(segEl.dataset.start || '0', 10)
-          const segEnd = parseInt(segEl.dataset.end || '0', 10)
+        // Only the segments the span overlaps: from the first one ending after its start
+        // (one pass per span over every segment was quadratic in long chunks, #464).
+        const segments = segmentsFor(chunk.id)
+        for (let i = firstSegmentEndingAfter(segments, span.start); i < segments.length; i++) {
+          const seg = segments[i]!
+          if (seg.start >= span.end) break
 
-          if (segStart < span.end && segEnd > span.start) {
-            const rect = segEl.getBoundingClientRect()
+          if (seg.end > span.start) {
+            const rect = seg.el.getBoundingClientRect()
 
             extent.minTop = Math.min(
               extent.minTop,

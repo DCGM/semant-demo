@@ -590,6 +590,37 @@ async def test_bulk_update_keeps_completed_updates_and_reports_failed_ones(store
     assert [w[0] for w in writes].count("sync") == 1
 
 
+async def test_a_large_bulk_update_bounds_concurrent_span_writes(store, writes, monkeypatch):
+    # #464: approving 1,255 suggestions opened one storage request per span at once.
+    ids = [uuid4() for _ in range(1255)]
+    for sid in ids:
+        store.spans.stored[COLLECTION][sid] = TagSpan(id=str(sid), chunkId=str(CHUNK_1), tagId=str(TAG),
+                                                      start=0, end=3, type=SpanType.auto)
+    running = peak = 0
+    update = store.spans.update
+
+    async def slow_update(*args, **kw):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0)
+        try:
+            return await update(*args, **kw)
+        finally:
+            running -= 1
+
+    monkeypatch.setattr(store.spans, "update", slow_update)
+    store.spans.fail[f"update_span:{ids[7]}"] = WeaviateTimeoutError("slow")
+
+    result = await service.bulk_update_spans(store, OWNER, COLLECTION, ids + ids[:3], PatchSpan(type=SpanType.pos))
+
+    assert 1 < peak <= service.SPAN_UPDATE_CONCURRENCY
+    assert result.outcome == "partial"
+    assert result.succeeded == [str(i) for i in ids if i != ids[7]]
+    assert [(f.item_id, f.step) for f in result.failed] == [(str(ids[7]), "update_span")]
+    assert [w[0] for w in writes].count("sync") == 1
+
+
 async def test_bulk_offset_patch_is_validated_for_every_span_before_writing(store, writes):
     # Valid for SPAN_A (chunk 1, 9 units + 10 following), past the end for SPAN_B (chunk 2).
     with pytest.raises(InvalidSpanRange):
