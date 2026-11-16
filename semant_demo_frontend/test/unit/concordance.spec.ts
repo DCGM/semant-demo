@@ -101,6 +101,19 @@ describe('concordance store', () => {
     expect([ranked.has('sort'), ranked.has('descending'), ranked.get('mode')]).toEqual([false, false, 'hybrid'])
   })
 
+  it('sends the sort attribute only with the attribute sort, and forgets it with another sort (#666)', async () => {
+    const store = await opened()
+    void store.setFilters({ sort: 'attribute' as never, sortAttribute: 'topic' })
+    await flush()
+    const byAttribute = rowCalls()[rowCalls().length - 1].url.searchParams
+    expect([byAttribute.get('sort'), byAttribute.get('sort_attribute')]).toEqual(['attribute', 'topic'])
+    void store.setFilters({ sort: 'left' as never })
+    await flush()
+    const byContext = rowCalls()[rowCalls().length - 1].url.searchParams
+    expect([byContext.get('sort'), byContext.has('sort_attribute')]).toEqual(['left', false])
+    expect(store.filters.sortAttribute).toBeNull()
+  })
+
   it('sends the filters and drops the answer of a superseded query', async () => {
     const store = await opened()
     const first = store.setFilters({ tagIds: ['t1', 't2'], text: ' Novák ' })

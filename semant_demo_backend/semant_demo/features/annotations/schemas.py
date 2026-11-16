@@ -182,6 +182,10 @@ class AnnotationRow(BaseModel):
     vectorStatus: VectorStatus | None = None
     vectorRevision: int | None = None
     vectorConfig: str | None = None
+    sortKeyVersion: str | None = None
+    sortKeyRevision: int | None = None
+    """The collation of the stored sort keys and the revision they were computed for (#666,
+    ``collation.py``); read only when the collection holds them."""
     distance: float | None = None
     """Vector distance, for semantic and similar ranking (#664)."""
     score: float | None = None
@@ -253,6 +257,14 @@ class AnnotationQuery(BaseModel):
     """Only annotations with a ``ready`` vector of this configuration and text ``ready`` under
     ``derivation_version`` (ranked retrieval, #664). Whether the vector belongs to the current
     revision cannot be filtered in Weaviate; the caller checks it per row (``vector_current``)."""
+    sort_key_version: str | None = None
+    """Only annotations whose sort keys are of this version (#666: counting the sortable ones)."""
+    holds_value: str | None = None
+    """Only approved annotations holding this ``<attribute id>:<value id>`` element (#666: one
+    partition of the attribute sort)."""
+    holds_none_of: list[str] = []
+    """Only annotations holding none of these elements, or not approved (whose values are not
+    shown, as for ``attribute_unassigned``)."""
 
 
 class VectorRanking(BaseModel):
@@ -275,8 +287,19 @@ class AnnotationSort(str, Enum):
     year = "year"
     """Document year (missing last), then as ``document``."""
     text = "text"
-    """Annotated text as Weaviate orders it (ignoring case; rows without current text first,
-    last when descending)."""
+    """Annotated text in Czech dictionary order (its ``textSortKey``, #666), or, on a store
+    without sort keys, as Weaviate orders the text; rows without a key first, last when
+    descending."""
+    left = "left"
+    """Left context from the annotation outwards (its nearest word first; ``leftSortKey``, #666);
+    rows without a key first, last when descending."""
+    right = "right"
+    """Right context in reading order (``rightSortKey``, #666); rows without a key as ``left``."""
+    attribute = "attribute"
+    """Values of the attribute ``sort_attribute`` in its value order, active values before
+    retired ones, then document order (#666); an annotation holding several sorts once, by its
+    first value; annotations without a value (and not approved ones) last. Descending reverses
+    the value order only."""
 
 
 class TextStatus(str, Enum):
@@ -409,6 +432,9 @@ class AnnotationPage(BaseModel):
     offset: int
     limit: int
     result: AnnotationResultSet = Field(default_factory=AnnotationResultSet)
+    unsortable: int | None = None
+    """Text and context sorts (#666): rows of the result without current sort keys (not derived or
+    not yet backfilled), placed as rows without a key; ``None`` for other orders."""
 
 
 class AnnotationCounts(BaseModel):

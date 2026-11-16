@@ -695,9 +695,11 @@ install `semant_demo_backend/requirements-dev.lock` with `--require-hashes`, and
 every downloaded archive against the lock's hashes, including archives served from the
 cache. That does not cover everything in the cache: a wheel that pip builds locally from a
 source distribution is stored under `wheels/` and reused after pip checks only the source
-archive hash recorded next to it, not the wheel itself. Today every locked package installs
-from a published wheel, and the editable project is built in a temporary cache that is
-discarded, so nothing is built into the shared cache.
+archive hash recorded next to it, not the wheel itself. PyICU publishes only a source
+distribution, so its wheel is built into the shared cache; the editable project is built
+in a temporary cache that is discarded. A cached PyICU wheel is linked against the ICU of
+the image that built it, so every job that installs the backend lock must use the same
+`python:3.12` base (see [CI images](#ci-images)); otherwise clear the cache.
 
 The job containers run as uid 1025, gid 1027. Setup (already done on the server):
 
@@ -725,6 +727,32 @@ the next run refills it:
 
 ```bash
 sudo find /var/cache/semant-ci/pip -mindepth 1 -delete
+```
+
+### CI images
+
+The browser smoke-test shards run in `localhost:5000/semant-ci-browser`, built from
+[`ci/Dockerfile.browser`](ci/Dockerfile.browser): the CI `python:3.12` image plus Node and
+the Chromium build matching the Playwright version in `semant_demo_frontend/package-lock.json`.
+The GitHub Actions runner always pulls a job's image, so a host-local image must come from a
+registry. CI runs only on this server, so a local registry serves it on `127.0.0.1:5000`
+(Docker trusts localhost registries without TLS). Start it once; it restarts with Docker
+and keeps images in a named volume:
+
+```bash
+docker compose -f deploy/ci/docker-compose.registry.yml up -d
+curl -fsS http://localhost:5000/v2/_catalog
+```
+
+If the registry is down, the browser shards fail when pulling their image.
+
+**Rebuild the image** after a Playwright upgrade (the "Verify browser test toolchain" step
+fails with "Browser CI image out of date") or when the `python:3.12` tag moves to another
+Debian release (another ICU), then put the printed digest into the `test-browser-shard`
+job in `.github/workflows/ci-cd.yml`:
+
+```bash
+deploy/ci/build-browser-image.sh
 ```
 
 ### Docker image build cache for deployment jobs

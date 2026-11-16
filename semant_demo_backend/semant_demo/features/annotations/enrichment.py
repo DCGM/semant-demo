@@ -11,6 +11,9 @@ The vector is configured by ``ANNOTATION_VECTOR_CONFIG`` (default
 with every vector and must change whenever the model, its dimensions, prefixes or the
 template change: vectors of another ``id`` are not current and the backfill replaces them.
 
+The Czech sort keys of #666 (``collation.py``) are written with the text, once the collection
+holds them too.
+
 Nothing is derived unless the ``Annotation`` collection holds the derived properties
 (and, for the vector, the named vector): they are added by the operator
 (``python -m semant_demo.maintenance.annotation_enrichment add-schema``), never by a
@@ -22,6 +25,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from semant_demo.features.annotations.collation import sort_key_version
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, render_vector_input
 from semant_demo.features.annotations.schemas import AnnotationRow, EnrichmentStatus, VectorStatus
 from semant_demo.features.search.vectors import Embedder, EmbeddingSettings
@@ -148,6 +152,8 @@ class Enrichment:
     """The ``Annotation`` collection holds the derived properties: they are written."""
     vector: AnnotationVector | None = None
     """The configured contextual vector, when ``derived`` and the collection holds it."""
+    sort_keys: bool = False
+    """``derived`` and the collection holds the sort keys (#666): they are written with the text."""
 
     @classmethod
     def disabled(cls) -> "Enrichment":
@@ -159,6 +165,13 @@ def text_current(row: AnnotationRow) -> bool:
     current derivation policy (``DERIVATION_VERSION``)."""
     return (row.enrichmentStatus == EnrichmentStatus.ready and (row.enrichedRevision or 0) == (row.revision or 0)
             and row.derivationVersion == DERIVATION_VERSION)
+
+
+def sort_keys_current(row: AnnotationRow) -> bool:
+    """The row's sort keys (#666) were computed from its current text (its revision, under the
+    current derivation policy) with this collator."""
+    return (text_current(row) and row.sortKeyVersion == sort_key_version()
+            and (row.sortKeyRevision or 0) == (row.revision or 0))
 
 
 def vector_current(row: AnnotationRow, config_id: str | None) -> bool:

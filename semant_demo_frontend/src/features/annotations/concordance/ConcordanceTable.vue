@@ -46,7 +46,7 @@
             :sortable="column.sort !== null"
             :sort-state="sortState(column.sort)"
             :sort-disabled="ranked"
-            :not-sortable-hint="column.sort === null ? NOT_SORTABLE_YET : undefined"
+            :sort-hint="column.hint"
             :filter-label="filterLabel(column.field)"
             :filter-active="filterActive(column.field)"
             :testid="column.id"
@@ -57,12 +57,21 @@
         <div
           v-for="attribute in attributes"
           :key="attribute.id"
-          class="kwic__cell kwic__attribute"
+          class="kwic__cell kwic__head kwic__attribute"
           role="columnheader"
-          :title="`${attribute.name} (${NOT_SORTABLE_YET.toLowerCase()})`"
+          :aria-sort="ariaSort(AnnotationSort.attribute, attribute.id)"
           data-testid="kwic-attribute-head"
         >
-          {{ attribute.name }}
+          <HeaderControls
+            :label="attribute.name"
+            sortable
+            :sort-state="sortState(AnnotationSort.attribute, attribute.id)"
+            :sort-disabled="ranked"
+            sort-hint="In the order of the attribute's values; without a value last"
+            :filterable="false"
+            :testid="`attribute-${attribute.id}`"
+            @sort="sortBy(AnnotationSort.attribute, attribute.id)"
+          />
         </div>
         <div class="kwic__cell kwic__meta kwic__head" role="columnheader">{{ rankStart !== null ? 'Rank · tag · status' : 'Tag · status' }}</div>
         <div
@@ -346,20 +355,19 @@ const emit = defineEmits<{
   /** Assign values of a shown attribute to the row's annotation; `done` says whether it was saved. */
   assign: [row: AnnotationListRow, attribute: Attribute, change: AssignChange, done:(ok: boolean) => void]
   /** Order the whole result by a column (its header): the first activation ascending, the next
-   * one of the same column descending, and so on. */
-  sort: [sort: AnnotationSort, descending: boolean]
+   * one of the same column descending, and so on; an attribute column names its attribute. */
+  sort: [sort: AnnotationSort, descending: boolean, attributeId: string | null]
   /** Show the filter of a column (its header's filter button). */
   filter: [field: FilterField]
   /** Change the query by a filter of a row's value or of the words selected in its text (its menu). */
   refine: [change: Partial<ConcordanceFilters>]
 }>()
 
-// The column headers (#665). Left and right context sort by their nearest words in #666.
-const NOT_SORTABLE_YET = 'Not sortable yet'
-const TEXT_COLUMNS: { id: string, label: string, field: FilterField, sort: AnnotationSort | null, class: string }[] = [
-  { id: 'left', label: 'Left context', field: 'context', sort: null, class: 'kwic__left' },
-  { id: 'annotation', label: 'Annotation', field: 'annotation', sort: AnnotationSort.text, class: 'kwic__key' },
-  { id: 'right', label: 'Right context', field: 'context', sort: null, class: 'kwic__right' }
+// The column headers (#665); text and context sort in Czech dictionary order by their words (#666).
+const TEXT_COLUMNS: { id: string, label: string, field: FilterField, sort: AnnotationSort, hint: string, class: string }[] = [
+  { id: 'left', label: 'Left context', field: 'context', sort: AnnotationSort.left, hint: 'By the words before the annotation, nearest first', class: 'kwic__left' },
+  { id: 'annotation', label: 'Annotation', field: 'annotation', sort: AnnotationSort.text, hint: 'By the annotated words', class: 'kwic__key' },
+  { id: 'right', label: 'Right context', field: 'context', sort: AnnotationSort.right, hint: 'By the words after the annotation', class: 'kwic__right' }
 ]
 const DOCUMENT_COLUMNS: { id: string, label: string, field: FilterField, sort: AnnotationSort, class: string }[] = [
   { id: 'source', label: 'Source', field: 'source', sort: AnnotationSort.document, class: 'kwic__source' },
@@ -368,20 +376,20 @@ const DOCUMENT_COLUMNS: { id: string, label: string, field: FilterField, sort: A
 
 const ranked = computed(() => !!props.filters && props.filters.mode !== RetrievalMode.lexical)
 
-function sortState (sort: AnnotationSort | null): SortState {
+function sortState (sort: AnnotationSort, attributeId: string | null = null): SortState {
   const f = props.filters
-  if (!f || sort === null || ranked.value || f.sort !== sort) return null
+  if (!f || ranked.value || f.sort !== sort) return null
+  if (sort === AnnotationSort.attribute && f.sortAttribute !== attributeId) return null
   return f.descending ? 'descending' : 'ascending'
 }
 
-function ariaSort (sort: AnnotationSort | null): 'ascending' | 'descending' | 'none' | undefined {
-  if (sort === null) return undefined
-  return sortState(sort) ?? 'none'
+function ariaSort (sort: AnnotationSort, attributeId: string | null = null): 'ascending' | 'descending' | 'none' {
+  return sortState(sort, attributeId) ?? 'none'
 }
 
-function sortBy (sort: AnnotationSort | null) {
-  if (sort === null || ranked.value) return
-  emit('sort', sort, sortState(sort) === 'ascending')
+function sortBy (sort: AnnotationSort, attributeId: string | null = null) {
+  if (ranked.value) return
+  emit('sort', sort, sortState(sort, attributeId) === 'ascending', attributeId)
 }
 
 const FILTER_LABELS: Record<FilterField, string> = {

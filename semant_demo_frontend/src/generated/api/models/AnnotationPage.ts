@@ -65,6 +65,12 @@ export interface AnnotationPage {
      * @memberof AnnotationPage
      */
     result?: AnnotationResultSet;
+    /**
+     * 
+     * @type {number}
+     * @memberof AnnotationPage
+     */
+    unsortable?: number | null;
 }
 
 /**
@@ -93,6 +99,7 @@ export function AnnotationPageFromJSONTyped(json: any, ignoreDiscriminator: bool
         'offset': json['offset'],
         'limit': json['limit'],
         'result': json['result'] == null ? undefined : AnnotationResultSetFromJSON(json['result']),
+        'unsortable': json['unsortable'] == null ? undefined : json['unsortable'],
     };
 }
 
@@ -112,6 +119,7 @@ export function AnnotationPageToJSONTyped(value?: AnnotationPage | null, ignoreD
         'offset': value['offset'],
         'limit': value['limit'],
         'result': AnnotationResultSetToJSON(value['result']),
+        'unsortable': value['unsortable'],
     };
 }
 
