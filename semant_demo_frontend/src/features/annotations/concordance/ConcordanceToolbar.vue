@@ -641,6 +641,12 @@ const shownLabel = computed(() => {
   padding: 0 12px;
 }
 
+/* The check mark and the label stay on one line, whatever the width. */
+.concordance-toolbar__status :deep(.q-btn__content) {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
 .concordance-toolbar__more-button {
   min-height: 40px;
   flex: 0 0 auto;
@@ -825,7 +831,8 @@ const shownLabel = computed(() => {
   }
 
   .concordance-toolbar__status :deep(.q-btn) {
-    flex: 1 1 0;
+    flex: 1 1 auto;
+    padding: 0 8px;
   }
 
   .concordance-toolbar__more-fields > .q-field,

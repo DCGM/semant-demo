@@ -123,6 +123,7 @@ watch([chips, expanded], () => { void nextTick(measure) })
 }
 
 .filter-chips__list {
+  position: relative; /* the chips' offsets are measured from the list */
   display: flex;
   flex: 1 1 0;
   flex-wrap: wrap;
