@@ -1,7 +1,7 @@
 <template>
   <div
     class="kwic"
-    :class="{ 'kwic--attributes': attributes.length > 0, 'kwic--scrolled': scrolled, 'kwic--phone': phone }"
+    :class="{ 'kwic--attributes': attributes.length > 0, 'kwic--scrolled': scrolled }"
     data-testid="kwic"
     @scroll.passive="onScroll"
     @copy="onCopy"
@@ -67,7 +67,7 @@
         >
           {{ attribute.name }}
         </div>
-        <div class="kwic__cell kwic__review kwic__head" role="columnheader">Status</div>
+        <div class="kwic__cell kwic__review kwic__head" role="columnheader"><span class="kwic__review-label">Status</span></div>
         <div class="kwic__cell kwic__meta kwic__head" role="columnheader">{{ rankStart !== null ? 'Rank · tag' : 'Tag' }}</div>
         <div
           v-for="column in DOCUMENT_COLUMNS"
@@ -1336,14 +1336,7 @@ defineExpose({ reveal, focusRowById })
   color: var(--q-primary);
 }
 
-.kwic--phone .kwic__grid {
-  --kwic-status: 3.25rem;
-}
 
-.kwic--phone .kwic__half {
-  width: 22px;
-  height: 20px;
-}
 
 /* Reviewed out of the filters (#690): still there, but visibly no longer part of the result. */
 .kwic__row--unmatched .kwic__text,
@@ -1406,6 +1399,28 @@ defineExpose({ reveal, focusRowById })
   }
   .kwic__meta {
     gap: 4px;
+  }
+  /* The switch in small, the same shape: the text keeps its room (one attribute column still
+     fits). Review on a phone is in the sidebar. */
+  .kwic__grid {
+    --kwic-status: 1.75rem;
+  }
+  .kwic__review {
+    padding: 0;
+  }
+  .kwic__half {
+    width: 12px;
+    height: 14px;
+  }
+  .kwic__half :deep(.q-icon) {
+    font-size: 10px;
+  }
+  .kwic__review-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
 }
 </style>
