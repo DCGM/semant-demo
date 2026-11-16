@@ -819,7 +819,7 @@ async function decide (action: typeof ReviewAction.approve | typeof ReviewAction
   const row = selection.focused
   if (!row || selection.focusedGone || decisionDisabled.value || editingBoundary.value) return
   if (row.type === (action === ReviewAction.approve ? SpanType.pos : SpanType.neg)) {
-    announce(action === ReviewAction.approve ? 'Already confirmed.' : 'Already rejected.', await step(1))
+    await advance(action === ReviewAction.approve ? 'Already confirmed.' : 'Already rejected.')
     return
   }
   savingAction.value = action
@@ -861,7 +861,22 @@ async function reviewFocused (action: ReviewAction, tagId?: string) {
   // The next page starts after the rows that left the result: known once they are read again.
   if (!store.rows[focusedIndex.value + 1]) await reviewed.loaded
   if (selection.focused?.id !== row.id) return
-  announce(action === ReviewAction.approve ? 'Confirmed.' : 'Rejected.', await step(1))
+  await advance(action === ReviewAction.approve ? 'Confirmed.' : 'Rejected.')
+}
+
+/**
+ * After a decision: opens the next row when it is a proposal still to review (#690 review). A
+ * next row already confirmed or rejected means the user is going back over decided ones: the
+ * sidebar stays, instead of jumping to an annotation already settled. At the end of a page the
+ * next page is read and its first row opened (its state is not known before).
+ */
+async function advance (said: string) {
+  const next = store.rows[focusedIndex.value + 1]
+  if (next && next.type !== SpanType.auto) {
+    announcement.value = `${said} The next annotation is already reviewed; staying here.`
+    return
+  }
+  announce(said, await step(1))
 }
 
 /** Repeats the refused review or boundary edit against the version the sidebar shows now. */

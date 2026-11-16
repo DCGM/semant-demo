@@ -931,10 +931,12 @@ test('one annotation is reviewed from its source; deleting asks first', async ({
   try {
     await row(page, 'Lhoty').click()
     const next = rows(page).nth((await rows(page).locator('.kwic__key-label').allTextContents()).indexOf('Lhoty') + 1)
+    await expect(next).toContainText('Confirmed')
     await review.getByRole('button', { name: 'Confirm' }).click()
     await expect(row(page, 'Lhoty')).toContainText('Confirmed')
-    // Confirming moves on to the next row.
-    await expect(next).toHaveAttribute('aria-current', 'true')
+    // The next row is already decided: the sidebar stays on this one (#690 review).
+    await expect(page.getByTestId('annotation-announcement')).toContainText('already reviewed; staying here')
+    await expect(row(page, 'Lhoty')).toHaveAttribute('aria-current', 'true')
 
     await row(page, first.slice(0, 4)).click()
     await panel(page).getByRole('button', { name: 'Delete…' }).click()
