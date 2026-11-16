@@ -579,7 +579,9 @@ jobs:
   deploy-production:
     name: Deploy Production ${{ github.ref_name }}
     needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks, ci-result]
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    # The gate needs the PR preview job, which is skipped on pushes; an implicit success()
+    # would skip this deployment with it, so require the gate's own result instead.
+    if: ${{ !cancelled() && needs.ci-result.result == 'success' && github.event_name == 'push' && github.ref_type == 'tag' }}
     runs-on: [self-hosted, semant-server]
     environment: production
     timeout-minutes: 30
@@ -765,7 +767,8 @@ jobs:
   deploy-test-main:
     name: Deploy test-main
     needs: [test-backend, test-frontend, test-integration, test-browser, api-client-drift, python-locks, ci-result]
-    if: github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main'
+    # As for deploy-production: the gate's result, not an implicit success() over the skipped preview.
+    if: ${{ !cancelled() && needs.ci-result.result == 'success' && github.event_name == 'push' && github.ref_type != 'tag' && github.ref == 'refs/heads/main' }}
     runs-on: [self-hosted, semant-server]
     timeout-minutes: 30
 
