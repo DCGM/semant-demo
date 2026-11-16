@@ -219,6 +219,7 @@
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.pos)"
         >
+          <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
           <q-tooltip>Confirm all selected suggestions</q-tooltip>
         </q-btn>
         <q-btn
@@ -230,6 +231,7 @@
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.neg)"
         >
+          <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
           <q-tooltip>Reject all selected suggestions</q-tooltip>
         </q-btn>
       </div>
@@ -853,6 +855,24 @@ watch(
   max-height: 360px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+/* The bulk buttons' spinner animates only its transform, which the browser runs off the
+   main thread: Quasar's default spinner also animates its stroke on the main thread and
+   so stuttered whenever a bulk batch's result was rendered (#464). */
+.bulk-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  will-change: transform;
+  animation: bulk-spin 0.75s linear infinite;
+}
+
+@keyframes bulk-spin {
+  to { transform: rotate(360deg); }
 }
 
 .auto-span-bulk-bar {
