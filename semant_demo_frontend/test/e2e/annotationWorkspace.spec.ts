@@ -901,7 +901,11 @@ test('all matches are a fixed selection that a shared user reviews in one batch'
 
     await page.getByTestId('review-reject').click()
     await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2 annotations.')
-    // Rejected annotations leave the default filters but stay selected, and the bar says so.
+    // Rejected annotations leave the default filters but stay selected, and the bar says so. Their
+    // rows stay, marked, until the list is read again (#690).
+    await expect(rows(page)).toHaveCount(4)
+    await expect(page.getByTestId('kwic-unmatched')).toHaveCount(2)
+    await page.getByTestId('concordance-refresh').click()
     await expect(rows(page)).toHaveCount(2)
     await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown by these filters')
     await page.getByTestId('concordance-status-neg').click()
