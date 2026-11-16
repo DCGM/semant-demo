@@ -232,6 +232,8 @@ import { markMatches, queryWords, splitParts, type TextPart } from './textMatche
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
+import { prefersReducedMotion } from 'src/features/documents/contextScroll'
+import { scrollRowIntoView } from './rowScroll'
 
 const props = withDefaults(defineProps<{
   rows: AnnotationListRow[]
@@ -439,11 +441,11 @@ function focusRow (index: number) {
   const row = props.rows[index]
   if (!row) return
   activeIndex.value = index
-  // Into view vertically only: a list scrolled sideways keeps its scroll (the row is wider).
   void nextTick(() => {
     const el = rowEls.get(row.id)
-    el?.focus({ preventScroll: true })
-    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    if (!el) return
+    el.focus({ preventScroll: true })
+    scrollRowIntoView(el)
   })
 }
 
@@ -470,6 +472,18 @@ function onKeydown (event: KeyboardEvent) {
     emit('toggle', row.id, !props.selected.has(row.id))
   }
 }
+
+// The open row follows the sidebar (Next, the advance after a review, #704): when it changes to a
+// row of this page, the list scrolls it into view below the page's header (`scrollRowIntoView`).
+// Keyboard focus stays where it is, e.g. on the sidebar's button.
+watch(() => props.focusedId, (id) => {
+  if (!id || !props.rows.some(r => r.id === id)) return
+  activeIndex.value = props.rows.findIndex(r => r.id === id)
+  void nextTick(() => {
+    const el = rowEls.get(id)
+    if (el) scrollRowIntoView(el, prefersReducedMotion() ? 'auto' : 'smooth')
+  })
+})
 
 /** Scrolls the row into view and gives it keyboard focus. */
 function reveal (id: string) {
@@ -645,7 +659,8 @@ defineExpose({ reveal })
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
-  /* A row moved to by keyboard (Home, arrows) comes into view below the fixed app header. */
+  /* A row scrolled into view clears the fixed app header: `scrollRowIntoView` measures it and
+     sets the top margin; this is the fallback before the first measurement. */
   scroll-margin-top: 4.5rem;
   scroll-margin-bottom: 0.5rem;
   align-items: center;
