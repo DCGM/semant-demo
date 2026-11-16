@@ -38,22 +38,35 @@
         </q-card-section>
         <q-separator vertical />
         <q-card-actions vertical class="justify-around no-wrap">
-          <q-btn v-if="rights.share" round flat icon="share" color="primary" aria-label="Share collection" @click.stop="handleShareProject">
+          <q-btn
+            round
+            flat
+            dense
+            icon="download"
+            color="primary"
+            aria-label="Export collection"
+            :disable="exportRequesting"
+            @click.stop="exportCollections([props.collection.id])"
+          >
+            <q-tooltip> Export: all annotations with the text of their passages, as a ZIP of JSON files </q-tooltip>
+          </q-btn>
+          <q-btn v-if="rights.share" round flat dense icon="share" color="primary" aria-label="Share collection" @click.stop="handleShareProject">
             <q-tooltip> Share collection </q-tooltip>
           </q-btn>
           <q-btn
             round
             flat
+            dense
             icon="favorite"
             color="red"
             @click.stop="handleToggleFavorite"
           >
             <q-tooltip> Add to favorites </q-tooltip>
           </q-btn>
-          <q-btn v-if="rights.editMetadata" round flat icon="edit" color="indigo-12" aria-label="Edit collection" @click.stop="handleEditProject">
+          <q-btn v-if="rights.editMetadata" round flat dense icon="edit" color="indigo-12" aria-label="Edit collection" @click.stop="handleEditProject">
             <q-tooltip> Edit project info </q-tooltip>
           </q-btn>
-          <q-btn v-if="rights.editMetadata" round flat icon="delete" color="negative" aria-label="Delete collection" @click.stop="handleDeleteProject">
+          <q-btn v-if="rights.editMetadata" round flat dense icon="delete" color="negative" aria-label="Delete collection" @click.stop="handleDeleteProject">
             <q-tooltip> Delete project </q-tooltip>
           </q-btn>
         </q-card-actions>
@@ -65,6 +78,7 @@
 <script setup lang="ts">
 import { Collection } from 'src/generated/api'
 import { collectionRights } from './permissions'
+import { useCollectionExport } from './useCollectionExport'
 import { computed } from 'vue'
 
 interface Props {
@@ -74,8 +88,10 @@ interface Props {
 const emit = defineEmits(['edit', 'delete', 'enter', 'share'])
 
 const props = defineProps<Props>()
-// Sharing, editing and deleting are the owner's (ADR 0007); shared users only see the card.
+// Sharing, editing and deleting are the owner's (ADR 0007).
 const rights = computed(() => collectionRights(props.collection))
+// Exporting needs only read access, so shared collections can be exported too (#656).
+const { exportCollections, requesting: exportRequesting } = useCollectionExport()
 
 const createdOn = computed(() => {
   return props.collection.createdAt.toLocaleString()

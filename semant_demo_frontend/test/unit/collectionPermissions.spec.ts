@@ -95,14 +95,14 @@ describe('CollectionCard', () => {
   const labels = (wrapper: ReturnType<typeof mount>) =>
     wrapper.findAll('button[aria-label]').map((b) => b.attributes('aria-label'))
 
-  it('shows share, edit and delete to the owner', () => {
+  it('shows export, share, edit and delete to the owner', () => {
     const wrapper = mount(CollectionCard, { props: { collection: collection(false) }, global: quasar })
-    expect(labels(wrapper)).toEqual(['Share collection', 'Edit collection', 'Delete collection'])
+    expect(labels(wrapper)).toEqual(['Export collection', 'Share collection', 'Edit collection', 'Delete collection'])
   })
 
-  it('hides them from a shared user', () => {
+  it('shows a shared user only export (#656: read access suffices)', () => {
     const wrapper = mount(CollectionCard, { props: { collection: collection(true) }, global: quasar })
-    expect(labels(wrapper)).toEqual([])
+    expect(labels(wrapper)).toEqual(['Export collection'])
     expect(wrapper.text()).toContain('Shared by Owner Name')
   })
 })

@@ -18,6 +18,7 @@ from semant_demo.adapters.weaviate.writes import delete_collection_cascade, step
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.user_collections.schemas import CollectionChunk, Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.features.documents.schemas import Document, DocumentStats
+from semant_demo.features.annotations.schemas import AnnotationChunk
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 
 logger = logging.getLogger(__name__)
@@ -254,6 +255,17 @@ class UserCollectionRepository:
             sort=Sort.by_property("order", ascending=True),
         )
         return [to_chunk(obj, in_collection=True) for obj in objects]
+
+    async def read_chunk_texts_in_collection(self, document_id: UUID, collection_id: UUID) -> list[AnnotationChunk]:
+        """The document's chunks that belong to the collection: id, order and text only, in no
+        particular order (no server-side sort, which loads every chunk of the document, #376)."""
+        objects = await fetch_all(
+            self._chunks(),
+            filters=Filter.by_ref("document").by_id().equal(document_id)
+            & Filter.by_ref(self.link).by_id().equal(collection_id),
+            return_properties=["order", "text"])
+        return [AnnotationChunk(id=o.uuid, document_id=document_id, order=o.properties["order"],
+                                text=o.properties.get("text") or "") for o in objects]
 
     async def get_chunks_in_range(self, document_id: UUID, collection_id: UUID,
                                   order_gt: int | None, order_lt: int | None) -> list[CollectionChunk]:
