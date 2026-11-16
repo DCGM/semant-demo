@@ -1336,8 +1336,6 @@ defineExpose({ reveal, focusRowById })
   color: var(--q-primary);
 }
 
-
-
 /* Reviewed out of the filters (#690): still there, but visibly no longer part of the result. */
 .kwic__row--unmatched .kwic__text,
 .kwic__row--unmatched .kwic__source,
