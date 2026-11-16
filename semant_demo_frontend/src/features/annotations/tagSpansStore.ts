@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { PostSpan, TagSpan, PatchSpan } from 'src/generated/api'
+import type { BulkUpdateSpansResponse, PostSpan, TagSpan, PatchSpan } from 'src/generated/api'
 import { useTagSpansRepository } from './useTagSpansRepository'
 import { requireComplete, spanWriteWarning, spanOf } from 'src/shared/writeOutcome'
 import { warningNotification } from 'src/shared/notification'
@@ -170,16 +170,14 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
   }
 
   /**
-   * Apply the same patch to many spans in one round-trip and commit the
-   * results with a SINGLE reactive write to `spansByChunkId`.
-   *
-   * The previous approach (`Promise.all(updateSpan(...))`) caused N
-   * independent reactive mutations, each triggering recomputes of derived
-   * `pendingAutoSpans` / `autoSpansByTag` and a document re-render. For
-   * large bulk approve/reject actions that stalled the main thread.
+   * One bulk request: applies the spans it updated and the current state of those changed
+   * by someone else meanwhile with a SINGLE reactive write to `spansByChunkId` (one
+   * mutation per span stalled the main thread: each recomputed `pendingAutoSpans` and
+   * re-rendered the document) and returns the backend result as is, also
+   * when it is ``partial``/``failed`` (the caller reports it). Returns null, applying
+   * nothing, when the document or collection changed while it ran. A request error throws.
    */
-  const bulkUpdateSpans = async (spanIds: string[], update: PatchSpan) => {
-    if (spanIds.length === 0) return
+  const applyBulkUpdate = async (spanIds: string[], update: PatchSpan): Promise<BulkUpdateSpansResponse | null> => {
     const isCurrent = scope.capture()
     try {
       const known = new Map(Object.values(spansByChunkId.value).flat().map((s) => [s.id, s.editVersion] as const))
@@ -188,12 +186,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
         return version === undefined ? [] : [[id, version]]
       }))
       const result = await repo.bulkUpdate(spanIds, currentCollection(), update, expected)
-      if (!isCurrent()) {
-        requireComplete(result, 'Updating the selected suggestions')
-        return
-      }
-      // Apply the spans that were updated and the current state of those changed by
-      // someone else meanwhile, then report any that were not updated.
+      if (!isCurrent()) return null
       const byId = new Map([...(result.conflicts ?? []), ...result.spans].map((s) => [s.id, s] as const))
 
       const next: Record<string, TagSpan[]> = { ...spansByChunkId.value }
@@ -214,17 +207,28 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
 
       spansByChunkId.value = next
       spansVersion.value++
-      const changed = result.conflicts?.length ?? 0
-      if (changed && changed === (result.failed ?? []).length) {
-        throw new Error(`${changed} of the selected suggestions ${changed === 1 ? 'was' : 'were'} changed by someone else meanwhile and ${changed === 1 ? 'was' : 'were'} not updated; the view now shows ${changed === 1 ? 'it' : 'them'} as ${changed === 1 ? 'it is' : 'they are'}.`)
-      }
-      requireComplete(result, 'Updating the selected suggestions')
+      return result
     } catch (err) {
       if (!isCurrent()) throw err
       console.error('Failed to bulk-update spans', err)
       error.value = 'Failed to bulk-update spans'
       throw err
     }
+  }
+
+  /**
+   * Updates many spans in one request and applies the result in one reactive commit
+   * (see ``applyBulkUpdate``); throws when the result is incomplete.
+   */
+  const bulkUpdateSpans = async (spanIds: string[], update: PatchSpan) => {
+    if (spanIds.length === 0) return
+    const result = await applyBulkUpdate(spanIds, update)
+    if (!result) return
+    const changed = result.conflicts?.length ?? 0
+    if (changed && changed === (result.failed ?? []).length) {
+      throw new Error(`${changed} of the selected suggestions ${changed === 1 ? 'was' : 'were'} changed by someone else meanwhile and ${changed === 1 ? 'was' : 'were'} not updated; the view now shows ${changed === 1 ? 'it' : 'them'} as ${changed === 1 ? 'it is' : 'they are'}.`)
+    }
+    requireComplete(result, 'Updating the selected suggestions')
   }
 
   const deleteSpan = async (spanId: string, chunkId: string) => {
@@ -276,6 +280,7 @@ export const useTagSpansStore = defineStore('tagSpans', () => {
     createSpan,
     updateSpan,
     bulkUpdateSpans,
+    applyBulkUpdate,
     deleteSpan,
     removeSpansLocally,
     clearAll

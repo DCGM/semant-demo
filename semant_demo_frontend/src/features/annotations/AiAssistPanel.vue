@@ -202,7 +202,10 @@
           :disable="isBulkResolving"
           @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
         >
-          <span class="text-caption text-grey-7">
+          <span v-if="bulkProgress" class="text-caption text-grey-7" data-testid="bulk-resolve-progress">
+            Saving {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} not saved</template>…
+          </span>
+          <span v-else class="text-caption text-grey-7">
             {{ selectedSuggestionIds.size }} / {{ pendingAutoSpans.length }} selected
           </span>
         </q-checkbox>
@@ -216,6 +219,7 @@
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.pos)"
         >
+          <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
           <q-tooltip>Confirm all selected suggestions</q-tooltip>
         </q-btn>
         <q-btn
@@ -227,12 +231,20 @@
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.neg)"
         >
+          <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
           <q-tooltip>Reject all selected suggestions</q-tooltip>
         </q-btn>
       </div>
-      <div class="auto-span-list">
+      <q-linear-progress
+        v-if="bulkProgress"
+        :value="bulkProgress.total ? bulkProgress.processed / bulkProgress.total : 0"
+        color="primary"
+        size="3px"
+        class="q-mb-xs"
+      />
+      <div class="auto-span-list" @scroll.passive="onSuggestionListScroll">
         <div
-          v-for="entry in pendingAutoSpans"
+          v-for="entry in renderedAutoSpans"
           :key="entry.span.id || `${entry.span.chunkId}:${entry.span.start}:${entry.span.end}:${entry.span.tagId}`"
           class="auto-span-card"
           :class="{
@@ -310,6 +322,13 @@
             </q-tooltip>
           </div>
         </div>
+        <div
+          v-if="renderedAutoSpans.length < pendingAutoSpans.length"
+          class="text-caption text-grey-6 q-pa-xs text-center"
+          data-testid="suggestions-more"
+        >
+          Showing {{ renderedAutoSpans.length }} of {{ pendingAutoSpans.length }}; scroll for more
+        </div>
       </div>
     </template>
   </div>
@@ -330,6 +349,7 @@ import useAiAssistance, {
 import { useTagEditing } from './useTagEditing'
 import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
+import { describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
 
 // AI annotation suggestions for a document: runs over the selected tags, the pending
 // suggestions with approve/reject, and two-way highlighting with the spans in the text
@@ -387,10 +407,26 @@ function onSuggestionClick(span: TagSpan) {
 // Track card DOM nodes so we can scroll to whichever one is highlighted from
 // the document side (i.e. the user clicked an auto span in the text).
 const suggestionCardRefs = ref<Record<string, HTMLElement | null>>({})
+
+// Only the first cards are rendered and more as the list is scrolled (#464): with every
+// card rendered, each change of a long list (a bulk approval batch) re-rendered over a
+// thousand cards and blocked the page for hundreds of milliseconds.
+const SUGGESTION_RENDER_STEP = 60
+const suggestionRenderLimit = ref(SUGGESTION_RENDER_STEP)
+const renderedAutoSpans = computed(() => pendingAutoSpans.value.slice(0, suggestionRenderLimit.value))
+function onSuggestionListScroll(e: Event) {
+  const el = e.target as HTMLElement
+  if (suggestionRenderLimit.value >= pendingAutoSpans.value.length) return
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) suggestionRenderLimit.value += SUGGESTION_RENDER_STEP
+}
+
 watch(
   () => aiAssist.highlightedAutoSpanId.value,
   (id) => {
     if (!id) return
+    // A suggestion highlighted from the text may be past the rendered cards.
+    const index = pendingAutoSpans.value.findIndex((e) => e.span.id === id)
+    if (index >= suggestionRenderLimit.value) suggestionRenderLimit.value = index + SUGGESTION_RENDER_STEP
     void nextTick(() => {
       const el = suggestionCardRefs.value[id]
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -549,6 +585,7 @@ const rejectAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.neg)
 // ── Bulk approve / reject of selected suggestions ──
 const selectedSuggestionIds = ref<Set<string>>(new Set())
 const isBulkResolving = ref(false)
+const bulkProgress = ref<BulkResolveProgress | null>(null)
 
 const allSuggestionsSelected = computed(() => {
   const ids = pendingAutoSpans.value
@@ -594,40 +631,53 @@ watch(pendingAutoSpans, (entries) => {
 })
 
 async function bulkResolveSelected(type: SpanType) {
-  if (!selectedSuggestionIds.value.size) return
-  // Snapshot the spans we want to act on (id -> chunkId) before any mutations
-  // start removing them from the pending list.
-  const targets: Array<{ id: string; chunkId: string }> = []
+  if (!selectedSuggestionIds.value.size || isBulkResolving.value) return
+  // Snapshot the spans we want to act on before any mutations start removing them from
+  // the pending list.
   const idSet = selectedSuggestionIds.value
-  for (const entry of pendingAutoSpans.value) {
-    if (entry.span.id && idSet.has(entry.span.id)) {
-      targets.push({ id: entry.span.id, chunkId: entry.span.chunkId })
-    }
-  }
+  const targets = pendingAutoSpans.value.flatMap((e) => e.span.id && idSet.has(e.span.id) ? [e.span.id] : [])
   if (!targets.length) return
 
   // Pre-compute which suggestion should be highlighted once these resolve.
-  const targetIds = new Set(targets.map((t) => t.id))
+  const targetIds = new Set(targets)
   const nextHighlight =
     pendingAutoSpans.value.find((e) => e.span.id && !targetIds.has(e.span.id))?.span.id ?? null
 
+  const isCurrent = resolveRequests.capture()
   isBulkResolving.value = true
-  for (const t of targets) busyAutoSpanIds.value.add(t.id)
+  bulkProgress.value = { total: targets.length, processed: 0, saved: 0, notSaved: 0 }
+  for (const id of targets) busyAutoSpanIds.value.add(id)
+  let summary: BulkResolveSummary | null = null
   try {
-    await tagSpans
-      .bulkUpdateSpans(
-        targets.map((t) => t.id),
-        { type }
-      )
-      .catch((e: unknown) => {
-        console.error('Bulk resolve failed', e)
-        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : 'Failed to update the selected suggestions.' })
-      })
-    aiAssist.highlightedAutoSpanId.value = nextHighlight
+    summary = await runBulkResolve(
+      targets,
+      async (ids) => {
+        if (!isCurrent()) return null
+        try {
+          return await tagSpans.applyBulkUpdate(ids, { type })
+        } finally {
+          for (const id of ids) busyAutoSpanIds.value.delete(id)
+        }
+      },
+      (progress) => { if (isCurrent()) bulkProgress.value = progress }
+    )
   } finally {
-    for (const t of targets) busyAutoSpanIds.value.delete(t.id)
+    for (const id of targets) busyAutoSpanIds.value.delete(id)
     isBulkResolving.value = false
-    selectedSuggestionIds.value = new Set()
+    bulkProgress.value = null
+  }
+  if (!isCurrent() || summary.abandoned) return
+  // Keep the suggestions that were not saved selected, so they can be retried.
+  const unresolved = new Set(summary.unresolved)
+  selectedSuggestionIds.value = new Set([...selectedSuggestionIds.value].filter((id) => unresolved.has(id)))
+  if (summary.saved) aiAssist.highlightedAutoSpanId.value = nextHighlight
+  if (summary.error) console.error('Bulk resolve failed', summary.error)
+  const message = describeBulkResolve(summary, type === SpanType.pos ? 'Confirmed' : 'Rejected')
+  if (message) {
+    $q.notify({ type: summary.saved === summary.total ? 'warning' : 'negative', message, timeout: 10000 })
+  } else {
+    const n = summary.saved
+    $q.notify({ type: 'positive', message: `${type === SpanType.pos ? 'Confirmed' : 'Rejected'} ${n} ${n === 1 ? 'suggestion' : 'suggestions'}.` })
   }
 }
 
@@ -673,6 +723,7 @@ watch(
   () => {
     resolveRequests.enter()
     selectedSuggestionIds.value = new Set()
+    suggestionRenderLimit.value = SUGGESTION_RENDER_STEP
     lastDeletedCount.value = null
     lastStatusKind.value = null
   }
@@ -807,6 +858,24 @@ watch(
   max-height: 360px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+/* The bulk buttons' spinner animates only its transform, which the browser runs off the
+   main thread: Quasar's default spinner also animates its stroke on the main thread and
+   so stuttered whenever a bulk batch's result was rendered (#464). */
+.bulk-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  will-change: transform;
+  animation: bulk-spin 0.75s linear infinite;
+}
+
+@keyframes bulk-spin {
+  to { transform: rotate(360deg); }
 }
 
 .auto-span-bulk-bar {

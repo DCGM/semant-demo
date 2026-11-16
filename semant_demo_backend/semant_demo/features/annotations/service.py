@@ -507,6 +507,12 @@ async def _replace_anchor_reference(store: AnnotationStore, cid: UUID, span_id: 
     return []
 
 
+SPAN_UPDATE_CONCURRENCY = 8
+"""At most this many span updates of one request run at a time (the same bound as the
+chunk tag sync, ``chunk_tags._SYNC_CONCURRENCY``); clients send large selections in
+batches (``AiAssistPanel``)."""
+
+
 async def bulk_update_spans(store: AnnotationStore, user: Principal | None, collection_id: Id, span_ids: list[Id],
                             patch: PatchSpan, expected_versions: dict[str, int] | None = None
                             ) -> BulkUpdateSpansResponse:
@@ -551,7 +557,15 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
     refreshes: dict[UUID, Refresh] = {}
     ids = list(spans)
     expected = expected or {}
-    results = await _gather(*(_update_and_read(store, cid, sid, patches[sid], actor, expected.get(sid)) for sid in ids))
+    # Bounded: a bulk approval of over a thousand suggestions must not open that many
+    # concurrent storage requests (#464).
+    sem = asyncio.Semaphore(SPAN_UPDATE_CONCURRENCY)
+
+    async def bounded(sid: UUID):
+        async with sem:
+            return await _update_and_read(store, cid, sid, patches[sid], actor, expected.get(sid))
+
+    results = await _gather(*(bounded(sid) for sid in ids))
     for sid, res in zip(ids, results):
         if isinstance(res, EditConflictError):
             failed.append(_conflict_failure(sid))

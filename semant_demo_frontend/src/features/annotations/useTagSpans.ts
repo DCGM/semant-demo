@@ -15,6 +15,8 @@ const useTagSpans = () => {
     store.updateSpan(spanId, chunkId, update)
   const bulkUpdateSpans = (spanIds: string[], update: PatchSpan) =>
     store.bulkUpdateSpans(spanIds, update)
+  const applyBulkUpdate = (spanIds: string[], update: PatchSpan) =>
+    store.applyBulkUpdate(spanIds, update)
   const deleteSpan = (spanId: string, chunkId: string) => store.deleteSpan(spanId, chunkId)
   const removeSpansLocally = (predicate: (span: TagSpan, chunkId: string) => boolean) =>
     store.removeSpansLocally(predicate)
@@ -42,6 +44,7 @@ const useTagSpans = () => {
     createSpan,
     updateSpan,
     bulkUpdateSpans,
+    applyBulkUpdate,
     deleteSpan,
     removeSpansLocally,
     clearAll,
