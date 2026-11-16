@@ -425,7 +425,7 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
-  await page.getByLabel('Contains words').fill('nová')
+  await page.getByLabel('Contains words', { exact: true }).fill('nová')
   await expect(rows(page)).toHaveCount(1)
   await row(page, 'Jan Novák').getByRole('checkbox').click()
   await row(page, 'Jan Novák').click()
@@ -435,7 +435,7 @@ test('filters, selection and the open row survive a visit to the document', asyn
   await expect(page.locator('.text-segment.is-tagged', { hasText: 'Jan Novák' }).first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Back to annotations' }).click()
-  await expect(page.getByLabel('Contains words')).toHaveValue('nová')
+  await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
   await expect(rows(page)).toHaveCount(1)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
@@ -447,7 +447,7 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   const all = await rows(page).count()
 
   // "hejtman" occurs only in the context of the chronicle's annotations, never in an annotation.
-  await page.getByLabel('Contains words').fill('hejtman')
+  await page.getByLabel('Contains words', { exact: true }).fill('hejtman')
   await expect(page.getByText('No annotations match these filters.')).toBeVisible()
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Context' }).click()
@@ -458,7 +458,7 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   await expect(chips).toContainText('Contains words in context:hejtman')
 
   // A document filter of the shared criteria: only the letters' title matches.
-  await page.getByLabel('Contains words').clear()
+  await page.getByLabel('Contains words', { exact: true }).clear()
   await expect(rows(page)).toHaveCount(all)
   await page.getByTestId('concordance-more-filters').click()
   await expect(page.getByTestId('concordance-more-filters')).toHaveAttribute('aria-expanded', 'true')
@@ -484,13 +484,13 @@ test('on a phone the filter form is closed behind a summary and keeps what was e
   await expect(rows(page).first()).toBeVisible()
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  await page.getByLabel('Contains words').fill('nová')
+  await page.getByLabel('Contains words', { exact: true }).fill('nová')
   await expect(page.getByTestId('concordance-chips')).toContainText('nová')
   await toggle.click()
   await expect(page.getByTestId('concordance-text')).toBeHidden()
   await expect(page.getByTestId('concordance-summary')).toContainText('nová')
   await toggle.click()
-  await expect(page.getByLabel('Contains words')).toHaveValue('nová')
+  await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
 })
 
 test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
@@ -533,7 +533,7 @@ test('column headers sort the whole result both ways and bring up their filters,
   // A context header's filter searches the context; it opens no row and checks none.
   await page.getByTestId('kwic-filter-right').click()
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
-  await expect(page.getByLabel('Contains words')).toBeFocused()
+  await expect(page.getByLabel('Contains words', { exact: true })).toBeFocused()
   await page.keyboard.type('hejtman')
   // Only in the chronicle: the letter's annotation goes.
   await expect(row(page, 'Prahy')).toHaveCount(0)
@@ -549,7 +549,7 @@ test('column headers sort the whole result both ways and bring up their filters,
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Both')
   await page.getByTestId('kwic-filter-annotation').click()
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Annotation')
-  await expect(page.getByLabel('Contains words')).toBeFocused()
+  await expect(page.getByLabel('Contains words', { exact: true })).toBeFocused()
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Both' }).click()
   await page.getByTestId('kwic-filter-left').click()
@@ -668,7 +668,7 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
 
   // Similarity text: a ranked top k of the filters (no mode selector, no top-k control).
   await expect(page.getByTestId('concordance-mode')).toHaveCount(0)
-  await page.getByLabel('Similar meaning').fill('hejtman')
+  await page.getByLabel('Similar meaning', { exact: true }).fill('hejtman')
   await expect(range).toHaveText('Rows 1–4 of 4 ranked annotations')
   await expect(ranked).toContainText('Top 100 by meaning')
   await expect(page.getByTestId('concordance-chips')).toContainText('Similar meaning:hejtman')

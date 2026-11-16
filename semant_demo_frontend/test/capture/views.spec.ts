@@ -319,7 +319,7 @@ test('annotation workspace query (#663)', async ({ page }, testInfo) => {
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Both' }).click()
   await expandFilters(page)
-  await page.getByLabel('Contains words').fill('jan')
+  await page.getByLabel('Contains words', { exact: true }).fill('jan')
   await expandFilters(page)
   await page.getByTestId('concordance-more-filters').click()
   await page.getByLabel('Title contains').fill('kronika')
@@ -363,7 +363,7 @@ test('annotation workspace ranked (#664)', async ({ page }, testInfo) => {
 
   await page.getByRole('button', { name: 'Stop finding annotations similar to \'Jan Novák\'' }).click()
   await expandFilters(page)
-  await page.getByLabel('Similar meaning').fill('hejtman v obci')
+  await page.getByLabel('Similar meaning', { exact: true }).fill('hejtman v obci')
   await expect(page.getByTestId('concordance-ranked')).toContainText('Top 100 by meaning')
   await expect(page.locator('.q-menu')).toHaveCount(0)
   await save(page, testInfo, 'annotation-workspace-meaning')
