@@ -313,11 +313,12 @@ test.describe('switching annotations of one long document', () => {
 })
 
 test('Next brings the open row into view and keeps focus on the sidebar (#704)', async ({ page }) => {
+  // Without smooth scrolling, so that each scroll is complete when it is measured.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await useViewport(page, 'wide')
   await openWorkspace(page)
   await rows(page).first().click()
-  const open = page.locator('[data-testid="kwic-row"][aria-current="true"]')
-  await expect(open).toHaveCount(1)
+  await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
   // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
   // and the later ones do not.
   const second = await rows(page).nth(1).boundingBox()
@@ -325,15 +326,18 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await expect(rows(page).nth(2)).not.toBeInViewport({ ratio: 1 })
 
   const next = page.getByTestId('row-next')
-  const top = async () => (await rows(page).first().boundingBox())!.y
-  const before = await top()
+  // A mouse press leaves focus in the button (Quasar's focus helper inside it), a key press on
+  // the button itself; either way Enter presses it again.
+  const focusInNext = () => next.evaluate(el => el.contains(document.activeElement))
+  const scrollY = () => page.evaluate(() => window.scrollY)
+  const before = await scrollY()
   await next.click()
   await expect(rows(page).nth(1)).toHaveAttribute('aria-current', 'true')
   // A visible row does not move the list.
-  expect(await top()).toBe(before)
-  await expect(next).toBeFocused()
+  expect(await scrollY()).toBe(before)
+  expect(await focusInNext()).toBe(true)
 
-  await next.click()
+  await page.keyboard.press('Enter')
   await expect(rows(page).nth(2)).toHaveAttribute('aria-current', 'true')
   await expect(rows(page).nth(2)).toBeInViewport({ ratio: 1 })
   await expect(next).toBeFocused()
@@ -342,14 +346,16 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   // viewport's top edge. Room below the list lets the page scroll the next row under the header.
   await page.evaluate(() => { document.body.style.paddingBottom = '2000px' })
   const header = (await page.locator('.q-header').boundingBox())!
+  const headerBottom = header.y + header.height
   const fourth = rows(page).nth(3)
-  await fourth.evaluate((el, headerBottom) => {
-    window.scrollBy(0, el.getBoundingClientRect().top - headerBottom / 2)
-  }, header.y + header.height)
-  expect((await fourth.boundingBox())!.y).toBeLessThan(header.y + header.height)
-  await next.click()
+  await fourth.evaluate((el, bottom) => {
+    window.scrollBy(0, el.getBoundingClientRect().top - bottom / 2)
+  }, headerBottom)
+  expect((await fourth.boundingBox())!.y).toBeLessThan(headerBottom)
+  await page.keyboard.press('Enter')
   await expect(fourth).toHaveAttribute('aria-current', 'true')
-  await expect.poll(async () => (await fourth.boundingBox())!.y).toBeGreaterThanOrEqual(header.y + header.height)
+  // (The last row: Next is disabled now, so it cannot keep focus.)
+  await expect.poll(async () => (await fourth.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom)
 })
 
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
