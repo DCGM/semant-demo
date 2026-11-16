@@ -894,10 +894,22 @@ the backfill. Until then they are listed as "not sortable yet" (first ascending,
 descending). Nothing else changes: text, vectors and `derivationVersion` stay as they are, so
 search keeps working during the whole procedure.
 
-- **Run the commands with the release's image** (`docker run --rm --env-file … <backend image>
-  python -m semant_demo.maintenance.annotation_enrichment …`, or `docker exec` into the stopped
-  release's container started with a shell), not with a development `.venv`: the keys depend on
-  the ICU version, and keys computed by another ICU than the backend's count as `stale` there.
+- **Run the commands with the release's image**, not with a development `.venv`: the keys depend
+  on the ICU version, and keys computed by another ICU than the backend's count as `stale` there.
+  Use a one-off container of the deployment's `app` service, from its deployment directory
+  (`$RUNNER_WORKDIR/semant-demo` for production, `…/semant-demo-test-main` for test-main; see
+  [deploy/README.md](../deploy/README.md#runners)), so it gets the release's image, `.env` and
+  Weaviate network while the app itself is stopped. The image's entrypoint starts the web server,
+  so the command needs `--entrypoint python`; without it the container starts the app instead:
+
+  ```bash
+  cd /opt/runner-workdir/semant-demo   # production; test-main: semant-demo-test-main, -p semant-demo-test-main -f docker-compose.app-test.yml
+  docker compose -p semant-demo -f docker-compose.app.yaml run --rm --no-deps -T -l traefik.enable=false \
+    --entrypoint python app -m semant_demo.maintenance.annotation_enrichment status
+  ```
+
+  With plain `docker run`, pass the same `--entrypoint python`, the deployment's environment
+  and its Weaviate network.
   `status` prints the `sort_key_version` of the code that runs it; it must equal the one the
   deployed backend logs at startup ("Annotation sort keys: collator …").
 - Keys alone need no chunk read and no embedding: on spans with current text, `backfill
