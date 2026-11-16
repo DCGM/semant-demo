@@ -214,7 +214,7 @@ describe('ranked components', () => {
   }
   const select = (w: VueWrapper, label: string) => w.findAllComponents(QSelect).find(s => s.props('label') === label)
 
-  it('chooses the mode and k, and disables sorting a ranked result', async () => {
+  it('chooses the mode and offers no sort or top-k control', async () => {
     const toolbar = mountIt(ConcordanceToolbar, { filters: defaultFilters(), tags: [], documents: [] })
     expect((select(toolbar, 'Find by')!.props('options') as { label: string }[]).map(o => o.label))
       .toEqual(['Words', 'Meaning', 'Meaning and words'])
@@ -226,15 +226,14 @@ describe('ranked components', () => {
     expect(select(toolbar, 'Search in')).toBeUndefined() // meaning is of the text alone
     expect(toolbar.findAllComponents(QInput).find(i => i.props('label') === 'Meaning of')).toBeDefined()
     expect(select(toolbar, 'Sort by')).toBeUndefined() // the rows are sorted by the table's headers
-    select(toolbar, 'Top')!.vm.$emit('update:modelValue', 500)
-    expect(toolbar.emitted('change')![1]).toEqual([{ k: 500 }])
+    expect(select(toolbar, 'Top')).toBeUndefined() // the limit is in the result summary, not a control
 
     await toolbar.setProps({ filters: filters({ mode: RetrievalMode.similar, similarTo: row('a') }) } as never)
     const similar = (select(toolbar, 'Find by')!.props('options') as { label: string, disable: boolean }[]).at(-1)
     expect(similar).toEqual({ value: RetrievalMode.similar, label: 'Similar', disable: true })
     const include = toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')!
     include.vm.$emit('update:modelValue', true)
-    expect(toolbar.emitted('change')![2]).toEqual([{ includeSource: true }])
+    expect(toolbar.emitted('change')![1]).toEqual([{ includeSource: true }])
   })
 
   it('opens the source from its reference chip', async () => {

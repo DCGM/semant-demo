@@ -365,6 +365,24 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   await expect(chips).toHaveCount(0)
 })
 
+test('on a phone the filter form is closed behind a summary and keeps what was entered (#660 review)', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const toggle = page.getByTestId('concordance-filters-toggle')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByTestId('concordance-text')).toBeHidden()
+  await expect(rows(page).first()).toBeVisible()
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await page.getByLabel('Annotated text').fill('nová')
+  await expect(page.getByTestId('concordance-chips')).toContainText('nová')
+  await toggle.click()
+  await expect(page.getByTestId('concordance-text')).toBeHidden()
+  await expect(page.getByTestId('concordance-summary')).toContainText('nová')
+  await toggle.click()
+  await expect(page.getByLabel('Annotated text')).toHaveValue('nová')
+})
+
 test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
