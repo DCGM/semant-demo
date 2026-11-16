@@ -450,10 +450,11 @@ async def export_collection_annotations(
     """
     A CSV file of the collection's annotations (#719): the selected ones (``selection``, every
     status, whatever the filters), every match of the annotation query (``filters``) or every
-    annotation of the chosen statuses (``collection``), in document order. ``X-Export-Count`` is the
-    number of rows, ``X-Export-Missing`` the selected ids that are no annotation of the collection.
-    A scope that cannot be exported completely is refused (400) before any row; when the
-    annotations change or a read fails during the export the download is aborted, never ended
+    annotation of the chosen statuses (``collection``), in no particular order. The annotations are
+    resolved by id before the first row: ``X-Export-Count`` is the number of rows, one created later
+    is not exported, ``X-Export-Missing`` the selected ids that are no annotation of the collection.
+    A scope that cannot be resolved completely is refused (400) before any row; when a resolved
+    annotation is deleted or a read fails during the export the download is aborted, never ended
     early as a shorter file. Collection read access.
     """
     try:

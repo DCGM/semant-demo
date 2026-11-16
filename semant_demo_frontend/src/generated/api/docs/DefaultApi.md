@@ -2044,7 +2044,7 @@ example().catch(console.error);
 
 Export Collection Annotations
 
-A CSV file of the collection\&#39;s annotations (#719): the selected ones (&#x60;&#x60;selection&#x60;&#x60;, every status, whatever the filters), every match of the annotation query (&#x60;&#x60;filters&#x60;&#x60;) or every annotation of the chosen statuses (&#x60;&#x60;collection&#x60;&#x60;), in document order. &#x60;&#x60;X-Export-Count&#x60;&#x60; is the number of rows, &#x60;&#x60;X-Export-Missing&#x60;&#x60; the selected ids that are no annotation of the collection. A scope that cannot be exported completely is refused (400) before any row; when the annotations change or a read fails during the export the download is aborted, never ended early as a shorter file. Collection read access.
+A CSV file of the collection\&#39;s annotations (#719): the selected ones (&#x60;&#x60;selection&#x60;&#x60;, every status, whatever the filters), every match of the annotation query (&#x60;&#x60;filters&#x60;&#x60;) or every annotation of the chosen statuses (&#x60;&#x60;collection&#x60;&#x60;), in no particular order. The annotations are resolved by id before the first row: &#x60;&#x60;X-Export-Count&#x60;&#x60; is the number of rows, one created later is not exported, &#x60;&#x60;X-Export-Missing&#x60;&#x60; the selected ids that are no annotation of the collection. A scope that cannot be resolved completely is refused (400) before any row; when a resolved annotation is deleted or a read fails during the export the download is aborted, never ended early as a shorter file. Collection read access.
 
 ### Example
 
