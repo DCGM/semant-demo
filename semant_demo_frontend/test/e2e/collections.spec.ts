@@ -262,3 +262,17 @@ test('collections table sorts Created and Updated chronologically', async ({ pag
     }
   }
 })
+
+test('a shared collection can be exported from the table as a ZIP', async ({ page }) => {
+  // #656: read access suffices; the browser downloads the ZIP the backend streams.
+  await ensureLoggedIn(page, 'annotator')
+  await openCollections(page)
+  await page.getByRole('button', { name: 'Table' }).click()
+  const row = page.locator('tr').filter({ hasText: fixture.collection('chronicles').name })
+
+  const download = page.waitForEvent('download')
+  await row.getByRole('button', { name: 'Export collection' }).click()
+  const file = await download
+  expect(file.suggestedFilename()).toMatch(/^semant-export-\d{4}-\d{2}-\d{2}\.zip$/)
+  expect(await file.failure()).toBeNull() // the whole stream arrived (contents: backend integration tests)
+})

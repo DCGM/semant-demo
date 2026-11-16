@@ -13,6 +13,7 @@ from semant_demo.features.analytics.routes import exp_router as analytics_router
 from semant_demo.features.quota.routes import exp_router as quota_router
 from semant_demo.features.attributes.routes import exp_router as attributes_router
 from semant_demo.features.chat.routes import exp_router as chat_router
+from semant_demo.features.exports.routes import exp_router as exports_router
 
 export_router = APIRouter()
 export_router.include_router(user_router)
@@ -30,5 +31,6 @@ export_router.include_router(analytics_router)
 export_router.include_router(quota_router)
 export_router.include_router(attributes_router)
 export_router.include_router(chat_router)
+export_router.include_router(exports_router)
 
 __all__ = ["export_router"]
