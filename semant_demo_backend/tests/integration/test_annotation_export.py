@@ -1,6 +1,6 @@
 """CSV export of a collection's annotations against real Weaviate (#719).
 
-Through the API: the filter scope exports exactly the concordance's matches in its order, with
+Through the API: the filter scope exports exactly the concordance's matches (in no particular order), with
 the stored document-level UTF-16 positions (also of a cross-chunk annotation) and the anchor
 chunk's language and classifications read from the store; selections keep annotations outside
 the filters; users without access get no file. The chunk metadata read skips properties the
@@ -65,7 +65,7 @@ async def test_filter_scope_exports_the_concordance_with_positions_and_anchor_ch
     response = await api_client.post(path, headers=headers, json={"scope": "filters", "filters": {},
                                                                   "chunk_metadata": True, "provenance": True})
     rows = parse(response)
-    assert [UUID(r["annotation_id"]) for r in rows] == [r.id for r in listed.rows]
+    assert sorted(UUID(r["annotation_id"]) for r in rows) == sorted(r.id for r in listed.rows)
     assert response.headers["x-export-count"] == str(listed.total) == str(len(rows))
     exported = next(r for r in rows if UUID(r["annotation_id"]) == cross)
     stored = await store.spans.read_row(UUID(collection), cross)
@@ -81,8 +81,8 @@ async def test_filter_scope_exports_the_concordance_with_positions_and_anchor_ch
 
     selected = await api_client.post(path, headers=headers, json={"scope": "selection",
                                                                   "annotation_ids": [str(rejected), str(cross)]})
-    assert [(UUID(r["annotation_id"]), r["status"]) for r in parse(selected)] == \
-        [(cross, "confirmed"), (rejected, "rejected")]
+    assert sorted((UUID(r["annotation_id"]), r["status"]) for r in parse(selected)) == \
+        sorted([(cross, "confirmed"), (rejected, "rejected")])
     assert rejected not in {r.id for r in listed.rows}  # outside the default filters, exported as selected
 
     shared = await api_client.post(path, headers=await login("annotator"), json={"scope": "collection", "types": ["pos"]})

@@ -1,7 +1,7 @@
 
 # AnnotationExportRequest
 
-A CSV export of a collection\'s annotations (#719): one row per annotation, in document order (document title, year, id, then position in the document, then annotation id). The identity, status, text, context, document position and accepted attribute columns are always present; the optional groups add columns only.
+A CSV export of a collection\'s annotations (#719): one row per annotation, in no particular order; the annotations are resolved by id when the export starts. The identity, status, text, context, document position and accepted attribute columns are always present; the optional groups add columns only.
 
 ## Properties
 

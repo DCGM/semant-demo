@@ -2,19 +2,22 @@
 
 One request exports one collection: the selected annotations (by id, whatever the current
 filters), every match of the annotation query (``AnnotationFilters``, #663) or every annotation
-of chosen types. The scope is resolved with the concordance's own query and document order
-(``service._annotated_documents``, ``service._rows_in_document_order``), so the export holds the
-same annotations the workspace lists for the same filters, never only a loaded page.
+of chosen types, never only a loaded page. The rows are in no particular order.
 
-Before any byte is sent the export is authorized (collection read access), validated and counted;
-limits are refused then (400), never applied by truncation: more than ``_MAX_DOCUMENTS`` annotated
-documents, more than ``_MAX_WINDOW`` annotations in one document, matching annotations without a
-recorded document. The rows are then read and written in pages of ``EXPORT_PAGE`` (the documents,
-tag names and attribute definitions once; the anchor chunks' metadata and the AI metadata once per
-page, never per row). When a page reads fewer or more annotations than counted (they changed
-during the export) or a read fails, the stream is aborted: the download fails instead of ending
-as a shorter, valid-looking file. There is no snapshot (#335): annotations changed while the export
-runs may be exported before or after the change.
+Two phases. First, before any byte is sent, the export is authorized (collection read access) and
+the ids of the annotations to export are resolved with the concordance's own query (``_resolve``):
+each id query reads with a limit and no offset, so concurrent edits cannot make it skip or repeat
+annotations; more than ``_MAX_WINDOW`` matches (Weaviate's per-query maximum) are read in batches of
+whole documents. What cannot be resolved completely is refused then (400), never truncated: more
+than ``_MAX_DOCUMENTS`` annotated documents or ``_MAX_WINDOW`` matches in one document, or, beyond
+``_MAX_WINDOW`` matches, annotations without a recorded document. The file holds exactly these
+annotations (``X-Export-Count``): one created later is not in it.
+
+Then the rows are read by id and written in pages of ``EXPORT_PAGE`` (tag names and attribute
+definitions once; documents, anchor-chunk metadata and AI metadata once per page, never per row),
+with their values at that moment. When a resolved annotation was deleted meanwhile, or a read
+fails, the stream is aborted: the download fails instead of ending as a shorter, valid-looking
+file. There is no snapshot of values (#335).
 
 Columns (documented for users in docs/ARCHITECTURE.md, *Annotation CSV export*):
 
@@ -129,7 +132,6 @@ class _Context:
     request: AnnotationExportRequest
     tags: dict[UUID, str]
     attributes: list[Attribute]
-    documents: dict[UUID, Document]
     classifications: list[str]
     people: dict[UUID, str] = field(default_factory=dict)
 
@@ -176,7 +178,7 @@ def _attribute_cells(row: AnnotationRow, attributes: list[Attribute]) -> list[st
     return [*cells, ATTRIBUTE_SEPARATOR.join(inapplicable)] if attributes else []
 
 
-def _record(row: AnnotationRow, context: _Context, chunk: dict[str, Any] | None,
+def _record(row: AnnotationRow, context: _Context, document: Document | None, chunk: dict[str, Any] | None,
             span: TagSpan | None) -> list[Any]:
     request = context.request
     ready = text_current(row)
@@ -191,7 +193,6 @@ def _record(row: AnnotationRow, context: _Context, chunk: dict[str, Any] | None,
         chunk = chunk or {}
         record += [chunk.get(LANGUAGE_PROPERTY), *(chunk.get(name) for name in context.classifications)]
     if request.document_metadata:
-        document = context.documents.get(row.documentId) if row.documentId else None
         record += [document is not None, *(read(document) if document else None for _, read in _DOCUMENT_FIELDS)]
     if request.provenance:
         def person(user_id: UUID | None) -> list[Any]:
@@ -234,38 +235,75 @@ def _query(request: AnnotationExportRequest):
     return service._filters_query(AnnotationFilters(types=request.types)), AnnotationFilters(), None
 
 
+def _batches(counts: dict[UUID, int], limit: int) -> list[list[UUID]]:
+    """The documents in batches of whole documents whose matches add up to at most ``limit``."""
+    batches: list[list[UUID]] = []
+    size = limit
+    for document, count in counts.items():
+        if count > limit:
+            raise InvalidRequestError(
+                f"A document has {count} matching annotations; at most {limit} per document can be exported "
+                "at once. Narrow the filters.")
+        if size + count > limit:
+            batches.append([])
+            size = 0
+        batches[-1].append(document)
+        size += count
+    return batches
+
+
+async def _resolve(store: AnnotationStore, cid: UUID, query, filters: AnnotationFilters,
+                   ids: list[UUID] | None) -> list[UUID]:
+    """The ids of the annotations to export, as they match now, in no particular order. Each id
+    query reads with ``limit`` and no offset, so concurrent changes cannot shift it: up to
+    ``_MAX_WINDOW`` matches in one query, more by batches of whole documents (Weaviate returns
+    at most ``_MAX_WINDOW`` objects per query). Raises before any row for what cannot be resolved
+    completely."""
+    window = service._MAX_WINDOW
+    if ids is not None:  # the selection (at most MAX_RESOLVED_IDS): the members that exist
+        found = await store.spans.query_ids(cid, query, limit=max(len(ids), 1))
+        return [i for i in ids if i in found]
+    document_ids = filters.document_ids or None
+    conditions = document_conditions(filters.document_filters)
+    if conditions:  # only annotations of the documents the document filters select
+        documents = await service._annotated_documents(store, cid, query, AnnotationSort.document, document_ids,
+                                                       conditions)
+        counts, total = documents.counts, sum(documents.counts.values())
+    else:
+        counts, total = None, await store.spans.count_rows(cid, query, document_ids)
+    if total <= window:
+        return list(await store.spans.query_ids(cid, query, document_ids=list(counts) if counts is not None
+                                                else document_ids, limit=max(total, 1)))
+    if counts is None:
+        counts = await store.spans.count_by_document(cid, query, service._MAX_DOCUMENTS + 1, document_ids)
+        if len(counts) > service._MAX_DOCUMENTS:
+            raise InvalidRequestError(f"The annotations are in more than {service._MAX_DOCUMENTS} documents; "
+                                      "filter by tag or text first.")
+        if total > sum(counts.values()):
+            raise InvalidRequestError(
+                f"{total - sum(counts.values())} of the annotations have no recorded document, so more than "
+                f"{window} cannot be exported at once; narrow the filters.")
+    resolved: list[UUID] = []
+    for batch in _batches(counts, window):
+        resolved += await store.spans.query_ids(cid, query, document_ids=batch,
+                                                limit=sum(counts[d] for d in batch))
+    return resolved
+
+
 async def export_annotations(store: AnnotationStore, definitions: AttributeRepository, users: UserLookup,
                              vocabulary: ChunkVocabulary, user: Principal | None, collection_id: Id,
                              request: AnnotationExportRequest) -> AnnotationExport:
     """
-    The CSV export of the collection's annotations in ``request.scope`` (#719), authorized,
-    validated and counted; its ``content`` reads and writes the rows page by page. Raises before any
-    row for a scope that cannot be exported completely; ``content`` raises ``ExportInterrupted``
-    when the annotations change or a read fails meanwhile.
+    The CSV export of the collection's annotations in ``request.scope`` (#719): authorized, then the
+    ids of the annotations to export resolved; its ``content`` reads and writes their rows by id,
+    page by page. Raises before any row for a scope that cannot be resolved completely; ``content``
+    raises ``ExportInterrupted`` when a resolved annotation was deleted or a read fails meanwhile.
     """
     grant = await access.require_collection_read(store.collections, user, collection_id)
     query, filters, ids = _query(request)
     service._require_attribute_properties(store, query)
-    document_ids = filters.document_ids or None
-    conditions = document_conditions(filters.document_filters)
     cid = await service.use_tenant(store, grant)
-    if ids == []:
-        found = service._Documents(order=[], counts={}, documents={})
-    else:
-        found = await service._annotated_documents(store, cid, query, AnnotationSort.document, document_ids,
-                                                   conditions)
-    total = sum(found.counts.values())
-    if not conditions and ids != []:
-        matching = await store.spans.count_rows(cid, query, document_ids)
-        if matching > total:
-            raise InvalidRequestError(
-                f"{matching - total} of the annotations have no recorded document and cannot be exported; "
-                "ask an administrator to run the annotation backfill.")
-    largest = max(found.counts.values(), default=0)
-    if largest > service._MAX_WINDOW:
-        raise InvalidRequestError(
-            f"A document has {largest} matching annotations; at most {service._MAX_WINDOW} per document can be "
-            "exported at once. Narrow the filters.")
+    resolved = await _resolve(store, cid, query, filters, ids) if ids != [] else []
 
     attributes_store = attributes_service.AttributeStore(definitions=definitions, annotations=store)
     tags, attributes, people = await asyncio.gather(
@@ -275,41 +313,48 @@ async def export_annotations(store: AnnotationStore, definitions: AttributeRepos
         collections_service.list_people(store.collections, users, user, grant.collection_id)
         if request.provenance else _nothing())
     context = _Context(request=request, tags={t.id: t.name for t in tags}, attributes=list(attributes),
-                       documents=found.documents, classifications=list(vocabulary.classifications),
+                       classifications=list(vocabulary.classifications),
                        people={p.id: p.name or p.username or "" for p in people})
     columns = _columns(context)
-    return AnnotationExport(scope=request.scope, count=total, missing=len(ids) - total if ids is not None else 0,
-                            columns=columns, content=_content(store, cid, query, found, total, context, columns))
+    return AnnotationExport(scope=request.scope, count=len(resolved),
+                            missing=len(ids) - len(resolved) if ids is not None else 0,
+                            columns=columns, content=_content(store, cid, resolved, context, columns))
 
 
 async def _nothing() -> list:
     return []
 
 
-async def _content(store: AnnotationStore, cid: UUID, query, found, total: int, context: _Context,
+async def _content(store: AnnotationStore, cid: UUID, resolved: list[UUID], context: _Context,
                    columns: list[str]) -> AsyncIterator[bytes]:
     request = context.request
     yield BOM.encode("utf-8") + _csv([columns], request.delimiter)
     written = 0
     try:
-        for offset in range(0, total, EXPORT_PAGE):
-            rows = await service._rows_in_document_order(store, cid, query, found, EXPORT_PAGE, offset)
-            if len(rows) != min(EXPORT_PAGE, total - offset):
-                raise ExportInterrupted("The annotations changed during the export")
-            chunks, spans = await asyncio.gather(
+        for offset in range(0, len(resolved), EXPORT_PAGE):
+            page = resolved[offset:offset + EXPORT_PAGE]
+            found = await store.spans.read_rows_by_id(cid, page)
+            if len(found) != len(page):
+                raise ExportInterrupted("An annotation was deleted during the export")
+            rows = [found[i] for i in page]
+            documents, chunks, spans = await asyncio.gather(
+                store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
+                if request.document_metadata else _empty(),
                 store.documents.read_chunk_metadata(
                     list({r.chunkId for r in rows if r.chunkId is not None}),
                     [LANGUAGE_PROPERTY, *context.classifications]) if request.chunk_metadata else _empty(),
-                store.spans.read_many(cid, [r.id for r in rows]) if request.provenance else _empty())
-            records = [_record(r, context, chunks.get(r.chunkId) if r.chunkId else None, spans.get(r.id))
-                       for r in rows]
+                store.spans.read_many(cid, page) if request.provenance else _empty())
+            records = [_record(r, context, documents.get(r.documentId) if r.documentId else None,
+                               chunks.get(r.chunkId) if r.chunkId else None, spans.get(r.id)) for r in rows]
             written += len(records)
             yield _csv(records, request.delimiter)
     except ExportInterrupted:
-        logger.warning("Annotation export aborted after %d of %d rows: the annotations changed", written, total)
+        logger.warning("Annotation export aborted after %d of %d rows: an annotation was deleted",
+                       written, len(resolved))
         raise
     except Exception as exc:
-        logger.warning("Annotation export aborted after %d of %d rows: %s", written, total, type(exc).__name__)
+        logger.warning("Annotation export aborted after %d of %d rows: %s", written, len(resolved),
+                       type(exc).__name__)
         raise ExportInterrupted("Reading the annotations failed during the export") from exc
 
 

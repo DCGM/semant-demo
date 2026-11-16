@@ -1,10 +1,12 @@
 """CSV export of a collection's annotations (#719), with the in-memory fakes of the concordance tests.
 
-The three scopes export exactly the annotations the workspace query selects, across pages, in
-document order; positions are the stored document-level UTF-16 offsets (empty when not current);
-optional groups add only their columns; attribute values are only accepted ones, inapplicable ones
-apart; cells are quoted and protected against formula evaluation; denied, unexportable and changed
-exports read or send no partial file.
+The three scopes export exactly the annotations the workspace query selects when the export starts
+(their ids are resolved first, by queries without offsets, in batches of whole documents beyond the
+per-query maximum), in no particular order; rows are then read by id. Positions are the stored
+document-level UTF-16 offsets (empty when not current); optional groups add only their columns;
+attribute values are only accepted ones, inapplicable ones apart; cells are quoted and protected
+against formula evaluation; denied and unresolvable exports read nothing, and a deletion or failed
+read during the export aborts it instead of sending a shorter file.
 """
 import csv
 import io
@@ -49,11 +51,20 @@ class ExportSpans(FakeSpans):
         super().__init__()
         self.ai: dict[UUID, tuple[float | None, str | None]] = {}
         self.fail_after: int | None = None
+        """Fail every row read by id after this many."""
+        self.row_reads: list[list[UUID]] = []
+        self.id_queries: list[tuple[list[UUID] | None, int]] = []
 
-    async def query_rows(self, *args, **kwargs):
-        if self.fail_after is not None and self.queries >= self.fail_after:
+    async def query_ids(self, cid, query, *, document_ids=None, limit):
+        self.id_queries.append((document_ids, limit))
+        return await super().query_ids(cid, query, document_ids=document_ids, limit=limit)
+
+    async def read_rows_by_id(self, cid, ids):
+        if self.fail_after is not None and len(self.row_reads) >= self.fail_after:
             raise ConnectionError("store unavailable")
-        return await super().query_rows(*args, **kwargs)
+        self.row_reads.append(list(ids))
+        rows = {r.id: r for r in self.rows}
+        return {i: rows[i] for i in ids if i in rows}
 
     async def read_many(self, cid, ids):
         rows = {r.id: r for r in self.rows}
@@ -112,6 +123,10 @@ def parse(content: bytes, delimiter=",") -> list[dict[str, str]]:
 
 # ── Scopes ────────────────────────────────────────────────────────────────
 
+def ids_of(content: bytes) -> list[UUID]:
+    return [UUID(r["annotation_id"]) for r in parse(content)]
+
+
 async def test_filter_matches_are_exported_across_pages_as_the_workspace_lists_them(store, monkeypatch):
     monkeypatch.setattr(export, "EXPORT_PAGE", 2)
     store.spans.rows = [row(DOC_A, 30), row(DOC_B, 0), row(DOC_A, 0), row(DOC_NO_YEAR, 4), row(DOC_A, 10),
@@ -119,10 +134,29 @@ async def test_filter_matches_are_exported_across_pages_as_the_workspace_lists_t
     filters = AnnotationFilters(tag_ids=[TAG])
     listed, total = await all_pages(store, 3, filters)
     result, content = await run(store, scope="filters", filters=filters.model_dump(), types=None)
-    rows = parse(content)
-    assert [UUID(r["annotation_id"]) for r in rows] == listed
-    assert result.count == total == len(rows) == 5 and result.missing == 0
-    assert store.spans.queries > 3  # read in pages, not at once
+    exported = ids_of(content)
+    assert sorted(exported, key=str) == sorted(listed, key=str) and len(set(exported)) == len(exported)
+    assert result.count == total == 5 and result.missing == 0
+    assert [len(read) for read in store.spans.row_reads] == [2, 2, 1]  # read by id in pages
+    assert store.spans.id_queries == [(None, 5)]  # resolved by one query: no offset, limit = the count
+
+
+async def test_more_matches_than_one_query_returns_are_resolved_in_batches_of_whole_documents(store, monkeypatch):
+    monkeypatch.setattr(service, "_MAX_WINDOW", 3)
+    store.spans.rows = [row(DOC_A, i) for i in range(3)] + [row(DOC_B, i) for i in range(2)] + [row(DOC_NO_YEAR, 0)]
+    result, content = await run(store)
+    assert sorted(ids_of(content), key=str) == sorted((r.id for r in store.spans.rows), key=str)
+    assert result.count == 6
+    batches = [(sorted(map(str, documents)), limit) for documents, limit in store.spans.id_queries]
+    assert batches == [([str(DOC_A)], 3), (sorted([str(DOC_B), str(DOC_NO_YEAR)]), 3)]
+
+
+async def test_annotations_without_a_document_are_exported_when_one_query_resolves_them(store):
+    loose = row(None, 0)
+    store.spans.rows = [row(DOC_A, 0), loose]
+    rows = {UUID(r["annotation_id"]): r for r in parse((await run(store))[1])}
+    assert set(rows) == {r.id for r in store.spans.rows}
+    assert (rows[loose.id]["document_id"], rows[loose.id]["document_available"]) == ("", "false")
 
 
 async def test_document_filters_apply_to_the_filter_scope(store):
@@ -139,8 +173,8 @@ async def test_the_selection_is_exported_whatever_the_filters_with_every_status_
     result, content = await run(store, scope="selection", annotation_ids=[rejected.id, confirmed.id, gone,
                                                                           confirmed.id], types=None)
     rows = parse(content)
-    assert [(UUID(r["annotation_id"]), r["status"]) for r in rows] == [(confirmed.id, "confirmed"),
-                                                                       (rejected.id, "rejected")]
+    assert sorted((UUID(r["annotation_id"]), r["status"]) for r in rows) == \
+        sorted([(confirmed.id, "confirmed"), (rejected.id, "rejected")])
     assert (result.count, result.missing) == (2, 1)
 
 
@@ -148,7 +182,7 @@ async def test_the_collection_scope_exports_exactly_the_chosen_statuses(store):
     store.spans.rows = [row(DOC_A, 0), row(DOC_A, 5, type=SpanType.auto), row(DOC_A, 9, type=SpanType.neg)]
     _, everything = await run(store)
     _, rejected = await run(store, types=["neg"])
-    assert [r["status"] for r in parse(everything)] == ["confirmed", "proposal", "rejected"]
+    assert sorted(r["status"] for r in parse(everything)) == ["confirmed", "proposal", "rejected"]
     assert [r["status"] for r in parse(rejected)] == ["rejected"]
 
 
@@ -220,17 +254,20 @@ async def test_chunk_metadata_is_the_anchor_chunks_read_once_per_page(store, mon
     store.documents.chunks = {first.chunkId: {"language": "ces", "complexity": ["easy", "hard"],
                                               "communicative_mode": None},
                               third.chunkId: {"language": "deu", "complexity": "hard"}}
-    rows = parse((await run(store, chunk_metadata=True))[1])
-    assert [(r["chunk_language"], r["chunk_complexity"], r["document_language"]) for r in rows] == \
-        [("ces", "easy | hard", "ces"), ("ces", "easy | hard", "ces"), ("deu", "hard", "ces")]
-    assert [len(read) for read in store.documents.chunk_reads] == [1, 1]  # distinct chunks per page
+    rows = {UUID(r["annotation_id"]): r for r in parse((await run(store, chunk_metadata=True))[1])}
+    assert {i: (r["chunk_language"], r["chunk_complexity"], r["document_language"]) for i, r in rows.items()} == {
+        first.id: ("ces", "easy | hard", "ces"), second.id: ("ces", "easy | hard", "ces"),
+        third.id: ("deu", "hard", "ces")}
+    # One read per page, of the page's distinct anchor chunks.
+    pages = [{r.chunkId for r in store.spans.rows if r.id in read} for read in store.spans.row_reads]
+    assert [set(read) for read in store.documents.chunk_reads] == pages
 
 
 async def test_document_metadata_and_unavailable_documents(store):
     store.spans.rows = [row(DOC_GONE, 0), row(DOC_NO_YEAR, 0)]
     rows = parse((await run(store))[1])
-    assert [(r["document_available"], r["document_title"], r["document_year"], r["document_library"])
-            for r in rows] == [("true", "Čtení", "", "mzk"), ("false", "", "", "")]
+    assert sorted((r["document_available"], r["document_title"], r["document_year"], r["document_library"])
+                  for r in rows) == [("false", "", "", ""), ("true", "Čtení", "", "mzk")]
 
 
 async def test_provenance_names_current_people_and_ai_metadata(store):
@@ -240,11 +277,12 @@ async def test_provenance_names_current_people_and_ai_metadata(store):
     old = row(DOC_A, 5)
     store.spans.rows = [created, old]
     store.spans.ai = {created.id: (0.75, "=SUM(A1)")}
-    rows = parse((await run(store, provenance=True))[1])
-    assert [(r["origin"], r["created_by_name"], r["reviewed_by"], r["reviewed_by_name"], r["revision"],
-             r["edit_version"], r["ai_run_id"], r["ai_confidence"], r["ai_reason"]) for r in rows] == [
-        ("ai", "Owner Name", str(OTHER.id), "", "2", "3", str(run_id), "0.75", "'=SUM(A1)"),
-        ("unknown", "", "", "", "1", "0", "", "", "")]
+    rows = {UUID(r["annotation_id"]): r for r in parse((await run(store, provenance=True))[1])}
+    fields = ("origin", "created_by_name", "reviewed_by", "reviewed_by_name", "revision", "edit_version",
+              "ai_run_id", "ai_confidence", "ai_reason")
+    assert [rows[created.id][f] for f in fields] == \
+        ["ai", "Owner Name", str(OTHER.id), "", "2", "3", str(run_id), "0.75", "'=SUM(A1)"]
+    assert [rows[old.id][f] for f in fields] == ["unknown", "", "", "", "1", "0", "", "", ""]
 
 
 async def test_attribute_values_are_accepted_ones_with_labels_and_inapplicable_ones_apart(store):
@@ -259,9 +297,11 @@ async def test_attribute_values_are_accepted_ones_with_labels_and_inapplicable_o
     store.spans.rows = [multi, retagged, rejected, none]
     result, content = await run(store)
     assert result.columns[11:14] == ["attribute: speaker", "attribute: topic", "inapplicable_attribute_values"]
-    assert [(r["attribute: speaker"], r["attribute: topic"], r["inapplicable_attribute_values"])
-            for r in parse(content)] == [("woman", "politics | economy", ""), ("", "Unknown", "speaker: man"),
-                                         ("", "", ""), ("", "", "")]
+    rows = {UUID(r["annotation_id"]): r for r in parse(content)}
+    assert {i: (r["attribute: speaker"], r["attribute: topic"], r["inapplicable_attribute_values"])
+            for i, r in rows.items()} == {
+        multi.id: ("woman", "politics | economy", ""), retagged.id: ("", "Unknown", "speaker: man"),
+        rejected.id: ("", "", ""), none.id: ("", "", "")}
 
 
 async def test_no_attribute_columns_on_a_store_without_attributes(store):
@@ -278,7 +318,7 @@ async def test_cells_are_quoted_unicode_and_protected_against_formulas(store):
     store.spans.rows = [row(DOC_A, i * 100, t) for i, t in enumerate(texts)]
     _, content = await run(store)
     rows = parse(content)
-    assert [r["text"] for r in rows] == ["'=1+1", "'+420 123", "'-5", "'@user", "'\tTab", texts[-1]]
+    assert sorted(r["text"] for r in rows) == sorted(["'=1+1", "'+420 123", "'-5", "'@user", "'\tTab", texts[-1]])
     assert [r["tag_name"] for r in rows] == ["Osoba"] * 6
     assert '"Příliš žluťoučký kůň, ""úpěl""\nďábelské ódy"' in content.decode("utf-8")  # quoted, quotes doubled
     assert content.count(b"\r\n") == len(rows) + 1  # records end with CRLF; the cell keeps its own \n
@@ -316,10 +356,12 @@ async def test_shared_users_export(store):
     assert result.count == 1
 
 
-async def test_annotations_without_a_document_are_refused_not_dropped(store):
-    store.spans.rows = [row(DOC_A, 0), row(None, 0)]
+async def test_beyond_one_query_annotations_without_a_document_are_refused_not_dropped(store, monkeypatch):
+    monkeypatch.setattr(service, "_MAX_WINDOW", 2)
+    store.spans.rows = [row(DOC_A, 0), row(DOC_B, 0), row(None, 0)]
     with pytest.raises(InvalidRequestError, match="no recorded document"):
         await run(store)
+    assert store.spans.id_queries == [] and store.spans.row_reads == []
 
 
 async def test_too_many_annotations_in_one_document_are_refused_before_any_row(store, monkeypatch):
@@ -327,11 +369,12 @@ async def test_too_many_annotations_in_one_document_are_refused_before_any_row(s
     store.spans.rows = [row(DOC_A, i) for i in range(3)]
     with pytest.raises(InvalidRequestError, match="per document"):
         await run(store)
-    assert store.spans.queries == 0
+    assert store.spans.id_queries == [] and store.spans.row_reads == []
 
 
 async def test_too_many_documents_are_refused_not_truncated(store, monkeypatch):
     monkeypatch.setattr(service, "_MAX_DOCUMENTS", 1)
+    monkeypatch.setattr(service, "_MAX_WINDOW", 1)  # more matches than one query returns: per document
     store.spans.rows = [row(DOC_A, 0), row(DOC_B, 0)]
     with pytest.raises(InvalidRequestError):
         await run(store)
@@ -343,6 +386,7 @@ async def test_a_failed_read_aborts_the_stream_instead_of_ending_the_file(store,
     store.spans.fail_after = 1
     with pytest.raises(ExportInterrupted):
         await run(store)
+    assert len(store.spans.row_reads) == 1
 
 
 async def test_annotations_deleted_during_the_export_abort_it(store, monkeypatch):
@@ -357,6 +401,22 @@ async def test_annotations_deleted_during_the_export_abort_it(store, monkeypatch
         async for part in result.content:
             parts.append(part)
     assert len(parts) <= 2
+
+
+async def test_annotations_created_or_edited_during_the_export_neither_abort_it_nor_join_it(store, monkeypatch):
+    monkeypatch.setattr(export, "EXPORT_PAGE", 1)
+    first, second = row(DOC_A, 0), row(DOC_A, 5)
+    store.spans.rows = [first, second]
+    result = await export.export_annotations(
+        store, FakeDefinitions(), FakeUsers(), VOCABULARY, OWNER, COLLECTION,
+        AnnotationExportRequest(scope="collection", types=["pos"]))
+    parts = [await anext(result.content)]
+    created = row(DOC_A, 1)  # sorts before the others in a document: it would shift offset pages
+    store.spans.rows = [created, first, second.model_copy(update={"type": SpanType.neg})]
+    parts += [part async for part in result.content]
+    rows = {UUID(r["annotation_id"]): r for r in parse(b"".join(parts))}
+    assert result.count == 2 and set(rows) == {first.id, second.id}
+    assert rows[second.id]["status"] == "rejected"  # its values when read; membership as resolved
 
 
 # ── HTTP ──────────────────────────────────────────────────────────────────
@@ -388,7 +448,7 @@ async def test_route_streams_the_file_with_its_count_and_scope(tmp_path, store, 
         invalid = await client.post(path, headers=headers, json={"scope": "filters"})
         unknown = await client.post(path, headers=headers,
                                     json={"scope": "filters", "filters": {"year_from": 1900}})
-        store.spans.fail_after = store.spans.queries
+        store.spans.fail_after = len(store.spans.row_reads)
         # The server aborts the response (the request logging middleware re-raises it): no complete file arrives.
         with pytest.raises(Exception, match="ExportInterrupted"):
             await client.post(path, headers=headers, json={"scope": "collection", "types": ["pos"]})
