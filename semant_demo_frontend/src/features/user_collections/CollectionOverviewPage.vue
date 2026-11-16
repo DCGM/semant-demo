@@ -294,8 +294,9 @@ const collectionId = computed(() => {
 })
 
 // Statistics of this collection only, asked again on every visit (`useCollectionStats`),
-// and shown only while the collection is loaded: not after the session changed, before it
-// was loaded again for the new user.
+// and shown only while the collection is loaded: a collection seen before keeps its cached
+// statistics, which must not show while it loads again or once it can no longer be loaded
+// (e.g. no longer shared).
 const collectionStatsQuery = useCollectionStats(collectionId, collectionLoaded)
 const collectionStatsLoading = computed(() => collectionLoaded.value && collectionStatsQuery.isFetching.value)
 const collectionStatsFailed = computed(() => collectionLoaded.value && collectionStatsQuery.isError.value)

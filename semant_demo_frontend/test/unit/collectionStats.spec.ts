@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
-import { effectScope, reactive } from 'vue'
+import { defineComponent, h, reactive } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 
@@ -56,8 +56,17 @@ function held<T> () {
 const route = reactive({ params: { collectionId: 'A' }, query: {} })
 const pages: Set<{ unmount: () => void }> = new Set()
 
+// The page inside an app that follows the session as `App.vue` does (`useSessionScope` in
+// its setup), so the session watcher runs before the page's own watchers, as in the app.
+const App = defineComponent({
+  setup () {
+    useSessionScope()
+    return () => h(CollectionOverviewPage)
+  }
+})
+
 function mountPage () {
-  const page = mount(CollectionOverviewPage, {
+  const page = mount(App, {
     global: {
       plugins: [[Quasar, {}] as never, [VueQueryPlugin, { queryClient }]],
       provide: {
@@ -85,12 +94,8 @@ async function signIn (id: string) {
   await flushPromises()
 }
 
-let scope: ReturnType<typeof effectScope>
-
 beforeEach(async () => {
   setActivePinia(createPinia())
-  scope = effectScope()
-  scope.run(useSessionScope)
   getById.mockReset().mockImplementation(async (id: string) => collection(id))
   getStats.mockReset()
   remove.mockReset().mockResolvedValue(undefined)
@@ -100,7 +105,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   for (const page of [...pages]) unmount(page)
-  scope.stop()
   queryClient.clear()
 })
 
@@ -207,6 +211,27 @@ describe('collection statistics on the Overview tab', () => {
     expect(counts(again)).toEqual(['4', '40', '2', '5'])
     expect(getStats.mock.calls.map(([id]) => id)).toEqual(['A'])
     expect(queryClient.getQueryState(collectionStatsKey('u1', 'B'))?.dataUpdatedAt).toBe(bAnsweredAt)
+  })
+
+  it('does not show a collection\'s cached statistics while it loads again, nor once it can no longer be loaded', async () => {
+    getStats.mockImplementation(async (id: string) => stats(id, id === 'A' ? 3 : 7))
+    const page = mountPage()
+    await flushPromises()
+    route.params.collectionId = 'B'
+    await flushPromises()
+
+    // A is no longer shared with the user when they come back to it.
+    const loadingA = held<Collection>()
+    getById.mockReturnValue(loadingA.promise)
+    route.params.collectionId = 'A'
+    await flushPromises()
+    expect(counts(page)).toEqual(['–', '–', '–', '–'])
+    loadingA.fail(new Error('404'))
+    await flushPromises()
+
+    expect(page.text()).toContain('Failed to fetch collection')
+    expect(counts(page)).toEqual(['–', '–', '–', '–'])
+    expect(getStats.mock.calls.map(([id]) => id)).toEqual(['A', 'B'])
   })
 
   it('forgets the statistics of a deleted collection, and keeps the others', async () => {
