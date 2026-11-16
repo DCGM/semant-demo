@@ -422,6 +422,70 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
   }
 })
 
+test('inline row review: buttons on hover and focus in a column of fixed width, grid shortcuts move focus (#690 phase B)', async ({ page }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  const announcement = page.getByTestId('annotation-announcement')
+  const width = (locator: Locator) => locator.evaluate(e => e.getBoundingClientRect().width)
+  try {
+    await page.getByTestId('concordance-status-pos').click() // proposals only
+    await expect(rows(page)).toHaveCount(2)
+    const [first, second] = [rows(page).nth(0), rows(page).nth(1)]
+    const cell = first.getByTestId('kwic-review')
+    const idle = await width(cell)
+    // The status is an icon, named in words; the buttons are hidden until hover or focus.
+    await expect(first.getByTestId('kwic-status')).toContainText('Proposal')
+    await expect(first.getByTestId('kwic-approve')).toBeHidden()
+    await first.hover()
+    await expect(first.getByTestId('kwic-approve')).toBeVisible()
+    await expect(first.getByTestId('kwic-status')).toBeHidden()
+    expect(await width(cell), 'no width change on hover').toBe(idle)
+
+    // A button decides its row only: it neither opens nor checks the row, nor takes focus.
+    let reviews = 0
+    page.on('request', r => { if (r.url().endsWith('/annotations/review')) reviews++ })
+    await first.getByTestId('kwic-approve').click()
+    await expect(first.getByTestId('kwic-approve')).toHaveAttribute('aria-pressed', 'true')
+    await expect(first.getByTestId('kwic-status')).toContainText('Confirmed')
+    expect(reviews).toBe(1)
+    expect(await width(cell), 'no width change after saving').toBe(idle)
+    await expect(first).not.toHaveAttribute('aria-current', 'true')
+    await expect(first).toHaveAttribute('aria-selected', 'false')
+    await expect(page.getByTestId('annotation-context')).toBeHidden()
+    // It stays in place, out of the filters now.
+    await expect(first).toHaveClass(/kwic__row--unmatched/)
+    await expect(announcement).toContainText('Confirmed. 1 / 2')
+
+    // Keyboard: Alt+R rejects the focused row; it stays focused on the last row of the page.
+    await first.focus()
+    await page.keyboard.press('ArrowDown')
+    await expect(second).toBeFocused()
+    // Keyboard focus shows the row's buttons too.
+    await expect(second.getByTestId('kwic-reject')).toBeVisible()
+    await page.keyboard.press('Alt+R')
+    await expect(second.getByTestId('kwic-status')).toContainText('Rejected')
+    await expect(announcement).toContainText('Rejected. 2 / 2')
+    await expect(announcement).toContainText('Last annotation.')
+    await expect(second).toBeFocused()
+    // Choosing the state in effect writes nothing; Alt+↑ opens the previous row and focuses it.
+    await page.keyboard.press('Alt+R')
+    await expect(announcement).toContainText('Already rejected.')
+    expect(reviews).toBe(2)
+    await page.keyboard.press('Alt+ArrowUp')
+    await expect(first).toBeFocused()
+    await expect(first).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByTestId('annotation-position')).toHaveText('1 / 2')
+    // Alt+C on the focused (already confirmed) row moves focus on; the sidebar stays.
+    await page.keyboard.press('Alt+C')
+    await expect(second).toBeFocused()
+    await expect(first).toHaveAttribute('aria-current', 'true')
+    expect(reviews).toBe(2)
+  } finally {
+    for (const span of proposals) await patchSpan(page.request, span.id, { type: 'auto' })
+  }
+})
+
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
