@@ -179,13 +179,23 @@ export const useConcordanceStore = defineStore('concordance', () => {
   /** The attributes whose values the rows show in columns of their own (none by default),
    * in any order (they are shown in the collection's order); a view setting, not a filter. */
   const shownAttributeIds = ref<string[]>([])
+  /** Listed rows that a review made here took out of the filters (#690): they stay where they
+   * are, at their new state, until the query is read again (filters, page, sort, Refresh). */
+  const unmatched = ref<Set<string>>(new Set())
   /** The query and offset of `page`. */
   let pageKey: string | null = null
+  /** Reads of reviewed rows in place; a newer one, or a read of the page, drops their answer. */
+  const refreshRequests = createContextGuard()
 
   const rows = computed(() => page.value?.rows ?? [])
   /** A ranked mode that ranks by the text, without one: nothing is read until it is entered. */
   const needsText = computed(() => ranksText(filters.value.mode) && !filters.value.text.trim())
   const total = computed(() => page.value?.total ?? 0)
+  /** The offset of the next page: rows of this page that left the result moved the later ones
+   * up, so these are not skipped (#690). */
+  const nextOffset = computed(() => offset.value + rows.value.length -
+    rows.value.filter(r => unmatched.value.has(r.id)).length)
+  const hasNextPage = computed(() => offset.value + rows.value.length < total.value)
   /** Selected annotations the current filters do not show (or that no longer exist);
    * null while that is not known for the current selection. */
   const hiddenSelected = computed<number | null>(() => {
@@ -224,6 +234,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     shownError.value = null
     people.value = []
     shownAttributeIds.value = []
+    unmatched.value = new Set()
     pageKey = null
     scrollY.value = 0
   }
@@ -301,6 +312,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     if (!id) return
     rowAbort?.abort()
     rowRequests.enter()
+    refreshRequests.enter()
     const isCurrent = rowRequests.capture()
     const inScope = scope.capture()
     const inSession = captureSession()
@@ -353,6 +365,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
       reconcileFocused(result, key, refresh)
       page.value = result
       pageKey = key
+      unmatched.value = new Set()
       // Rows on the page match the filters: checking one never makes it hidden.
       noteShown(result.rows.map(r => r.id))
     } catch (e) {
@@ -370,6 +383,64 @@ export const useConcordanceStore = defineStore('concordance', () => {
         loading.value = false
         rowAbort = null
       }
+    }
+  }
+
+  /**
+   * Shows the listed rows among `ids` as they are now, where they are (#690): a review changes
+   * the list only when the query is read again. Rows the filters no longer match stay, marked
+   * `unmatched`; deleted ones leave the page. The total stays as read. Falls back to reading the
+   * page when the rows cannot be read.
+   */
+  async function refreshRows (ids: Iterable<string>) {
+    const id = collectionId.value
+    const wanted = new Set(ids)
+    const listed = rows.value.filter(r => wanted.has(r.id)).map(r => r.id)
+    if (!id || !page.value || !listed.length) return
+    refreshRequests.enter()
+    const isCurrent = refreshRequests.capture()
+    const inScope = scope.capture()
+    const inSession = captureSession()
+    const key = pageKey
+    const applies = () => isCurrent() && inScope() && inSession() && key === pageKey
+    try {
+      const [fresh, matching] = await Promise.all([
+        api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet({
+          collectionId: id, annotationId: listed, type: Object.values(SpanType), limit: listed.length
+        }),
+        api.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost({
+          collectionId: id, annotationIdsRequest: idsRequest(filters.value, listed)
+        })
+      ])
+      if (!applies() || !page.value) return
+      const current = new Map(fresh.rows.map(r => [r.id, r]))
+      const matched = new Set(matching.ids)
+      const read = new Set(listed)
+      // The listed copy keeps what only the page's query gives (e.g. a rank's score).
+      const update = (row: AnnotationListRow) => {
+        const now = current.get(row.id)
+        return now ? { ...row, ...Object.fromEntries(Object.entries(now).filter(([, v]) => v !== undefined)) } : row
+      }
+      page.value = {
+        ...page.value,
+        rows: page.value.rows.filter(r => !read.has(r.id) || current.has(r.id)).map(r => read.has(r.id) ? update(r) : r)
+      }
+      const next = new Set(unmatched.value)
+      for (const i of read) {
+        if (current.has(i) && !matched.has(i)) next.add(i)
+        else next.delete(i)
+      }
+      unmatched.value = next
+      const focused = selection.focused
+      if (focused && read.has(focused.id)) {
+        const row = page.value.rows.find(r => r.id === focused.id)
+        if (row) selection.focus(row)
+        else selection.focusedGone = true
+      }
+    } catch (e) {
+      if (!applies()) return
+      console.error('Reading the reviewed annotations failed', e)
+      await load()
     }
   }
 
@@ -519,9 +590,9 @@ export const useConcordanceStore = defineStore('concordance', () => {
     await Promise.all([load(), loadDocuments(), loadShown()])
   }
 
-  async function goTo (nextOffset: number) {
-    if (nextOffset < 0 || (page.value && nextOffset >= page.value.total)) return
-    offset.value = nextOffset
+  async function goTo (to: number) {
+    if (to < 0 || (page.value && to >= page.value.total)) return
+    offset.value = to
     scrollY.value = 0
     await load()
   }
@@ -579,6 +650,9 @@ export const useConcordanceStore = defineStore('concordance', () => {
     page,
     rows,
     total,
+    nextOffset,
+    hasNextPage,
+    unmatched,
     needsText,
     loading,
     error,
@@ -593,6 +667,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     shownAttributeIds,
     open,
     load,
+    refreshRows,
     readFocused,
     loadDocuments,
     loadShown,
