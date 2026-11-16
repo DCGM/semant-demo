@@ -10,14 +10,19 @@ within this process, not against edits of a running backend. It is bounded by ``
 spans per run; running it again continues with what is still incomplete.
 Spans whose offsets do not describe the document text are recorded ``invalid`` once and
 then left alone (a data inconsistency to review, not something to repair here).
+
+Sort keys (#666) are written with derived text; a span whose text is current but whose keys
+are missing or of another collator (``collation.sort_key_version``) gets only its keys,
+computed from the stored text and contexts: no chunk read, no embedding.
 """
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from uuid import UUID
 
 from semant_demo.core.outcomes import StepFailure
+from semant_demo.features.annotations.collation import sort_keys
 from semant_demo.features.annotations.derivation import DerivedText
-from semant_demo.features.annotations.enrichment import text_current, vector_current
+from semant_demo.features.annotations.enrichment import sort_keys_current, text_current, vector_current
 from semant_demo.features.annotations.schemas import AnnotationRow, EnrichmentStatus, VectorStatus
 from semant_demo.features.annotations.service import (
     AnnotationStore, Refresh, derive_refresh, refresh_vector, write_if_revision,
@@ -53,16 +58,34 @@ def vector_state(row: AnnotationRow, config_id: str | None) -> str:
     return "stale" if row.vectorStatus == VectorStatus.ready else "pending"
 
 
+def sort_key_state(row: AnnotationRow, enabled: bool) -> str:
+    """``current``, ``stale`` (another collator, or computed for another revision: text changed by
+    a release before #666), ``missing`` (text current, no keys yet) or
+    ``pending`` (written with the text, which is not current); ``unconfigured`` without the
+    sort key properties."""
+    if not enabled:
+        return "unconfigured"
+    if sort_keys_current(row):
+        return "current"
+    if not text_current(row):
+        return "pending"
+    return "stale" if row.sortKeyVersion else "missing"
+
+
 def _needs_text(row: AnnotationRow) -> bool:
     return text_state(row) in ("outdated", "failed", "missing")
+
+
+def _needs_keys(row: AnnotationRow, enabled: bool) -> bool:
+    return sort_key_state(row, enabled) in ("stale", "missing")
 
 
 def _needs_vector(row: AnnotationRow, config_id: str | None) -> bool:
     return config_id is not None and vector_state(row, config_id) != "current" and text_state(row) != "invalid"
 
 
-def _incomplete(row: AnnotationRow, config_id: str | None) -> bool:
-    return _needs_text(row) or _needs_vector(row, config_id)
+def _incomplete(row: AnnotationRow, config_id: str | None, keys: bool) -> bool:
+    return _needs_text(row) or _needs_vector(row, config_id) or _needs_keys(row, keys)
 
 
 @dataclass
@@ -71,12 +94,13 @@ class TenantReport:
     spans: int = 0
     text: Counter = field(default_factory=Counter)
     vector: Counter = field(default_factory=Counter)
+    sort_keys: Counter = field(default_factory=Counter)
     incomplete: int = 0
-    """Spans whose text or vector the backfill would (re)write."""
+    """Spans whose text, vector or sort keys the backfill would (re)write."""
 
     def as_dict(self) -> dict:
         return {"collection_id": self.collection_id, "spans": self.spans, "text": dict(self.text),
-                "vector": dict(self.vector), "incomplete": self.incomplete}
+                "vector": dict(self.vector), "sort_keys": dict(self.sort_keys), "incomplete": self.incomplete}
 
 
 async def _rows(store: AnnotationStore, collection_id: UUID) -> list[AnnotationRow]:
@@ -84,8 +108,9 @@ async def _rows(store: AnnotationStore, collection_id: UUID) -> list[AnnotationR
 
 
 async def status(store: AnnotationStore, collection_ids: list[UUID]) -> list[TenantReport]:
-    """Counts of each tenant's spans by text and vector state (reads every span)."""
+    """Counts of each tenant's spans by text, vector and sort key state (reads every span)."""
     vector = store.enrichment.vector
+    keys = store.enrichment.sort_keys
     reports = []
     for cid in collection_ids:
         report = TenantReport(str(cid))
@@ -93,7 +118,8 @@ async def status(store: AnnotationStore, collection_ids: list[UUID]) -> list[Ten
             report.spans += 1
             report.text[text_state(row)] += 1
             report.vector[vector_state(row, vector.id if vector else None)] += 1
-            report.incomplete += _incomplete(row, vector.id if vector else None)
+            report.sort_keys[sort_key_state(row, keys)] += 1
+            report.incomplete += _incomplete(row, vector.id if vector else None, keys)
         reports.append(report)
     return reports
 
@@ -103,6 +129,8 @@ class BackfillResult:
     processed: int = 0
     text_written: int = 0
     vector_written: int = 0
+    sort_keys_written: int = 0
+    """Spans whose sort keys (#666) were written, with their text or alone."""
     superseded: int = 0
     """Spans whose revision changed while being backfilled (an edit in this process): the
     derived data computed for the old revision was dropped."""
@@ -116,7 +144,8 @@ class BackfillResult:
 
     def as_dict(self) -> dict:
         return {"processed": self.processed, "text_written": self.text_written,
-                "vector_written": self.vector_written, "superseded": self.superseded,
+                "vector_written": self.vector_written, "sort_keys_written": self.sort_keys_written,
+                "superseded": self.superseded,
                 "not_processed": self.not_processed, "remaining_incomplete": self.remaining_incomplete,
                 "failed": [f.model_dump() for f in self.failed]}
 
@@ -129,16 +158,17 @@ def _stored(row: AnnotationRow) -> DerivedText:
 
 async def backfill(store: AnnotationStore, collection_ids: list[UUID], *, limit: int,
                    vectors: bool = True) -> BackfillResult:
-    """Derive the missing, failed, stale or outdated text and (with ``vectors``) vectors
-    of at most ``limit`` spans; each span reads its anchor and nearby chunks (``source.py``),
-    chunks shared by spans of the run once. Afterwards every tenant is read again for
-    ``remaining_incomplete``."""
+    """Derive the missing, failed, stale or outdated text, sort keys and (with ``vectors``)
+    vectors of at most ``limit`` spans; deriving text reads the span's anchor and nearby chunks
+    (``source.py``), chunks shared by spans of the run once, while sort keys alone are computed
+    from the stored text. Afterwards every tenant is read again for ``remaining_incomplete``."""
     configured = store.enrichment.vector.id if store.enrichment.vector else None
     config_id = configured if vectors else None
+    keys = store.enrichment.sort_keys
     result = BackfillResult()
     source = ChunkSource(store.documents)
     for cid in collection_ids:
-        todo = [r for r in await _rows(store, cid) if _incomplete(r, config_id)]
+        todo = [r for r in await _rows(store, cid) if _incomplete(r, config_id, keys)]
         take, rest = todo[:max(0, limit - result.processed)], todo[max(0, limit - result.processed):]
         result.not_processed += len(rest)
         by_document: dict[UUID | None, list[AnnotationRow]] = defaultdict(list)
@@ -147,7 +177,7 @@ async def backfill(store: AnnotationStore, collection_ids: list[UUID], *, limit:
         for rows in by_document.values():
             await _backfill_document(store, cid, rows, config_id, result, source)
     for cid in collection_ids:
-        result.remaining_incomplete += sum(_incomplete(r, configured) for r in await _rows(store, cid))
+        result.remaining_incomplete += sum(_incomplete(r, configured, keys) for r in await _rows(store, cid))
     return result
 
 
@@ -171,8 +201,22 @@ async def _backfill_document(store: AnnotationStore, cid: UUID, rows: list[Annot
                 result.superseded += 1
                 continue
             result.text_written += refresh.derived is not None
+            result.sort_keys_written += refresh.derived is not None and refresh.sort_keys
         else:
-            refresh = Refresh(revision, _stored(row), EnrichmentStatus.ready)
+            # Only a vector that is not current is embedded (a span may lack only its sort keys).
+            refresh = Refresh(revision, _stored(row), EnrichmentStatus.ready,
+                              needs_vector=_needs_vector(row, config_id))
+            if _needs_keys(row, store.enrichment.sort_keys):
+                properties = sort_keys(row.text or "", row.leftContext or "", row.rightContext or "").properties(revision)
+                try:
+                    written = await write_if_revision(store, cid, row.id, revision, properties)
+                except Exception as e:
+                    result.failed.append(step_failure("sort_keys", row.id, e))
+                    continue
+                if not written:
+                    result.superseded += 1
+                    continue
+                result.sort_keys_written += 1
         if config_id is not None and refresh.derived is not None:
             result.failed += await refresh_vector(store, cid, row.id, refresh)
             result.vector_written += refresh.vector_stored

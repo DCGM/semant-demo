@@ -1,0 +1,27 @@
+# CI image for the browser smoke-test shards (#715).
+#
+# Based on the same python:3.12 image as the other CI jobs, so PyICU compiles against the
+# same ICU (libicu-dev, pkg-config and gcc are already in it) and a PyICU wheel from the
+# shared pip cache works in every job. Adds Node and the Chromium build, with its system
+# libraries, that matches the Playwright version pinned in semant_demo_frontend/package-lock.json.
+#
+# Build and push with deploy/ci/build-browser-image.sh; see deploy/README.md ("CI images").
+ARG PYTHON_IMAGE=python:3.12
+ARG NODE_IMAGE=node:22.23.4-bookworm
+
+FROM ${NODE_IMAGE} AS node
+
+FROM ${PYTHON_IMAGE}
+ARG PLAYWRIGHT_VERSION
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# Browsers live outside HOME so the unprivileged CI user (--user 1025:1027) can use them.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN test -n "$PLAYWRIGHT_VERSION" \
+ && npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
+ && chmod -R a+rX /ms-playwright \
+ && rm -rf /root/.npm /var/lib/apt/lists/* \
+ && echo "$PLAYWRIGHT_VERSION" > /ms-playwright/PLAYWRIGHT_VERSION

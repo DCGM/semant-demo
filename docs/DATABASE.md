@@ -339,6 +339,16 @@ fields above stay authoritative). Absent on spans saved before #328 until the ba
 - `documentStartWord` / `documentEndWord` (`INT`, range filters) — half-open word range from the
   document start: the words ending at or before the span start, the words starting before its
   end; partially covered words are included
+- `leftSortKey` / `rightSortKey` / `textSortKey` (`TEXT`, `field` tokenization, neither searchable
+  nor filterable; #666) — hex-encoded ICU sort keys under the Czech collation of the nearest 5
+  words of the left context (nearest first), the first 5 of the right context and the first 10
+  of the text, joined by a space (`features/annotations/collation.py`); `""` for a side without
+  words. Weaviate sorts them by code point, which is Czech dictionary order of the words
+- `sortKeyVersion` (`TEXT`, `field`, filterable; #666) — the policy and collator of the keys
+  (`1:icu-<ICU version>:<tailoring digest>`); `""` when the text could not be derived. Keys of
+  another version are not current: the backfill recomputes them (e.g. after an ICU upgrade)
+- `sortKeyRevision` (`INT`; #666) — the `revision` the keys were computed for: a release before
+  #666 changes the text on an offset edit without its keys, which are then not current either
 - `positionSegment` (`INT`, legacy) — the `order` where the span's gap-free run of chunks
   started (#328). Neither written nor read since #463; it stays declared on collections that
   have it until a separately approved cleanup. On documents with consecutive orders the
@@ -394,7 +404,8 @@ annotation vector `contextual` (#328, self-provided, flat index per tenant; its 
 `target_vector` of `ANNOTATION_VECTOR_CONFIG`). On a collection created before #328, the
 derived properties and the vector are added by `annotation_enrichment add-schema`
 (`config.add_property` / `config.add_vector`, supported on 1.40), and on one created before
-#460 the provenance properties by `annotation_provenance add-schema`; the backend writes them
+#460 the provenance properties by `annotation_provenance add-schema`, and the sort keys of #666
+(also on a collection created before it) by `annotation_enrichment add-schema`; the backend writes them
 only when they exist (decided at startup), so Weaviate's auto-schema never guesses their types.
 
 The application never creates the collection; the migration does

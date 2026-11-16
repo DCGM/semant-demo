@@ -39,8 +39,9 @@ RUN BACKEND_URL=${BACKEND_URL} npx quasar build
 
 
 FROM python:3.12 AS python-builder
+# libicu-dev and pkg-config: PyICU (#666) is built from source against the system ICU.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ build-essential && \
+    gcc g++ build-essential libicu-dev pkg-config && \
     rm -rf /var/lib/apt/lists/*
 # Install the hashed runtime lock, which pins the same versions as the CI-tested dev lock;
 # --require-hashes also rejects any dependency the lock does not pin, so nothing is resolved
@@ -52,8 +53,15 @@ RUN pip install --user --no-cache-dir --require-hashes -r /tmp/requirements-runt
 
 
 FROM python:3.12-slim AS backend
+# The ICU runtime library PyICU was built against: the libicuNN of this Debian release, the one
+# python:3.12 (the builder) is based on. The import check fails the build if they differ.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        "$(apt-cache search --names-only '^libicu[0-9]+$' | cut -d' ' -f1 | sort -V | tail -n1)" && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=python-builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
+RUN python -c "import icu; print('ICU', icu.ICU_VERSION)"
 COPY --from=git /tmp/repo/semant_demo_backend /app
 COPY --from=node-build /repo/semant_demo_frontend/dist/spa /app/static
 WORKDIR /app

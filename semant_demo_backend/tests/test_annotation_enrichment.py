@@ -18,6 +18,7 @@ from tests.chunk_fakes import in_range, positioned
 from semant_demo.core.errors import ServiceUnavailableError
 from semant_demo.core.outcomes import WriteOutcome
 from semant_demo.features.annotations import backfill, service
+from semant_demo.features.annotations.collation import collation_key, sort_key_version
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText
 from semant_demo.features.annotations.enrichment import (
     AnnotationVector, AnnotationVectorSettings, Enrichment, text_current, vector_current,
@@ -446,7 +447,7 @@ async def test_backfill_derives_legacy_spans_and_preserves_their_fields(store, e
 
     [report] = await backfill.status(store, [COLLECTION])
     assert report.as_dict() == {"collection_id": str(COLLECTION), "spans": 3, "text": {"missing": 3},
-                                "vector": {"pending": 3}, "incomplete": 3}
+                                "vector": {"pending": 3}, "sort_keys": {"unconfigured": 3}, "incomplete": 3}
 
     result = await backfill.backfill(store, [COLLECTION], limit=10)
 
@@ -624,3 +625,106 @@ def test_the_default_vector_configuration_loads_and_an_empty_one_configures_none
     invalid.write_text("id: x\ntarget_vector: has-dash\nembedding: {provider: embedding_service}\n")
     with pytest.raises(ValidationError):
         load_annotation_vector(Config(environ={"ANNOTATION_VECTOR_CONFIG": str(invalid)}))
+
+
+# ── Sort keys (#666) ──────────────────────────────────────────────────────
+
+@pytest.fixture
+def keyed(store):
+    """The store with the sort key properties."""
+    store.enrichment = Enrichment(derived=True, vector=store.enrichment.vector, sort_keys=True)
+    return store
+
+
+async def test_derived_text_is_stored_with_its_sort_keys(keyed):
+    sid, _ = await create(keyed)  # "Jan Novák", left "Roku 1848 přijel hejtman ", right " a ubytoval se v Brně."
+    stored = keyed.spans.objects[sid]
+    assert stored["textSortKey"] == collation_key(["Jan", "Novák"])
+    assert stored["leftSortKey"] == collation_key(["hejtman", "přijel", "1848", "Roku"])
+    assert stored["rightSortKey"] == collation_key(["a", "ubytoval", "se", "v", "Brně"])
+    assert stored["sortKeyVersion"] == sort_key_version()
+
+    await service.update_span(keyed, OWNER, COLLECTION, sid, PatchSpan(start=29))  # "Novák"
+    assert keyed.spans.objects[sid]["textSortKey"] == collation_key(["Novák"])
+    assert keyed.spans.objects[sid]["leftSortKey"] == collation_key(["Jan", "hejtman", "přijel", "1848", "Roku"])
+
+
+async def test_text_that_cannot_be_derived_clears_its_sort_keys(keyed):
+    sid, _ = await create(keyed)
+    keyed.documents.fail = True
+    await service.update_span(keyed, OWNER, COLLECTION, sid, PatchSpan(start=29))
+    stored = keyed.spans.objects[sid]
+    assert stored["enrichmentStatus"] == "failed"
+    assert (stored["textSortKey"], stored["leftSortKey"], stored["sortKeyVersion"]) == ("", "", "")
+
+
+async def test_without_the_sort_key_properties_no_keys_are_written(store):
+    sid, _ = await create(store)
+    assert {"textSortKey", "sortKeyVersion"}.isdisjoint(store.spans.objects[sid])
+
+
+async def test_backfill_computes_missing_and_stale_sort_keys_from_the_stored_text_without_embedding(keyed, embedder):
+    store = keyed
+    store.enrichment = Enrichment(derived=True, vector=store.enrichment.vector)
+    missing, _ = await create(store)  # derived before the keys were added
+    stale, _ = await create(store, 0, 4)
+    store.enrichment = Enrichment(derived=True, vector=store.enrichment.vector, sort_keys=True)
+    store.spans.objects[stale] |= {"sortKeyVersion": "0:icu-1.0:00000000", "textSortKey": "00"}
+    reads, embedded = store.documents.reads, len(embedder.documents)
+
+    [report] = await backfill.status(store, [COLLECTION])
+    assert (report.sort_keys, report.incomplete) == ({"missing": 1, "stale": 1}, 2)
+    result = await backfill.backfill(store, [COLLECTION], limit=10)
+
+    assert (result.sort_keys_written, result.text_written, result.vector_written) == (2, 0, 0)
+    assert (result.remaining_incomplete, result.failed) == (0, [])
+    assert store.documents.reads == reads and len(embedder.documents) == embedded
+    assert store.spans.objects[stale]["textSortKey"] == collation_key(["Roku"])
+    assert store.spans.objects[missing]["sortKeyVersion"] == sort_key_version()
+    [report] = await backfill.status(store, [COLLECTION])
+    assert report.sort_keys == {"current": 2}
+
+
+async def test_sort_keys_of_another_revision_are_stale_and_recomputed(keyed, embedder):
+    # A release before #666 moved the boundaries: new text and revision, keys of the old text.
+    sid, _ = await create(keyed)
+    old_keys = dict(keyed.spans.objects[sid])
+    keyed.enrichment = Enrichment(derived=True, vector=keyed.enrichment.vector)
+    await service.update_span(keyed, OWNER, COLLECTION, sid, PatchSpan(start=29))
+    keyed.enrichment = Enrichment(derived=True, vector=keyed.enrichment.vector, sort_keys=True)
+    stored = keyed.spans.objects[sid]
+    assert (stored["revision"], stored["sortKeyRevision"], stored["textSortKey"]) == (2, 1, old_keys["textSortKey"])
+
+    [report] = await backfill.status(keyed, [COLLECTION])
+    assert report.sort_keys == {"stale": 1}
+    embedded = len(embedder.documents)
+    result = await backfill.backfill(keyed, [COLLECTION], limit=10)
+    assert (result.sort_keys_written, len(embedder.documents)) == (1, embedded)
+    assert (stored["sortKeyRevision"], stored["textSortKey"]) == (2, collation_key(["Novák"]))
+
+
+async def test_backfill_writes_sort_keys_with_the_text_it_derives(keyed):
+    sid = legacy(keyed, 25, 34)
+    [report] = await backfill.status(keyed, [COLLECTION])
+    assert report.sort_keys == {"pending": 1}
+
+    result = await backfill.backfill(keyed, [COLLECTION], limit=10)
+
+    assert (result.text_written, result.sort_keys_written) == (1, 1)
+    assert keyed.spans.objects[sid]["textSortKey"] == collation_key(["Jan", "Novák"])
+
+
+async def test_backfill_drops_sort_keys_of_a_span_edited_meanwhile(keyed):
+    sid, _ = await create(keyed)
+    keyed.spans.objects[sid]["sortKeyVersion"] = "0:old"
+    rows = [r async for r in keyed.spans.iterate_rows(COLLECTION)]
+
+    async def edited_meanwhile(cid):
+        for r in rows:
+            yield r
+        keyed.spans.objects[sid]["revision"] = 2
+
+    keyed.spans.iterate_rows = edited_meanwhile
+    result = await backfill.backfill(keyed, [COLLECTION], limit=10)
+    assert (result.superseded, result.sort_keys_written) == (1, 0)
+    assert keyed.spans.objects[sid]["sortKeyVersion"] == "0:old"

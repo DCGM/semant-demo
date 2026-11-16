@@ -68,28 +68,51 @@ describe('concordance table', () => {
     expect([wrapper.get('.kwic__key-head').text(), wrapper.get('.kwic__key-tail').text()]).toEqual(['přijel do Lh', 'oty hejtman'])
   })
 
-  it('marks the active sort and its direction, and leaves the context headers unsortable', () => {
+  it('marks the active sort and its direction on every sortable header', () => {
     const wrapper = mountTable({ sort: AnnotationSort.year, descending: true })
     expect(head(wrapper, 'year').attributes('aria-sort')).toBe('descending')
-    expect(head(wrapper, 'source').attributes('aria-sort')).toBe('none')
-    expect(head(wrapper, 'annotation').attributes('aria-sort')).toBe('none')
-    for (const id of ['left', 'right']) {
-      expect(head(wrapper, id).attributes('aria-sort')).toBeUndefined()
-      expect(head(wrapper, id).find('button[data-testid^="kwic-sort"]').exists()).toBe(false)
-      expect(head(wrapper, id).text()).toContain(id === 'left' ? 'Left context' : 'Right context')
+    for (const id of ['source', 'left', 'annotation', 'right']) {
+      expect(head(wrapper, id).attributes('aria-sort')).toBe('none')
     }
     expect(wrapper.get('[data-testid="kwic-sort-year"]').attributes('aria-label')).toBe('Year, sorted descending; sort ascending')
+    const left = mountTable({ sort: AnnotationSort.left })
+    expect(head(left, 'left').attributes('aria-sort')).toBe('ascending')
+    expect(head(left, 'annotation').attributes('aria-sort')).toBe('none')
   })
 
   it('sorts a new column ascending and toggles the direction of the active one', async () => {
     const wrapper = mountTable({ sort: AnnotationSort.document, descending: false })
     await wrapper.get('[data-testid="kwic-sort-annotation"]').trigger('click')
+    await wrapper.get('[data-testid="kwic-sort-left"]').trigger('click')
+    await wrapper.get('[data-testid="kwic-sort-right"]').trigger('click')
     await wrapper.get('[data-testid="kwic-sort-source"]').trigger('click')
-    expect(wrapper.emitted('sort')).toEqual([[AnnotationSort.text, false], [AnnotationSort.document, true]])
+    expect(wrapper.emitted('sort')).toEqual([[AnnotationSort.text, false, null], [AnnotationSort.left, false, null],
+      [AnnotationSort.right, false, null], [AnnotationSort.document, true, null]])
 
     await wrapper.setProps({ filters: { ...defaultFilters(), sort: AnnotationSort.document, descending: true } })
     await wrapper.get('[data-testid="kwic-sort-source"]').trigger('click')
-    expect(wrapper.emitted('sort')?.[2]).toEqual([AnnotationSort.document, false])
+    expect(wrapper.emitted('sort')?.[4]).toEqual([AnnotationSort.document, false, null])
+  })
+
+  it('sorts by an attribute column, each attribute on its own (#666)', async () => {
+    const attributes = [{ id: 'topic', name: 'Topic', values: [] }, { id: 'speaker', name: 'Speaker', values: [] }]
+    const wrapper = mount(ConcordanceTable, {
+      props: {
+        rows: [annotation('a')],
+        tags: [tag],
+        selected: new Set<string>(),
+        attributes: attributes as never,
+        filters: { ...defaultFilters(), sort: AnnotationSort.attribute, sortAttribute: 'topic' }
+      },
+      global: { plugins: [[Quasar, {}]] }
+    })
+    const heads = wrapper.findAll('[data-testid="kwic-attribute-head"]')
+    expect(heads.map(h => h.attributes('aria-sort'))).toEqual(['ascending', 'none'])
+    expect(heads[0]!.find('[data-testid^="kwic-filter"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="kwic-sort-attribute-topic"]').trigger('click')
+    await wrapper.get('[data-testid="kwic-sort-attribute-speaker"]').trigger('click')
+    expect(wrapper.emitted('sort')).toEqual([[AnnotationSort.attribute, true, 'topic'],
+      [AnnotationSort.attribute, false, 'speaker']])
   })
 
   it('offers no header sort for ranked results', async () => {

@@ -6,7 +6,11 @@ FastAPI backend of the SemANT demo. Structure and behavior:
 
 ## Installation and checks
 
-Use Python 3.12. From the repository root:
+Use Python 3.12. The Czech annotation sort keys (#666) need PyICU, which is built from source
+against the system ICU: install its headers and `pkg-config` first (Debian/Ubuntu:
+`sudo apt-get install libicu-dev pkg-config`; macOS: `brew install icu4c pkg-config` and
+`export PKG_CONFIG_PATH="$(brew --prefix icu4c)/lib/pkgconfig"`). The `python:3.12` images of CI
+and the Docker builder already have them. From the repository root:
 
 ```bash
 make setup             # .venv with requirements-dev.lock, backend package, frontend npm ci
