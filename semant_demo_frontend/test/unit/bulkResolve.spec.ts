@@ -81,3 +81,13 @@ describe('bulk resolving suggestions (#464)', () => {
     expect(summary.saved).toBe(100)
   })
 })
+
+describe('finding the text segments a span overlaps (#464)', () => {
+  it('finds the first segment ending after an offset', async () => {
+    const { firstSegmentEndingAfter } = await import('src/features/documents/viewer/useReaderGutters')
+    const segments = [{ end: 3 }, { end: 7 }, { end: 10 }]
+
+    expect([0, 2, 3, 6, 7, 9, 10, 11].map((o) => firstSegmentEndingAfter(segments, o))).toEqual([0, 0, 1, 1, 2, 2, 3, 3])
+    expect(firstSegmentEndingAfter([], 0)).toBe(0)
+  })
+})
