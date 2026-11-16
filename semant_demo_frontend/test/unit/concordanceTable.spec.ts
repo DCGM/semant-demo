@@ -342,7 +342,7 @@ describe('concordance inline review (#690 phase B)', () => {
     })
   }
 
-  it('shows the status as an icon named in words, and the current state pressed', () => {
+  it('shows the status as a switch named in words, the current state pressed', () => {
     const wrapper = mountRows([annotation('a', { type: SpanType.auto }), annotation('b', { type: SpanType.neg })])
     const [proposal, rejected] = wrapper.findAll('[data-testid="kwic-review"]')
     expect(proposal.get('[data-testid="kwic-status"]').text()).toContain('Proposal')

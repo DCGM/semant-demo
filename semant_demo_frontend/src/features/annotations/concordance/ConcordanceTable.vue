@@ -67,7 +67,7 @@
         >
           {{ attribute.name }}
         </div>
-        <div class="kwic__cell kwic__review kwic__head" role="columnheader"><span :class="{ 'sr-only': phone }">Status</span></div>
+        <div class="kwic__cell kwic__review kwic__head" role="columnheader">Status</div>
         <div class="kwic__cell kwic__meta kwic__head" role="columnheader">{{ rankStart !== null ? 'Rank · tag' : 'Tag' }}</div>
         <div
           v-for="column in DOCUMENT_COLUMNS"
@@ -234,11 +234,11 @@
             <span class="sr-only">{{ cannotAssign(attribute, row) }}</span>
           </span>
         </div>
-        <!-- The status as an icon (#690). On a desktop ✓ and ⊘ have fixed places, left and right, a
-             confirmed or rejected row showing its state's one (pressed) and a proposal a ? between
-             them; a hovered or keyboard-focused row adds the other one(s) in place, so nothing moves.
-             While the review is saved a spinner stands alone. A click there never opens or checks
-             the row, nor moves focus. -->
+        <!-- The status as a segmented switch ✓|⊘ (#690), the same shape in every row: the state in
+             effect is the tinted half, a proposal (to be decided) has neither and an orange outline.
+             On a desktop the halves are its review buttons; hover or keyboard focus only darkens the
+             other half, so nothing appears or moves. While the review is saved a spinner covers it.
+             A click there never opens or checks the row, nor moves focus. On a phone it only shows. -->
         <div
           class="kwic__cell kwic__review"
           :class="{ 'kwic__review--saving': saving.has(row.id) }"
@@ -247,32 +247,43 @@
           data-testid="kwic-review"
           @click.stop
         >
+          <span class="sr-only" data-testid="kwic-status">{{ statusLabel(row.type) }}</span>
           <span
-            class="kwic__status"
-            :class="`kwic__status--${row.type}`"
-            :title="statusLabel(row.type)"
-            data-testid="kwic-status"
-          ><q-icon v-if="phone || !decided(row)" :name="statusIcon(row.type)" size="18px" aria-hidden="true" /><span class="sr-only">{{ statusLabel(row.type) }}</span></span>
-          <span v-if="!phone" class="kwic__decide" role="group" :aria-label="`Review ${rowLabel(row)}`">
-            <q-btn
-              v-for="decision in DECISIONS"
-              :key="decision.action"
-              flat
-              round
-              dense
-              tabindex="-1"
-              :icon="decision.icon"
-              class="kwic__decision"
-              :class="[`kwic__decision--${decision.action}`, { 'kwic__decision--pressed': row.type === decision.state }]"
-              :aria-pressed="row.type === decision.state ? 'true' : 'false'"
-              :aria-label="row.type === decision.state ? decision.done : decision.verb"
-              :aria-keyshortcuts="decision.keys"
-              :data-testid="`kwic-${decision.action}`"
-              @mousedown.prevent
-              @click.stop="decideRow(row, decision.action)"
-            >
-              <q-tooltip :delay="400">{{ row.type === decision.state ? decision.done : decision.verb }} ({{ decision.keys }})</q-tooltip>
-            </q-btn>
+            class="kwic__switch"
+            :class="`kwic__switch--${row.type}`"
+            :role="phone ? undefined : 'group'"
+            :aria-label="phone ? undefined : `Review ${rowLabel(row)}`"
+            :aria-hidden="phone ? 'true' : undefined"
+            :title="phone ? statusLabel(row.type) : undefined"
+          >
+            <template v-if="!phone">
+              <q-btn
+                v-for="decision in DECISIONS"
+                :key="decision.action"
+                flat
+                dense
+                tabindex="-1"
+                :icon="decision.icon"
+                class="kwic__half"
+                :class="[`kwic__half--${decision.action}`, { 'kwic__half--pressed': row.type === decision.state }]"
+                :aria-pressed="row.type === decision.state ? 'true' : 'false'"
+                :aria-label="row.type === decision.state ? decision.done : decision.verb"
+                :aria-keyshortcuts="decision.keys"
+                :data-testid="`kwic-${decision.action}`"
+                @mousedown.prevent
+                @click.stop="decideRow(row, decision.action)"
+              >
+                <q-tooltip :delay="400">{{ row.type === decision.state ? decision.done : decision.verb }} ({{ decision.keys }})</q-tooltip>
+              </q-btn>
+            </template>
+            <template v-else>
+              <span
+                v-for="decision in DECISIONS"
+                :key="decision.action"
+                class="kwic__half"
+                :class="[`kwic__half--${decision.action}`, { 'kwic__half--pressed': row.type === decision.state }]"
+              ><q-icon :name="decision.icon" /></span>
+            </template>
           </span>
           <q-spinner v-if="saving.has(row.id)" class="kwic__status-spinner" size="1.1rem" aria-label="Saving" />
         </div>
@@ -510,17 +521,6 @@ function statusLabel (type: SpanType | null | undefined): string {
   if (type === SpanType.auto) return 'Proposal'
   if (type === SpanType.neg) return 'Rejected'
   return 'Unknown status'
-}
-
-function statusIcon (type: SpanType | null | undefined): string {
-  if (type === SpanType.pos) return 'check'
-  if (type === SpanType.neg) return 'block'
-  return 'question_mark'
-}
-
-/** Confirmed or rejected: its state's button stands for the status on a desktop. */
-function decided (row: AnnotationListRow): boolean {
-  return row.type === SpanType.pos || row.type === SpanType.neg
 }
 
 function missingText (row: AnnotationListRow): string {
@@ -1228,20 +1228,7 @@ defineExpose({ reveal, focusRowById })
   }
 }
 
-.kwic__status--pos {
-  color: #2e7d32;
-}
-
-.kwic__status--auto {
-  color: #b26a00;
-}
-
-.kwic__status--neg {
-  color: #c62828;
-}
-
-/* The status cell (#690): the status, the review buttons and the spinner in one place; what is
-   shown changes only by `visibility`, so nothing moves or resizes. */
+/* The status cell (#690): the switch and, while saving, a spinner over it, in one place. */
 .kwic__review {
   display: grid;
   place-items: center;
@@ -1258,76 +1245,87 @@ defineExpose({ reveal, focusRowById })
   text-align: center;
 }
 
-.kwic__status {
+/* One capsule of two halves, the same in every row. */
+.kwic__switch {
   display: inline-flex;
-}
-
-.kwic__decide {
-  display: inline-flex;
-  gap: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
   user-select: none;
 }
 
-/* Icon and buttons of one size, the ? as large as their icons. */
-.kwic__decision {
-  width: 26px;
-  height: 26px;
+.kwic__half {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
   min-width: 0;
   min-height: 0;
   padding: 0;
-  font-size: 18px;
-  color: rgba(0, 0, 0, 0.38);
-  visibility: hidden;
+  border-radius: 0;
+  font-size: 15px;
+  color: rgba(0, 0, 0, 0.26);
 }
 
-.kwic__decision :deep(.q-icon) {
-  font-size: 18px;
+.kwic__half :deep(.q-icon) {
+  font-size: 15px;
 }
 
-/* The state in effect: its own color on a light tint of it; the other one grey until pointed at. */
-.kwic__decision--pressed {
-  visibility: visible;
+.kwic__half + .kwic__half {
+  border-left: 1px solid rgba(0, 0, 0, 0.14);
 }
 
-.kwic__decision--approve:hover,
-.kwic__decision--approve.kwic__decision--pressed {
+/* The state in effect: its color on a tint of it. */
+.kwic__half--approve.kwic__half--pressed {
   color: #2e7d32;
+  background: rgba(46, 125, 50, 0.14);
 }
 
-.kwic__decision--reject:hover,
-.kwic__decision--reject.kwic__decision--pressed {
+.kwic__half--reject.kwic__half--pressed {
   color: #c62828;
-}
-
-.kwic__decision--approve.kwic__decision--pressed {
-  background: rgba(46, 125, 50, 0.12);
-}
-
-.kwic__decision--reject.kwic__decision--pressed {
   background: rgba(198, 40, 40, 0.12);
 }
 
+/* A proposal: neither half, an orange outline; the rows still to decide stand out. */
+.kwic__switch--auto {
+  border-color: #ef8f00;
+  box-shadow: 0 0 0 1px rgba(239, 143, 0, 0.35);
+}
+
+.kwic__switch--auto .kwic__half + .kwic__half {
+  border-left-color: rgba(239, 143, 0, 0.45);
+}
+
+/* Hover or keyboard focus: the other half reads as an action; the half pointed at takes its color. */
 @media (hover: hover) {
-  .kwic__row:hover .kwic__decision {
-    visibility: visible;
+  .kwic__row:hover .kwic__half {
+    color: rgba(0, 0, 0, 0.55);
   }
-  .kwic__row:hover .kwic__status {
-    visibility: hidden;
+  .kwic__row .kwic__half--approve:hover {
+    color: #2e7d32;
+  }
+  .kwic__row .kwic__half--reject:hover {
+    color: #c62828;
   }
 }
 
-.kwic__row:focus-visible .kwic__decision {
-  visibility: visible;
+.kwic__row:focus-visible .kwic__half {
+  color: rgba(0, 0, 0, 0.55);
 }
 
-.kwic__row:focus-visible .kwic__status {
-  visibility: hidden;
+.kwic__row .kwic__half--approve.kwic__half--pressed {
+  color: #2e7d32;
 }
 
-/* Saving: the spinner alone, also without hover or focus. */
-.kwic__review--saving .kwic__status,
-.kwic__row .kwic__review--saving .kwic__decision {
-  visibility: hidden;
+.kwic__row .kwic__half--reject.kwic__half--pressed {
+  color: #c62828;
+}
+
+/* Saving: the switch fades under a spinner, keeping its place. */
+.kwic__review--saving .kwic__switch {
+  opacity: 0.3;
 }
 
 .kwic__status-spinner {
@@ -1335,7 +1333,12 @@ defineExpose({ reveal, focusRowById })
 }
 
 .kwic--phone .kwic__grid {
-  --kwic-status: 2rem;
+  --kwic-status: 3.25rem;
+}
+
+.kwic--phone .kwic__half {
+  width: 22px;
+  height: 20px;
 }
 
 /* Reviewed out of the filters (#690): still there, but visibly no longer part of the result. */

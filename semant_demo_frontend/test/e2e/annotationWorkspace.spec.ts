@@ -422,7 +422,7 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
   }
 })
 
-test('inline row review: buttons on hover and focus in a column of fixed width, grid shortcuts move focus (#690 phase B)', async ({ page }) => {
+test('inline row review: a status switch of one shape in every row, nothing moves, grid shortcuts move focus (#690 phase B)', async ({ page }) => {
   const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
   await useViewport(page, 'wide')
   await openWorkspace(page, 'annotator')
@@ -434,13 +434,16 @@ test('inline row review: buttons on hover and focus in a column of fixed width, 
     const [first, second] = [rows(page).nth(0), rows(page).nth(1)]
     const cell = first.getByTestId('kwic-review')
     const idle = await width(cell)
-    // The status is an icon, named in words; the buttons are hidden until hover or focus.
+    const box = () => first.locator('.kwic__switch').boundingBox()
+    const place = await box()
+    // The status is a switch, named in words; a proposal has neither half pressed.
     await expect(first.getByTestId('kwic-status')).toContainText('Proposal')
-    await expect(first.getByTestId('kwic-approve')).toBeHidden()
-    await first.hover()
     await expect(first.getByTestId('kwic-approve')).toBeVisible()
-    await expect(first.getByTestId('kwic-status')).toBeHidden()
+    await expect(first.getByTestId('kwic-approve')).toHaveAttribute('aria-pressed', 'false')
+    await expect(first.getByTestId('kwic-reject')).toHaveAttribute('aria-pressed', 'false')
+    await first.hover()
     expect(await width(cell), 'no width change on hover').toBe(idle)
+    expect(await box(), 'the switch does not move on hover').toEqual(place)
 
     // A button decides its row only: it neither opens nor checks the row, nor takes focus.
     let reviews = 0
@@ -448,12 +451,10 @@ test('inline row review: buttons on hover and focus in a column of fixed width, 
     await first.getByTestId('kwic-approve').click()
     await expect(first.getByTestId('kwic-approve')).toHaveAttribute('aria-pressed', 'true')
     await expect(first.getByTestId('kwic-status')).toContainText('Confirmed')
-    // Confirmed: its ✓ stays in place, alone, once the pointer leaves; ⊘ shows only on hover.
-    const place = await first.getByTestId('kwic-approve').boundingBox()
+    await expect(first.getByTestId('kwic-reject')).toHaveAttribute('aria-pressed', 'false')
+    // The same switch in the same place, whatever the state.
     await page.mouse.move(0, 0)
-    await expect(first.getByTestId('kwic-approve')).toBeVisible()
-    await expect(first.getByTestId('kwic-reject')).toBeHidden()
-    expect(await first.getByTestId('kwic-approve').boundingBox()).toEqual(place)
+    expect(await box(), 'the switch does not move with the state').toEqual(place)
     expect(reviews).toBe(1)
     expect(await width(cell), 'no width change after saving').toBe(idle)
     await expect(first).not.toHaveAttribute('aria-current', 'true')
@@ -469,8 +470,6 @@ test('inline row review: buttons on hover and focus in a column of fixed width, 
     await first.focus()
     await page.keyboard.press('ArrowDown')
     await expect(second).toBeFocused()
-    // Keyboard focus shows the row's buttons too.
-    await expect(second.getByTestId('kwic-reject')).toBeVisible()
     await page.keyboard.press('Alt+R')
     await expect(second.getByTestId('kwic-status')).toContainText('Rejected')
     await expect(announcement).toContainText('Rejected. 2 / 2')
