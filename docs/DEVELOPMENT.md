@@ -387,7 +387,9 @@ tested. The mode is applied only when the repository variable `CI_CHANGE_SELECTI
 includes it (e.g. `docs,frontend,deploy`); unset, the classification is only reported and everything runs.
 The gate waits for preview completion on all PRs (static GitHub Actions dependencies),
 but requires preview success **only** for deployment-mode PRs. Other previews remain
-non-blocking even if they fail.
+non-blocking even if they fail. On pushes the preview job is skipped, so `Deploy test-main`
+and `Deploy Production` check `needs.ci-result.result == 'success'` explicitly; with the
+implicit `success()` the skipped preview would skip them too.
 Enable it after `CI result` is a required check of the `main` ruleset, because GitHub
 treats a skipped required check as passing. To try a classification locally:
 `python3 scripts/ci_changes.py paths <path>...`. A new mode or path needs a reviewed entry
