@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -217,22 +218,75 @@ def _plan_output(env) -> str:
     return out.getvalue()
 
 
-def test_retention_never_deletes_backups_made_by_hand_or_in_progress():
+def _full(i, status="SUCCESS"):
     t = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    full = lambda i, **kw: wb.Backup(f"auto-full-2026010{i}-000000", kw.get("status", "SUCCESS"), "",
-                                     t + timedelta(days=i), None)
+    return wb.Backup(f"auto-full-2026010{i}-000000", status, "", t + timedelta(days=i), None)
+
+
+def test_retention_deletes_failed_backups_but_never_backups_made_by_hand():
+    t = datetime(2026, 1, 1, tzinfo=timezone.utc)
     backups = {b.id: b for b in [
-        full(1), full(2), full(3),
-        wb.Backup("auto-incr-20260101-120000", "STARTED", "auto-full-20260101-000000", t, None),
+        _full(1), _full(2), _full(3),
+        wb.Backup("manual-incr", "SUCCESS", "auto-full-20260101-000000", t, None),
         wb.Backup("manual-old", "FAILED", "", t - timedelta(days=9), None),
         wb.Backup("auto-incr-20260102-120000", "FAILED", "auto-full-20260102-000000", t, None),
     ]}
 
-    delete, protected = wb.retention(backups, keep_chains=2)
+    delete, protected, blockers = wb.retention(backups, keep_chains=2)
 
-    # full 1 is kept because the unfinished incremental on it is not deleted.
+    # full 1 is outside the 2 kept chains, but a backup made by hand depends on it.
     assert delete == ["auto-incr-20260102-120000"]
     assert protected == ["auto-full-20260101-000000"]
+    assert blockers == []
+
+
+@pytest.mark.parametrize("status", ["STARTED", "TRANSFERRING", "UNKNOWN"])
+def test_retention_deletes_nothing_while_a_backup_with_an_unknown_base_is_unsettled(status):
+    # A manual incremental still running (or with unreadable metadata) may depend on the old chain.
+    backups = {b.id: b for b in [
+        _full(1), _full(2), _full(3), _full(4, status="FAILED"),
+        wb.Backup("manual-running", status, "", None, None)]}
+
+    assert wb.retention(backups, keep_chains=2) == ([], [], ["manual-running"])
+
+
+def test_an_unfinished_manual_backup_blocks_retention_and_check_reports_it_when_stale(env, capsys):
+    first, _second = make_chains(env, 2)
+    running = env.root / "manual-incr-running"
+    (running / "node1").mkdir(parents=True)  # no backup_config.json yet
+    now = env.clock().timestamp()
+    os.utime(running, (now, now))
+
+    assert env.run("backup") == 0  # the third full backup: the first chain is now outside the 2 kept
+
+    assert set(first) <= set(ids(env.root))
+    assert "retention=skipped(manual-incr-running)" in last_status(env.state)
+    assert env.run("check") == 0
+    old = (env.clock() - timedelta(hours=21)).timestamp()
+    os.utime(running, (old, old))
+    capsys.readouterr()
+
+    assert env.run("check") == 1
+    assert "manual-incr-running has been unfinished or unreadable" in capsys.readouterr().err
+
+
+def test_a_successful_incremental_on_a_broken_base_is_not_restorable(env, capsys):
+    env.run("backup")
+    env.clock.advance(days=1)
+    env.run("backup")
+    env.clock.advance(days=1)
+    env.run("backup")
+    full, incr1, incr2 = [c["id"] for c in env.fake.created]
+    (env.root / incr1 / wb.CONFIG_FILE).write_text("{not json")  # corrupt intermediate base
+    capsys.readouterr()
+
+    assert env.run("check") == 1
+    assert f"{incr2} cannot be restored: {incr1} in its chain is UNKNOWN" in capsys.readouterr().err
+    assert f"{incr2}\tSUCCESS\tbase={incr1}\tchain=BROKEN" in _plan_output(env)
+    # The next incremental is based on the last backup with a valid chain, not on incr2.
+    env.clock.advance(days=1)
+    assert env.run("backup") == 0
+    assert env.fake.created[-1]["incremental_base_backup_id"] == full
 
 
 def test_deletion_refuses_ids_not_made_by_the_script(tmp_path):
@@ -300,12 +354,29 @@ def test_check_fails_when_the_last_run_did_not_record_ok_for_the_newest_backup(e
 
 # ── restore guard, times, settings ────────────────────────────────────────
 
-def test_restore_refuses_production_and_an_unconfirmed_endpoint():
-    settings = wb.Settings()
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1:8080",      # production
+    "http://10.0.0.5:8080",       # another address that may reach production
+    "http://semant.example:8091",  # any endpoint not listed
+])
+def test_restore_accepts_only_listed_rehearsal_endpoints(url):
+    endpoint = url.split("//")[1]
+    with pytest.raises(wb.BackupError, match="not a rehearsal endpoint"):
+        wb.run_restore("x", wb.Settings(), wb.Weaviate(url), endpoint, None)
+
+
+def test_restore_requires_the_confirmed_endpoint_and_a_listed_one_cannot_be_production():
     with pytest.raises(wb.BackupError, match="does not match"):
-        wb.run_restore("x", settings, wb.Weaviate("http://127.0.0.1:8090"), "127.0.0.1:8091", None)
-    with pytest.raises(wb.BackupError, match="disposable"):
-        wb.run_restore("x", settings, wb.Weaviate("http://127.0.0.1:8080"), "127.0.0.1:8080", None)
+        wb.run_restore("x", wb.Settings(), wb.Weaviate("http://127.0.0.1:8090"), "127.0.0.1:8091", None)
+    listed = wb.Settings.from_env({"REHEARSAL_ENDPOINTS": "127.0.0.1:8080, 127.0.0.1:9000"})
+    assert listed.rehearsal_endpoints == ("127.0.0.1:8080", "127.0.0.1:9000")
+    with pytest.raises(wb.BackupError, match="not a rehearsal endpoint"):
+        wb.run_restore("x", listed, wb.Weaviate("http://127.0.0.1:8080"), "127.0.0.1:8080", None)
+
+
+def test_counting_inactive_tenants_requires_the_confirmed_endpoint(capsys):
+    assert wb.main(["counts", "--activate-inactive"], {}) == 1
+    assert "--confirm-endpoint None does not match '127.0.0.1:8080'" in capsys.readouterr().err
 
 
 def test_weaviate_times_with_nanoseconds_and_the_zero_time_parse():

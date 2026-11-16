@@ -520,13 +520,17 @@ schedule and deletes old ones. Before #469 they were made and deleted by hand.
 - **Chains.** Weaviate stores an incremental backup's unchanged files as references to its base
   and records the base in `<id>/backup_config.json` (`baseBackupId`). An incremental backup
   restores only while **every backup it depends on** still exists. The script reads the chains
-  from these files, so it also sees backups made by hand.
+  from these files, so it also sees backups made by hand. A backup counts as restorable only
+  when every backup of its chain is present, has readable metadata and is `SUCCESS`; the next
+  incremental is never based on one that is not.
 - **Retention.** The newest 2 chains are kept (`KEEP_CHAINS`). An older chain is deleted as a
   whole (by removing its directories; Weaviate has no delete API) once 2 newer full backups
   have succeeded, so the pool holds a third chain while a new full backup runs. Failed or
   cancelled backups are deleted too. Only ids starting with `auto-` are ever deleted;
   **backups made by hand are never touched**, and an `auto-` backup that any remaining backup
-  (also one made by hand) depends on is kept.
+  (also one made by hand) depends on is kept. **Nothing is deleted while any backup is
+  unfinished or has unreadable metadata** (for example a backup made by hand that is still
+  running): its base is unknown. The run then logs `RETENTION SKIPPED` and ends `OK … retention=skipped(…)`.
 - **Free space.** A run refuses to start when the pool has less free space than 200 GiB
   (`MIN_FREE_GIB`) or than 1.25× (`FREE_FACTOR`) the disk usage of the newest full backup.
   The pool is shared with other projects and was 98% full (1.2 TiB free of 43 TiB) on 2026-11-16.
@@ -541,7 +545,8 @@ schedule and deletes old ones. Before #469 they were made and deleted by hand.
   second run while one is still going fails on the lock without touching `last_status`.
 - **Settings** (environment): `WEAVIATE_URL` (`http://127.0.0.1:8080`), `FULL_INTERVAL_DAYS` (7),
   `KEEP_CHAINS` (2), `MAX_AGE_HOURS` (26), `MIN_FREE_GIB` (200), `FREE_FACTOR` (1.25),
-  `TIMEOUT_HOURS` (20), `POLL_SECONDS` (30), `BACKUP_MOUNT` (set to `/mnt/zfs1` by the cron entry).
+  `TIMEOUT_HOURS` (20), `POLL_SECONDS` (30), `BACKUP_MOUNT` (set to `/mnt/zfs1` by the cron entry),
+  `REHEARSAL_ENDPOINTS` (`restore` targets; `127.0.0.1:8090,localhost:8090`).
 
 Install or update (the aligned `docker-compose.database.yml` already matches the running
 container, so no restart is needed):
@@ -554,8 +559,10 @@ sudo install -m 644 deploy/semant-weaviate-backup.cron /etc/cron.d/semant-weavia
 ```
 
 Did the most recent backup succeed? `check` exits 1 unless `last_status` is `OK` for the newest
-`auto-` backup, that backup is `SUCCESS` on disk and in Weaviate, its chain is complete, it
-finished less than 26 h ago (`MAX_AGE_HOURS`), and `BACKUP_MOUNT` (when set) is mounted:
+`auto-` backup, that backup and every backup of its chain are `SUCCESS` with readable metadata
+on disk (it names the first broken one), the backup is `SUCCESS` in Weaviate, it finished less
+than 26 h ago (`MAX_AGE_HOURS`), no backup has stayed unfinished or unreadable (blocking
+retention) for longer than `TIMEOUT_HOURS`, and `BACKUP_MOUNT` (when set) is mounted:
 
 ```bash
 sudo BACKUP_MOUNT=/mnt/zfs1 /usr/local/sbin/semant-weaviate-backup check /mnt/zfs1/weaviate_semant/backups /mnt/zfs1/weaviate_semant/backup_state
@@ -595,14 +602,25 @@ WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py restore <newest aut
 deploy/weaviate_backup.py counts > /tmp/counts-production.tsv
 WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py counts > /tmp/counts-restored.tsv
 diff /tmp/counts-production.tsv /tmp/counts-restored.tsv
+# Inactive tenants: count their restored objects too (activates each one in the rehearsal
+# instance, counts it and sets it back)
+WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py counts --activate-inactive --confirm-endpoint 127.0.0.1:8090 > /tmp/counts-restored-all.tsv
 # Clean up
 docker rm -f weaviate-rehearsal && sudo rm -r /mnt/ssd2/weaviate_rehearsal
 sudo zfs destroy zfs1/rehearsal-469 && sudo zfs destroy zfs1@rehearsal-469
 ```
 
-`counts` prints one line per collection and per tenant of a multi-tenant collection (inactive
-tenants by their status, `COLD`), and the aliases. `restore` refuses `127.0.0.1:8080` and any
-endpoint not repeated in `--confirm-endpoint`. Record the date, backup ids, duration and the
+`counts` prints one line per collection and per tenant of a multi-tenant collection, and the
+aliases. An inactive tenant cannot be counted without activating it, so plain `counts` lists it
+by its status (`COLD`) and changes nothing. `--activate-inactive` (with `--confirm-endpoint`)
+activates each inactive tenant, counts it and sets it back (`COLD 3`). Use it freely on the
+rehearsal instance. On production it is a tenant-status write: comparing the inactive tenants'
+counts with production needs an explicit authorization and a write pause (the app activates
+a tenant on access). Without it, the rehearsal shows that every inactive tenant was restored,
+activates and holds objects, but not that its count equals production's.
+`restore` accepts only an endpoint listed in `REHEARSAL_ENDPOINTS` (default
+`127.0.0.1:8090,localhost:8090`, never `:8080`) and repeated in `--confirm-endpoint`. A deny list
+would let another name or address of production through. Record the date, backup ids, duration and the
 diff on #469. The vector index needs memory (8-bit RQ of the 1024-dimensional chunk vectors:
 about 8 GiB, [audit](../docs/WEAVIATE_AUDIT_2026-10.md)); the host has 188 GiB, of which
 production Weaviate may use 98 GiB.

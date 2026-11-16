@@ -46,41 +46,62 @@ def api_for(store_endpoint):
     return wb.Weaviate(f"http://{store_endpoint.host}:{store_endpoint.rest_port}")
 
 
+async def set_cold(tenants, cold: bool):
+    status = TenantActivityStatus.INACTIVE if cold else TenantActivityStatus.ACTIVE
+    await tenants.tenants.update([Tenant(name="cold", activity_status=status)])
+
+
+async def cold_status(tenants):
+    return (await tenants.tenants.get_by_name("cold")).activity_status
+
+
+def probe_counts(api, activate_inactive=False):
+    return {k: v for k, v in api.counts(activate_inactive).items() if "Probe" in k}
+
+
 async def test_full_and_incremental_backups_restore_with_matching_counts(probe, weaviate_client, store_endpoint):
     plain, tenants = probe
     api = api_for(store_endpoint)
-    settings = wb.Settings(poll_seconds=0.2)
+    endpoint = f"{store_endpoint.host}:{store_endpoint.rest_port}"
+    settings = wb.Settings(poll_seconds=0.2, rehearsal_endpoints=(endpoint,))
     run = uuid.uuid4().hex[:8]
     full, incr = f"probe469-{run}-full", f"probe469-{run}-incr"
     await insert(plain, 0, 30)
     await insert(tenants.with_tenant("active"), 0, 5)
     await insert(tenants.with_tenant("cold"), 0, 3)
-    await tenants.tenants.update([Tenant(name="cold", activity_status=TenantActivityStatus.INACTIVE)])
+    await set_cold(tenants, True)
 
     api.create(full, include=[PLAIN, TENANTS])
     assert wb.wait_for(lambda: api.status(full), settings, full)["status"] == "SUCCESS"
     await insert(plain, 30, 20)
     await insert(tenants.with_tenant("active"), 5, 2)
+    await set_cold(tenants, False)
+    await insert(tenants.with_tenant("cold"), 3, 1)  # the inactive tenant also changes between backups
+    await set_cold(tenants, True)
     api.create(incr, base=full, include=[PLAIN, TENANTS])
     assert wb.wait_for(lambda: api.status(incr), settings, incr)["status"] == "SUCCESS"
-    before = {k: v for k, v in api.counts().items() if "Probe" in k}
-    assert before == {PLAIN: 50, f"{TENANTS}/active": 7, f"{TENANTS}/cold": "COLD"}
+
+    # Read-only counts list an inactive tenant by status; --activate-inactive counts its
+    # objects and sets it back to inactive.
+    assert probe_counts(api) == {PLAIN: 50, f"{TENANTS}/active": 7, f"{TENANTS}/cold": "COLD"}
+    before = probe_counts(api, activate_inactive=True)
+    assert before == {PLAIN: 50, f"{TENANTS}/active": 7, f"{TENANTS}/cold": "COLD 4"}
+    assert await cold_status(tenants) == TenantActivityStatus.INACTIVE
 
     for name in (PLAIN, TENANTS):
         await weaviate_client.collections.delete(name)
-    api.restore(incr, include=[PLAIN, TENANTS])
-    restored = wb.wait_for(lambda: api.restore_status(incr), settings, f"restore of {incr}")
+    restored = wb.run_restore(incr, settings, api, endpoint, [PLAIN, TENANTS])
 
     assert restored["status"] == "SUCCESS"
-    assert {k: v for k, v in api.counts().items() if "Probe" in k} == before
+    assert probe_counts(api, activate_inactive=True) == before
+    assert await cold_status(tenants) == TenantActivityStatus.INACTIVE
 
     # The base alone still restores the state it was taken in.
     for name in (PLAIN, TENANTS):
         await weaviate_client.collections.delete(name)
-    api.restore(full, include=[PLAIN, TENANTS])
-    assert wb.wait_for(lambda: api.restore_status(full), settings, full)["status"] == "SUCCESS"
-    assert {k: v for k, v in api.counts().items() if "Probe" in k} == {
-        PLAIN: 30, f"{TENANTS}/active": 5, f"{TENANTS}/cold": "COLD"}
+    assert wb.run_restore(full, settings, api, endpoint, [PLAIN, TENANTS])["status"] == "SUCCESS"
+    assert probe_counts(api, activate_inactive=True) == {
+        PLAIN: 30, f"{TENANTS}/active": 5, f"{TENANTS}/cold": "COLD 3"}
 
 
 async def test_an_incremental_backup_on_a_missing_base_is_refused(probe, store_endpoint):

@@ -8,9 +8,14 @@
     weaviate_backup.py plan BACKUP_ROOT               print the chains, the next backup and
                                                       what retention would delete (read-only)
     weaviate_backup.py counts                         print object counts per collection and
-                                                      tenant, and the aliases (read-only)
+                                                      tenant, and the aliases (read-only;
+                                                      inactive tenants by status only)
+    weaviate_backup.py counts --activate-inactive --confirm-endpoint HOST:PORT
+                                                      also count inactive tenants, activating
+                                                      each and setting it back (a write)
     weaviate_backup.py restore BACKUP_ID --confirm-endpoint HOST:PORT
                                                       restore into a disposable Weaviate
+                                                      listed in REHEARSAL_ENDPOINTS
 
 BACKUP_ROOT is the host directory that Weaviate's ``backup-filesystem`` module writes to
 (bind-mounted at ``BACKUP_FILESYSTEM_PATH``); STATE_DIR holds ``last_status``, ``backup.log``,
@@ -20,13 +25,15 @@ Each run creates a **full** backup when the newest successful full backup made b
 script is older than FULL_INTERVAL_DAYS less 12 hours (or there is none), otherwise an **incremental**
 backup based on the newest successful backup of that full backup's chain. Weaviate records
 each backup's base in ``BACKUP_ROOT/<id>/backup_config.json`` (``baseBackupId``); the chains
-are read from there, so retention also sees backups made by hand.
+are read from there, so retention also sees backups made by hand. A backup counts as
+restorable only when every backup of its chain is present, readable and SUCCESS.
 
 Retention acts only on backups whose id starts with ``auto-`` (made by this script). It keeps
 the newest KEEP_CHAINS chains of successful full backups and deletes an older chain, and any
 failed or cancelled backup, by removing its directory, which is how a ``backup-filesystem``
 backup is deleted (the API has no delete). A backup that any kept backup, including one made
-by hand, depends on is never deleted. Older chains are deleted only once KEEP_CHAINS newer
+by hand, depends on is never deleted, and nothing is deleted while any backup is unfinished
+or has unreadable metadata (its base is unknown). Older chains are deleted only once KEEP_CHAINS newer
 full backups have succeeded, so the pool must hold KEEP_CHAINS + 1 chains for a while.
 
 A backup is refused when the pool has less free space than MIN_FREE_GIB, or than
@@ -40,7 +47,8 @@ deploy/README.md#weaviate-backup-469.
 Environment: WEAVIATE_URL (default http://127.0.0.1:8080), FULL_INTERVAL_DAYS (7),
 KEEP_CHAINS (2), MAX_AGE_HOURS (--check, 26), MIN_FREE_GIB (200), FREE_FACTOR (1.25),
 TIMEOUT_HOURS (20), POLL_SECONDS (30), BACKUP_MOUNT (optional mountpoint that must be mounted
-and contain BACKUP_ROOT and STATE_DIR).
+and contain BACKUP_ROOT and STATE_DIR), REHEARSAL_ENDPOINTS (restore targets, comma-separated
+HOST:PORT; default 127.0.0.1:8090,localhost:8090).
 
 Standard library only; runs on the host's Python 3.10.
 """
@@ -89,6 +97,7 @@ class Settings:
     timeout: timedelta = timedelta(hours=20)
     poll_seconds: float = 30.0
     backup_mount: str = ""
+    rehearsal_endpoints: tuple[str, ...] = ("127.0.0.1:8090", "localhost:8090")
 
     @classmethod
     def from_env(cls, env: dict[str, str] | os._Environ) -> "Settings":
@@ -115,6 +124,8 @@ class Settings:
             timeout=timedelta(hours=number("TIMEOUT_HOURS", 20)),
             poll_seconds=number("POLL_SECONDS", 30),
             backup_mount=env.get("BACKUP_MOUNT", ""),
+            rehearsal_endpoints=tuple(e.strip() for e in env.get("REHEARSAL_ENDPOINTS", "").split(",")
+                                      if e.strip()) or cls.rehearsal_endpoints,
         )
 
 
@@ -207,15 +218,36 @@ def scan(root: Path) -> dict[str, Backup]:
 
 
 def chain_root(backups: dict[str, Backup], backup_id: str) -> str | None:
-    """The full backup that ``backup_id`` ultimately depends on; None when a base is missing."""
+    """The full backup that ``backup_id`` ultimately depends on, or None unless every backup
+    of the chain (``backup_id``, each base and the full backup) is present, has readable
+    metadata and is SUCCESS: only then can ``backup_id`` be restored."""
     seen = set()
     current = backups.get(backup_id)
-    while current is not None and current.base:
-        if current.id in seen:
+    while current is not None:
+        if not current.ok or current.id in seen:
             return None
+        if current.full:
+            return current.id
         seen.add(current.id)
         current = backups.get(current.base)
-    return current.id if current is not None else None
+    return None
+
+
+def chain_problem(backups: dict[str, Backup], backup_id: str) -> str:
+    """Why ``chain_root`` is None, naming the first backup of the chain that breaks it."""
+    seen = set()
+    current_id = backup_id
+    while current_id:
+        current = backups.get(current_id)
+        if current is None:
+            return f"its base {current_id} is missing"
+        if current_id in seen:
+            return f"its chain loops at {current_id}"
+        if not current.ok:
+            return f"{current_id} in its chain is {current.status}"
+        seen.add(current_id)
+        current_id = current.base
+    return "no problem found"
 
 
 def _started(backup: Backup) -> datetime:
@@ -277,13 +309,25 @@ def next_backup(backups: dict[str, Backup], settings: Settings, now: datetime) -
     return NextBackup(new_id("incr", now), "incr", base.id, f"chain of {newest.id}")
 
 
-def retention(backups: dict[str, Backup], keep_chains: int) -> tuple[list[str], list[str]]:
-    """(ids to delete, ids kept only because another backup depends on them).
+def unsettled(backups: dict[str, Backup]) -> list[str]:
+    """Backups neither successful nor failed: still running, or with unreadable metadata.
+    Their base is unknown, so they could depend on any backup."""
+    return sorted(b.id for b in backups.values() if not b.ok and b.status not in TERMINAL_FAILED)
+
+
+def retention(backups: dict[str, Backup], keep_chains: int) -> tuple[list[str], list[str], list[str]]:
+    """(ids to delete, ids kept only because another backup depends on them, ids that block
+    retention).
 
     Candidates are this script's backups that are failed or cancelled, or whose chain is
     older than the newest ``keep_chains`` successful full backups. A candidate is kept when
-    any backup that stays (made by this script or by hand, finished or not) depends on it.
+    any backup that stays (made by this script or by hand) depends on it. While any backup is
+    unsettled (``unsettled``), for example an incremental backup made by hand that is still
+    running, nothing is deleted: its base cannot be known.
     """
+    blockers = unsettled(backups)
+    if blockers:
+        return [], [], blockers
     old_fulls = {b.id for b in auto_fulls(backups)[keep_chains:]}
     delete = set()
     for backup in backups.values():
@@ -308,7 +352,7 @@ def retention(backups: dict[str, Backup], keep_chains: int) -> tuple[list[str], 
                     changed = True
                 parent = backups.get(base)
                 base, steps = (parent.base if parent else ""), steps + 1
-    return sorted(delete), sorted(protected)
+    return sorted(delete), sorted(protected), []
 
 
 # ── Weaviate REST ─────────────────────────────────────────────────────────
@@ -318,7 +362,7 @@ class Weaviate:
         self.url = url.rstrip("/")
         self.timeout = timeout
 
-    def _request(self, method: str, path: str, body: dict | None = None) -> object:
+    def _request(self, method: str, path: str, body: dict | list | None = None) -> object:
         data = None if body is None else json.dumps(body).encode()
         request = urllib.request.Request(f"{self.url}{path}", data=data, method=method,
                                          headers={"Content-Type": "application/json"})
@@ -352,8 +396,14 @@ class Weaviate:
         return self._request(  # type: ignore[return-value]
             "GET", f"/v1/backups/filesystem/{urllib.parse.quote(backup_id)}/restore")
 
-    def counts(self) -> dict[str, object]:
-        """Object counts per collection and per tenant (inactive tenants by status), and the aliases."""
+    def counts(self, activate_inactive: bool = False) -> dict[str, object]:
+        """Object counts per collection and per tenant, and the aliases.
+
+        An inactive tenant cannot be counted without activating it, so by default it is
+        listed by its status only (``COLD``). With ``activate_inactive`` each one is activated,
+        counted and set back to its status (``COLD 3``): a write of the tenant status, for a
+        rehearsal instance or an authorized comparison run.
+        """
         schema = self._request("GET", "/v1/schema") or {}
         result: dict[str, object] = {}
         for cls in sorted(schema.get("classes", []), key=lambda c: c["class"]):  # type: ignore[union-attr]
@@ -363,7 +413,12 @@ class Weaviate:
                 for tenant in sorted(tenants, key=lambda t: t["name"]):  # type: ignore[union-attr]
                     state = tenant.get("activityStatus", "")
                     key = f"{name}/{tenant['name']}"
-                    result[key] = self._count(name, tenant["name"]) if state in ("HOT", "ACTIVE") else state
+                    if state in ("HOT", "ACTIVE"):
+                        result[key] = self._count(name, tenant["name"])
+                    elif activate_inactive:
+                        result[key] = f"{state} {self._count_inactive(name, tenant['name'], state)}"
+                    else:
+                        result[key] = state
             else:
                 result[name] = self._count(name)
         try:
@@ -373,6 +428,16 @@ class Weaviate:
         for alias in sorted(aliases, key=lambda a: a["alias"]):
             result[f"alias:{alias['alias']}"] = alias["class"]
         return result
+
+    def set_tenant_status(self, name: str, tenant: str, status: str) -> None:
+        self._request("PUT", f"/v1/schema/{name}/tenants", [{"name": tenant, "activityStatus": status}])
+
+    def _count_inactive(self, name: str, tenant: str, state: str) -> int:
+        self.set_tenant_status(name, tenant, "HOT")
+        try:
+            return self._count(name, tenant)
+        finally:
+            self.set_tenant_status(name, tenant, state)
 
     def _count(self, name: str, tenant: str | None = None) -> int:
         argument = f'(tenant: {json.dumps(tenant)})' if tenant else ""
@@ -494,16 +559,20 @@ def run_backup(root: Path, state_dir: Path, settings: Settings, api: Weaviate,
     record["disk_bytes"] = disk_usage(root / plan.id)
     record["chain"] = chain_root(scan(root), plan.id)
 
-    delete, protected = retention(scan(root), settings.keep_chains)
+    delete, protected, blockers = retention(scan(root), settings.keep_chains)
+    if blockers:
+        journal.log(f"RETENTION SKIPPED: {' '.join(blockers)} unfinished or unreadable; their bases are unknown")
     for backup_id in delete:
         delete_backup(root, backup_id)
         journal.log(f"DELETED {backup_id} (retention)")
     if protected:
         journal.log(f"KEPT {' '.join(protected)}: another backup depends on them")
     record["deleted"] = delete
+    record["retention_blocked_by"] = blockers
     journal.manifest(record)
     summary = (f"OK id={plan.id} kind={plan.kind} base={plan.base or '-'} "
-               f"disk={human(record['disk_bytes']).replace(' ', '')} deleted={len(delete)}")
+               f"disk={human(record['disk_bytes']).replace(' ', '')} deleted={len(delete)}"
+               + (f" retention=skipped({','.join(blockers)})" if blockers else ""))
     journal.status(summary)
     journal.log(summary)
     return plan.id
@@ -532,7 +601,16 @@ def run_check(root: Path, state_dir: Path, settings: Settings, api: Weaviate,
     if not newest.ok:
         problems.append(f"{newest.id} is {newest.status} on disk")
     elif chain_root(backups, newest.id) is None:
-        problems.append(f"{newest.id} depends on a missing backup")
+        problems.append(f"{newest.id} cannot be restored: {chain_problem(backups, newest.id)}")
+    for backup_id in unsettled(backups):
+        try:
+            idle = clock() - datetime.fromtimestamp((root / backup_id).stat().st_mtime, timezone.utc)
+        except OSError:
+            continue
+        if idle > settings.timeout:
+            problems.append(f"{backup_id} has been unfinished or unreadable for over "
+                            f"{settings.timeout.total_seconds() / 3600:.0f} h; retention is blocked until "
+                            "it is finished or removed")
     if age > settings.max_age:
         problems.append(f"the newest backup is older than {settings.max_age.total_seconds() / 3600:.0f} h")
     try:
@@ -551,19 +629,35 @@ def run_plan(root: Path, settings: Settings, clock: Callable[[], datetime] = utc
               f"\t{'auto' if backup.auto else 'manual'}\tstarted={stamp(backup.started) if backup.started else '-'}")
     plan = next_backup(backups, settings, clock())
     print(f"next: {plan.id} kind={plan.kind} base={plan.base or '-'} ({plan.reason})")
-    delete, protected = retention(backups, settings.keep_chains)
+    delete, protected, blockers = retention(backups, settings.keep_chains)
+    if blockers:
+        print(f"retention blocked by unfinished or unreadable backups: {' '.join(blockers)}")
     print(f"retention would delete: {' '.join(delete) or 'nothing'}")
     if protected:
         print(f"kept because another backup depends on them: {' '.join(protected)}")
 
 
-def run_restore(backup_id: str, settings: Settings, api: Weaviate, confirm: str,
-                include: list[str] | None, sleep: Callable[[float], None] = time.sleep) -> dict:
+def confirmed_endpoint(api: Weaviate, confirm: str | None) -> str:
     endpoint = urllib.parse.urlsplit(api.url).netloc
     if confirm != endpoint:
         raise BackupError(f"--confirm-endpoint {confirm!r} does not match {endpoint!r}")
-    if endpoint in PRODUCTION_ENDPOINTS:
-        raise BackupError(f"refusing to restore into {endpoint}: restore only into a disposable Weaviate")
+    return endpoint
+
+
+def rehearsal_endpoint(api: Weaviate, settings: Settings, confirm: str | None) -> str:
+    """The endpoint of a disposable rehearsal Weaviate: named in REHEARSAL_ENDPOINTS
+    (default 127.0.0.1:8090) and repeated in --confirm-endpoint. Another name or address that
+    reaches production would pass a deny list, so only listed endpoints are accepted."""
+    endpoint = confirmed_endpoint(api, confirm)
+    if endpoint in PRODUCTION_ENDPOINTS or endpoint not in settings.rehearsal_endpoints:
+        raise BackupError(f"refusing {endpoint}: not a rehearsal endpoint (REHEARSAL_ENDPOINTS="
+                          f"{','.join(settings.rehearsal_endpoints)}); restore only into a disposable Weaviate")
+    return endpoint
+
+
+def run_restore(backup_id: str, settings: Settings, api: Weaviate, confirm: str,
+                include: list[str] | None, sleep: Callable[[float], None] = time.sleep) -> dict:
+    rehearsal_endpoint(api, settings, confirm)
     api.restore(backup_id, include)
     return wait_for(lambda: api.restore_status(backup_id), settings, f"restore of {backup_id}", sleep=sleep)
 
@@ -578,7 +672,10 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None,
         command.add_argument("backup_root", type=Path)
         command.add_argument("state_dir", type=Path)
     sub.add_parser("plan").add_argument("backup_root", type=Path)
-    sub.add_parser("counts")
+    counts = sub.add_parser("counts")
+    counts.add_argument("--activate-inactive", action="store_true",
+                        help="activate each inactive tenant to count it, then set its status back")
+    counts.add_argument("--confirm-endpoint", help="HOST:PORT of WEAVIATE_URL (required with --activate-inactive)")
     restore = sub.add_parser("restore")
     restore.add_argument("backup_id")
     restore.add_argument("--confirm-endpoint", required=True, help="HOST:PORT of WEAVIATE_URL")
@@ -597,7 +694,9 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None,
             run_plan(args.backup_root, settings, clock)
             return 0
         if args.command == "counts":
-            for key, value in api.counts().items():
+            if args.activate_inactive:
+                confirmed_endpoint(api, args.confirm_endpoint)
+            for key, value in api.counts(args.activate_inactive).items():
                 print(f"{key}\t{value}")
             return 0
         if args.command == "restore":
