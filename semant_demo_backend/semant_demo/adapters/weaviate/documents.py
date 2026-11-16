@@ -1,6 +1,7 @@
 """Corpus documents and their chunks."""
 import logging
 from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -80,6 +81,7 @@ class DocumentRepository:
         self.client = client
         self.collectionNames = collectionNames
         self._metadata_properties: list[str] | None = None
+        self._chunk_properties: set[str] | None = None
         self.positions = False
         """``Chunks`` declares the position properties (#463): chunk text reads return them
         (set at startup; a property that is not declared cannot be read)."""
@@ -332,6 +334,27 @@ class DocumentRepository:
         response = await documents.query.fetch_objects(
             filters=by_ids if scope is None else Filter.all_of([by_ids, scope]), limit=len(document_ids))
         return {UUID(str(o.uuid)): Document(id=o.uuid, **o.properties) for o in response.objects}
+
+    async def _declared_chunk_properties(self) -> set[str]:
+        """The properties the ``Chunks`` collection declares; read once, then cached (a schema
+        change needs a restart)."""
+        if self._chunk_properties is None:
+            config = await self._chunks().config.get()
+            self._chunk_properties = {p.name for p in config.properties}
+        return self._chunk_properties
+
+    async def read_chunk_metadata(self, chunk_ids: Sequence[UUID], properties: Sequence[str]
+                                  ) -> dict[UUID, dict[str, Any]]:
+        """The stored ``properties`` of the existing chunks among ``chunk_ids`` (one query), e.g. their
+        language and classifications. Properties the store does not declare are not read (a chunk
+        has no value for them); a chunk that does not exist is absent."""
+        if not chunk_ids:
+            return {}
+        declared = await self._declared_chunk_properties()
+        wanted = [p for p in properties if p in declared]
+        response = await self._chunks().query.fetch_objects(
+            filters=Filter.by_id().contains_any(list(chunk_ids)), limit=len(chunk_ids), return_properties=wanted)
+        return {UUID(str(o.uuid)): {p: o.properties.get(p) for p in wanted} for o in response.objects}
 
     async def _searchable_metadata(self) -> list[str]:
         """``METADATA_PROPERTIES`` the store declares as searchable text, with their weights; read
