@@ -257,7 +257,7 @@ import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
 import { countAnnotations } from 'src/features/annotations/annotationCounts'
-import { useCollectionStatsStore } from './collectionStatsStore'
+import { useCollectionStats } from './useCollectionStats'
 import { collectionRights } from './permissions'
 import { useUserCollectionsRepository } from './useUserCollectionsRepository'
 import { memberName } from './members'
@@ -266,10 +266,6 @@ const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
 const { activeCollection, loading: collectionLoading, error: collectionError } = storeToRefs(collectionsStore)
 const { fetchCollection, updateCollection } = collectionsStore
-
-const collectionStatsStore = useCollectionStatsStore()
-const { collectionStats, loading: collectionStatsLoading, error: collectionStatsError } = storeToRefs(collectionStatsStore)
-const { fetchCollectionStats } = collectionStatsStore
 
 // Name, description and color are owner-only metadata (ADR 0007). Nothing is granted until
 // this collection has loaded, so the previous collection's rights don't show meanwhile.
@@ -296,6 +292,14 @@ const collectionId = computed(() => {
   const value = $route.params.collectionId
   return typeof value === 'string' ? value : ''
 })
+
+// Statistics of this collection only, asked again on every visit (`useCollectionStats`),
+// and shown only while the collection is loaded: not after the session changed, before it
+// was loaded again for the new user.
+const collectionStatsQuery = useCollectionStats(collectionId, collectionLoaded)
+const collectionStatsLoading = computed(() => collectionLoaded.value && collectionStatsQuery.isFetching.value)
+const collectionStatsFailed = computed(() => collectionLoaded.value && collectionStatsQuery.isError.value)
+const collectionStatsError = computed(() => collectionStatsFailed.value ? 'Failed to fetch collection statistics' : null)
 
 const normalizedDescription = computed(() => (activeCollection.value?.description ?? '').trim())
 const normalizedEditedDescription = computed(() => editableDescription.value.trim())
@@ -349,11 +353,6 @@ async function loadSuggestionsCount (isCurrent: () => boolean) {
   }
 }
 
-const refreshOverviewData = async () => {
-  await fetchCollection(collectionId.value)
-  await fetchCollectionStats(collectionId.value)
-}
-
 // Members and the suggestion count are asked for once this collection has loaded (here or
 // by the enclosing layout), so a collection that is gone or no longer shared shows only its
 // own error. Another collection starts over.
@@ -383,13 +382,15 @@ const updatedAtText = computed(() =>
 )
 
 const statCards = computed(() => {
-  const stats = collectionStats.value
+  // Unknown while loading or after a failed load ('–', not 0): a failed refresh doesn't
+  // leave the earlier numbers on screen as if they were current.
+  const stats = collectionLoaded.value && !collectionStatsFailed.value ? collectionStatsQuery.data.value : undefined
 
   return [
     {
       key: 'documents',
       label: 'Documents in Collection',
-      value: stats?.documentsCount ?? 0,
+      value: stats?.documentsCount ?? '–',
       helper: 'Number of linked documents',
       icon: 'description',
       color: 'primary'
@@ -397,7 +398,7 @@ const statCards = computed(() => {
     {
       key: 'chunks',
       label: 'Chunks in Collection',
-      value: stats?.chunksCount ?? 0,
+      value: stats?.chunksCount ?? '–',
       helper: 'Text chunks assigned to this collection',
       icon: 'notes',
       color: 'secondary'
@@ -405,7 +406,7 @@ const statCards = computed(() => {
     {
       key: 'tags',
       label: 'Tags in Collection',
-      value: stats?.tagsCount ?? 0,
+      value: stats?.tagsCount ?? '–',
       helper: 'Defined tags for this collection',
       icon: 'label',
       color: 'teal'
@@ -413,7 +414,7 @@ const statCards = computed(() => {
     {
       key: 'annotations',
       label: 'Annotations in Collection',
-      value: stats?.annotationsCount ?? 0,
+      value: stats?.annotationsCount ?? '–',
       helper: 'Confirmed annotations in this collection',
       icon: 'sell',
       color: 'accent'
@@ -455,10 +456,10 @@ const submitDescriptionEdit = async () => {
   const descriptionPayload = normalizedEditedDescription.value || null
   isSavingDescription.value = true
 
-  await updateCollection(collectionId.value, { description: descriptionPayload })
+  const saved = await updateCollection(collectionId.value, { description: descriptionPayload })
 
   isSavingDescription.value = false
-  if (!collectionStatsError.value) {
+  if (saved) {
     isEditingDescription.value = false
   }
 }
@@ -467,10 +468,10 @@ const submitNameEdit = async () => {
   if (!collectionId.value || isNameSaveDisabled.value) return
 
   isSavingName.value = true
-  await updateCollection(collectionId.value, { name: normalizedEditedName.value })
+  const saved = await updateCollection(collectionId.value, { name: normalizedEditedName.value })
 
   isSavingName.value = false
-  if (!collectionStatsError.value) {
+  if (saved) {
     isEditingName.value = false
   }
 }
@@ -492,21 +493,21 @@ const submitColorEdit = async () => {
   }
 
   isSavingColor.value = true
-  await updateCollection(collectionId.value, { color: currentColor.value })
+  const saved = await updateCollection(collectionId.value, { color: currentColor.value })
   isSavingColor.value = false
 
-  if (!collectionStatsError.value) {
+  if (saved) {
     closeColor()
   }
 }
 
 onMounted(() => {
-  refreshOverviewData()
+  void fetchCollection(collectionId.value)
 })
 
 // The same page shown for another collection loads that one; earlier answers are dropped.
 watch(collectionId, (id, previous) => {
-  if (id && id !== previous) void refreshOverviewData()
+  if (id && id !== previous) void fetchCollection(id)
 })
 </script>
 

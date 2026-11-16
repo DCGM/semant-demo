@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { Collection, PostCollection, PatchCollection } from 'src/generated/api'
 import { useUserCollectionsRepository } from './useUserCollectionsRepository'
+import { forgetCollectionStats } from './useCollectionStats'
 import { ongoingNotification } from 'src/shared/notification'
 import { incompleteWriteMessage } from 'src/shared/writeOutcome'
 import { captureSession, createContextGuard } from 'src/shared/api'
@@ -25,6 +26,7 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
     ids.forEach((id) => deletedIds.add(id))
     collections.value = collections.value.filter((c) => !deletedIds.has(c.id))
     if (activeCollection.value && deletedIds.has(activeCollection.value.id)) activeCollection.value = null
+    forgetCollectionStats(ids)
   }
 
   // Collection[] visible in UI — excludes any IDs currently being deleted
