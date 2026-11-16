@@ -235,7 +235,7 @@
           </span>
         </div>
         <!-- The status as a segmented switch ✓|⊘ (#690), the same shape in every row: the state in
-             effect is the tinted half, a proposal (to be decided) has neither and an orange outline.
+             effect is the tinted half, a proposal (to be decided) has neither, both halves orange.
              On a desktop the halves are its review buttons; hover or keyboard focus only darkens the
              other half, so nothing appears or moves. While the review is saved a spinner covers it.
              A click there never opens or checks the row, nor moves focus. On a phone it only shows. -->
@@ -1288,10 +1288,14 @@ defineExpose({ reveal, focusRowById })
   background: rgba(198, 40, 40, 0.12);
 }
 
-/* A proposal: neither half, an orange outline; the rows still to decide stand out. */
+/* A proposal: neither half chosen, both tinted orange; the rows still to decide stand out. */
 .kwic__switch--auto {
-  border-color: #ef8f00;
-  box-shadow: 0 0 0 1px rgba(239, 143, 0, 0.35);
+  border-color: rgba(239, 143, 0, 0.45);
+}
+
+.kwic__switch--auto .kwic__half {
+  background: rgba(255, 152, 0, 0.16);
+  color: rgba(138, 83, 0, 0.55);
 }
 
 .kwic__switch--auto .kwic__half + .kwic__half {
