@@ -358,6 +358,62 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await expect.poll(async () => (await fourth.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom)
 })
 
+test('a review queue: reviewed rows stay in place, shortcuts decide and move, the position is announced (#690)', async ({ page, request }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  const context = page.getByTestId('annotation-context')
+  const announcement = page.getByTestId('annotation-announcement')
+  try {
+    await page.getByTestId('concordance-status-pos').click() // proposals only
+    await expect(rows(page)).toHaveCount(2)
+    const [first, second] = [rows(page).nth(0), rows(page).nth(1)]
+    const secondText = (await second.locator('.kwic__key-label').textContent()) ?? ''
+    await first.click()
+    await expect(context.getByTestId('annotation-position')).toHaveText('1 / 2')
+    // A proposal has neither state pressed.
+    await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('row-prev')).toBeDisabled()
+
+    // Shortcuts act on the sidebar while it has focus; not while focus is in the list.
+    await page.getByTestId('row-next').focus()
+    await page.keyboard.press('Alt+C')
+    await expect(second).toHaveAttribute('aria-current', 'true')
+    await expect(announcement).toContainText(`Confirmed. 2 / 2: ${secondText.trim().slice(0, 20)}`)
+    await expect(announcement).toContainText('Last annotation.')
+    // The confirmed row stays in place, at its new state, marked as out of the filters.
+    await expect(rows(page)).toHaveCount(2)
+    await expect(first).toContainText('Confirmed')
+    await expect(first.getByTestId('kwic-unmatched')).toBeVisible()
+    await expect(page.getByTestId('concordance-unmatched')).toContainText('1 reviewed row no longer matches the filters')
+    await expect(page.getByTestId('row-next')).toBeDisabled()
+
+    // Back to it: Confirmed is pressed now; choosing it again writes nothing.
+    await page.getByTestId('row-reject').focus()
+    await page.keyboard.press('Alt+ArrowUp')
+    await expect(first).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('row-reject')).toBeFocused()
+    let reviews = 0
+    page.on('request', r => { if (r.url().endsWith('/annotations/review')) reviews++ })
+    await page.keyboard.press('Alt+C')
+    await expect(second).toHaveAttribute('aria-current', 'true')
+    await expect(announcement).toContainText('Already confirmed. 2 / 2')
+    expect(reviews).toBe(0)
+
+    // Rejecting the second keeps both rows; the list changes when it is read again.
+    await page.keyboard.press('Alt+R')
+    await expect(second).toContainText('Rejected')
+    await expect(announcement).toContainText('Rejected.')
+    await expect(page.getByTestId('concordance-unmatched')).toContainText('2 reviewed rows no longer match the filters')
+    await page.getByTestId('concordance-refresh').click()
+    await expect(page.getByTestId('concordance-empty')).toBeVisible()
+  } finally {
+    for (const span of proposals) await patchSpan(request, span.id, { type: 'auto' })
+  }
+})
+
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
@@ -709,7 +765,7 @@ test('a long annotated text shows its first lines in the sidebar, the whole text
   await expect(toggle).toHaveCount(0)
 })
 
-test('the review comes first; the tag chip changes the tag (#659)', async ({ page, request }) => {
+test('the tag and the position head the sidebar, the review is a choice of state; the tag chip changes the tag (#659, #690)', async ({ page, request }) => {
   const text = fixture.chunk('chronicle_2').text.slice(0, 8)
   await createSpan(request, 'chronicle_2', 0, 8)
   await useViewport(page, 'narrow')
@@ -719,14 +775,19 @@ test('the review comes first; the tag chip changes the tag (#659)', async ({ pag
   const review = page.getByTestId('annotation-review')
   const chip = page.getByTestId('row-retag')
   await expect(chip).toHaveAccessibleName(`Tag: ${fixture.tag('person').name}. Change tag`)
-  // The decision is the first thing in the detail, above the tag and the text.
+  // The tag and the place in the result first, then the decision, then the text.
   const y = async (locator: typeof chip) => (await locator.boundingBox())?.y ?? 0
-  expect(await y(review)).toBeLessThan(await y(chip))
-  expect(await y(chip)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
-  // Confirm, Reject and Next decide; Delete is a quiet action of its own, apart from them.
-  await expect(review.getByRole('button')).toHaveText(['checkConfirm', 'blockReject', 'skip_nextNext'])
-  // The status in its colour, the tag's definition on the chip.
-  await expect(context.getByTestId('annotation-context-status')).toHaveClass(/annotation-context__status--pos/)
+  expect(await y(chip)).toBeLessThan(await y(review))
+  expect(await y(review)).toBeLessThan(await y(context.getByTestId('annotation-context-text')))
+  await expect(context.getByTestId('annotation-position')).toHaveText(/^\d+ \/ \d+$/)
+  // Confirmed and Rejected are the states to choose; the one in effect is pressed, not disabled.
+  // Delete is a quiet action of its own, apart from them.
+  await expect(review.getByRole('button')).toHaveText(['checkConfirmed', 'blockRejected'])
+  await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('row-approve')).toBeEnabled()
+  await expect(page.getByTestId('row-reject')).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByTestId('row-approve')).toHaveAttribute('aria-keyshortcuts', 'Alt+C')
+  // The tag's definition on the chip.
   await chip.hover()
   await expect(page.getByTestId('tag-chip-tooltip')).toContainText('Click to change the tag')
   await page.mouse.move(0, 0)
@@ -908,7 +969,11 @@ test('the sidebar names who changed the open annotation and refuses a review of 
     // Rejecting the version shown now is the user's explicit choice.
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
-    await expect(row(page, 'Lhoty')).toHaveCount(0) // rejected: out of the default filters
+    // Rejected: out of the default filters, but the row stays until the list is read again (#690).
+    await expect(row(page, 'Lhoty')).toContainText('Rejected')
+    await expect(row(page, 'Lhoty').getByTestId('kwic-unmatched')).toBeVisible()
+    await page.getByTestId('concordance-refresh').click()
+    await expect(row(page, 'Lhoty')).toHaveCount(0)
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })
   }
@@ -928,15 +993,15 @@ test('a refused review keeps its conflict when the change took the annotation ou
     await context.getByRole('button', { name: 'Reject' }).click()
     const conflict = context.getByTestId('annotation-conflict')
     await expect(conflict).toContainText('now confirmed')
-    await expect(conflict).toContainText('It is no longer on this page.')
-    await expect(row(page, 'Lhoty')).toHaveCount(0)
+    // The row stays where it was, at its current state, marked as out of the filters (#690).
+    await expect(conflict).toContainText('It no longer matches the filters.')
+    await expect(row(page, 'Lhoty')).toContainText('Confirmed')
+    await expect(row(page, 'Lhoty').getByTestId('kwic-unmatched')).toBeVisible()
     await expect(context.getByTestId('annotation-context-gone')).toHaveCount(0)
 
-    // Reviewing an annotation the page does not show asks first, as for hidden selected ones.
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
-    await expect(page.getByRole('dialog')).toContainText('not on this page')
-    await page.getByRole('dialog').getByRole('button', { name: 'Reject 1' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
+    await expect(row(page, 'Lhoty')).toContainText('Rejected')
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })
   }

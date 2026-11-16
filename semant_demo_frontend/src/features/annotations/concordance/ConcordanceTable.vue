@@ -97,7 +97,8 @@
         :class="{
           'kwic__row--focused': row.id === focusedId,
           'kwic__row--selected': selected.has(row.id),
-          'kwic__row--rejected': row.type === SpanType.neg
+          'kwic__row--rejected': row.type === SpanType.neg,
+          'kwic__row--unmatched': unmatched.has(row.id)
         }"
         role="row"
         :aria-selected="selected.has(row.id) ? 'true' : 'false'"
@@ -199,7 +200,23 @@
             <span class="kwic__tag-dot" :style="{ backgroundColor: tagColor(row) }" aria-hidden="true" />
             {{ tagName(row) }}
           </span>
-          <span class="kwic__status" :class="`kwic__status--${row.type}`">{{ statusLabel(row.type) }}</span>
+          <!-- While its review is saved, a spinner covers the status, which keeps its width. -->
+          <span
+            class="kwic__status"
+            :class="[`kwic__status--${row.type}`, { 'kwic__status--saving': saving.has(row.id) }]"
+            :aria-busy="saving.has(row.id) ? 'true' : undefined"
+            data-testid="kwic-status"
+          >{{ statusLabel(row.type) }}<q-spinner v-if="saving.has(row.id)" class="kwic__status-spinner" size="0.9em" aria-label="Saving" /></span>
+          <!-- Reviewed here and out of the filters now: it stays until the query is read again (#690). -->
+          <q-icon
+            v-if="unmatched.has(row.id)"
+            name="filter_alt_off"
+            size="1rem"
+            class="kwic__unmatched"
+            title="No longer matches the filters; it leaves the list when the list is read again"
+            data-testid="kwic-unmatched"
+          />
+          <span v-if="unmatched.has(row.id)" class="sr-only">No longer matches the filters</span>
         </div>
         <div class="kwic__cell kwic__source" role="gridcell" :title="sourceLabel(row)">
           <span v-if="row.documentAvailable" class="kwic__title">{{ row.documentTitle || 'Untitled document' }}</span>
@@ -222,7 +239,7 @@ export type FilterField = 'annotation' | 'context' | 'source' | 'year'
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, ClosePopup as vClosePopup } from 'quasar'
+import { QBtn, QCheckbox, QIcon, QItem, QItemSection, QList, QMenu, QSpinner, ClosePopup as vClosePopup } from 'quasar'
 import {
   AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
 } from 'src/generated/api'
@@ -247,6 +264,10 @@ const props = withDefaults(defineProps<{
   attributes?: Attribute[]
   /** Annotations with an assignment under way. */
   pending?: Set<string>
+  /** Annotations whose review is being saved (#690). */
+  saving?: Set<string>
+  /** Rows a review took out of the filters; they stay, marked, until the list is read again (#690). */
+  unmatched?: Set<string>
   /** The lexical query whose matches are marked (#663), and where it searches. */
   query?: string
   queryScope?: TextScope
@@ -261,6 +282,8 @@ const props = withDefaults(defineProps<{
   loading: false,
   attributes: () => [],
   pending: () => new Set(),
+  saving: () => new Set(),
+  unmatched: () => new Set(),
   query: '',
   queryScope: TextScope.annotation,
   rankStart: null,
@@ -402,7 +425,8 @@ function sourceLabel (row: AnnotationListRow): string {
 
 function rowLabel (row: AnnotationListRow): string {
   const text = row.text ?? missingText(row)
-  return `${text} (${tagName(row)}, ${statusLabel(row.type)}, ${sourceLabel(row)})`
+  const away = props.unmatched.has(row.id) ? ', no longer matches the filters' : ''
+  return `${text} (${tagName(row)}, ${statusLabel(row.type)}${away}, ${sourceLabel(row)})`
 }
 
 // The open value picker (one at a time, of one row's one attribute). Choosing one value of a
@@ -867,6 +891,30 @@ defineExpose({ reveal })
 
 .kwic__status--neg {
   color: #8e1b1b;
+}
+
+.kwic__status--saving {
+  position: relative;
+  color: transparent;
+}
+
+.kwic__status-spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  color: var(--q-primary);
+}
+
+.kwic__unmatched {
+  flex: 0 0 auto;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Reviewed out of the filters (#690): still there, but visibly no longer part of the result. */
+.kwic__row--unmatched .kwic__text,
+.kwic__row--unmatched .kwic__source,
+.kwic__row--unmatched .kwic__year {
+  opacity: 0.5;
 }
 
 .kwic__row:not(.kwic__row--head) .kwic__source,

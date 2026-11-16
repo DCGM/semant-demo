@@ -257,6 +257,51 @@ describe('concordance store', () => {
     expect([await moved, selection.focused?.id]).toEqual([false, 'b'])
   })
 
+  it('reads reviewed rows again where they are; those out of the filters stay, marked (#690)', async () => {
+    const store = await opened(['a', 'b', 'c', 'd'], 120)
+    useAnnotationSelectionStore().focus(store.rows[1]!)
+    const refreshing = store.refreshRows(['b', 'c', 'x'])
+    await flush()
+    // Only listed rows are read, by id at any state, and checked against the filters.
+    const byId = rowCalls()[1]
+    expect(byId.url.searchParams.getAll('annotation_id')).toEqual(['b', 'c'])
+    expect(byId.url.searchParams.getAll('type').sort()).toEqual(['auto', 'neg', 'pos'])
+    expect((idCalls().at(-1)!.body as { within: string[] }).within).toEqual(['b', 'c'])
+    byId.answer({ rows: [{ ...row('b'), type: 'neg', editVersion: 2 }], total: 1, offset: 0, limit: 2 })
+    idCalls().at(-1)!.answer({ ids: [] })
+    await refreshing
+    // "c" was deleted meanwhile: it leaves the page; "b" stays in place at its new state.
+    expect(store.rows.map(r => [r.id, r.type])).toEqual([['a', 'pos'], ['b', 'neg'], ['d', 'pos']])
+    expect([...store.unmatched]).toEqual(['b'])
+    expect(store.total).toBe(120)
+    expect(useAnnotationSelectionStore().focused?.editVersion).toBe(2)
+    // The next page starts after the rows that left the result: "b" and "c" moved the later ones up.
+    expect(store.nextOffset).toBe(2)
+
+    // Reading the list again shows the result as it is now, unmarked.
+    const loading = store.load()
+    await flush()
+    rowCalls().at(-1)!.answer(page(['a', 'd'], 118))
+    await loading
+    expect([...store.unmatched]).toEqual([])
+    expect(store.nextOffset).toBe(2)
+  })
+
+  it('drops reviewed rows read after the page changed (#690)', async () => {
+    const store = await opened(['a', 'b'], 120)
+    const refreshing = store.refreshRows(['a'])
+    await flush()
+    const going = store.goTo(50)
+    await flush()
+    rowCalls().at(-1)!.answer(page(['e', 'f'], 120, 50))
+    await going
+    rowCalls()[1]!.answer({ rows: [{ ...row('a'), type: 'neg' }], total: 1, offset: 0, limit: 1 })
+    idCalls().at(-1)!.answer({ ids: [] })
+    await refreshing
+    expect(store.rows.map(r => r.id)).toEqual(['e', 'f'])
+    expect([...store.unmatched]).toEqual([])
+  })
+
   it('goes back to the last page when the current one emptied meanwhile', async () => {
     const store = await opened(['a', 'b'], 60)
     const paging = store.goTo(50)
