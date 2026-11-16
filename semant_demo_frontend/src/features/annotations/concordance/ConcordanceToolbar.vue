@@ -638,6 +638,7 @@ const shownLabel = computed(() => {
 
 .concordance-toolbar__status :deep(.q-btn) {
   min-height: 40px;
+  padding: 0 12px;
 }
 
 .concordance-toolbar__more-button {
@@ -797,12 +798,24 @@ const shownLabel = computed(() => {
 }
 
 @media (max-width: 599px) {
+  /* Next to the Filters button, the select taking the rest of the row. */
   .concordance-toolbar__display {
     order: -1;
     padding-left: 0;
     border-left: 0;
-    flex: 1 1 auto;
-    justify-content: flex-end;
+    flex: 1 1 0;
+    min-width: 150px;
+    margin-left: 0;
+  }
+
+  .concordance-toolbar__group-label {
+    display: none;
+  }
+
+  .concordance-toolbar__show-attribute {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
   }
 
   .concordance-toolbar__tags,
