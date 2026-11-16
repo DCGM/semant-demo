@@ -448,6 +448,12 @@ test('inline row review: buttons on hover and focus in a column of fixed width, 
     await first.getByTestId('kwic-approve').click()
     await expect(first.getByTestId('kwic-approve')).toHaveAttribute('aria-pressed', 'true')
     await expect(first.getByTestId('kwic-status')).toContainText('Confirmed')
+    // Confirmed: its ✓ stays in place, alone, once the pointer leaves; ⊘ shows only on hover.
+    const place = await first.getByTestId('kwic-approve').boundingBox()
+    await page.mouse.move(0, 0)
+    await expect(first.getByTestId('kwic-approve')).toBeVisible()
+    await expect(first.getByTestId('kwic-reject')).toBeHidden()
+    expect(await first.getByTestId('kwic-approve').boundingBox()).toEqual(place)
     expect(reviews).toBe(1)
     expect(await width(cell), 'no width change after saving').toBe(idle)
     await expect(first).not.toHaveAttribute('aria-current', 'true')
@@ -837,7 +843,7 @@ test('narrow lists keep the tag and status and give up source and year first (#6
   const shown = (locator: Locator) => locator.evaluate(e => e.getBoundingClientRect().width > 8)
   const check = async (wide: boolean) => {
     const novak = row(page, 'Jan Novák')
-    expect(await shown(novak.locator('.kwic__status')), 'status').toBe(true)
+    expect(await shown(novak.locator('.kwic__review')), 'status').toBe(true)
     expect(await shown(novak.locator('.kwic__tag')), 'tag').toBe(true)
     expect(await shown(novak.locator('.kwic__source')), 'source').toBe(wide)
     expect(await shown(novak.locator('.kwic__year')), 'year').toBe(wide)
@@ -859,7 +865,7 @@ test('narrow lists keep the tag and status and give up source and year first (#6
   // Without attribute columns the list fits: it does not scroll sideways.
   // (Polled: the layout settles after the viewport change closes the sidebar.)
   await expect.poll(() => page.getByTestId('kwic').evaluate(e => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0)
-  const [list, status] = await Promise.all([page.getByTestId('kwic').boundingBox(), row(page, 'Jan Novák').locator('.kwic__status').boundingBox()])
+  const [list, status] = await Promise.all([page.getByTestId('kwic').boundingBox(), row(page, 'Jan Novák').locator('.kwic__review').boundingBox()])
   expect(status!.x + status!.width, 'status within the list').toBeLessThanOrEqual(list!.x + list!.width)
 })
 
