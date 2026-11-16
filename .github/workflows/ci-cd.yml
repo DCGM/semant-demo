@@ -546,9 +546,11 @@ jobs:
   # suite its mode requires succeeded; suites the mode omits must be skipped or successful
   # and are listed as not tested. Its needs must equal SUITES in scripts/ci_changes.py
   # (checked by the gate and by semant_demo_backend/tests/test_ci_changes.py).
+  # Await the preview in every PR mode (static needs graph), but only require its
+  # success for deploy mode; other preview failures remain non-blocking.
   ci-result:
     name: CI result
-    needs: [classify, docs-check, test-backend, test-frontend, test-integration, test-browser, python-locks, api-client-drift]
+    needs: [classify, docs-check, test-backend, test-frontend, test-integration, test-browser, python-locks, api-client-drift, deploy-test-pr]
     if: always() && github.event.action != 'closed' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, semant-ci]
     container:
