@@ -675,6 +675,9 @@ async function bulkResolveSelected(type: SpanType) {
   const message = describeBulkResolve(summary, type === SpanType.pos ? 'Confirmed' : 'Rejected')
   if (message) {
     $q.notify({ type: summary.saved === summary.total ? 'warning' : 'negative', message, timeout: 10000 })
+  } else {
+    const n = summary.saved
+    $q.notify({ type: 'positive', message: `${type === SpanType.pos ? 'Confirmed' : 'Rejected'} ${n} ${n === 1 ? 'suggestion' : 'suggestions'}.` })
   }
 }
 
