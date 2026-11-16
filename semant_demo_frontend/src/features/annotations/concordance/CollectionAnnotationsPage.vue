@@ -903,7 +903,19 @@ async function reviewFocused (action: ReviewAction, tagId?: string) {
   // The next page starts after the rows that left the result: known once they are read again.
   if (!store.rows[focusedIndex.value + 1]) await reviewed.loaded
   if (selection.focused?.id !== row.id) return
+  quietDecision()
   await advance(action === ReviewAction.approve ? 'Confirmed.' : 'Rejected.')
+}
+
+/**
+ * A saved decision of one annotation (sidebar or row, #690) adds no lines above the list, which
+ * would move it: the row shows its new state and the live region says it. It is changed back by
+ * choosing the other state, so it leaves no Undo either. Batch reviews, failures and conflicts
+ * still report there.
+ */
+function quietDecision () {
+  review.dismiss()
+  review.noteChange(null)
 }
 
 /**
@@ -948,6 +960,7 @@ async function reviewRow (row: AnnotationListRow, action: RowDecision): Promise<
     return false
   }
   if (report.saved.length !== 1) return false
+  quietDecision()
   await reviewed.loaded
   announce(done, store.rows.find(r => r.id === row.id) ?? row)
   return true

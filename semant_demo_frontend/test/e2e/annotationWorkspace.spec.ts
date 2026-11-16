@@ -456,6 +456,8 @@ test('inline row review: buttons on hover and focus in a column of fixed width, 
     // It stays in place, out of the filters now.
     await expect(first).toHaveClass(/kwic__row--unmatched/)
     await expect(announcement).toContainText('Confirmed. 1 / 2')
+    await expect(page.getByTestId('review-report')).toHaveCount(0)
+    await expect(page.getByTestId('undo-bar')).toHaveCount(0)
 
     // Keyboard: Alt+R rejects the focused row; it stays focused on the last row of the page.
     await first.focus()
@@ -1143,7 +1145,10 @@ test('the sidebar names who changed the open annotation and refuses a review of 
 
     // Rejecting the version shown now is the user's explicit choice.
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
-    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
+    // A single decision adds no report or Undo line above the list (#690 review).
+    await expect(page.getByTestId('annotation-announcement')).toContainText('Rejected.')
+    await expect(page.getByTestId('review-report')).toHaveCount(0)
+    await expect(page.getByTestId('undo-bar')).toHaveCount(0)
     // Rejected: out of the default filters, but the row stays until the list is read again (#690).
     await expect(row(page, 'Lhoty')).toContainText('Rejected')
     await expect(row(page, 'Lhoty')).toHaveClass(/kwic__row--unmatched/)
@@ -1175,7 +1180,10 @@ test('a refused review keeps its conflict when the change took the annotation ou
     await expect(context.getByTestId('annotation-context-gone')).toHaveCount(0)
 
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
-    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
+    // A single decision adds no report or Undo line above the list (#690 review).
+    await expect(page.getByTestId('annotation-announcement')).toContainText('Rejected.')
+    await expect(page.getByTestId('review-report')).toHaveCount(0)
+    await expect(page.getByTestId('undo-bar')).toHaveCount(0)
     await expect(row(page, 'Lhoty')).toContainText('Rejected')
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })

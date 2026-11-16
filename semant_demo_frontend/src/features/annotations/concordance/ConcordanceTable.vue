@@ -515,7 +515,7 @@ function statusLabel (type: SpanType | null | undefined): string {
 function statusIcon (type: SpanType | null | undefined): string {
   if (type === SpanType.pos) return 'check'
   if (type === SpanType.neg) return 'block'
-  return 'help_outline'
+  return 'question_mark'
 }
 
 function missingText (row: AnnotationListRow): string {
@@ -1250,7 +1250,7 @@ defineExpose({ reveal, focusRowById })
 
 .kwic__row--head .kwic__review {
   overflow: hidden;
-  place-items: center start;
+  text-align: center;
 }
 
 .kwic__status {
