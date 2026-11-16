@@ -16,6 +16,7 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `Dockerfile.embedder` | Build of the former Gemma embedding service (`embedding_service/`); no longer used by `docker-compose.embedder.yml` |
 | `update.sh` | Named shortcuts for the `docker compose` commands below |
 | `sqlite_backup.sh` / `semant-sqlite-backup.cron` / `test_sqlite_backup.sh` | Daily backup of the production `tasks.db` (host cron) and its tests; see [SQLite backup](#sqlite-backup-399) |
+| `weaviate_backup.py` / `semant-weaviate-backup.cron` | Daily production Weaviate backup (weekly full, incremental in between) with chain-aware retention (host cron); see [Weaviate backup](#weaviate-backup-469) |
 | `.env.example` / `.env.test.example` | Environment templates for production / test instances |
 
 ## Services
@@ -502,6 +503,114 @@ copy had the same tables and counts as the live file (41 users, 330 feedback row
 `integrity_check`, and the backend at `b95eb57` opened it and created the quota tables in that
 copy. The live file's checksum was unchanged afterwards. The feedback log
 (`feedback/feedback.log.jsonl`) is not part of this backup.
+
+### Weaviate backup (#469)
+
+Production Weaviate writes `backup-filesystem` backups to `/mnt/zfs1/weaviate_semant/backups`
+(mounted at `BACKUP_FILESYSTEM_PATH=/var/lib/weaviate/backups` by `docker-compose.database.yml`).
+`weaviate_backup.py` (standard library only, runs on the host's `python3`) takes them on a
+schedule and deletes old ones. Before #469 they were made and deleted by hand.
+
+- **Schedule.** Daily at 01:00 server time (`semant-weaviate-backup.cron`). A run takes a
+  **full** backup when the newest full backup made by the script is 7 days old (`FULL_INTERVAL_DAYS`,
+  less 12 h so that a daily run starts it on the 7th day), otherwise an **incremental** backup
+  based on the newest successful backup of that chain. A full backup of the store (8.3 M chunks)
+  took 2 h 48 min and 261 GB before compression (`backup-2026-11-16`, by hand); measure the
+  incremental size after the first week and record it on #469.
+- **Chains.** Weaviate stores an incremental backup's unchanged files as references to its base
+  and records the base in `<id>/backup_config.json` (`baseBackupId`). An incremental backup
+  restores only while **every backup it depends on** still exists. The script reads the chains
+  from these files, so it also sees backups made by hand.
+- **Retention.** The newest 2 chains are kept (`KEEP_CHAINS`). An older chain is deleted as a
+  whole (by removing its directories; Weaviate has no delete API) once 2 newer full backups
+  have succeeded, so the pool holds a third chain while a new full backup runs. Failed or
+  cancelled backups are deleted too. Only ids starting with `auto-` are ever deleted;
+  **backups made by hand are never touched**, and an `auto-` backup that any remaining backup
+  (also one made by hand) depends on is kept.
+- **Free space.** A run refuses to start when the pool has less free space than 200 GiB
+  (`MIN_FREE_GIB`) or than 1.25× (`FREE_FACTOR`) the disk usage of the newest full backup.
+  The pool is shared with other projects and was 98% full (1.2 TiB free of 43 TiB) on 2026-11-16.
+- **On the same host.** The backups are on a different pool from the data (`/mnt/ssd2`, RAID 0
+  without redundancy), but on the same server; there is no off-host copy. This was accepted
+  by the maintainer on 2026-11-16 (#469, decision 2).
+- **Failure visibility.** State is kept in `/mnt/zfs1/weaviate_semant/backup_state` (outside the
+  backup root, so Weaviate does not list it): `last_status` (`RUNNING`, then `OK id=…` or
+  `FAILED: …`), `backup.log` and `manifest.jsonl` (one line per run: id, kind, base, chain, status,
+  times, sizes, deleted ids). Every run also logs to syslog (tag `semant-weaviate-backup`). A
+  successful run prints nothing; a failed one prints an error, which cron mails to root. A
+  second run while one is still going fails on the lock without touching `last_status`.
+- **Settings** (environment): `WEAVIATE_URL` (`http://127.0.0.1:8080`), `FULL_INTERVAL_DAYS` (7),
+  `KEEP_CHAINS` (2), `MAX_AGE_HOURS` (26), `MIN_FREE_GIB` (200), `FREE_FACTOR` (1.25),
+  `TIMEOUT_HOURS` (20), `POLL_SECONDS` (30), `BACKUP_MOUNT` (set to `/mnt/zfs1` by the cron entry).
+
+Install or update (the aligned `docker-compose.database.yml` already matches the running
+container, so no restart is needed):
+
+```bash
+sudo install -m 755 deploy/weaviate_backup.py /usr/local/sbin/semant-weaviate-backup
+sudo install -m 644 deploy/semant-weaviate-backup.cron /etc/cron.d/semant-weaviate-backup
+# What the next run would do, read-only:
+/usr/local/sbin/semant-weaviate-backup plan /mnt/zfs1/weaviate_semant/backups
+```
+
+Did the most recent backup succeed? `check` exits 1 unless `last_status` is `OK` for the newest
+`auto-` backup, that backup is `SUCCESS` on disk and in Weaviate, its chain is complete, it
+finished less than 26 h ago (`MAX_AGE_HOURS`), and `BACKUP_MOUNT` (when set) is mounted:
+
+```bash
+sudo BACKUP_MOUNT=/mnt/zfs1 /usr/local/sbin/semant-weaviate-backup check /mnt/zfs1/weaviate_semant/backups /mnt/zfs1/weaviate_semant/backup_state
+sudo tail -n 5 /mnt/zfs1/weaviate_semant/backup_state/backup.log
+journalctl -t semant-weaviate-backup --since -2d
+```
+
+A maintenance command that needs `--backup-id` ([DATA_MAINTENANCE.md](../docs/DATA_MAINTENANCE.md#safety-rules-all-commands))
+can name the newest `OK` backup from `last_status` when it was taken after the last write
+that matters; a backup taken right before the run is still the safest choice for a
+destructive write. The application's SQLite database is backed up separately
+([SQLite backup](#sqlite-backup-399), daily at 03:30); restore the two from matching times.
+
+Tests: `tests/test_weaviate_backup_script.py` (chains, retention, free space, `check`; a fake
+backup directory) and `tests/integration/test_weaviate_backup.py` (a full and an incremental
+backup, restored with matching counts, against a throwaway Weaviate).
+
+**Restore rehearsal** (into a disposable Weaviate; never into production). A restore writes
+`restore_config.json` into the backup's directory, so it cannot read a read-only mount
+(tested 2026-11-16), and the production backup directory must not be shared with a second
+Weaviate. Use a ZFS clone, which costs no space until written and is destroyed afterwards
+(while the snapshot exists, blocks freed on the pool are not released), or copy the chain's
+directories (its full backup and every incremental up to the one to restore):
+
+```bash
+sudo zfs snapshot zfs1@rehearsal-469
+sudo zfs clone -o mountpoint=/mnt/rehearsal-469 zfs1@rehearsal-469 zfs1/rehearsal-469
+sudo mkdir /mnt/ssd2/weaviate_rehearsal   # room for the restored store: ~170-260 GiB; the root RAID had 985 GiB free
+docker run -d --name weaviate-rehearsal -p 127.0.0.1:8090:8080 --memory 48g \
+  -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
+  -e CLUSTER_HOSTNAME=node1 -e ENABLE_MODULES=backup-filesystem -e BACKUP_FILESYSTEM_PATH=/backups \
+  -e LIMIT_RESOURCES=true -v /mnt/ssd2/weaviate_rehearsal:/var/lib/weaviate \
+  -v /mnt/rehearsal-469/weaviate_semant/backups:/backups cr.weaviate.io/semitechnologies/weaviate:1.40.1
+WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py restore <newest auto-incr id> --confirm-endpoint 127.0.0.1:8090
+# Compare with production. Read-only, but it aggregates every collection and tenant; the
+# production counts move with any write since the backup, so compare outside write windows.
+deploy/weaviate_backup.py counts > /tmp/counts-production.tsv
+WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py counts > /tmp/counts-restored.tsv
+diff /tmp/counts-production.tsv /tmp/counts-restored.tsv
+# Clean up
+docker rm -f weaviate-rehearsal && sudo rm -r /mnt/ssd2/weaviate_rehearsal
+sudo zfs destroy zfs1/rehearsal-469 && sudo zfs destroy zfs1@rehearsal-469
+```
+
+`counts` prints one line per collection and per tenant of a multi-tenant collection (inactive
+tenants by their status, `COLD`), and the aliases. `restore` refuses `127.0.0.1:8080` and any
+endpoint not repeated in `--confirm-endpoint`. Record the date, backup ids, duration and the
+diff on #469. The vector index needs memory (8-bit RQ of the 1024-dimensional chunk vectors:
+about 8 GiB, [audit](../docs/WEAVIATE_AUDIT_2026-10.md)); the host has 188 GiB, of which
+production Weaviate may use 98 GiB.
+
+Restoring production itself (with explicit authorization, after the rehearsal): stop the app,
+empty the store as in [Recovering / Rebuilding the Weaviate database](#recovering--rebuilding-the-weaviate-database),
+then `curl -X POST http://127.0.0.1:8080/v1/backups/filesystem/<id>/restore -H 'Content-Type: application/json' -d '{}'`
+and poll `GET /v1/backups/filesystem/<id>/restore` until `SUCCESS`.
 
 ### Recovering / Rebuilding the Weaviate database
 

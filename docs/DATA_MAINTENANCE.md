@@ -19,7 +19,10 @@ the purpose, the safety requirements and the usual sequence. Detailed notes and 
 - Writing to the shared test or production stores needs explicit authorization for that task.
   Practise on a copy of the development snapshot first (below).
 - Back up first (`backup-filesystem` backup or an offline copy); `document_cleanup --delete`
-  refuses to run without a verified backup id.
+  refuses to run without a verified backup id. Production also has daily scheduled backups
+  (weekly full, incremental in between; ids `auto-…`, the newest in `last_status`):
+  [Weaviate backup](../deploy/README.md#weaviate-backup-469). An incremental backup is a valid
+  `--backup-id`; Weaviate restores it through its base backups.
 - Run while nothing else writes the affected data (ingestion, metadata edits): the checks and
   the writes are not atomic. Checkpointed runs resume by running the same command again.
 - Keep the reports, checkpoints and manifests; record outcomes (counts, backup ids, failures)
