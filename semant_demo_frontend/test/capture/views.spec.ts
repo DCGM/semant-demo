@@ -319,7 +319,7 @@ test('annotation workspace query (#663)', async ({ page }, testInfo) => {
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Both' }).click()
   await expandFilters(page)
-  await page.getByLabel('Annotation or context text').fill('jan')
+  await page.getByLabel('Contains words').fill('jan')
   await expandFilters(page)
   await page.getByTestId('concordance-more-filters').click()
   await page.getByLabel('Title contains').fill('kronika')
