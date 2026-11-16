@@ -22,8 +22,9 @@ const SCOPE_FIELDS: Record<TextScope, string> = {
 export function scopeHintText (scope: TextScope): string {
   const where = SCOPE_FIELDS[scope]
   const several = scope === TextScope.annotation ? '' : ' Different words may occur in different fields.'
-  return `Each word must appear inside a word of ${where}, ignoring case but not diacritics.${several} ` +
-    'Not a phrase search.'
+  return `Shows only annotations with every word you type in ${where}, in any order; part of a word is ` +
+    `enough ('prah' finds 'Prahou'). Case is ignored, diacritics are not.${several} Not a phrase search, other ` +
+    "forms of a word ('Praha' vs 'v Praze') are not found, and nothing is ranked."
 }
 
 const MAX_TITLES = 10
@@ -61,8 +62,9 @@ const RANKED_BY: Record<RetrievalMode, string> = {
 
 /** What the Similarity field does, as its hint says (#716). */
 export function similarityHintText (scope: TextScope): string {
-  return 'Ranks the annotations matching the filters (words included) by meaning and by these words found in ' +
-    `${SCOPE_FIELDS[scope]} (BM25), equally weighted; shows a bounded top list and filters nothing.`
+  return 'Orders the annotations matching the filters (the words above included) by closeness of meaning to this ' +
+    `text, also counting these words found in ${SCOPE_FIELDS[scope]} (BM25), equally weighted. Shows a bounded top ` +
+    'list and excludes nothing.'
 }
 
 /** The source annotation of Find similar, quoted and shortened. */
@@ -115,10 +117,10 @@ export function concordanceChips (f: ConcordanceFilters, tags: Tag[], documents:
     chips.push({ key: 'similar', group: 'Similar to', label: sourceLabel(f.similarTo), remove: clearSimilar(), opens: f.similarTo })
   }
   if (f.text.trim()) {
-    chips.push({ key: 'text', group: `Words in ${SCOPE_LABELS[f.textScope].toLowerCase()}`, label: f.text.trim(), remove: { text: '' } })
+    chips.push({ key: 'text', group: `Contains words in ${SCOPE_LABELS[f.textScope].toLowerCase()}`, label: f.text.trim(), remove: { text: '' } })
   }
   if (f.mode === RetrievalMode.hybrid) {
-    chips.push({ key: 'similarity', group: 'Similarity', label: f.similarity.trim(), remove: { similarity: '' } })
+    chips.push({ key: 'similarity', group: 'Similar meaning', label: f.similarity.trim(), remove: { similarity: '' } })
   }
   const titles = new Map(documents.map(d => [d.id, d.available ? (d.title || 'Untitled document') : 'Unavailable source']))
   for (const id of f.documentIds) {

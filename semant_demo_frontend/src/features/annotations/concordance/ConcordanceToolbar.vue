@@ -83,7 +83,7 @@
             outlined
             clearable
             debounce="400"
-            :label="`Words in ${SCOPE_LABELS[filters.textScope].toLowerCase()}`"
+            label="Contains words"
             hide-bottom-space
             class="concordance-toolbar__text"
             data-testid="concordance-text"
@@ -126,13 +126,30 @@
             outlined
             clearable
             debounce="400"
-            label="Similarity"
+            label="Similar meaning"
+            :stack-label="!!filters.similarTo"
             hide-bottom-space
             class="concordance-toolbar__text"
             data-testid="concordance-similarity"
             @update:model-value="value => emit('change', { similarity: String(value ?? '') })"
           >
-            <template #prepend><q-icon name="auto_awesome" /></template>
+            <template #prepend>
+              <q-chip
+                v-if="filters.similarTo"
+                dense
+                clickable
+                removable
+                color="primary"
+                text-color="white"
+                class="concordance-toolbar__source"
+                :label="`Similar to ${sourceLabel(filters.similarTo)}`"
+                :remove-aria-label="`Stop finding annotations similar to ${sourceLabel(filters.similarTo)}`"
+                data-testid="concordance-similarity-source"
+                @click.stop="filters.similarTo && emit('open', filters.similarTo)"
+                @remove="emit('change', clearSimilar())"
+              />
+              <q-icon v-else name="auto_awesome" />
+            </template>
             <template #append>
               <q-btn
                 flat
@@ -391,16 +408,16 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import {
-  QBtn, QBtnGroup, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
+  QBtn, QBtnGroup, QCheckbox, QChip, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
 } from 'quasar'
 import {
-  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationListRow, type Attribute, type DocumentFilters, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
-import { type ConcordanceFilters } from './concordanceStore'
+import { clearSimilar, type ConcordanceFilters } from './concordanceStore'
 import type { FilterField } from './ConcordanceTable.vue'
-import { SCOPE_LABELS, concordanceChips, scopeHintText, similarityHintText, titleProblem } from './filterChips'
+import { SCOPE_LABELS, concordanceChips, scopeHintText, similarityHintText, sourceLabel, titleProblem } from './filterChips'
 
 const props = defineProps<{
   filters: ConcordanceFilters
@@ -416,6 +433,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   change: [change: Partial<ConcordanceFilters>]
   'show-attributes': [attributeIds: string[]]
+  open: [row: AnnotationListRow]
 }>()
 
 const attributes = computed(() => props.attributes ?? [])
@@ -671,6 +689,10 @@ const shownLabel = computed(() => {
 .concordance-toolbar__text {
   flex: 1 1 180px;
   min-width: 0;
+}
+
+.concordance-toolbar__source {
+  max-width: 260px;
 }
 
 .concordance-toolbar__scope {

@@ -199,7 +199,7 @@ describe('ranked result labels', () => {
   })
 
   it('says how the similarity text ranks without filtering', () => {
-    expect(similarityHintText(TextScope.context)).toMatch(/left or right context \(BM25\).*filters nothing/)
+    expect(similarityHintText(TextScope.context)).toMatch(/left or right context \(BM25\).*excludes nothing/)
   })
 
   it('shows the source of Find similar as a reference chip, and the words and similarity as separate chips', () => {
@@ -213,7 +213,7 @@ describe('ranked result labels', () => {
       remove: { similarTo: null, includeSource: false }
     }])
     expect(concordanceChips(withMode(filters({ text: 'novak', similarity: 'hejtman' })), [], [], []).map(c => [c.group, c.label, c.remove]))
-      .toEqual([['Words in annotation', 'novak', { text: '' }], ['Similarity', 'hejtman', { similarity: '' }]])
+      .toEqual([['Contains words in annotation', 'novak', { text: '' }], ['Similar meaning', 'hejtman', { similarity: '' }]])
   })
 })
 
@@ -238,15 +238,22 @@ describe('ranked components', () => {
     expect(select(toolbar, 'Sort by')).toBeUndefined() // the rows are sorted by the table's headers
     expect(select(toolbar, 'Search in')).toBeDefined() // the scope belongs to the words
 
-    input('Words in').vm.$emit('update:modelValue', 'novak')
-    input('Similarity').vm.$emit('update:modelValue', 'hejtman')
+    input('Contains words').vm.$emit('update:modelValue', 'novak')
+    input('Similar meaning').vm.$emit('update:modelValue', 'hejtman')
     expect(toolbar.emitted('change')).toEqual([[{ text: 'novak' }], [{ similarity: 'hejtman' }]])
     expect(toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')).toBeUndefined()
 
     await toolbar.setProps({ filters: withMode(filters({ similarTo: row('a') })) } as never)
+    // The source shows inside the Similar meaning field; removing it or opening it acts as the reference chip does.
+    const chip = toolbar.findComponent(QChip)
+    expect(chip.props('label')).toBe("Similar to 'a'")
+    chip.vm.$emit('remove')
+    expect(toolbar.emitted('change')![2]).toEqual([{ similarTo: null, includeSource: false }])
+    await chip.trigger('click')
+    expect(toolbar.emitted('open')).toEqual([[row('a')]])
     const include = toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')!
     include.vm.$emit('update:modelValue', true)
-    expect(toolbar.emitted('change')![2]).toEqual([{ includeSource: true }])
+    expect(toolbar.emitted('change')![3]).toEqual([{ includeSource: true }])
   })
 
   it('opens the source from its reference chip', async () => {
