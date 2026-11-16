@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
-import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport } from './support'
+import { apiToken, deleteAddedSpans, ensureLoggedIn, fixture, sidebarPanelButton, useViewport, viewports } from './support'
 import { animatedPart, longDocument, recordScroll } from './longDocument'
 
 // The collection's annotation workspace (#329): one aligned line per annotation (KWIC),
@@ -312,6 +312,52 @@ test.describe('switching annotations of one long document', () => {
   })
 })
 
+test('Next brings the open row into view and keeps focus on the sidebar (#704)', async ({ page }) => {
+  // Without smooth scrolling, so that each scroll is complete when it is measured.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await rows(page).first().click()
+  await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
+  // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
+  // and the later ones do not.
+  const second = await rows(page).nth(1).boundingBox()
+  await page.setViewportSize({ width: viewports.wide.width, height: Math.ceil(second!.y + second!.height + 12) })
+  await expect(rows(page).nth(2)).not.toBeInViewport({ ratio: 1 })
+
+  const next = page.getByTestId('row-next')
+  // A mouse press leaves focus in the button (Quasar's focus helper inside it), a key press on
+  // the button itself; either way Enter presses it again.
+  const focusInNext = () => next.evaluate(el => el.contains(document.activeElement))
+  const scrollY = () => page.evaluate(() => window.scrollY)
+  const before = await scrollY()
+  await next.click()
+  await expect(rows(page).nth(1)).toHaveAttribute('aria-current', 'true')
+  // A visible row does not move the list.
+  expect(await scrollY()).toBe(before)
+  expect(await focusInNext()).toBe(true)
+
+  await page.keyboard.press('Enter')
+  await expect(rows(page).nth(2)).toHaveAttribute('aria-current', 'true')
+  await expect(rows(page).nth(2)).toBeInViewport({ ratio: 1 })
+  await expect(next).toBeFocused()
+
+  // A row hidden under the fixed app header is brought out below it, not just to the
+  // viewport's top edge. Room below the list lets the page scroll the next row under the header.
+  await page.evaluate(() => { document.body.style.paddingBottom = '2000px' })
+  const header = (await page.locator('.q-header').boundingBox())!
+  const headerBottom = header.y + header.height
+  const fourth = rows(page).nth(3)
+  await fourth.evaluate((el, bottom) => {
+    window.scrollBy(0, el.getBoundingClientRect().top - bottom / 2)
+  }, headerBottom)
+  expect((await fourth.boundingBox())!.y).toBeLessThan(headerBottom)
+  await page.keyboard.press('Enter')
+  await expect(fourth).toHaveAttribute('aria-current', 'true')
+  // (The last row: Next is disabled now, so it cannot keep focus.)
+  await expect.poll(async () => (await fourth.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom)
+})
+
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
@@ -420,6 +466,87 @@ test('column headers sort the whole result both ways and bring up their filters,
   await page.getByRole('option', { name: 'Both' }).click()
   await page.getByTestId('kwic-filter-left').click()
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
+})
+
+test('in-cell value filters compose as chips and never open, check or unselect rows (#665)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  const chips = page.getByTestId('concordance-chips')
+  const menu = page.getByTestId('kwic-row-menu')
+  const chronicle = fixture.document('chronicle').properties.title as string
+  const checked = page.getByTestId('concordance-selected')
+
+  // Right click on a displayed source: Only this source. No row opens or is checked.
+  await row(page, 'Jan Novák').locator('.kwic__source').click({ button: 'right' })
+  await expect(menu.getByTestId('kwic-refine-group-source')).toContainText(`Source · ${chronicle}`)
+  await menu.getByTestId('kwic-refine-source-only').click()
+  await expect(chips).toContainText(`Source:${chronicle}`)
+  await expect(row(page, 'Prahy')).toHaveCount(0)
+  for (const source of await rows(page).locator('.kwic__title').allTextContents()) expect(source).toBe(chronicle)
+  await expect(panel(page)).toHaveCount(0)
+  await expect(checked).toHaveCount(0)
+  await expect(menu, 'the menu closed').toHaveCount(0)
+
+  // By keyboard (Shift+F10 on the focused row): exclude the proposals' status; it composes.
+  await row(page, 'Lhoty').focus()
+  await page.keyboard.press('Shift+F10')
+  await expect(menu.getByTestId('kwic-refine-group-status')).toContainText('Status · Proposal')
+  await menu.getByTestId('kwic-refine-status-exclude').click()
+  await expect(row(page, 'Lhoty')).toHaveCount(0)
+  await expect(chips).toContainText('Status:Confirmed')
+  await expect(chips).toContainText(`Source:${chronicle}`)
+
+  // Removing a chip undoes its filter.
+  await page.getByRole('button', { name: 'Remove filter Status: Confirmed' }).click()
+  await expect(row(page, 'Lhoty')).toBeVisible()
+  await expect(row(page, 'Prahy')).toHaveCount(0)
+  await page.getByRole('button', { name: `Remove filter Source: ${chronicle}` }).click()
+  await expect(rows(page)).toHaveCount(4)
+
+  // With the sidebar open (narrow), the row's menu button: Only this year.
+  await useViewport(page, 'narrow')
+  await row(page, 'Jan Novák').click()
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+  await rows(page).filter({ hasText: 'Prahy' }).hover()
+  await row(page, 'Prahy').getByTestId('kwic-row-more').click()
+  await menu.getByTestId('kwic-refine-year-only').click()
+  await expect(chips).toContainText('Years:1902')
+  await expect(row(page, 'Jan Novák')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Remove filter Years: 1902' }).click()
+  await expect(rows(page)).toHaveCount(4)
+  // The open row stayed open.
+  await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
+
+  // Selecting a word with the mouse opens no row; right click on it filters by it, in the field
+  // it was selected in, with the matching rules said.
+  const right = row(page, 'Lhoty').locator('.kwic__right')
+  const box = (await right.boundingBox())!
+  const word = await right.evaluate(el => {
+    const text = el.textContent ?? ''
+    const match = /[\p{L}]{4,}/u.exec(text)!
+    const node = Array.from(el.childNodes).find(n => n.textContent?.includes(match[0]))!
+    const range = document.createRange()
+    const at = node.textContent!.indexOf(match[0])
+    range.setStart(node, at)
+    range.setEnd(node, at + match[0].length)
+    const r = range.getBoundingClientRect()
+    return { text: match[0], x: r.left, y: r.top + r.height / 2, width: r.width }
+  })
+  expect(word.x).toBeGreaterThanOrEqual(box.x)
+  await page.mouse.move(word.x + 1, word.y)
+  await page.mouse.down()
+  await page.mouse.move(word.x + word.width - 1, word.y, { steps: 5 })
+  await page.mouse.up()
+  expect((await page.evaluate(() => getSelection()!.toString())).length).toBeGreaterThan(0)
+  await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
+  await page.mouse.click(word.x + word.width / 2, word.y, { button: 'right' })
+  const words = menu.getByTestId('kwic-refine-group-words')
+  await expect(words).toContainText('Each word must appear inside a word of the left or right context')
+  await menu.getByTestId('kwic-refine-words').click()
+  await expect(chips).toContainText('Text in context:')
+  await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
+  await expect(row(page, 'Lhoty').locator('.kwic__right mark.kwic__match').first()).toBeVisible()
+  await expect(checked).toHaveCount(0)
 })
 
 test('find similar from the sidebar, ranked by meaning, as a top k (#664)', async ({ page }) => {
