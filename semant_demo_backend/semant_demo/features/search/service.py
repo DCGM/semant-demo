@@ -8,9 +8,8 @@ all of them fail, the retrieved hits are still returned, with a warning. The sum
 one AI operation admitted against the caller's daily allowance; when it has no room, they
 are skipped and the hits are returned with a quota warning, never a 429.
 
-Access (ADR 0007): a ``user_collection_id`` needs read access to that collection, and
-every requested tag must belong to a collection the user can read (to that collection,
-if one is given). Without either, search covers the public corpus, also anonymously.
+Access (ADR 0007): a ``user_collection_id`` needs read access to that collection. Without
+one, search covers the public corpus, also anonymously. There is no tag filter (ADR 0013).
 Restrictions are applied inside the retrieval query, never by dropping hits afterwards.
 
 Filters: the shared search criteria (``document_filters``, ``chunk_filters``;
@@ -35,7 +34,6 @@ from semant_demo.adapters.llm.usage import OperationBudget
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
-from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.quota.schemas import QuotaExhaustedResponse
 from semant_demo.features.quota.service import QuotaExhausted
@@ -51,7 +49,7 @@ from semant_demo.features.search.schemas import (
     ChunkQuery, DocumentHit, DocumentReadRequest, DocumentReadResponse, DocumentRetrieval, DocumentSearchRequest,
     DocumentSearchResponse, FieldCondition, RankedDocument, Op, PassageReadRequest, PassageReadResponse, PassageSearchRequest, PassageSearchResponse,
     SearchFiltersResponse, SearchRequest,
-    SearchResponse, SearchResultChunk, SearchType, TagFilter,
+    SearchResponse, SearchResultChunk, SearchType,
 )
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
 
@@ -79,7 +77,6 @@ class SearchBackends:
     """What retrieval needs; built per request from the application's resources."""
     chunks: ChunkSearchRepository
     collections: UserCollectionRepository
-    tags: TagRepository
     vectors: SearchVectors
 
 
@@ -118,17 +115,12 @@ async def _authorized_query(backends: SearchBackends, user: Principal | None, re
     if request.user_collection_id is not None:
         collection_id = (await access.require_collection_read(
             backends.collections, user, request.user_collection_id)).collection_id
-    tag_ids = await access.require_readable_tags(
-        backends.collections, backends.tags, user, request.tag_uuids, collection_id)
-
     query = ChunkQuery(
         text=request.query,
         mode=request.type,
         limit=request.limit,
         alpha=request.hybrid_search_alpha,
         collection_id=collection_id,
-        tags=TagFilter(tuple(tag_ids), automatic=request.automatic, positive=request.positive)
-        if tag_ids and (request.automatic or request.positive) else None,
         conditions=() if criteria is not None else tuple(filter_conditions(request, filter_definitions)),
         document_conditions=tuple(criteria[0]) if criteria is not None else (),
         chunk_conditions=tuple(criteria[1]) if criteria is not None else (),
@@ -438,14 +430,13 @@ async def _read_ranked(documents: DocumentRepository, chunks: ChunkSearchReposit
 async def _passage_query(backends: SearchBackends, user: Principal | None, criteria: SearchCriteria,
                          user_collection_id: str | None, filter_definitions: SearchFiltersResponse | None,
                          limit: int, **options) -> tuple[SearchRequest, ChunkQuery, SearchVector]:
-    """``_authorized_query`` for the criteria of a passage search: no tags, no summaries."""
+    """``_authorized_query`` for the criteria of a passage search: no summaries."""
     return await _authorized_query(backends, user, SearchRequest(
         query=criteria.text_query or "",
         limit=limit,
         user_collection_id=user_collection_id,
         document_filters=criteria.document_filters,
         chunk_filters=criteria.chunk_filters,
-        tag_uuids=[], positive=False, automatic=False,
         search_title_generate=False, search_summary_generate=False, search_results_summary_generate=False,
         **options,
     ), filter_definitions)
@@ -454,7 +445,7 @@ async def _passage_query(backends: SearchBackends, user: Principal | None, crite
 def public_retriever(backends: SearchBackends, vector: str | None = None) -> Retriever:
     """Retrieval over the public corpus for callers without a user (RAG).
 
-    Requests with a collection or tags are refused like anonymous ones. With ``vector``,
+    Requests with a collection are refused like anonymous ones. With ``vector``,
     every request uses that search vector, whatever it selects itself; without it, the
     request's own selection (by default the default vector) applies.
     """

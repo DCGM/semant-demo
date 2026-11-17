@@ -31,13 +31,13 @@ describe('write outcomes', () => {
       .toMatch(/^Removing the document failed\./)
   })
 
-  it('warns about a span write whose search tag update failed', () => {
-    const failed = [{ itemId: 'chunk:tag', step: 'update_chunk_tags', message: 'x', uncertain: false }]
+  it('warns about an incomplete span write without naming tag search', () => {
+    const failed = [{ itemId: 's', step: 'unknown_step', message: 'x', uncertain: false }]
     expect(spanWriteWarning({ outcome: WriteOutcome.complete, succeeded: ['s'] }, 'saved')).toBeNull()
     expect(spanWriteWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'saved'))
-      .toMatch(/saved, but tag search was not updated/)
+      .toBe('The annotation was saved, but not every step completed. Save the annotation again to retry.')
     expect(spanWriteWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed }, 'deleted'))
-      .toMatch(/deleted, but tag search may still find/)
+      .toBe('The annotation was deleted, but not every step completed.')
   })
 
   it('names the search text and vector of a span write whose enrichment failed', () => {
@@ -45,8 +45,8 @@ describe('write outcomes', () => {
     expect(spanWriteWarning({ outcome: WriteOutcome.partial, succeeded: ['s'], failed: [step('embed_annotation')] }, 'saved'))
       .toBe('The annotation was saved, but its search text or similarity vector was not updated for it. Save the annotation again to retry.')
     expect(spanWriteWarning({
-      outcome: WriteOutcome.partial, succeeded: ['s'], failed: [step('update_chunk_tags'), step('derive_annotation')]
-    }, 'saved')).toMatch(/saved, but tag search and its search text or similarity vector were not updated/)
+      outcome: WriteOutcome.partial, succeeded: ['s'], failed: [step('derive_annotation'), step('embed_annotation')]
+    }, 'saved')).toBe('The annotation was saved, but its search text or similarity vector was not updated for it. Save the annotation again to retry.')
   })
 
   it('names the statistics of a moved span whose chunk reference was not updated', () => {
@@ -56,8 +56,8 @@ describe('write outcomes', () => {
     expect(spanWriteWarning({
       outcome: WriteOutcome.partial,
       succeeded: ['s'],
-      failed: [step('update_chunk_tags'), step('embed_annotation'), step('update_chunk_reference')]
-    }, 'saved')).toMatch(/saved, but tag search, its search text or similarity vector and its count in the collection statistics were not updated/)
+      failed: [step('embed_annotation'), step('update_chunk_reference')]
+    }, 'saved')).toMatch(/saved, but its search text or similarity vector and its count in the collection statistics were not updated/)
   })
 
   it('keeps only the span fields of a span write result', () => {

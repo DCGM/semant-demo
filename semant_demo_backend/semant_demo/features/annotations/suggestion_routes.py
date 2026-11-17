@@ -184,8 +184,7 @@ async def delete_auto_spans(
 
     Useful for cleaning up suggestions the user did not get around to
     approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and
-    ``failed`` those that could not be deleted (``delete_span``) and the chunk tag
-    updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+    ``failed`` those that could not be deleted (``delete_span``).
     """
     result = await service.delete_suggestions_in_document(
         annotations, current_user, body.collection_id, body.document_id, body.tag_ids)

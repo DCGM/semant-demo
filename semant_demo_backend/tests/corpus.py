@@ -54,10 +54,6 @@ class Corpus:
         return self._by_key("spans")
 
     @property
-    def chunk_tags(self) -> list[dict[str, Any]]:
-        return self.raw["chunk_tags"]
-
-    @property
     def chunk_classifications(self) -> dict[str, dict[str, list[str]]]:
         """Stored classification properties by chunk key; unlisted chunks have none."""
         return self.raw["chunk_classifications"]
@@ -84,15 +80,6 @@ def _validate(corpus: Corpus) -> None:
         assert text[span["start"]:span["end"]] == span["quote"], span["key"]
         # Offsets are code points; keep them equal to UTF-16 offsets (see corpus description).
         assert all(ord(ch) <= 0xFFFF for ch in text[:span["end"]]), span["key"]
-    for entry in corpus.chunk_tags:
-        assert entry["chunk"] in chunks
-        for ref in ("positiveTag", "automaticTag", "negativeTag"):
-            assert all(t in tags for t in entry[ref])
-    # Chunk tags are exactly the projection of the spans (ADR 0004, #204).
-    ref_of = {"pos": "positiveTag", "auto": "automaticTag", "neg": "negativeTag"}
-    required = {(s["chunk"], s["tag"], ref_of[s["type"]]) for s in corpus.spans.values()}
-    stored = {(e["chunk"], t, ref) for e in corpus.chunk_tags for ref in ref_of.values() for t in e[ref]}
-    assert stored == required, "chunk_tags must match the spans"
     for chunk_key, properties in corpus.chunk_classifications.items():
         assert chunk_key in chunks
         for name, values in properties.items():

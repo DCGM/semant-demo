@@ -92,7 +92,7 @@ describe('DocumentViewLayout AI cleanup', () => {
 
     // Events that arrive after the abort (reads already under way) change nothing.
     streams[0].push(lateResult('chunk-1'))
-    streams[0].push({ event: 'end', outcome: 'failed', saved: 0, rejected: 0, save_failures: 1, search_tag_failures: 0, provider_failures: 0 })
+    streams[0].push({ event: 'end', outcome: 'failed', saved: 0, rejected: 0, save_failures: 1, provider_failures: 0 })
     streams[1].push(lateResult('x'))
     streams.forEach((s) => s.close())
     await documentRun

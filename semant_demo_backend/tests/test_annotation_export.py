@@ -104,8 +104,7 @@ class FakeUsers:
 
 @pytest.fixture
 def store():
-    return AnnotationStore(collections=FakeCollections(), tags=FakeTags(), spans=ExportSpans(), chunk_tags=None,
-                           documents=ExportDocuments())
+    return AnnotationStore(collections=FakeCollections(), tags=FakeTags(), spans=ExportSpans(), documents=ExportDocuments())
 
 
 async def run(store, user=OWNER, **fields):

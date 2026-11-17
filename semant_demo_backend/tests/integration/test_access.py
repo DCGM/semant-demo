@@ -31,7 +31,7 @@ READS = [
     ("POST", "/api/tag_spans/batch", lambda i: {"chunk_ids": [i.chunk["chronicle_1"]], "collection_id": i.col["chronicles"]}),
     ("GET", "/api/tags/{t}", None),
     ("POST", "/api/search", lambda i: {"query": "Novák", "type": "text", "user_collection_id": i.col["chronicles"],
-                                       "tag_uuids": [], "positive": False, "automatic": False, **NO_SUMMARY}),
+                                       **NO_SUMMARY}),
 ]
 
 

@@ -124,7 +124,7 @@ async def test_weaviate_is_connected_once_at_startup_and_closed_at_shutdown(tmp_
         weaviate = app.state.resources.weaviate
         # Every repository uses the one application client.
         assert {id(r.client) for r in (weaviate.documents, weaviate.tags, weaviate.user_collections, weaviate.search,
-                                       weaviate.spans, weaviate.chunk_tags)} \
+                                       weaviate.spans)} \
             == {id(clients[0])}
         for _ in range(2):
             assert (await client.get("/health")).status_code == 200

@@ -117,7 +117,6 @@ USER_COLLECTION_ROUTES = {
     ("post", "/api/user_collections/{collection_id}/annotations/export"),
     ("post", "/api/user_collections/{collection_id}/annotations/review"),
     ("post", "/api/user_collections/{collection_id}/annotations/restore"),
-    ("post", "/api/user_collections/{collection_id}/annotations/chunk-tags/sync"),
     ("get", "/api/user_collections/{collection_id}/attributes"),
     ("post", "/api/user_collections/{collection_id}/attributes"),
     ("patch", "/api/user_collections/{collection_id}/attributes/{attribute_id}"),
@@ -240,7 +239,7 @@ def test_search_response_is_accepted_back_as_summary_input():
         id=CHUNK, text="Milá Marie, píši Ti z Prahy.", start_page_id=PAGE, from_page=1, to_page=1,
         document=DOC, order=0, document_object=Document(id=DOC, library="mzk", **STORED))
     response = SearchResponse(
-        results=[hit], search_request=SearchRequest(query="Praha", tag_uuids=[], positive=False, automatic=False),
+        results=[hit], search_request=SearchRequest(query="Praha"),
         time_spent=0.1, search_log=[])
 
     wire = response.model_dump(mode="json")
@@ -356,7 +355,7 @@ async def _passages(tmp_path, body, path="/api/search/passages", **config):
     app = create_app(make_test_config(tmp_path, **config), weaviate_connector=offline_weaviate)
     vectors = SearchVectors([SearchVector("main", "Main", "", "default", None)], default="main")
     app.dependency_overrides[get_search_backends] = lambda: SearchBackends(
-        chunks=_PassageChunks(), collections=None, tags=None, vectors=vectors)
+        chunks=_PassageChunks(), collections=None, vectors=vectors)
     async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.post(path, json=body)
 
@@ -391,6 +390,56 @@ async def test_invalid_passage_requests_are_refused_before_retrieval(tmp_path, b
 
     assert response.status_code == status, response.text
     assert _PassageChunks.queries == []
+
+
+class _LegacySearchChunks(_PassageChunks):
+    async def search(self, query):
+        self.queries.append(query)
+        return list(self.hits[:query.limit])
+
+
+async def _legacy_search(tmp_path, body):
+    _PassageChunks.queries = []
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    vectors = SearchVectors([SearchVector("main", "Main", "", "default", None)], default="main")
+    app.dependency_overrides[get_search_backends] = lambda: SearchBackends(
+        chunks=_LegacySearchChunks(), collections=None, vectors=vectors)
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.post("/api/search", json={
+            "query": "Marie", "type": "text", "search_title_generate": False, "search_summary_generate": False,
+            "search_results_summary_generate": False, **body})
+
+
+@pytest.mark.parametrize("legacy", [
+    {"tag_uuids": [str(UUID(int=7))], "positive": True, "automatic": True},
+    {"tag_uuids": [str(UUID(int=7))], "positive": False, "automatic": False},
+    {"tag_uuids": [], "positive": True, "automatic": False},
+    {"tag_uuids": [], "positive": False, "automatic": True},
+])
+async def test_legacy_search_with_an_active_tag_filter_is_refused(tmp_path, legacy):
+    # Tag-filtered search was removed (#733): an old client must not get unfiltered results.
+    response = await _legacy_search(tmp_path, legacy)
+
+    assert response.status_code == 422, response.text
+    assert "no longer supported" in response.text
+    assert _PassageChunks.queries == []
+
+
+@pytest.mark.parametrize("legacy", [{}, {"tag_uuids": [], "positive": False, "automatic": False}])
+async def test_ordinary_search_answers_with_or_without_the_former_no_op_tag_fields(tmp_path, legacy):
+    response = await _legacy_search(tmp_path, legacy)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["results"]) == 3 and len(_PassageChunks.queries) == 1
+    assert not {"tag_uuids", "positive", "automatic"} & body["search_request"].keys()
+
+
+def test_search_request_schema_no_longer_advertises_tag_filters():
+    properties = SearchRequest.model_json_schema()["properties"]
+
+    assert not {"tag_uuids", "positive", "automatic"} & properties.keys()
+    assert "query" in properties
 
 
 @pytest.mark.parametrize("value", ["0", "10000", "many"])
@@ -462,7 +511,7 @@ async def _documents(tmp_path, body, total=3, path="/api/search/documents", **co
     app.dependency_overrides[get_documents] = _YearOrderedDocuments
     vectors = SearchVectors([SearchVector("main", "Main", "", "default", None)], default="main")
     app.dependency_overrides[get_search_backends] = lambda: SearchBackends(
-        chunks=_RankedChunks(), collections=None, tags=None, vectors=vectors)
+        chunks=_RankedChunks(), collections=None, vectors=vectors)
     async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.post(path, json=body)
 

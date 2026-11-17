@@ -342,9 +342,6 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
         references=[
             ReferenceProperty(name="document", target_collection=names.document_collection_name),
             ReferenceProperty(name=names.user_collection_link_name, target_collection=names.user_collection_name),
-            ReferenceProperty(name="positiveTag", target_collection=names.tag_collection_name),
-            ReferenceProperty(name="negativeTag", target_collection=names.tag_collection_name),
-            ReferenceProperty(name="automaticTag", target_collection=names.tag_collection_name),
         ],
     )
     await create_annotation_collection(client, names)

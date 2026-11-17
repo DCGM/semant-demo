@@ -6,8 +6,7 @@ The fixture corpus (tests/fixtures/corpus.json):
   tags person, place.
 * "newspapers" (owner only): chronicle_3, gazette_1, gazette_2; tag event.
 * "outsider_notes" (outsider): gazette_1; tag outsider_tag.
-* chunk tags: chronicle_1 positive person / automatic place, chronicle_2 positive place /
-  negative person, chronicle_3 positive event, letters_1 automatic place.
+* chunks hold no tag references (#733, ADR 0013); legacy tag filters are refused (422).
 * documents: chronicle (1851), letters (1902), gazette (no year); every chunk is "ces".
 * classifications: chronicle_1 (narration, moderate, formal, two subject domains),
   letters_1 (interaction, informal); no other chunk has any.
@@ -30,7 +29,7 @@ from semant_demo.config import Config
 from semant_demo.features.rag import service as rag_service
 from semant_demo.features.rag.registry import RagRegistry
 from semant_demo.features.search import service
-from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter
+from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType
 from semant_demo.features.search.service import SearchBackends
 from tests.fake_providers import create_fake_provider_app
 from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
@@ -63,10 +62,6 @@ def query(**kwargs) -> ChunkQuery:
     return ChunkQuery(**{"text": ALL_WORDS, "mode": SearchType.text, "limit": 50, "target_vector": "default", **kwargs})
 
 
-def tag_filter(ids, *names, automatic=False, positive=False) -> TagFilter:
-    return TagFilter(tuple(ids.tag[n] for n in names), automatic=automatic, positive=positive)
-
-
 ###########
 # Adapter #
 ###########
@@ -82,21 +77,6 @@ async def test_limit_is_applied(chunks):
 async def test_collection_scope_excludes_other_chunks(chunks, keys, ids):
     assert keys(await chunks.search(query(collection_id=ids.col["newspapers"]))) == {"chronicle_3", "gazette_1", "gazette_2"}
     assert keys(await chunks.search(query(collection_id=ids.col["outsider_notes"]))) == {"gazette_1"}
-
-
-@pytest.mark.parametrize("tags, automatic, positive, expected", [
-    (["person"], False, True, {"chronicle_1"}),
-    (["person"], True, False, set()),                     # chronicle_2 has person only as negative
-    (["person"], True, True, {"chronicle_1"}),
-    (["place"], True, False, {"chronicle_1", "letters_1"}),
-    (["place"], False, True, {"chronicle_2"}),
-    (["place"], True, True, {"chronicle_1", "chronicle_2", "letters_1"}),
-    (["person", "event"], False, True, {"chronicle_1", "chronicle_3"}),
-    (["outsider_tag"], True, True, set()),
-])
-async def test_tag_filter_matches_the_requested_kinds_only(chunks, keys, ids, tags, automatic, positive, expected):
-    found = await chunks.search(query(tags=tag_filter(ids, *tags, automatic=automatic, positive=positive)))
-    assert keys(found) == expected
 
 
 @pytest.mark.parametrize("condition, expected", [
@@ -125,14 +105,13 @@ async def test_year_range_with_both_bounds(chunks, keys, first, last, expected):
     assert keys(found) == expected
 
 
-async def test_collection_tag_and_metadata_filters_compose(chunks, keys, ids):
+async def test_collection_and_metadata_filters_compose(chunks, keys, ids):
     combined = query(
         collection_id=ids.col["chronicles"],
-        tags=tag_filter(ids, "place", automatic=True, positive=True),
         conditions=(FieldCondition("yearIssued", Op.less_or_equal, 1860),
                     FieldCondition("language", Op.contains_any, ["ces"])),
     )
-    # letters_1 has the place tag but is from 1902; chronicle_3 is from 1851 but in newspapers.
+    # letters_1 and letters_2 are from 1902; chronicle_3 is from 1851 but in newspapers.
     assert keys(await chunks.search(combined)) == {"chronicle_1", "chronicle_2"}
 
 
@@ -146,11 +125,8 @@ async def test_vector_modes_apply_the_same_restrictions(chunks, keys, ids, corpu
 
     scoped = await chunks.search(query(text=text, mode=mode, vector=fake_embedding(text), limit=3,
                                        collection_id=ids.col["chronicles"]))
-    tagged = await chunks.search(query(text=text, mode=mode, vector=fake_embedding(text), limit=3,
-                                       tags=tag_filter(ids, "place", automatic=True)))
     assert len(scoped) == 3 and "gazette_1" not in keys(scoped)
     assert keys(scoped) <= {"chronicle_1", "chronicle_2", "letters_1", "letters_2"}
-    assert keys(tagged) == {"chronicle_1", "letters_1"}
 
 
 @pytest.mark.parametrize("mode", [SearchType.vector, SearchType.hybrid])
@@ -242,9 +218,8 @@ async def test_document_filter_stats(chunks):
 
 @pytest.fixture
 def post_search(api_client, login, ids):
-    async def run(user, *, tags=(), collection=None, automatic=True, positive=True, **extra):
-        body = {"query": ALL_WORDS, "type": "text", "limit": 50, "tag_uuids": [ids.tag.get(t, t) for t in tags],
-                "automatic": automatic, "positive": positive, **NO_SUMMARY, **extra}
+    async def run(user, *, collection=None, **extra):
+        body = {"query": ALL_WORDS, "type": "text", "limit": 50, **NO_SUMMARY, **extra}
         if collection is not None:
             body["user_collection_id"] = ids.col.get(collection, collection)
         return await api_client.post("/api/search", headers=await login(user), json=body)
@@ -272,17 +247,13 @@ async def test_anonymous_public_search_covers_the_corpus(post_search, keys, corp
     assert response.json()["warnings"] == []
 
 
-@pytest.mark.parametrize("user, tags, collection, expected", [
-    ("owner", ["person"], None, {"chronicle_1"}),
-    ("owner", ["person", "event"], None, {"chronicle_1", "chronicle_3"}),   # tags of two own collections
-    ("owner", ["place"], "chronicles", {"chronicle_1", "chronicle_2", "letters_1"}),
-    ("annotator", ["place"], None, {"chronicle_1", "chronicle_2", "letters_1"}),  # shared collection
-    ("annotator", ["place"], "chronicles", {"chronicle_1", "chronicle_2", "letters_1"}),
-    ("outsider", ["outsider_tag"], None, set()),
-    ("outsider", [], "outsider_notes", {"gazette_1"}),
+@pytest.mark.parametrize("user, collection, expected", [
+    ("owner", "chronicles", {"chronicle_1", "chronicle_2", "letters_1", "letters_2"}),
+    ("annotator", "chronicles", {"chronicle_1", "chronicle_2", "letters_1", "letters_2"}),  # shared collection
+    ("outsider", "outsider_notes", {"gazette_1"}),
 ])
-async def test_permitted_tag_filters(post_search, keys, user, tags, collection, expected):
-    response = await post_search(user, tags=tags, collection=collection)
+async def test_permitted_collection_scopes(post_search, keys, user, collection, expected):
+    response = await post_search(user, collection=collection)
 
     assert response.status_code == 200, response.text
     assert keys(response.json()["results"]) == expected
@@ -291,41 +262,29 @@ async def test_permitted_tag_filters(post_search, keys, user, tags, collection, 
 UNKNOWN_TAG = "5e3a0000-0000-4000-8000-0000000eafff"
 
 
-@pytest.mark.parametrize("user, tags, collection", [
-    ("owner", ["outsider_tag"], None),                 # another user's tag
-    ("owner", ["person", "outsider_tag"], None),       # permitted mixed with inaccessible
-    ("owner", [UNKNOWN_TAG], None),
-    ("owner", ["not-a-uuid"], None),
-    ("owner", ["event"], "chronicles"),                # own tag, but not of the searched collection
-    ("owner", ["person", "outsider_tag"], "chronicles"),
-    ("annotator", ["event"], None),                    # owner's collection not shared with annotator
-    ("annotator", ["place", "event"], "chronicles"),
-    ("outsider", ["person"], None),
-    ("outsider", ["outsider_tag", "person"], None),
-    ("admin", ["person"], None),                       # no admin bypass
+@pytest.mark.parametrize("user", [None, "owner"])
+@pytest.mark.parametrize("legacy", [
+    {"tag_uuids": ["person"], "positive": True, "automatic": True},
+    {"tag_uuids": ["person"], "positive": False, "automatic": False},
+    {"tag_uuids": [], "positive": True, "automatic": False},
+    {"tag_uuids": [UNKNOWN_TAG], "automatic": True},
 ])
-async def test_inaccessible_tags_are_refused_before_retrieval(post_search, retrievals, user, tags, collection):
-    response = await post_search(user, tags=tags, collection=collection)
+async def test_legacy_tag_filters_are_refused_not_broadened(post_search, retrievals, ids, user, legacy):
+    # Tag-filtered search was removed (#733): an old client gets an error, never unfiltered results.
+    legacy = {**legacy, "tag_uuids": [ids.tag.get(t, t) for t in legacy["tag_uuids"]]}
 
-    assert response.status_code == 404, response.text
-    # Unknown and other users' tags get the same answer.
-    assert response.json() == {"detail": "Tag not found"}
+    response = await post_search(user, **legacy)
+
+    assert response.status_code == 422, response.text
+    assert "no longer supported" in response.text
     assert retrievals == []
 
 
-async def test_tags_are_authorized_even_when_no_tag_kind_is_selected(post_search, retrievals):
-    response = await post_search("owner", tags=["outsider_tag"], automatic=False, positive=False)
+async def test_former_no_op_tag_fields_are_still_accepted(post_search, keys, corpus):
+    response = await post_search("owner", tag_uuids=[], positive=False, automatic=False)
 
-    assert response.status_code == 404
-    assert retrievals == []
-
-
-@pytest.mark.parametrize("tags", [["person"], ["not-a-uuid"], [UNKNOWN_TAG]])
-async def test_anonymous_tag_filter_needs_login(post_search, retrievals, tags):
-    response = await post_search(None, tags=tags)
-
-    assert response.status_code == 401
-    assert retrievals == []
+    assert response.status_code == 200, response.text
+    assert keys(response.json()["results"]) == set(corpus.chunks)
 
 
 @pytest.mark.parametrize("user, collection, expected", [
@@ -504,7 +463,7 @@ async def test_vectors_endpoint_lists_the_configured_vectors(api_client, vector_
 async def test_rag_retrieves_from_the_selected_vector(api_app, vector_calls, retrievals, selected):
     resources = api_app.state.resources
     backends = SearchBackends(chunks=resources.weaviate.search, collections=resources.weaviate.user_collections,
-                              tags=resources.weaviate.tags, vectors=resources.search_vectors)
+                              vectors=resources.search_vectors)
 
     await rag_service.answer(RagRegistry(instances={"searching": SearchingRag()}), backends,
                              rag_request(vector=selected))

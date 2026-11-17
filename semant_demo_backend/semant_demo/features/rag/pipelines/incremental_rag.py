@@ -305,9 +305,6 @@ class IncrementalAdaptiveRagGenerator(BaseRag):
                     min_date = metadata.get("min_date"),
                     max_date = metadata.get("max_date"),
                     language = metadata.get("language"),
-                    tag_uuids = [],
-                    positive = False,
-                    automatic = False,
                     is_hyde = use_hyde_embedding
                 )
                 #call db search

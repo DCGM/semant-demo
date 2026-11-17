@@ -87,7 +87,7 @@ check-frontend: deps-check-frontend
 
 ## Real-Weaviate tests in a throwaway, test-owned Weaviate container (needs Docker).
 ## ARGS selects tests while iterating; quote as on a shell command line, e.g.
-##   make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
+##   make test-integration ARGS="tests/integration/test_annotations.py -k deletion"
 ##   make test-integration ARGS="tests/integration/test_access.py -k 'case_a or case_b'"
 ## ARGS is expanded outside the quoted sh -c script and arrives as "$$@", so its quoting
 ## survives (#696).

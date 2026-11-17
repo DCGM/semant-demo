@@ -290,7 +290,7 @@ async def test_question_text_is_in_neither_the_url_nor_request_logs_nor_server_s
     app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
     app.dependency_overrides[get_llm] = lambda: FakeLlm(lambda messages: "Nevím [doc1].")
     FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider, meter_provider=MeterProvider())
-    search_request = {"query": "kronika", "tag_uuids": [], "positive": False, "automatic": False}
+    search_request = {"query": "kronika", }
     search_response = {"results": [], "search_request": search_request, "time_spent": 0.1, "search_log": []}
     caplog.set_level(logging.DEBUG)
     try:

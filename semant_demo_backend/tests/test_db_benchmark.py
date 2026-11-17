@@ -33,7 +33,7 @@ def test_baseline_covers_the_application_read_paths():
     assert profile.concurrency == [1, 5, 10]
     kinds = {s.kind for s in profile.scenarios}
     assert {"search", "direct", "context", "document_view", "aggregate", "self_recall", "mixed"} <= kinds
-    assert {s.filter for s in profile.scenarios} >= {"year_range", "language", "document_type", "tag", "user_collection"}
+    assert {s.filter for s in profile.scenarios} >= {"year_range", "language", "document_type", "user_collection"}
 
 
 def test_violations_name_each_exceeded_limit():
@@ -46,7 +46,7 @@ def test_violations_name_each_exceeded_limit():
 
 @pytest.mark.parametrize("scenarios, message", [
     ([Scenario(name="a", kind="search")], "needs a mode"),
-    ([Scenario(name="a", kind="direct", mode="text", filter="tag")], "take no filter"),
+    ([Scenario(name="a", kind="direct", mode="text", filter="user_collection")], "take no filter"),
     ([Scenario(name="a", kind="mixed", of=["missing"])], "'of'"),
     ([Scenario(name="a", kind="aggregate"), Scenario(name="a", kind="aggregate")], "unique"),
 ])
@@ -186,19 +186,20 @@ def _chunk(n: int, vector=True, text="slovo") -> SampledChunk:
 
 
 def test_scoped_filter_searches_query_from_a_chunk_inside_the_value():
-    # The search within a tag uses that tag's own chunk, so it can find results.
-    tag_a, tag_b, tag_c = UUID(int=101), UUID(int=102), UUID(int=103)
+    # The search within a collection uses that collection's own chunk, so it can find results.
+    col_a, col_b, col_c = UUID(int=101), UUID(int=102), UUID(int=103)
     inputs = Inputs(chunks=[_chunk(1), _chunk(2)],
-                    scoped={"tag": [(tag_a, _chunk(11)), (tag_b, _chunk(12, vector=False)), (tag_c, _chunk(13))]})
+                    scoped={"user_collection": [(col_a, _chunk(11)), (col_b, _chunk(12, vector=False)),
+                                                (col_c, _chunk(13))]})
     profile = load_profile("smoke")
     workload = Workload.__new__(Workload)
     workload.inputs, workload.profile = inputs, profile
-    hybrid = Scenario(name="t", kind="search", mode="hybrid", filter="tag")
-    text = Scenario(name="t", kind="search", mode="text", filter="tag")
+    hybrid = Scenario(name="t", kind="search", mode="hybrid", filter="user_collection")
+    text = Scenario(name="t", kind="search", mode="text", filter="user_collection")
     assert [c.id.int for c in workload._usable(hybrid)] == [11, 13]  # hybrid needs a vector
-    assert [workload._filter_value(hybrid, i) for i in range(3)] == [tag_a, tag_c, tag_a]
+    assert [workload._filter_value(hybrid, i) for i in range(3)] == [col_a, col_c, col_a]
     assert [c.id.int for c in workload._usable(text)] == [11, 12, 13]
-    assert workload._filter_value(text, 1) == tag_b
+    assert workload._filter_value(text, 1) == col_b
     unscoped = Scenario(name="y", kind="search", mode="hybrid", filter="year_range")
     assert [c.id.int for c in workload._usable(unscoped)] == [1, 2]
 

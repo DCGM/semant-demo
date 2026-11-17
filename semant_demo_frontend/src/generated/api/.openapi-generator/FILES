@@ -40,8 +40,6 @@ docs/CategoryCount.md
 docs/CategoryDistribution.md
 docs/ChatTurn.md
 docs/ChunkFilters.md
-docs/ChunkTagPair.md
-docs/ChunkTagSyncRequest.md
 docs/Collection.md
 docs/CollectionChunk.md
 docs/CollectionExportRequest.md
@@ -209,8 +207,6 @@ models/CategoryCount.ts
 models/CategoryDistribution.ts
 models/ChatTurn.ts
 models/ChunkFilters.ts
-models/ChunkTagPair.ts
-models/ChunkTagSyncRequest.ts
 models/Collection.ts
 models/CollectionChunk.ts
 models/CollectionExportRequest.ts
