@@ -1,0 +1,8 @@
+# Daily backup of the production Weaviate: a full backup weekly, incremental ones in between,
+# the newest 2 chains kept (#469). Installed as /etc/cron.d/semant-weaviate-backup; see
+# deploy/README.md#weaviate-backup-469.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Fail instead of writing to the root filesystem when the ZFS pool is not mounted.
+BACKUP_MOUNT=/mnt/zfs1
+0 1 * * * root /usr/local/sbin/semant-weaviate-backup backup /mnt/zfs1/weaviate_semant/backups /mnt/zfs1/weaviate_semant/backup_state

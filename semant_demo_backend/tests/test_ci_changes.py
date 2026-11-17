@@ -225,8 +225,11 @@ def test_deployment_and_frontend_changes_together_select_full_validation():
 
 
 def test_suites_the_deploy_mode_omits_do_not_read_deploy_files():
-    """The frontend, integration and browser suites run from source, never from deploy/."""
+    """The frontend, integration and browser suites never read a deploy/ file that a
+    deployment-only PR may change. Other deploy/ files (production-only scripts such as
+    weaviate_backup.py, #469) force full CI, so these suites run whenever they change."""
     import re
+    deploy = ci.MODES[ci.DEPLOY]
     sources = [*(ROOT / FE / "src").rglob("*.[tj]s"), *(ROOT / FE / "src").rglob("*.vue"),
                *(ROOT / FE / "test").rglob("*.ts"), *(ROOT / FE).glob("*.[tj]s"),
                *(ROOT / "semant_demo_backend" / "tests" / "integration").rglob("*.py"),
@@ -236,7 +239,12 @@ def test_suites_the_deploy_mode_omits_do_not_read_deploy_files():
     sources = [path for path in sources if "generated" not in path.parts]
     assert len(sources) > 100
     for source in sources:
-        assert not re.search(r"\bdeploy/|[\"']deploy[\"']", source.read_text(encoding="utf-8")), source
+        text = source.read_text(encoding="utf-8")
+        assert not re.search(r"[\"']deploy[\"']", text), source
+        for path in re.findall(r"\bdeploy/[\w./*-]*", text):
+            path = path.rstrip(".")
+            assert path != "deploy/" and not deploy.fits(path) and "*" not in path, (source, path)
+    assert deploy.fits("deploy/Dockerfile") and not deploy.fits("deploy/weaviate_backup.py")
 
 
 def test_summary_lists_omitted_suites_and_the_paths():
