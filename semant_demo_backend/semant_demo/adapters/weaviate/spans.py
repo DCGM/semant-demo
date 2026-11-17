@@ -313,7 +313,7 @@ def to_row(obj) -> AnnotationRow:
 
 _NO_ID = UUID(int=0)
 """No annotation has this id."""
-_POSITIONS = ["documentId", "documentStartChar", "documentEndChar", "documentStartWord", "documentEndWord",
+_POSITIONS = ["tagId", "documentId", "documentStartChar", "documentEndChar", "documentStartWord", "documentEndWord",
               "revision", "enrichmentStatus", "enrichedRevision", "derivationVersion"]
 """What proximity (#333) compares: positions and whether they are current."""
 

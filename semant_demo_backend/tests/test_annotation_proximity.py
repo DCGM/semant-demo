@@ -119,7 +119,7 @@ def test_an_annotation_is_not_its_own_neighbor_but_one_of_the_same_tag_is():
     assert found.ids == []
     found = proximity.match([first, second], [first, second], NearFilter(tag_ids=[STATEMENT], distance=30))
     assert sorted(found.ids) == sorted([first.id, second.id])
-    assert found.neighbors == {first.id: [second.id], second.id: [first.id]}
+    assert {a: [b.id for b in bs] for a, bs in found.neighbors.items()} == {first.id: [second.id], second.id: [first.id]}
 
 
 def test_several_neighbors_match_once_and_the_nearest_explain_it():
@@ -127,7 +127,7 @@ def test_several_neighbors_match_once_and_the_nearest_explain_it():
     neighbors = [span((100 + d, 101 + d), tag=CRITICISM) for d in (40, 12, 30, 20, -5)]
     found = proximity.match([a], neighbors, near(distance=50))
     assert found.ids == [a.id]
-    assert found.neighbors[a.id] == [neighbors[1].id, neighbors[4].id, neighbors[3].id]  # gaps 2, 4, 10
+    assert [b.id for b in found.neighbors[a.id]] == [neighbors[1].id, neighbors[4].id, neighbors[3].id]  # gaps 2, 4, 10
 
 
 def test_missing_positions_never_make_a_close_match():
@@ -193,8 +193,10 @@ async def test_pages_and_counts_enumerate_distinct_matching_annotations(store):
     assert sorted(listed) == sorted([rows["a_close"].id, rows["a_far"].id, rows["a_b_doc"].id])
     assert first.proximity.unknown == 1
     by_id = {p.rows[0].id: p.rows[0] for p in (first, second, third)}
-    assert by_id[rows["a_far"].id].nearIds == [rows["c_red"].id]
-    assert len(by_id[rows["a_close"].id].nearIds) == 3
+    far = by_id[rows["a_far"].id].neighbors
+    # a_far covers characters [3000, 3100), c_red [3120, 3130): 120 code units after its start.
+    assert [(n.id, n.tagId, n.start, n.end) for n in far] == [(rows["c_red"].id, CRITICISM, 120, 130)]
+    assert len(by_id[rows["a_close"].id].neighbors) == 3
 
 
 async def test_neighbor_attributes_constrain_the_neighbor_side_only(store):
@@ -209,7 +211,7 @@ async def test_absence_lists_annotations_of_documents_without_neighbors_and_prov
     page = await service.query_annotations(store, OWNER, COLLECTION, statements(distance=5, absent=True))
     assert {r.id for r in page.rows} == {rows["a_close"].id, rows["a_b_doc"].id, rows["a_alone"].id}
     assert page.total == 3
-    assert all(r.nearIds == [] for r in page.rows)
+    assert all(r.neighbors == [] for r in page.rows)
 
 
 async def test_the_same_filter_selects_the_same_annotations_in_ids_documents_and_export_query(store):

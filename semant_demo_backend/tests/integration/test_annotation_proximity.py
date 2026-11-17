@@ -64,7 +64,13 @@ async def test_the_filter_applies_before_counting_and_paging(store, owner, ids, 
     assert pages == [r.id for r in full.rows]
     assert spans["novak"] in pages
     novak = next(r for r in full.rows if r.id == spans["novak"])
-    assert set(novak.nearIds) <= {spans["lhoty"], spans["brne"], spans["hejtman"]} and novak.nearIds
+    assert {n.id for n in novak.neighbors} == {spans["lhoty"], spans["brne"], spans["hejtman"]}
+    # The offsets index the stored contexts: Lhoty in the left one, Brně (next chunk) in the right one.
+    placed = {n.id: n for n in novak.neighbors}
+    lhoty, brne, length = placed[spans["lhoty"]], placed[spans["brne"]], len(novak.text)
+    assert novak.leftContext[len(novak.leftContext) + lhoty.start:len(novak.leftContext) + lhoty.end] == "Lhoty"
+    assert novak.rightContext[brne.start - length:brne.end - length] == "Brně"
+    assert placed[spans["hejtman"]].start < 0 < placed[spans["hejtman"]].end  # overlaps the annotation
     assert full.proximity.unknown >= 1  # the seeded person annotation has no derived positions
     resolved = await service.resolve_annotation_ids(store, owner, ids.col["chronicles"],
                                                     AnnotationIdsRequest(**filters.model_dump()))

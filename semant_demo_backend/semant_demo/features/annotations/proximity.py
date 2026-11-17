@@ -45,6 +45,7 @@ class Interval:
     end_char: int
     start_word: int
     end_word: int
+    tag: UUID | None = None
 
     def start(self, unit: DistanceUnit) -> int:
         return self.start_word if unit == DistanceUnit.words else self.start_char
@@ -58,7 +59,7 @@ def interval(row: AnnotationRow) -> Interval | None:
     values = (row.documentId, row.documentStartChar, row.documentEndChar, row.documentStartWord, row.documentEndWord)
     if not text_current(row) or any(v is None for v in values):
         return None
-    return Interval(row.id, *values)  # type: ignore[arg-type]
+    return Interval(row.id, *values, tag=row.tagId)  # type: ignore[arg-type]
 
 
 def gap(a: Interval, b: Interval, unit: DistanceUnit) -> int:
@@ -123,8 +124,10 @@ class Matched:
     """The outcome of matching primary annotations against neighbors."""
     ids: list[UUID] = field(default_factory=list)
     """Primary annotations that match (``absent``: that provably have no such neighbor)."""
-    neighbors: dict[UUID, list[UUID]] = field(default_factory=dict)
+    neighbors: dict[UUID, list[Interval]] = field(default_factory=dict)
     """Matching primary annotation -> its nearest related neighbors (not with ``absent``)."""
+    starts: dict[UUID, int] = field(default_factory=dict)
+    """Matching primary annotation -> its document start character (to place its neighbors)."""
     primary: int = 0
     unknown: int = 0
     neighbors_found: int = 0
@@ -169,5 +172,6 @@ def match(primary: list[AnnotationRow], neighbors: list[AnnotationRow], near: Ne
         elif hits:
             hits.sort(key=lambda b: (gap(a, b, near.unit), abs(b.start_char - a.start_char), str(b.id)))
             out.ids.append(a.id)
-            out.neighbors[a.id] = [b.id for b in hits[:MAX_NEAR_EXPLAINED]]
+            out.neighbors[a.id] = hits[:MAX_NEAR_EXPLAINED]
+            out.starts[a.id] = a.start_char
     return out

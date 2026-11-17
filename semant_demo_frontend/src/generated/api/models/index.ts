@@ -89,6 +89,7 @@ export * from './MinValue';
 export * from './MinValue1';
 export * from './NearDirection';
 export * from './NearFilter';
+export * from './NearNeighbor';
 export * from './NearRelation';
 export * from './NominalFilterValue';
 export * from './PageChunks';

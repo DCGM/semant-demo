@@ -169,6 +169,44 @@ export function nearSummary (near: NearFilter | null | undefined, primaryTags: s
     'Annotations whose position is not known yet are left out.'
 }
 
+const MIRRORED_DIRECTION: Record<NearDirection, NearDirection> = {
+  [NearDirection.either]: NearDirection.either,
+  [NearDirection.before]: NearDirection.after,
+  [NearDirection.after]: NearDirection.before
+}
+
+const MIRRORED_RELATION: Partial<Record<NearRelation, NearRelation>> = {
+  [NearRelation.contains]: NearRelation.containedBy,
+  [NearRelation.containedBy]: NearRelation.contains
+}
+
+/**
+ * The filter change that swaps the listed annotations and their neighbors (#333): "Statement near
+ * Criticism" becomes "Criticism near Statement". The tags, statuses and attribute values of the two
+ * sides are exchanged and the relation is mirrored (a neighbor after a Statement means a Statement
+ * before the neighbor; inside and containing exchange). The other filters (text, sources, "not
+ * assigned" attributes, document filters) stay with the listed annotations. Null without a
+ * proximity filter or listed tags.
+ */
+export function swapNear (f: ConcordanceFilters): Partial<ConcordanceFilters> | null {
+  const near = f.near
+  if (!near?.tagIds?.length || !f.tagIds.length) return null
+  const relation = near.relation ?? NearRelation.within
+  return {
+    tagIds: [...near.tagIds],
+    types: near.types?.length ? [...near.types] : defaultFilters().types,
+    attributeValues: [...(near.attributeValues ?? [])],
+    near: {
+      ...near,
+      tagIds: [...f.tagIds],
+      types: [...f.types],
+      attributeValues: [...f.attributeValues],
+      relation: MIRRORED_RELATION[relation] ?? relation,
+      direction: MIRRORED_DIRECTION[near.direction ?? NearDirection.either]
+    }
+  }
+}
+
 /** What the proximity filter could not compare (#333), e.g. "3 annotations without current positions
  * were not compared"; null when everything was compared. */
 export function proximityLabel (coverage: { unknown: number, neighborsUnpositioned: number } | null | undefined): string | null {

@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { QBtn, QBtnToggle, QSelect, Quasar } from 'quasar'
 
-import { DistanceUnit, NearDirection, NearRelation, type Tag } from 'src/generated/api'
+import { DistanceUnit, NearDirection, NearRelation, SpanType, TextStatus, type AnnotationListRow, type Tag } from 'src/generated/api'
+import ConcordanceTable from 'src/features/annotations/concordance/ConcordanceTable.vue'
 import ConcordanceToolbar from 'src/features/annotations/concordance/ConcordanceToolbar.vue'
+import { markNeighbors } from 'src/features/annotations/concordance/textMatches'
 import {
   annotationFilters, defaultFilters, nearParameters, type ConcordanceFilters
 } from 'src/features/annotations/concordance/concordanceStore'
-import { concordanceChips, defaultNear, nearRelationText, nearSummary, proximityLabel } from 'src/features/annotations/concordance/filterChips'
+import { concordanceChips, defaultNear, nearRelationText, nearSummary, proximityLabel, swapNear } from 'src/features/annotations/concordance/filterChips'
 
 // The proximity filter of the annotation workspace (#333): a compact form in More filters, one
 // removable chip, the same filter in GET parameters and request bodies, and an honest note on
@@ -68,12 +70,13 @@ describe('proximity filter', () => {
   })
 })
 
+const mounted: VueWrapper[] = []
+afterEach(() => {
+  mounted.splice(0).forEach(w => w.unmount())
+  document.body.innerHTML = ''
+})
+
 describe('proximity form', () => {
-  const mounted: VueWrapper[] = []
-  afterEach(() => {
-    mounted.splice(0).forEach(w => w.unmount())
-    document.body.innerHTML = ''
-  })
   const toolbar = async (f: ConcordanceFilters) => {
     const wrapper = mount(ConcordanceToolbar as never, {
       props: { filters: f, tags, documents: [] } as never, global: { plugins: [Quasar] }, attachTo: document.body
@@ -112,5 +115,65 @@ describe('proximity form', () => {
     const overlap = await toolbar(filters({ near: { ...defaultNear(['criticism']), relation: NearRelation.overlaps } }))
     expect(select(overlap, 'concordance-near-unit')).toBeUndefined()
     expect(overlap.find('[data-testid="concordance-near-distance"]').exists()).toBe(false)
+  })
+})
+
+describe('swapping the two sides', () => {
+  it('exchanges tags, statuses and attribute values and mirrors the relation', () => {
+    const near = { ...defaultNear(['criticism']), direction: NearDirection.after, attributeValues: ['a:red'] }
+    const f = filters({ tagIds: ['statement'], attributeValues: ['b:blue'], text: 'praha', near })
+    expect(swapNear(f)).toEqual({
+      tagIds: ['criticism'],
+      types: defaultFilters().types,
+      attributeValues: ['a:red'],
+      near: { ...near, tagIds: ['statement'], types: f.types, attributeValues: ['b:blue'], direction: NearDirection.before }
+    })
+    const inside = swapNear(filters({ tagIds: ['statement'], near: { ...defaultNear(['criticism']), relation: NearRelation.contains } }))
+    expect(inside?.near?.relation).toBe(NearRelation.containedBy)
+    const swapped = { ...f, ...swapNear(f) }
+    expect(swapNear(swapped)).toMatchObject({ tagIds: ['statement'], near: { tagIds: ['criticism'], direction: NearDirection.after } })
+  })
+
+  it('needs listed tags and a proximity filter', () => {
+    expect(swapNear(filters({ near: defaultNear(['criticism']) }))).toBeNull()
+    expect(swapNear(filters({ tagIds: ['statement'] }))).toBeNull()
+  })
+})
+
+describe('neighbors in the row text', () => {
+  it('marks only the characters of a range inside the field, keeping lexical matches', () => {
+    const parts = [{ text: 'do Lho', match: false }, { text: 'ty hej', match: true }]
+    expect(markNeighbors(parts, [{ start: 3, end: 8, color: 'red', label: 'L' }, { start: 20, end: 30, color: 'x', label: 'x' }])).toEqual([
+      { text: 'do ', match: false },
+      { text: 'Lho', match: false, near: { color: 'red', label: 'L' } },
+      { text: 'ty', match: true, near: { color: 'red', label: 'L' } },
+      { text: ' hej', match: true }
+    ])
+    expect(markNeighbors(parts, [{ start: -5, end: 0, color: 'red', label: 'L' }])).toBe(parts)
+  })
+
+  it('underlines neighbors in the left context, the annotation and the right context, in their tag color', () => {
+    const row = {
+      id: 'a',
+      tagId: 'statement',
+      type: SpanType.pos,
+      text: 'Jan Novák',
+      leftContext: 'do Lhoty hejtman ',
+      rightContext: ' v Brně.',
+      textStatus: TextStatus.ready,
+      documentAvailable: true,
+      neighbors: [
+        { id: 'n1', tagId: 'criticism', start: -14, end: -9 }, // Lhoty
+        { id: 'n2', tagId: 'criticism', start: 12, end: 16 }, // Brně
+        { id: 'n3', tagId: 'criticism', start: 4, end: 9 } // Novák
+      ]
+    } as AnnotationListRow
+    const wrapper = mount(ConcordanceTable, {
+      props: { rows: [row], tags, selected: new Set<string>(), filters: defaultFilters() }, global: { plugins: [[Quasar, {}]] }
+    })
+    mounted.push(wrapper as VueWrapper)
+    expect(wrapper.findAll('.kwic__near').map(n => n.text())).toEqual(['Lhoty', 'N', 'ovák', 'Brně']) // the annotation shown in two halves
+    expect(wrapper.get('.kwic__near').attributes('title')).toBe('Neighbor: Criticism')
+    expect(wrapper.get('.kwic__near').attributes('style')).toContain('text-decoration-color')
   })
 })

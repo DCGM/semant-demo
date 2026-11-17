@@ -475,6 +475,20 @@
               data-testid="concordance-near-placement"
               @update:model-value="setPlacement"
             />
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="primary"
+              icon="swap_horiz"
+              label="Swap"
+              class="concordance-toolbar__near-swap"
+              :disable="!swapChange"
+              data-testid="concordance-near-swap"
+              @click="swapChange && emit('change', swapChange)"
+            >
+              <q-tooltip>{{ swapHint }}</q-tooltip>
+            </q-btn>
           </template>
         </div>
         <p id="concordance-near-summary" class="concordance-toolbar__rule" data-testid="concordance-near-summary">{{ nearSummaryText }}</p>
@@ -497,7 +511,7 @@ import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOvervi
 import { modeChange, type ConcordanceFilters } from './concordanceStore'
 import type { FilterField } from './ConcordanceTable.vue'
 import {
-  MODE_LABELS, PLACEMENTS, SCOPE_LABELS, UNIT_LABELS, concordanceChips, defaultNear, modeHintText, nearSummary, placementOf,
+  MODE_LABELS, PLACEMENTS, SCOPE_LABELS, UNIT_LABELS, concordanceChips, defaultNear, modeHintText, nearSummary, placementOf, swapNear,
   titleProblem
 } from './filterChips'
 
@@ -608,6 +622,13 @@ const nearTagsLabel = computed(() => {
   const names = tagNames(props.filters.near?.tagIds ?? [])
   if (!names.length) return 'choose tags'
   return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`
+})
+const swapChange = computed(() => swapNear(props.filters))
+const swapHint = computed(() => {
+  if (!props.filters.tagIds.length) return 'Choose the tags of the listed annotations (Tags) to swap the two sides'
+  const listed = tagNames(props.filters.tagIds).join(', ')
+  const neighbors = tagNames(props.filters.near?.tagIds ?? []).join(', ')
+  return `List ${neighbors} annotations near ${listed} instead`
 })
 const nearSummaryText = computed(() => nearSummary(props.filters.near, tagNames(props.filters.tagIds), tagNames(props.filters.near?.tagIds ?? [])))
 
@@ -1023,6 +1044,10 @@ const shownLabel = computed(() => {
 
 .concordance-toolbar__near-unit :deep(.q-field__native) {
   padding: 0;
+}
+
+.concordance-toolbar__near-swap {
+  height: 32px;
 }
 
 .concordance-toolbar__rule {

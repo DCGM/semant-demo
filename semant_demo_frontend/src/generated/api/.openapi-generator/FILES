@@ -93,6 +93,7 @@ docs/MinValue.md
 docs/MinValue1.md
 docs/NearDirection.md
 docs/NearFilter.md
+docs/NearNeighbor.md
 docs/NearRelation.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
@@ -264,6 +265,7 @@ models/MinValue.ts
 models/MinValue1.ts
 models/NearDirection.ts
 models/NearFilter.ts
+models/NearNeighbor.ts
 models/NearRelation.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts

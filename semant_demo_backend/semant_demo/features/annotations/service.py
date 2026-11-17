@@ -50,7 +50,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
-    ProximityCoverage,
+    NearNeighbor, ProximityCoverage,
     MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationFilters, AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
     AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort,
@@ -896,7 +896,7 @@ def _filters_query(filters: AnnotationFilters, ids: list[UUID] | None = None) ->
 class _Near:
     """A proximity filter's outcome (#333): its coverage and the neighbors explaining each match."""
     coverage: ProximityCoverage
-    neighbors: dict[UUID, list[UUID]]
+    neighbors: dict[UUID, list[NearNeighbor]]
 
 
 async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilters, query: AnnotationQuery,
@@ -942,7 +942,9 @@ async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilt
         coverage=ProximityCoverage(primary=matched.primary, unknown=matched.unknown,
                                    neighbors=matched.neighbors_found,
                                    neighbors_unpositioned=matched.neighbors_unpositioned),
-        neighbors=matched.neighbors)
+        neighbors={a: [NearNeighbor(id=b.id, tagId=b.tag, start=b.start_char - matched.starts[a],
+                                    end=b.end_char - matched.starts[a]) for b in found]
+                   for a, found in matched.neighbors.items()})
 
 
 def _text_status(row: AnnotationRow) -> TextStatus:
@@ -957,7 +959,7 @@ def _text_status(row: AnnotationRow) -> TextStatus:
 def _list_row(row: AnnotationRow, document: Document | None, near: _Near | None = None) -> AnnotationListRow:
     ready = text_current(row)
     return AnnotationListRow(
-        nearIds=near.neighbors.get(row.id, []) if near is not None else [],
+        neighbors=near.neighbors.get(row.id, []) if near is not None else [],
         id=row.id, tagId=row.tagId, type=row.type, chunkId=row.chunkId, documentId=row.documentId,
         start=row.start, end=row.end, revision=row.revision or 0, textStatus=_text_status(row),
         text=row.text if ready else None, leftContext=row.leftContext if ready else None,

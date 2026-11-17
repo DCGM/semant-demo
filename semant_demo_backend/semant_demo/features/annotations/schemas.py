@@ -347,12 +347,24 @@ class AnnotationListRow(BaseModel):
     """Accepted attribute values (#331): attribute id -> value ids."""
     attributeVersion: int = 0
     """The version an attribute assignment of this annotation expects."""
-    nearIds: list[UUID] = []
+    neighbors: list["NearNeighbor"] = []
     """Proximity filter (#333): the nearest neighbor annotations that made this row match (at most
-    ``MAX_NEAR_EXPLAINED``); empty without the filter or with ``absent``."""
+    ``MAX_NEAR_EXPLAINED``), nearest first; empty without the filter or with ``absent``."""
 
 
 MAX_NEAR_EXPLAINED = 3
+
+
+class NearNeighbor(BaseModel):
+    """A neighbor annotation that made a row match the proximity filter (#333), placed relative to
+    the row's annotation so it can be marked in the row's text: ``start``/``end`` are UTF-16
+    offsets from the annotation's first character (negative: before it, in or beyond the left
+    context; from the annotation's length on: in or beyond the right context). The stored contexts
+    are the exact document text next to the annotation, so these offsets index them directly."""
+    id: UUID
+    tagId: UUID | None = None
+    start: int
+    end: int
 
 
 class RetrievalMode(str, Enum):

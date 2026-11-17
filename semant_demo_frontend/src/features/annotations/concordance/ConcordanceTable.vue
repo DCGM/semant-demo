@@ -153,14 +153,14 @@
             </q-item>
             <!-- The neighbors that made the row match the proximity filter (#333), nearest first. -->
             <q-item
-              v-for="(neighborId, n) in row.nearIds ?? []"
-              :key="neighborId"
+              v-for="neighbor in row.neighbors ?? []"
+              :key="neighbor.id"
               clickable
               data-testid="kwic-row-neighbor"
-              @click="menuAction(row, () => emit('open-neighbor', neighborId))"
+              @click="menuAction(row, () => emit('open-neighbor', neighbor.id))"
             >
-              <q-item-section avatar><q-icon name="link" /></q-item-section>
-              <q-item-section>{{ n ? `Show next nearest neighbor (${n + 1})` : 'Show nearest matching neighbor' }}</q-item-section>
+              <q-item-section avatar><q-icon name="link" :style="{ color: neighbor.tagId ? tagsById.get(neighbor.tagId)?.color : undefined }" /></q-item-section>
+              <q-item-section>{{ neighborLabel(neighbor.tagId) }}</q-item-section>
             </q-item>
             <template v-for="group in menuGroups(row)" :key="group.key">
               <q-separator />
@@ -195,17 +195,17 @@
              the left context right before it and the right context right after it, so the row
              reads as continuous text (#665). -->
         <div class="kwic__text" role="gridcell" aria-colspan="3" data-testid="kwic-text">
-          <span class="kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in marked(lineText(row.leftContext, true), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
+          <span class="kwic__left"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in field(row, 'left')" :key="i"><mark v-if="part.match" class="kwic__match" :class="{ kwic__near: part.near }" :style="nearStyle(part)" :title="part.near?.label">{{ part.text }}</mark><span v-else-if="part.near" class="kwic__near" :style="nearStyle(part)" :title="part.near.label">{{ part.text }}</span><template v-else>{{ part.text }}</template></template></span></span>
           <span class="kwic__key" :title="row.text ?? undefined">
             <template v-if="row.text !== null && row.text !== undefined">
               <!-- Read as one text: the halves are flex items, which assistive technology would
                    announce apart ("Jan N ovák"). -->
               <span class="sr-only kwic__key-label">{{ lineText(row.text) }}</span>
-              <span v-for="(half, h) in halves(row.text)" :key="h" :class="h ? 'kwic__key-tail' : 'kwic__key-head'" aria-hidden="true"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in half" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span></span>
+              <span v-for="(half, h) in halves(row)" :key="h" :class="h ? 'kwic__key-tail' : 'kwic__key-head'" aria-hidden="true"><span dir="ltr" class="kwic__ltr"><template v-for="(part, i) in half" :key="i"><mark v-if="part.match" class="kwic__match" :class="{ kwic__near: part.near }" :style="nearStyle(part)" :title="part.near?.label">{{ part.text }}</mark><span v-else-if="part.near" class="kwic__near" :style="nearStyle(part)" :title="part.near.label">{{ part.text }}</span><template v-else>{{ part.text }}</template></template></span></span>
             </template>
             <span v-else class="kwic__missing">{{ missingText(row) }}</span>
           </span>
-          <span class="kwic__right"><template v-for="(part, i) in marked(lineText(row.rightContext), inContext)" :key="i"><mark v-if="part.match" class="kwic__match">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></span>
+          <span class="kwic__right"><template v-for="(part, i) in field(row, 'right')" :key="i"><mark v-if="part.match" class="kwic__match" :class="{ kwic__near: part.near }" :style="nearStyle(part)" :title="part.near?.label">{{ part.text }}</mark><span v-else-if="part.near" class="kwic__near" :style="nearStyle(part)" :title="part.near.label">{{ part.text }}</span><template v-else>{{ part.text }}</template></template></span>
         </div>
         <div
           v-for="attribute in attributes"
@@ -362,7 +362,7 @@ import {
 import type { ConcordanceFilters } from './concordanceStore'
 import { rowFilterGroups, wordFilterGroup, type CellFilterGroup } from './cellFilters'
 import HeaderControls, { type SortState } from './KwicHeaderControls.vue'
-import { markMatches, queryWords, splitParts, type TextPart } from './textMatches'
+import { markMatches, markNeighbors, queryWords, splitParts, type TextPart } from './textMatches'
 import AttributeValueChips from 'src/features/attributes/AttributeValueChips.vue'
 import AttributeValuePicker from 'src/features/attributes/AttributeValuePicker.vue'
 import { applies, cannotAssign, heldName, heldValues, type AssignChange } from 'src/features/attributes/assignment'
@@ -509,9 +509,33 @@ function marked (text: string | null | undefined, searched: boolean): TextPart[]
   return markMatches(text ?? '', searched ? words.value : [])
 }
 
-/** The annotation in its two halves (`splitParts`), its matches marked. */
-function halves (text: string): [TextPart[], TextPart[]] {
-  return splitParts(marked(lineText(text), inText.value))
+/** The annotation in its two halves (`splitParts`), its matches and neighbors marked. */
+function halves (row: AnnotationListRow): [TextPart[], TextPart[]] {
+  return splitParts(field(row, 'text'))
+}
+
+/** One text field of a row, its lexical matches and its proximity neighbors (#333) marked. The
+ * neighbors' offsets count from the annotation's start; the contexts are the exact document text
+ * on either side of it, so the left context starts at minus its length and the right one at the
+ * annotation's length. */
+function field (row: AnnotationListRow, which: 'left' | 'text' | 'right'): TextPart[] {
+  const text = which === 'left' ? row.leftContext : which === 'right' ? row.rightContext : row.text
+  const parts = marked(lineText(text, which === 'left'), which === 'text' ? inText.value : inContext.value)
+  if (!row.neighbors?.length || row.text == null) return parts
+  const origin = which === 'left' ? -(row.leftContext ?? '').length : which === 'right' ? row.text.length : 0
+  return markNeighbors(parts, row.neighbors.map(n => {
+    const tag = n.tagId ? tagsById.value.get(n.tagId) : undefined
+    return { start: n.start - origin, end: n.end - origin, color: tag?.color ?? '#757575', label: `Neighbor: ${tag?.name ?? 'annotation'}` }
+  }))
+}
+
+function nearStyle (part: TextPart) {
+  return part.near ? { textDecorationColor: part.near.color } : undefined
+}
+
+/** A neighbor's label in the row menu, e.g. "Show neighbor: Criticism". */
+function neighborLabel (tagId: string | null | undefined): string {
+  return `Show neighbor: ${(tagId && tagsById.value.get(tagId)?.name) || 'annotation'}`
 }
 
 /** A context or annotation as one line of the row: line breaks as spaces; `endKept`: its trailing spaces (before
@@ -1147,6 +1171,14 @@ defineExpose({ reveal, focusRowById })
 }
 
 /* A lexical match: underlined, distinct from the annotation's own highlight. */
+/* A neighbor that made the row match the proximity filter (#333): underlined in its tag's color. */
+.kwic__near {
+  text-decoration-line: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
+}
+
 .kwic__match {
   background: none;
   color: inherit;
