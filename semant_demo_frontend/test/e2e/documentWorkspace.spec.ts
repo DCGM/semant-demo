@@ -105,6 +105,29 @@ const pageOverflow = (page: Page) => page.evaluate(() => ({
 }))
 const top = async (page: Page, testId: string) => (await page.getByTestId(testId).boundingBox())!.y
 const stageTransform = (page: Page) => page.getByTestId('scan-stage').evaluate(el => getComputedStyle(el).transform)
+/**
+ * Waits until neither pane moves: the text's scroll position and the scan's transform read
+ * the same over consecutive animation frames. A smooth scroll or the scan's transform
+ * transition in progress reads as movement, so a pane that (wrongly) starts to follow a
+ * target is caught moving or moved, without a fixed sleep (#736).
+ */
+async function panesSettled (page: Page) {
+  await page.evaluate(() => new Promise<void>(resolve => {
+    const text = document.querySelector('[data-testid="workspace-text"]')
+    const stage = document.querySelector('[data-testid="scan-stage"]')
+    const read = () => `${text?.scrollTop}|${stage ? getComputedStyle(stage).transform : ''}|${stage?.getAnimations().length ?? 0}`
+    let last = read()
+    let still = 0
+    const frame = () => {
+      const now = read()
+      still = now === last ? still + 1 : 0
+      last = now
+      if (still >= 6) resolve()
+      else requestAnimationFrame(frame)
+    }
+    requestAnimationFrame(frame)
+  }))
+}
 
 test.describe('the public document view', () => {
   test('a deep-linked passage opens its page and exact words; a scan line selects its exact text', async ({ page }) => {
@@ -190,7 +213,7 @@ test.describe('the public document view', () => {
     await open(page, gazette.id, `?page=${GAZETTE_PAGE}`)
     await expect(chunk(page, 'gazette_2')).toBeVisible()
     await expect(overlay(page)).toBeAttached()
-    await page.waitForTimeout(400)
+    await panesSettled(page)
     const [text0, scan0] = [await textScroll(page), await stageTransform(page)]
 
     // Both lines are readable on the fitted page and the short text is in view.
@@ -198,7 +221,7 @@ test.describe('the public document view', () => {
     await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r003-l001')
     await clickLine(page, 'r002-l001')
     await expect(chunk(page, 'gazette_1').locator('.is-active-passage')).toHaveText(fixture.chunk('gazette_1').text)
-    await page.waitForTimeout(400)
+    await panesSettled(page)
     expect(await textScroll(page)).toBe(text0)
     expect(await stageTransform(page)).toBe(scan0)
 
@@ -206,7 +229,7 @@ test.describe('the public document view', () => {
     await page.getByRole('button', { name: 'Zoom in (+)' }).click()
     await page.getByTestId('text-scroll').hover()
     await page.mouse.wheel(0, 200)
-    await page.waitForTimeout(400)
+    await panesSettled(page)
     await expect(chunk(page, 'gazette_1').locator('.is-active-passage')).toHaveText(fixture.chunk('gazette_1').text)
     expect(await stageTransform(page)).not.toBe(scan0)
   })

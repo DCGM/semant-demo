@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import {
@@ -276,9 +276,14 @@ describe('concordance toolbar header filters', () => {
 describe('concordance row value filters', () => {
   const menuItem = (testid: string) => document.body.querySelector<HTMLElement>(`[data-testid="${testid}"]`)
   async function until (found: () => unknown) {
+    // Polls for the menu Quasar renders on a later tick; it returns as soon as it is shown.
     for (let i = 0; i < 50 && !found(); i++) await new Promise(resolve => setTimeout(resolve, 10))
     expect(found()).toBeTruthy()
   }
+  // A click right after a row's menu closed belongs to the long press that opened it (400 ms,
+  // `onRowClick`); the test moves the clock past that instead of waiting it out (#736).
+  const afterLongPress = () => vi.setSystemTime(Date.now() + 450)
+  afterEach(() => { vi.useRealTimers() })
 
   it('opens the row menu from the keyboard and refines the query without opening or checking the row', async () => {
     const wrapper = mount(ConcordanceTable, {
@@ -316,7 +321,6 @@ describe('concordance row value filters', () => {
     await until(() => menuItem('kwic-refine-source-only'))
     // The filter took the row out: its menu goes without closing.
     await wrapper.setProps({ rows: [annotation('b')] })
-    await new Promise(resolve => setTimeout(resolve, 450))
     await wrapper.get('[data-testid="kwic-row"]').trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
     wrapper.unmount()
@@ -339,6 +343,7 @@ describe('concordance row value filters', () => {
     await row.trigger('click')
     expect(wrapper.emitted('open')).toBeUndefined()
 
+    vi.useFakeTimers({ toFake: ['Date'] })
     await row.trigger('keydown', { key: 'ContextMenu' })
     await until(() => menuItem('kwic-refine-words'))
     expect(menuItem('kwic-refine-words')?.textContent).toContain('Filter annotations with “ubytoval” in their context')
@@ -349,7 +354,7 @@ describe('concordance row value filters', () => {
     window.getSelection()?.removeAllRanges()
     await row.trigger('click')
     expect(wrapper.emitted('open')).toBeUndefined()
-    await new Promise(resolve => setTimeout(resolve, 450))
+    afterLongPress()
     await row.trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
     wrapper.unmount()
