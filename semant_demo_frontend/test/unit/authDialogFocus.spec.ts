@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { Platform, Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
@@ -12,7 +12,10 @@ import RegisterDialog from 'src/features/auth/RegisterDialog.vue'
 
 const mounted: VueWrapper[] = []
 const desktop = Platform.is.desktop
+// Fake timers run the dialog's enter transition at once instead of waiting for it.
+beforeEach(() => { vi.useFakeTimers() })
 afterEach(() => {
+  vi.useRealTimers()
   mounted.splice(0).forEach(w => w.unmount())
   document.body.innerHTML = ''
   Platform.is.desktop = desktop
@@ -27,8 +30,9 @@ async function open (component: unknown) {
   })
   mounted.push(wrapper)
   await flushPromises()
-  // The dialog focuses after its enter transition.
-  await new Promise(resolve => setTimeout(resolve, 400))
+  // The dialog focuses once its enter transition ends.
+  vi.runAllTimers()
+  await flushPromises()
   return wrapper
 }
 
