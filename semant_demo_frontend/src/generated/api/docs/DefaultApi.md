@@ -86,7 +86,6 @@ All URIs are relative to *http://localhost*
 | [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost**](DefaultApi.md#summarizedocumentapiusercollectionscollectioniddocumentsdocumentidsummarypost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/summary | Summarize Document |
-| [**syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost**](DefaultApi.md#synccollectionannotationchunktagsapiusercollectionscollectionidannotationschunktagssyncpost) | **POST** /api/user_collections/{collection_id}/annotations/chunk-tags/sync | Sync Collection Annotation Chunk Tags |
 | [**unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapiusercollectionscollectionidshareuseriddelete) | **DELETE** /api/user_collections/{collection_id}/share/{user_id} | Unshare Collection |
 | [**updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch**](DefaultApi.md#updateattributeapiusercollectionscollectionidattributesattributeidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id} | Update Attribute |
 | [**updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch**](DefaultApi.md#updateattributevalueapiusercollectionscollectionidattributesattributeidvaluesvalueidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id} | Update Attribute Value |
@@ -523,7 +522,7 @@ example().catch(console.error);
 
 Bulk Update Tag Spans
 
-Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to &#x60;&#x60;collection_id&#x60;&#x60;, which the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated (&#x60;&#x60;update_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;). Spans written by someone else since their version in &#x60;&#x60;expected_versions&#x60;&#x60; are not changed (&#x60;&#x60;edit_conflict&#x60;&#x60;; their current state in &#x60;&#x60;conflicts&#x60;&#x60;).
+Apply the same :class:&#x60;PatchSpan&#x60; to many spans in one round-trip.  Used by the AI-assist \&quot;Approve / Reject all selected\&quot; action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to &#x60;&#x60;collection_id&#x60;&#x60;, which the user may annotate; otherwise nothing is updated. Updates are best effort: &#x60;&#x60;spans&#x60;&#x60; holds the updated spans and &#x60;&#x60;failed&#x60;&#x60; the spans that could not be updated (&#x60;&#x60;update_span&#x60;&#x60;) and failed best-effort steps of updated spans (derived text or vector). Spans written by someone else since their version in &#x60;&#x60;expected_versions&#x60;&#x60; are not changed (&#x60;&#x60;edit_conflict&#x60;&#x60;; their current state in &#x60;&#x60;conflicts&#x60;&#x60;).
 
 ### Example
 
@@ -1239,7 +1238,7 @@ example().catch(console.error);
 
 Create Tag Span
 
-Adds new TagSpan and the matching chunk tag reference. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\&#39;s document are rejected (400).
+Adds new TagSpan with its derived text and vector. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was saved but its derived data could not be stored. Offsets outside the text of the chunk\&#39;s document are rejected (400).
 
 ### Example
 
@@ -1536,7 +1535,7 @@ example().catch(console.error);
 
 Delete Auto Spans
 
-Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted (&#x60;&#x60;delete_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
+Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted (&#x60;&#x60;delete_span&#x60;&#x60;).
 
 ### Example
 
@@ -1680,7 +1679,7 @@ example().catch(console.error);
 
 Delete Spans For Tags In Document
 
-Bulk-delete approved (&#x60;&#x60;type &#x3D;&#x3D; \&#39;pos\&#39;&#x60;&#x60;) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted (&#x60;&#x60;delete_span&#x60;&#x60;) and the chunk tag updates that failed (&#x60;&#x60;update_chunk_tags&#x60;&#x60;, item &#x60;&#x60;chunk_id:tag_id&#x60;&#x60;).
+Bulk-delete approved (&#x60;&#x60;type &#x3D;&#x3D; \&#39;pos\&#39;&#x60;&#x60;) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted (&#x60;&#x60;delete_span&#x60;&#x60;).
 
 ### Example
 
@@ -1824,7 +1823,7 @@ example().catch(console.error);
 
 Delete Tag Span
 
-Delete a TagSpan and the chunk tag reference no other span backs. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was deleted but the chunk tag could not be updated. A span written by someone else since &#x60;&#x60;expected_version&#x60;&#x60; is not deleted (409).
+Delete a TagSpan. A span written by someone else since &#x60;&#x60;expected_version&#x60;&#x60; is not deleted (409).
 
 ### Example
 
@@ -6162,81 +6161,6 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
-## syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost
-
-> WriteResult syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(collectionId, chunkTagSyncRequest)
-
-Sync Collection Annotation Chunk Tags
-
-Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\&#39;s tags from its annotations: repairs the &#x60;&#x60;update_chunk_tags&#x60;&#x60; failures of a review, also after a deletion. Needs annotation-edit access.
-
-### Example
-
-```ts
-import {
-  Configuration,
-  DefaultApi,
-} from '';
-import type { SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest } from '';
-
-async function example() {
-  console.log("🚀 Testing  SDK...");
-  const config = new Configuration({ 
-    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
-    accessToken: "YOUR ACCESS TOKEN",
-  });
-  const api = new DefaultApi(config);
-
-  const body = {
-    // string
-    collectionId: collectionId_example,
-    // ChunkTagSyncRequest
-    chunkTagSyncRequest: ...,
-  } satisfies SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest;
-
-  try {
-    const data = await api.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(body);
-    console.log(data);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-// Run the test
-example().catch(console.error);
-```
-
-### Parameters
-
-
-| Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **collectionId** | `string` |  | [Defaults to `undefined`] |
-| **chunkTagSyncRequest** | [ChunkTagSyncRequest](ChunkTagSyncRequest.md) |  | |
-
-### Return type
-
-[**WriteResult**](WriteResult.md)
-
-### Authorization
-
-[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
-
-### HTTP request headers
-
-- **Content-Type**: `application/json`
-- **Accept**: `application/json`
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-| **200** | Successful Response |  -  |
-| **422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
-
-
 ## unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete
 
 > Collection unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete(collectionId, userId)
@@ -6702,7 +6626,7 @@ example().catch(console.error);
 
 Update Tag Span
 
-Update TagSpan\&#39;s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was updated but the chunk tags could not be. A span written by someone else since &#x60;&#x60;expected_version&#x60;&#x60; is not changed (409), unless it already is as the patch asks.
+Update TagSpan\&#39;s information (start, end, tagId, ...). &#x60;&#x60;outcome&#x60;&#x60; is &#x60;&#x60;partial&#x60;&#x60; when the span was updated but its derived data (or a moved span\&#39;s chunk reference) could not be; saving again retries. A span written by someone else since &#x60;&#x60;expected_version&#x60;&#x60; is not changed (409), unless it already is as the patch asks.
 
 ### Example
 

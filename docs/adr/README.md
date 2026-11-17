@@ -12,7 +12,7 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | [0001 - Simple feature monolith](0001-simple-feature-monolith.md) | Implemented architecture; classes/interfaces optional. |
 | [0002 - Best-effort writes](0002-best-effort-writes.md) | Implemented partial-outcome principle; further envelope details are optional refinements. |
 | [0003 - Request-scoped AI](0003-request-scoped-ai.md) | Agreed lifecycle; detailed events/retry policy proposed. |
-| [0004 - Storage and annotation search](0004-storage-and-annotation-search.md) | Implemented chunk-tag search; inconsistent entries need reviewed cleanup. |
+| [0004 - Storage and annotation search](0004-storage-and-annotation-search.md) | Storage in Weaviate still applies; its chunk-tag search is superseded by 0013. |
 | [0005 - Testing contract](0005-testing-contract.md) | Implemented baseline; detailed test guidance supporting CONTRIBUTING. |
 | [0006 - Context and text](0006-context-and-text.md) | Search context agreed; line-level correspondence implemented as frontend mapping from stored chunk-start anchors (#351, validated in #546). |
 | [0007 - Access and collaboration](0007-access-and-collaboration.md) | Implemented shared annotation editing, owner-only membership and local progressive UI. |
@@ -21,13 +21,14 @@ work in [TODO.md](../TODO.md), and historical design evidence, including the pre
 | [0010 - Annotation provenance and edit versions](0010-annotation-provenance-and-edit-versions.md) | Proposed with #460: current-state provenance on annotations and `editVersion` conflicts for single and batch writes; store rollout pending. |
 | [0011 - Collection attributes](0011-collection-attributes.md) | Proposed with #331: SQL definitions, exact `attributeValues` assignments on approved annotations, `attributeVersion` conflicts and change records; workspace UI follows; store rollout pending. |
 | [0012 - Contextual chat](0012-contextual-chat.md) | Proposed with #243 (document chat prototype first): Search, collection and document chat in the right sidebar; in-memory history per scope, scoped server routes that load sources by ID, tool-based collection chat. |
+| [0013 - No chunk tag references](0013-no-chunk-tag-references.md) | Implemented with #733: chunks hold no tag references, tag-filtered chunk search removed (active legacy filters refused, 422); existing stores keep inert references. |
 
 ## Confirmed decisions
 
 | ID | Decision | Continuing contract |
 | --- | --- | --- |
 | Q1 | Shared users may edit annotations, not collection membership. | Separate annotation and membership checks and denial tests. |
-| Q2 | Search uses chunk tag attributes. Unsupported entries without backing annotations are inconsistencies to remove. Document view/export/concordances select manual, automatic, or both. | Preserve search representation; fix consistency defects and review cleanup separately. Do not impose approved-only search defaults or a legacy compatibility layer. |
+| Q2 | ~~Search uses chunk tag attributes.~~ Superseded by ADR 0013 (2026-11-17): no chunk tag attributes, no tag-filtered chunk search. Document view/export/concordances select manual, automatic, or both. | Annotations are read from spans only. Do not impose approved-only defaults. |
 | Q3 | Search chat uses retrieved results or an explicitly selected subset. | Explicit source set; no silent query rerun or scope expansion. Applied to the sidebar chats by ADR 0012 (proposed). |
 | Q4 | Real-time means local Document-view annotation, including immediate streamed AI suggestions. | Scope-safe UI updates; no cross-user synchronization requirement. |
 | Q5 | Line-level text-image correspondence is planned, possibly by frontend chunk-to-ALTO mapping; polygons may be added later. | Preserve text/source anchors; geometry stays optional. Implemented in the frontend from page layout files and `layoutStart` anchors ([PAGE_LAYOUT.md](../PAGE_LAYOUT.md)); polygons remain future work. |

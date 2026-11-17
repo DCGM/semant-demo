@@ -187,6 +187,7 @@ for i, chunk in enumerate(chunks_to_import):
     props = dict(full_obj.get("properties", {}))
     
     # Odstraň cross-reference properties kromě document
+    # (automaticTag/positiveTag/negativeTag: legacy references of older exports, inert since ADR 0013)
     props.pop("userCollection", None)
     props.pop("automaticTag", None)
     props.pop("positiveTag", None)

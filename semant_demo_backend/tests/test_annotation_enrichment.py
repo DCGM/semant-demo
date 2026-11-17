@@ -51,11 +51,6 @@ class FakeTags:
         return {t: [COLLECTION] for t in ids if t in (TAG, OTHER_TAG)}
 
 
-class FakeChunkTags:
-    async def sync(self, cid, pairs):
-        return []
-
-
 class FakeDocuments:
     """``reads`` counts the reads of chunks around a span (ranges of orders)."""
 
@@ -198,8 +193,7 @@ async def semantic(store, user, q):
 def store(embedder):
     vector = AnnotationVector(AnnotationVectorSettings.model_validate(
         {"id": CONFIG_ID, "embedding": {"provider": "embedding_service"}}), embedder)
-    return AnnotationStore(collections=FakeCollections(), tags=FakeTags(), spans=FakeSpans(),
-                           chunk_tags=FakeChunkTags(), documents=FakeDocuments(),
+    return AnnotationStore(collections=FakeCollections(), tags=FakeTags(), spans=FakeSpans(), documents=FakeDocuments(),
                            enrichment=Enrichment(derived=True, vector=vector))
 
 

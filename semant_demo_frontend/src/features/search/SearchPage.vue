@@ -1260,10 +1260,7 @@ async function runApplied ({ force = false } = {}) {
     type: SearchType.hybrid,
     vector: location.vector,
     userCollectionId: query.userCollectionId,
-    filters: historyFiltersOf(location.criteria, availableSearchFilters.value),
-    tagUuids: [],
-    positive: false,
-    automatic: false
+    filters: historyFiltersOf(location.criteria, availableSearchFilters.value)
   }))
   if (recorded === 'tooLong') {
     Notify.create({

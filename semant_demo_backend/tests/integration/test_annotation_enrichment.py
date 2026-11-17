@@ -13,7 +13,6 @@ from uuid import UUID
 import pytest
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
 
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository, add_enrichment_schema, enrichment_schema
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -68,7 +67,6 @@ def make_store(client, names, embedder, vector_name="contextual") -> AnnotationS
         {"id": CONFIG_ID, "target_vector": vector_name, "embedding": {"provider": "embedding_service"}}), embedder)
     return AnnotationStore(collections=UserCollectionRepository(client, names, spans),
                            tags=TagRepository(client, names, spans), spans=spans,
-                           chunk_tags=ChunkTagRepository(client, names, spans),
                            documents=documents, enrichment=Enrichment(True, vector))
 
 

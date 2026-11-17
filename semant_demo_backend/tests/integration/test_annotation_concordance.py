@@ -7,14 +7,13 @@ as derived; filters by type, tag, words (any case, inside a word), document and 
 applied by the store; spans saved without derived data are listed as pending. Through the
 API, owner and shared users read and other users are refused. Selections (#459): all matches
 resolve to ids by the store's filters (also among given ids), and review writes reach the
-annotations and their chunk tags per item.
+annotations per item.
 """
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
@@ -37,7 +36,6 @@ def store(seeded_store, collection_names, documents) -> AnnotationStore:
     spans = SpanRepository(seeded_store, collection_names, sort_keys=True)
     return AnnotationStore(collections=UserCollectionRepository(seeded_store, collection_names, spans),
                            tags=TagRepository(seeded_store, collection_names, spans), spans=spans,
-                           chunk_tags=ChunkTagRepository(seeded_store, collection_names, spans),
                            documents=documents,
                            enrichment=Enrichment(derived=True, sort_keys=True))
 

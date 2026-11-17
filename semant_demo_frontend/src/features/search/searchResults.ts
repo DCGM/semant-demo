@@ -4,7 +4,7 @@ import type { SearchResponse, SearchResultChunk } from 'src/generated/api'
 export function asSearchResponse (query: string, timeSpent: number, results: SearchResultChunk[]): SearchResponse {
   return {
     results,
-    searchRequest: { query, tagUuids: [], positive: false, automatic: false },
+    searchRequest: { query },
     timeSpent,
     searchLog: []
   }

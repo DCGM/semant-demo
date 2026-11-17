@@ -544,9 +544,6 @@ describe('Search page criteria', () => {
       searchTitleGenerate: true,
       searchSummaryGenerate: true,
       searchResultsSummaryGenerate: true,
-      tagUuids: [],
-      positive: true,
-      automatic: true,
       filters: [{ id: 'year', minValue: 1900, maxValue: 1950 }, { id: 'language', values: ['deu', 'ces'] }]
     })
     expect(fromRequest).toEqual({

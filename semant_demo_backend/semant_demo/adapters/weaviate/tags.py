@@ -90,7 +90,7 @@ class TagRepository:
         await self._tags().data.reference_add(from_uuid=tag_id, from_property="userCollection", to=collection_id)
 
     async def delete_unlinked(self, tag_id: UUID) -> None:
-        """Deletes a tag that was just inserted; it has no spans or chunk tag references yet."""
+        """Deletes a tag that was just inserted; it has no spans yet."""
         await self._tags().data.delete_by_id(tag_id)
 
     async def read(self, tag_id: UUID) -> Tag | None:
@@ -152,8 +152,7 @@ class TagRepository:
 
     async def delete(self, tag_id: UUID, collection_id: UUID) -> None:
         """
-        Deletes the tag after its chunk tag references and its spans in the collection's
-        tenant. Raises ``NotFoundError`` if the tag does not exist and
+        Deletes the tag after its spans in the collection's tenant. Raises ``NotFoundError`` if the tag does not exist and
         ``IncompleteWriteError`` if a step fails.
         """
         if await self._tags().query.fetch_object_by_id(tag_id, return_properties=[]) is None:

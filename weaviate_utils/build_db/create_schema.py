@@ -124,9 +124,8 @@ def create_chunks(client) -> None:
         references=[
             ReferenceProperty(name="document", target_collection="Documents"),
             ReferenceProperty(name="userCollection", target_collection="UserCollection"),
-            ReferenceProperty(name="automaticTag", target_collection="Tag"),
-            ReferenceProperty(name="positiveTag", target_collection="Tag"),
-            ReferenceProperty(name="negativeTag", target_collection="Tag"),
+            # No tag references: annotations live only as spans (ADR 0013). Older stores
+            # still have inert automaticTag/positiveTag/negativeTag references.
         ],
     )
 

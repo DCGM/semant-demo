@@ -1,18 +1,13 @@
 """Annotations feature against real Weaviate (#206).
 
 Offsets (cross-chunk, Unicode, gaps) and reload of persisted spans, the tag-creation
-failure policy, tag and collection deletion that stops part way, and the per-pair
-serialization of chunk tag re-derivation. Faults are injected into real Weaviate writes
+failure policy, and tag and collection deletion that stops part way. Faults are injected into real Weaviate writes
 (``fail_writes``); every test checks the stored state as well as the response.
 """
-import asyncio
-
 import pytest
-from weaviate.classes.query import Filter, QueryReference
+from weaviate.classes.query import Filter
 from weaviate.exceptions import WeaviateTimeoutError
 
-from semant_demo.adapters.weaviate import chunk_tags as chunk_tags_module
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.features.annotations.offsets import text_length
 
 pytestmark = pytest.mark.integration
@@ -153,16 +148,6 @@ async def test_a_span_moved_to_another_chunk_keeps_its_id_and_both_chunks_follow
     for chunk, expected in ((second, True), (first, False)):
         anchored = await tenant.query.fetch_objects(filters=Filter.by_ref("text_chunk").by_id().equal(chunk))
         assert (novak in {str(o.uuid) for o in anchored.objects}) is expected
-    # Tag-filtered search: the only approved person on chronicle_1 is gone, chronicle_2 has one now.
-    assert await positive_tags(seeded_store, collection_names, first) == set()
-    assert await positive_tags(seeded_store, collection_names, second) == {ids.tag["place"], ids.tag["person"]}
-
-
-async def positive_tags(seeded_store, collection_names, chunk_id):
-    obj = await seeded_store.collections.get(collection_names.chunks_collection_name).query.fetch_object_by_id(
-        chunk_id, return_references=[QueryReference(link_on="positiveTag")])
-    ref = (obj.references or {}).get("positiveTag")
-    return {str(r.uuid) for r in ref.objects} if ref else set()
 
 
 # ── Tag creation: insert, then link to the collection ─────────────────────
@@ -254,7 +239,7 @@ async def test_creating_the_tag_again_after_a_failed_link_succeeds(api_client, l
 # ── Deletion that stops part way ──────────────────────────────────────────
 
 async def test_tag_deletion_failing_part_way_keeps_completed_steps_and_can_be_repeated(
-        api_client, login, ids, store, collection_names, fail_writes, monkeypatch, chunk_tag_ids):
+        api_client, login, ids, store, collection_names, fail_writes, monkeypatch):
     place, brno = ids.tag["place"], ids.span["brno_manual"]
     fail_writes("delete_many", collection=collection_names.annotation_collection_name)
     owner = await login("owner")
@@ -264,11 +249,11 @@ async def test_tag_deletion_failing_part_way_keeps_completed_steps_and_can_be_re
     assert response.status_code == 500
     body = response.json()
     assert body["step"] == "delete_span"
-    assert body["completed"]["unlink_chunk_tag"] >= 1
+    # Chunks hold no tag references to unlink (#733, ADR 0013): the spans are the first step.
+    assert "unlink_chunk_tag" not in body["completed"]
     assert "deleting the tag again continues" in body["detail"]
     assert await store.tag(place) is not None
     assert await store.span(brno) is not None
-    assert place not in await chunk_tag_ids(ids.chunk["chronicle_1"])  # unlinked before the spans
 
     monkeypatch.undo()
     retry = await api_client.delete(f"/api/tags/{place}", headers=owner)
@@ -302,67 +287,3 @@ async def test_collection_deletion_failing_part_way_keeps_completed_steps_and_ca
     assert await store.collection(newspapers) is None
     assert await store.tag(event) is None
     assert newspapers not in await store.tenants()
-
-
-@pytest.fixture
-def chunk_tag_ids(seeded_store, collection_names):
-    """All tag ids a chunk references through its chunk tag properties."""
-    async def read(chunk_id):
-        obj = await seeded_store.collections.get(collection_names.chunks_collection_name).query.fetch_object_by_id(
-            chunk_id, return_references=[QueryReference(link_on=p) for p in chunk_tags_module.CHUNK_TAG_REFS])
-        return {str(r.uuid) for p in chunk_tags_module.CHUNK_TAG_REFS
-                for r in ((obj.references or {}).get(p).objects if (obj.references or {}).get(p) else [])}
-    return read
-
-
-# ── Concurrent writes on one (chunk, tag) pair ────────────────────────────
-
-async def test_concurrent_writes_on_one_pair_leave_its_chunk_tag_consistent(
-        api_client, login, ids, monkeypatch, chunk_tag_ids, seeded_store, collection_names):
-    """Delete the only ``person`` span on chronicle_1 while creating another one.
-
-    The delete's re-derivation reads the spans (none left) and is held until the create
-    has written its span and finished its own re-derivation, or for at most 2 s. Without
-    per-pair serialization the create's re-derivation completes in between and the held,
-    stale one then removes the reference that the new span needs. With it, the create's
-    re-derivation waits for the delete's and then reads the new span.
-    """
-    chunk, person = ids.chunk["chronicle_1"], ids.tag["person"]
-    owner = await login("owner")
-    held, second_sync_done = asyncio.Event(), asyncio.Event()
-    calls = {"required": 0, "sync": 0}
-    original_required, original_sync = chunk_tags_module.required_refs, ChunkTagRepository.sync
-
-    async def required_refs(spans, collection_id, pair):
-        result = await original_required(spans, collection_id, pair)
-        calls["required"] += 1
-        if calls["required"] == 1:
-            held.set()
-            try:
-                await asyncio.wait_for(second_sync_done.wait(), timeout=2)
-            except asyncio.TimeoutError:
-                pass  # the second sync is waiting for this one
-        return result
-
-    async def sync(self, collection_id, pairs):
-        calls["sync"] += 1
-        number = calls["sync"]
-        failed = await original_sync(self, collection_id, pairs)
-        if number == 2:
-            second_sync_done.set()
-        return failed
-
-    monkeypatch.setattr(chunk_tags_module, "required_refs", required_refs)
-    monkeypatch.setattr(ChunkTagRepository, "sync", sync)
-
-    delete = asyncio.create_task(api_client.delete(f"/api/tag_spans/{ids.span['novak_manual']}", headers=owner,
-                                                   params={"collection_id": ids.col["chronicles"]}))
-    await asyncio.wait_for(held.wait(), timeout=10)
-    create = asyncio.create_task(api_client.post("/api/tag_spans", headers=owner,
-                                                 json=span_body(ids, "chronicle_1", 34, 37)))
-    deleted, created = await asyncio.gather(delete, create)
-
-    assert (deleted.status_code, created.status_code) == (200, 200)
-    assert created.json()["outcome"] == "complete"
-    assert person in await chunk_tag_ids(chunk)
-    assert await chunk_tags_module.audit_chunk_tags(seeded_store, collection_names) == []
