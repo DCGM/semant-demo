@@ -391,7 +391,8 @@ test('annotation workspace review (#459)', async ({ page, request }, testInfo) =
     await novak.getByRole('checkbox').click()
     await expect(page.getByTestId('concordance-selected')).toHaveText('3 selected')
     await page.mouse.move(0, 0) // no hover tooltip
-    await page.waitForTimeout(400) // the checkbox animation
+    // The checkbox's check animation has finished (#736).
+    await novak.getByRole('checkbox').evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished)))
     await save(page, testInfo, 'annotation-review-selection')
 
     await novak.getByRole('checkbox').click()

@@ -111,6 +111,10 @@ shared databases. Live tests/benchmarks are separately marked and explicitly opt
 not ordinary PR gates. Assert outcomes, not incidental internals; no weakened assertions,
 blanket skips, hidden flakiness or empty test selections. Do not encode bugs as intended
 behavior or rely on exact LLM wording. No arbitrary coverage percentage is required.
+Do not sleep a fixed time (`setTimeout` in a test, `page.waitForTimeout`) to wait for a UI
+update, transition or operation: wait for its observable completion, or control the clock
+(Vitest fake timers for e.g. Quasar's dialog transitions), unless elapsed time itself is
+what the test checks (#736).
 Detailed guidance: [ADR 0005](docs/adr/0005-testing-contract.md).
 
 ## 5. Data, failures, and safety
