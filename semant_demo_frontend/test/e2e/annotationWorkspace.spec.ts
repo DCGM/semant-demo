@@ -725,12 +725,25 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   const chip = page.getByTestId('concordance-chip-similar')
   await expect(chip).toContainText('Similar to:\'Jan Novák\'')
 
-  await page.getByTestId('concordance-include-source').click()
+  // The source stays pinned above the results, named and reachable, while it is not ranked.
+  const pinned = page.getByTestId('similar-source')
+  await expect(pinned).toContainText("'Jan Novák'")
+  await expect(pinned.getByTestId('similar-source-status')).toContainText('not one of the ranked matches')
+
+  await pinned.getByTestId('similar-source-include').click()
   await expect(range).toHaveText('Rows 1–4 of 4 ranked annotations')
   await expect(rows(page).first()).toContainText('Jan Novák') // nearest to itself
 
   await chip.locator('.filter-chips__value').click()
   await expect(page.getByTestId('annotation-context-text')).toHaveText('Jan Novák')
+
+  // Back to the previous view: the query from before Find similar, not a reconstruction.
+  await pinned.getByTestId('similar-source-back').click()
+  await expect(range).toHaveText('Rows 1–4 of 4 matching annotations')
+  await expect(pinned).toHaveCount(0)
+  await row(page, 'Jan Novák').click()
+  await page.getByTestId('row-find-similar').click()
+  await expect(pinned).toBeVisible()
 
   // Removing the chip leaves the mode; every match again, sortable.
   await page.getByRole('button', { name: 'Stop finding annotations similar to \'Jan Novák\'' }).click()
