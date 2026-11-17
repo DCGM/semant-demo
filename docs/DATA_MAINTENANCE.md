@@ -32,21 +32,13 @@ The scripts in `weaviate_utils/` are older standalone tools; several drop collec
 delete data (for example `delete_*.py`, `build_db/create_schema.py`) and connect to a
 hard-coded or configured endpoint. The same rules apply.
 
-## Chunk tag audit (`chunk_tag_audit`)
+## Chunk tag references (removed, #733)
 
-Compares the chunk `automaticTag` / `positiveTag` / `negativeTag` references with the spans
-([ADR 0004](adr/0004-storage-and-annotation-search.md)): `unbacked` references (no matching
-span) and `missing` references (a span whose chunk lacks the reference, invisible to
-tag-filtered search).
-
-```bash
-python -m semant_demo.maintenance.chunk_tag_audit --report chunk_tags.json   # read-only
-python -m semant_demo.maintenance.chunk_tag_audit --apply chunk_tags.json \
-  --remove-unbacked --confirm-endpoint localhost:8080
-```
-
-Add `--add-missing` only when the reviewed repair also needs to create absent references.
-Applying re-derives every listed (chunk, tag) pair from the spans stored at that moment.
+The chunk tag audit (`chunk_tag_audit`) and its repair were removed with the chunk tag
+references themselves ([ADR 0013](adr/0013-no-chunk-tag-references.md)). Existing stores keep
+the `automaticTag` / `positiveTag` / `negativeTag` properties and references, inert; do not
+clear or drop them without a separately reviewed issue. Earlier audits and repairs (#422) are
+recorded in the [run records](archive/data-maintenance-2026/RUN_RECORDS.md).
 
 ## Documents without chunks (`document_cleanup`, #281)
 
@@ -463,8 +455,7 @@ The dry run is the inventory: legacy and per-collection counts (`would_copy`,
 Weaviate 1.40 returns no reference to a deleted object, so spans of deleted tags or chunks
 appear here —, tags without exactly one collection, chunks without a document, unknown types,
 offsets that are not `0 <= start < end`) with their ids, and the tag inventory. Skipped spans
-are never assigned to a guessed collection; review them before the cutover. Their chunk tag
-references become unbacked and are then reported by `chunk_tag_audit`.
+are never assigned to a guessed collection; review them before the cutover.
 
 `--execute` creates `Annotation` when missing and the tenants it needs, inserts only spans
 absent from their tenant (a differing copy is a reported `conflict`, never overwritten), saves
@@ -481,8 +472,7 @@ existing backup recorded with `--offline-backup`, also qualifies. Production ser
 backfill creates `Annotation` itself (no alias), with its `text_chunk` reference targeting the
 collection behind `Chunks`, since Weaviate refuses a reference to an alias.
 
-1. Before the pause, on the running store: `backfill --state dry.json` and
-   `chunk_tag_audit --report audit-before.json`. Review the skipped records, the tag inventory
+1. Before the pause, on the running store: `backfill --state dry.json`. Review the skipped records, the tag inventory
    and the counts; expect the pause to take about as long as the dry run plus writing (the
    rehearsal wrote ~16,000 spans/s into existing tenants and created ~16 tenants/s).
 2. **Write pause:** stop the backend (`./update.sh app-down`, for the test store every app
@@ -494,11 +484,10 @@ collection behind `Chunks`, since Weaviate refuses a reference to an alias.
    to the store: `backfill --state run.json --execute --confirm-endpoint HOST:PORT
    --offline-backup PATH`, until it exits 0 (`failed` and `conflict` empty).
 5. `verify --report verify.json` must report no `missing`, `different`, `target_only` or
-   `orphan_tenants`; `chunk_tag_audit --report audit-after.json` must report what
-   `audit-before.json` reported plus the references of skipped spans.
+   `orphan_tenants`.
 6. Deploy and start the new release. Check the document view (annotations, AI suggestions,
-   approve/reject), collection statistics, tag-filtered search and a span discussion.
-7. Keep `Span`, the copy, the state, the reports and the audits; record counts, the copy
+   approve/reject), collection statistics and a span discussion.
+7. Keep `Span`, the copy, the state and the reports; record counts, the copy
    and the outcome on the issue.
 
 **Rollback.** Before any annotation was written in the new store, redeploy the previous
@@ -506,8 +495,7 @@ release: it reads `Span`, which the migration did not change (`Annotation` can s
 release ignores it). After writes in the new store, switching back would lose them: run
 `verify --report`, which lists the spans created (`target_only`), changed (`different`) and
 deleted (`missing`) since the cutover, and reconcile them into `Span` in a separately reviewed
-step (no tool is provided), or roll forward. The chunk tag references follow the new store's
-writes, so run `chunk_tag_audit` against whichever store is current. Restoring the offline
+step (no tool is provided), or roll forward. Restoring the offline
 copy also returns to the pre-migration state, losing every later write in all collections.
 
 **Rehearsed** on disposable Weaviate 1.40.1 (2026-10-18; `tests/integration/test_annotation_migration.py`

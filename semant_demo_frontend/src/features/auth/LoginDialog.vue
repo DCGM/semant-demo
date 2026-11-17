@@ -11,6 +11,7 @@
         <q-form @submit.prevent="submit" class="q-gutter-md">
           <q-input
             v-model="email"
+            :autofocus="$q.platform.is.desktop"
             label="Email or Username"
             outlined
             dense

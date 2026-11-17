@@ -1,7 +1,6 @@
 """AI suggestion streams against real Weaviate, with deterministic Topicer stand-ins (#207).
 
-Saved suggestions must reload through the span API and be findable by tag-filtered
-search; a provider failure keeps what was saved; a client disconnect on a real server
+Saved suggestions must reload through the span API; a provider failure keeps what was saved; a client disconnect on a real server
 stops the remaining provider calls. The workflow's cases are covered with fakes in
 tests/test_suggestions.py.
 """
@@ -16,10 +15,6 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 pytestmark = pytest.mark.integration
-
-
-NO_SUMMARY = {"search_title_generate": False, "search_summary_generate": False,
-              "search_results_summary_generate": False}
 
 
 def lines_of(response):
@@ -66,12 +61,6 @@ async def test_saved_suggestions_reload_and_are_findable_by_tag(api_client, logi
     assert (end["outcome"], end["saved"]) == ("complete", 2)  # "Jan Novák" in both chunks ("Brno" in none)
     stored = await reload_spans(["chronicle_1", "chronicle_2"])
     assert all(stored[i] == announced[i] and stored[i]["type"] == "auto" for i in announced)
-    # chronicle_2 had no automatic "person" reference before; "odjel" occurs only there.
-    search = await api_client.post("/api/search", headers=await login("owner"), json={
-        "query": "odjel", "type": "text", "user_collection_id": ids.col["chronicles"],
-        "tag_uuids": [ids.tag["person"]], "positive": False, "automatic": True, **NO_SUMMARY})
-    assert search.status_code == 200, search.text
-    assert [r["id"] for r in search.json()["results"]] == [ids.chunk["chronicle_2"]]
 
 
 async def test_provider_failure_after_partial_success_keeps_saved_suggestions(

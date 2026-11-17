@@ -52,7 +52,13 @@ async function open (props: Record<string, unknown>) {
   await flushPromises()
   return wrapper
 }
-const transition = () => new Promise(resolve => setTimeout(resolve, 400))
+// A closed dialog reports hide after its leave transition (QDialog's transitionDuration, 300 ms):
+// a test controls that timer instead of waiting for it (#736).
+const controlTransitions = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+const transition = async () => {
+  vi.advanceTimersByTime(400)
+  await flushPromises()
+}
 
 const button = (wrapper: VueWrapper, label: string) => wrapper.findAllComponents(QBtn).find(b => b.props('label') === label)!
 const input = (wrapper: VueWrapper, label: string) => wrapper.findAllComponents(QInput).find(i => i.props('label') === label)!
@@ -78,6 +84,7 @@ beforeEach(() => {
     Promise.resolve(applied([speaker, mood, topic].find(a => a.id === id)!, patch)))
 })
 afterEach(() => {
+  vi.useRealTimers()
   mounted.splice(0).forEach(w => w.unmount())
   document.body.innerHTML = ''
 })
@@ -163,6 +170,7 @@ describe('TagsDialog applicable attributes', () => {
     // selected text on `ok`): the created tag stays, and the attributes are read again.
     listed.mockClear()
     await switchTo(wrapper, 'mood', false)
+    controlTransitions()
     await button(wrapper, 'Cancel').trigger('click')
     await transition()
     expect(wrapper.emitted('ok')).toBeUndefined()
@@ -255,6 +263,7 @@ describe('TagsDialog applicable attributes', () => {
     expect(updated).not.toHaveBeenCalled()
     expect([input(wrapper, 'Tag Name').props('modelValue'), toggle(wrapper, 'mood')!.props('modelValue')]).toEqual(['Person', true])
     // Giving up: Cancel asks before discarding what was entered, then closes without confirming.
+    controlTransitions()
     await button(wrapper, 'Cancel').trigger('click')
     await flushPromises()
     expect(document.body.textContent).toContain('You have unsaved changes')

@@ -1,7 +1,8 @@
 """The append-only chunk import against the real test store (#313).
 
 Collections as in production: chunks and documents served through aliases, the chunk
-vector named ``Qwen3_Embedding_0_6B``, the #463 position properties and a tag reference.
+vector named ``Qwen3_Embedding_0_6B``, the #463 position properties and a legacy tag
+reference (inert since ADR 0013, but still present in existing stores and preserved).
 The import creates missing empty documents and positioned chunks, appends after a
 stored tail, replays without writing and refuses anything that would change, skip or
 interleave stored chunks; a failed write blocks only its document and a rerun finishes

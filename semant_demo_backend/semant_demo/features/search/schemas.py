@@ -86,6 +86,10 @@ class SummaryRequestBase(BaseModel):
     search_results_summary_brevity: int | None = None
 
 
+LEGACY_TAG_FIELDS = frozenset({"tag_uuids", "positive", "automatic"})
+"""Fields of the removed tag filter that ``SearchRequest`` tolerates only with no-op values."""
+
+
 class SearchRequest(SummaryRequestBase):
     query: str
     limit: int = 10
@@ -109,15 +113,26 @@ class SearchRequest(SummaryRequestBase):
     max_date: datetime | None = None
     language: str | None = None
 
-    tag_uuids: list[str]
-    positive: bool
-    automatic: bool
-
     is_hyde: bool = False  # variable which indicates if query is document
 
     # Configured search vector (GET /api/search/vectors) of vector and hybrid search;
     # None selects the default. Text search uses no vector.
     vector: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_tag_filter(cls, data: Any) -> Any:
+        """Tag-filtered chunk search was removed (#733, ADR 0013). Older clients sent
+        ``tag_uuids`` / ``positive`` / ``automatic`` with every request; their no-op defaults
+        (``[]`` / ``false``) are still accepted and dropped, while an active filter is refused
+        (422) rather than answered with unfiltered results."""
+        if not isinstance(data, dict) or not LEGACY_TAG_FIELDS & data.keys():
+            return data
+        if data.get("tag_uuids") or data.get("positive") or data.get("automatic"):
+            raise PydanticCustomError(
+                "tag_filter_removed",
+                "Filtering search by annotation tags is no longer supported; send no tag_uuids, positive or automatic.")
+        return {k: v for k, v in data.items() if k not in LEGACY_TAG_FIELDS}
 
 
 class SearchResultChunk(DocumentChunk):
@@ -412,17 +427,6 @@ class FieldCondition:
 
 
 @dataclass(frozen=True)
-class TagFilter:
-    """Chunks carrying any of ``tag_ids`` as a suggested (automatic) or approved (positive) tag.
-
-    Only the enabled kinds are matched; at least one is enabled.
-    """
-    tag_ids: tuple[UUID, ...]
-    automatic: bool
-    positive: bool
-
-
-@dataclass(frozen=True)
 class ChunkQuery:
     """One retrieval: all conditions must hold (AND)."""
     text: str
@@ -435,7 +439,6 @@ class ChunkQuery:
     target_vector: str | None = None
     """Stored named vector that ``vector`` is compared with; required with ``vector``."""
     collection_id: UUID | None = None
-    tags: TagFilter | None = None
     conditions: tuple[FieldCondition, ...] = ()
     """Older filters (``SearchRequest.filters`` and the legacy fields)."""
     document_conditions: tuple[Condition, ...] = ()

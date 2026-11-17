@@ -56,6 +56,7 @@ class RankingSpans(FakeSpans):
         super().__init__()
         self.vectors: dict[UUID, list[float]] = {}
         self.rankings: list[tuple] = []
+        self.ranked_queries: list = []
 
     def _match(self, query, document_ids):
         rows = super()._match(query, document_ids)
@@ -66,6 +67,7 @@ class RankingSpans(FakeSpans):
 
     async def rank(self, cid, query, ranking, *, document_ids=None, limit):
         self.rankings.append((ranking, limit))
+        self.ranked_queries.append(query)
         candidates = [r for r in self._match(query, document_ids) if r.id != ranking.exclude]
         distance = {r.id: math.dist(self.vectors[r.id], ranking.vector) for r in candidates}
         if ranking.text is None:
@@ -108,8 +110,7 @@ def embedder():
 def store(embedder):
     vector = AnnotationVector(AnnotationVectorSettings.model_validate(
         {"id": CONFIG_ID, "embedding": {"provider": "embedding_service"}}), embedder)
-    return AnnotationStore(collections=FakeCollections(), tags=None, spans=RankingSpans(), chunk_tags=None,
-                           documents=FakeDocuments(), enrichment=Enrichment(derived=True, vector=vector))
+    return AnnotationStore(collections=FakeCollections(), tags=None, spans=RankingSpans(), documents=FakeDocuments(), enrichment=Enrichment(derived=True, vector=vector))
 
 
 def put(store, *rows):
@@ -120,7 +121,7 @@ def put(store, *rows):
 
 
 async def ranked(store, filters=None, ranking=SEMANTIC, user=OWNER, **kwargs):
-    return await service.query_annotations(store, user, COLLECTION, filters or AnnotationFilters(q="hejtman"),
+    return await service.query_annotations(store, user, COLLECTION, filters or AnnotationFilters(ranking_query="hejtman"),
                                            ranking=ranking, **kwargs)
 
 
@@ -155,13 +156,36 @@ async def test_every_filter_applies_before_ranking(store):
     wanted = put(store, ranked_row(DOC_A, 0.8, "Novák"))
     put(store, ranked_row(DOC_B, 0.1, "Novák"),  # another year
         ranked_row(DOC_A, 0.1, "Novák", tag=OTHER_TAG), ranked_row(DOC_A, 0.1, "Novák", type=SpanType.neg))
-    filters = AnnotationFilters(q="hejtman", tag_ids=[TAG], document_filters=DocumentFilters(year_min=1900))
+    filters = AnnotationFilters(ranking_query="hejtman", tag_ids=[TAG], document_filters=DocumentFilters(year_min=1900))
 
     page = await ranked(store, filters, AnnotationRanking(mode=RetrievalMode.semantic, k=1))
 
     assert ids(page) == wanted and not page.result.truncated
     assert page.result.coverage.matching == 1
     assert page.rows[0].documentTitle == "Almanach"
+
+
+async def test_words_filter_and_the_similarity_text_ranks_independently(store, embedder):
+    wanted = put(store, ranked_row(DOC_A, 0.8, "Novák"))
+    put(store, ranked_row(DOC_A, 0.1, "Svoboda"))  # nearer, but without the word
+    filters = AnnotationFilters(q="Novák", ranking_query="hejtman", text_scope=TextScope.annotation)
+
+    page = await ranked(store, filters, HYBRID)
+
+    used, _ = store.spans.rankings[0]
+    assert used.text == "hejtman" and used.fields == ALL_TEXT_FIELDS and embedder.queries == ["hejtman"]
+    assert page.result.coverage.matching == 1
+    assert ids(page) == wanted
+
+
+async def test_the_similarity_text_needs_a_text_mode(store):
+    [source] = put(store, ranked_row(DOC_A, 0.3))
+    with pytest.raises(InvalidRequestError, match="no similarity text"):
+        await ranked(store, AnnotationFilters(ranking_query="x"), similar(source))
+    with pytest.raises(InvalidRequestError, match="needs a ranked mode"):
+        await service.query_annotations(store, OWNER, COLLECTION, AnnotationFilters(ranking_query="x"))
+    with pytest.raises(InvalidRequestError, match="needs a ranked mode"):
+        await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest(ranking_query="x"))
 
 
 async def test_coverage_counts_the_matching_annotations_that_cannot_be_ranked(store):
@@ -206,17 +230,49 @@ async def test_pages_partition_the_top_k_in_relevance_then_id_order(store):
     assert all(p.result.truncated for p in pages)
 
 
-async def test_hybrid_ranks_by_score_with_bm25_on_the_fields_of_the_text_scope(store):
-    plain, named = put(store, ranked_row(DOC_A, 0.1, "slovo"), ranked_row(DOC_A, 0.6, "hejtman"))
-    filters = AnnotationFilters(q="  hejtman ", text_scope=TextScope.annotation)
+ALL_TEXT_FIELDS = ("text", "leftContext", "rightContext")
 
-    page = await ranked(store, filters, HYBRID)
+
+async def test_hybrid_ranks_by_score_with_bm25_on_the_annotation_and_both_contexts(store):
+    plain, named = put(store, ranked_row(DOC_A, 0.1, "slovo"), ranked_row(DOC_A, 0.6, "hejtman"))
+
+    page = await ranked(store, AnnotationFilters(ranking_query="  hejtman "), HYBRID)
 
     assert ids(page) == [named, plain] and page.result.mode == RetrievalMode.hybrid
     used, _ = store.spans.rankings[0]
-    assert (used.text, used.fields, used.alpha) == ("hejtman", ("text",), 0.5)
-    await ranked(store, AnnotationFilters(q="hejtman", text_scope=TextScope.both), HYBRID)
-    assert store.spans.rankings[1][0].fields == ("text", "leftContext", "rightContext")
+    assert (used.text, used.fields, used.alpha) == ("hejtman", ALL_TEXT_FIELDS, 0.5)
+
+
+async def test_the_bm25_fields_and_the_top_k_do_not_follow_the_words_scope(store):
+    put(store, ranked_row(DOC_A, 0.1, "slovo"), ranked_row(DOC_A, 0.6, "hejtman"), ranked_row(DOC_A, 0.3, "hejtman"))
+
+    pages = [await ranked(store, AnnotationFilters(ranking_query="hejtman", text_scope=scope), HYBRID)
+             for scope in TextScope]
+    resolved = [await service.resolve_annotation_ids(
+        store, OWNER, COLLECTION, AnnotationIdsRequest(ranking_query="hejtman", text_scope=scope, ranking=HYBRID))
+        for scope in TextScope]
+
+    assert {tuple(ids(p)) for p in pages} == {tuple(ids(pages[0]))}  # the same top k for every scope
+    assert [tuple(r.ids) for r in resolved] == [tuple(ids(p)) for p in pages]  # the listing and the ids agree
+    assert {used.fields for used, _ in store.spans.rankings} == {ALL_TEXT_FIELDS}
+
+
+async def test_the_words_scope_filters_the_candidates_but_not_the_bm25_fields(store):
+    [in_text] = put(store, ranked_row(DOC_A, 0.5, "Novák"))
+    [in_context] = put(store, (ranked_row(DOC_A, 0.2, "slovo")[0].model_copy(update={"leftContext": "pan Novák "}), [1.0, 0.2]))
+    put(store, ranked_row(DOC_A, 0.1, "slovo"))  # near, but with the word nowhere
+
+    by_scope = {}
+    for scope in TextScope:
+        filters = AnnotationFilters(q="Novák", ranking_query="hejtman", text_scope=scope)
+        by_scope[scope] = ids(await ranked(store, filters, HYBRID))
+
+    assert by_scope[TextScope.annotation] == [in_text]
+    assert by_scope[TextScope.context] == [in_context]
+    assert set(by_scope[TextScope.both]) == {in_text, in_context}
+    assert {used.fields for used, _ in store.spans.rankings} == {ALL_TEXT_FIELDS}
+    assert [q.text_scope for q in store.spans.ranked_queries] == list(TextScope)
+    assert all(q.words == ["Novák"] for q in store.spans.ranked_queries)
 
 
 # ── Find similar ──────────────────────────────────────────────────────────
@@ -269,15 +325,15 @@ async def test_no_provider_call_before_authorization_and_validation(store, embed
     with pytest.raises(ResourceNotFound):
         await ranked(store, user=OTHER)
     with pytest.raises(InvalidRequestError, match="Enter a text"):
-        await ranked(store, AnnotationFilters(q="  "))
+        await ranked(store, AnnotationFilters(ranking_query="  "))
     with pytest.raises(InvalidRequestError, match="cannot be sorted"):
         await ranked(store, sort=AnnotationSort.text)
     with pytest.raises(InvalidRequestError, match="cannot be sorted"):
         await ranked(store, descending=True)
     with pytest.raises(InvalidRequestError):
-        await ranked(store, AnnotationFilters(q="hejtman", attribute_values=["malformed"]))
+        await ranked(store, AnnotationFilters(ranking_query="hejtman", attribute_values=["malformed"]))
     with pytest.raises(ResourceNotFound):
-        await service.resolve_annotation_ids(store, OTHER, COLLECTION, AnnotationIdsRequest(q="x", ranking=SEMANTIC))
+        await service.resolve_annotation_ids(store, OTHER, COLLECTION, AnnotationIdsRequest(ranking_query="x", ranking=SEMANTIC))
     assert embedder.queries == [] and store.spans.rankings == []
 
 
@@ -320,10 +376,10 @@ async def test_select_all_in_a_ranked_mode_resolves_exactly_the_top_k(store):
     ranking = AnnotationRanking(mode=RetrievalMode.semantic, k=3)
 
     resolved = await service.resolve_annotation_ids(store, SHARED, COLLECTION,
-                                                    AnnotationIdsRequest(q="hejtman", ranking=ranking))
+                                                    AnnotationIdsRequest(ranking_query="hejtman", ranking=ranking))
     page = await ranked(store, ranking=ranking)
     within = await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest(
-        q="hejtman", ranking=ranking, within=[rows[0], rows[5]]))
+        ranking_query="hejtman", ranking=ranking, within=[rows[0], rows[5]]))
 
     assert resolved.ids == rows[:3] == ids(page)
     assert resolved.result.kind == ResultKind.top_k and resolved.result.k == 3 and resolved.result.truncated
@@ -349,16 +405,16 @@ async def test_ranked_routes_parse_the_mode_and_answer_unavailable_with_503(tmp_
         headers = await auth_headers(client, "rank@example.com", "StrongPassw0rd!")
         monkeypatch.setattr(OWNER, "id", UUID((await client.get("/api/users/me", headers=headers)).json()["id"]))
 
-        semantic = await client.get(path, headers=headers, params={"mode": "semantic", "q": "hejtman", "k": 2})
+        semantic = await client.get(path, headers=headers, params={"mode": "semantic", "ranking_query": "hejtman", "k": 2})
         found = await client.get(path, headers=headers, params={"mode": "similar", "similar_to": str(source)})
         resolved = await client.post(f"{path}/ids", headers=headers, json={
             "ranking": {"mode": "similar", "similar_to": str(source), "k": 1}})
         bad = [await client.get(path, headers=headers, params=params)
                for params in ({"mode": "semantic", "k": 501}, {"mode": "similar"},
-                              {"mode": "semantic", "similar_to": str(source)}, {"mode": "semantic", "q": "x", "sort": "text"},
+                              {"mode": "semantic", "similar_to": str(source)}, {"mode": "semantic", "ranking_query": "x", "sort": "text"},
                               {"mode": "semantic"})]
         embedder.fail = True
-        unavailable = await client.get(path, headers=headers, params={"mode": "hybrid", "q": "hejtman"})
+        unavailable = await client.get(path, headers=headers, params={"mode": "hybrid", "ranking_query": "hejtman"})
 
     assert semantic.status_code == 200, semantic.text
     body = semantic.json()

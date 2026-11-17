@@ -1,5 +1,10 @@
 # ADR 0004 - Preserve chunk-based tag search in Weaviate
 
+**Partly superseded by [ADR 0013](0013-no-chunk-tag-references.md) (#733, 2026-11-17):** chunks
+no longer hold tag references and tag-filtered chunk search was removed. The sections below on
+the chunk-tag projection, its consistency and its cleanup are historical. Keeping documents,
+chunks and vectors in Weaviate and SQL identity storage still applies.
+
 Status: chunk-based storage and search adopted; consistency implemented in #204–#206.
 Broader search redesign and existing-data repair remain separate reviewed work.
 Span annotations themselves moved to one tenant per user collection in #327

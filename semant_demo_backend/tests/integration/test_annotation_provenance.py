@@ -14,7 +14,6 @@ from uuid import UUID
 import pytest
 from weaviate.classes.config import Configure, ReferenceProperty
 
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import (
     ENRICHMENT_PROPERTIES, PROVENANCE_PROPERTIES, SpanRepository, add_provenance_schema, provenance_schema,
@@ -159,7 +158,6 @@ def _store(client, names, provenance: bool) -> AnnotationStore:
     spans = SpanRepository(client, names, provenance=provenance)
     return AnnotationStore(collections=UserCollectionRepository(client, names, spans),
                            tags=TagRepository(client, names, spans), spans=spans,
-                           chunk_tags=ChunkTagRepository(client, names, spans),
                            documents=DocumentRepository(client, names))
 
 

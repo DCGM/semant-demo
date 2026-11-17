@@ -95,12 +95,9 @@ async def _delete_references_to(collection, from_property: str, target_id: UUID,
 
 async def _tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, spans, tag_id: UUID,
                        collection_id: UUID | None, progress: _Progress) -> None:
-    """Unlink the tag from chunks, delete its spans (in ``collection_id``'s tenant; skipped
-    when ``None``: the tenant was removed already), then the tag."""
-    chunks = client.collections.get(names.chunks_collection_name)
-    for prop in ("automaticTag", "positiveTag", "negativeTag"):
-        await _delete_references_to(chunks, prop, tag_id, progress, "unlink_chunk_tag")
-
+    """Delete the tag's spans (in ``collection_id``'s tenant; skipped when ``None``: the
+    tenant was removed already), then the tag. Chunks hold no references to tags (ADR 0013);
+    inert legacy references in existing stores are left alone."""
     if collection_id is not None:
         progress.at("delete_span")
         deleted = await spans.delete_by_tag(collection_id, tag_id)
@@ -125,13 +122,13 @@ def _incomplete(what: str, progress: _Progress, exc: Exception) -> IncompleteWri
 
 async def delete_tag_cascade(client: WeaviateAsyncClient, names: CollectionNames, spans, tag_id: UUID,
                              collection_id: UUID | None) -> None:
-    """Delete a tag after its chunk tag references and its spans (``spans``: the
+    """Delete a tag after its spans (``spans``: the
     ``SpanRepository``; ``collection_id``: the tag's collection, whose tenant holds them;
     ``None`` for a tag of no single collection, which has no spans).
 
     Best effort without rollback: a failure stops the cascade, keeps what was done and
     raises ``IncompleteWriteError`` naming the failed step and the completed steps
-    (``unlink_chunk_tag``, ``delete_span``, ``delete_tag``). Repeating the deletion is
+    (``delete_span``, ``delete_tag``). Repeating the deletion is
     safe and continues with what is left.
     """
     logger.info("Performing cascade deletion of tag %s", tag_id)

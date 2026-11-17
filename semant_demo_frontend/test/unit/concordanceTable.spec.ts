@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import {
@@ -55,7 +55,7 @@ describe('concordance table', () => {
     expect(text.findAll(':scope > span').map(s => s.classes()[0])).toEqual(['kwic__left', 'kwic__key', 'kwic__right'])
     const name = (h: ReturnType<typeof wrapper.get>) => h.find('.kwic-head__label').exists() ? h.get('.kwic-head__label').text() : h.text()
     expect(wrapper.findAll('[role="columnheader"]').map(name))
-      .toEqual(['', 'Left context', 'Annotation', 'Right context', 'Tag · status', 'Source', 'Year'])
+      .toEqual(['', 'Left context', 'Annotation', 'Right context', 'Status', 'Tag', 'Source', 'Year'])
   })
 
   it('keeps the spaces an annotation starts or ends with, and shows its line breaks as spaces', () => {
@@ -123,8 +123,8 @@ describe('concordance table', () => {
     }
     await wrapper.get('[data-testid="kwic-sort-year"]').trigger('click')
     expect(wrapper.emitted('sort')).toBeUndefined()
-    // The text ranks by meaning: no word filter from the text headers.
-    expect(wrapper.get('[data-testid="kwic-filter-annotation"]').attributes('disabled')).toBeDefined()
+    // The words are a filter whatever ranks: the text headers still add words.
+    expect(wrapper.get('[data-testid="kwic-filter-annotation"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('[data-testid="kwic-filter-source"]').attributes('disabled')).toBeUndefined()
   })
 
@@ -276,9 +276,14 @@ describe('concordance toolbar header filters', () => {
 describe('concordance row value filters', () => {
   const menuItem = (testid: string) => document.body.querySelector<HTMLElement>(`[data-testid="${testid}"]`)
   async function until (found: () => unknown) {
+    // Polls for the menu Quasar renders on a later tick; it returns as soon as it is shown.
     for (let i = 0; i < 50 && !found(); i++) await new Promise(resolve => setTimeout(resolve, 10))
     expect(found()).toBeTruthy()
   }
+  // A click right after a row's menu closed belongs to the long press that opened it (400 ms,
+  // `onRowClick`); the test moves the clock past that instead of waiting it out (#736).
+  const afterLongPress = () => vi.setSystemTime(Date.now() + 450)
+  afterEach(() => { vi.useRealTimers() })
 
   it('opens the row menu from the keyboard and refines the query without opening or checking the row', async () => {
     const wrapper = mount(ConcordanceTable, {
@@ -316,7 +321,6 @@ describe('concordance row value filters', () => {
     await until(() => menuItem('kwic-refine-source-only'))
     // The filter took the row out: its menu goes without closing.
     await wrapper.setProps({ rows: [annotation('b')] })
-    await new Promise(resolve => setTimeout(resolve, 450))
     await wrapper.get('[data-testid="kwic-row"]').trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
     wrapper.unmount()
@@ -339,6 +343,7 @@ describe('concordance row value filters', () => {
     await row.trigger('click')
     expect(wrapper.emitted('open')).toBeUndefined()
 
+    vi.useFakeTimers({ toFake: ['Date'] })
     await row.trigger('keydown', { key: 'ContextMenu' })
     await until(() => menuItem('kwic-refine-words'))
     expect(menuItem('kwic-refine-words')?.textContent).toContain('Filter annotations with “ubytoval” in their context')
@@ -349,9 +354,143 @@ describe('concordance row value filters', () => {
     window.getSelection()?.removeAllRanges()
     await row.trigger('click')
     expect(wrapper.emitted('open')).toBeUndefined()
-    await new Promise(resolve => setTimeout(resolve, 450))
+    afterLongPress()
     await row.trigger('click')
     expect(wrapper.emitted('open')).toHaveLength(1)
+    wrapper.unmount()
+  })
+})
+
+describe('concordance inline review (#690 phase B)', () => {
+  function mountRows (rows: AnnotationListRow[], props: Record<string, unknown> = {}) {
+    return mount(ConcordanceTable, {
+      props: { rows, tags: [tag], selected: new Set<string>(), filters: defaultFilters(), ...props },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+  }
+
+  it('shows the status as a switch named in words, the current state pressed', () => {
+    const wrapper = mountRows([annotation('a', { type: SpanType.auto }), annotation('b', { type: SpanType.neg })])
+    const [proposal, rejected] = wrapper.findAll('[data-testid="kwic-review"]')
+    expect(proposal.get('[data-testid="kwic-status"]').text()).toContain('Proposal')
+    expect(rejected.get('[data-testid="kwic-status"]').text()).toContain('Rejected')
+    expect(proposal.findAll('[aria-pressed="true"]')).toHaveLength(0)
+    expect(rejected.get('[data-testid="kwic-reject"]').attributes('aria-pressed')).toBe('true')
+    expect(rejected.get('[data-testid="kwic-reject"]').attributes('aria-label')).toBe('Rejected')
+    expect(rejected.get('[data-testid="kwic-approve"]').attributes('aria-label')).toBe('Confirm')
+    expect(rejected.get('[data-testid="kwic-approve"]').attributes('aria-keyshortcuts')).toBe('Alt+C')
+    wrapper.unmount()
+  })
+
+  it('a button acts on its row only, without opening or checking it, and not while a review is saved', async () => {
+    const wrapper = mountRows([annotation('a', { type: SpanType.auto }), annotation('b', { type: SpanType.auto })])
+    await wrapper.findAll('[data-testid="kwic-approve"]')[1].trigger('click')
+    const reviews = wrapper.emitted('review') as unknown[][]
+    expect(reviews).toHaveLength(1)
+    expect((reviews[0][0] as AnnotationListRow).id).toBe('b')
+    expect(reviews[0][1]).toBe('approve')
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(wrapper.emitted('toggle')).toBeUndefined()
+    // The press does not take focus.
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    wrapper.findAll('[data-testid="kwic-reject"]')[0].element.dispatchEvent(press)
+    expect(press.defaultPrevented).toBe(true)
+
+    await wrapper.setProps({ saving: new Set(['a']) })
+    await wrapper.findAll('[data-testid="kwic-reject"]')[1].trigger('click')
+    expect(wrapper.emitted('review')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="kwic-review"]')[0].classes()).toContain('kwic__review--saving')
+    wrapper.unmount()
+  })
+
+  it('Alt+C / Alt+R decide the focused row and move focus to the next row once saved', async () => {
+    const wrapper = mountRows([annotation('a', { type: SpanType.auto }), annotation('b', { type: SpanType.auto })])
+    const rows = wrapper.findAll('[data-testid="kwic-row"]')
+    ;(rows[0].element as HTMLElement).focus()
+    await rows[0].trigger('keydown', { key: 'ç', code: 'KeyC', altKey: true })
+    const reviews = wrapper.emitted('review') as [AnnotationListRow, string, (ok: boolean) => void][]
+    expect(reviews[0][0].id).toBe('a')
+    expect(reviews[0][1]).toBe('approve')
+    // Focus stays until the decision is saved; not on a failure.
+    reviews[0][2](false)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(document.activeElement).toBe(rows[0].element)
+    await rows[0].trigger('keydown', { key: 'r', code: 'KeyR', altKey: true })
+    expect(reviews[1][1]).toBe('reject')
+    reviews[1][2](true)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(document.activeElement).toBe(rows[1].element)
+    // A held key decides once; Ctrl+Alt is not a shortcut.
+    await rows[1].trigger('keydown', { key: 'c', code: 'KeyC', altKey: true, repeat: true })
+    await rows[1].trigger('keydown', { key: 'c', code: 'KeyC', altKey: true, ctrlKey: true })
+    expect(reviews).toHaveLength(2)
+    expect(wrapper.emitted('open')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('Alt+↓ / Alt+↑ open the next / previous row and move focus to it; at the page end the next page is asked for', async () => {
+    const wrapper = mountRows([annotation('a'), annotation('b')])
+    const rows = wrapper.findAll('[data-testid="kwic-row"]')
+    ;(rows[0].element as HTMLElement).focus()
+    await rows[0].trigger('keydown', { key: 'ArrowDown', code: 'ArrowDown', altKey: true })
+    expect((wrapper.emitted('open') as AnnotationListRow[][])[0][0].id).toBe('b')
+    await new Promise(resolve => setTimeout(resolve))
+    expect(document.activeElement).toBe(rows[1].element)
+    await rows[1].trigger('keydown', { key: 'ArrowDown', code: 'ArrowDown', altKey: true })
+    expect((wrapper.emitted('step') as unknown[][])[0][0]).toBe(1)
+    await rows[1].trigger('keydown', { key: 'ArrowUp', code: 'ArrowUp', altKey: true })
+    expect((wrapper.emitted('open') as AnnotationListRow[][])[1][0].id).toBe('a')
+    wrapper.unmount()
+  })
+})
+
+describe('concordance grid keys target the focused row (#690 review)', () => {
+  function mountRows (rows: AnnotationListRow[], props: Record<string, unknown> = {}) {
+    return mount(ConcordanceTable, {
+      props: { rows, tags: [tag], selected: new Set<string>(), filters: defaultFilters(), ...props },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+  }
+
+  it('A open in the sidebar, B focused: after an inline review of B and a refresh, Alt+R reviews B', async () => {
+    const rows = [annotation('a', { type: SpanType.auto }), annotation('b', { type: SpanType.auto })]
+    const wrapper = mountRows(rows, { focusedId: 'a' })
+    const b = wrapper.findAll('[data-testid="kwic-row"]')[1]
+    ;(b.element as HTMLElement).focus()
+    await b.get('[data-testid="kwic-approve"]').trigger('click')
+    // The rows are read again in place (refreshRows): a new array, B confirmed.
+    await wrapper.setProps({ rows: [rows[0], { ...rows[1], type: SpanType.pos }] })
+    expect(document.activeElement).toBe(b.element)
+    // B stays the row in the tab order, not the one open in the sidebar.
+    expect(b.attributes('tabindex')).toBe('0')
+    await b.trigger('keydown', { key: 'r', code: 'KeyR', altKey: true })
+    const reviews = wrapper.emitted('review') as [AnnotationListRow, string][]
+    expect(reviews.map(([row, action]) => [row.id, action])).toEqual([['b', 'approve'], ['b', 'reject']])
+    wrapper.unmount()
+  })
+
+  it('the sidebar opening another row does not move the grid\'s tab order off the focused row', async () => {
+    const wrapper = mountRows([annotation('a'), annotation('b'), annotation('c')])
+    const rows = wrapper.findAll('[data-testid="kwic-row"]')
+    ;(rows[1].element as HTMLElement).focus()
+    await rows[1].trigger('focus')
+    await wrapper.setProps({ focusedId: 'c' })
+    expect(rows[1].attributes('tabindex')).toBe('0')
+    await rows[1].trigger('keydown', { key: 'ArrowDown', code: 'ArrowDown', altKey: true })
+    expect((wrapper.emitted('open') as AnnotationListRow[][])[0][0].id).toBe('c')
+    wrapper.unmount()
+  })
+
+  it('ignores Alt+↓ / Alt+↑ while a review is saved', async () => {
+    const wrapper = mountRows([annotation('a'), annotation('b')], { saving: new Set(['a']) })
+    const first = wrapper.findAll('[data-testid="kwic-row"]')[0]
+    ;(first.element as HTMLElement).focus()
+    await first.trigger('keydown', { key: 'ArrowDown', code: 'ArrowDown', altKey: true })
+    expect(wrapper.emitted('open')).toBeUndefined()
+    expect(wrapper.emitted('step')).toBeUndefined()
+    expect(document.activeElement).toBe(first.element)
     wrapper.unmount()
   })
 })

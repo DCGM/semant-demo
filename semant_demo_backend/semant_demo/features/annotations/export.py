@@ -231,6 +231,9 @@ def _query(request: AnnotationExportRequest):
         return service._filters_query(AnnotationFilters(types=ALL_TYPES), ids), AnnotationFilters(), ids
     if request.scope == AnnotationExportScope.filters:
         assert request.filters is not None
+        if request.filters.ranking_query:
+            raise InvalidRequestError("A ranked result is a bounded top-k, not the complete matching set; "
+                                      "export a selection of it instead.")
         return service._filters_query(request.filters), request.filters, None
     return service._filters_query(AnnotationFilters(types=request.types)), AnnotationFilters(), None
 

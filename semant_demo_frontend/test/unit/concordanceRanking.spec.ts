@@ -9,9 +9,9 @@ import ConcordanceTable from 'src/features/annotations/concordance/ConcordanceTa
 import ConcordanceToolbar from 'src/features/annotations/concordance/ConcordanceToolbar.vue'
 import SelectionBar from 'src/features/annotations/concordance/SelectionBar.vue'
 import {
-  defaultFilters, modeChange, similarChange, useConcordanceStore, type ConcordanceFilters
+  clearSimilar, defaultFilters, similarChange, useConcordanceStore, withMode, type ConcordanceFilters
 } from 'src/features/annotations/concordance/concordanceStore'
-import { concordanceChips, modeHintText, rankedLabel, unsortableLabel } from 'src/features/annotations/concordance/filterChips'
+import { concordanceChips, rankedLabel, similarityHintText, unsortableLabel } from 'src/features/annotations/concordance/filterChips'
 import { useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 
 // Ranked annotation retrieval in the workspace (#664): the mode, k and source are sent with
@@ -90,28 +90,38 @@ describe('ranked queries of the concordance store', () => {
     return store
   }
 
-  it('waits for a text in a mode that ranks by it, then sends mode and k without a sort', async () => {
+  it('keeps the words a filter and ranks by the separate similarity text, without a sort', async () => {
     const store = await opened()
-    await store.setFilters(modeChange(RetrievalMode.semantic))
-    expect(rowCalls()).toHaveLength(1)
-    expect([store.needsText, store.page, store.error]).toEqual([true, null, null])
-
-    const ranking = store.setFilters({ text: ' hejtman ', k: 200 })
+    const ranking = store.setFilters({ text: ' novak ', similarity: ' hejtman ', textScope: TextScope.both })
     await flush()
     const params = last().url.searchParams
-    expect(Object.fromEntries(['mode', 'k', 'q', 'sort', 'text_scope', 'similar_to'].map(k => [k, params.get(k)])))
-      .toEqual({ mode: 'semantic', k: '200', q: 'hejtman', sort: null, text_scope: null, similar_to: null })
-    last().answer(topK(['n1', 'n2']))
+    expect(Object.fromEntries(['mode', 'k', 'q', 'ranking_query', 'sort', 'text_scope', 'similar_to'].map(k => [k, params.get(k)])))
+      .toEqual({ mode: 'hybrid', k: '100', q: 'novak', ranking_query: 'hejtman', sort: null, text_scope: 'both', similar_to: null })
+    last().answer(topK(['n1', 'n2'], { mode: 'hybrid' }))
     await ranking
     expect(store.rows.map(r => r.id)).toEqual(['n1', 'n2'])
     expect(store.page?.result?.coverage).toEqual({ matching: 40, withVector: 3 })
 
-    void store.setFilters({ ...modeChange(RetrievalMode.hybrid), textScope: TextScope.both })
+    // Emptying either input leaves the other: words alone are a complete lexical result.
+    void store.setFilters({ similarity: '' })
     await flush()
-    expect([last().url.searchParams.get('mode'), last().url.searchParams.get('text_scope')]).toEqual(['hybrid', 'both'])
+    expect([last().url.searchParams.get('mode'), last().url.searchParams.get('ranking_query'), last().url.searchParams.get('q'),
+      last().url.searchParams.get('sort')]).toEqual([null, null, 'novak', 'document'])
   })
 
-  it('finds similar annotations within the filters, dropping a text that ranked by meaning', async () => {
+  it('ranks by the similarity text alone without a words filter, and browses with neither', async () => {
+    const store = await opened()
+    void store.setFilters({ similarity: 'hejtman' })
+    await flush()
+    expect([store.filters.mode, last().url.searchParams.get('q'), last().url.searchParams.get('text_scope'),
+      last().url.searchParams.get('ranking_query')]).toEqual([RetrievalMode.hybrid, null, null, 'hejtman'])
+    void store.setFilters({ similarity: '   ' })
+    await flush()
+    expect([store.filters.mode, last().url.searchParams.get('mode'), last().url.searchParams.get('ranking_query')])
+      .toEqual([RetrievalMode.lexical, null, null])
+  })
+
+  it('finds similar annotations within the filters, replacing a similarity text instead of reusing it', async () => {
     const store = await opened()
     const filtering = store.setFilters({ tagIds: ['t1'], text: 'praha' })
     await flush()
@@ -123,16 +133,23 @@ describe('ranked queries of the concordance store', () => {
     void store.findSimilar(source)
     await flush()
     let params = last().url.searchParams
-    expect([params.get('mode'), params.get('similar_to'), params.get('q'), params.getAll('tag_id'), params.get('include_source')])
-      .toEqual(['similar', 'a', 'praha', ['t1'], null])
+    expect([params.get('mode'), params.get('similar_to'), params.get('q'), params.get('ranking_query'), params.getAll('tag_id'),
+      params.get('include_source')]).toEqual(['similar', 'a', 'praha', null, ['t1'], null])
 
     void store.setFilters({ includeSource: true })
     await flush()
     expect(last().url.searchParams.get('include_source')).toBe('true')
 
-    expect(similarChange(filters({ mode: RetrievalMode.semantic, text: 'hejtman' }), source))
-      .toEqual({ mode: RetrievalMode.similar, similarTo: source, includeSource: false, text: '' })
-    void store.setFilters(modeChange(RetrievalMode.lexical))
+    // A similarity text and a source exclude each other; the text is never turned into the source query.
+    expect(similarChange(source)).toEqual({ similarTo: source, includeSource: false, similarity: '' })
+    void store.setFilters({ similarity: 'hejtman' })
+    await flush()
+    params = last().url.searchParams
+    expect([store.filters.similarTo, params.get('mode'), params.get('similar_to'), params.get('ranking_query'),
+      params.get('include_source')]).toEqual([null, 'hybrid', null, 'hejtman', null])
+
+    void store.setFilters(clearSimilar())
+    void store.setFilters({ similarity: '' })
     await flush()
     params = last().url.searchParams
     expect([params.get('mode'), params.get('similar_to'), params.get('sort')]).toEqual([null, null, 'document'])
@@ -146,7 +163,7 @@ describe('ranked queries of the concordance store', () => {
     await refused
     expect(store.error).toBe('This annotation has no current vector yet.')
 
-    const unavailable = store.setFilters({ ...modeChange(RetrievalMode.semantic), text: 'x' })
+    const unavailable = store.setFilters({ similarity: 'x' })
     await flush()
     last().answer({ detail: 'The embedding service is unavailable.' }, 503)
     await unavailable
@@ -155,7 +172,7 @@ describe('ranked queries of the concordance store', () => {
 
   it('selects exactly the ranked top k', async () => {
     const store = await opened()
-    const ranking = store.setFilters({ ...modeChange(RetrievalMode.semantic), text: 'hejtman', k: 20 })
+    const ranking = store.setFilters({ text: 'novak', similarity: 'hejtman', k: 20 })
     await flush()
     last().answer(topK(['n1', 'n2']))
     await ranking
@@ -163,7 +180,7 @@ describe('ranked queries of the concordance store', () => {
     const selecting = store.selectAllMatches()
     await flush()
     const request = idCalls()[idCalls().length - 1]
-    expect(request.body).toMatchObject({ q: 'hejtman', ranking: { mode: 'semantic', k: 20, similar_to: null, include_source: false } })
+    expect(request.body).toMatchObject({ q: 'novak', ranking_query: 'hejtman', ranking: { mode: 'hybrid', k: 20, similar_to: null, include_source: false } })
     request.answer({ ids: ['n1', 'n2'], versions: {}, attributeVersions: {} })
     expect(await selecting).toBeNull()
     expect([...useAnnotationSelectionStore().ids]).toEqual(['n1', 'n2'])
@@ -181,23 +198,22 @@ describe('ranked result labels', () => {
     expect(rankedLabel({ kind: 'complete' }, 10)).toBeNull()
   })
 
-  it('says how each mode uses the text', () => {
-    expect(modeHintText(RetrievalMode.semantic, TextScope.both)).toMatch(/closeness in meaning.*filters nothing/)
-    expect(modeHintText(RetrievalMode.hybrid, TextScope.context)).toMatch(/left or right context \(BM25\)/)
-    expect(modeHintText(RetrievalMode.similar, TextScope.annotation)).toMatch(/inside a word of the annotation/)
+  it('says how the similarity text ranks without filtering', () => {
+    expect(similarityHintText()).toMatch(/annotation and its left and right context \(BM25\).*whatever Contains words searches in.*excludes nothing/)
   })
 
-  it('shows the source of Find similar as a reference chip that leaves the mode when removed', () => {
+  it('shows the source of Find similar as a reference chip, and the words and similarity as separate chips', () => {
     const source = row('a', 'Jan Novák z Lhoty, hejtman a pozdější starosta obce')
-    const chips = concordanceChips(filters({ mode: RetrievalMode.similar, similarTo: source }), [], [], [])
+    const chips = concordanceChips(withMode(filters({ similarTo: source })), [], [], [])
     expect(chips).toEqual([{
       key: 'similar',
       group: 'Similar to',
       label: '\'Jan Novák z Lhoty, hejtman a pozdější s…\'',
       opens: source,
-      remove: { mode: RetrievalMode.lexical, similarTo: null, includeSource: false }
+      remove: { similarTo: null, includeSource: false }
     }])
-    expect(concordanceChips(filters({ mode: RetrievalMode.semantic, text: 'hejtman' }), [], [], [])[0].group).toBe('Meaning')
+    expect(concordanceChips(withMode(filters({ text: 'novak', similarity: 'hejtman' })), [], [], []).map(c => [c.group, c.label, c.remove]))
+      .toEqual([['Contains words in annotation', 'novak', { text: '' }], ['Similar meaning', 'hejtman', { similarity: '' }]])
   })
 })
 
@@ -214,32 +230,29 @@ describe('ranked components', () => {
   }
   const select = (w: VueWrapper, label: string) => w.findAllComponents(QSelect).find(s => s.props('label') === label)
 
-  it('chooses the mode and offers no sort or top-k control', async () => {
+  it('offers independent Words and Similarity inputs, no Find by or top-k selector', async () => {
     const toolbar = mountIt(ConcordanceToolbar, { filters: defaultFilters(), tags: [], documents: [] })
-    expect((select(toolbar, 'Find by')!.props('options') as { label: string }[]).map(o => o.label))
-      .toEqual(['Words', 'Meaning', 'Meaning and words'])
+    const input = (label: string) => toolbar.findAllComponents(QInput).find(i => String(i.props('label')).startsWith(label))!
+    expect(select(toolbar, 'Find by')).toBeUndefined()
     expect(select(toolbar, 'Top')).toBeUndefined()
-    select(toolbar, 'Find by')!.vm.$emit('update:modelValue', RetrievalMode.semantic)
-    expect(toolbar.emitted('change')).toEqual([[{ mode: RetrievalMode.semantic, similarTo: null, includeSource: false }]])
-
-    await toolbar.setProps({ filters: filters({ mode: RetrievalMode.semantic }) } as never)
-    expect(select(toolbar, 'Search in')).toBeUndefined() // meaning is of the text alone
-    expect(toolbar.findAllComponents(QInput).find(i => i.props('label') === 'Meaning of')).toBeDefined()
     expect(select(toolbar, 'Sort by')).toBeUndefined() // the rows are sorted by the table's headers
-    expect(select(toolbar, 'Top')).toBeUndefined() // the limit is in the result summary, not a control
+    expect(select(toolbar, 'Search in')).toBeDefined() // the scope belongs to the words
 
-    await toolbar.setProps({ filters: filters({ mode: RetrievalMode.similar, similarTo: row('a') }) } as never)
-    const similar = (select(toolbar, 'Find by')!.props('options') as { label: string, disable: boolean }[]).at(-1)
-    expect(similar).toEqual({ value: RetrievalMode.similar, label: 'Similar', disable: true })
+    input('Contains words').vm.$emit('update:modelValue', 'novak')
+    input('Similar meaning').vm.$emit('update:modelValue', 'hejtman')
+    expect(toolbar.emitted('change')).toEqual([[{ text: 'novak' }], [{ similarity: 'hejtman' }]])
+    expect(toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')).toBeUndefined()
+
+    await toolbar.setProps({ filters: withMode(filters({ similarTo: row('a') })) } as never)
     const include = toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')!
     include.vm.$emit('update:modelValue', true)
-    expect(toolbar.emitted('change')![1]).toEqual([{ includeSource: true }])
+    expect(toolbar.emitted('change')![2]).toEqual([{ includeSource: true }])
   })
 
   it('opens the source from its reference chip', async () => {
     const source = row('a', 'Praha')
     const chips = mountIt(ConcordanceFilterChips, {
-      filters: filters({ mode: RetrievalMode.similar, similarTo: source }), tags: [], documents: [], attributes: []
+      filters: withMode(filters({ similarTo: source })), tags: [], documents: [], attributes: []
     })
     const chip = chips.findComponent(QChip)
     expect(chip.props('clickable')).toBe(true)

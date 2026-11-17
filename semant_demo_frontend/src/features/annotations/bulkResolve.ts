@@ -18,12 +18,6 @@ export interface BulkResolveProgress {
 }
 
 export interface BulkResolveSummary extends BulkResolveProgress {
-  /**
-   * (chunk, tag) pairs whose chunk tag update failed (``update_chunk_tags``, identified as
-   * ``chunk:tag``, not by span): their spans may be saved, but tag-filtered search may be
-   * stale for them.
-   */
-  staleSearchPairs: number
   /** Ids not known to be saved (failed, uncertain or never sent); they can be retried. */
   unresolved: string[]
   /** How many of ``unresolved`` may have been written all the same (timeouts). */
@@ -49,7 +43,6 @@ export async function runBulkResolve (
     processed: 0,
     saved: 0,
     notSaved: 0,
-    staleSearchPairs: 0,
     unresolved: [],
     uncertain: 0,
     abandoned: false,
@@ -58,7 +51,6 @@ export async function runBulkResolve (
   const report = () => onProgress({
     total: summary.total, processed: summary.processed, saved: summary.saved, notSaved: summary.notSaved
   })
-  const staleSearchPairs = new Set<string>()
   let next = 0
   while (next < todo.length) {
     const batch = todo.slice(next, next + batchSize)
@@ -77,16 +69,13 @@ export async function runBulkResolve (
     const saved = new Set(result.succeeded ?? [])
     const uncertain = new Set<string>()
     for (const f of result.failed ?? []) {
-      if (f.step === 'update_chunk_tags') staleSearchPairs.add(f.itemId ?? `unknown:${staleSearchPairs.size}`)
-      else if (!f.itemId) continue
-      else if (!saved.has(f.itemId) && f.uncertain) uncertain.add(f.itemId)
+      if (f.itemId && !saved.has(f.itemId) && f.uncertain) uncertain.add(f.itemId)
     }
     for (const id of batch) {
       if (!saved.has(id)) summary.unresolved.push(id)
     }
     summary.saved += saved.size
     summary.notSaved += batch.length - saved.size
-    summary.staleSearchPairs = staleSearchPairs.size
     summary.uncertain += uncertain.size
     summary.processed += batch.length
     report()
@@ -99,15 +88,11 @@ export async function runBulkResolve (
 /** The message for a run that did not save every selected suggestion, or null. */
 export function describeBulkResolve (summary: BulkResolveSummary, verb: 'Confirmed' | 'Rejected'): string | null {
   const notSaved = summary.total - summary.saved
-  if (!notSaved && !summary.staleSearchPairs) return null
+  if (!notSaved) return null
   const parts = [`${verb} ${summary.saved} of ${summary.total} suggestions`]
   if (notSaved) {
     parts.push(`${notSaved} not saved and still selected` +
       (summary.uncertain ? ` (${summary.uncertain} may have been saved; retrying is safe)` : ''))
-  }
-  if (summary.staleSearchPairs) {
-    const n = summary.staleSearchPairs
-    parts.push(`tag search may be out of date for ${n} chunk/tag ${n === 1 ? 'pair' : 'pairs'}`)
   }
   if (summary.error) parts.push('the remaining requests were stopped after an error')
   return `${parts.join('; ')}.` + (notSaved ? ' Retry to process the remaining ones.' : '')

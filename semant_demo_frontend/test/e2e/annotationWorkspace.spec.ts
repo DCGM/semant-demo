@@ -422,10 +422,81 @@ test('a review queue: reviewed rows stay in place, shortcuts decide and move, th
   }
 })
 
+test('inline row review: a status switch of one shape in every row, nothing moves, grid shortcuts move focus (#690 phase B)', async ({ page }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  const announcement = page.getByTestId('annotation-announcement')
+  const width = (locator: Locator) => locator.evaluate(e => e.getBoundingClientRect().width)
+  try {
+    await page.getByTestId('concordance-status-pos').click() // proposals only
+    await expect(rows(page)).toHaveCount(2)
+    const [first, second] = [rows(page).nth(0), rows(page).nth(1)]
+    const cell = first.getByTestId('kwic-review')
+    const idle = await width(cell)
+    const box = () => first.locator('.kwic__switch').boundingBox()
+    const place = await box()
+    // The status is a switch, named in words; a proposal has neither half pressed.
+    await expect(first.getByTestId('kwic-status')).toContainText('Proposal')
+    await expect(first.getByTestId('kwic-approve')).toBeVisible()
+    await expect(first.getByTestId('kwic-approve')).toHaveAttribute('aria-pressed', 'false')
+    await expect(first.getByTestId('kwic-reject')).toHaveAttribute('aria-pressed', 'false')
+    await first.hover()
+    expect(await width(cell), 'no width change on hover').toBe(idle)
+    expect(await box(), 'the switch does not move on hover').toEqual(place)
+
+    // A button decides its row only: it neither opens nor checks the row, nor takes focus.
+    let reviews = 0
+    page.on('request', r => { if (r.url().endsWith('/annotations/review')) reviews++ })
+    await first.getByTestId('kwic-approve').click()
+    await expect(first.getByTestId('kwic-approve')).toHaveAttribute('aria-pressed', 'true')
+    await expect(first.getByTestId('kwic-status')).toContainText('Confirmed')
+    await expect(first.getByTestId('kwic-reject')).toHaveAttribute('aria-pressed', 'false')
+    // The same switch in the same place, whatever the state.
+    await page.mouse.move(0, 0)
+    expect(await box(), 'the switch does not move with the state').toEqual(place)
+    expect(reviews).toBe(1)
+    expect(await width(cell), 'no width change after saving').toBe(idle)
+    await expect(first).not.toHaveAttribute('aria-current', 'true')
+    await expect(first).toHaveAttribute('aria-selected', 'false')
+    await expect(page.getByTestId('annotation-context')).toBeHidden()
+    // It stays in place, out of the filters now.
+    await expect(first).toHaveClass(/kwic__row--unmatched/)
+    await expect(announcement).toContainText('Confirmed. 1 / 2')
+    await expect(page.getByTestId('review-report')).toHaveCount(0)
+    await expect(page.getByTestId('undo-bar')).toHaveCount(0)
+
+    // Keyboard: Alt+R rejects the focused row; it stays focused on the last row of the page.
+    await first.focus()
+    await page.keyboard.press('ArrowDown')
+    await expect(second).toBeFocused()
+    await page.keyboard.press('Alt+R')
+    await expect(second.getByTestId('kwic-status')).toContainText('Rejected')
+    await expect(announcement).toContainText('Rejected. 2 / 2')
+    await expect(announcement).toContainText('Last annotation.')
+    await expect(second).toBeFocused()
+    // Choosing the state in effect writes nothing; Alt+↑ opens the previous row and focuses it.
+    await page.keyboard.press('Alt+R')
+    await expect(announcement).toContainText('Already rejected.')
+    expect(reviews).toBe(2)
+    await page.keyboard.press('Alt+ArrowUp')
+    await expect(first).toBeFocused()
+    await expect(first).toHaveAttribute('aria-current', 'true')
+    await expect(page.getByTestId('annotation-position')).toHaveText('1 / 2')
+    // Alt+C on the focused (already confirmed) row moves focus on; the sidebar stays.
+    await page.keyboard.press('Alt+C')
+    await expect(second).toBeFocused()
+    await expect(first).toHaveAttribute('aria-current', 'true')
+    expect(reviews).toBe(2)
+  } finally {
+    for (const span of proposals) await patchSpan(page.request, span.id, { type: 'auto' })
+  }
+})
+
 test('filters, selection and the open row survive a visit to the document', async ({ page }) => {
   await useViewport(page, 'narrow')
   await openWorkspace(page)
-  await page.getByLabel('Annotated text').fill('nová')
+  await page.getByLabel('Contains words', { exact: true }).fill('nová')
   await expect(rows(page)).toHaveCount(1)
   await row(page, 'Jan Novák').getByRole('checkbox').click()
   await row(page, 'Jan Novák').click()
@@ -435,7 +506,7 @@ test('filters, selection and the open row survive a visit to the document', asyn
   await expect(page.locator('.text-segment.is-tagged', { hasText: 'Jan Novák' }).first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Back to annotations' }).click()
-  await expect(page.getByLabel('Annotated text')).toHaveValue('nová')
+  await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
   await expect(rows(page)).toHaveCount(1)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
@@ -447,7 +518,7 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   const all = await rows(page).count()
 
   // "hejtman" occurs only in the context of the chronicle's annotations, never in an annotation.
-  await page.getByLabel('Annotated text').fill('hejtman')
+  await page.getByLabel('Contains words', { exact: true }).fill('hejtman')
   await expect(page.getByText('No annotations match these filters.')).toBeVisible()
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Context' }).click()
@@ -455,10 +526,10 @@ test('the text scope, document filters and filter chips compose (#663)', async (
   await expect(row(page, 'Jan Novák').locator('.kwic__left mark.kwic__match')).toHaveText('hejtman')
   await expect(row(page, 'Jan Novák').locator('.kwic__key mark')).toHaveCount(0)
   const chips = page.getByTestId('concordance-chips')
-  await expect(chips).toContainText('Text in context:hejtman')
+  await expect(chips).toContainText('Contains words in context:hejtman')
 
   // A document filter of the shared criteria: only the letters' title matches.
-  await page.getByLabel('Context text').clear()
+  await page.getByLabel('Contains words', { exact: true }).clear()
   await expect(rows(page)).toHaveCount(all)
   await page.getByTestId('concordance-more-filters').click()
   await expect(page.getByTestId('concordance-more-filters')).toHaveAttribute('aria-expanded', 'true')
@@ -484,13 +555,13 @@ test('on a phone the filter form is closed behind a summary and keeps what was e
   await expect(rows(page).first()).toBeVisible()
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  await page.getByLabel('Annotated text').fill('nová')
+  await page.getByLabel('Contains words', { exact: true }).fill('nová')
   await expect(page.getByTestId('concordance-chips')).toContainText('nová')
   await toggle.click()
   await expect(page.getByTestId('concordance-text')).toBeHidden()
   await expect(page.getByTestId('concordance-summary')).toContainText('nová')
   await toggle.click()
-  await expect(page.getByLabel('Annotated text')).toHaveValue('nová')
+  await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
 })
 
 test('column headers sort the whole result both ways and bring up their filters, with the sidebar open (#665)', async ({ page }) => {
@@ -533,14 +604,14 @@ test('column headers sort the whole result both ways and bring up their filters,
   // A context header's filter searches the context; it opens no row and checks none.
   await page.getByTestId('kwic-filter-right').click()
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
-  await expect(page.getByLabel('Context text')).toBeFocused()
+  await expect(page.getByLabel('Contains words', { exact: true })).toBeFocused()
   await page.keyboard.type('hejtman')
   // Only in the chronicle: the letter's annotation goes.
   await expect(row(page, 'Prahy')).toHaveCount(0)
   await expect(row(page, 'Jan Novák').locator('.kwic__left mark.kwic__match')).toHaveText('hejtman')
   await expect(page.getByTestId('kwic-filter-left')).toHaveAccessibleName('Filter by words in the context (active)')
   await expect(page.getByTestId('concordance-selected')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Remove filter Text in context: hejtman' }).click()
+  await page.getByRole('button', { name: 'Remove filter Contains words in context: hejtman' }).click()
   await expect(rows(page)).toHaveCount(4)
 
   // From *Both*, each text header's filter selects exactly its own field, as it says (#665 review).
@@ -549,7 +620,7 @@ test('column headers sort the whole result both ways and bring up their filters,
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Both')
   await page.getByTestId('kwic-filter-annotation').click()
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Annotation')
-  await expect(page.getByLabel('Annotated text')).toBeFocused()
+  await expect(page.getByLabel('Contains words', { exact: true })).toBeFocused()
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Both' }).click()
   await page.getByTestId('kwic-filter-left').click()
@@ -629,9 +700,9 @@ test('in-cell value filters compose as chips and never open, check or unselect r
   await expect(row(page, 'Jan Novák')).toHaveAttribute('aria-current', 'true')
   await page.mouse.click(word.x + word.width / 2, word.y, { button: 'right' })
   const words = menu.getByTestId('kwic-refine-group-words')
-  await expect(words).toContainText('Each word must appear inside a word of the left or right context')
+  await expect(words).toContainText('Shows only annotations with every word you type in the left or right context')
   await menu.getByTestId('kwic-refine-words').click()
-  await expect(chips).toContainText('Text in context:')
+  await expect(chips).toContainText('Contains words in context:')
   await expect(page.getByTestId('concordance-text-scope')).toContainText('Context')
   await expect(row(page, 'Lhoty').locator('.kwic__right mark.kwic__match').first()).toBeVisible()
   await expect(checked).toHaveCount(0)
@@ -666,14 +737,12 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   await expect(range).toHaveText('Rows 1–4 of 4 matching annotations')
   await expect(ranked).toHaveCount(0)
 
-  // By meaning: nothing is read until a text is entered; then a ranked top k of the filters.
-  await page.getByTestId('concordance-mode').click()
-  await page.getByRole('option', { name: 'Meaning', exact: true }).click()
-  await expect(page.getByTestId('concordance-needs-text')).toBeVisible()
-  await page.getByLabel('Meaning of').fill('hejtman')
+  // Similarity text: a ranked top k of the filters (no mode selector, no top-k control).
+  await expect(page.getByTestId('concordance-mode')).toHaveCount(0)
+  await page.getByLabel('Similar meaning', { exact: true }).fill('hejtman')
   await expect(range).toHaveText('Rows 1–4 of 4 ranked annotations')
   await expect(ranked).toContainText('Top 100 by meaning')
-  await expect(page.getByTestId('concordance-chips')).toContainText('Meaning:hejtman')
+  await expect(page.getByTestId('concordance-chips')).toContainText('Similar meaning:hejtman')
   await page.getByTestId('concordance-status-pos').click() // proposals only: filters apply before ranking
   await expect(range).toHaveText('Rows 1–2 of 2 ranked annotations')
 })
@@ -778,7 +847,7 @@ test('narrow lists keep the tag and status and give up source and year first (#6
   const shown = (locator: Locator) => locator.evaluate(e => e.getBoundingClientRect().width > 8)
   const check = async (wide: boolean) => {
     const novak = row(page, 'Jan Novák')
-    expect(await shown(novak.locator('.kwic__status')), 'status').toBe(true)
+    expect(await shown(novak.locator('.kwic__review')), 'status').toBe(true)
     expect(await shown(novak.locator('.kwic__tag')), 'tag').toBe(true)
     expect(await shown(novak.locator('.kwic__source')), 'source').toBe(wide)
     expect(await shown(novak.locator('.kwic__year')), 'year').toBe(wide)
@@ -800,7 +869,7 @@ test('narrow lists keep the tag and status and give up source and year first (#6
   // Without attribute columns the list fits: it does not scroll sideways.
   // (Polled: the layout settles after the viewport change closes the sidebar.)
   await expect.poll(() => page.getByTestId('kwic').evaluate(e => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0)
-  const [list, status] = await Promise.all([page.getByTestId('kwic').boundingBox(), row(page, 'Jan Novák').locator('.kwic__status').boundingBox()])
+  const [list, status] = await Promise.all([page.getByTestId('kwic').boundingBox(), row(page, 'Jan Novák').locator('.kwic__review').boundingBox()])
   expect(status!.x + status!.width, 'status within the list').toBeLessThanOrEqual(list!.x + list!.width)
 })
 
@@ -1086,7 +1155,10 @@ test('the sidebar names who changed the open annotation and refuses a review of 
 
     // Rejecting the version shown now is the user's explicit choice.
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
-    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
+    // A single decision adds no report or Undo line above the list (#690 review).
+    await expect(page.getByTestId('annotation-announcement')).toContainText('Rejected.')
+    await expect(page.getByTestId('review-report')).toHaveCount(0)
+    await expect(page.getByTestId('undo-bar')).toHaveCount(0)
     // Rejected: out of the default filters, but the row stays until the list is read again (#690).
     await expect(row(page, 'Lhoty')).toContainText('Rejected')
     await expect(row(page, 'Lhoty')).toHaveClass(/kwic__row--unmatched/)
@@ -1118,7 +1190,10 @@ test('a refused review keeps its conflict when the change took the annotation ou
     await expect(context.getByTestId('annotation-context-gone')).toHaveCount(0)
 
     await conflict.getByRole('button', { name: 'Apply to current version' }).click()
-    await expect(page.getByTestId('review-report')).toContainText('Rejected 1 of 1 annotation.')
+    // A single decision adds no report or Undo line above the list (#690 review).
+    await expect(page.getByTestId('annotation-announcement')).toContainText('Rejected.')
+    await expect(page.getByTestId('review-report')).toHaveCount(0)
+    await expect(page.getByTestId('undo-bar')).toHaveCount(0)
     await expect(row(page, 'Lhoty')).toContainText('Rejected')
   } finally {
     await patchSpan(request, lhota.id, { type: 'auto' })

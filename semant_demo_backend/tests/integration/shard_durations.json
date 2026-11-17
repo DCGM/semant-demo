@@ -14,7 +14,6 @@
   "tests/integration/test_chunk_ingest.py": 70.2,
   "tests/integration/test_chunk_positions.py": 7.4,
   "tests/integration/test_chunk_summaries.py": 24.1,
-  "tests/integration/test_chunk_tags.py": 20.5,
   "tests/integration/test_chunk_titles.py": 2.5,
   "tests/integration/test_chunk_year.py": 2.3,
   "tests/integration/test_classification_provenance_schema.py": 1.4,

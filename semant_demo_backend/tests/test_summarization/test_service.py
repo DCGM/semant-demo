@@ -21,7 +21,7 @@ def results(*texts: str) -> SearchResponse:
         return SearchResultChunk(id=uuid4(), title="Kronika", text=text, start_page_id=uuid4(), from_page=1,
                                  to_page=1, order=0, language="ces", document=doc,
                                  document_object=Document(id=doc, library="mzk"))
-    request = SearchRequest(query="kronikář", tag_uuids=[], positive=False, automatic=False)
+    request = SearchRequest(query="kronikář")
     return SearchResponse(results=[hit(t) for t in texts], search_request=request, time_spent=0.5, search_log=[])
 
 

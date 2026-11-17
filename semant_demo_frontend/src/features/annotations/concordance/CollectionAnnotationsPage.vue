@@ -95,7 +95,6 @@
       :hidden-selected="store.hiddenSelected"
       :total="store.total"
       :ranked="ranked"
-      :needs-text="store.needsText"
     />
 
     <div v-if="store.error" class="collection-annotations__state text-negative" role="alert" data-testid="concordance-error">
@@ -108,9 +107,6 @@
       data-testid="concordance-empty"
     >
       {{ emptyText }}
-    </div>
-    <div v-else-if="store.needsText" class="collection-annotations__state text-grey-8" data-testid="concordance-needs-text">
-      Enter a text to find the annotations closest to it in meaning.
     </div>
     <div v-else-if="!store.page" class="collection-annotations__state text-grey-7">Loading annotations…</div>
 
@@ -126,7 +122,7 @@
       :pending="assignWaiting"
       :saving="savingIds"
       :unmatched="store.unmatched"
-      :query="ranksText(store.filters.mode) ? '' : store.filters.text"
+      :query="store.filters.text"
       :query-scope="store.filters.textScope"
       :rank-start="ranked ? store.offset + 1 : null"
       :filters="store.filters"
@@ -140,7 +136,12 @@
       @filter="field => toolbar?.openFilter(field)"
       @refine="store.setFilters"
       @assign="(row, attribute, change, done) => assignRow(row, attribute, change).then(done)"
+      @review="(row, action, done) => reviewRow(row, action).then(done)"
+      @step="(direction, done) => stepPage(direction).then(done)"
     />
+
+    <!-- Says what a review decision or a move did (#690), from the sidebar and from the list. -->
+    <div class="sr-only" aria-live="polite" data-testid="annotation-announcement">{{ announcement }}</div>
 
     <div v-if="store.total > PAGE_SIZE && store.rows.length" class="collection-annotations__summary q-mt-sm">
       <q-space />
@@ -279,7 +280,6 @@
                   </q-tooltip>
                 </q-btn>
               </div>
-              <div class="sr-only" aria-live="polite" data-testid="annotation-announcement">{{ announcement }}</div>
               <div
                 v-if="focusedConflict && !selection.focusedGone"
                 class="annotation-context__conflict text-body2"
@@ -443,7 +443,7 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
-import ConcordanceTable from './ConcordanceTable.vue'
+import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
 import TagChipMenu from './TagChipMenu.vue'
@@ -460,7 +460,7 @@ import {
   rangeBetween, rangeText, sameRange, stepBoundary, type BoundaryHandle, type BoundaryRange, type BoundaryUnit
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
-import { PAGE_SIZE, defaultFilters, ranksText, useConcordanceStore } from './concordanceStore'
+import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
 import { concordanceChips, rankedLabel, unsortableLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'
@@ -740,12 +740,15 @@ async function step (direction: 1 | -1): Promise<AnnotationListRow | null> {
 const announcement = ref('')
 const ANNOUNCED_TEXT = 60
 
+/** Says `prefix`, then the row's place in the result and its text, and whether it is the last one. */
 function announce (prefix: string, row: AnnotationListRow | null) {
   const text = (row?.text ?? '').replace(/\s+/g, ' ').trim()
   const clipped = text.length > ANNOUNCED_TEXT ? `${text.slice(0, ANNOUNCED_TEXT - 1)}…` : text
+  const index = row ? store.rows.findIndex(r => r.id === row.id) : -1
   const parts = [prefix]
-  if (row && position.value) parts.push(`${position.value}${clipped ? `: ${clipped}` : ''}.`)
-  if (!canStep(1)) parts.push('Last annotation.')
+  if (index >= 0) parts.push(`${store.offset + index + 1} / ${store.total}${clipped ? `: ${clipped}` : ''}.`)
+  const last = index >= 0 ? !store.rows[index + 1] && !store.hasNextPage : !canStep(1)
+  if (last) parts.push('Last annotation.')
   announcement.value = parts.filter(Boolean).join(' ')
 }
 
@@ -900,7 +903,19 @@ async function reviewFocused (action: ReviewAction, tagId?: string) {
   // The next page starts after the rows that left the result: known once they are read again.
   if (!store.rows[focusedIndex.value + 1]) await reviewed.loaded
   if (selection.focused?.id !== row.id) return
+  quietDecision()
   await advance(action === ReviewAction.approve ? 'Confirmed.' : 'Rejected.')
+}
+
+/**
+ * A saved decision of one annotation (sidebar or row, #690) adds no lines above the list, which
+ * would move it: the row shows its new state and the live region says it. It is changed back by
+ * choosing the other state, so it leaves no Undo either. Batch reviews, failures and conflicts
+ * still report there.
+ */
+function quietDecision () {
+  review.dismiss()
+  review.noteChange(null)
 }
 
 /**
@@ -916,6 +931,53 @@ async function advance (said: string) {
     return
   }
   announce(said, await step(1))
+}
+
+/**
+ * A decision made in a row of the list (#690 phase B): its buttons or Alt+C / Alt+R on the
+ * focused row. It acts on that row only, at the version the row shows, through the same review
+ * as the sidebar; the sidebar does not move. Resolves whether the row is now in that state (the
+ * state in effect writes nothing). A conflict opens the row in the sidebar with its conflict; a
+ * failure shows the result line with Retry.
+ */
+async function reviewRow (row: AnnotationListRow, action: RowDecision): Promise<boolean> {
+  if (review.running || savingBoundary.value || (editingBoundary.value && selection.focused?.id === row.id)) return false
+  const reviewAction = action === 'approve' ? ReviewAction.approve : ReviewAction.reject
+  const done = action === 'approve' ? 'Confirmed.' : 'Rejected.'
+  if (row.type === (action === 'approve' ? SpanType.pos : SpanType.neg)) {
+    announce(action === 'approve' ? 'Already confirmed.' : 'Already rejected.', row)
+    return true
+  }
+  if (selection.focused?.id === row.id) focusedConflict.value = null
+  const reviewed = await runReview(reviewAction, [[row.id, row.editVersion ?? 0]])
+  if (!reviewed) return false
+  const { report } = reviewed
+  if (report.conflicts.length) {
+    review.dismiss()
+    await reviewed.loaded
+    await openContext(store.rows.find(r => r.id === row.id) ?? row)
+    focusedConflict.value = { id: row.id, action: reviewAction }
+    return false
+  }
+  if (report.saved.length !== 1) return false
+  quietDecision()
+  await reviewed.loaded
+  announce(done, store.rows.find(r => r.id === row.id) ?? row)
+  return true
+}
+
+/** Opens the first row of the next page or the last one of the previous page, from the list's
+ * keys at the page's end (#690); the row opened, or null. */
+async function stepPage (direction: 1 | -1): Promise<AnnotationListRow | null> {
+  if (store.loading || (direction > 0 ? !store.hasNextPage : store.offset <= 0)) {
+    if (direction > 0) announcement.value = 'Last annotation.'
+    return null
+  }
+  await store.goTo(direction > 0 ? store.nextOffset : Math.max(0, store.offset - PAGE_SIZE))
+  const row = (direction > 0 ? store.rows[0] : store.rows[store.rows.length - 1]) ?? null
+  if (row) void openContext(row)
+  announce('', row)
+  return row
 }
 
 /** Repeats the refused review or boundary edit against the version the sidebar shows now. */
@@ -1187,8 +1249,8 @@ function showChangedAssign () {
 /**
  * Review shortcuts of the sidebar (#690): Alt+C confirms, Alt+R rejects the open annotation,
  * Alt+↓ / Alt+↑ open the next / previous one. Matched by `event.code` (macOS Option+C types
- * "ç"). Tab stays native. Ignored in fields, menus and dialogs, in the list's grid (its own
- * shortcuts come with inline review), while a write is saved and while boundaries are edited.
+ * "ç"). Tab stays native. Ignored in fields, menus and dialogs, in the list's grid (which has
+ * the same keys for its focused row), while a write is saved and while boundaries are edited.
  */
 const SHORTCUTS: Record<string, 'approve' | 'reject' | 'next' | 'previous'> = {
   KeyC: 'approve', KeyR: 'reject', ArrowDown: 'next', ArrowUp: 'previous'
@@ -1239,6 +1301,15 @@ watch(collectionId, async (id) => {
 </script>
 
 <style scoped>
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .collection-annotations__summary {
   display: flex;
   flex-wrap: wrap;

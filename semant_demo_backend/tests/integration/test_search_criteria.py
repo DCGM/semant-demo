@@ -141,8 +141,7 @@ async def test_document_filters_select_the_same_documents_in_search_browse_and_a
 ########
 
 def search_body(**criteria) -> dict:
-    return {"query": ALL_WORDS, "type": "text", "limit": 50, "tag_uuids": [], "positive": False,
-            "automatic": False, **NO_SUMMARY, **criteria}
+    return {"query": ALL_WORDS, "type": "text", "limit": 50, **NO_SUMMARY, **criteria}
 
 
 async def test_search_applies_criteria_filters_and_echoes_them_normalized(api_client, update, corpus):

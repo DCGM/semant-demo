@@ -121,8 +121,7 @@ def spans():
 
 @pytest.fixture
 def store(definitions, spans):
-    annotations = AnnotationStore(collections=FakeCollections(), tags=FakeTags(), spans=spans, chunk_tags=None,
-                                  documents=None, activity=FakeActivity())
+    annotations = AnnotationStore(collections=FakeCollections(), tags=FakeTags(), spans=spans, documents=None, activity=FakeActivity())
     return AttributeStore(definitions=definitions, annotations=annotations)
 
 

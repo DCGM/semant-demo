@@ -76,6 +76,7 @@ test('a new user registers signed in, logs out and logs in again', async ({ page
   await page.goto('/')
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.locator('.q-menu').getByText('Register', { exact: true }).click()
+  await expect(page.getByLabel('Username')).toBeFocused()
   await page.getByLabel('Username').fill(name)
   await page.getByLabel('Name', { exact: true }).fill('New Comer')
   await page.getByLabel('Email').fill(`${name}@example.com`)
@@ -90,8 +91,11 @@ test('a new user registers signed in, logs out and logs in again', async ({ page
 
   await page.getByRole('button', { name: 'User menu' }).click()
   await page.locator('.q-menu').getByText('Log In', { exact: true }).click()
-  await page.getByLabel('Email or Username').fill(`${name}@example.com`)
-  await page.getByLabel('Password', { exact: true }).fill('a-long-test-password')
-  await page.getByRole('button', { name: 'Log In' }).click()
+  // Keyboard only: the dialog opens with the cursor in its first field (#708).
+  await expect(page.getByLabel('Email or Username')).toBeFocused()
+  await page.keyboard.type(`${name}@example.com`)
+  await page.keyboard.press('Tab')
+  await page.keyboard.type('a-long-test-password')
+  await page.keyboard.press('Enter')
   await expect(page.getByText('Welcome, New Comer!')).toBeVisible()
 })
