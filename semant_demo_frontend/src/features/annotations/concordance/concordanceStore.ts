@@ -443,22 +443,34 @@ export const useConcordanceStore = defineStore('concordance', () => {
     const key = pageKey
     const applies = () => isCurrent() && inScope() && inSession() && key === pageKey
     try {
-      const [fresh, matching] = await Promise.all([
+      const near = filters.value.near
+      const [fresh, matching, nearby] = await Promise.all([
         api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet({
           collectionId: id, annotationId: listed, type: Object.values(SpanType), limit: listed.length
         }),
         api.resolveCollectionAnnotationIdsApiUserCollectionsCollectionIdAnnotationsIdsPost({
           collectionId: id, annotationIdsRequest: idsRequest(filters.value, listed)
-        })
+        }),
+        // The neighbors that explain a row (#333) come only with the proximity filter: read them
+        // again for the rows it still matches, as they are now (boundaries may have moved).
+        near
+          ? api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet({
+            collectionId: id, annotationId: listed, type: Object.values(SpanType), limit: listed.length, ...nearParameters(near)
+          })
+          : Promise.resolve(null)
       ])
       if (!applies() || !page.value) return
       const current = new Map(fresh.rows.map(r => [r.id, r]))
       const matched = new Set(matching.ids)
       const read = new Set(listed)
-      // The listed copy keeps what only the page's query gives (e.g. a rank's score).
+      const neighbors = new Map((nearby?.rows ?? []).map(r => [r.id, r.neighbors ?? []]))
+      // The listed copy keeps what only the page's query gives (e.g. a rank's score); its
+      // neighbors are replaced by those read with the proximity filter (none: no longer near).
       const update = (row: AnnotationListRow) => {
         const now = current.get(row.id)
-        return now ? { ...row, ...Object.fromEntries(Object.entries(now).filter(([, v]) => v !== undefined)) } : row
+        if (!now) return row
+        const merged = { ...row, ...Object.fromEntries(Object.entries(now).filter(([, v]) => v !== undefined)) }
+        return { ...merged, neighbors: near ? neighbors.get(row.id) ?? [] : row.neighbors }
       }
       page.value = {
         ...page.value,

@@ -270,10 +270,7 @@ class AnnotationQuery(BaseModel):
     """Only annotations holding none of these elements, or not approved (whose values are not
     shown, as for ``attribute_unassigned``)."""
     near_ids: list[UUID] | None = None
-    """Proximity (#333): only these annotations, or, with ``near_free_except``, also every
-    annotation outside those documents."""
-    near_free_except: list[UUID] | None = None
-    """Proximity ``absent`` (#333): the documents holding a neighbor."""
+    """Proximity (#333): only these annotations (those the proximity filter matched)."""
 
 
 class VectorRanking(BaseModel):
@@ -561,8 +558,9 @@ class NearFilter(BaseModel):
     the same document that matches ``tag_ids``/``types``/``attribute_values`` and lies in
     ``relation`` to it. An annotation is never its own neighbor and is listed once however many
     neighbors match. Positions are the stored document-relative intervals (#463), so chunks outside
-    the user collection count; annotations without current positions never match (and, with
-    ``absent``, neither do annotations of a document holding a neighbor without positions)."""
+    the user collection count; annotations without current positions never match, with ``absent``
+    neither (even in a document without any neighbor), nor do annotations of a document holding a
+    neighbor without positions."""
     model_config = ConfigDict(extra="forbid")
 
     tag_ids: list[UUID] | None = None

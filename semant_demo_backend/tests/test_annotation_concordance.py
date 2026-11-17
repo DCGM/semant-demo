@@ -130,8 +130,7 @@ class FakeSpans:
                 and (query.holds_value is None
                      or (r.type == SpanType.pos and query.holds_value in (r.attributeValues or [])))
                 and (r.type != SpanType.pos or not set(query.holds_none_of) & set(r.attributeValues or []))
-                and (query.near_ids is None or r.id in query.near_ids
-                     or (query.near_free_except is not None and r.documentId not in query.near_free_except))]
+                and (query.near_ids is None or r.id in query.near_ids)]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}

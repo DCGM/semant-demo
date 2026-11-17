@@ -359,11 +359,7 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
                           | Filter.by_property("type").not_equal(SpanType.pos.value))
     if query.near_ids is not None:
         # An empty list matches nothing (Weaviate refuses an empty contains_any).
-        chosen = Filter.by_id().contains_any(list(query.near_ids) or [_NO_ID])
-        if query.near_free_except is not None:
-            chosen = chosen | (Filter.not_(Filter.by_property("documentId").contains_any(list(query.near_free_except)))
-                               if query.near_free_except else Filter.by_id().not_equal(_NO_ID))
-        conditions.append(chosen)
+        conditions.append(Filter.by_id().contains_any(list(query.near_ids) or [_NO_ID]))
     for attribute in query.attribute_unassigned:
         # Explicit: no stored element carries the attribute's fixed-length id prefix. Values kept on a
         # non-approved annotation are not shown, so it counts as unassigned too.

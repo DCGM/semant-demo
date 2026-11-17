@@ -907,8 +907,9 @@ async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilt
     Reads the neighbors' documents (one aggregation), then the positions of the neighbors and of
     the annotations matching ``query`` in those documents only (at most
     ``proximity.MAX_NEAR_ANNOTATIONS`` each; more is refused, never truncated), and matches them
-    per document. The result is the matching annotation ids (``absent``: those proven without a
-    neighbor, and every annotation of a document without any neighbor)."""
+    per document. The result is the matching annotation ids. With ``absent`` the annotations of
+    every document are read (not only those with a neighbor), so an annotation without current
+    positions never proves absence, even in a document without any neighbor; it counts as unknown."""
     near = filters.near
     if near is None:
         return query, None
@@ -925,20 +926,21 @@ async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilt
     if sum(counts[d] for d in documents) > limit:
         raise InvalidRequestError(f"More than {limit} neighbor annotations would have to be compared; "
                                   "choose fewer neighbor tags or filter by document.")
-    if documents and await store.spans.count_rows(cid, query, documents) > limit:
-        raise InvalidRequestError(f"More than {limit} annotations in documents with a neighbor would have to be "
-                                  "compared; narrow the filters.")
+    # Absence is decided per annotation everywhere; presence needs only documents with a neighbor.
+    primary_documents = (filters.document_ids or None) if near.absent else documents
+    if (primary_documents is None or primary_documents) \
+            and await store.spans.count_rows(cid, query, primary_documents) > limit:
+        where = "" if near.absent else " in documents with a neighbor"
+        raise InvalidRequestError(f"More than {limit} annotations{where} would have to be compared; narrow the filters.")
     primary, neighbors = await asyncio.gather(
-        store.spans.query_positions(cid, query, document_ids=documents, limit=limit),
+        store.spans.query_positions(cid, query, document_ids=primary_documents, limit=limit),
         store.spans.query_positions(cid, neighbor_query, document_ids=documents, limit=limit))
     try:
         matched = proximity.match(primary, neighbors, near)
     except proximity.TooManyComparisons:
         raise InvalidRequestError("The proximity filter would compare too many annotations; "
                                   "use a smaller distance or narrow the filters.") from None
-    restricted = query.model_copy(update={"near_ids": matched.ids,
-                                          "near_free_except": list(counts) if near.absent else None})
-    return restricted, _Near(
+    return query.model_copy(update={"near_ids": matched.ids}), _Near(
         coverage=ProximityCoverage(primary=matched.primary, unknown=matched.unknown,
                                    neighbors=matched.neighbors_found,
                                    neighbors_unpositioned=matched.neighbors_unpositioned),

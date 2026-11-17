@@ -246,3 +246,24 @@ async def test_a_denied_request_compares_nothing(store):
     with pytest.raises(ResourceNotFound):
         await service.query_annotations(store, OTHER, COLLECTION, statements())
     assert store.spans.queries == 0
+
+
+async def test_absence_is_never_proven_by_an_unknown_position_even_without_neighbors_in_the_document(store):
+    rows = corpus(store)
+    unknown = span((30, 31), document=DOC_NO_YEAR, current=False)  # its document holds no Criticism at all
+    store.spans.rows.append(unknown)
+    page = await service.query_annotations(store, OWNER, COLLECTION, statements(distance=5, absent=True))
+    assert unknown.id not in {r.id for r in page.rows}
+    assert rows["a_alone"].id in {r.id for r in page.rows}
+    assert page.proximity.unknown == 2  # a_unknown (next to a neighbor) and the one without any neighbor
+    resolved = await service.resolve_annotation_ids(store, OWNER, COLLECTION, AnnotationIdsRequest(
+        tag_ids=[STATEMENT], near=near(distance=5, absent=True)))
+    assert unknown.id not in resolved.ids and sorted(resolved.ids, key=str) == sorted((r.id for r in page.rows), key=str)
+
+
+async def test_absence_compares_the_annotations_of_every_document_within_the_limit(store, monkeypatch):
+    corpus(store)
+    monkeypatch.setattr(proximity, "MAX_NEAR_ANNOTATIONS", 4)  # 5 Statements, 3 of them in documents with a neighbor
+    await service.query_annotations(store, OWNER, COLLECTION, statements(distance=5))
+    with pytest.raises(InvalidRequestError, match="More than 4 annotations would"):
+        await service.query_annotations(store, OWNER, COLLECTION, statements(distance=5, absent=True))
