@@ -105,7 +105,7 @@ def application_corpus(app: FastAPI) -> Callable[[], Corpus | None]:
             return None
         return Corpus(
             documents=weaviate.documents,
-            backends=SearchBackends(chunks=weaviate.search, collections=weaviate.user_collections, tags=weaviate.tags,
+            backends=SearchBackends(chunks=weaviate.search, collections=weaviate.user_collections,
                                     vectors=resources.search_vectors),
             pages=PageAssetStore(app.state.config.PAGE_ASSETS_DIR or None))
     return corpus

@@ -76,7 +76,7 @@ async def test_sort_latency_on_a_production_sized_tenant(seeded_store, collectio
     rng = random.Random(666)
     cid = uuid4()
     spans = SpanRepository(seeded_store, collection_names, attributes=True, sort_keys=True)
-    store = AnnotationStore(collections=Access(cid), tags=None, spans=spans, chunk_tags=None, documents=documents,
+    store = AnnotationStore(collections=Access(cid), tags=None, spans=spans, documents=documents,
                             enrichment=Enrichment(derived=True, sort_keys=True))
     attribute = SimpleNamespace(id=uuid4(), values=[SimpleNamespace(id=uuid4(), retired=i == VALUES - 1)
                                                     for i in range(VALUES)])

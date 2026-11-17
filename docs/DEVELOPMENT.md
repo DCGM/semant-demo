@@ -37,8 +37,8 @@ the origin `http://localhost:9000`) and log in with one of the seeded accounts:
 The data is the synthetic fixture corpus of the automated tests,
 `semant_demo_backend/tests/fixtures/corpus.json`: three documents with seven Czech chunks
 (diacritics, a combining mark, a non-BMP character), four tags, manual/automatic/rejected
-annotations with their derived text, positions and vectors (#328), chunk tag references and
-search classifications. Search for e.g. `Jan Novák`; open *Kroniky a dopisy* to see the
+annotations with their derived text, positions and vectors (#328) and search
+classifications. Search for e.g. `Jan Novák`; open *Kroniky a dopisy* to see the
 annotated Document view. This small corpus is for checking workflows, not search quality.
 For a test that depends on it, the [corpus quick reference](../semant_demo_backend/tests/fixtures/CORPUS.md)
 lists which chunks and tags belong to which collection and explains the Unicode edge cases.
@@ -257,7 +257,7 @@ make test-e2e           # Playwright smoke suite against the deterministic app p
 
 While iterating, run only the affected integration tests: the container starts in about a
 second, so one file takes ~30 s instead of ~4 min for the whole suite, e.g.
-`make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"` (paths relative
+`make test-integration ARGS="tests/integration/test_annotations.py -k deletion"` (paths relative
 to `semant_demo_backend`). Quote inside `ARGS` as on a shell command line, e.g.
 `ARGS="tests/integration/test_access.py -k 'case_a or case_b'"`; the arguments reach pytest
 intact. Run the full suite before review when the change needs it.
@@ -292,7 +292,7 @@ They never use the development container, `.dev-data/` or `local_data/`:
   the synthetic corpus in `semant_demo_backend/tests/fixtures/corpus.json` (users, three
   collections incl. a shared one, documents in several collections, partial chunk
   membership, manual/automatic/rejected annotations in their collections' annotation tenants
-  (the legacy `Span` collection is created empty, for the migration tests) and chunk tag references, Czech
+  (the legacy `Span` collection is created empty, for the migration tests), Czech
   diacritics, a combining mark and a non-BMP character). The collections are created once
   per run and are dropped and recreated only when their configuration no longer matches
   (e.g. a test dropped one or auto-schema added a property); dropping and recreating them
@@ -823,6 +823,6 @@ Agents must not infer that an endpoint is safe merely because it is described as
 To return the seeded environment to its initial state, use `make dev-reset`, not these
 utilities.
 
-The reviewed audit/repair commands (chunk tag audit, documents without chunks, Kramerius
+The reviewed audit/repair commands (documents without chunks, Kramerius
 metadata sync) and how to practise them on a copy of the snapshot are described in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md).

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
 PROFILE_DIR = Path(__file__).resolve().parents[2] / "configs" / "db_benchmark"
 
 ScenarioKind = Literal["search", "direct", "context", "document_view", "aggregate", "self_recall", "mixed"]
-FilterKind = Literal["year_range", "language", "document_type", "tag", "user_collection"]
+FilterKind = Literal["year_range", "language", "document_type", "user_collection"]
 
 
 class SafetyLimits(BaseModel):
@@ -54,8 +54,6 @@ class QueryInputs(BaseModel):
     languages: list[str] = Field(default_factory=lambda: ["ces"])
     document_types: list[str] = Field(default_factory=list)
     """Values of the document's ``documentType`` (filtered through the reference); empty: sampled."""
-    sample_tags: int = Field(20, ge=0)
-    """Tags that match at least one chunk (tags without chunks are skipped while sampling)."""
     sample_user_collections: int = Field(10, ge=0)
     """User collections with at least one chunk."""
 

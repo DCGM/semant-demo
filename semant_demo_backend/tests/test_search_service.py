@@ -1,7 +1,7 @@
 """Search service (features/search/service.py) called directly, with fake stores and providers.
 
 Covers embedding choice, search vector selection, filter normalization into neutral conditions, authorization of
-the collection and of every requested tag before retrieval, and optional summaries.
+the collection before retrieval, the refusal of removed tag filters, and optional summaries.
 """
 from types import SimpleNamespace
 from uuid import uuid4
@@ -17,7 +17,7 @@ from semant_demo.features.documents.criteria import (
 from semant_demo.features.search.filters import TASK_CLASSES, InvalidSearchFilterError, generate_default_filters
 from semant_demo.features.search.schemas import (
     ChunkQuery, FieldCondition, Op, PassageReadRequest, PassageSearchRequest, SearchFilterInput, SearchRequest,
-    SearchType, TagFilter,
+    SearchType,
     SearchResultChunk,
 )
 from semant_demo.features.search.service import SearchBackends
@@ -29,7 +29,7 @@ from tests.fakes import FakeLlm
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), name=n, is_superuser=False) for n in ("Owner", "Shared", "Other"))
 COLLECTION, SECOND, FOREIGN = uuid4(), uuid4(), uuid4()
 """COLLECTION (shared with SHARED) and SECOND belong to OWNER; FOREIGN belongs to OTHER."""
-TAG, SECOND_TAG, FOREIGN_TAG, ORPHAN_TAG = uuid4(), uuid4(), uuid4(), uuid4()
+TAG = uuid4()
 DEFINITIONS = generate_default_filters(min_year=1800, max_year=1950, languages=["ces", "deu"])
 
 
@@ -39,14 +39,6 @@ class FakeCollections:
 
     async def read_access_record(self, cid):
         return self.records.get(cid)
-
-
-class FakeTags:
-    def __init__(self):
-        self.owners = {TAG: [COLLECTION], SECOND_TAG: [SECOND], FOREIGN_TAG: [FOREIGN], ORPHAN_TAG: []}
-
-    async def read_collection_ids(self, ids):
-        return {i: self.owners[i] for i in ids if i in self.owners}
 
 
 class FakeChunks:
@@ -123,13 +115,12 @@ def search_vectors(embeddings=None, second=None) -> SearchVectors:
 
 
 def backends(chunks=None, embeddings=None, second=None) -> SearchBackends:
-    return SearchBackends(chunks=chunks or FakeChunks(), collections=FakeCollections(), tags=FakeTags(),
+    return SearchBackends(chunks=chunks or FakeChunks(), collections=FakeCollections(),
                           vectors=search_vectors(embeddings, second))
 
 
 def request(**kwargs) -> SearchRequest:
-    return SearchRequest(**{"query": "Novák", "type": "text", "tag_uuids": [], "positive": False,
-                            "automatic": False, **kwargs})
+    return SearchRequest(**{"query": "Novák", "type": "text", **kwargs})
 
 
 async def run(req, user=OWNER, definitions=None, chunks=None, embeddings=None) -> ChunkQuery:
@@ -249,7 +240,7 @@ async def test_public_retriever_with_a_vector_uses_it_for_every_request():
 async def test_no_filters_means_no_conditions():
     query = await run(request(), definitions=DEFINITIONS)
 
-    assert query.conditions == () and query.collection_id is None and query.tags is None
+    assert query.conditions == () and query.collection_id is None
 
 
 async def test_legacy_fields_become_conditions_when_no_filters_are_requested():
@@ -356,17 +347,21 @@ async def test_invalid_chunk_filters_are_a_bad_request_before_retrieval(chunk_fi
     assert chunks.queries == [] and embeddings.calls == []
 
 
-@pytest.mark.parametrize("automatic, positive", [(True, False), (False, True), (True, True)])
-async def test_tag_filter_matches_the_requested_kinds(automatic, positive):
-    req = request(tag_uuids=[str(TAG), str(TAG)], automatic=automatic, positive=positive)
+@pytest.mark.parametrize("legacy", [
+    {"tag_uuids": [str(TAG)]}, {"tag_uuids": [str(TAG)], "positive": True}, {"positive": True},
+    {"automatic": True}, {"tag_uuids": [], "positive": False, "automatic": True},
+])
+def test_active_legacy_tag_filters_are_refused(legacy):
+    # Tag-filtered search was removed (#733): refusing keeps old clients from getting unfiltered results.
+    with pytest.raises(ValueError, match="no longer supported"):
+        request(**legacy)
 
-    assert (await run(req)).tags == TagFilter((TAG,), automatic=automatic, positive=positive)
 
+def test_former_no_op_tag_fields_are_tolerated_and_dropped():
+    req = request(tag_uuids=[], positive=False, automatic=False)
 
-async def test_tags_without_a_kind_do_not_filter_but_are_still_authorized():
-    assert (await run(request(tag_uuids=[str(TAG)]))).tags is None
-    with pytest.raises(NotFoundError):
-        await run(request(tag_uuids=[str(FOREIGN_TAG)]))
+    assert req == request()
+    assert not {"tag_uuids", "positive", "automatic"} & set(req.model_dump())
 
 
 #################
@@ -376,15 +371,14 @@ async def test_tags_without_a_kind_do_not_filter_but_are_still_authorized():
 async def test_public_search_needs_no_login():
     query = await run(request(), user=None)
 
-    assert query.collection_id is None and query.tags is None
+    assert query.collection_id is None
 
 
 @pytest.mark.parametrize("user", [OWNER, SHARED])
 async def test_collection_scope_is_passed_to_retrieval(user):
-    query = await run(request(user_collection_id=str(COLLECTION), tag_uuids=[str(TAG)], positive=True), user=user)
+    query = await run(request(user_collection_id=str(COLLECTION)), user=user)
 
     assert query.collection_id == COLLECTION
-    assert query.tags == TagFilter((TAG,), automatic=False, positive=True)
 
 
 @pytest.mark.parametrize("user, collection, error", [
@@ -400,49 +394,6 @@ async def test_unreadable_collection_is_refused_before_retrieval(user, collectio
     with pytest.raises(error):
         await service.retrieve(backends(chunks, embeddings), user, request(type="hybrid", user_collection_id=str(collection)))
     assert chunks.queries == [] and embeddings.calls == []
-
-
-async def test_tags_of_several_readable_collections_are_allowed_without_collection_scope():
-    query = await run(request(tag_uuids=[str(TAG), str(SECOND_TAG)], automatic=True))
-
-    assert set(query.tags.tag_ids) == {TAG, SECOND_TAG}
-    assert query.collection_id is None
-
-
-TAG_DENIALS = [
-    # (user, collection scope, requested tags)
-    (OWNER, None, [FOREIGN_TAG]),               # another user's tag
-    (OWNER, None, [TAG, FOREIGN_TAG]),          # permitted mixed with inaccessible
-    (OWNER, None, [uuid4()]),                   # unknown tag
-    (OWNER, None, [ORPHAN_TAG]),                # tag of no collection
-    (OWNER, None, ["not-a-uuid"]),              # malformed id
-    (SHARED, None, [SECOND_TAG]),               # owner's tag in a collection not shared with the user
-    (OWNER, COLLECTION, [SECOND_TAG]),          # readable tag, but of another collection than the scope
-    (OWNER, COLLECTION, [TAG, FOREIGN_TAG]),
-    (OWNER, COLLECTION, [uuid4()]),
-]
-
-
-@pytest.mark.parametrize("user, scope, tag_ids", TAG_DENIALS)
-async def test_inaccessible_tags_are_refused_before_retrieval(user, scope, tag_ids):
-    chunks, embeddings = FakeChunks(), FakeEmbeddings()
-    req = request(type="hybrid", tag_uuids=[str(t) for t in tag_ids], automatic=True, positive=True,
-                  user_collection_id=str(scope) if scope else None)
-
-    with pytest.raises(NotFoundError) as error:
-        await service.retrieve(backends(chunks, embeddings), user, req)
-    # One answer for unknown and inaccessible tags: existence of private tags is not revealed.
-    assert str(error.value) == "Tag not found"
-    assert chunks.queries == [] and embeddings.calls == []
-
-
-@pytest.mark.parametrize("tag", [str(TAG), "not-a-uuid", str(uuid4())])
-async def test_anonymous_tag_filter_needs_login(tag):
-    chunks = FakeChunks()
-
-    with pytest.raises(AuthenticationRequired):
-        await service.retrieve(backends(chunks), None, request(tag_uuids=[tag], positive=True))
-    assert chunks.queries == []
 
 
 async def test_public_retriever_searches_the_public_corpus_only():
@@ -520,7 +471,7 @@ async def test_denied_search_never_summarizes():
     summarizer = RecordingSummarizer()
 
     with pytest.raises(NotFoundError):
-        await service.search(backends(), summarizer, OWNER, request(tag_uuids=[str(FOREIGN_TAG)], positive=True))
+        await service.search(backends(), summarizer, OWNER, request(user_collection_id=str(FOREIGN)))
     assert summarizer.calls == 0
 
 
@@ -663,7 +614,7 @@ async def test_passage_criteria_are_document_and_same_chunk_predicates_and_echoe
     response = await passages(req, chunks=chunks)
 
     [query] = chunks.queries
-    assert (query.text, query.collection_id, query.tags, query.conditions) == ("Novák", None, None, ())
+    assert (query.text, query.collection_id, query.conditions) == ("Novák", None, ())
     assert query.document_conditions == (NumberRange("yearIssued", 1850, None), AnyOf("library", ("mzk",)))
     assert [(c.prop, c.values) for c in query.chunk_conditions] == [("language", ("ces",)), ("complexity", ("easy",))]
     assert response.criteria == SearchCriteria(
@@ -710,7 +661,7 @@ async def test_passages_of_a_readable_collection_are_searched_in_it():
     await passages(passages_request(user_collection_id=str(COLLECTION)), chunks=chunks, user=SHARED)
 
     [query] = chunks.queries
-    assert query.collection_id == COLLECTION and query.tags is None
+    assert query.collection_id == COLLECTION
 
 
 async def test_later_pages_read_ranked_ids_under_the_search_restrictions_without_ranking_again():
@@ -729,7 +680,7 @@ async def test_later_pages_read_ranked_ids_under_the_search_restrictions_without
     [(read, scope)] = chunks.read
     assert read == ids
     # The restrictions of the search's ranking: its collection and every criteria predicate.
-    assert scope.collection_id == COLLECTION and scope.tags is None and scope.conditions == ()
+    assert scope.collection_id == COLLECTION and scope.conditions == ()
     assert scope.document_conditions == (NumberRange("yearIssued", 1850, None),)
     assert [(c.prop, c.values) for c in scope.chunk_conditions] == [("language", ("ces",))]
 

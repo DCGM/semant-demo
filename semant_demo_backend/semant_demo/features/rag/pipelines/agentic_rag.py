@@ -152,10 +152,7 @@ class WeaviateToolWrapper:
             max_year = rag_search.max_year,
             min_date = rag_search.min_date,
             max_date = rag_search.max_date,
-            language = rag_search.language,
-            tag_uuids = [],
-            positive = False,
-            automatic = False
+            language = rag_search.language
         )
 
         search_response = await self.retrieve(search_request)

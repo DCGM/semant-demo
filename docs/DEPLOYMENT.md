@@ -260,7 +260,7 @@ Compose only ([deploy/README.md](../deploy/README.md#environment-variables)).
 1. **No reload mode** — `run.py` runs uvicorn with `reload=True` for development; outside Docker run `uvicorn semant_demo.main:app` instead, as the image does
 2. **Configure CORS** — set `ALLOWED_ORIGIN` to your actual frontend domain
 3. **Use HTTPS** — put a reverse proxy (nginx, Caddy) in front of the backend
-4. **One backend process** — chunk tag synchronization is serialized only within one process ([TODO.md](TODO.md#correctness-and-behavior)); SQLite holds only user accounts, RAG feedback, the LLM quota ledger (its admissions are atomic across connections) and the annotation tenant activity record
+4. **One backend process** — annotation edit-version checks and vector writes are serialized only within one process ([ADR 0010](adr/0010-annotation-provenance-and-edit-versions.md), [TODO.md](TODO.md#data)); SQLite holds only user accounts, RAG feedback, the LLM quota ledger (its admissions are atomic across connections) and the annotation tenant activity record
 5. **Weaviate backups** — use Weaviate's backup API or snapshot the `weaviate_db` volume
 6. **Annotation migration before #327** — the first release with multi-tenant annotation storage reads and writes only `Annotation`. Every store it runs on (production, the shared test store of `test-main` and the PR previews) needs the operator-run migration during a write pause first ([cutover](DATA_MAINTENANCE.md#cutover-production-test-store)); otherwise annotations appear empty and cannot be saved
 7. **SQLite backups** — back up `tasks.db` (users, feedback, LLM quota) separately; production uses a daily host cron job with `sqlite3 .backup` ([deploy/README](../deploy/README.md#sqlite-backup-399))

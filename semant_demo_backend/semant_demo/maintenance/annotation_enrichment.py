@@ -107,7 +107,7 @@ async def _main(argv: list[str]) -> int:
             print("The annotation collection lacks the derived properties: run add-schema first.", file=sys.stderr)
             return 2
         store = AnnotationStore(collections=repos.user_collections, tags=repos.tags, spans=repos.spans,
-                                chunk_tags=repos.chunk_tags, documents=repos.documents, enrichment=enrichment)
+                                documents=repos.documents, enrichment=enrichment)
         collections = args.collection or sorted(UUID(name) for name in await repos.spans.list_tenants())
         if args.command == "status" or not execute:
             reports = await backfill.status(store, collections)

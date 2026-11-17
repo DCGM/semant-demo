@@ -8,7 +8,7 @@ The authoritative description of what the application **does today** is [ARCHITE
 
 - Keep one feature-oriented FastAPI application with explicit request dependencies and application-lifespan resources; storage and external-provider calls belong in `adapters/`. Add layers or interfaces only when they solve a demonstrated problem.
 - Services enforce collection- and resource-level authorization; [ADR 0007](adr/0007-access-and-collaboration.md) defines what shared users may change.
-- Store annotations in Weaviate as spans and maintain searchable chunk tag references on the existing chunk attributes. Treat failed second-step writes as **partial**, not as rollback successes ([ADR 0002](adr/0002-best-effort-writes.md)).
+- Store annotations in Weaviate as spans only, in one tenant per collection; chunks hold no tag projection ([ADR 0013](adr/0013-no-chunk-tag-references.md)). Treat failed later steps of a write (derived data, vectors) as **partial**, not as rollback successes ([ADR 0002](adr/0002-best-effort-writes.md)).
 - Keep AI proposal generation request-scoped with progressive results and cancellation, not an implicit durable job system ([ADR 0003](adr/0003-request-scoped-ai.md)). Durable bulk jobs are optional future product work [#43](https://github.com/DCGM/semant-demo/issues/43).
 - Preserve canonical corpus text, document IDs and UTF-16 span coordinates; any geometry or ALTO mapping is optional future work ([ADR 0006](adr/0006-context-and-text.md)).
 - Partition frontend state by user/collection/document and reject late responses. Search chat scope is decision Q3 in the [ADR index](adr/README.md#confirmed-decisions).
@@ -16,4 +16,4 @@ The authoritative description of what the application **does today** is [ARCHITE
 
 ## Open boundaries
 
-See [TODO.md](TODO.md) for relevant issues, including cross-chunk tag-search behavior (#224), multi-request AI concurrency (#227), and data/index repair as explicitly reviewed maintenance. These do not require reintroducing obsolete architectural layers.
+See [TODO.md](TODO.md) for relevant issues, including multi-request AI concurrency (#227), and data/index repair as explicitly reviewed maintenance. These do not require reintroducing obsolete architectural layers.

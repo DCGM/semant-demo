@@ -108,7 +108,7 @@ Scenario kinds (`layer` in the report):
 
 | Kind | Layer | What it runs |
 |---|---|---|
-| `search` | adapter | `ChunkSearchRepository.search` — the search page and RAG retrieval: BM25, vector or hybrid, the document reference and its properties returned, optional `filter`: `year_range` (chunk `yearIssued`), `language`, `document_type` (through the document reference), `tag` (chunk tag references), `user_collection` (the last two query from a chunk inside the value) |
+| `search` | adapter | `ChunkSearchRepository.search` — the search page and RAG retrieval: BM25, vector or hybrid, the document reference and its properties returned, optional `filter`: `year_range` (chunk `yearIssued`), `language`, `document_type` (through the document reference), `user_collection` (queried from a chunk inside the value). The `tag` filter (chunk tag references) was removed with the references (#733); profiles naming it are refused |
 | `direct` | direct | the same query call without references and with one property, to separate the database search cost from reference expansion |
 | `context` | adapter | `DocumentRepository.read_adjacent_chunks` before and after a chunk |
 | `document_view` | adapter | `DocumentRepository.read_chunks` — all chunks of a document (documents above `max_document_chunks` are skipped) |
@@ -129,11 +129,11 @@ report notes when inputs repeat). Use `same` to compare runs and `disjoint` to s
 concurrency cost of fresh queries; in both cases compare a level with the same level of another
 run.
 
-Tag and user-collection filters use only values that match at least one chunk (up to 1000
+User-collection filters use only values that match at least one chunk (up to 1000
 candidates are checked while sampling; `filter_values_checked` in the inputs), and the query
-of such a search is taken from a chunk inside the tag or collection (one chunk per value), as
-when a user searches within it; a random chunk's words rarely occur in the one or two chunks a
-tag holds. The report flags any scenario in which no request returned a result, because such
+of such a search is taken from a chunk inside the collection (one chunk per value), as
+when a user searches within it; a random chunk's words rarely occur in the few chunks a
+small collection holds. The report flags any scenario in which no request returned a result, because such
 timings measure an empty search.
 
 Every request is timed on the client (wall time of the call, including gRPC and result

@@ -22,7 +22,6 @@ from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.tenant_activity import TenantActivity
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository, missing_position_properties
@@ -58,8 +57,6 @@ class WeaviateRepositories:
     search: ChunkSearchRepository
     spans: SpanRepository
     """Annotation spans, one tenant per user collection (#327); its known-tenant cache is per application."""
-    chunk_tags: ChunkTagRepository
-    """Chunk tag re-derivation; its per-pair locks are shared by all requests of the application."""
     analytics: CorpusAnalyticsRepository
 
     @classmethod
@@ -73,7 +70,6 @@ class WeaviateRepositories:
             user_collections=UserCollectionRepository(client, names, spans),
             search=ChunkSearchRepository(client, names),
             spans=spans,
-            chunk_tags=ChunkTagRepository(client, names, spans),
             analytics=CorpusAnalyticsRepository(client, names),
         )
 

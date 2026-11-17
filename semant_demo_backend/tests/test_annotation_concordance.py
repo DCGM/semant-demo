@@ -203,8 +203,7 @@ class FakeAttributes:
 
 @pytest.fixture
 def store():
-    return AnnotationStore(collections=FakeCollections(), tags=None, spans=FakeSpans(), chunk_tags=None,
-                           documents=FakeDocuments())
+    return AnnotationStore(collections=FakeCollections(), tags=None, spans=FakeSpans(), documents=FakeDocuments())
 
 
 def ids(page):

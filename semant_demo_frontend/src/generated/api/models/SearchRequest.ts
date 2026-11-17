@@ -188,24 +188,6 @@ export interface SearchRequest {
     language?: string | null;
     /**
      * 
-     * @type {Array<string>}
-     * @memberof SearchRequest
-     */
-    tagUuids: Array<string>;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof SearchRequest
-     */
-    positive: boolean;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof SearchRequest
-     */
-    automatic: boolean;
-    /**
-     * 
      * @type {boolean}
      * @memberof SearchRequest
      */
@@ -225,9 +207,6 @@ export interface SearchRequest {
  */
 export function instanceOfSearchRequest(value: object): value is SearchRequest {
     if (!('query' in value) || value['query'] === undefined) return false;
-    if (!('tagUuids' in value) || value['tagUuids'] === undefined) return false;
-    if (!('positive' in value) || value['positive'] === undefined) return false;
-    if (!('automatic' in value) || value['automatic'] === undefined) return false;
     return true;
 }
 
@@ -264,9 +243,6 @@ export function SearchRequestFromJSONTyped(json: any, ignoreDiscriminator: boole
         'minDate': json['min_date'] == null ? undefined : (new Date(json['min_date'])),
         'maxDate': json['max_date'] == null ? undefined : (new Date(json['max_date'])),
         'language': json['language'] == null ? undefined : json['language'],
-        'tagUuids': json['tag_uuids'],
-        'positive': json['positive'],
-        'automatic': json['automatic'],
         'isHyde': json['is_hyde'] == null ? undefined : json['is_hyde'],
         'vector': json['vector'] == null ? undefined : json['vector'],
     };
@@ -306,9 +282,6 @@ export function SearchRequestToJSONTyped(value?: SearchRequest | null, ignoreDis
         'min_date': value['minDate'] == null ? value['minDate'] : value['minDate'].toISOString(),
         'max_date': value['maxDate'] == null ? value['maxDate'] : value['maxDate'].toISOString(),
         'language': value['language'],
-        'tag_uuids': value['tagUuids'],
-        'positive': value['positive'],
-        'automatic': value['automatic'],
         'is_hyde': value['isHyde'],
         'vector': value['vector'],
     };

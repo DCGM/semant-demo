@@ -27,7 +27,6 @@ from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations.suggestion_routes import _run_response
 from semant_demo.features.user_collections.access import AuthenticationRequired
 from semant_demo.features.annotations.schemas import AnnotationChunk
-from semant_demo.core.outcomes import StepFailure
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), is_superuser=False) for _ in range(3))
 COLLECTION, OTHER_COLLECTION, DOCUMENT = uuid4(), uuid4(), uuid4()
@@ -45,7 +44,6 @@ class World:
         self.chunks = [chunk(i, *(t if isinstance(t, tuple) else (t,))) for i, t in enumerate(texts)]
         self.log: list = []  # every write and provider call, in order
         self.insert_fail: dict[int, Exception] = {}  # by insert number
-        self.sync_failures: list[StepFailure] = []
         self.insert_gate: asyncio.Event | None = None
         self.inserted = 0
         self.stored: dict[UUID, object] = {}
@@ -98,12 +96,6 @@ class World:
         self.log.append(("inserted", span_id))
         return span_id
 
-    # chunk tags
-    async def sync(self, cid, pairs):
-        assert cid == COLLECTION
-        self.log.append(("sync", frozenset(pairs)))
-        return list(self.sync_failures)
-
     # documents
     def _texts(self) -> list[AnnotationChunk]:
         return positioned([AnnotationChunk(id=c.id, document_id=DOCUMENT, order=c.order, text=c.text)
@@ -122,8 +114,7 @@ class World:
     def store(self) -> AnnotationStore:
         spans = SimpleNamespace(insert=self.insert, provenance=self.provenance)
         tags = SimpleNamespace(read_collection_ids=self.read_collection_ids, read=self.read)
-        return AnnotationStore(collections=self, tags=tags, spans=spans,
-                               chunk_tags=SimpleNamespace(sync=self.sync), documents=self, activity=self)
+        return AnnotationStore(collections=self, tags=tags, spans=spans, documents=self, activity=self)
 
     # tenant activity: the run holds its collection's tenant in use
     async def touch(self, cid, *, force=False):
@@ -245,10 +236,10 @@ async def test_each_event_follows_its_stored_span():
 
     first = await anext(events)
 
-    # The first chunk's span is stored (and its chunk tag synced) before its event, while
-    # the second chunk is still waiting for the provider.
+    # The first chunk's span is stored before its event, while the second chunk is still
+    # waiting for the provider.
     [span] = first.spans
-    assert ("inserted", UUID(span.id)) in world.log and world.log[-1][0] == "sync"
+    assert world.log[-1] == ("inserted", UUID(span.id))
     assert (span.chunkId, span.start, span.end, span.type.value) == (str(world.chunks[0].id), 0, 9, "auto")
     gate.set()
     second, end = await anext(events), await anext(events)
@@ -315,17 +306,6 @@ async def test_storage_failures_are_reported_and_timeouts_marked_uncertain():
     assert (end.outcome.value, end.saved, end.save_failures) == ("partial", 1, 2)
 
 
-async def test_saved_span_without_chunk_tag_is_partial():
-    world = World("Jan Novák")
-    world.sync_failures = [StepFailure(item_id="x", step="update_chunk_tags", message="down")]
-    provider = FakeProvider(world, {"Jan Novák": [proposal(PERSON, 0, 3)]})
-
-    [event], end = await run_all(await thorough(world, provider))
-
-    assert len(event.spans) == 1 and "not yet findable by tag search" in event.error
-    assert (end.outcome.value, end.search_tag_failures) == ("partial", 1)
-
-
 def with_derived_data(world: World) -> World:
     store = world.store()
     store.enrichment = Enrichment(derived=True)
@@ -355,7 +335,8 @@ async def test_saved_span_without_derived_text_counts_as_an_enrichment_failure()
     [event], end = await run_all(await thorough(world, provider))
 
     assert len(event.spans) == 1 and "without current search text or vector" in event.error
-    assert (end.outcome.value, end.enrichment_failures, end.search_tag_failures) == ("partial", 1, 0)
+    assert (end.outcome.value, end.enrichment_failures, end.save_failures) == ("partial", 1, 0)
+    assert "search_tag_failures" not in end.model_dump()
 
 
 # ── Validation of provider output ──────────────────────────────────────────
@@ -487,8 +468,8 @@ async def test_cancellation_during_a_write_finishes_the_write_first():
     world.insert_gate.set()
     await task
 
-    # The first write finished, including its chunk tag; the second was never started.
-    assert [e[0] for e in world.log if e[0] != "provider"] == ["insert_start", "inserted", "sync"]
+    # The first write finished; the second was never started.
+    assert [e[0] for e in world.log if e[0] != "provider"] == ["insert_start", "inserted"]
     assert run.summary.outcome.value == "cancelled"
 
 

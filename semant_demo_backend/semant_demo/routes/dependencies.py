@@ -77,7 +77,7 @@ async def get_annotation_store(connection: HTTPConnection) -> AnnotationStore:
     weaviate = _weaviate(connection)
     resources = get_resources(connection)
     return AnnotationStore(collections=weaviate.user_collections, tags=weaviate.tags, spans=weaviate.spans,
-                           chunk_tags=weaviate.chunk_tags, documents=weaviate.documents,
+                           documents=weaviate.documents,
                            activity=resources.tenant_activity, enrichment=resources.annotation_enrichment)
 
 def get_attribute_definitions(connection: HTTPConnection) -> AttributeRepository:
@@ -89,7 +89,7 @@ async def get_attribute_store(connection: HTTPConnection) -> AttributeStore:
 
 async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)
-    return SearchBackends(chunks=weaviate.search, collections=weaviate.user_collections, tags=weaviate.tags,
+    return SearchBackends(chunks=weaviate.search, collections=weaviate.user_collections,
                           vectors=get_resources(connection).search_vectors)
 
 def get_search_vectors(connection: HTTPConnection) -> SearchVectors:
