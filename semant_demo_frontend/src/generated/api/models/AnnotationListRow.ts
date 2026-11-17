@@ -160,6 +160,12 @@ export interface AnnotationListRow {
      * @memberof AnnotationListRow
      */
     attributeVersion?: number;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof AnnotationListRow
+     */
+    nearIds?: Array<string>;
 }
 
 
@@ -204,6 +210,7 @@ export function AnnotationListRowFromJSONTyped(json: any, ignoreDiscriminator: b
         'provenance': json['provenance'] == null ? undefined : AnnotationProvenanceFromJSON(json['provenance']),
         'attributes': json['attributes'] == null ? undefined : json['attributes'],
         'attributeVersion': json['attributeVersion'] == null ? undefined : json['attributeVersion'],
+        'nearIds': json['nearIds'] == null ? undefined : json['nearIds'],
     };
 }
 
@@ -237,6 +244,7 @@ export function AnnotationListRowToJSONTyped(value?: AnnotationListRow | null, i
         'provenance': AnnotationProvenanceToJSON(value['provenance']),
         'attributes': value['attributes'],
         'attributeVersion': value['attributeVersion'],
+        'nearIds': value['nearIds'],
     };
 }
 

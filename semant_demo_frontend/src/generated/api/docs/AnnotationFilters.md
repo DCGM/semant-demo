@@ -15,6 +15,7 @@ Name | Type
 `documentFilters` | [DocumentFilters](DocumentFilters.md)
 `attributeValues` | Array&lt;string&gt;
 `attributeUnassigned` | Array&lt;string&gt;
+`near` | [NearFilter](NearFilter.md)
 
 ## Example
 
@@ -31,6 +32,7 @@ const example = {
   "documentFilters": null,
   "attributeValues": null,
   "attributeUnassigned": null,
+  "near": null,
 } satisfies AnnotationFilters
 
 console.log(example)

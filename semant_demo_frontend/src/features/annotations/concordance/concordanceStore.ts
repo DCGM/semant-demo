@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import {
   AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationFilters, type AnnotationListRow, type AnnotationPage,
-  type AnnotationRanking, type AttributeAssignResult, type CollectionPerson, type DocumentFilters
+  type AnnotationRanking, type AttributeAssignResult, type CollectionPerson, type DocumentFilters, type NearFilter
 } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
 import { MAX_SELECTION, useAnnotationSelectionStore } from '../annotationSelectionStore'
@@ -34,6 +34,9 @@ export interface ConcordanceFilters {
   attributeValues: string[]
   /** Attribute ids the annotations must hold no value of. */
   attributeUnassigned: string[]
+  /** Proximity (#333): only annotations with (or, `absent`, without) a neighbor annotation of
+   * the chosen tags in the same document, in `relation`; null for no proximity filter. */
+  near: NearFilter | null
   /** Lexical mode only; ranked results are in relevance order. */
   sort: AnnotationSort
   /** The attribute whose values order the rows (#666), with `sort` `attribute`; otherwise null. */
@@ -89,6 +92,7 @@ export function defaultFilters (): ConcordanceFilters {
     documentFilters: {},
     attributeValues: [],
     attributeUnassigned: [],
+    near: null,
     sort: AnnotationSort.document,
     sortAttribute: null,
     descending: false,
@@ -128,7 +132,23 @@ export function annotationFilters (f: ConcordanceFilters): AnnotationFilters {
     documentIds: f.documentIds.length ? f.documentIds : null,
     documentFilters: normalizeDocumentFilters(f.documentFilters),
     attributeValues: f.attributeValues.length ? f.attributeValues : undefined,
-    attributeUnassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined
+    attributeUnassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
+    near: f.near ?? undefined
+  }
+}
+
+/** The proximity filter as GET parameters (#333); none without one. */
+export function nearParameters (near: NearFilter | null) {
+  if (!near) return {}
+  return {
+    nearRelation: near.relation,
+    nearTagId: near.tagIds?.length ? near.tagIds : undefined,
+    nearType: near.types?.length ? near.types : undefined,
+    nearAttribute: near.attributeValues?.length ? near.attributeValues : undefined,
+    nearDistance: near.distance,
+    nearUnit: near.unit,
+    nearDirection: near.direction,
+    nearAbsent: near.absent || undefined
   }
 }
 
@@ -277,6 +297,17 @@ export const useConcordanceStore = defineStore('concordance', () => {
     }
   }
 
+  /** The annotation `annotationId` of the collection as it is now, whatever the filters (e.g. a
+   * neighbor that made a row match the proximity filter, #333); null when it no longer exists. */
+  async function readRow (annotationId: string): Promise<AnnotationListRow | null> {
+    const id = collectionId.value
+    if (!id) return null
+    const result = await api.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet({
+      collectionId: id, annotationId: [annotationId], type: Object.values(SpanType), limit: 1
+    })
+    return result.rows[0] ?? null
+  }
+
   /** Shows the collection's workspace: as it was left, or a new one for another collection. */
   async function open (id: string) {
     if (scope.enter(id)) {
@@ -350,6 +381,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         languages: f.documentFilters.languages?.length ? f.documentFilters.languages : undefined,
         attribute: f.attributeValues.length ? f.attributeValues : undefined,
         unassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
+        ...nearParameters(f.near),
         sort: ranked ? undefined : f.sort,
         sortAttribute: !ranked && f.sort === AnnotationSort.attribute ? f.sortAttribute ?? undefined : undefined,
         descending: !ranked && f.descending ? true : undefined,
@@ -678,6 +710,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     load,
     refreshRows,
     readFocused,
+    readRow,
     loadDocuments,
     loadShown,
     selectAllMatches,

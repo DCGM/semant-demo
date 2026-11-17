@@ -1,5 +1,6 @@
 import {
-  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationListRow, type Attribute, type Tag
+  DistanceUnit, NearDirection, NearRelation, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationListRow,
+  type Attribute, type NearFilter, type Tag
 } from 'src/generated/api'
 import { filterGroups, withoutFilter } from 'src/features/analytics/corpusOverview'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
@@ -111,6 +112,53 @@ export function unsortableLabel (unsortable: number | null | undefined, descendi
   return `${subject} not sortable yet and listed ${descending ? 'last' : 'first'}`
 }
 
+/** The proximity relations (#333), as the proximity form names them. */
+export const RELATION_LABELS: Record<NearRelation, string> = {
+  [NearRelation.within]: 'Within a distance',
+  [NearRelation.overlaps]: 'Overlapping',
+  [NearRelation.contains]: 'Inside the annotation',
+  [NearRelation.containedBy]: 'Containing the annotation',
+  [NearRelation.sameDocument]: 'Anywhere in the document'
+}
+
+export const DIRECTION_LABELS: Record<NearDirection, string> = {
+  [NearDirection.either]: 'Either side',
+  [NearDirection.before]: 'Before',
+  [NearDirection.after]: 'After'
+}
+
+export const UNIT_LABELS: Record<DistanceUnit, string> = {
+  [DistanceUnit.words]: 'words',
+  [DistanceUnit.chars]: 'characters'
+}
+
+/** The default proximity filter: a neighbor of `tagIds` within 50 words on either side. */
+export function defaultNear (tagIds: string[]): NearFilter {
+  return { tagIds, relation: NearRelation.within, distance: 50, unit: DistanceUnit.words, direction: NearDirection.either, absent: false }
+}
+
+/** How the neighbor must lie, e.g. "within 50 words after" or "overlapping". */
+export function nearRelationText (near: NearFilter): string {
+  const relation = near.relation ?? NearRelation.within
+  if (relation !== NearRelation.within) return RELATION_LABELS[relation].toLowerCase()
+  const direction = near.direction && near.direction !== NearDirection.either ? ` ${near.direction}` : ''
+  return `within ${near.distance ?? 50} ${UNIT_LABELS[near.unit ?? DistanceUnit.words]}${direction}`
+}
+
+/** What the proximity filter could not compare (#333), e.g. "3 annotations without current positions
+ * were not compared"; null when everything was compared. */
+export function proximityLabel (coverage: { unknown: number, neighborsUnpositioned: number } | null | undefined): string | null {
+  if (!coverage) return null
+  const parts: string[] = []
+  if (coverage.unknown) {
+    parts.push(`${coverage.unknown} ${coverage.unknown === 1 ? 'annotation' : 'annotations'} with unknown positions left out`)
+  }
+  if (coverage.neighborsUnpositioned) {
+    parts.push(`${coverage.neighborsUnpositioned} ${coverage.neighborsUnpositioned === 1 ? 'neighbor' : 'neighbors'} with unknown positions not compared`)
+  }
+  return parts.length ? `Proximity: ${parts.join(', ')}` : null
+}
+
 const STATUS_LABELS: Record<SpanType, string> = {
   [SpanType.pos]: 'Confirmed',
   [SpanType.auto]: 'Proposals',
@@ -174,6 +222,15 @@ export function concordanceChips (f: ConcordanceFilters, tags: Tag[], documents:
       group: byId.get(attributeId)?.name ?? 'Attribute',
       label: 'not assigned',
       remove: { attributeUnassigned: f.attributeUnassigned.filter(a => a !== attributeId) }
+    })
+  }
+  if (f.near) {
+    const names = (f.near.tagIds ?? []).map(id => tagNames.get(id) ?? 'Unknown tag')
+    chips.push({
+      key: 'near',
+      group: f.near.absent ? 'Not near' : 'Near',
+      label: `${names.length ? names.join(', ') : 'any tag'} ${nearRelationText(f.near)}`,
+      remove: { near: null }
     })
   }
   return chips

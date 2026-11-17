@@ -3565,7 +3565,7 @@ No authorization required
 
 ## listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet
 
-> Array&lt;AnnotatedDocument&gt; listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(collectionId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned)
+> Array&lt;AnnotatedDocument&gt; listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(collectionId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, nearRelation, nearTagId, nearType, nearAttribute, nearDistance, nearUnit, nearDirection, nearAbsent)
 
 List Annotated Documents
 
@@ -3615,6 +3615,22 @@ async function example() {
     attribute: ...,
     // Array<string> | Only annotations without an accepted value of this attribute id (repeat) (optional)
     unassigned: ...,
+    // NearRelation | Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it (optional)
+    nearRelation: ...,
+    // Array<string> | Proximity: neighbor tags (repeat; default any) (optional)
+    nearTagId: ...,
+    // Array<SpanType> | Proximity: neighbor types (default pos and auto) (optional)
+    nearType: ...,
+    // Array<string> | Proximity: neighbor attribute values, as <attribute id>:<value id> (repeat) (optional)
+    nearAttribute: ...,
+    // number | Proximity within: the largest gap (optional)
+    nearDistance: 56,
+    // DistanceUnit | Proximity within: words or chars (optional)
+    nearUnit: ...,
+    // NearDirection | Proximity within: where the neighbor lies (before or after the annotation, or either) (optional)
+    nearDirection: ...,
+    // boolean | Proximity: only annotations without such a neighbor (optional)
+    nearAbsent: true,
   } satisfies ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGetRequest;
 
   try {
@@ -3647,6 +3663,14 @@ example().catch(console.error);
 | **languages** | `Array<string>` | Only documents in these languages | [Optional] |
 | **attribute** | `Array<string>` | Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all) | [Optional] |
 | **unassigned** | `Array<string>` | Only annotations without an accepted value of this attribute id (repeat) | [Optional] |
+| **nearRelation** | `NearRelation` | Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it | [Optional] [Defaults to `undefined`] [Enum: within, overlaps, contains, contained_by, same_document] |
+| **nearTagId** | `Array<string>` | Proximity: neighbor tags (repeat; default any) | [Optional] |
+| **nearType** | `Array<SpanType>` | Proximity: neighbor types (default pos and auto) | [Optional] |
+| **nearAttribute** | `Array<string>` | Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat) | [Optional] |
+| **nearDistance** | `number` | Proximity within: the largest gap | [Optional] [Defaults to `50`] |
+| **nearUnit** | `DistanceUnit` | Proximity within: words or chars | [Optional] [Defaults to `undefined`] [Enum: words, chars] |
+| **nearDirection** | `NearDirection` | Proximity within: where the neighbor lies (before or after the annotation, or either) | [Optional] [Defaults to `undefined`] [Enum: either, before, after] |
+| **nearAbsent** | `boolean` | Proximity: only annotations without such a neighbor | [Optional] [Defaults to `false`] |
 
 ### Return type
 
@@ -3820,7 +3844,7 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, descending, sortAttribute, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, mode, k, similarTo, includeSource)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, descending, sortAttribute, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, nearRelation, nearTagId, nearType, nearAttribute, nearDistance, nearUnit, nearDirection, nearAbsent, mode, k, similarTo, includeSource)
 
 List Collection Annotations
 
@@ -3882,6 +3906,22 @@ async function example() {
     attribute: ...,
     // Array<string> | Only annotations without an accepted value of this attribute id (repeat) (optional)
     unassigned: ...,
+    // NearRelation | Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it (optional)
+    nearRelation: ...,
+    // Array<string> | Proximity: neighbor tags (repeat; default any) (optional)
+    nearTagId: ...,
+    // Array<SpanType> | Proximity: neighbor types (default pos and auto) (optional)
+    nearType: ...,
+    // Array<string> | Proximity: neighbor attribute values, as <attribute id>:<value id> (repeat) (optional)
+    nearAttribute: ...,
+    // number | Proximity within: the largest gap (optional)
+    nearDistance: 56,
+    // DistanceUnit | Proximity within: words or chars (optional)
+    nearUnit: ...,
+    // NearDirection | Proximity within: where the neighbor lies (before or after the annotation, or either) (optional)
+    nearDirection: ...,
+    // boolean | Proximity: only annotations without such a neighbor (optional)
+    nearAbsent: true,
     // RetrievalMode | lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first) (optional)
     mode: ...,
     // number | Ranked modes: at most this many (optional)
@@ -3928,6 +3968,14 @@ example().catch(console.error);
 | **languages** | `Array<string>` | Only documents in these languages | [Optional] |
 | **attribute** | `Array<string>` | Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all) | [Optional] |
 | **unassigned** | `Array<string>` | Only annotations without an accepted value of this attribute id (repeat) | [Optional] |
+| **nearRelation** | `NearRelation` | Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it | [Optional] [Defaults to `undefined`] [Enum: within, overlaps, contains, contained_by, same_document] |
+| **nearTagId** | `Array<string>` | Proximity: neighbor tags (repeat; default any) | [Optional] |
+| **nearType** | `Array<SpanType>` | Proximity: neighbor types (default pos and auto) | [Optional] |
+| **nearAttribute** | `Array<string>` | Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat) | [Optional] |
+| **nearDistance** | `number` | Proximity within: the largest gap | [Optional] [Defaults to `50`] |
+| **nearUnit** | `DistanceUnit` | Proximity within: words or chars | [Optional] [Defaults to `undefined`] [Enum: words, chars] |
+| **nearDirection** | `NearDirection` | Proximity within: where the neighbor lies (before or after the annotation, or either) | [Optional] [Defaults to `undefined`] [Enum: either, before, after] |
+| **nearAbsent** | `boolean` | Proximity: only annotations without such a neighbor | [Optional] [Defaults to `false`] |
 | **mode** | `RetrievalMode` | lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first) | [Optional] [Defaults to `undefined`] [Enum: lexical, semantic, hybrid, similar] |
 | **k** | `number` | Ranked modes: at most this many | [Optional] [Defaults to `100`] |
 | **similarTo** | `string` | Mode similar: the source annotation id | [Optional] [Defaults to `undefined`] |

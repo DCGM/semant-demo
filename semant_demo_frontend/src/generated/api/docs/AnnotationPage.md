@@ -12,6 +12,7 @@ Name | Type
 `offset` | number
 `limit` | number
 `result` | [AnnotationResultSet](AnnotationResultSet.md)
+`proximity` | [ProximityCoverage](ProximityCoverage.md)
 `unsortable` | number
 
 ## Example
@@ -26,6 +27,7 @@ const example = {
   "offset": null,
   "limit": null,
   "result": null,
+  "proximity": null,
   "unsortable": null,
 } satisfies AnnotationPage
 

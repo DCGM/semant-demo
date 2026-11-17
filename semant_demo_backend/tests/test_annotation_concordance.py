@@ -129,7 +129,9 @@ class FakeSpans:
                 and (query.sort_key_version is None or r.sortKeyVersion == query.sort_key_version)
                 and (query.holds_value is None
                      or (r.type == SpanType.pos and query.holds_value in (r.attributeValues or [])))
-                and (r.type != SpanType.pos or not set(query.holds_none_of) & set(r.attributeValues or []))]
+                and (r.type != SpanType.pos or not set(query.holds_none_of) & set(r.attributeValues or []))
+                and (query.near_ids is None or r.id in query.near_ids
+                     or (query.near_free_except is not None and r.documentId not in query.near_free_except))]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
@@ -156,6 +158,10 @@ class FakeSpans:
             ordered = sorted(rows, key=lambda r: (value(r) is not None, value(r) or "", str(r.id)))
         return ordered[offset:offset + limit]
 
+
+    async def query_positions(self, cid, query, *, document_ids=None, limit):
+        self.queries += 1
+        return sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]
 
     async def query_ids(self, cid, query, *, document_ids=None, limit):
         self.queries += 1

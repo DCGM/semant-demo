@@ -265,6 +265,11 @@ class AnnotationQuery(BaseModel):
     holds_none_of: list[str] = []
     """Only annotations holding none of these elements, or not approved (whose values are not
     shown, as for ``attribute_unassigned``)."""
+    near_ids: list[UUID] | None = None
+    """Proximity (#333): only these annotations, or, with ``near_free_except``, also every
+    annotation outside those documents."""
+    near_free_except: list[UUID] | None = None
+    """Proximity ``absent`` (#333): the documents holding a neighbor."""
 
 
 class VectorRanking(BaseModel):
@@ -342,6 +347,12 @@ class AnnotationListRow(BaseModel):
     """Accepted attribute values (#331): attribute id -> value ids."""
     attributeVersion: int = 0
     """The version an attribute assignment of this annotation expects."""
+    nearIds: list[UUID] = []
+    """Proximity filter (#333): the nearest neighbor annotations that made this row match (at most
+    ``MAX_NEAR_EXPLAINED``); empty without the filter or with ``absent``."""
+
+
+MAX_NEAR_EXPLAINED = 3
 
 
 class RetrievalMode(str, Enum):
@@ -422,6 +433,20 @@ class AnnotationResultSet(BaseModel):
     """Ranked modes."""
 
 
+class ProximityCoverage(BaseModel):
+    """What a proximity filter could evaluate (#333)."""
+    primary: int
+    """Annotations matching the other filters in documents holding a neighbor, whose positions
+    were compared."""
+    unknown: int
+    """Of them, those left out because their position, or (``absent``) a neighbor's in their
+    document, is not known for the current text: they neither match nor prove absence."""
+    neighbors: int
+    """Neighbor annotations found."""
+    neighbors_unpositioned: int
+    """Of them, those without current positions, which could not be compared."""
+
+
 class AnnotationPage(BaseModel):
     """One page of a collection's concordance rows and the number of all rows of the result:
     every match (``complete``) or the ranked top ``k`` (``top_k``), in relevance order then id."""
@@ -430,6 +455,8 @@ class AnnotationPage(BaseModel):
     offset: int
     limit: int
     result: AnnotationResultSet = Field(default_factory=AnnotationResultSet)
+    proximity: ProximityCoverage | None = None
+    """With a proximity filter (#333)."""
     unsortable: int | None = None
     """Text and context sorts (#666): rows of the result without current sort keys (not derived or
     not yet backfilled), placed as rows without a key; ``None`` for other orders."""
@@ -476,6 +503,74 @@ MAX_QUERY_TEXT_LENGTH = 500
 """Characters of a lexical annotation query (at most ``_MAX_WORDS`` words are searched)."""
 
 
+MAX_NEAR_DISTANCE = 100_000
+"""Largest distance (words or characters) a proximity filter may ask for (#333)."""
+
+
+class NearRelation(str, Enum):
+    """How a neighbor annotation must lie relative to the listed (primary) annotation (#333).
+    Both are half-open document intervals ``[start, end)`` (``documentStart*``/``documentEnd*``)."""
+    within = "within"
+    """The gap between the two spans is at most ``distance`` ``unit``s: ``max(0, sB - eA, sA - eB)``,
+    measured between span boundaries (never centers); adjacent and overlapping spans have gap 0."""
+    overlaps = "overlaps"
+    """The spans share at least one character."""
+    contains = "contains"
+    """The listed annotation's characters include all of the neighbor's."""
+    contained_by = "contained_by"
+    """The neighbor's characters include all of the listed annotation's."""
+    same_document = "same_document"
+    """Anywhere in the same document."""
+
+
+class NearDirection(str, Enum):
+    """Where a ``within`` neighbor lies, by characters (#333)."""
+    either = "either"
+    """Either side, overlapping too."""
+    before = "before"
+    """The neighbor ends at or before the listed annotation starts."""
+    after = "after"
+    """The neighbor starts at or after the listed annotation ends."""
+
+
+class DistanceUnit(str, Enum):
+    words = "words"
+    """Whole words between the spans (#463: a word partly covered by a span counts as covered)."""
+    chars = "chars"
+    """UTF-16 code units between the spans."""
+
+
+class NearFilter(BaseModel):
+    """Proximity (#333): only annotations with (or, ``absent``, without) a neighbor annotation of
+    the same document that matches ``tag_ids``/``types``/``attribute_values`` and lies in
+    ``relation`` to it. An annotation is never its own neighbor and is listed once however many
+    neighbors match. Positions are the stored document-relative intervals (#463), so chunks outside
+    the user collection count; annotations without current positions never match (and, with
+    ``absent``, neither do annotations of a document holding a neighbor without positions)."""
+    model_config = ConfigDict(extra="forbid")
+
+    tag_ids: list[UUID] | None = None
+    """Neighbor tags; any tag when absent."""
+    types: list[SpanType] | None = None
+    """Neighbor types; default ``pos`` and ``auto``."""
+    attribute_values: list[str] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTER_VALUES)
+    """Neighbor attribute values, as ``AnnotationFilters.attribute_values`` (approved neighbors only)."""
+    relation: NearRelation = NearRelation.within
+    distance: int = Field(default=50, ge=0, le=MAX_NEAR_DISTANCE)
+    """``within``: the largest gap."""
+    unit: DistanceUnit = DistanceUnit.words
+    direction: NearDirection = NearDirection.either
+    """``within`` only."""
+    absent: bool = False
+    """Only annotations with no such neighbor."""
+
+    @model_validator(mode="after")
+    def _direction(self) -> "NearFilter":
+        if self.direction != NearDirection.either and self.relation != NearRelation.within:
+            raise ValueError("direction is only allowed with relation within")
+        return self
+
+
 class AnnotationFilters(BaseModel):
     """The annotation query (#663): which of a collection's annotations the concordance lists,
     a selection resolves (#459) and the source filter offers, one definition for all of them.
@@ -503,6 +598,8 @@ class AnnotationFilters(BaseModel):
     attributes all."""
     attribute_unassigned: list[UUID] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTERS)
     """Only annotations without an accepted value of these attributes."""
+    near: NearFilter | None = None
+    """Only annotations with (or without) a neighbor annotation in a relation (#333)."""
 
 
 class AnnotationIdsRequest(AnnotationFilters):

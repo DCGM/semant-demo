@@ -53,6 +53,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from semant_demo.features.annotations.schemas import (
+    ProximityCoverage,
     MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationFilters, AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
     AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest,
@@ -71,6 +72,7 @@ from semant_demo.core.errors import (
     EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
 )
 from semant_demo.features.annotations import attribute_codec as codec
+from semant_demo.features.annotations import proximity
 from semant_demo.features.annotations.collation import NO_SORT_KEYS, sort_key_version, sort_keys
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, MissingChunkPositions, derive
 from semant_demo.features.annotations.enrichment import Enrichment, text_current, vector_current
@@ -938,6 +940,59 @@ def _filters_query(filters: AnnotationFilters, ids: list[UUID] | None = None) ->
                               filters.attribute_unassigned, filters.text_scope)
 
 
+@dataclass
+class _Near:
+    """A proximity filter's outcome (#333): its coverage and the neighbors explaining each match."""
+    coverage: ProximityCoverage
+    neighbors: dict[UUID, list[UUID]]
+
+
+async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilters, query: AnnotationQuery,
+                      conditions: list[Condition]) -> tuple[AnnotationQuery, _Near | None]:
+    """``query`` restricted by the proximity filter ``filters.near`` (#333), applied before any
+    counting or paging, and its outcome; ``query`` unchanged without one.
+
+    Reads the neighbors' documents (one aggregation), then the positions of the neighbors and of
+    the annotations matching ``query`` in those documents only (at most
+    ``proximity.MAX_NEAR_ANNOTATIONS`` each; more is refused, never truncated), and matches them
+    per document. The result is the matching annotation ids (``absent``: those proven without a
+    neighbor, and every annotation of a document without any neighbor)."""
+    near = filters.near
+    if near is None:
+        return query, None
+    neighbor_query = _concordance_query(near.tag_ids, near.types, None, attribute_values=near.attribute_values)
+    _require_attribute_properties(store, neighbor_query)
+    counts = await store.spans.count_by_document(cid, neighbor_query, _MAX_DOCUMENTS + 1, filters.document_ids or None)
+    if len(counts) > _MAX_DOCUMENTS:
+        raise InvalidRequestError(f"The neighbor annotations are in more than {_MAX_DOCUMENTS} documents; "
+                                  "choose fewer neighbor tags or documents.")
+    documents = list(counts)
+    if conditions and documents:  # annotations of other documents are filtered out anyway
+        documents = list(await store.documents.read_eligible(documents, conditions=conditions))
+    limit = proximity.MAX_NEAR_ANNOTATIONS
+    if sum(counts[d] for d in documents) > limit:
+        raise InvalidRequestError(f"More than {limit} neighbor annotations would have to be compared; "
+                                  "choose fewer neighbor tags or filter by document.")
+    if documents and await store.spans.count_rows(cid, query, documents) > limit:
+        raise InvalidRequestError(f"More than {limit} annotations in documents with a neighbor would have to be "
+                                  "compared; narrow the filters.")
+    primary, neighbors = await asyncio.gather(
+        store.spans.query_positions(cid, query, document_ids=documents, limit=limit),
+        store.spans.query_positions(cid, neighbor_query, document_ids=documents, limit=limit))
+    try:
+        matched = proximity.match(primary, neighbors, near)
+    except proximity.TooManyComparisons:
+        raise InvalidRequestError("The proximity filter would compare too many annotations; "
+                                  "use a smaller distance or narrow the filters.") from None
+    restricted = query.model_copy(update={"near_ids": matched.ids,
+                                          "near_free_except": list(counts) if near.absent else None})
+    return restricted, _Near(
+        coverage=ProximityCoverage(primary=matched.primary, unknown=matched.unknown,
+                                   neighbors=matched.neighbors_found,
+                                   neighbors_unpositioned=matched.neighbors_unpositioned),
+        neighbors=matched.neighbors)
+
+
 def _text_status(row: AnnotationRow) -> TextStatus:
     if text_current(row):
         return TextStatus.ready
@@ -947,9 +1002,10 @@ def _text_status(row: AnnotationRow) -> TextStatus:
     return TextStatus.pending
 
 
-def _list_row(row: AnnotationRow, document: Document | None) -> AnnotationListRow:
+def _list_row(row: AnnotationRow, document: Document | None, near: _Near | None = None) -> AnnotationListRow:
     ready = text_current(row)
     return AnnotationListRow(
+        nearIds=near.neighbors.get(row.id, []) if near is not None else [],
         id=row.id, tagId=row.tagId, type=row.type, chunkId=row.chunkId, documentId=row.documentId,
         start=row.start, end=row.end, revision=row.revision or 0, textStatus=_text_status(row),
         text=row.text if ready else None, leftContext=row.leftContext if ready else None,
@@ -1312,6 +1368,8 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     if sort == AnnotationSort.attribute:
         values = await _attribute_order(store, grant.collection_id, sort_attribute, attributes, descending)
     cid = await use_tenant(store, grant)
+    query, near = await _apply_near(store, cid, filters, query, conditions)
+    coverage = near.coverage if near is not None else None
     if ranking.ranked:
         ranked = await _rank(store, cid, filters, ranking, query, text, conditions)
         page = ranked.ids[offset:offset + limit]
@@ -1319,8 +1377,9 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
         rows = [found_rows[i] for i in page if i in found_rows]
         joined = ranked.documents if ranked.documents is not None else await store.documents.read_many(
             list({r.documentId for r in rows if r.documentId is not None}))
-        return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
-                              total=len(ranked.ids), offset=offset, limit=limit, result=ranked.result)
+        return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None, near)
+                                    for r in rows], total=len(ranked.ids), offset=offset, limit=limit,
+                              result=ranked.result, proximity=coverage)
     unsortable = None
     if sort in _TEXT_SORTS:
         if offset + limit > _MAX_WINDOW:
@@ -1350,8 +1409,8 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
         else:
             rows = await _rows_in_document_order(store, cid, query, found, limit, offset)
         joined = found.documents
-    return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
-                          total=total, offset=offset, limit=limit, unsortable=unsortable)
+    return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None, near) for r in rows],
+                          total=total, offset=offset, limit=limit, unsortable=unsortable, proximity=coverage)
 
 
 async def list_annotated_documents(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -1363,8 +1422,10 @@ async def list_annotated_documents(store: AnnotationStore, user: Principal | Non
     filters = filters or AnnotationFilters()
     query = _filters_query(filters)
     _require_attribute_properties(store, query)
-    found = await _annotated_documents(store, await use_tenant(store, grant), query, AnnotationSort.document,
-                                       None, document_conditions(filters.document_filters))
+    cid, conditions = await use_tenant(store, grant), document_conditions(filters.document_filters)
+    # The neighbors may be in any document: the choice of documents is what is listed.
+    query, _ = await _apply_near(store, cid, filters.model_copy(update={"document_ids": None}), query, conditions)
+    found = await _annotated_documents(store, cid, query, AnnotationSort.document, None, conditions)
     def listed(d: UUID) -> AnnotatedDocument:
         document = found.documents.get(d)
         if document is None:
@@ -1405,6 +1466,7 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
         return AnnotationIds(ids=[], versions={}, attribute_versions={},
                              result=AnnotationResultSet(kind=ResultKind.top_k, mode=ranking.mode, k=ranking.k)
                              if ranking.ranked else AnnotationResultSet())
+    query, _ = await _apply_near(store, cid, filters, query, conditions)
     if ranking.ranked:
         ranked, chosen = await _rank(store, cid, filters, ranking, query, text, conditions), set(within or ())
         versions = await store.spans.query_ids(cid, query.model_copy(update={"ids": ranked.ids}), limit=len(ranked.ids))

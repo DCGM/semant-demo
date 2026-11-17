@@ -26,6 +26,7 @@ Name | Type
 `provenance` | [AnnotationProvenance](AnnotationProvenance.md)
 `attributes` | { [key: string]: Array&lt;string&gt;; }
 `attributeVersion` | number
+`nearIds` | Array&lt;string&gt;
 
 ## Example
 
@@ -53,6 +54,7 @@ const example = {
   "provenance": null,
   "attributes": null,
   "attributeVersion": null,
+  "nearIds": null,
 } satisfies AnnotationListRow
 
 console.log(example)

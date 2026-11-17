@@ -149,6 +149,17 @@
               <q-item-section avatar><q-icon name="join_inner" /></q-item-section>
               <q-item-section>Find similar</q-item-section>
             </q-item>
+            <!-- The neighbors that made the row match the proximity filter (#333), nearest first. -->
+            <q-item
+              v-for="(neighborId, n) in row.nearIds ?? []"
+              :key="neighborId"
+              clickable
+              data-testid="kwic-row-neighbor"
+              @click="menuAction(row, () => emit('open-neighbor', neighborId))"
+            >
+              <q-item-section avatar><q-icon name="link" /></q-item-section>
+              <q-item-section>{{ n ? `Show next nearest neighbor (${n + 1})` : 'Show nearest matching neighbor' }}</q-item-section>
+            </q-item>
             <template v-for="group in menuGroups(row)" :key="group.key">
               <q-separator />
               <q-item-label header class="kwic__menu-group" :data-testid="`kwic-refine-group-${group.key}`">
@@ -351,6 +362,8 @@ const emit = defineEmits<{
   open: [row: AnnotationListRow]
   /** List the annotations most similar to the row's (its context menu, #664). */
   similar: [row: AnnotationListRow]
+  /** Show a neighbor annotation that made the row match the proximity filter (its context menu, #333). */
+  'open-neighbor': [id: string]
   /** Check or uncheck one row (its checkbox, Space); separate from opening. */
   toggle: [id: string, value: boolean]
   'select-page': [value: boolean]

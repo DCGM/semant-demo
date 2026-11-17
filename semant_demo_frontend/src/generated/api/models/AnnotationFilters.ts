@@ -27,6 +27,13 @@ import {
     SpanTypeToJSON,
     SpanTypeToJSONTyped,
 } from './SpanType';
+import type { NearFilter } from './NearFilter';
+import {
+    NearFilterFromJSON,
+    NearFilterFromJSONTyped,
+    NearFilterToJSON,
+    NearFilterToJSONTyped,
+} from './NearFilter';
 import type { TextScope } from './TextScope';
 import {
     TextScopeFromJSON,
@@ -97,6 +104,12 @@ export interface AnnotationFilters {
      * @memberof AnnotationFilters
      */
     attributeUnassigned?: Array<string>;
+    /**
+     * 
+     * @type {NearFilter}
+     * @memberof AnnotationFilters
+     */
+    near?: NearFilter | null;
 }
 
 
@@ -126,6 +139,7 @@ export function AnnotationFiltersFromJSONTyped(json: any, ignoreDiscriminator: b
         'documentFilters': json['document_filters'] == null ? undefined : DocumentFiltersFromJSON(json['document_filters']),
         'attributeValues': json['attribute_values'] == null ? undefined : json['attribute_values'],
         'attributeUnassigned': json['attribute_unassigned'] == null ? undefined : json['attribute_unassigned'],
+        'near': json['near'] == null ? undefined : NearFilterFromJSON(json['near']),
     };
 }
 
@@ -148,6 +162,7 @@ export function AnnotationFiltersToJSONTyped(value?: AnnotationFilters | null, i
         'document_filters': DocumentFiltersToJSON(value['documentFilters']),
         'attribute_values': value['attributeValues'],
         'attribute_unassigned': value['attributeUnassigned'],
+        'near': NearFilterToJSON(value['near']),
     };
 }
 

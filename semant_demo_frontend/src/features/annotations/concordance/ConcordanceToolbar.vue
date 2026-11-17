@@ -370,6 +370,96 @@
           </p>
         </div>
       </div>
+      <div class="concordance-toolbar__more-section" data-testid="concordance-near-form">
+        <p class="concordance-toolbar__more-title">Proximity</p>
+        <div class="concordance-toolbar__more-fields">
+          <q-select
+            :model-value="filters.near?.tagIds ?? []"
+            :options="tagOptions"
+            multiple
+            emit-value
+            map-options
+            use-chips
+            clearable
+            dense
+            outlined
+            options-dense
+            hide-bottom-space
+            label="Near annotations tagged"
+            class="concordance-toolbar__near-tags"
+            data-testid="concordance-near-tags"
+            @update:model-value="setNearTags"
+          />
+          <template v-if="filters.near">
+            <q-select
+              :model-value="filters.near.relation"
+              :options="relationOptions"
+              emit-value
+              map-options
+              dense
+              outlined
+              options-dense
+              hide-bottom-space
+              label="Where"
+              data-testid="concordance-near-relation"
+              @update:model-value="value => setNear({ relation: value, direction: NearDirection.either })"
+            />
+            <template v-if="filters.near.relation === NearRelation.within">
+              <q-input
+                :model-value="filters.near.distance"
+                dense
+                outlined
+                type="number"
+                min="0"
+                debounce="500"
+                hide-bottom-space
+                label="At most"
+                class="concordance-toolbar__near-distance"
+                data-testid="concordance-near-distance"
+                @update:model-value="value => setNear({ distance: toDistance(value) })"
+              />
+              <q-select
+                :model-value="filters.near.unit"
+                :options="unitOptions"
+                emit-value
+                map-options
+                dense
+                outlined
+                options-dense
+                hide-bottom-space
+                label="Unit"
+                data-testid="concordance-near-unit"
+                @update:model-value="value => setNear({ unit: value })"
+              />
+              <q-select
+                :model-value="filters.near.direction"
+                :options="directionOptions"
+                emit-value
+                map-options
+                dense
+                outlined
+                options-dense
+                hide-bottom-space
+                label="Side"
+                data-testid="concordance-near-direction"
+                @update:model-value="value => setNear({ direction: value })"
+              />
+            </template>
+            <q-checkbox
+              dense
+              :model-value="!!filters.near.absent"
+              label="Without such a neighbor"
+              data-testid="concordance-near-absent"
+              @update:model-value="value => setNear({ absent: !!value })"
+            />
+          </template>
+          <p class="concordance-toolbar__rule" data-testid="concordance-near-rule">
+            Keeps annotations with another annotation of these tags in the same document (or, with "Without", none).
+            The distance counts the words or characters between the two spans; adjacent and overlapping spans are 0 apart.
+            Annotations whose positions are not known yet are left out.
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -380,13 +470,16 @@ import {
   QBtn, QBtnGroup, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
 } from 'quasar'
 import {
-  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+  DistanceUnit, NearDirection, NearRelation, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute,
+  type DocumentFilters, type NearFilter, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
 import { modeChange, type ConcordanceFilters } from './concordanceStore'
 import type { FilterField } from './ConcordanceTable.vue'
-import { MODE_LABELS, SCOPE_LABELS, concordanceChips, modeHintText, titleProblem } from './filterChips'
+import {
+  DIRECTION_LABELS, MODE_LABELS, RELATION_LABELS, SCOPE_LABELS, UNIT_LABELS, concordanceChips, defaultNear, modeHintText, titleProblem
+} from './filterChips'
 
 const props = defineProps<{
   filters: ConcordanceFilters
@@ -486,6 +579,26 @@ const textLabel = computed(() => props.filters.mode === RetrievalMode.semantic ?
   : props.filters.mode === RetrievalMode.hybrid ? 'Meaning and words of' : scopeLabel.value)
 const textHint = computed(() => modeHintText(props.filters.mode, props.filters.textScope))
 
+const relationOptions = Object.values(NearRelation).map(value => ({ value, label: RELATION_LABELS[value] }))
+const unitOptions = Object.values(DistanceUnit).map(value => ({ value, label: UNIT_LABELS[value] }))
+const directionOptions = Object.values(NearDirection).map(value => ({ value, label: DIRECTION_LABELS[value] }))
+
+/** Choosing neighbor tags starts a proximity filter (`defaultNear`); clearing them ends it. */
+function setNearTags (value: string[] | null) {
+  const tagIds = value ?? []
+  if (!tagIds.length) emit('change', { near: null })
+  else emit('change', { near: props.filters.near ? { ...props.filters.near, tagIds } : defaultNear(tagIds) })
+}
+
+function setNear (change: Partial<NearFilter>) {
+  if (props.filters.near) emit('change', { near: { ...props.filters.near, ...change } })
+}
+
+function toDistance (value: string | number | null): number {
+  const number = Math.round(Number(value))
+  return Number.isFinite(number) ? Math.min(Math.max(number, 0), 100000) : 50
+}
+
 function setDocumentFilters (change: Partial<DocumentFilters>) {
   emit('change', { documentFilters: { ...props.filters.documentFilters, ...change } })
 }
@@ -494,7 +607,7 @@ function setDocumentFilters (change: Partial<DocumentFilters>) {
 const moreFilterCount = computed(() => {
   const f = props.filters
   const d = f.documentFilters
-  return f.documentIds.length + f.attributeValues.length + f.attributeUnassigned.length +
+  return f.documentIds.length + f.attributeValues.length + f.attributeUnassigned.length + (f.near ? 1 : 0) +
     (d.yearMin != null ? 1 : 0) + (d.yearMax != null ? 1 : 0) +
     (d.titleContains?.length ?? 0) + (d.libraries?.length ?? 0) + (d.languages?.length ?? 0)
 })
