@@ -47,8 +47,9 @@ import {
  * the same document that matches ``tag_ids``/``types``/``attribute_values`` and lies in
  * ``relation`` to it. An annotation is never its own neighbor and is listed once however many
  * neighbors match. Positions are the stored document-relative intervals (#463), so chunks outside
- * the user collection count; annotations without current positions never match (and, with
- * ``absent``, neither do annotations of a document holding a neighbor without positions).
+ * the user collection count; annotations without current positions never match, with ``absent``
+ * neither (even in a document without any neighbor), nor do annotations of a document holding a
+ * neighbor without positions.
  * @export
  * @interface NearFilter
  */
