@@ -110,6 +110,17 @@ export async function logOut (page: Page): Promise<void> {
 }
 
 /**
+ * Waits until every Quasar menu (a QMenu, a QSelect's options) has finished closing: its
+ * portal is removed once the hide transition ends, after its content (e.g. the listbox) is
+ * gone. Until then Quasar holds back focus requests made meanwhile, such as a QSelect's
+ * refocus after choosing an option, and runs them when the portal goes; focus moved
+ * elsewhere before that is taken back (#626). Wait for this before moving keyboard focus.
+ */
+export async function expectMenusClosed (page: Page): Promise<void> {
+  await expect(page.locator('[id^="q-portal--menu--"]')).toHaveCount(0)
+}
+
+/**
  * Opens the Search page (keeping the session), runs `query` and waits for the first result.
  */
 export async function search (page: Page, query: string): Promise<void> {
