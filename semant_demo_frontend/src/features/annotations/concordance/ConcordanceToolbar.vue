@@ -982,7 +982,7 @@ const shownLabel = computed(() => {
   display: inline-flex;
   align-items: center;
   height: 32px;
-  padding: 0 4px 0 8px;
+  padding: 0 2px 0 10px;
   border: 1px solid rgba(0, 0, 0, 0.24);
   border-radius: 6px;
   background: #fff;
@@ -1000,13 +1000,18 @@ const shownLabel = computed(() => {
 }
 
 .concordance-toolbar__near-distance {
-  width: 44px;
+  flex: 0 0 auto;
+  width: 4.5ch;
+  min-width: 0;
+}
+
+.concordance-toolbar__near-distance :deep(.q-field__control) {
+  padding: 0;
 }
 
 .concordance-toolbar__near-distance :deep(input) {
   font-weight: 500;
-  text-align: right;
-  padding-right: 4px;
+  padding-right: 2px;
   -moz-appearance: textfield;
 }
 
