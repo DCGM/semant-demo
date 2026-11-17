@@ -372,7 +372,8 @@
       </div>
       <div class="concordance-toolbar__more-section" data-testid="concordance-near-form">
         <p class="concordance-toolbar__more-title">Proximity</p>
-        <!-- One sentence (#333): [With | Without] a neighbor tagged [tags] (at most [N] [unit]) [where]. -->
+        <!-- One sentence (#333): [With | Without] a neighbor tagged [tags] (at most [N unit]) [where].
+             Every control is an inline field of one height, so the sentence reads as a unit. -->
         <div class="concordance-toolbar__near" role="group" aria-label="Proximity filter" aria-describedby="concordance-near-summary">
           <q-btn-toggle
             v-if="filters.near"
@@ -382,8 +383,9 @@
             no-caps
             unelevated
             toggle-color="primary"
-            color="grey-3"
+            color="white"
             text-color="grey-9"
+            class="concordance-toolbar__near-presence"
             aria-label="Keep annotations with or without such a neighbor"
             data-testid="concordance-near-presence"
             @update:model-value="value => setNear({ absent: value === 'without' })"
@@ -395,48 +397,69 @@
             multiple
             emit-value
             map-options
-            use-chips
-            clearable
             dense
             outlined
             options-dense
             hide-bottom-space
-            :placeholder="filters.near ? undefined : 'choose tags'"
+            hide-dropdown-icon
+            :display-value="nearTagsLabel"
             aria-label="Neighbor tags"
-            class="concordance-toolbar__near-tags"
+            class="concordance-toolbar__near-field concordance-toolbar__near-tags"
+            :class="{ 'concordance-toolbar__near-field--empty': !filters.near }"
             data-testid="concordance-near-tags"
             @update:model-value="setNearTags"
-          />
+          >
+            <template #option="{ itemProps, opt, selected, toggleOption }">
+              <q-item v-bind="itemProps">
+                <q-item-section side>
+                  <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>
+                    <span class="concordance-toolbar__dot" :style="{ backgroundColor: opt.color }" aria-hidden="true" />
+                    {{ opt.label }}
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+            <template v-if="filters.near" #append>
+              <q-icon name="close" size="16px" class="cursor-pointer" role="button" aria-label="Remove the proximity filter"
+                      tabindex="0" @click.stop="setNearTags(null)" @keydown.enter.stop="setNearTags(null)" />
+            </template>
+          </q-select>
           <template v-if="filters.near">
             <template v-if="filters.near.relation === NearRelation.within">
               <span class="concordance-toolbar__near-word">at most</span>
-              <q-input
-                :model-value="filters.near.distance"
-                dense
-                outlined
-                type="number"
-                min="0"
-                debounce="500"
-                hide-bottom-space
-                aria-label="Largest distance"
-                class="concordance-toolbar__near-distance"
-                data-testid="concordance-near-distance"
-                @update:model-value="value => setNear({ distance: toDistance(value) })"
-              />
-              <q-select
-                :model-value="filters.near.unit"
-                :options="unitOptions"
-                emit-value
-                map-options
-                dense
-                borderless
-                options-dense
-                hide-bottom-space
-                aria-label="Distance unit"
-                class="concordance-toolbar__near-unit"
-                data-testid="concordance-near-unit"
-                @update:model-value="value => setNear({ unit: value })"
-              />
+              <!-- The distance and its unit as one field: "50 words". -->
+              <span class="concordance-toolbar__near-distance-group">
+                <q-input
+                  :model-value="filters.near.distance"
+                  dense
+                  borderless
+                  type="number"
+                  min="0"
+                  debounce="500"
+                  hide-bottom-space
+                  aria-label="Largest distance"
+                  class="concordance-toolbar__near-distance"
+                  data-testid="concordance-near-distance"
+                  @update:model-value="value => setNear({ distance: toDistance(value) })"
+                />
+                <q-select
+                  :model-value="filters.near.unit"
+                  :options="unitOptions"
+                  emit-value
+                  map-options
+                  dense
+                  borderless
+                  options-dense
+                  hide-bottom-space
+                  aria-label="Distance unit"
+                  class="concordance-toolbar__near-unit"
+                  data-testid="concordance-near-unit"
+                  @update:model-value="value => setNear({ unit: value })"
+                />
+              </span>
             </template>
             <q-select
               :model-value="placement"
@@ -448,7 +471,7 @@
               options-dense
               hide-bottom-space
               aria-label="Where the neighbor is"
-              class="concordance-toolbar__near-placement"
+              class="concordance-toolbar__near-field concordance-toolbar__near-placement"
               data-testid="concordance-near-placement"
               @update:model-value="setPlacement"
             />
@@ -580,6 +603,12 @@ const presenceOptions = [{ label: 'With', value: 'with' }, { label: 'Without', v
 const unitOptions = Object.values(DistanceUnit).map(value => ({ value, label: UNIT_LABELS[value] }))
 const placementOptions = PLACEMENTS.map(p => ({ value: p.key, label: p.label }))
 const placement = computed(() => props.filters.near ? placementOf(props.filters.near) : null)
+/** The neighbor tags in one line, as the main tag filter shows its tags. */
+const nearTagsLabel = computed(() => {
+  const names = tagNames(props.filters.near?.tagIds ?? [])
+  if (!names.length) return 'choose tags'
+  return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`
+})
 const nearSummaryText = computed(() => nearSummary(props.filters.near, tagNames(props.filters.tagIds), tagNames(props.filters.near?.tagIds ?? [])))
 
 function tagNames (ids: string[]): string[] {
@@ -896,19 +925,99 @@ const shownLabel = computed(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  line-height: 32px;
 }
 
 .concordance-toolbar__near-word {
   white-space: nowrap;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+/* One height (32px) and a light, rounded look for every control of the sentence. */
+.concordance-toolbar__near-field :deep(.q-field__control),
+.concordance-toolbar__near-field :deep(.q-field__marginal),
+.concordance-toolbar__near-field :deep(.q-field__native) {
+  min-height: 32px;
+  height: 32px;
+}
+
+.concordance-toolbar__near-field :deep(.q-field__control) {
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.concordance-toolbar__near-field :deep(.q-field__native) {
+  padding: 0;
+  font-weight: 500;
+}
+
+.concordance-toolbar__near-field--empty :deep(.q-field__native) {
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .concordance-toolbar__near-tags {
-  min-width: 180px;
+  min-width: 120px;
+  max-width: 220px;
+}
+
+.concordance-toolbar__near-presence {
+  height: 32px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.concordance-toolbar__near-presence :deep(.q-btn) {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.concordance-toolbar__near-distance-group {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 4px 0 8px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.concordance-toolbar__near-distance-group:focus-within {
+  border-color: var(--q-primary);
+}
+
+.concordance-toolbar__near-distance-group :deep(.q-field__control),
+.concordance-toolbar__near-distance-group :deep(.q-field__marginal),
+.concordance-toolbar__near-distance-group :deep(.q-field__native) {
+  min-height: 30px;
+  height: 30px;
 }
 
 .concordance-toolbar__near-distance {
-  width: 88px;
+  width: 44px;
+}
+
+.concordance-toolbar__near-distance :deep(input) {
+  font-weight: 500;
+  text-align: right;
+  padding-right: 4px;
+  -moz-appearance: textfield;
+}
+
+.concordance-toolbar__near-distance :deep(input::-webkit-inner-spin-button),
+.concordance-toolbar__near-distance :deep(input::-webkit-outer-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.concordance-toolbar__near-unit :deep(.q-field__native) {
+  padding: 0;
 }
 
 .concordance-toolbar__rule {
