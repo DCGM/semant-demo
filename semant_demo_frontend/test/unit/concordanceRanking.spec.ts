@@ -199,7 +199,7 @@ describe('ranked result labels', () => {
   })
 
   it('says how the similarity text ranks without filtering', () => {
-    expect(similarityHintText(TextScope.context)).toMatch(/left or right context \(BM25\).*excludes nothing/)
+    expect(similarityHintText()).toMatch(/annotation and its left and right context \(BM25\).*whatever Contains words searches in.*excludes nothing/)
   })
 
   it('shows the source of Find similar as a reference chip, and the words and similarity as separate chips', () => {

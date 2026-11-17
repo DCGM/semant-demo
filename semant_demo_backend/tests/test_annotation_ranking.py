@@ -56,6 +56,7 @@ class RankingSpans(FakeSpans):
         super().__init__()
         self.vectors: dict[UUID, list[float]] = {}
         self.rankings: list[tuple] = []
+        self.ranked_queries: list = []
 
     def _match(self, query, document_ids):
         rows = super()._match(query, document_ids)
@@ -66,6 +67,7 @@ class RankingSpans(FakeSpans):
 
     async def rank(self, cid, query, ranking, *, document_ids=None, limit):
         self.rankings.append((ranking, limit))
+        self.ranked_queries.append(query)
         candidates = [r for r in self._match(query, document_ids) if r.id != ranking.exclude]
         distance = {r.id: math.dist(self.vectors[r.id], ranking.vector) for r in candidates}
         if ranking.text is None:
@@ -172,7 +174,7 @@ async def test_words_filter_and_the_similarity_text_ranks_independently(store, e
     page = await ranked(store, filters, HYBRID)
 
     used, _ = store.spans.rankings[0]
-    assert used.text == "hejtman" and used.fields == ("text",) and embedder.queries == ["hejtman"]
+    assert used.text == "hejtman" and used.fields == ALL_TEXT_FIELDS and embedder.queries == ["hejtman"]
     assert page.result.coverage.matching == 1
     assert ids(page) == wanted
 
@@ -229,17 +231,49 @@ async def test_pages_partition_the_top_k_in_relevance_then_id_order(store):
     assert all(p.result.truncated for p in pages)
 
 
-async def test_hybrid_ranks_by_score_with_bm25_on_the_fields_of_the_text_scope(store):
-    plain, named = put(store, ranked_row(DOC_A, 0.1, "slovo"), ranked_row(DOC_A, 0.6, "hejtman"))
-    filters = AnnotationFilters(ranking_query="  hejtman ", text_scope=TextScope.annotation)
+ALL_TEXT_FIELDS = ("text", "leftContext", "rightContext")
 
-    page = await ranked(store, filters, HYBRID)
+
+async def test_hybrid_ranks_by_score_with_bm25_on_the_annotation_and_both_contexts(store):
+    plain, named = put(store, ranked_row(DOC_A, 0.1, "slovo"), ranked_row(DOC_A, 0.6, "hejtman"))
+
+    page = await ranked(store, AnnotationFilters(ranking_query="  hejtman "), HYBRID)
 
     assert ids(page) == [named, plain] and page.result.mode == RetrievalMode.hybrid
     used, _ = store.spans.rankings[0]
-    assert (used.text, used.fields, used.alpha) == ("hejtman", ("text",), 0.5)
-    await ranked(store, AnnotationFilters(ranking_query="hejtman", text_scope=TextScope.both), HYBRID)
-    assert store.spans.rankings[1][0].fields == ("text", "leftContext", "rightContext")
+    assert (used.text, used.fields, used.alpha) == ("hejtman", ALL_TEXT_FIELDS, 0.5)
+
+
+async def test_the_bm25_fields_and_the_top_k_do_not_follow_the_words_scope(store):
+    put(store, ranked_row(DOC_A, 0.1, "slovo"), ranked_row(DOC_A, 0.6, "hejtman"), ranked_row(DOC_A, 0.3, "hejtman"))
+
+    pages = [await ranked(store, AnnotationFilters(ranking_query="hejtman", text_scope=scope), HYBRID)
+             for scope in TextScope]
+    resolved = [await service.resolve_annotation_ids(
+        store, OWNER, COLLECTION, AnnotationIdsRequest(ranking_query="hejtman", text_scope=scope, ranking=HYBRID))
+        for scope in TextScope]
+
+    assert {tuple(ids(p)) for p in pages} == {tuple(ids(pages[0]))}  # the same top k for every scope
+    assert [tuple(r.ids) for r in resolved] == [tuple(ids(p)) for p in pages]  # the listing and the ids agree
+    assert {used.fields for used, _ in store.spans.rankings} == {ALL_TEXT_FIELDS}
+
+
+async def test_the_words_scope_filters_the_candidates_but_not_the_bm25_fields(store):
+    [in_text] = put(store, ranked_row(DOC_A, 0.5, "Novák"))
+    [in_context] = put(store, (ranked_row(DOC_A, 0.2, "slovo")[0].model_copy(update={"leftContext": "pan Novák "}), [1.0, 0.2]))
+    put(store, ranked_row(DOC_A, 0.1, "slovo"))  # near, but with the word nowhere
+
+    by_scope = {}
+    for scope in TextScope:
+        filters = AnnotationFilters(q="Novák", ranking_query="hejtman", text_scope=scope)
+        by_scope[scope] = ids(await ranked(store, filters, HYBRID))
+
+    assert by_scope[TextScope.annotation] == [in_text]
+    assert by_scope[TextScope.context] == [in_context]
+    assert set(by_scope[TextScope.both]) == {in_text, in_context}
+    assert {used.fields for used, _ in store.spans.rankings} == {ALL_TEXT_FIELDS}
+    assert [q.text_scope for q in store.spans.ranked_queries] == list(TextScope)
+    assert all(q.words == ["Novák"] for q in store.spans.ranked_queries)
 
 
 # ── Find similar ──────────────────────────────────────────────────────────

@@ -61,10 +61,10 @@ const RANKED_BY: Record<RetrievalMode, string> = {
 }
 
 /** What the Similarity field does, as its hint says (#716). */
-export function similarityHintText (scope: TextScope): string {
-  return 'Orders the annotations matching the filters (the words above included) by closeness of meaning to this ' +
-    `text, also counting these words found in ${SCOPE_FIELDS[scope]} (BM25), equally weighted. Shows a bounded top ` +
-    'list and excludes nothing.'
+export function similarityHintText (): string {
+  return 'Orders the annotations matching the filters (Contains words included) by closeness of meaning to this ' +
+    'text, also counting these words found in the annotation and its left and right context (BM25), equally ' +
+    'weighted, whatever Contains words searches in. Shows a bounded top list and excludes nothing.'
 }
 
 /** The source annotation of Find similar, quoted and shortened. */

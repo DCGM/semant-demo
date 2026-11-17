@@ -56,7 +56,7 @@ from semant_demo.features.annotations.schemas import (
     MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationFilters, AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
     AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest,
-    MAX_TOP_K, AnnotationRanking, AnnotationResultSet, HYBRID_ALPHA, ResultKind, RetrievalMode, SCOPE_FIELDS, VectorCoverage, VectorRanking, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
+    MAX_TOP_K, AnnotationRanking, AnnotationResultSet, HYBRID_ALPHA, ResultKind, RetrievalMode, HYBRID_FIELDS, VectorCoverage, VectorRanking, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
 )
 from semant_demo.features.documents.criteria import Condition, document_conditions
 from semant_demo.features.documents.schemas import Document
@@ -1134,7 +1134,7 @@ async def _rank(store: AnnotationStore, cid: UUID, filters: AnnotationFilters, r
     embedded, exclude = await _query_vector(store, cid, ranking, text)
     ranked_query = query.model_copy(update={"vector_config": vector.id})
     order = VectorRanking(target_vector=vector.target_vector, vector=embedded, exclude=exclude,
-                          **({"text": text, "fields": SCOPE_FIELDS[filters.text_scope], "alpha": HYBRID_ALPHA}
+                          **({"text": text, "fields": HYBRID_FIELDS, "alpha": HYBRID_ALPHA}
                              if ranking.mode == RetrievalMode.hybrid else {}))
     counts = [store.spans.count_rows(cid, ranked_query, documents)]
     if matching is None:

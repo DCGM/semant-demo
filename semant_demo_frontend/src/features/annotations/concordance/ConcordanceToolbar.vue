@@ -491,7 +491,7 @@ const statusOptions = [
 
 const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOPE_LABELS[value] }))
 const textHint = computed(() => scopeHintText(props.filters.textScope))
-const similarityHint = computed(() => similarityHintText(props.filters.textScope))
+const similarityHint = computed(() => similarityHintText())
 
 function setDocumentFilters (change: Partial<DocumentFilters>) {
   emit('change', { documentFilters: { ...props.filters.documentFilters, ...change } })

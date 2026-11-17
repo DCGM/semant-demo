@@ -22,7 +22,7 @@ from semant_demo.core.errors import NotFoundError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.enrichment import AnnotationVector, AnnotationVectorSettings, Enrichment
 from semant_demo.features.annotations.schemas import (
-    AnnotationFilters, AnnotationIdsRequest, AnnotationRanking, PostSpan, ResultKind, RetrievalMode, SpanType,
+    AnnotationFilters, AnnotationIdsRequest, AnnotationRanking, PostSpan, ResultKind, RetrievalMode, SpanType, TextScope,
 )
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.documents.criteria import DocumentFilters
@@ -160,6 +160,32 @@ async def test_hybrid_combines_the_vector_with_bm25_of_the_text_scope(store, own
 
     assert ids_of(vector_only) == [ranked.lhota]
     assert ids_of(hybrid)[0] == ranked.novak and hybrid.result.mode == RetrievalMode.hybrid
+
+
+async def test_hybrid_bm25_fields_follow_neither_the_words_scope_nor_the_listing_or_ids_path(store, owner, ids, ranked):
+    hybrid = AnnotationRanking(mode=RetrievalMode.hybrid, k=100)
+    pages = [await query(store, owner, ids, AnnotationFilters(ranking_query="Novák", text_scope=scope), hybrid)
+             for scope in TextScope]
+    resolved = [await service.resolve_annotation_ids(
+        store, owner, ids.col["chronicles"], AnnotationIdsRequest(ranking_query="Novák", text_scope=scope, ranking=hybrid))
+        for scope in TextScope]
+
+    assert [ids_of(p) for p in pages] == [ids_of(pages[0])] * len(TextScope)
+    assert [r.ids for r in resolved] == [ids_of(pages[0])] * len(TextScope)
+
+
+async def test_words_filter_restricts_the_hybrid_candidates_before_ranking(store, owner, ids, ranked):
+    hybrid = AnnotationRanking(mode=RetrievalMode.hybrid, k=100)
+    for scope in TextScope:
+        words = AnnotationFilters(q="Novák", text_scope=scope)
+        lexical = await service.query_annotations(store, owner, ids.col["chronicles"], words)
+        page = await query(store, owner, ids, words.model_copy(update={"ranking_query": "hejtman"}), hybrid)
+
+        # Every ranked annotation passes the mandatory word filter; the ranking text is no filter.
+        assert set(ids_of(page)) <= set(ids_of(lexical)), scope
+        assert page.result.coverage.matching == lexical.total, scope
+    in_annotation = await query(store, owner, ids, AnnotationFilters(q="Novák", ranking_query="hejtman"), hybrid)
+    assert ranked.novak in ids_of(in_annotation) and ranked.lhota not in ids_of(in_annotation)
 
 
 async def test_find_similar_ranks_from_the_stored_vector_without_its_source(store, owner, ids, ranked, embedder):
