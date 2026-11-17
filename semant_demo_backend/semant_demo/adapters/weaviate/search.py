@@ -18,11 +18,9 @@ from weaviate.classes.query import Filter, QueryReference
 from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.analytics import READ_BATCH
 from semant_demo.adapters.weaviate.names import CollectionNames
-from semant_demo.adapters.weaviate.chunk_tags import REF_BY_TYPE
 from semant_demo.adapters.weaviate.documents import chunk_properties
-from semant_demo.features.annotations.schemas import SpanType
 from semant_demo.features.search.filters import TASK_CLASSES
-from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter, SearchResultChunk
+from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, SearchResultChunk
 from semant_demo.features.documents.schemas import Document
 
 # Fields stored on the chunk's document, not on the chunk; filtered through the reference.
@@ -42,11 +40,6 @@ CHUNK_COPIES = {"yearIssued"}
 # document collection has (``ChunkSearchRepository._document_properties``). Weaviate 1.40 refuses
 # a query naming a property the schema lacks (1.34 ignored it), and stores differ (#312).
 DOCUMENT_PROPERTIES = [name for name in Document.model_fields if name != "id"]
-
-# Chunk tag references: the projection of the spans (ADR 0004, chunk_tags.py).
-AUTOMATIC_TAG_REF = REF_BY_TYPE[SpanType.auto.value]
-POSITIVE_TAG_REF = REF_BY_TYPE[SpanType.pos.value]
-
 
 class ChunkSearchRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
@@ -206,8 +199,6 @@ class ChunkSearchRepository:
         filters.extend(_condition(c) for c in query.conditions)
         if query.document_conditions or query.chunk_conditions:
             filters.extend(await self._criteria_filters(query))
-        if query.tags is not None:
-            filters.append(_tag_filter(query.tags))
         if not filters:
             return None
         return Filter.all_of(filters) if len(filters) > 1 else filters[0]
@@ -279,14 +270,3 @@ def _condition(condition: FieldCondition):
         return target.contains_any(list(condition.value))
     raise ValueError(f"Unsupported filter operation: {condition.op}")
 
-
-def _tag_filter(tags: TagFilter):
-    ids = list(tags.tag_ids)
-    kinds = []
-    if tags.automatic:
-        kinds.append(Filter.by_ref(AUTOMATIC_TAG_REF).by_id().contains_any(ids))
-    if tags.positive:
-        kinds.append(Filter.by_ref(POSITIVE_TAG_REF).by_id().contains_any(ids))
-    if not kinds:
-        raise ValueError("A tag filter needs at least one tag kind")
-    return Filter.any_of(kinds) if len(kinds) > 1 else kinds[0]

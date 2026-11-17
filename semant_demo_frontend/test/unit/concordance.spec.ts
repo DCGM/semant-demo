@@ -471,7 +471,6 @@ describe('annotation review store', () => {
   const originalFetch = globalThis.fetch
   let calls: ReturnType<typeof controlledFetch>['calls']
   const reviewCalls = () => calls.filter(c => c.url.pathname.endsWith('/annotations/review'))
-  const syncCalls = () => calls.filter(c => c.url.pathname.endsWith('/annotations/chunk-tags/sync'))
 
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -498,8 +497,7 @@ describe('annotation review store', () => {
       succeeded: ids(198),
       failed: [
         { item_id: 'id-198', step: 'update_span', message: 'boom', uncertain: false },
-        { item_id: 'id-199', step: 'find_annotation', message: 'gone' },
-        { item_id: 'c:t', step: 'update_chunk_tags', message: 'search' }
+        { item_id: 'id-199', step: 'find_annotation', message: 'gone' }
       ]
     })
     await flush()
@@ -510,22 +508,19 @@ describe('annotation review store', () => {
 
     expect(report?.saved.length).toBe(198)
     expect(report?.missing).toEqual(['id-199'])
-    expect(report?.unsynced).toEqual(['c:t'])
     expect(report?.failed.map(f => [f.id, f.uncertain])).toEqual([
       ['id-198', false], ...ids(250).slice(200).map(id => [id, true])])
     expect(review.running).toBe(false)
 
-    // A retry sends only the failed and uncertain items, then repairs the search pair.
+    // A retry sends only the failed and uncertain items.
     const retrying = review.retry('col-1')
     await flush()
     expect(reviewCalls()[2].body).toMatchObject({ annotation_ids: ['id-198', ...ids(250).slice(200)] })
     reviewCalls()[2].answer({ outcome: 'complete', succeeded: ['id-198', ...ids(250).slice(200)], failed: [] })
-    await flush()
-    expect(syncCalls()[0].body).toEqual({ pairs: [{ chunk_id: 'c', tag_id: 't' }] })
-    syncCalls()[0].answer({ outcome: 'complete', succeeded: ['c:t'], failed: [] })
     const retried = await retrying
-    expect([retried?.saved.length, retried?.failed.length, retried?.missing, retried?.unsynced])
-      .toEqual([249, 0, ['id-199'], []])
+    expect([retried?.saved.length, retried?.failed.length, retried?.missing])
+      .toEqual([249, 0, ['id-199']])
+    expect(calls.filter(c => !c.url.pathname.endsWith('/annotations/review'))).toEqual([])
   })
 
   it('sends each annotation with its version and reports the ones changed meanwhile apart', async () => {
@@ -580,34 +575,16 @@ describe('annotation review store', () => {
     expect(reviewCalls()).toHaveLength(1)
   })
 
-  it('repairs the search pairs of deleted annotations, which cannot be reviewed again', async () => {
+  it('has nothing to retry once a deletion saved every annotation', async () => {
     const review = useAnnotationReviewStore()
     const running = review.review('col-1', 'delete' as never, at0(['a', 'b']))
     await flush()
-    reviewCalls()[0].answer({
-      outcome: 'partial',
-      succeeded: ['a', 'b'],
-      failed: [
-        { item_id: 'c1:t', step: 'update_chunk_tags', message: 'x' },
-        { item_id: 'c2:t', step: 'update_chunk_tags', message: 'x' },
-        { item_id: 'c1:t', step: 'update_chunk_tags', message: 'x' }
-      ]
-    })
-    expect((await running)?.unsynced).toEqual(['c1:t', 'c2:t'])
+    reviewCalls()[0].answer({ outcome: 'complete', succeeded: ['a', 'b'], failed: [] })
+    const report = await running
+    expect([report?.saved, report?.failed]).toEqual([['a', 'b'], []])
 
-    const repairing = review.retry('col-1')
-    await flush()
-    expect(reviewCalls()).toHaveLength(1)
-    expect(syncCalls()[0].url.pathname).toBe('/api/user_collections/col-1/annotations/chunk-tags/sync')
-    syncCalls()[0].answer({ outcome: 'partial', succeeded: ['c1:t'], failed: [{ item_id: 'c2:t', step: 'update_chunk_tags', message: 'x' }] })
-    const partly = await repairing
-    expect([partly?.saved, partly?.unsynced, partly?.error]).toEqual([['a', 'b'], ['c2:t'], null])
-
-    const failing = review.retry('col-1')
-    await flush()
-    syncCalls()[1].answer({ detail: 'Tag not found' }, 404)
-    const refused = await failing
-    expect([refused?.unsynced, refused?.error]).toEqual([['c2:t'], 'Tag not found'])
+    expect(await review.retry('col-1')).toBe(report)
+    expect(calls).toHaveLength(1)
   })
 
   it('stops at a refused part and keeps the rest as not sent', async () => {

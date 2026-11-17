@@ -39,7 +39,8 @@ retries that create data. A run-history table is not required by this decision.
 - Workflow `features/annotations/suggestions.py`; routes only encode NDJSON. Lines are
   `{"event": "result", "chunk_id", "spans", "error", "unsaved"}` (spans only after their
   write was acknowledged) and a final `{"event": "end", "outcome", "saved", "rejected",
-  "save_failures", "search_tag_failures", "provider_failures", "error"}`. `outcome` is
+  "save_failures", "provider_failures", "error"}` (later also `enrichment_failures`;
+  `search_tag_failures` was removed with the chunk tag references, ADR 0013). `outcome` is
   `complete` (no failure; invalid proposals may have been rejected), `partial` or `failed`
   (nothing saved and no provider call fully completed). `cancelled` is reported only to
   workflow callers and the log, since the stream is gone. No `end` line means interrupted.

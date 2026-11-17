@@ -72,7 +72,7 @@ From the repository root, select affected tests while iterating:
 
 ```bash
 (cd semant_demo_backend && ../.venv/bin/python -m pytest tests/test_search_service.py -k access)
-make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
+make test-integration ARGS="tests/integration/test_annotations.py -k deletion"
 ```
 
 `tests/integration` uses the `integration` marker and disposable Weaviate with synthetic

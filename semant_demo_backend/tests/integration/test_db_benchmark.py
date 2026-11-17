@@ -50,10 +50,10 @@ async def test_smoke_run_and_inventory_are_read_only(seeded_store, store_endpoin
                  "chunk_context", "document_view", "corpus_overview", "mixed", "self_recall"):
         points = by_name[name]["points"]
         assert points and all(p["error_count"] == 0 for p in points), name
-    # Only tags / collections that hold chunks are sampled, so the filtered searches find results.
-    assert run["inputs"]["tags"] > 0 and run["inputs"]["user_collections"] > 0
-    for name in ("hybrid_tag", "hybrid_user_collection"):
-        assert all(p["hit_requests"] > 0 for p in by_name[name]["points"]), name
+    # Only collections that hold chunks are sampled, so the filtered search finds results.
+    assert run["inputs"]["user_collections"] > 0
+    assert all(p["hit_requests"] > 0 for p in by_name["hybrid_user_collection"]["points"])
+    assert "hybrid_tag" not in by_name
     # Every level runs the same number of requests (the same inputs by default).
     assert len({p["requests"] for p in by_name["hybrid"]["points"]}) == 1
     assert run["id_hashing"]["key_id"] == cli.id_hasher(str(tmp_path / "key")).key_id

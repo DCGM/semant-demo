@@ -318,15 +318,12 @@ async def test_collection_listing_beyond_one_page(collections, corpus, seeded_st
     assert not any(c.is_shared_with_me for c in listed if c.id in set(owned))
 
 
-async def test_tag_delete_removes_more_than_a_page_of_references_and_spans(
+async def test_tag_delete_removes_more_than_a_page_of_spans(
         tags, big_document, corpus, seeded_store, collection_names):
     names = collection_names
     _, chunk_ids = big_document
     place = UUID(corpus.tags["place"]["id"])
     tagged = chunk_ids[:150]
-    chunks = seeded_store.collections.get(names.chunks_collection_name)
-    for chunk_id in tagged:
-        await chunks.data.reference_add(from_uuid=chunk_id, from_property="positiveTag", to=place)
     chronicles = UUID(corpus.collections["chronicles"]["id"])
     tenant = seeded_store.collections.get(names.annotation_collection_name).with_tenant(str(chronicles))
     result = await tenant.data.insert_many([
@@ -345,14 +342,11 @@ async def test_tag_delete_removes_more_than_a_page_of_references_and_spans(
     assert await tags.read(place) is None
     place_corpus_spans = sum(1 for s in corpus.spans.values() if s["tag"] == "place")
     assert await tenant_count() == spans_before - 150 - place_corpus_spans
-    assert all([await ref_list(seeded_store, names.chunks_collection_name, c, "positiveTag") == []
-                for c in (tagged[0], tagged[99], tagged[100], tagged[-1])])
-    assert await ref_list(seeded_store, names.chunks_collection_name, corpus.chunks["chronicle_1"]["id"],
-                          "automaticTag") == []
-    # Other tags keep their references.
-    person_chunk = corpus.chunks["chronicle_1"]["id"]
-    assert corpus.tags["person"]["id"] in await ref_list(seeded_store, names.chunks_collection_name,
-                                                         person_chunk, "positiveTag")
+    # Other tags keep their spans.
+    person = sum(1 for s in corpus.spans.values() if s["tag"] == "person")
+    remaining = await tenant.query.fetch_objects(
+        filters=Filter.by_property("tagId").equal(UUID(corpus.tags["person"]["id"])))
+    assert len(remaining.objects) == person
 
 
 async def test_collection_delete_unlinks_more_than_a_page_of_chunks(

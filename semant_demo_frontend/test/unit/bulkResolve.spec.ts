@@ -8,7 +8,8 @@ import { type BulkUpdateSpansResponse, WriteOutcome } from 'src/generated/api'
 const ids = Array.from({ length: 1255 }, (_, i) => `s${i}`)
 
 const saved = (batch: string[], failed: BulkUpdateSpansResponse['failed'] = []): BulkUpdateSpansResponse => {
-  const notSaved = new Set(failed.filter((f) => f.step !== 'update_chunk_tags').map((f) => f.itemId))
+  // A best-effort step after the span write (its vector) does not make the span unsaved.
+  const notSaved = new Set(failed.filter((f) => f.step !== 'embed_annotation').map((f) => f.itemId))
   const succeeded = batch.filter((id) => !notSaved.has(id))
   return {
     outcome: failed.length ? (succeeded.length ? WriteOutcome.partial : WriteOutcome.failed) : WriteOutcome.complete,
@@ -45,14 +46,13 @@ describe('bulk resolving suggestions (#464)', () => {
     expect(describeBulkResolve(summary, 'Confirmed')).toBeNull()
   })
 
-  it('keeps failed, uncertain and unsent ids unresolved and tells stale search apart', async () => {
+  it('keeps failed, uncertain and unsent ids unresolved', async () => {
     const send = vi.fn(async (batch: string[]) => {
       if (batch[0] === 's200') throw new Error('network down')
       if (batch[0] === 's0') {
         return saved(batch, [
           { itemId: 's1', step: 'update_span', message: 'ConnectTimeout', uncertain: true },
-          { itemId: 's2', step: 'update_span', message: 'boom' },
-          { itemId: 'chunk-1:tag-1', step: 'update_chunk_tags', message: 'sync failed' }
+          { itemId: 's2', step: 'update_span', message: 'boom' }
         ])
       }
       return saved(batch)
@@ -62,29 +62,24 @@ describe('bulk resolving suggestions (#464)', () => {
 
     expect(send).toHaveBeenCalledTimes(3)
     expect(summary.saved).toBe(198)
-    expect(summary.staleSearchPairs).toBe(1)
     expect(summary.uncertain).toBe(1)
     expect(summary.unresolved).toEqual(['s1', 's2', ...ids.slice(200)])
     expect(describeBulkResolve(summary, 'Confirmed')).toBe(
       'Confirmed 198 of 1255 suggestions; 1057 not saved and still selected (1 may have been saved; retrying is safe); ' +
-      'tag search may be out of date for 1 chunk/tag pair; the remaining requests were stopped after an error. ' +
+      'the remaining requests were stopped after an error. ' +
       'Retry to process the remaining ones.')
   })
 
-  it('reports failed chunk tag updates, identified by chunk/tag pair, also when every span was saved', async () => {
-    // The backend names update_chunk_tags failures "<chunk id>:<tag id>", not by span.
-    const pairs = ['c1:t1', 'c2:t1']
+  it('counts a saved span whose later best-effort step failed as saved, with nothing to retry', async () => {
     const send = vi.fn(async (batch: string[]) => saved(batch, batch[0] === 's0'
-      ? pairs.map((itemId) => ({ itemId, step: 'update_chunk_tags', message: 'sync failed' }))
-      : [{ itemId: 'c1:t1', step: 'update_chunk_tags', message: 'sync failed' }]))
+      ? [{ itemId: 's0', step: 'embed_annotation', message: 'provider down', uncertain: true }]
+      : []))
 
     const summary = await runBulkResolve(ids, send)
 
     expect(summary.saved).toBe(1255)
-    expect(summary.unresolved).toEqual([])
-    expect(summary.staleSearchPairs).toBe(2)
-    expect(describeBulkResolve(summary, 'Rejected')).toBe(
-      'Rejected 1255 of 1255 suggestions; tag search may be out of date for 2 chunk/tag pairs.')
+    expect([summary.unresolved, summary.uncertain]).toEqual([[], 0])
+    expect(describeBulkResolve(summary, 'Rejected')).toBeNull()
   })
 
   it('stops without reporting when the document or collection changed', async () => {

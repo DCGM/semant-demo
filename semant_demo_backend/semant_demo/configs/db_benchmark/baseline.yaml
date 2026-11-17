@@ -16,7 +16,6 @@ queries:
   terms_per_query: 2
   year_ranges: [[1900, 1920], [1800, 1850], [1940, 1952]]
   languages: [ces, deu]
-  sample_tags: 20
   sample_user_collections: 10
 scenarios:
   - {name: bm25, kind: search, mode: text, description: "Search page, keyword mode (app adapter, document reference returned)"}
@@ -25,7 +24,6 @@ scenarios:
   - {name: hybrid_year, kind: search, mode: hybrid, filter: year_range, description: "Hybrid + chunk yearIssued range filter"}
   - {name: hybrid_language, kind: search, mode: hybrid, filter: language, description: "Hybrid + chunk language filter"}
   - {name: hybrid_document_type, kind: search, mode: hybrid, filter: document_type, description: "Hybrid + documentType filter through the document reference"}
-  - {name: hybrid_tag, kind: search, mode: hybrid, filter: tag, description: "Hybrid + chunk tag reference filter (automatic or positive)"}
   - {name: hybrid_user_collection, kind: search, mode: hybrid, filter: user_collection, description: "Hybrid within a user collection (reference filter)"}
   - {name: bm25_direct, kind: direct, mode: text, description: "BM25 without references (database-level)"}
   - {name: vector_direct, kind: direct, mode: vector, description: "near_vector without references"}

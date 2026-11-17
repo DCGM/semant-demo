@@ -49,7 +49,7 @@ def llm(tmp_path, metrics) -> LlmGateway:
 
 
 def search_request(**fields) -> SearchRequest:
-    return SearchRequest(**{"query": "Novák", "tag_uuids": [], "positive": False, "automatic": False, **fields})
+    return SearchRequest(**{"query": "Novák", **fields})
 
 
 def hit(text: str) -> SearchResultChunk:

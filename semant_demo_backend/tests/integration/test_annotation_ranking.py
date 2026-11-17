@@ -13,7 +13,6 @@ from uuid import UUID
 
 import pytest
 
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -64,7 +63,6 @@ def store(seeded_store, collection_names, embedder) -> AnnotationStore:
         {"id": CONFIG_ID, "embedding": {"provider": "embedding_service"}}), embedder)
     return AnnotationStore(collections=UserCollectionRepository(seeded_store, collection_names, spans),
                            tags=TagRepository(seeded_store, collection_names, spans), spans=spans,
-                           chunk_tags=ChunkTagRepository(seeded_store, collection_names, spans),
                            documents=documents, enrichment=Enrichment(True, vector))
 
 

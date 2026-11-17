@@ -127,7 +127,7 @@ async def test_the_configured_default_level_is_used_when_none_is_requested():
 async def test_the_results_summary_of_a_search_uses_the_default_level():
     # A search request has no length level: its optional results summary is the configured default.
     llm = FakeLlm()
-    request = SearchRequest(query="kronikář", tag_uuids=[], positive=False, automatic=False,
+    request = SearchRequest(query="kronikář",
                             search_title_generate=False, search_summary_generate=False,
                             search_results_summary_generate=True)
     response = results("Jan Novák byl kronikář.")

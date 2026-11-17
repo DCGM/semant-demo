@@ -14,7 +14,6 @@ from semant_demo.bootstrap import load_search_vectors
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
-from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.features.search.service import SearchBackends, public_retriever
 from semant_demo.features.rag.registry import rag_load_single_config
 from semant_demo.features.rag.schemas import RagRequest, RagSearch
@@ -30,7 +29,6 @@ async def main():
     retrieve = public_retriever(SearchBackends(
         chunks=ChunkSearchRepository(client, names),
         collections=UserCollectionRepository(client, names, spans),
-        tags=TagRepository(client, names, spans),
         vectors=load_search_vectors(config),
     ))
     # question/query

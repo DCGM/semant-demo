@@ -41,8 +41,7 @@ from tests.test_summarization import test_document_service as documents
 from tests import test_suggestions as suggestion_fakes
 
 PASSWORD = "StrongPassw0rd!"
-SEARCH_RESPONSE = {"results": [], "search_request": {"query": "Novák", "tag_uuids": [], "positive": False,
-                                                    "automatic": False}, "time_spent": 0.1, "search_log": []}
+SEARCH_RESPONSE = {"results": [], "search_request": {"query": "Novák", }, "time_spent": 0.1, "search_log": []}
 GUEST_ROUTES = {
     "rag": ("/api/rag", {"rag_id": "agent", "rag_request": {"question": "Kdo byl Novák?", "rag_search": {}}}),
     "explain": ("/api/rag/explain", {"rag_id": "adaptive", "selected_text": "Novák", "full_answer": "Novák [doc1]",
@@ -174,8 +173,7 @@ async def test_a_new_guest_refused_for_a_large_reservation_keeps_its_cookie(tmp_
 
 
 def summaries_request(**fields) -> dict:
-    return {"query": "Novák", "type": "text", "tag_uuids": [], "positive": False, "automatic": False,
-            "search_title_generate": True, "search_summary_generate": True,
+    return {"query": "Novák", "type": "text", "search_title_generate": True, "search_summary_generate": True,
             "search_results_summary_generate": True, **fields}
 
 

@@ -108,8 +108,7 @@ def embedder():
 def store(embedder):
     vector = AnnotationVector(AnnotationVectorSettings.model_validate(
         {"id": CONFIG_ID, "embedding": {"provider": "embedding_service"}}), embedder)
-    return AnnotationStore(collections=FakeCollections(), tags=None, spans=RankingSpans(), chunk_tags=None,
-                           documents=FakeDocuments(), enrichment=Enrichment(derived=True, vector=vector))
+    return AnnotationStore(collections=FakeCollections(), tags=None, spans=RankingSpans(), documents=FakeDocuments(), enrichment=Enrichment(derived=True, vector=vector))
 
 
 def put(store, *rows):

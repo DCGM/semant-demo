@@ -6,9 +6,9 @@ which keeps embedding calls out of the timings; BM25 text is the longest words o
 chunk. Neither texts, vectors nor ids are written to the results: only short keyed hashes
 of ids (``IdHasher``), used to compare result lists between runs made with the same key.
 
-Tag and user-collection filter values are only those that match at least one chunk, and the
-query of such a filtered search is taken from a chunk inside that tag or collection (a user
-searching within it), so the search can return results. Each value is paired with one chunk.
+User-collection filter values are only those that match at least one chunk, and the query
+of such a filtered search is taken from a chunk inside that collection (a user searching
+within it), so the search can return results. Each value is paired with one chunk.
 
 The ``search``, ``context``, ``document_view`` and ``aggregate`` kinds call the application's
 adapters/services (layer ``adapter``); ``direct`` and ``self_recall`` query Weaviate without
@@ -32,7 +32,7 @@ from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.features.analytics.service import corpus_overview
-from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, TagFilter
+from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType
 from semant_demo.maintenance.db_benchmark.profile import Profile, Scenario
 
 WORD = re.compile(r"\w{4,}", re.UNICODE)
@@ -87,15 +87,14 @@ class SampledChunk:
 @dataclass
 class Inputs:
     chunks: list[SampledChunk]
-    tags: list[UUID] = field(default_factory=list)
     user_collections: list[UUID] = field(default_factory=list)
     document_types: list[str] = field(default_factory=list)
     vector_name: str | None = None
     notes: list[str] = field(default_factory=list)
     filter_values_checked: dict[str, int] = field(default_factory=dict)
-    """Tags / user collections checked for matching chunks while sampling."""
+    """User collections checked for matching chunks while sampling."""
     scoped: dict[str, list[tuple[UUID, SampledChunk]]] = field(default_factory=dict)
-    """``tag`` / ``user_collection``: each sampled value with a chunk inside it (the query source)."""
+    """``user_collection``: each sampled value with a chunk inside it (the query source)."""
 
     def summary(self) -> dict:
         with_vector = [c for c in self.chunks if c.vector is not None]
@@ -106,7 +105,6 @@ class Inputs:
             "vector_name": self.vector_name,
             "with_terms": sum(bool(c.terms) for c in self.chunks),
             "documents": len({c.document_id for c in self.chunks if c.document_id}),
-            "tags": len(self.tags),
             "filter_values_checked": self.filter_values_checked,
             "user_collections": len(self.user_collections),
             "document_types": len(self.document_types),
@@ -142,7 +140,7 @@ def _pick_vector(vector, name: str | None) -> tuple[list[float] | None, str | No
 
 
 FILTER_CHECKS = 1000
-"""At most this many tags / user collections are checked for matching chunks."""
+"""At most this many user collections are checked for matching chunks."""
 
 
 async def _sample_matching_ids(collection, rnd: random.Random, count: int,
@@ -228,11 +226,6 @@ async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, pro
         found = (await chunks.query.fetch_objects(filters=flt, limit=1, **fetch)).objects
         return _sampled_chunk(found[0], vector_name, q.terms_per_query)[0] if found else None
 
-    if "tag" in needs:
-        inputs.scoped["tag"], inputs.filter_values_checked["tag"] = await _sample_matching_ids(
-            client.collections.get(names.tag_collection_name), rnd, q.sample_tags,
-            lambda i: chunk_inside(tags=TagFilter((i,), automatic=True, positive=True)))
-        inputs.tags = [value for value, _ in inputs.scoped["tag"]]
     if "user_collection" in needs:
         inputs.scoped["user_collection"], inputs.filter_values_checked["user_collection"] = await _sample_matching_ids(
             client.collections.get(names.user_collection_name), rnd, q.sample_user_collections,
@@ -274,7 +267,7 @@ class Workload:
         return max(1, len(self._usable(scenario)))
 
     def _scoped(self, scenario: Scenario) -> list[tuple[UUID, SampledChunk]] | None:
-        """Tag / user-collection searches: (value, chunk inside it) pairs usable for the scenario's mode."""
+        """User-collection searches: (value, chunk inside it) pairs usable for the scenario's mode."""
         if scenario.kind != "search" or scenario.filter not in self.inputs.scoped:
             return None
         return [(v, c) for v, c in self.inputs.scoped[scenario.filter]
@@ -301,7 +294,7 @@ class Workload:
             return None
         if scenario.kind != "aggregate" and not self._usable(scenario):
             return "no usable sampled inputs"
-        needed = {"tag": self.inputs.tags, "user_collection": self.inputs.user_collections,
+        needed = {"user_collection": self.inputs.user_collections,
                   "document_type": self.inputs.document_types}
         if scenario.filter in needed and not needed[scenario.filter]:
             return f"no {scenario.filter} value that matches any chunk"
@@ -320,7 +313,7 @@ class Workload:
             return scoped[index % len(scoped)][0] if scoped else None
         values = {
             "year_range": self.profile.queries.year_ranges, "language": self.profile.queries.languages,
-            "document_type": self.inputs.document_types, "tag": self.inputs.tags,
+            "document_type": self.inputs.document_types,
             "user_collection": self.inputs.user_collections,
         }.get(scenario.filter or "")
         return values[index % len(values)] if values else None
@@ -339,7 +332,7 @@ class Workload:
         async def run(index: int) -> list[UUID]:
             chunk = usable[index % len(usable)]
             value = self._filter_value(scenario, index)
-            conditions, tags, collection_id = (), None, None
+            conditions, collection_id = (), None
             if scenario.filter == "year_range":
                 conditions = (FieldCondition("yearIssued", Op.greater_or_equal, value[0]),
                               FieldCondition("yearIssued", Op.less_or_equal, value[1]))
@@ -347,15 +340,13 @@ class Workload:
                 conditions = (FieldCondition("language", Op.contains_any, [value]),)
             elif scenario.filter == "document_type":
                 conditions = (FieldCondition("documentType", Op.equal, value),)
-            elif scenario.filter == "tag":
-                tags = TagFilter((value,), automatic=True, positive=True)
             elif scenario.filter == "user_collection":
                 collection_id = value
             hits = await self.search.search(ChunkQuery(
                 text=chunk.terms, mode=SearchType(scenario.mode), limit=scenario.limit, alpha=scenario.alpha,
                 vector=chunk.vector if scenario.mode != "text" else None,
                 target_vector=self.inputs.vector_name if scenario.mode != "text" else None,
-                collection_id=collection_id, tags=tags, conditions=conditions))
+                collection_id=collection_id, conditions=conditions))
             return [h.id for h in hits]
         return run
 
