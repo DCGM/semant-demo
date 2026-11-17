@@ -59,11 +59,18 @@ def probe_counts(api, activate_inactive=False):
     return {k: v for k, v in api.counts(activate_inactive).items() if "Probe" in k}
 
 
+def restore_test_backup(api, backup_id, settings):
+    """Restore through the REST API directly: the store is disposable (``claim_store``), but
+    CI reaches it as ``weaviate:8080``, which the operator-facing ``run_restore`` guard refuses
+    (that guard is unit-tested in tests/test_weaviate_backup_script.py)."""
+    api.restore(backup_id, include=[PLAIN, TENANTS])
+    return wb.wait_for(lambda: api.restore_status(backup_id), settings, f"restore of {backup_id}")
+
+
 async def test_full_and_incremental_backups_restore_with_matching_counts(probe, weaviate_client, store_endpoint):
     plain, tenants = probe
     api = api_for(store_endpoint)
-    endpoint = f"{store_endpoint.host}:{store_endpoint.rest_port}"
-    settings = wb.Settings(poll_seconds=0.2, rehearsal_endpoints=(endpoint,))
+    settings = wb.Settings(poll_seconds=0.2)
     run = uuid.uuid4().hex[:8]
     full, incr = f"probe469-{run}-full", f"probe469-{run}-incr"
     await insert(plain, 0, 30)
@@ -90,7 +97,7 @@ async def test_full_and_incremental_backups_restore_with_matching_counts(probe, 
 
     for name in (PLAIN, TENANTS):
         await weaviate_client.collections.delete(name)
-    restored = wb.run_restore(incr, settings, api, endpoint, [PLAIN, TENANTS])
+    restored = restore_test_backup(api, incr, settings)
 
     assert restored["status"] == "SUCCESS"
     assert probe_counts(api, activate_inactive=True) == before
@@ -99,7 +106,7 @@ async def test_full_and_incremental_backups_restore_with_matching_counts(probe, 
     # The base alone still restores the state it was taken in.
     for name in (PLAIN, TENANTS):
         await weaviate_client.collections.delete(name)
-    assert wb.run_restore(full, settings, api, endpoint, [PLAIN, TENANTS])["status"] == "SUCCESS"
+    assert restore_test_backup(api, full, settings)["status"] == "SUCCESS"
     assert probe_counts(api, activate_inactive=True) == {
         PLAIN: 30, f"{TENANTS}/active": 5, f"{TENANTS}/cold": "COLD 3"}
 

@@ -374,6 +374,30 @@ def test_restore_requires_the_confirmed_endpoint_and_a_listed_one_cannot_be_prod
         wb.run_restore("x", listed, wb.Weaviate("http://127.0.0.1:8080"), "127.0.0.1:8080", None)
 
 
+class FakeRestoreApi:
+    def __init__(self, url):
+        self.url = url
+        self.calls: list[tuple] = []
+        self.polls = 0
+
+    def restore(self, backup_id, include=None):
+        self.calls.append((backup_id, include))
+        return {"id": backup_id, "status": "STARTED"}
+
+    def restore_status(self, backup_id):
+        self.polls += 1
+        return {"id": backup_id, "status": "SUCCESS" if self.polls > 1 else "TRANSFERRING"}
+
+
+def test_restore_into_a_listed_rehearsal_endpoint_waits_for_the_restore():
+    api = FakeRestoreApi("http://127.0.0.1:8090")
+    result = wb.run_restore("auto-incr-x", wb.Settings(poll_seconds=0), api, "127.0.0.1:8090",
+                            ["Chunks"], sleep=lambda _: None)
+    assert result["status"] == "SUCCESS"
+    assert api.calls == [("auto-incr-x", ["Chunks"])]
+    assert api.polls == 2
+
+
 def test_counting_inactive_tenants_requires_the_confirmed_endpoint(capsys):
     assert wb.main(["counts", "--activate-inactive"], {}) == 1
     assert "--confirm-endpoint None does not match '127.0.0.1:8080'" in capsys.readouterr().err
