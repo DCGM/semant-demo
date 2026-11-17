@@ -7,9 +7,9 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from semant_demo.features.annotations.schemas import TagSpan
-from semant_demo.features.annotations import export, service
+from semant_demo.features.annotations import export, facets, service
 from semant_demo.features.annotations.schemas import (
-    MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
+    MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFacets, AnnotationFacetsRequest, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
     AnnotationExportRequest, AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
     AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
@@ -350,6 +350,27 @@ async def list_annotated_documents(
     title: the source filter's choices. ``document_id`` is not applied (it is being chosen)."""
     try:
         return await service.list_annotated_documents(store, current_user, collection_id, filters)
+    except UnavailableFilter as e:
+        raise _unavailable(e) from e
+
+
+@span_router.post("/api/user_collections/{collection_id}/annotations/facets", response_model=AnnotationFacets)
+async def facet_collection_annotations(
+    collection_id: str,
+    body: AnnotationFacetsRequest,
+    store: AnnotationStore = Depends(get_annotation_store),
+    attributes: AttributeRepository = Depends(get_attribute_definitions),
+    current_user: User = Depends(current_active_user),
+) -> AnnotationFacets:
+    """
+    How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``,
+    ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with
+    the annotations without a value (``missing``). Lexical queries are counted over every match, each
+    facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly
+    its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+    """
+    try:
+        return await facets.annotation_facets(store, current_user, collection_id, body, attributes)
     except UnavailableFilter as e:
         raise _unavailable(e) from e
 

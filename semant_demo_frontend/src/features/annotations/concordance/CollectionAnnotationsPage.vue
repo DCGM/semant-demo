@@ -6,6 +6,7 @@
       :tags="tags"
       :documents="store.documents"
       :documents-error="store.documentsError"
+      :facets="store.facets"
       :attributes="attributesStore.attributes"
       :shown-attribute-ids="store.shownAttributeIds"
       class="q-mb-sm"
@@ -1276,6 +1277,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onReviewShortcut))
 // ── Workspace state across navigation ──
 onBeforeRouteLeave(() => {
   store.scrollY = window.scrollY
+})
+
+// The attribute facets follow the collection's attributes (#667); read again when they arrive.
+watch(() => attributesStore.attributes.map(a => a.id).join(','), () => {
+  store.facetAttributeIds = attributesStore.attributes.map(a => a.id)
+  if (store.collectionId) void store.loadFacets()
 })
 
 watch(collectionId, async (id) => {

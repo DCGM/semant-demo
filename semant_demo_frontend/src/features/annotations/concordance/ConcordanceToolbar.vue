@@ -50,6 +50,9 @@
                   {{ opt.label }}
                 </q-item-label>
               </q-item-section>
+              <q-item-section v-if="opt.count != null" side>
+                <span class="concordance-toolbar__count" data-testid="concordance-tag-count">{{ opt.count }}</span>
+              </q-item-section>
             </q-item>
           </template>
         </q-select>
@@ -71,6 +74,7 @@
             :data-testid="`concordance-status-${option.value}`"
             @click="toggleType(option.value, !statusActive(option.value))"
           >
+            <span v-if="statusCount(option.value) != null" class="concordance-toolbar__count" :data-testid="`concordance-status-count-${option.value}`">{{ statusCount(option.value) }}</span>
             <q-tooltip v-if="option.hint">{{ option.hint }}</q-tooltip>
           </q-btn>
         </q-btn-group>
@@ -222,6 +226,11 @@
       </div>
     </div>
 
+    <p v-if="facets" v-show="formVisible" class="concordance-toolbar__population" data-testid="concordance-facets-note">
+      <template v-if="facets.population === 'top_k'">Counts are of these {{ facets.k }} results.</template>
+      <template v-else>Counts show how many annotations each choice gives; a filter does not narrow its own counts.</template>
+    </p>
+
     <div
       v-show="formVisible && moreOpen"
       id="concordance-more-filters"
@@ -257,7 +266,7 @@
             @filter="filterDocuments"
             @update:model-value="value => emit('change', { documentIds: value ?? [] })"
           />
-          <div class="concordance-toolbar__years" role="group" aria-label="Publication years">
+          <div class="concordance-toolbar__years" role="group" aria-label="Publication years" :title="yearHint ?? undefined">
             <q-input
               ref="yearInput"
               :model-value="filters.documentFilters.yearMin ?? ''"
@@ -282,6 +291,7 @@
               @update:model-value="value => setDocumentFilters({ yearMax: toYear(value) })"
             />
           </div>
+          <p v-if="yearHint" class="concordance-toolbar__rule" data-testid="concordance-year-hint">{{ yearHint }}</p>
           <q-input
             v-model="titleDraft"
             dense
@@ -375,6 +385,10 @@
                 </q-item-section>
                 <q-item-section>
                   <q-item-label :class="{ 'text-italic': opt.unassigned }">{{ opt.label }}</q-item-label>
+                  <q-item-label v-if="opt.inapplicable" caption>{{ opt.inapplicable }} on annotations it no longer applies to</q-item-label>
+                </q-item-section>
+                <q-item-section v-if="opt.count != null" side>
+                  <span class="concordance-toolbar__count" data-testid="concordance-attribute-count">{{ opt.count }}</span>
                 </q-item-section>
               </q-item>
             </template>
@@ -394,7 +408,7 @@ import {
   QBtn, QBtnGroup, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
 } from 'quasar'
 import {
-  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationFacets, type Attribute, type DocumentFilters, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
@@ -407,6 +421,8 @@ const props = defineProps<{
   tags: Tag[]
   documents: AnnotatedDocument[]
   documentsError?: string | null
+  /** How many annotations each choice gives (#667); none until read or when reading failed. */
+  facets?: AnnotationFacets | null
   /** The collection's attribute definitions (#331), retired ones included. */
   attributes?: Attribute[]
   /** The attributes shown in columns of their own. */
@@ -471,7 +487,29 @@ function openFilter (field: FilterField) {
 
 defineExpose({ openFilter })
 
-const tagOptions = computed(() => props.tags.map(t => ({ label: t.name, value: t.id, color: t.color })))
+/** The counted values of a facet by value, with the facet's missing count; null while not read. */
+function facetOf (name: string) {
+  const facet = props.facets?.facets.find(f => f.facet === name)
+  return facet ? { ...facet, byValue: new Map(facet.values.map(v => [v.value, v])) } : null
+}
+/** Annotations the choice gives; 0 when the facet counted none with it. Null when not counted. */
+function countOf (name: string, value: string): number | null {
+  const facet = facetOf(name)
+  return facet ? facet.byValue.get(value)?.count ?? 0 : null
+}
+
+const tagFacet = computed(() => facetOf('tag'))
+const tagOptions = computed(() => props.tags.map(t => ({
+  label: t.name, value: t.id, color: t.color, count: tagFacet.value ? tagFacet.value.byValue.get(t.id)?.count ?? 0 : null
+})))
+const statusCount = (type: SpanType) => countOf('type', type)
+const yearHint = computed(() => {
+  const facet = facetOf('year')
+  if (!facet) return null
+  const years = facet.values.map(v => Number(v.value)).sort((a, b) => a - b)
+  const range = years.length ? `${years[0]}\u2013${years[years.length - 1]}` : 'no year recorded'
+  return `Annotations from ${range}${facet.missing ? `; ${facet.missing} without a year` : ''}`
+})
 /** The chosen tags in a line of their own, however many: the first name and how many more. */
 const tagsLabel = computed(() => {
   const names = props.filters.tagIds.map(id => props.tags.find(t => t.id === id)?.name ?? 'Unknown tag')
@@ -525,6 +563,10 @@ function valueOptions (key: 'library' | 'language', label: (value: string) => st
     const value = d[key]
     if (value) counts.set(value, (counts.get(value) ?? 0) + d.count)
   }
+  // The choices are those of the documents; their counts, when read, are those of the whole query
+  // without this filter (#667), 0 for a choice nothing matches now.
+  const facet = facetOf(key)
+  if (facet) for (const value of counts.keys()) counts.set(value, facet.byValue.get(value)?.count ?? 0)
   return [...counts].sort(([a], [b]) => label(a).localeCompare(label(b)))
     .map(([value, count]) => ({ value, label: `${label(value)} (${count})` }))
 }
@@ -541,9 +583,19 @@ function toYear (value: string | number | null): number | null {
   return value === null || value === '' || !Number.isInteger(year) ? null : year
 }
 
+/** The annotations of the document under the whole query without the source filter (#667) when
+ * read: 0 when none, the choice's own count when the facet left the document out (it lists the
+ * documents with most annotations only). */
+function documentCount (d: AnnotatedDocument): number {
+  const facet = facetOf('document')
+  if (!facet) return d.count
+  return facet.byValue.get(d.id)?.count ?? (facet.truncated ? d.count : 0)
+}
+
 function documentLabel (d: AnnotatedDocument): string {
-  if (!d.available) return `Unavailable source (${d.count})`
-  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''} (${d.count})`
+  const count = documentCount(d)
+  if (!d.available) return `Unavailable source (${count})`
+  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''} (${count})`
 }
 
 const documentOptions = computed(() => props.documents.map(d => ({ label: documentLabel(d), value: d.id })))
@@ -566,11 +618,19 @@ const sourcesLabel = computed(() => {
 // "not assigned"; one select edits both filter lists.
 const attributeOptions = computed(() => attributes.value.flatMap(a => {
   const name = a.retired ? `${a.name} (retired)` : a.name
+  const facet = facetOf(`attribute:${a.id}`)
   return [
-    ...orderedValues(a).map(v => ({
-      label: `${name}: ${valueName(v)}${v.retired ? ' (retired)' : ''}`, value: `v:${a.id}:${v.id}`, unassigned: false
-    })),
-    { label: `${name}: not assigned`, value: `u:${a.id}`, unassigned: true }
+    ...orderedValues(a).map(v => {
+      const found = facet?.byValue.get(v.id)
+      return {
+        label: `${name}: ${valueName(v)}${v.retired ? ' (retired)' : ''}`,
+        value: `v:${a.id}:${v.id}`,
+        unassigned: false,
+        count: facet ? found?.count ?? 0 : null,
+        inapplicable: found?.inapplicable ?? 0
+      }
+    }),
+    { label: `${name}: not assigned`, value: `u:${a.id}`, unassigned: true, count: facet ? facet.missing : null, inapplicable: 0 }
   ]
 }))
 const attributeNeedle = ref('')
@@ -632,6 +692,19 @@ const shownLabel = computed(() => {
 /* The controls take part in the row directly; the wrapper only shows and hides them. */
 .concordance-toolbar__primary {
   display: contents;
+}
+
+.concordance-toolbar__count {
+  margin-left: 6px;
+  font-size: 0.85em;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.concordance-toolbar__population {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.75;
 }
 
 .concordance-toolbar__tags {

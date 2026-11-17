@@ -138,6 +138,15 @@ class FakeSpans:
                 counts[row.documentId] = counts.get(row.documentId, 0) + 1
         return dict(list(counts.items())[:limit])
 
+    async def count_by_property(self, cid, query, prop, limit, document_ids=None):
+        counts: dict[str, int] = {}
+        for row in self._match(query, document_ids):
+            value = getattr(row, prop)
+            if value is not None:
+                key = str(getattr(value, "value", value))
+                counts[key] = counts.get(key, 0) + 1
+        return dict(list(counts.items())[:limit])
+
     async def count_rows(self, cid, query, document_ids=None):
         return len(self._match(query, document_ids))
 

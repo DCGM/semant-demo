@@ -7,6 +7,8 @@ docs/AnnotatedDocument.md
 docs/AnnotationCounts.md
 docs/AnnotationExportRequest.md
 docs/AnnotationExportScope.md
+docs/AnnotationFacets.md
+docs/AnnotationFacetsRequest.md
 docs/AnnotationFilters.md
 docs/AnnotationIds.md
 docs/AnnotationIdsRequest.md
@@ -79,6 +81,9 @@ docs/DocumentSummaryResponse.md
 docs/DocumentViewChunk.md
 docs/ErrorModel.md
 docs/ExplainRequest.md
+docs/Facet.md
+docs/FacetPopulation.md
+docs/FacetValue.md
 docs/FeedbackRequest.md
 docs/FilterType.md
 docs/HTTPValidationError.md
@@ -175,6 +180,8 @@ models/AnnotatedDocument.ts
 models/AnnotationCounts.ts
 models/AnnotationExportRequest.ts
 models/AnnotationExportScope.ts
+models/AnnotationFacets.ts
+models/AnnotationFacetsRequest.ts
 models/AnnotationFilters.ts
 models/AnnotationIds.ts
 models/AnnotationIdsRequest.ts
@@ -245,6 +252,9 @@ models/DocumentSummaryResponse.ts
 models/DocumentViewChunk.ts
 models/ErrorModel.ts
 models/ExplainRequest.ts
+models/Facet.ts
+models/FacetPopulation.ts
+models/FacetValue.ts
 models/FeedbackRequest.ts
 models/FilterType.ts
 models/HTTPValidationError.ts
