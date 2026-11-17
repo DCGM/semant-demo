@@ -89,7 +89,7 @@ describe('proximity form', () => {
   it('starts with the neighbor tags and ends when they are cleared', async () => {
     const empty = await toolbar(defaultFilters())
     expect(select(empty, 'concordance-near-placement')).toBeUndefined()
-    expect(empty.findComponent(QBtnToggle).props('disable')).toBe(true)
+    expect(empty.findComponent(QBtnToggle).exists()).toBe(false)
     select(empty, 'concordance-near-tags')!.vm.$emit('update:modelValue', ['criticism'])
     expect(empty.emitted('change')).toEqual([[{ near: defaultNear(['criticism']) }]])
 

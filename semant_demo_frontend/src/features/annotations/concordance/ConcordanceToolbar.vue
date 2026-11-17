@@ -372,10 +372,11 @@
       </div>
       <div class="concordance-toolbar__more-section" data-testid="concordance-near-form">
         <p class="concordance-toolbar__more-title">Proximity</p>
-        <!-- One sentence (#333): [With | Without] a neighbor tagged [tags] [where] at most [N] [unit] away. -->
+        <!-- One sentence (#333): [With | Without] a neighbor tagged [tags] (at most [N] [unit]) [where]. -->
         <div class="concordance-toolbar__near" role="group" aria-label="Proximity filter" aria-describedby="concordance-near-summary">
           <q-btn-toggle
-            :model-value="filters.near?.absent ? 'without' : 'with'"
+            v-if="filters.near"
+            :model-value="filters.near.absent ? 'without' : 'with'"
             :options="presenceOptions"
             dense
             no-caps
@@ -383,12 +384,11 @@
             toggle-color="primary"
             color="grey-3"
             text-color="grey-9"
-            :disable="!filters.near"
             aria-label="Keep annotations with or without such a neighbor"
             data-testid="concordance-near-presence"
             @update:model-value="value => setNear({ absent: value === 'without' })"
           />
-          <span class="concordance-toolbar__near-word">a neighbor tagged</span>
+          <span class="concordance-toolbar__near-word">{{ filters.near ? 'a neighbor tagged' : 'Near annotations tagged' }}</span>
           <q-select
             :model-value="filters.near?.tagIds ?? []"
             :options="tagOptions"
@@ -408,20 +408,6 @@
             @update:model-value="setNearTags"
           />
           <template v-if="filters.near">
-            <q-select
-              :model-value="placement"
-              :options="placementOptions"
-              emit-value
-              map-options
-              dense
-              outlined
-              options-dense
-              hide-bottom-space
-              aria-label="Where the neighbor is"
-              class="concordance-toolbar__near-placement"
-              data-testid="concordance-near-placement"
-              @update:model-value="setPlacement"
-            />
             <template v-if="filters.near.relation === NearRelation.within">
               <span class="concordance-toolbar__near-word">at most</span>
               <q-input
@@ -451,8 +437,21 @@
                 data-testid="concordance-near-unit"
                 @update:model-value="value => setNear({ unit: value })"
               />
-              <span class="concordance-toolbar__near-word">away</span>
             </template>
+            <q-select
+              :model-value="placement"
+              :options="placementOptions"
+              emit-value
+              map-options
+              dense
+              outlined
+              options-dense
+              hide-bottom-space
+              aria-label="Where the neighbor is"
+              class="concordance-toolbar__near-placement"
+              data-testid="concordance-near-placement"
+              @update:model-value="setPlacement"
+            />
           </template>
         </div>
         <p id="concordance-near-summary" class="concordance-toolbar__rule" data-testid="concordance-near-summary">{{ nearSummaryText }}</p>
