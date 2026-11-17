@@ -562,7 +562,7 @@ async def test_bulk_update_keeps_completed_updates_and_reports_failed_ones(store
     assert result.outcome == "partial"
     assert result.succeeded == [str(SPAN_A)] == [s.id for s in result.spans]
     assert [(f.item_id, f.step) for f in result.failed] == [(str(SPAN_B), "update_span")]
-    assert sorted(writes) == [("update_span", SPAN_A), ("update_span", SPAN_B)]
+    assert sorted(writes) == sorted([("update_span", SPAN_A), ("update_span", SPAN_B)])
 
 
 async def test_a_large_bulk_update_bounds_concurrent_span_writes(store, writes, monkeypatch):
@@ -632,7 +632,7 @@ async def test_review_sets_the_type_of_each_annotation_and_keeps_rejections(acti
     assert {s.type for s in store.spans.stored[COLLECTION].values()} == {type}
     assert "delete_span" not in [w[0] for w in writes]
     # Offsets of SPAN_B are invalid; a type change does not re-check them.
-    assert sorted(writes) == [("update_span", SPAN_A), ("update_span", SPAN_B)]
+    assert sorted(writes) == sorted([("update_span", SPAN_A), ("update_span", SPAN_B)])
 
 
 async def test_review_reports_ids_outside_the_collection_per_item_and_changes_the_rest(store, writes):
