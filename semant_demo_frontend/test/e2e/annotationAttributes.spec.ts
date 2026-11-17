@@ -72,6 +72,10 @@ async function toggleOption (page: Page, testid: string, option: string) {
   await choose(page, testid, option)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('listbox')).toHaveCount(0)
+  // The listbox leaves before the menu has finished closing: only then (its transition, ~300 ms)
+  // does Quasar give focus back to the select, which would take it from a row focused meanwhile
+  // (#626). The menu's portal is removed right after that.
+  await expect(page.locator('[id^="q-portal--menu--"]')).toHaveCount(0)
 }
 
 test.afterEach(async ({ request }) => {
