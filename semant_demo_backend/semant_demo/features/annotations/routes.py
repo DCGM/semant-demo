@@ -232,6 +232,9 @@ def annotation_filters(
     types: list[SpanType] | None = _TYPE_FILTER,
     q: str | None = Query(default=None, max_length=MAX_QUERY_TEXT_LENGTH, description=(
         "Words that must each occur inside a word of the fields of text_scope, ignoring case")),
+    ranking_query: str | None = Query(default=None, max_length=MAX_QUERY_TEXT_LENGTH, description=(
+        "Modes semantic and hybrid: the text ranked by (separate from the filter words q, which "
+        "always apply first); refused by the other modes")),
     text_scope: TextScope = Query(default=TextScope.annotation, description=(
         "Where the words of q must occur: annotation (the annotated text), context (left or right "
         "context) or both; each word may occur in another field")),
@@ -253,7 +256,7 @@ def annotation_filters(
     browsing; an invalid one is refused (422) as there."""
     try:
         return AnnotationFilters.model_validate({
-            "tag_ids": tag_id, "types": types, "q": q, "text_scope": text_scope, "document_ids": document_id,
+            "tag_ids": tag_id, "types": types, "q": q, "ranking_query": ranking_query, "text_scope": text_scope, "document_ids": document_id,
             "document_filters": {"year_min": year_min, "year_max": year_max, "title_contains": title_contains,
                                  "libraries": libraries, "languages": languages},
             "attribute_values": attribute or [], "attribute_unassigned": unassigned or []})
@@ -263,8 +266,8 @@ def annotation_filters(
 
 def annotation_ranking(
     mode: RetrievalMode = Query(default=RetrievalMode.lexical, description=(
-        "lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by "
-        "meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)")),
+        "lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by "
+        "meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)")),
     k: int = Query(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K, description="Ranked modes: at most this many"),
     similar_to: str | None = Query(default=None, description="Mode similar: the source annotation id"),
     include_source: bool = Query(default=False, description="Mode similar: rank the source annotation too"),

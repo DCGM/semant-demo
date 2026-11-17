@@ -123,8 +123,8 @@ describe('concordance table', () => {
     }
     await wrapper.get('[data-testid="kwic-sort-year"]').trigger('click')
     expect(wrapper.emitted('sort')).toBeUndefined()
-    // The text ranks by meaning: no word filter from the text headers.
-    expect(wrapper.get('[data-testid="kwic-filter-annotation"]').attributes('disabled')).toBeDefined()
+    // The words are a filter whatever ranks: the text headers still add words.
+    expect(wrapper.get('[data-testid="kwic-filter-annotation"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('[data-testid="kwic-filter-source"]').attributes('disabled')).toBeUndefined()
   })
 

@@ -233,7 +233,11 @@ SCOPE_FIELDS = {
     TextScope.context: ("leftContext", "rightContext"),
     TextScope.both: ("text", "leftContext", "rightContext"),
 }
-"""The stored text fields a lexical query (and hybrid's BM25, #664) searches per ``TextScope``."""
+"""The stored text fields a lexical query searches per ``TextScope``."""
+
+HYBRID_FIELDS = SCOPE_FIELDS[TextScope.both]
+"""The stored text fields hybrid ranking's BM25 side searches (#664, #716): the annotated text and both
+contexts, whatever ``text_scope`` the words filter ``q`` has. Ranking and word filtering are independent."""
 
 
 class AnnotationQuery(BaseModel):
@@ -349,10 +353,12 @@ class RetrievalMode(str, Enum):
     lexical = "lexical"
     """Every annotation matching the filters (``q``: words, ``TextScope``), in an ``AnnotationSort``."""
     semantic = "semantic"
-    """The ``k`` nearest in meaning to ``q``: its query embedding against the stored contextual vectors."""
+    """The ``k`` nearest in meaning to ``ranking_query`` among the annotations matching the filters
+    (``q`` included): its query embedding against the stored contextual vectors."""
     hybrid = "hybrid"
-    """The ``k`` best by Weaviate hybrid of the contextual vector and BM25 of ``q`` on the fields of
-    ``text_scope``, with the fixed weight ``HYBRID_ALPHA``."""
+    """The ``k`` best by Weaviate hybrid of the contextual vector and BM25 of ``ranking_query`` on
+    ``HYBRID_FIELDS`` (annotation and both contexts; not ``text_scope``), with the fixed weight
+    ``HYBRID_ALPHA``, among the annotations matching the filters (``q`` included)."""
     similar = "similar"
     """The ``k`` nearest to the stored vector of the annotation ``similar_to``; no embedding call.
     ``q`` stays a lexical filter."""
@@ -490,8 +496,12 @@ class AnnotationFilters(BaseModel):
     types: list[SpanType] | None = None
     """Default ``pos`` and ``auto``; rejected ``neg`` only when asked."""
     q: str | None = Field(default=None, max_length=MAX_QUERY_TEXT_LENGTH)
-    """Lexical and ``similar`` modes: words that must each occur in a field of ``text_scope``, inside
-    one of its words, ignoring case. ``semantic`` and ``hybrid``: the query ranked by (#664), required."""
+    """In every mode: words that must each occur in a field of ``text_scope``, inside one of its
+    words, ignoring case (#663). Always a hard filter, applied before any ranking (#716)."""
+    ranking_query: str | None = Field(default=None, max_length=MAX_QUERY_TEXT_LENGTH)
+    """The text ranked by (#716), separate from the words ``q``: required by ``semantic`` and ``hybrid``
+    (``hybrid`` also scores its BM25 side with it on ``HYBRID_FIELDS``, independent of ``text_scope``) and refused by the
+    other modes. It filters nothing."""
     text_scope: TextScope = TextScope.annotation
     document_ids: list[UUID] | None = None
     document_filters: DocumentFilters = Field(default_factory=DocumentFilters)

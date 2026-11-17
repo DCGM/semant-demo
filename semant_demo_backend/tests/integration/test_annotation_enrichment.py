@@ -31,7 +31,7 @@ from tests.fakes import fake_embedding
 
 async def semantic(store, owner, collection, q, **filters):
     """A semantic annotation query (#664) for ``q``."""
-    return await service.query_annotations(store, owner, collection, AnnotationFilters(q=q, **filters),
+    return await service.query_annotations(store, owner, collection, AnnotationFilters(ranking_query=q, **filters),
                                            ranking=AnnotationRanking(mode=RetrievalMode.semantic))
 
 pytestmark = pytest.mark.integration

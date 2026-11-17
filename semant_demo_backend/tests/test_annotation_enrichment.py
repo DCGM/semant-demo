@@ -184,7 +184,7 @@ def embedder():
 
 async def semantic(store, user, q):
     """The rows of a semantic annotation query (#664) for ``q``."""
-    page = await service.query_annotations(store, user, COLLECTION, AnnotationFilters(q=q),
+    page = await service.query_annotations(store, user, COLLECTION, AnnotationFilters(ranking_query=q),
                                            ranking=AnnotationRanking(mode=RetrievalMode.semantic))
     return page.rows
 

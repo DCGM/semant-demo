@@ -4,6 +4,7 @@ import {
 } from 'src/generated/api'
 import { rowFilterGroups, wordFilterGroup, type CellFilterGroup } from 'src/features/annotations/concordance/cellFilters'
 import { defaultFilters, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
+import { scopeHintText } from 'src/features/annotations/concordance/filterChips'
 
 // #665: filters offered from a row's displayed values and from words selected in its text.
 
@@ -116,7 +117,7 @@ describe('the filter by selected words', () => {
     expect(group?.actions).toEqual([expect.objectContaining({
       label: 'Filter annotations containing “Novák”', change: { text: 'Novák', textScope: TextScope.annotation }
     })])
-    expect(group?.caption).toBe('Each word must appear inside a word of the annotation, ignoring case but not diacritics. Not a phrase search.')
+    expect(group?.caption).toBe(scopeHintText(TextScope.annotation))
     expect(wordFilterGroup('do Lhoty', TextScope.context, filters())?.actions[0].label)
       .toBe('Filter annotations with “do Lhoty” in their context')
     expect(wordFilterGroup('hejtman Jan', TextScope.both, filters())?.actions[0].change)
@@ -133,12 +134,11 @@ describe('the filter by selected words', () => {
     expect(other?.caption).toContain('Replaces the text filter “Jan”.')
   })
 
-  it('offers nothing without a new word, or while the text ranks by meaning', () => {
+  it('offers nothing without a new word', () => {
     expect(wordFilterGroup(' , – ', TextScope.annotation, filters())).toBeNull()
     expect(wordFilterGroup('jan', TextScope.annotation, filters({ text: 'Jan' }))).toBeNull()
-    expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.semantic, text: 'x' }))).toBeNull()
-    expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.hybrid, text: 'x' }))).toBeNull()
-    // Find similar keeps the text as a word filter.
+    // A similarity text ranks and never changes the words filter; Find similar keeps it too.
+    expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.hybrid, similarity: 'x' }))).not.toBeNull()
     expect(wordFilterGroup('Jan', TextScope.annotation, filters({ mode: RetrievalMode.similar }))).not.toBeNull()
   })
 })
