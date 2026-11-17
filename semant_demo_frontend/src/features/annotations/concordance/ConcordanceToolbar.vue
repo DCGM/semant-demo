@@ -372,7 +372,23 @@
       </div>
       <div class="concordance-toolbar__more-section" data-testid="concordance-near-form">
         <p class="concordance-toolbar__more-title">Proximity</p>
-        <div class="concordance-toolbar__more-fields">
+        <!-- One sentence (#333): [With | Without] a neighbor tagged [tags] [where] at most [N] [unit] away. -->
+        <div class="concordance-toolbar__near" role="group" aria-label="Proximity filter" aria-describedby="concordance-near-summary">
+          <q-btn-toggle
+            :model-value="filters.near?.absent ? 'without' : 'with'"
+            :options="presenceOptions"
+            dense
+            no-caps
+            unelevated
+            toggle-color="primary"
+            color="grey-3"
+            text-color="grey-9"
+            :disable="!filters.near"
+            aria-label="Keep annotations with or without such a neighbor"
+            data-testid="concordance-near-presence"
+            @update:model-value="value => setNear({ absent: value === 'without' })"
+          />
+          <span class="concordance-toolbar__near-word">a neighbor tagged</span>
           <q-select
             :model-value="filters.near?.tagIds ?? []"
             :options="tagOptions"
@@ -385,26 +401,29 @@
             outlined
             options-dense
             hide-bottom-space
-            label="Near annotations tagged"
+            :placeholder="filters.near ? undefined : 'choose tags'"
+            aria-label="Neighbor tags"
             class="concordance-toolbar__near-tags"
             data-testid="concordance-near-tags"
             @update:model-value="setNearTags"
           />
           <template v-if="filters.near">
             <q-select
-              :model-value="filters.near.relation"
-              :options="relationOptions"
+              :model-value="placement"
+              :options="placementOptions"
               emit-value
               map-options
               dense
               outlined
               options-dense
               hide-bottom-space
-              label="Where"
-              data-testid="concordance-near-relation"
-              @update:model-value="value => setNear({ relation: value, direction: NearDirection.either })"
+              aria-label="Where the neighbor is"
+              class="concordance-toolbar__near-placement"
+              data-testid="concordance-near-placement"
+              @update:model-value="setPlacement"
             />
             <template v-if="filters.near.relation === NearRelation.within">
+              <span class="concordance-toolbar__near-word">at most</span>
               <q-input
                 :model-value="filters.near.distance"
                 dense
@@ -413,7 +432,7 @@
                 min="0"
                 debounce="500"
                 hide-bottom-space
-                label="At most"
+                aria-label="Largest distance"
                 class="concordance-toolbar__near-distance"
                 data-testid="concordance-near-distance"
                 @update:model-value="value => setNear({ distance: toDistance(value) })"
@@ -424,41 +443,19 @@
                 emit-value
                 map-options
                 dense
-                outlined
+                borderless
                 options-dense
                 hide-bottom-space
-                label="Unit"
+                aria-label="Distance unit"
+                class="concordance-toolbar__near-unit"
                 data-testid="concordance-near-unit"
                 @update:model-value="value => setNear({ unit: value })"
               />
-              <q-select
-                :model-value="filters.near.direction"
-                :options="directionOptions"
-                emit-value
-                map-options
-                dense
-                outlined
-                options-dense
-                hide-bottom-space
-                label="Side"
-                data-testid="concordance-near-direction"
-                @update:model-value="value => setNear({ direction: value })"
-              />
+              <span class="concordance-toolbar__near-word">away</span>
             </template>
-            <q-checkbox
-              dense
-              :model-value="!!filters.near.absent"
-              label="Without such a neighbor"
-              data-testid="concordance-near-absent"
-              @update:model-value="value => setNear({ absent: !!value })"
-            />
           </template>
-          <p class="concordance-toolbar__rule" data-testid="concordance-near-rule">
-            Keeps annotations with another annotation of these tags in the same document (or, with "Without", none).
-            The distance counts the words or characters between the two spans; adjacent and overlapping spans are 0 apart.
-            Annotations whose positions are not known yet are left out.
-          </p>
         </div>
+        <p id="concordance-near-summary" class="concordance-toolbar__rule" data-testid="concordance-near-summary">{{ nearSummaryText }}</p>
       </div>
     </div>
   </div>
@@ -467,10 +464,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import {
-  QBtn, QBtnGroup, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
+  QBtn, QBtnGroup, QBtnToggle, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
 } from 'quasar'
 import {
-  DistanceUnit, NearDirection, NearRelation, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute,
+  DistanceUnit, NearRelation, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute,
   type DocumentFilters, type NearFilter, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
@@ -478,7 +475,8 @@ import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOvervi
 import { modeChange, type ConcordanceFilters } from './concordanceStore'
 import type { FilterField } from './ConcordanceTable.vue'
 import {
-  DIRECTION_LABELS, MODE_LABELS, RELATION_LABELS, SCOPE_LABELS, UNIT_LABELS, concordanceChips, defaultNear, modeHintText, titleProblem
+  MODE_LABELS, PLACEMENTS, SCOPE_LABELS, UNIT_LABELS, concordanceChips, defaultNear, modeHintText, nearSummary, placementOf,
+  titleProblem
 } from './filterChips'
 
 const props = defineProps<{
@@ -579,9 +577,20 @@ const textLabel = computed(() => props.filters.mode === RetrievalMode.semantic ?
   : props.filters.mode === RetrievalMode.hybrid ? 'Meaning and words of' : scopeLabel.value)
 const textHint = computed(() => modeHintText(props.filters.mode, props.filters.textScope))
 
-const relationOptions = Object.values(NearRelation).map(value => ({ value, label: RELATION_LABELS[value] }))
+const presenceOptions = [{ label: 'With', value: 'with' }, { label: 'Without', value: 'without' }]
 const unitOptions = Object.values(DistanceUnit).map(value => ({ value, label: UNIT_LABELS[value] }))
-const directionOptions = Object.values(NearDirection).map(value => ({ value, label: DIRECTION_LABELS[value] }))
+const placementOptions = PLACEMENTS.map(p => ({ value: p.key, label: p.label }))
+const placement = computed(() => props.filters.near ? placementOf(props.filters.near) : null)
+const nearSummaryText = computed(() => nearSummary(props.filters.near, tagNames(props.filters.tagIds), tagNames(props.filters.near?.tagIds ?? [])))
+
+function tagNames (ids: string[]): string[] {
+  return ids.map(id => props.tags.find(t => t.id === id)?.name ?? 'Unknown tag')
+}
+
+function setPlacement (key: string) {
+  const chosen = PLACEMENTS.find(p => p.key === key)
+  if (chosen) setNear({ relation: chosen.relation, direction: chosen.direction })
+}
 
 /** Choosing neighbor tags starts a proximity filter (`defaultNear`); clearing them ends it. */
 function setNearTags (value: string[] | null) {
@@ -882,6 +891,25 @@ const shownLabel = computed(() => {
 .concordance-toolbar__more-fields > .q-field {
   flex: 1 1 220px;
   max-width: 340px;
+}
+
+.concordance-toolbar__near {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.concordance-toolbar__near-word {
+  white-space: nowrap;
+}
+
+.concordance-toolbar__near-tags {
+  min-width: 180px;
+}
+
+.concordance-toolbar__near-distance {
+  width: 88px;
 }
 
 .concordance-toolbar__rule {

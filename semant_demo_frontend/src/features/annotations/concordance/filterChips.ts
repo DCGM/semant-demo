@@ -112,19 +112,22 @@ export function unsortableLabel (unsortable: number | null | undefined, descendi
   return `${subject} not sortable yet and listed ${descending ? 'last' : 'first'}`
 }
 
-/** The proximity relations (#333), as the proximity form names them. */
-export const RELATION_LABELS: Record<NearRelation, string> = {
-  [NearRelation.within]: 'Within a distance',
-  [NearRelation.overlaps]: 'Overlapping',
-  [NearRelation.contains]: 'Inside the annotation',
-  [NearRelation.containedBy]: 'Containing the annotation',
-  [NearRelation.sameDocument]: 'Anywhere in the document'
-}
+/** Where a neighbor lies (#333), one choice per relation and side, as the proximity form offers them. */
+export const PLACEMENTS: { key: string, label: string, relation: NearRelation, direction: NearDirection, phrase: string }[] = [
+  { key: 'near', label: 'on either side', relation: NearRelation.within, direction: NearDirection.either, phrase: '' },
+  { key: 'before', label: 'before it', relation: NearRelation.within, direction: NearDirection.before, phrase: 'before' },
+  { key: 'after', label: 'after it', relation: NearRelation.within, direction: NearDirection.after, phrase: 'after' },
+  { key: 'overlaps', label: 'overlapping it', relation: NearRelation.overlaps, direction: NearDirection.either, phrase: 'overlapping' },
+  { key: 'inside', label: 'inside it', relation: NearRelation.contains, direction: NearDirection.either, phrase: 'inside' },
+  { key: 'containing', label: 'containing it', relation: NearRelation.containedBy, direction: NearDirection.either, phrase: 'containing' },
+  { key: 'document', label: 'anywhere in the document', relation: NearRelation.sameDocument, direction: NearDirection.either, phrase: 'in the same document' }
+]
 
-export const DIRECTION_LABELS: Record<NearDirection, string> = {
-  [NearDirection.either]: 'Either side',
-  [NearDirection.before]: 'Before',
-  [NearDirection.after]: 'After'
+/** The form's choice of a proximity filter's relation and side. */
+export function placementOf (near: NearFilter): string {
+  const relation = near.relation ?? NearRelation.within
+  const direction = relation === NearRelation.within ? (near.direction ?? NearDirection.either) : NearDirection.either
+  return PLACEMENTS.find(p => p.relation === relation && p.direction === direction)?.key ?? 'near'
 }
 
 export const UNIT_LABELS: Record<DistanceUnit, string> = {
@@ -139,10 +142,31 @@ export function defaultNear (tagIds: string[]): NearFilter {
 
 /** How the neighbor must lie, e.g. "within 50 words after" or "overlapping". */
 export function nearRelationText (near: NearFilter): string {
-  const relation = near.relation ?? NearRelation.within
-  if (relation !== NearRelation.within) return RELATION_LABELS[relation].toLowerCase()
-  const direction = near.direction && near.direction !== NearDirection.either ? ` ${near.direction}` : ''
-  return `within ${near.distance ?? 50} ${UNIT_LABELS[near.unit ?? DistanceUnit.words]}${direction}`
+  const placement = PLACEMENTS.find(p => p.key === placementOf(near))!
+  if (placement.relation !== NearRelation.within) return placement.phrase
+  const side = placement.phrase ? ` ${placement.phrase}` : ''
+  return `within ${near.distance ?? 50} ${UNIT_LABELS[near.unit ?? DistanceUnit.words]}${side}`
+}
+
+const NEIGHBOR_PLACES: Record<string, string> = {
+  overlaps: 'that overlaps it',
+  inside: 'inside it',
+  containing: 'that contains it',
+  document: 'anywhere in the same document'
+}
+
+/** The proximity filter as one sentence, so "Without" reads as what it is: a negation (#333). */
+export function nearSummary (near: NearFilter | null | undefined, primaryTags: string[], neighborTags: string[]): string {
+  if (!near) return 'Choose neighbor tags to keep only annotations with, or without, such an annotation nearby in the same document.'
+  const listed = primaryTags.length ? `${primaryTags.join(' or ')} annotations` : 'annotations'
+  const neighbor = neighborTags.length ? `annotation tagged ${neighborTags.join(' or ')}` : 'annotation of any tag'
+  const key = placementOf(near)
+  const distance = `${near.distance ?? 50} ${UNIT_LABELS[near.unit ?? DistanceUnit.words]}`
+  const where = NEIGHBOR_PLACES[key] ?? (key === 'before'
+    ? `ending at most ${distance} before it`
+    : key === 'after' ? `starting at most ${distance} after it` : `at most ${distance} away`)
+  return `Shows ${listed} that have ${near.absent ? 'no' : 'an'} ${neighbor} ${where}. ` +
+    'Annotations whose position is not known yet are left out.'
 }
 
 /** What the proximity filter could not compare (#333), e.g. "3 annotations without current positions
