@@ -58,7 +58,6 @@ describe('SelectionBar', () => {
       failed: [{ id: 'h', message: 'x', uncertain: false, version: 0 }, { id: 'i', message: 'y', uncertain: true, version: 2 }],
       conflicts: [],
       missing: ['j'],
-      unsynced: [],
       notSent: 0,
       error: null
     }
@@ -73,7 +72,7 @@ describe('SelectionBar', () => {
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })
 
-  it('offers to update search when only search references were not updated', async () => {
+  it('offers no retry when every annotation was saved', () => {
     const report: ReviewReport = {
       action: ReviewAction.delete,
       tagId: null,
@@ -82,15 +81,12 @@ describe('SelectionBar', () => {
       failed: [],
       conflicts: [],
       missing: [],
-      unsynced: ['c1:t', 'c2:t'],
       notSent: 0,
       error: null
     }
     const wrapper = mountBar({ report })
-    expect(byTestId(wrapper, 'review-report').text()).toContain('Search by tag does not reflect some changes yet (2 passages).')
-    expect(byTestId(wrapper, 'review-retry').text()).toContain('Update search')
-    await byTestId(wrapper, 'review-retry').trigger('click')
-    expect(wrapper.emitted('retry')).toHaveLength(1)
+    expect(byTestId(wrapper, 'review-report').find('span').text()).toBe('Deleted 2 of 2 annotations.')
+    expect(wrapper.find('[data-testid="review-retry"]').exists()).toBe(false)
   })
 
   it('reports annotations changed by someone else apart from failures and offers to show them', async () => {
@@ -102,7 +98,6 @@ describe('SelectionBar', () => {
       failed: [],
       conflicts: [{ id: 'd', version: 3 }, { id: 'e', version: 1 }],
       missing: [],
-      unsynced: [],
       notSent: 0,
       error: null
     }
@@ -143,7 +138,6 @@ describe('SelectionBar', () => {
       failed: [],
       conflicts: [{ id: 'b', version: 4 }],
       missing: ['c'],
-      unsynced: [],
       notSent: 0,
       error: null
     }
@@ -160,7 +154,6 @@ describe('SelectionBar', () => {
       failed: [],
       conflicts: [],
       missing: [],
-      unsynced: [],
       notSent: 0,
       error: null
     }

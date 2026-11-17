@@ -13,7 +13,6 @@ from uuid import UUID, uuid4
 import pytest
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
 
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.spans import (
@@ -38,7 +37,6 @@ def store(seeded_store, collection_names, documents) -> AnnotationStore:
     spans = SpanRepository(seeded_store, collection_names, attributes=True, sort_keys=True)
     return AnnotationStore(collections=UserCollectionRepository(seeded_store, collection_names, spans),
                            tags=TagRepository(seeded_store, collection_names, spans), spans=spans,
-                           chunk_tags=ChunkTagRepository(seeded_store, collection_names, spans),
                            documents=documents, enrichment=Enrichment(derived=True, sort_keys=True))
 
 
@@ -182,7 +180,7 @@ async def test_add_schema_adds_the_sort_keys_and_the_backfill_fills_them_without
     await _create_pre_666_collection(seeded_store, names, collection_names.chunks_collection_name)
     try:
         spans = SpanRepository(seeded_store, names)
-        store = AnnotationStore(collections=None, tags=None, spans=spans, chunk_tags=None, documents=documents)
+        store = AnnotationStore(collections=None, tags=None, spans=spans, documents=documents)
         collection = UUID(ids.col["chronicles"])
         enrichment = await detect_enrichment(seeded_store, SimpleNamespace(collectionNames=names), None)
         assert enrichment == Enrichment(derived=True, sort_keys=False)

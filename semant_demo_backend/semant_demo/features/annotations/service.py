@@ -11,11 +11,8 @@ ids of other collections are "not found". Each use of a tenant is recorded for t
 deactivation (``store.activity``). ``user`` is the authenticated user or ``None``; ids
 may be strings or UUIDs, malformed ids are "not found".
 
-Span writes are followed by the re-derivation of the chunk tag references that
-tag-filtered search uses (ADR 0004, ``adapters/weaviate/chunk_tags.py``) for every
-(chunk, tag) pair they touched, also when the span write raised (a timed-out write may
-have landed). That second write is best effort (ADR 0002): its failure keeps the span
-write and is reported as step ``update_chunk_tags``.
+Spans are the only stored form of annotations: chunks hold no tag references derived
+from them (ADR 0013).
 
 Span creates and boundary (offset) edits also store the span's derived text, context
 and positions in the same write and then its contextual vector (#328,
@@ -56,16 +53,15 @@ from semant_demo.features.annotations.schemas import (
     ProximityCoverage,
     MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationFilters, AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
-    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest,
+    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort,
     MAX_TOP_K, AnnotationRanking, AnnotationResultSet, HYBRID_ALPHA, ResultKind, RetrievalMode, SCOPE_FIELDS, VectorCoverage, VectorRanking, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
 )
 from semant_demo.features.documents.criteria import Condition, document_conditions
 from semant_demo.features.documents.schemas import Document
 from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository, pair_of
+from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import (
@@ -96,7 +92,6 @@ class AnnotationStore:
     collections: UserCollectionRepository
     tags: TagRepository
     spans: SpanRepository
-    chunk_tags: ChunkTagRepository
     documents: DocumentRepository
     activity: TenantActivity | NoTenantActivity = field(default_factory=NoTenantActivity)
     """Records each use of a collection's annotation tenant (idle deactivation)."""
@@ -241,7 +236,7 @@ class TagReferences(Protocol):
 async def delete_tag(store: AnnotationStore, user: Principal | None, tag_id: Id,
                      references: TagReferences) -> None:
     """
-    Deletes the tag with its spans and chunk tag references, then removes its id from the
+    Deletes the tag with its spans, then removes its id from the
     attributes that list it (#508; ``all_tags`` is never changed, so an attribute that loses
     its last tag applies to no tag). A failed step raises ``IncompleteWriteError`` naming it
     and the completed steps. Deleting again continues a failed cascade; the removal goes last
@@ -308,24 +303,19 @@ async def save_span(store: AnnotationStore, collection_id: UUID, document_id: UU
                     actor: Actor | None = None) -> TagSpanWriteResult:
     """
     Stores a span in the collection's tenant (``document_id``: its chunk's document) with
-    its derived fields and the provenance of ``actor``, re-derives its chunk tag, then
-    stores its contextual vector. No access or offset check: the caller has checked
-    annotation-edit access to the collection, the tag and the chunk scope (``create_span``,
-    or the AI suggestion run for validated provider proposals). ``source`` keeps the chunks
+    its derived fields and the provenance of ``actor``, then stores its contextual vector.
+    No access or offset check: the caller has checked annotation-edit access to the
+    collection, the tag and the chunk scope (``create_span``, or the AI suggestion run for
+    validated provider proposals). ``source`` keeps the chunks
     read across the saves of one run (source text is immutable).
     """
-    pairs = {ChunkTag.of(span.chunkId, span.tagId)}
     refresh = None
     if store.enrichment.derived:
         refresh = await derive_refresh(store, span.chunkId, span.start, span.end, 1, source)
-    try:
-        span_id = await store.spans.insert(collection_id, span, document_id,
-                                           refresh.properties(reset_vector=True) if refresh else None,
-                                           _created(store, actor))
-    except Exception:
-        await store.chunk_tags.sync(collection_id, pairs)
-        raise
-    failed = await store.chunk_tags.sync(collection_id, pairs)
+    span_id = await store.spans.insert(collection_id, span, document_id,
+                                       refresh.properties(reset_vector=True) if refresh else None,
+                                       _created(store, actor))
+    failed: list[StepFailure] = []
     if refresh is not None:
         failed += refresh.failures + await refresh_vector(store, collection_id, span_id, refresh)
     return _write_result(TagSpan(id=str(span_id), **span.model_dump()), failed)
@@ -336,7 +326,7 @@ async def create_span(store: AnnotationStore, user: Principal | None, span: Post
     Creates a span with the tag's collection as scope; the chunk must be in that
     collection and the offsets must describe text of its document (cross-chunk spans
     continue into the following consecutive chunks; see ``offsets.py``).
-    ``outcome`` is ``partial`` when the span was saved but its chunk tag was not.
+    ``outcome`` is ``partial`` when the span was saved but its derived data was not.
     """
     collection_id = await access.collection_of_tags(store.tags, [span.tagId])
     grant = await access.require_annotation_edit(store.collections, user, collection_id)
@@ -378,16 +368,6 @@ async def _check_patched_ranges(store: AnnotationStore, spans: dict[UUID, TagSpa
             current = await source.chunk(access.parse_id(span.chunkId, "Chunk"))
             if current is None or current.document_id != anchor.document_id:
                 raise InvalidRequestError("A span can only move to another chunk of its document")
-
-
-def _pairs_touched_by(spans: dict[UUID, TagSpan], patches: dict[UUID, PatchSpan]) -> set[ChunkTag]:
-    """The spans' current (chunk, tag) pairs and those they have after their patch: on a tag
-    change the new tag's, on a move the new chunk's."""
-    pairs = {pair_of(span) for span in spans.values()}
-    for sid, span in spans.items():
-        patch = patches[sid]
-        pairs.add(ChunkTag.of(patch.chunkId or span.chunkId, patch.tagId or span.tagId))
-    return pairs
 
 
 class _Updated(NamedTuple):
@@ -470,27 +450,16 @@ async def update_span(store: AnnotationStore, user: Principal | None, collection
     """
     Updates offsets, type (approve: ``auto`` -> ``pos``, reject: -> ``neg``) or tag of a
     span of the collection, or moves it to another chunk of its document in the collection
-    (``chunkId`` with the offsets counted from there; the span keeps its id and provenance),
-    then re-derives the span's (chunk, tag) pair and, on a tag change or move, the new pair. This runs for every patch, also offset-only, so saving a span
-    again retries a chunk tag update that failed before. Changed offsets are validated
-    like on creation; offsets that are not sent are not re-checked (approving an old
+    (``chunkId`` with the offsets counted from there; the span keeps its id and provenance).
+    Saving the same offsets again retries derived data that is not current. Changed offsets
+    are validated like on creation; offsets that are not sent are not re-checked (approving an old
     span works whatever its offsets). ``expected_version``: the span's ``editVersion`` as
     the caller knows it; ``EditConflictError`` (nothing written) when it was written since.
     """
     cid, spans = await _authorize_span_patch(store, user, collection_id, [span_id], patch)
     await _check_patched_ranges(store, spans, patch)
     [sid] = spans
-    pairs = _pairs_touched_by(spans, {sid: patch})
-    try:
-        span, refresh, anchor_failed, _ = await _update_and_read(store, cid, sid, patch, Actor.of(user),
-                                                                 expected_version)
-    except EditConflictError:
-        raise
-    except Exception:
-        # The update may have been partly applied (or applied despite a timeout).
-        await store.chunk_tags.sync(cid, pairs)
-        raise
-    failed = anchor_failed + await store.chunk_tags.sync(cid, pairs)
+    span, refresh, failed, _ = await _update_and_read(store, cid, sid, patch, Actor.of(user), expected_version)
     if refresh is not None:
         failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
     return _write_result(span, failed)
@@ -512,9 +481,8 @@ async def _replace_anchor_reference(store: AnnotationStore, cid: UUID, span_id: 
 
 
 SPAN_UPDATE_CONCURRENCY = 8
-"""At most this many span updates of one request run at a time (the same bound as the
-chunk tag sync, ``chunk_tags._SYNC_CONCURRENCY``); clients send large selections in
-batches (``AiAssistPanel``)."""
+"""At most this many span updates of one request run at a time; clients send large
+selections in batches (``AiAssistPanel``)."""
 
 
 async def bulk_update_spans(store: AnnotationStore, user: Principal | None, collection_id: Id, span_ids: list[Id],
@@ -528,9 +496,8 @@ async def bulk_update_spans(store: AnnotationStore, user: Principal | None, coll
     whole batch is validated before any write; otherwise nothing is updated. Updates are
     best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not
     be updated (``update_span``), those written by someone else since their version in
-    ``expected_versions`` (``edit_conflict``, their current state in ``conflicts``) and the
-    chunk tag updates that failed (``update_chunk_tags``). Chunk tags are re-derived once
-    per touched pair after all span updates, also for spans whose update failed.
+    ``expected_versions`` (``edit_conflict``, their current state in ``conflicts``) and
+    failed best-effort steps of updated spans (derived data, vectors, a move's reference).
     """
     if patch.chunkId is not None:
         raise InvalidRequestError("Spans are moved to another chunk one at a time")
@@ -550,8 +517,7 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
                         patches: dict[UUID, PatchSpan], actor: Actor, expected: dict[UUID, int] | None = None
                         ) -> tuple[list[TagSpan], list[StepFailure], list[TagSpan], set[UUID]]:
     """Applies each span's checked patch concurrently (each checked against its version in
-    ``expected``), then re-derives every touched chunk tag pair once (also of spans whose
-    update failed) and stores new vectors; returns the updated spans in request order, the
+    ``expected``), then stores new vectors; returns the updated spans in request order, the
     failures, the current state of the conflicting spans and the ids this call wrote (not
     those it found already as asked)."""
     updated: list[TagSpan] = []
@@ -585,7 +551,6 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
                 written.add(sid)
             if res.refresh is not None:
                 refreshes[sid] = res.refresh
-    failed += await store.chunk_tags.sync(cid, _pairs_touched_by(spans, patches))
     for sid, refresh in refreshes.items():
         failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
     return updated, failed, conflicts, written
@@ -738,26 +703,15 @@ async def _delete_checked(store: AnnotationStore, cid: UUID, span_id: UUID, expe
 async def delete_span(store: AnnotationStore, user: Principal | None, collection_id: Id, span_id: Id,
                       expected_version: int | None = None) -> WriteResult:
     """
-    Deletes a span of the collection, then removes chunk tag references no other span
-    backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could
-    not be updated. ``expected_version``: the span's ``editVersion`` as the caller knows
-    it; ``EditConflictError`` (nothing deleted) when it was written since.
+    Deletes a span of the collection. ``expected_version``: the span's ``editVersion`` as
+    the caller knows it; ``EditConflictError`` (nothing deleted) when it was written since.
     """
     grant = await access.require_annotation_edit(store.collections, user, collection_id)
     spans = await access.require_spans_in_collection(store.spans, [span_id], grant.collection_id)
     cid = await use_tenant(store, grant)
-    [(sid, span)] = spans.items()
-    pairs = {pair_of(span)}
-    try:
-        await _delete_checked(store, cid, sid, expected_version)
-    except EditConflictError:
-        raise
-    except Exception:
-        # A timed-out delete may still have been applied.
-        await store.chunk_tags.sync(cid, pairs)
-        raise
-    failed = await store.chunk_tags.sync(cid, pairs)
-    return WriteResult(outcome=outcome_of(1, len(failed)), succeeded=[str(sid)], failed=failed)
+    [sid] = spans
+    await _delete_checked(store, cid, sid, expected_version)
+    return WriteResult(outcome=outcome_of(1, 0), succeeded=[str(sid)])
 
 
 async def _delete_in_document(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -774,17 +728,16 @@ async def _delete_in_document(store: AnnotationStore, user: Principal | None, co
     return WriteResult(outcome=outcome_of(len(deleted), len(failed)), succeeded=deleted, failed=failed)
 
 
-async def _delete_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, set[ChunkTag]],
+async def _delete_spans(store: AnnotationStore, cid: UUID, span_ids: list[UUID],
                         expected: dict[UUID, int] | None = None
                         ) -> tuple[list[str], list[StepFailure], dict[UUID, int]]:
     """Deletes the listed spans one by one (each checked against its version in
-    ``expected``), keeping going after a failure, then re-derives their chunk tag pairs,
-    also of spans whose deletion failed (it may have been applied); returns the deleted
-    ids, the failures and the current versions of the conflicting spans."""
+    ``expected``), keeping going after a failure; returns the deleted ids, the failures
+    and the current versions of the conflicting spans."""
     deleted: list[str] = []
     failed: list[StepFailure] = []
     conflicts: dict[UUID, int] = {}
-    for sid in spans:
+    for sid in span_ids:
         try:
             await _delete_checked(store, cid, sid, (expected or {}).get(sid))
             deleted.append(str(sid))
@@ -795,7 +748,6 @@ async def _delete_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, set
             failed.append(_missing_failure(sid))
         except Exception as e:
             failed.append(step_failure("delete_span", sid, e))
-    failed += await store.chunk_tags.sync(cid, set().union(*spans.values()) if spans else set())
     return deleted, failed, conflicts
 
 
@@ -805,7 +757,7 @@ async def delete_approved_spans_in_document(store: AnnotationStore, user: Princi
     Deletes the approved (``pos``) spans of the tags on the document's chunks within the
     collection. Rejections (``neg``) and unresolved suggestions (``auto``) are kept.
     Best effort: ``succeeded`` lists the deleted spans; ``failed`` the spans that could
-    not be deleted (``delete_span``) and failed chunk tag updates (``update_chunk_tags``).
+    not be deleted (``delete_span``).
     The spans are listed before deleting, so failing deletions cannot loop.
     """
     return await _delete_in_document(store, user, collection_id, document_id, tag_ids, SpanType.pos)
@@ -1520,7 +1472,7 @@ async def review_annotations(store: AnnotationStore, user: Principal | None, col
         succeeded, failed = [], []
     elif request.action == ReviewAction.delete:
         succeeded, failed, versions = await _delete_spans(
-            store, cid, {i: {pair_of(s)} for i, s in found.items()}, expected)
+            store, cid, list(found), expected)
     else:
         patch = _REVIEW_PATCHES.get(request.action) or PatchSpan(tagId=str(request.tag_id))
         updated, failed, conflicts, written = await _update_spans(store, cid, found, dict.fromkeys(found, patch),
@@ -1597,21 +1549,3 @@ async def restore_annotations(store: AnnotationStore, user: Principal | None, co
         failed += update_failed
     return AnnotationReviewResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded,
                                   failed=failed, versions=versions)
-
-
-async def sync_annotation_chunk_tags(store: AnnotationStore, user: Principal | None, collection_id: Id,
-                                     request: ChunkTagSyncRequest) -> WriteResult:
-    """
-    Re-derives the tag-filtered search references of (chunk, tag) pairs of the
-    collection's tags from the annotations stored now: the repair of ``update_chunk_tags``
-    failures, which also works after the annotation was deleted. Idempotent. ``succeeded``
-    and ``failed`` name the pairs as ``chunk_id:tag_id``.
-    """
-    grant = await access.require_annotation_edit(store.collections, user, collection_id)
-    pairs = sorted({ChunkTag.of(p.chunk_id, p.tag_id) for p in request.pairs})
-    await access.require_tags_in_collection(store.tags, [p.tag_id for p in pairs], grant.collection_id)
-    cid = await use_tenant(store, grant)
-    failed = await store.chunk_tags.sync(cid, pairs)
-    unsynced = {f.item_id for f in failed}
-    succeeded = [p.label() for p in pairs if p.label() not in unsynced]
-    return WriteResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)

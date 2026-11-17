@@ -29,9 +29,6 @@ Name | Type
 `minDate` | Date
 `maxDate` | Date
 `language` | string
-`tagUuids` | Array&lt;string&gt;
-`positive` | boolean
-`automatic` | boolean
 `isHyde` | boolean
 `vector` | string
 
@@ -65,9 +62,6 @@ const example = {
   "minDate": null,
   "maxDate": null,
   "language": null,
-  "tagUuids": null,
-  "positive": null,
-  "automatic": null,
   "isHyde": null,
   "vector": null,
 } satisfies SearchRequest

@@ -12,7 +12,7 @@ from semant_demo.features.annotations.schemas import (
     MAX_NEAR_DISTANCE, DistanceUnit, NearDirection, NearRelation,
     MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
     AnnotationExportRequest, AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
-    AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
+    AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
@@ -98,9 +98,9 @@ async def create_tag_span(span: PostSpan,
                           store: AnnotationStore = Depends(get_annotation_store),
                           current_user: User = Depends(current_active_user)) -> TagSpanWriteResult:
     """
-    Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when
-    the span was saved but the chunk tag could not be updated. Offsets outside the text
-    of the chunk's document are rejected (400).
+    Adds new TagSpan with its derived text and vector. ``outcome`` is ``partial`` when the
+    span was saved but its derived data could not be stored. Offsets outside the text of
+    the chunk's document are rejected (400).
     """
     return await service.create_span(store, current_user, span)
 
@@ -147,10 +147,9 @@ async def update_tag_span(
     current_user: User = Depends(current_active_user),
 ):
     """
-    Update TagSpan's information (start, end, tagId, ...), then re-derive the chunk tag
-    references of its (chunk, tag) pair (and the new pair on a tag change), so saving again
-    retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated
-    but the chunk tags could not be. A span written by someone else since
+    Update TagSpan's information (start, end, tagId, ...). ``outcome`` is ``partial`` when
+    the span was updated but its derived data (or a moved span's chunk reference) could not
+    be; saving again retries. A span written by someone else since
     ``expected_version`` is not changed (409), unless it already is as the patch asks.
     """
     return await service.update_span(store, current_user, collection_id, span_id, body, expected_version)
@@ -173,8 +172,8 @@ async def bulk_update_tag_spans(
 
     All spans must belong to ``collection_id``, which the user may annotate; otherwise
     nothing is updated. Updates are best effort: ``spans`` holds the updated spans and
-    ``failed`` the spans that could not be updated (``update_span``) and the chunk tag
-    updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by
+    ``failed`` the spans that could not be updated (``update_span``) and failed best-effort
+    steps of updated spans (derived text or vector). Spans written by
     someone else since their version in ``expected_versions`` are not changed
     (``edit_conflict``; their current state in ``conflicts``).
     """
@@ -191,9 +190,8 @@ async def delete_tag_span(
     current_user: User = Depends(current_active_user),
 ) -> WriteResult:
     """
-    Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is
-    ``partial`` when the span was deleted but the chunk tag could not be updated. A span
-    written by someone else since ``expected_version`` is not deleted (409).
+    Delete a TagSpan. A span written by someone else since ``expected_version`` is not
+    deleted (409).
     """
     return await service.delete_span(store, current_user, collection_id, span_id, expected_version)
 
@@ -213,8 +211,7 @@ async def delete_spans_for_tags_in_document(
     auto suggestions are left untouched.
 
     Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could
-    not be deleted (``delete_span``) and the chunk tag updates that failed
-    (``update_chunk_tags``, item ``chunk_id:tag_id``).
+    not be deleted (``delete_span``).
     """
     result = await service.delete_approved_spans_in_document(
         store, current_user, body.collection_id, body.document_id, body.tag_ids)
@@ -429,21 +426,6 @@ async def restore_collection_annotations(
     versions.
     """
     return await service.restore_annotations(store, current_user, collection_id, body)
-
-
-@span_router.post("/api/user_collections/{collection_id}/annotations/chunk-tags/sync", response_model=WriteResult)
-async def sync_collection_annotation_chunk_tags(
-    collection_id: str,
-    body: ChunkTagSyncRequest,
-    store: AnnotationStore = Depends(get_annotation_store),
-    current_user: User = Depends(current_active_user),
-) -> WriteResult:
-    """
-    Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the
-    collection's tags from its annotations: repairs the ``update_chunk_tags`` failures of a
-    review, also after a deletion. Needs annotation-edit access.
-    """
-    return await service.sync_annotation_chunk_tags(store, current_user, collection_id, body)
 
 
 #############################

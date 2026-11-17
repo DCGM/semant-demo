@@ -58,12 +58,6 @@
     {"key": "pozar_manual", "id": "5e3a0000-0000-4000-8000-0000000ab005", "chunk": "chronicle_3", "tag": "event", "type": "pos", "start": 0, "end": 5, "quote": "Požár"},
     {"key": "praha_automatic", "id": "5e3a0000-0000-4000-8000-0000000ab006", "chunk": "letters_1", "tag": "place", "type": "auto", "start": 22, "end": 27, "quote": "Prahy", "reason": "Název města.", "confidence": 0.75}
   ],
-  "chunk_tags": [
-    {"chunk": "chronicle_1", "positiveTag": ["person"], "automaticTag": ["place"], "negativeTag": []},
-    {"chunk": "chronicle_2", "positiveTag": ["place"], "automaticTag": [], "negativeTag": ["person"]},
-    {"chunk": "chronicle_3", "positiveTag": ["event"], "automaticTag": [], "negativeTag": []},
-    {"chunk": "letters_1", "positiveTag": [], "automaticTag": ["place"], "negativeTag": []}
-  ],
   "chunk_classifications": {
     "chronicle_1": {
       "subject_domain": ["ddc_900_history_geography", "news_and_current_affairs"], "communicative_mode": ["narration"],

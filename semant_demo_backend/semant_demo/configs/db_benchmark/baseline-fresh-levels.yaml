@@ -25,7 +25,6 @@ queries:
   languages:
   - ces
   - deu
-  sample_tags: 20
   sample_user_collections: 10
 scenarios:
 - name: hybrid

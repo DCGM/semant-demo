@@ -9,6 +9,7 @@
     <p :id="helpId" class="sr-only">
       Arrow keys move between rows, Enter shows the annotation in its document, Space checks the row,
       the context menu key or Shift+F10 opens the row's actions and the filters of its values.
+      Alt+C confirms and Alt+R rejects the row, Alt+Down and Alt+Up show the next or previous one.
     </p>
     <div
       class="kwic__grid"
@@ -75,7 +76,8 @@
             @sort="sortBy(AnnotationSort.attribute, attribute.id)"
           />
         </div>
-        <div class="kwic__cell kwic__meta kwic__head" role="columnheader">{{ rankStart !== null ? 'Rank · tag · status' : 'Tag · status' }}</div>
+        <div class="kwic__cell kwic__review kwic__head" role="columnheader"><span class="kwic__review-label">Status</span></div>
+        <div class="kwic__cell kwic__meta kwic__head" role="columnheader">{{ rankStart !== null ? 'Rank · tag' : 'Tag' }}</div>
         <div
           v-for="column in DOCUMENT_COLUMNS"
           :key="column.id"
@@ -252,19 +254,65 @@
             <span class="sr-only">{{ cannotAssign(attribute, row) }}</span>
           </span>
         </div>
+        <!-- The status as a segmented switch ✓|⊘ (#690), the same shape in every row: the state in
+             effect is the tinted half, a proposal (to be decided) has neither, both halves orange.
+             On a desktop the halves are its review buttons; hover or keyboard focus only darkens the
+             other half, so nothing appears or moves. While the review is saved a spinner covers it.
+             A click there never opens or checks the row, nor moves focus. On a phone it only shows. -->
+        <div
+          class="kwic__cell kwic__review"
+          :class="{ 'kwic__review--saving': saving.has(row.id) }"
+          role="gridcell"
+          :aria-busy="saving.has(row.id) ? 'true' : undefined"
+          data-testid="kwic-review"
+          @click.stop
+        >
+          <span class="sr-only" data-testid="kwic-status">{{ statusLabel(row.type) }}</span>
+          <span
+            class="kwic__switch"
+            :class="`kwic__switch--${row.type}`"
+            :role="phone ? undefined : 'group'"
+            :aria-label="phone ? undefined : `Review ${rowLabel(row)}`"
+            :aria-hidden="phone ? 'true' : undefined"
+            :title="phone ? statusLabel(row.type) : undefined"
+          >
+            <template v-if="!phone">
+              <q-btn
+                v-for="decision in DECISIONS"
+                :key="decision.action"
+                flat
+                dense
+                tabindex="-1"
+                :icon="decision.icon"
+                class="kwic__half"
+                :class="[`kwic__half--${decision.action}`, { 'kwic__half--pressed': row.type === decision.state }]"
+                :aria-pressed="row.type === decision.state ? 'true' : 'false'"
+                :aria-label="row.type === decision.state ? decision.done : decision.verb"
+                :aria-keyshortcuts="decision.keys"
+                :data-testid="`kwic-${decision.action}`"
+                @mousedown.prevent
+                @click.stop="decideRow(row, decision.action)"
+              >
+                <q-tooltip :delay="400">{{ row.type === decision.state ? decision.done : decision.verb }} ({{ decision.keys }})</q-tooltip>
+              </q-btn>
+            </template>
+            <template v-else>
+              <span
+                v-for="decision in DECISIONS"
+                :key="decision.action"
+                class="kwic__half"
+                :class="[`kwic__half--${decision.action}`, { 'kwic__half--pressed': row.type === decision.state }]"
+              ><q-icon :name="decision.icon" /></span>
+            </template>
+          </span>
+          <q-spinner v-if="saving.has(row.id)" class="kwic__status-spinner" size="1.1rem" aria-label="Saving" />
+        </div>
         <div class="kwic__cell kwic__meta" role="gridcell">
           <span v-if="rankStart !== null" class="kwic__rank" data-testid="kwic-rank">#{{ rankStart + index }}</span>
           <span class="kwic__tag" :title="tagName(row)">
             <span class="kwic__tag-dot" :style="{ backgroundColor: tagColor(row) }" aria-hidden="true" />
             {{ tagName(row) }}
           </span>
-          <!-- While its review is saved, a spinner covers the status, which keeps its width. -->
-          <span
-            class="kwic__status"
-            :class="[`kwic__status--${row.type}`, { 'kwic__status--saving': saving.has(row.id) }]"
-            :aria-busy="saving.has(row.id) ? 'true' : undefined"
-            data-testid="kwic-status"
-          >{{ statusLabel(row.type) }}<q-spinner v-if="saving.has(row.id)" class="kwic__status-spinner" size="0.9em" aria-label="Saving" /></span>
           <!-- Reviewed here and out of the filters now: dimmed until the query is read again (#690);
                the summary line counts these rows. -->
           <span v-if="unmatched.has(row.id)" class="sr-only">No longer matches the filters</span>
@@ -300,11 +348,14 @@
  * annotation or its context (#663 scopes; left and right context are one field), the source or
  * the publication years. */
 export type FilterField = 'annotation' | 'context' | 'source' | 'year'
+
+/** A review decision made in a row (#690): the two states it can be put in. */
+export type RowDecision = 'approve' | 'reject'
 </script>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { QBtn, QCheckbox, QIcon, QItem, QItemLabel, QItemSection, QList, QMenu, QSeparator, QSpinner, TouchHold as vTouchHold, useQuasar } from 'quasar'
+import { QBtn, QCheckbox, QIcon, QItem, QItemLabel, QItemSection, QList, QMenu, QSeparator, QSpinner, QTooltip, TouchHold as vTouchHold, useQuasar } from 'quasar'
 import {
   AnnotationSort, Cardinality, RetrievalMode, SpanType, TextScope, TextStatus, type AnnotationListRow, type Attribute, type Tag
 } from 'src/generated/api'
@@ -376,7 +427,19 @@ const emit = defineEmits<{
   filter: [field: FilterField]
   /** Change the query by a filter of a row's value or of the words selected in its text (its menu). */
   refine: [change: Partial<ConcordanceFilters>]
+  /** Confirm or reject this row's annotation (its review buttons, Alt+C / Alt+R on the focused row,
+   * #690); `done` says whether it is now in that state. */
+  review: [row: AnnotationListRow, action: RowDecision, done: (ok: boolean) => void]
+  /** Open the first row of the next page or the last one of the previous page (Alt+↓ / Alt+↑ at
+   * the page's end); `done` gets the row opened, or null. */
+  step: [direction: 1 | -1, done: (row: AnnotationListRow | null) => void]
 }>()
+
+// Inline review (#690 phase B): the two states a row can be put in, as its buttons and keys.
+const DECISIONS: { action: RowDecision, state: SpanType, icon: string, verb: string, done: string, keys: string }[] = [
+  { action: 'approve', state: SpanType.pos, icon: 'check', verb: 'Confirm', done: 'Confirmed', keys: 'Alt+C' },
+  { action: 'reject', state: SpanType.neg, icon: 'block', verb: 'Reject', done: 'Rejected', keys: 'Alt+R' }
+]
 
 // The column headers (#665); text and context sort in Czech dictionary order by their words (#666).
 const TEXT_COLUMNS: { id: string, label: string, field: FilterField, sort: AnnotationSort, hint: string, class: string }[] = [
@@ -525,9 +588,20 @@ function setRowEl (id: string, el: HTMLElement | null) {
   else rowEls.delete(id)
 }
 
+/** The id of the row that has keyboard focus in this list, if one has (#690 review): the target
+ * of the grid's keys, which need not be the row open in the sidebar. */
+function keyboardRowId (): string | null {
+  const el = document.activeElement as HTMLElement | null
+  if (el?.getAttribute('role') !== 'row' || !rowEls.has(el.dataset.annotationId ?? '')) return null
+  return el.dataset.annotationId ?? null
+}
+
+// Rows read again (a review, a new page): the row in the tab order stays the one with keyboard
+// focus, else the open one.
 watch(() => props.rows, (rows) => {
-  const focused = rows.findIndex(r => r.id === props.focusedId)
-  activeIndex.value = focused >= 0 ? focused : Math.min(activeIndex.value, Math.max(0, rows.length - 1))
+  const id = keyboardRowId() ?? props.focusedId
+  const kept = rows.findIndex(r => r.id === id)
+  activeIndex.value = kept >= 0 ? kept : Math.min(activeIndex.value, Math.max(0, rows.length - 1))
 })
 
 function focusRow (index: number) {
@@ -542,10 +616,68 @@ function focusRow (index: number) {
   })
 }
 
+/** A write is being saved, or a menu or dialog is open: no review decision is taken. */
+function decisionsBlocked (): boolean {
+  return props.saving.size > 0 || !!document.querySelector('.q-menu, .q-dialog')
+}
+
+/** A button's decision needs no follow-up: focus is not moved by it. */
+function ignoreDone (): void { /* nothing to do */ }
+
+/** A row's review button: acts on that row only, at the version it shows. Focus stays where it is
+ * (the press does not take it) and a text selection is left alone: the click of a drag that
+ * selects text goes to the row, never to the button, which needs both press and release. */
+function decideRow (row: AnnotationListRow, action: RowDecision) {
+  if (decisionsBlocked()) return
+  emit('review', row, action, ignoreDone)
+}
+
+/**
+ * Review keys of the focused row (#690): Alt+C / Alt+R confirm / reject it and, once it is in
+ * that state, move focus to the next row; Alt+↓ / Alt+↑ move focus to the next / previous row and
+ * open it in the sidebar, across the page's end. Matched by `event.code` (macOS Option+C types "ç").
+ * Returns whether the key was one of them.
+ */
+function onReviewKey (event: KeyboardEvent, row: AnnotationListRow, index: number): boolean {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false
+  const decision = DECISIONS.find(d => d.keys === `Alt+${event.code.replace(/^Key/, '')}`)
+  const direction = event.code === 'ArrowDown' ? 1 : event.code === 'ArrowUp' ? -1 : 0
+  if (!decision && !direction) return false
+  event.preventDefault()
+  if (decision) {
+    if (event.repeat || decisionsBlocked()) return true
+    emit('review', row, decision.action, ok => {
+      const at = props.rows.findIndex(r => r.id === row.id)
+      // Only when focus is still on the row decided.
+      if (ok && at >= 0 && activeIndex.value === at && rowEls.get(row.id) === document.activeElement) focusRow(at + 1)
+    })
+    return true
+  }
+  if (props.loading || decisionsBlocked()) return true
+  const next = props.rows[index + direction]
+  if (next) {
+    focusRow(index + direction)
+    emit('open', next)
+  } else {
+    emit('step', direction as 1 | -1, opened => { if (opened) focusRowById(opened.id) })
+  }
+  return true
+}
+
+function focusRowById (id: string) {
+  const index = props.rows.findIndex(r => r.id === id)
+  if (index >= 0) focusRow(index)
+}
+
 function onKeydown (event: KeyboardEvent) {
-  const index = activeIndex.value
+  const target = event.target as HTMLElement
+  if (target.getAttribute('role') !== 'row') return
+  // The keys act on the row that has focus, never on the one open in the sidebar (#690 review).
+  const index = props.rows.findIndex(r => r.id === target.dataset.annotationId)
   const row = props.rows[index]
-  if (!row || (event.target as HTMLElement).getAttribute('role') !== 'row') return
+  if (!row) return
+  activeIndex.value = index
+  if (onReviewKey(event, row, index)) return
   const moves: Record<string, number> = {
     ArrowDown: index + 1,
     ArrowUp: index - 1,
@@ -682,7 +814,8 @@ function onRowClick (row: AnnotationListRow, event: MouseEvent) {
 // Keyboard focus stays where it is, e.g. on the sidebar's button.
 watch(() => props.focusedId, (id) => {
   if (!id || !props.rows.some(r => r.id === id)) return
-  activeIndex.value = props.rows.findIndex(r => r.id === id)
+  // A row with keyboard focus keeps the tab order; the sidebar does not follow grid focus.
+  if (!keyboardRowId()) activeIndex.value = props.rows.findIndex(r => r.id === id)
   void nextTick(() => {
     const el = rowEls.get(id)
     if (el) scrollRowIntoView(el, prefersReducedMotion() ? 'auto' : 'smooth')
@@ -744,7 +877,7 @@ function selectedParts (range: Range, root: Node): { node: Node, text: string }[
   return parts
 }
 
-defineExpose({ reveal })
+defineExpose({ reveal, focusRowById })
 </script>
 
 <style scoped>
@@ -777,10 +910,12 @@ defineExpose({ reveal })
   --kwic-context-min: 0px;
   /* The annotation column never collapses below its header's name and controls (cut). */
   --kwic-key-min: 6.5rem;
+  /* The status column: wide enough for the two review buttons, which take the icon's place. */
+  --kwic-status: 4.25rem;
   --kwic-text:
     minmax(var(--kwic-context-min), 1fr) minmax(var(--kwic-key-min), auto) minmax(var(--kwic-context-min), 1fr);
   display: grid;
-  grid-template-columns: 2rem var(--kwic-text) fit-content(9rem) fit-content(13rem) auto;
+  grid-template-columns: 2rem var(--kwic-text) var(--kwic-status) fit-content(9rem) fit-content(13rem) auto;
   font-size: 0.9rem;
 }
 
@@ -792,7 +927,7 @@ defineExpose({ reveal })
   grid-template-columns:
     2rem var(--kwic-text)
     repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-    fit-content(9rem) fit-content(13rem) auto;
+    var(--kwic-status) fit-content(9rem) fit-content(13rem) auto;
 }
 
 .kwic__attribute {
@@ -1068,15 +1203,6 @@ defineExpose({ reveal })
   border-radius: 50%;
 }
 
-.kwic__status {
-  flex: 0 0 auto;
-  padding: 0 5px;
-  border-radius: 3px;
-  border: 1px solid currentColor;
-  font-size: 0.7rem;
-  line-height: 1.4;
-}
-
 /* The row menu fits a phone's width: long values are cut, never scrolled sideways. */
 .kwic__menu {
   min-width: min(260px, calc(100vw - 16px));
@@ -1139,28 +1265,111 @@ defineExpose({ reveal })
   }
 }
 
-.kwic__status--pos {
-  color: #1b5e20;
+/* The status cell (#690): the switch and, while saving, a spinner over it, in one place. */
+.kwic__review {
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  padding: 0 2px;
 }
 
-.kwic__status--auto {
-  color: #8a5300;
-  border-style: dashed;
+.kwic__review > * {
+  grid-area: 1 / 1;
 }
 
-.kwic__status--neg {
-  color: #8e1b1b;
+.kwic__row--head .kwic__review {
+  overflow: hidden;
+  text-align: center;
 }
 
-.kwic__status--saving {
-  position: relative;
-  color: transparent;
+/* One capsule of two halves, the same in every row. */
+.kwic__switch {
+  display: inline-flex;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+  user-select: none;
+}
+
+.kwic__half {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  font-size: 15px;
+  color: rgba(0, 0, 0, 0.26);
+}
+
+.kwic__half :deep(.q-icon) {
+  font-size: 15px;
+}
+
+.kwic__half + .kwic__half {
+  border-left: 1px solid rgba(0, 0, 0, 0.14);
+}
+
+/* The state in effect: its color on a tint of it. */
+.kwic__half--approve.kwic__half--pressed {
+  color: #2e7d32;
+  background: rgba(46, 125, 50, 0.14);
+}
+
+.kwic__half--reject.kwic__half--pressed {
+  color: #c62828;
+  background: rgba(198, 40, 40, 0.12);
+}
+
+/* A proposal: neither half chosen, both tinted orange; the rows still to decide stand out. */
+.kwic__switch--auto {
+  border-color: rgba(239, 143, 0, 0.45);
+}
+
+.kwic__switch--auto .kwic__half {
+  background: rgba(255, 152, 0, 0.16);
+  color: rgba(138, 83, 0, 0.55);
+}
+
+.kwic__switch--auto .kwic__half + .kwic__half {
+  border-left-color: rgba(239, 143, 0, 0.45);
+}
+
+/* Hover or keyboard focus: the other half reads as an action; the half pointed at takes its color. */
+@media (hover: hover) {
+  .kwic__row:hover .kwic__half {
+    color: rgba(0, 0, 0, 0.55);
+  }
+  .kwic__row .kwic__half--approve:hover {
+    color: #2e7d32;
+  }
+  .kwic__row .kwic__half--reject:hover {
+    color: #c62828;
+  }
+}
+
+.kwic__row:focus-visible .kwic__half {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.kwic__row .kwic__half--approve.kwic__half--pressed {
+  color: #2e7d32;
+}
+
+.kwic__row .kwic__half--reject.kwic__half--pressed {
+  color: #c62828;
+}
+
+/* Saving: the switch fades under a spinner, keeping its place. */
+.kwic__review--saving .kwic__switch {
+  opacity: 0.3;
 }
 
 .kwic__status-spinner {
-  position: absolute;
-  inset: 0;
-  margin: auto;
   color: var(--q-primary);
 }
 
@@ -1187,7 +1396,7 @@ defineExpose({ reveal })
    (#665 review). Several attribute columns scroll sideways instead. */
 @container (max-width: 900px) {
   .kwic__grid {
-    grid-template-columns: 2rem var(--kwic-text) fit-content(9rem) 0 0;
+    grid-template-columns: 2rem var(--kwic-text) var(--kwic-status) fit-content(9rem) 0 0;
   }
   .kwic__grid--attribute {
     --kwic-context-min: 6rem;
@@ -1195,7 +1404,7 @@ defineExpose({ reveal })
     grid-template-columns:
       2rem var(--kwic-text)
       repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-      fit-content(9rem) 0 0;
+      var(--kwic-status) fit-content(9rem) 0 0;
   }
   .kwic__source,
   .kwic__year {
@@ -1210,7 +1419,7 @@ defineExpose({ reveal })
 /* On a phone the tag name is cut first; the text keeps the rest. */
 @container (max-width: 560px) {
   .kwic__grid {
-    grid-template-columns: 2rem var(--kwic-text) fit-content(9rem) 0 0;
+    grid-template-columns: 2rem var(--kwic-text) var(--kwic-status) fit-content(9rem) 0 0;
     font-size: 0.85rem;
   }
   .kwic__grid--attribute {
@@ -1221,10 +1430,35 @@ defineExpose({ reveal })
     grid-template-columns:
       2rem var(--kwic-text)
       repeat(var(--kwic-attributes), fit-content(max(var(--kwic-attribute-min), var(--kwic-attribute-max))))
-      fit-content(9rem) 0 0;
+      var(--kwic-status) fit-content(9rem) 0 0;
   }
   .kwic__meta {
     gap: 4px;
+  }
+  /* The switch in small, the same shape: the text keeps its room (one attribute column still
+     fits). Review on a phone is in the sidebar. */
+  .kwic__grid {
+    --kwic-status: 1.375rem;
+  }
+  .kwic__review {
+    padding: 0;
+  }
+  .kwic__switch {
+    border: none;
+  }
+  .kwic__half {
+    width: 10px;
+    height: 13px;
+  }
+  .kwic__half :deep(.q-icon) {
+    font-size: 9px;
+  }
+  .kwic__review-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
 }
 </style>

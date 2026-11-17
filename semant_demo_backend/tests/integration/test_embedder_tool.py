@@ -22,7 +22,6 @@ from weaviate.classes.query import QueryReference
 
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
-from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.bootstrap import load_search_vectors
 from semant_demo.config import Config
@@ -40,7 +39,7 @@ pytestmark = pytest.mark.integration
 
 TEST_COLLECTION = "EmbedderToolTest"
 TOOL_VECTOR = "tool_vector"
-CHUNK_REFS = ["document", "userCollection", "positiveTag", "negativeTag", "automaticTag"]
+CHUNK_REFS = ["document", "userCollection"]
 
 
 @pytest.fixture
@@ -152,13 +151,13 @@ async def test_a_filled_vector_keeps_the_chunk_data_and_is_searchable(tool_store
                                   ASGITransport(app=fake_provider))
     spans = SpanRepository(tool_store, names)
     backends = SearchBackends(ChunkSearchRepository(tool_store, names), UserCollectionRepository(tool_store, names, spans),
-                              TagRepository(tool_store, names, spans), vectors)
+                              vectors)
     target = corpus.chunks["gazette_1"]
     queries = {"tool": f"{target['title']}: {target['text']}", "original": target["text"]}
     for vector, query in queries.items():
         for search_type in ("vector", "hybrid"):
             response = await service.retrieve(backends, None, SearchRequest(
-                query=query, type=search_type, vector=vector, limit=3, tag_uuids=[], positive=False, automatic=False))
+                query=query, type=search_type, vector=vector, limit=3))
             assert str(response.results[0].id) == target["id"], (vector, search_type)
             assert response.vector == vector
 

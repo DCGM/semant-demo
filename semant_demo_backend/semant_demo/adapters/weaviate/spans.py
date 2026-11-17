@@ -16,9 +16,8 @@ only for the collection-membership filters of the statistics. Offsets are stored
 Tenants are created lazily, by the first write (``ensure_tenant``); reading a collection
 without a tenant returns nothing and creates none. Tenants may be inactive
 (``maintenance.annotation_tenants``); the collection activates them on access
-(``auto_tenant_activation``). This repository only reads and writes spans; the chunk tag
-references derived from them are updated by ``chunk_tags.ChunkTagRepository`` and the
-order of these writes is decided by the Annotations service.
+(``auto_tenant_activation``). This repository only reads and writes spans; the order of
+span, derived-field and vector writes is decided by the Annotations service.
 
 Derived fields (#328, ``features/annotations/derivation.py`` and ``enrichment.py``) live
 on the same objects: ``revision`` counts boundary changes; ``text``, the contexts and
@@ -60,7 +59,6 @@ from weaviate.classes.tenants import Tenant, TenantActivityStatus
 from weaviate.exceptions import WeaviateBaseError
 
 from semant_demo.adapters.weaviate.names import CollectionNames
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import NoProgressError
@@ -373,11 +371,6 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
             Filter.not_(Filter.by_property("attributeValues").like(codec.attribute_pattern(attribute)))
             | Filter.by_property("type").not_equal(SpanType.pos.value))
     return Filter.all_of(conditions)
-
-
-def pair_of(span: TagSpan) -> ChunkTag:
-    """The (chunk, tag) pair whose chunk tag references the span backs."""
-    return ChunkTag.of(span.chunkId, span.tagId)
 
 
 class SpanRepository:
@@ -778,24 +771,18 @@ class SpanRepository:
             yield {"id": UUID(str(obj.uuid)), **obj.properties}
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],
-                               span_type: SpanType) -> dict[UUID, set[ChunkTag]]:
+                               span_type: SpanType) -> list[UUID]:
         """
         Ids of the collection's spans of one type and the given tags that start on a chunk
-        of the document, with their (chunk, tag) pairs. Listed completely before the
-        caller writes, so failed deletions cannot make the listing loop.
+        of the document. Listed completely before the caller writes, so failed deletions
+        cannot make the listing loop.
         """
         if not tag_ids:
-            return {}
+            return []
         filters = (Filter.by_property("tagId").contains_any(list(tag_ids))
                    & Filter.by_property("documentId").equal(document_id)
                    & Filter.by_property("type").equal(span_type.value))
-        return {UUID(str(o.uuid)): {pair_of(to_span(o))} for o in await self._fetch(collection_id, filters)}
-
-    async def types_on_pair(self, collection_id: UUID, pair: ChunkTag) -> set[str]:
-        """Types of the collection's spans with the pair's tag anchored on its chunk."""
-        filters = (Filter.by_property("tagId").equal(pair.tag_id)
-                   & Filter.by_property("chunkId").equal(pair.chunk_id))
-        return {o.properties.get("type") for o in await self._fetch(collection_id, filters, ["type"])}
+        return [UUID(str(o.uuid)) for o in await self._fetch(collection_id, filters, ["tagId"])]
 
     async def delete_by_tag(self, collection_id: UUID, tag_id: UUID) -> int:
         """Delete every span of the tag; returns how many were deleted.

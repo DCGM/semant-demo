@@ -109,13 +109,13 @@
     >
       <span>{{ reportText }}</span>
       <q-btn
-        v-if="report.failed.length || report.unsynced.length"
+        v-if="report.failed.length"
         dense
         flat
         no-caps
         color="primary"
         icon="refresh"
-        :label="report.failed.length ? `Retry ${report.failed.length}` : 'Update search'"
+        :label="`Retry ${report.failed.length}`"
         :disable="running"
         data-testid="review-retry"
         @click="emit('retry')"
@@ -288,8 +288,7 @@ const undoText = computed(() => {
 
 const hasProblems = computed(() => {
   const r = props.report
-  return !!r && (r.failed.length > 0 || r.conflicts.length > 0 || r.missing.length > 0 || r.unsynced.length > 0 ||
-    !!r.error)
+  return !!r && (r.failed.length > 0 || r.conflicts.length > 0 || r.missing.length > 0 || !!r.error)
 })
 
 const reportText = computed(() => {
@@ -311,7 +310,6 @@ const reportText = computed(() => {
       ? `${r.missing.length} no longer exist.`
       : `${r.missing.length} no longer exist and were removed from the selection.`)
   }
-  if (r.unsynced.length) parts.push(`Search by tag does not reflect some changes yet (${r.unsynced.length} ${r.unsynced.length === 1 ? 'passage' : 'passages'}).`)
   if (r.error) parts.push(r.error)
   if (r.saved.length && r.action !== ReviewAction.delete && (r.failed.length || r.conflicts.length)) {
     parts.push('Saved changes are kept.')

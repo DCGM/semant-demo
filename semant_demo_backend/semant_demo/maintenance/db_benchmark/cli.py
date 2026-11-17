@@ -175,7 +175,7 @@ async def cmd_run(args) -> int:
         input_summary = inputs.summary()
         input_summary["sampling_seconds"] = round(time.monotonic() - t0, 2)
         input_summary["query_set"] = hasher(sorted(str(c.id) for c in inputs.chunks)
-                                            + sorted(map(str, inputs.tags + inputs.user_collections)))
+                                            + sorted(map(str, inputs.user_collections)))
         workload = Workload(client, names, profile, inputs)
         scenarios = []
         sampler.window()
