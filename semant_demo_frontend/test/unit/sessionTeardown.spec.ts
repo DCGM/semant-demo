@@ -92,6 +92,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   globalThis.fetch = originalFetch
   localStorage.clear()
 })
@@ -582,9 +583,13 @@ describe('Chat Assistant on sign-out', () => {
     await flushPromises()
     expect(document.body.textContent).toContain('Because of')
 
+    // The dialog's leave transition (QDialog's transitionDuration) runs on a controlled clock (#736).
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     store.forgetSession()
     await flushPromises()
-    await new Promise((resolve) => setTimeout(resolve, 400)) // dialog leave transition
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+    await flushPromises()
 
     expect(errors).toEqual([])
     expect(document.body.textContent).not.toContain('Because of')
