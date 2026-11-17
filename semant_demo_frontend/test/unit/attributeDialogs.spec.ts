@@ -16,6 +16,7 @@ import { AttributeWriteError } from 'src/features/attributes/attributesStore'
 
 const mounted: VueWrapper[] = []
 afterEach(() => {
+  vi.useRealTimers()
   mounted.splice(0).forEach(w => w.unmount())
   document.body.innerHTML = ''
 })
@@ -27,8 +28,13 @@ async function open<T> (component: T, props: Record<string, unknown>, slots: Rec
   await flushPromises()
   return wrapper
 }
-// A closed dialog reports hide after its leave transition.
-const transition = () => new Promise(resolve => setTimeout(resolve, 400))
+// A closed dialog reports hide after its leave transition (QDialog's transitionDuration, 300 ms):
+// a test controls that timer instead of waiting for it (#736).
+const controlTransitions = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+const transition = async () => {
+  vi.advanceTimersByTime(400)
+  await flushPromises()
+}
 
 /** A promise settled from the test. */
 function deferred<T> () {
@@ -70,6 +76,7 @@ const valueActions = (overrides: Record<string, unknown> = {}) => ({
 describe('FormDialog', () => {
   it('cannot be closed while a save runs, and closes again afterwards', async () => {
     const wrapper = await open(FormDialog, { dirty: false, okLabel: 'Save', busy: true }, { default: () => 'form' })
+    controlTransitions()
     await button(wrapper, 'Cancel').trigger('click')
     // Escape and a click outside reach the form as a shake (no-esc-dismiss, no-backdrop-dismiss).
     wrapper.findComponent(QDialog).vm.$emit('shake')
@@ -86,6 +93,7 @@ describe('FormDialog', () => {
 
   it('waits for a write that saves on its own before it can be sent or closed', async () => {
     const wrapper = await open(FormDialog, { dirty: false, okLabel: 'Save', pending: true }, { default: () => 'form' })
+    controlTransitions()
     wrapper.findComponent(QDialog).vm.$emit('shake')
     await transition()
     expect(wrapper.emitted('hide')).toBeUndefined()

@@ -95,10 +95,10 @@ describe('concordance store', () => {
     await flush()
     const reversed = rowCalls()[rowCalls().length - 1].url.searchParams
     expect([reversed.get('sort'), reversed.get('descending')]).toEqual(['year', 'true'])
-    void store.setFilters({ mode: 'semantic' as never, text: 'hejtman' })
+    void store.setFilters({ similarity: 'hejtman' })
     await flush()
     const ranked = rowCalls()[rowCalls().length - 1].url.searchParams
-    expect([ranked.has('sort'), ranked.has('descending'), ranked.get('mode')]).toEqual([false, false, 'semantic'])
+    expect([ranked.has('sort'), ranked.has('descending'), ranked.get('mode')]).toEqual([false, false, 'hybrid'])
   })
 
   it('sends the sort attribute only with the attribute sort, and forgets it with another sort (#666)', async () => {

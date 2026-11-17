@@ -76,6 +76,12 @@ export interface AnnotationFilters {
     q?: string | null;
     /**
      * 
+     * @type {string}
+     * @memberof AnnotationFilters
+     */
+    rankingQuery?: string | null;
+    /**
+     * 
      * @type {TextScope}
      * @memberof AnnotationFilters
      */
@@ -134,6 +140,7 @@ export function AnnotationFiltersFromJSONTyped(json: any, ignoreDiscriminator: b
         'tagIds': json['tag_ids'] == null ? undefined : json['tag_ids'],
         'types': json['types'] == null ? undefined : ((json['types'] as Array<any>).map(SpanTypeFromJSON)),
         'q': json['q'] == null ? undefined : json['q'],
+        'rankingQuery': json['ranking_query'] == null ? undefined : json['ranking_query'],
         'textScope': json['text_scope'] == null ? undefined : TextScopeFromJSON(json['text_scope']),
         'documentIds': json['document_ids'] == null ? undefined : json['document_ids'],
         'documentFilters': json['document_filters'] == null ? undefined : DocumentFiltersFromJSON(json['document_filters']),
@@ -157,6 +164,7 @@ export function AnnotationFiltersToJSONTyped(value?: AnnotationFilters | null, i
         'tag_ids': value['tagIds'],
         'types': value['types'] == null ? undefined : ((value['types'] as Array<any>).map(SpanTypeToJSON)),
         'q': value['q'],
+        'ranking_query': value['rankingQuery'],
         'text_scope': TextScopeToJSON(value['textScope']),
         'document_ids': value['documentIds'],
         'document_filters': DocumentFiltersToJSON(value['documentFilters']),

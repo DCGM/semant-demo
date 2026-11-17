@@ -96,7 +96,6 @@
       :hidden-selected="store.hiddenSelected"
       :total="store.total"
       :ranked="ranked"
-      :needs-text="store.needsText"
     />
 
     <div v-if="store.error" class="collection-annotations__state text-negative" role="alert" data-testid="concordance-error">
@@ -109,9 +108,6 @@
       data-testid="concordance-empty"
     >
       {{ emptyText }}
-    </div>
-    <div v-else-if="store.needsText" class="collection-annotations__state text-grey-8" data-testid="concordance-needs-text">
-      Enter a text to find the annotations closest to it in meaning.
     </div>
     <div v-else-if="!store.page" class="collection-annotations__state text-grey-7">Loading annotations…</div>
 
@@ -127,7 +123,7 @@
       :pending="assignWaiting"
       :saving="savingIds"
       :unmatched="store.unmatched"
-      :query="ranksText(store.filters.mode) ? '' : store.filters.text"
+      :query="store.filters.text"
       :query-scope="store.filters.textScope"
       :rank-start="ranked ? store.offset + 1 : null"
       :filters="store.filters"
@@ -466,7 +462,7 @@ import {
   rangeBetween, rangeText, sameRange, stepBoundary, type BoundaryHandle, type BoundaryRange, type BoundaryUnit
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
-import { PAGE_SIZE, defaultFilters, ranksText, useConcordanceStore } from './concordanceStore'
+import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
 import { concordanceChips, proximityLabel, rankedLabel, unsortableLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'

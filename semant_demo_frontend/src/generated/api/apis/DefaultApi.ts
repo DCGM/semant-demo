@@ -512,6 +512,7 @@ export interface ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotations
     tagId?: Array<string> | null;
     type?: Array<SpanType> | null;
     q?: string | null;
+    rankingQuery?: string | null;
     textScope?: TextScope;
     documentId?: Array<string> | null;
     yearMin?: number | null;
@@ -551,6 +552,7 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     tagId?: Array<string> | null;
     type?: Array<SpanType> | null;
     q?: string | null;
+    rankingQuery?: string | null;
     textScope?: TextScope;
     documentId?: Array<string> | null;
     yearMin?: number | null;
@@ -1979,6 +1981,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -2008,6 +2011,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -2099,6 +2103,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -2116,7 +2121,7 @@ export interface DefaultApiInterface {
      * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
      * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
      * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
-     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)
+     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
      * @param {boolean} [includeSource] Mode similar: rank the source annotation too
@@ -2138,6 +2143,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -2155,7 +2161,7 @@ export interface DefaultApiInterface {
      * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
      * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
      * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
-     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)
+     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
      * @param {boolean} [includeSource] Mode similar: rank the source annotation too
@@ -5823,6 +5829,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['q'] = requestParameters['q'];
         }
 
+        if (requestParameters['rankingQuery'] != null) {
+            queryParameters['ranking_query'] = requestParameters['rankingQuery'];
+        }
+
         if (requestParameters['textScope'] != null) {
             queryParameters['text_scope'] = requestParameters['textScope'];
         }
@@ -6089,6 +6099,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['q'] != null) {
             queryParameters['q'] = requestParameters['q'];
+        }
+
+        if (requestParameters['rankingQuery'] != null) {
+            queryParameters['ranking_query'] = requestParameters['rankingQuery'];
         }
 
         if (requestParameters['textScope'] != null) {

@@ -3564,7 +3564,7 @@ No authorization required
 
 ## listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet
 
-> Array&lt;AnnotatedDocument&gt; listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(collectionId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, nearRelation, nearTagId, nearType, nearAttribute, nearDistance, nearUnit, nearDirection, nearAbsent)
+> Array&lt;AnnotatedDocument&gt; listAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotationsDocumentsGet(collectionId, tagId, type, q, rankingQuery, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, nearRelation, nearTagId, nearType, nearAttribute, nearDistance, nearUnit, nearDirection, nearAbsent)
 
 List Annotated Documents
 
@@ -3596,6 +3596,8 @@ async function example() {
     type: ...,
     // string | Words that must each occur inside a word of the fields of text_scope, ignoring case (optional)
     q: q_example,
+    // string | Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes (optional)
+    rankingQuery: rankingQuery_example,
     // TextScope | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field (optional)
     textScope: ...,
     // Array<string> | Only annotations in these documents (optional)
@@ -3653,6 +3655,7 @@ example().catch(console.error);
 | **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
 | **type** | `Array<SpanType>` | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto | [Optional] |
 | **q** | `string` | Words that must each occur inside a word of the fields of text_scope, ignoring case | [Optional] [Defaults to `undefined`] |
+| **rankingQuery** | `string` | Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes | [Optional] [Defaults to `undefined`] |
 | **textScope** | `TextScope` | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field | [Optional] [Defaults to `undefined`] [Enum: annotation, context, both] |
 | **documentId** | `Array<string>` | Only annotations in these documents | [Optional] |
 | **yearMin** | `number` | Only documents issued in or after this year | [Optional] [Defaults to `undefined`] |
@@ -3843,7 +3846,7 @@ example().catch(console.error);
 
 ## listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet
 
-> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, descending, sortAttribute, limit, offset, annotationId, tagId, type, q, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, nearRelation, nearTagId, nearType, nearAttribute, nearDistance, nearUnit, nearDirection, nearAbsent, mode, k, similarTo, includeSource)
+> AnnotationPage listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(collectionId, sort, descending, sortAttribute, limit, offset, annotationId, tagId, type, q, rankingQuery, textScope, documentId, yearMin, yearMax, titleContains, libraries, languages, attribute, unassigned, nearRelation, nearTagId, nearType, nearAttribute, nearDistance, nearUnit, nearDirection, nearAbsent, mode, k, similarTo, includeSource)
 
 List Collection Annotations
 
@@ -3887,6 +3890,8 @@ async function example() {
     type: ...,
     // string | Words that must each occur inside a word of the fields of text_scope, ignoring case (optional)
     q: q_example,
+    // string | Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes (optional)
+    rankingQuery: rankingQuery_example,
     // TextScope | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field (optional)
     textScope: ...,
     // Array<string> | Only annotations in these documents (optional)
@@ -3921,7 +3926,7 @@ async function example() {
     nearDirection: ...,
     // boolean | Proximity: only annotations without such a neighbor (optional)
     nearAbsent: true,
-    // RetrievalMode | lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first) (optional)
+    // RetrievalMode | lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first) (optional)
     mode: ...,
     // number | Ranked modes: at most this many (optional)
     k: 56,
@@ -3958,6 +3963,7 @@ example().catch(console.error);
 | **tagId** | `Array<string>` | Only annotations of these tags (repeat the parameter) | [Optional] |
 | **type** | `Array<SpanType>` | Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto | [Optional] |
 | **q** | `string` | Words that must each occur inside a word of the fields of text_scope, ignoring case | [Optional] [Defaults to `undefined`] |
+| **rankingQuery** | `string` | Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes | [Optional] [Defaults to `undefined`] |
 | **textScope** | `TextScope` | Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field | [Optional] [Defaults to `undefined`] [Enum: annotation, context, both] |
 | **documentId** | `Array<string>` | Only annotations in these documents | [Optional] |
 | **yearMin** | `number` | Only documents issued in or after this year | [Optional] [Defaults to `undefined`] |
@@ -3975,7 +3981,7 @@ example().catch(console.error);
 | **nearUnit** | `DistanceUnit` | Proximity within: words or chars | [Optional] [Defaults to `undefined`] [Enum: words, chars] |
 | **nearDirection** | `NearDirection` | Proximity within: where the neighbor lies (before or after the annotation, or either) | [Optional] [Defaults to `undefined`] [Enum: either, before, after] |
 | **nearAbsent** | `boolean` | Proximity: only annotations without such a neighbor | [Optional] [Defaults to `false`] |
-| **mode** | `RetrievalMode` | lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first) | [Optional] [Defaults to `undefined`] [Enum: lexical, semantic, hybrid, similar] |
+| **mode** | `RetrievalMode` | lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first) | [Optional] [Defaults to `undefined`] [Enum: lexical, semantic, hybrid, similar] |
 | **k** | `number` | Ranked modes: at most this many | [Optional] [Defaults to `100`] |
 | **similarTo** | `string` | Mode similar: the source annotation id | [Optional] [Defaults to `undefined`] |
 | **includeSource** | `boolean` | Mode similar: rank the source annotation too | [Optional] [Defaults to `false`] |

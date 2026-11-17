@@ -50,8 +50,6 @@
             :sort-hint="column.hint"
             :filter-label="filterLabel(column.field)"
             :filter-active="filterActive(column.field)"
-            :filter-disabled="textFilterDisabled"
-            :filter-hint="textFilterDisabled ? 'The text is ranked by meaning, not matched as words' : undefined"
             :testid="column.id"
             @sort="sortBy(column.sort)"
             @filter="emit('filter', column.field)"
@@ -453,7 +451,6 @@ const DOCUMENT_COLUMNS: { id: string, label: string, field: FilterField, sort: A
 ]
 
 const ranked = computed(() => !!props.filters && props.filters.mode !== RetrievalMode.lexical)
-const textFilterDisabled = computed(() => props.filters?.mode === RetrievalMode.semantic)
 
 function sortState (sort: AnnotationSort, attributeId: string | null = null): SortState {
   const f = props.filters
@@ -483,7 +480,7 @@ function filterActive (field: FilterField): boolean {
   if (!f) return false
   if (field === 'source') return f.documentIds.length > 0
   if (field === 'year') return f.documentFilters.yearMin != null || f.documentFilters.yearMax != null
-  if (!f.text.trim() || f.mode === RetrievalMode.semantic || f.mode === RetrievalMode.hybrid) return false
+  if (!f.text.trim()) return false
   return f.textScope === TextScope.both ||
     f.textScope === (field === 'annotation' ? TextScope.annotation : TextScope.context)
 }

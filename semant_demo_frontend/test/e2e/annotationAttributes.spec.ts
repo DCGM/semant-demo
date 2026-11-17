@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
-import { apiToken, deleteAddedAttributes, ensureLoggedIn, fixture, useViewport } from './support'
+import { apiToken, deleteAddedAttributes, ensureLoggedIn, expectMenusClosed, fixture, useViewport } from './support'
 
 // Assigning attribute values in the annotation workspace (#331, ADR 0011): an optional column
 // shows one attribute's values and assigns them on a row, the sidebar edits every attribute of
@@ -72,6 +72,8 @@ async function toggleOption (page: Page, testid: string, option: string) {
   await choose(page, testid, option)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('listbox')).toHaveCount(0)
+  // Its deferred refocus has run: focus moved next stays where it is moved (#626).
+  await expectMenusClosed(page)
 }
 
 test.afterEach(async ({ request }) => {

@@ -319,7 +319,7 @@ test('annotation workspace query (#663)', async ({ page }, testInfo) => {
   await page.getByTestId('concordance-text-scope').click()
   await page.getByRole('option', { name: 'Both' }).click()
   await expandFilters(page)
-  await page.getByLabel('Annotation or context text').fill('jan')
+  await page.getByLabel('Contains words', { exact: true }).fill('jan')
   await expandFilters(page)
   await page.getByTestId('concordance-more-filters').click()
   await page.getByLabel('Title contains').fill('kronika')
@@ -363,9 +363,7 @@ test('annotation workspace ranked (#664)', async ({ page }, testInfo) => {
 
   await page.getByRole('button', { name: 'Stop finding annotations similar to \'Jan Novák\'' }).click()
   await expandFilters(page)
-  await page.getByTestId('concordance-mode').click()
-  await page.getByRole('option', { name: 'Meaning', exact: true }).click()
-  await page.getByLabel('Meaning of').fill('hejtman v obci')
+  await page.getByLabel('Similar meaning', { exact: true }).fill('hejtman v obci')
   await expect(page.getByTestId('concordance-ranked')).toContainText('Top 100 by meaning')
   await expect(page.locator('.q-menu')).toHaveCount(0)
   await save(page, testInfo, 'annotation-workspace-meaning')
@@ -391,7 +389,8 @@ test('annotation workspace review (#459)', async ({ page, request }, testInfo) =
     await novak.getByRole('checkbox').click()
     await expect(page.getByTestId('concordance-selected')).toHaveText('3 selected')
     await page.mouse.move(0, 0) // no hover tooltip
-    await page.waitForTimeout(400) // the checkbox animation
+    // The checkbox's check animation has finished (#736).
+    await novak.getByRole('checkbox').evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished)))
     await save(page, testInfo, 'annotation-review-selection')
 
     await novak.getByRole('checkbox').click()
