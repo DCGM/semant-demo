@@ -486,10 +486,6 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   min-height: 160px;
   overflow-y: auto;
   overflow-anchor: auto;
-  /* A region of its own below the header. */
-  padding: 4px 8px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
 }
 
 /* Zero-height anchors at the passage's edges carry the fades (they take no room and
@@ -503,18 +499,18 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
 }
 
 .chunk-context__fade-anchor--top {
-  top: -4px;
+  top: 0;
 }
 
 .chunk-context__fade-anchor--bottom {
-  bottom: -4px;
+  bottom: 0;
 }
 
 .chunk-context__fade {
   position: absolute;
-  left: -8px;
-  right: -8px;
-  height: 28px;
+  left: 0;
+  right: 0;
+  height: 14px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s;
