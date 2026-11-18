@@ -116,6 +116,28 @@ test('the collection overview lists the members and counts the unresolved AI sug
   await expect(page.getByText('Share with a user')).toBeVisible()
 })
 
+// #770: the unresolved AI suggestions of each shown collection, on its tile and in the table.
+test('tiles and the table show the unresolved AI suggestions of each collection', async ({ page, request }) => {
+  const collection = fixture.collection('chronicles')
+  const counts = await request.get(`/api/user_collections/${collection.id}/annotations/counts`, {
+    headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  })
+  expect(counts.ok()).toBe(true)
+  const { suggestions } = await counts.json() as { suggestions: number }
+  expect(suggestions).toBeGreaterThan(0) // the fixture has an unresolved "place" suggestion
+
+  await ensureLoggedIn(page, 'owner')
+  await openCollections(page)
+  await page.getByRole('button', { name: 'Tiles' }).click()
+  const tile = page.locator('.project-card').filter({ hasText: collection.name })
+  await expect(tile.getByTestId('pending-suggestions')).toHaveText(new RegExp(`${suggestions} AI suggestions?$`))
+
+  await page.getByRole('button', { name: 'Table' }).click()
+  const row = page.getByRole('row').filter({ hasText: collection.name })
+  await expect(row.getByTestId('pending-suggestions')).toHaveText(String(suggestions))
+  await expect(page.getByRole('columnheader', { name: 'AI suggestions' })).not.toHaveClass(/sortable/)
+})
+
 test('collections table sorts Created and Updated chronologically', async ({ page, request }) => {
   await ensureLoggedIn(page, 'owner')
 

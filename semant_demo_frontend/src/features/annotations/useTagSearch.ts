@@ -9,7 +9,9 @@ export function useTagSearch(sortedTags: Ref<Tag[]>, searchedTagName: Ref<string
   const filteredTags = computed(() => {
     const term = searchedTagName.value.trim().toLowerCase()
     if (!term) return sortedTags.value
-    return sortedTags.value.filter((tag) => tag.name.toLowerCase().includes(term))
+    // The shorthand too, as the annotation popover's tag picker does (#770).
+    return sortedTags.value.filter((tag) =>
+      tag.name.toLowerCase().includes(term) || !!tag.shorthand?.toLowerCase().includes(term))
   })
 
   return { filteredTags }

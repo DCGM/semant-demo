@@ -106,6 +106,11 @@
         </div>
       </q-td>
     </template>
+    <template #body-cell-suggestions="tableProps">
+      <q-td :props="tableProps">
+        <PendingSuggestions :collection-id="tableProps.row.id" />
+      </q-td>
+    </template>
     <template #body-cell-description="props">
       <q-td :props="props" class="ellipsis">
         {{ props.row.description || '-' }}
@@ -175,6 +180,7 @@ import useConfirmDelete from 'src/shared/useConfirmDelete'
 import { plural } from 'src/shared/plural'
 import { annotationsOfCollections } from 'src/features/annotations/annotationCounts'
 import { useResizableColumns } from 'src/shared/useResizableColumns'
+import PendingSuggestions from './PendingSuggestions.vue'
 
 interface Props {
   collections: Collection[]
@@ -246,6 +252,13 @@ const baseColumns: QTableColumn<Collection>[] = [
     align: 'left'
   },
   {
+    // Counted only for the rows shown, so not sortable (#770).
+    name: 'suggestions',
+    label: 'AI suggestions',
+    field: () => '',
+    align: 'right'
+  },
+  {
     name: 'createdAt',
     label: 'Created',
     field: (row) => row.createdAt ? row.createdAt.toLocaleDateString() : '-',
@@ -265,7 +278,7 @@ const baseColumns: QTableColumn<Collection>[] = [
 
 const { columns, startResize, resetWidth } = useResizableColumns('collections', baseColumns)
 
-const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'updatedAt', 'color', 'createdAt'])
+const visibleColumns = ref<string[]>(['collectionName', 'description', 'owner', 'suggestions', 'updatedAt', 'color', 'createdAt'])
 
 // A selected collection the table no longer shows (filtered out by My/Shared/All or the
 // search, or deleted) leaves the selection, so the bulk actions act only on what is shown.

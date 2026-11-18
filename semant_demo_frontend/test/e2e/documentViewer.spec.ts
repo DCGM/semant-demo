@@ -170,6 +170,56 @@ test('a selection after clicking a marker opens the tag picker instead of reusin
   await expect(page.locator('.tag-card.is-active')).toHaveCount(0)
 })
 
+// #770: a marker's popover names the tag and opens left of the label, clear of the text.
+test('a gutter label opens a popover naming its tag beside the label, not over the text', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+
+  // The Jan Novák marker in the first chunk.
+  const marker = page.locator('.gutter-item').first()
+  await marker.click()
+  await expect(popover(page).getByTestId('popover-current-tag')).toContainText(fixture.tag('person').name)
+
+  // Left of the label when there is room, else above or below the span: never over its text.
+  const text = (await chunkText(page, 'chronicle_1').locator('.text-segment.is-tagged').first().boundingBox())!
+  const box = (await popover(page).boundingBox())!
+  const overlaps = box.x < text.x + text.width && text.x < box.x + box.width &&
+    box.y < text.y + text.height && text.y < box.y + box.height
+  expect(overlaps).toBe(false)
+  const viewport = page.viewportSize()!
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
+})
+
+test('the AI Tagging run options fold away on a run and the choice to fold them is remembered', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Tagging').click()
+  const options = page.locator('#ai-run-options')
+  const toggle = page.getByTestId('ai-options-toggle')
+  await expect(options).toBeVisible()
+
+  await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
+  await page.getByRole('button', { name: 'Run AI' }).click()
+  await expect(options).toBeHidden()
+  await expect(page.getByTestId('ai-options-summary')).toHaveText('1 tag · Optimized')
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible() // the run stays in reach
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  // A run folds them only until the next visit; the user's own choice is kept.
+  await page.reload()
+  await sidebarPanelButton(page, 'AI Tagging').click()
+  await expect(options).toBeVisible()
+  await toggle.click()
+  await expect(options).toBeHidden()
+  await page.reload()
+  await sidebarPanelButton(page, 'AI Tagging').click()
+  await expect(page.getByTestId('ai-options-summary')).toBeVisible()
+  await expect(options).toBeHidden()
+  await toggle.click()
+  await expect(options).toBeVisible()
+})
+
 // #479: a tag focused from the tags panel tags each new selection directly.
 test('a tag focused in the tags panel tags new selections directly until Escape', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
