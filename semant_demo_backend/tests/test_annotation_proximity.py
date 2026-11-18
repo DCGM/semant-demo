@@ -267,3 +267,19 @@ async def test_absence_compares_the_annotations_of_every_document_within_the_lim
     await service.query_annotations(store, OWNER, COLLECTION, statements(distance=5))
     with pytest.raises(InvalidRequestError, match="More than 4 annotations would"):
         await service.query_annotations(store, OWNER, COLLECTION, statements(distance=5, absent=True))
+
+
+async def test_absence_caps_only_the_candidates_of_the_documents_the_document_filters_select(store, monkeypatch):
+    rows = corpus(store)
+    # DOC_A (1912) holds 3 Statements, DOC_B (1850) one, DOC_NO_YEAR one: 5 in the tenant, 3 eligible.
+    monkeypatch.setattr(proximity, "MAX_NEAR_ANNOTATIONS", 4)
+    filters = statements(distance=5, absent=True)
+    with pytest.raises(InvalidRequestError, match="More than 4 annotations would"):
+        await service.query_annotations(store, OWNER, COLLECTION, filters)
+    page = await service.query_annotations(store, OWNER, COLLECTION, filters.model_copy(
+        update={"document_filters": DocumentFilters(year_min=1900)}))
+    assert {r.id for r in page.rows} == {rows["a_close"].id}
+    assert (page.proximity.primary, page.proximity.unknown) == (3, 1)  # DOC_A only: a_close, a_far, a_unknown
+    none = await service.query_annotations(store, OWNER, COLLECTION, filters.model_copy(
+        update={"document_filters": DocumentFilters(year_min=2000)}))
+    assert (none.total, none.proximity.primary) == (0, 0)

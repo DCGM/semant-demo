@@ -928,8 +928,20 @@ async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilt
                                   "choose fewer neighbor tags or filter by document.")
     # Absence is decided per annotation everywhere; presence needs only documents with a neighbor.
     primary_documents = (filters.document_ids or None) if near.absent else documents
-    if (primary_documents is None or primary_documents) \
-            and await store.spans.count_rows(cid, query, primary_documents) > limit:
+    if near.absent and conditions:
+        # Only the documents the document filters select: their candidates, not the tenant's, are capped.
+        annotated = await store.spans.count_by_document(cid, query, _MAX_DOCUMENTS + 1, primary_documents)
+        if len(annotated) > _MAX_DOCUMENTS:
+            raise InvalidRequestError(f"The annotations are in more than {_MAX_DOCUMENTS} documents; "
+                                      "filter by tag or text first.")
+        primary_documents = list(await store.documents.read_eligible(list(annotated), conditions=conditions)) \
+            if annotated else []
+        candidates = sum(annotated[d] for d in primary_documents)
+    elif primary_documents is None or primary_documents:
+        candidates = await store.spans.count_rows(cid, query, primary_documents)
+    else:
+        candidates = 0
+    if candidates > limit:
         where = "" if near.absent else " in documents with a neighbor"
         raise InvalidRequestError(f"More than {limit} annotations{where} would have to be compared; narrow the filters.")
     primary, neighbors = await asyncio.gather(
