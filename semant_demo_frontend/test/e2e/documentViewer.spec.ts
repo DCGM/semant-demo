@@ -611,6 +611,69 @@ test('the tags panel hides tags, steps through their annotations and is searched
   await expect(page.locator('.tag-card')).toContainText(fixture.tag('place').name)
 })
 
+test('adding an annotation reveals its hidden tag without revealing other tags', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  const person = fixture.tag('person').name
+  const personCard = page.locator('.tag-card').filter({ hasText: person })
+  const placeCard = page.locator('.tag-card').filter({ hasText: fixture.tag('place').name })
+
+  await personCard.locator('.visibility-btn').click()
+  await placeCard.locator('.visibility-btn').click()
+  await expect(annotation(page, 'novak_manual')).toHaveCount(0)
+  await expect(annotation(page, 'brno_manual')).toHaveCount(0)
+
+  const start = fixture.chunk('chronicle_2').text.indexOf('Jan Novák')
+  const end = start + 'Jan Novák'.length
+  await selectText(page, 'chronicle_2', start, 'chronicle_2', end)
+  await popover(page).locator('.tag-row').filter({ hasText: person }).click()
+
+  await expect(taggedSegment(page, 'chronicle_2', start, end)).toBeVisible()
+  await expect(annotation(page, 'novak_manual')).toBeVisible()
+  await expect(personCard).not.toHaveClass(/is-hidden/)
+  await expect(annotation(page, 'brno_manual')).toHaveCount(0)
+  await expect(placeCard).toHaveClass(/is-hidden/)
+})
+
+test('retagging to a hidden tag reveals its annotations', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  const person = fixture.tag('person').name
+  const personCard = page.locator('.tag-card').filter({ hasText: person })
+  await personCard.locator('.visibility-btn').click()
+  await expect(annotation(page, 'novak_manual')).toHaveCount(0)
+
+  const start = fixture.chunk('chronicle_2').text.indexOf('Jan Novák')
+  const end = start + 'Jan Novák'.length
+  await selectText(page, 'chronicle_2', start, 'chronicle_2', end)
+  await popover(page).locator('.tag-row').filter({ hasText: fixture.tag('place').name }).click()
+
+  const created = taggedSegment(page, 'chronicle_2', start, end)
+  await expect(created).toBeVisible()
+  await created.click()
+  await popover(page).getByRole('button', { name: 'Change tag' }).click()
+  await popover(page).locator('.tag-row').filter({ hasText: person }).click()
+
+  await expect(created).toBeVisible()
+  await expect(annotation(page, 'novak_manual')).toBeVisible()
+  await expect(personCard).not.toHaveClass(/is-hidden/)
+})
+
+test('a failed annotation does not reveal its hidden tag', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  const person = fixture.tag('person').name
+  const personCard = page.locator('.tag-card').filter({ hasText: person })
+  await personCard.locator('.visibility-btn').click()
+  await failSpanRequests(page, 'POST')
+
+  await selectText(page, 'chronicle_2', 0, 'chronicle_2', 8)
+  await popover(page).locator('.tag-row').filter({ hasText: person }).click()
+  await expect(page.locator('.q-notification').filter({ hasText: 'The tag could not be saved.' })).toBeVisible()
+  await expect(personCard).toHaveClass(/is-hidden/)
+  await expect(annotation(page, 'novak_manual')).toHaveCount(0)
+})
+
 test('AI suggestions show only with the AI Tagging panel and highlight between card and gutter', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
