@@ -51,7 +51,7 @@
                 </q-item-label>
               </q-item-section>
               <q-item-section v-if="opt.count != null" side>
-                <span class="concordance-toolbar__count" data-testid="concordance-tag-count">{{ opt.count }}</span>
+                <span class="concordance-toolbar__count" :title="countTitle" data-testid="concordance-tag-count">{{ opt.count }}</span>
               </q-item-section>
             </q-item>
           </template>
@@ -74,7 +74,7 @@
             :data-testid="`concordance-status-${option.value}`"
             @click="toggleType(option.value, !statusActive(option.value))"
           >
-            <span v-if="statusCount(option.value) != null" class="concordance-toolbar__count" :data-testid="`concordance-status-count-${option.value}`">{{ statusCount(option.value) }}</span>
+            <span v-if="statusCount(option.value) != null" class="concordance-toolbar__count" :title="countTitle" :data-testid="`concordance-status-count-${option.value}`">{{ statusCount(option.value) }}</span>
             <q-tooltip v-if="option.hint">{{ option.hint }}</q-tooltip>
           </q-btn>
         </q-btn-group>
@@ -383,7 +383,7 @@
                   <q-item-label v-if="opt.inapplicable" caption>{{ opt.inapplicable }} on annotations it no longer applies to</q-item-label>
                 </q-item-section>
                 <q-item-section v-if="opt.count != null" side>
-                  <span class="concordance-toolbar__count" data-testid="concordance-attribute-count">{{ opt.count }}</span>
+                  <span class="concordance-toolbar__count" :title="countTitle" data-testid="concordance-attribute-count">{{ opt.count }}</span>
                 </q-item-section>
               </q-item>
             </template>
@@ -493,6 +493,11 @@ function countOf (name: string, value: string): number | null {
   return facet ? facet.byValue.get(value)?.count ?? 0 : null
 }
 
+/** Shown on hover only (no text in the layout): a ranked query counts its top k, not every match. */
+const countTitle = computed(() => props.facets?.population === 'top_k' ? `In these ${props.facets.k} results` : undefined)
+/** A count inside a menu label; a ranked query says which results it counts. */
+const countText = (n: number) => props.facets?.population === 'top_k' ? `${n} in top ${props.facets.k}` : String(n)
+
 const tagFacet = computed(() => facetOf('tag'))
 const tagOptions = computed(() => props.tags.map(t => ({
   label: t.name, value: t.id, color: t.color, count: tagFacet.value ? tagFacet.value.byValue.get(t.id)?.count ?? 0 : null
@@ -563,7 +568,7 @@ function valueOptions (key: 'library' | 'language', label: (value: string) => st
   const facet = facetOf(key)
   if (facet) for (const value of counts.keys()) counts.set(value, facet.byValue.get(value)?.count ?? 0)
   return [...counts].sort(([a], [b]) => label(a).localeCompare(label(b)))
-    .map(([value, count]) => ({ value, label: `${label(value)} (${count})` }))
+    .map(([value, count]) => ({ value, label: `${label(value)} (${props.facets ? countText(count) : count})` }))
 }
 const libraryOptions = computed(() => valueOptions('library', libraryLabel))
 const languageOptions = computed(() => valueOptions('language', languageLabel))
@@ -589,8 +594,9 @@ function documentCount (d: AnnotatedDocument): number {
 
 function documentLabel (d: AnnotatedDocument): string {
   const count = documentCount(d)
-  if (!d.available) return `Unavailable source (${count})`
-  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''} (${count})`
+  const shown = props.facets ? countText(count) : count
+  if (!d.available) return `Unavailable source (${shown})`
+  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''} (${shown})`
 }
 
 const documentOptions = computed(() => props.documents.map(d => ({ label: documentLabel(d), value: d.id })))

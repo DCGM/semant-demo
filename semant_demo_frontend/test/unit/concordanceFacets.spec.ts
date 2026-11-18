@@ -100,6 +100,14 @@ describe('counts in the filter menus', () => {
     expect((tags.props('options') as { count: number }[]).map(o => o.count)).toEqual([5, 0])
   })
 
+  it('names the counted results on hover only when a ranked query counts its top k', async () => {
+    const toolbar = mountToolbar({ facets: facets() })
+    expect(toolbar.find('[data-testid="concordance-status-count-pos"]').attributes('title')).toBeUndefined()
+    await toolbar.setProps({ facets: facets({ population: 'top_k', selfExclusion: false, k: 100 } as never) })
+    expect(toolbar.find('[data-testid="concordance-status-count-pos"]').attributes('title')).toBe('In these 100 results')
+    expect(toolbar.text()).not.toContain('Counts')
+  })
+
   it('counts the attribute values, marks the ones no longer applying and counts the unassigned', () => {
     const attribute = {
       id: 'a1',
