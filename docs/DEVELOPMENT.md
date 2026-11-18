@@ -826,3 +826,4 @@ utilities.
 The reviewed audit/repair commands (documents without chunks, Kramerius
 metadata sync) and how to practise them on a copy of the snapshot are described in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md).
+<!-- Temporary #687 ci:full rerun probe; do not merge. -->
