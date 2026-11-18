@@ -523,6 +523,71 @@ describe('ChunkContextPanel', () => {
     expect(wrapper.find('[data-testid="chunk-context-reloading"]').exists()).toBe(false)
     expect(scrolled.at(-1)).toBe(wrapper.get('[aria-current="true"]').element)
   })
+
+  describe('reading on automatically', () => {
+    const observers: { callback: IntersectionObserverCallback, targets: Element[] }[] = []
+    const original = globalThis.IntersectionObserver
+
+    beforeEach(() => {
+      observers.length = 0
+      globalThis.IntersectionObserver = class {
+        entry: { callback: IntersectionObserverCallback, targets: Element[] }
+        constructor (callback: IntersectionObserverCallback) {
+          this.entry = { callback, targets: [] }
+          observers.push(this.entry)
+        }
+
+        observe (el: Element) { this.entry.targets.push(el) }
+        disconnect () { this.entry.targets = [] }
+      } as unknown as typeof IntersectionObserver
+    })
+
+    afterEach(() => { globalThis.IntersectionObserver = original })
+
+    /** Reports the edge (`before`/`after`) as scrolled near or away. */
+    function reach (edge: string, intersecting: boolean) {
+      const observer = observers.at(-1)!
+      const target = observer.targets.find(t => (t as HTMLElement).dataset.edge === edge)!
+      observer.callback([{ target, isIntersecting: intersecting } as IntersectionObserverEntry], {} as IntersectionObserver)
+    }
+
+    it('extends towards the edge the passage is scrolled to, once the target is shown', async () => {
+      const wrapper = mountPanel({ hasBefore: true, hasAfter: true })
+      await flushPromises()
+      expect(observers.at(-1)!.targets).toHaveLength(2)
+
+      reach('after', true)
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+
+      await wrapper.setProps({ extending: 'after' })
+      reach('before', true)
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toHaveLength(1) // one load at a time
+
+      await wrapper.setProps({ extending: null, hasAfter: false }) // the end was reached
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toEqual([['after'], ['before']])
+    })
+
+    it('does not extend at the document boundary, after a failure or before the target is shown', async () => {
+      const wrapper = mountPanel({ hasBefore: true, visible: false })
+      await flushPromises()
+      reach('before', true)
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toBeUndefined() // target not scrolled to yet
+
+      await wrapper.setProps({ visible: true })
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toEqual([['before']])
+
+      await wrapper.setProps({ error: 'Failed to load the document context.' })
+      await wrapper.setProps({ extending: null, hasBefore: false })
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toHaveLength(1)
+      expect(wrapper.text()).toContain('Start of document')
+    })
+  })
 })
 
 describe('SearchResultCard context action', () => {

@@ -114,6 +114,7 @@
             color="primary"
             icon="expand_less"
             label="Show earlier text"
+            data-edge="before"
             :loading="extending === 'before'"
             :disable="!!extending || loading"
             @click="emit('extend', 'before')"
@@ -156,6 +157,7 @@
             color="primary"
             icon="expand_more"
             label="Show later text"
+            data-edge="after"
             :loading="extending === 'after'"
             :disable="!!extending || loading"
             @click="emit('extend', 'after')"
@@ -183,7 +185,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { QBtn, QIcon, QSpinner } from 'quasar'
 import type { RouteLocationRaw } from 'vue-router'
 import type { Document, DocumentChunk } from 'src/generated/api'
@@ -350,6 +352,39 @@ onBeforeUnmount(() => {
   if (checkFrame) cancelAnimationFrame(checkFrame)
 })
 
+// Reading on: the adjacent text is requested when the passage is scrolled close to its
+// start or end (the buttons stay as the fallback). It waits until the target has been
+// scrolled to, so opening a short passage does not extend it at once, and stops after a failure.
+const EDGE_MARGIN = '150px 0px'
+const nearEdge = reactive({ before: false, after: false })
+let edgeObserver: IntersectionObserver | null = null
+function observeEdges () {
+  edgeObserver?.disconnect()
+  edgeObserver = null
+  nearEdge.before = false
+  nearEdge.after = false
+  const body = bodyEl.value
+  if (!body || typeof IntersectionObserver === 'undefined') return
+  const edges = body.querySelectorAll<HTMLElement>('[data-edge]')
+  if (!edges.length) return
+  edgeObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) nearEdge[(entry.target as HTMLElement).dataset.edge as ContextDirection] = entry.isIntersecting
+  }, { root: props.scrollText ? body : null, rootMargin: EDGE_MARGIN })
+  edges.forEach(el => edgeObserver?.observe(el))
+}
+watch(() => [bodyEl.value, props.scrollText, props.hasBefore, props.hasAfter, props.chunks.length > 0] as const,
+  () => { void nextTick(observeEdges) }, { flush: 'post' })
+onBeforeUnmount(() => edgeObserver?.disconnect())
+
+// Whether the requested target has been scrolled to (set at the end of the watcher below).
+const targetSettled = ref(false)
+watch(() => [nearEdge.before, nearEdge.after, props.hasBefore, props.hasAfter, props.extending, props.loading,
+  props.error, props.visible, targetSettled.value, props.chunks] as const, () => {
+  if (!targetSettled.value || !props.visible || props.loading || props.extending || props.error) return
+  if (nearEdge.after && props.hasAfter) emit('extend', 'after')
+  else if (nearEdge.before && props.hasBefore) emit('extend', 'before')
+})
+
 /** The point of a DOM selection boundary in a chunk's text, or null outside the text. */
 function textPoint (node: Node, offset: number): ContextTextPoint | null {
   const element = node instanceof Element ? node : node.parentElement
@@ -383,7 +418,7 @@ function setChunkEl (id: string, el: HTMLElement | null) {
 
 // Set by every request to show the target; cleared once it is in view.
 let scrollPending = true
-watch(() => props.focusRequest, () => { scrollPending = true })
+watch(() => props.focusRequest, () => { scrollPending = true; targetSettled.value = false })
 
 // The target last scrolled to: the next one in the same document is scrolled to from its
 // side, so the motion shows whether it is earlier or later in the text (#493).
@@ -397,7 +432,7 @@ function directionTo (documentId: string | undefined, order: number | null | und
 watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visible] as const, async ([request, loading, loaded, visible], previous) => {
   // A new request is noted here too: watchers of one change do not run in a fixed order, and
   // with the target already loaded nothing else would run this again.
-  if (previous && request !== previous[0]) scrollPending = true
+  if (previous && request !== previous[0]) { scrollPending = true; targetSettled.value = false }
   if (loading || !loaded || !visible || !scrollPending) return
   await nextTick()
   // A panel just made visible is laid out in the next frame.
@@ -422,6 +457,7 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   target.style.scrollMarginTop = `${inset}px`
   const tall = target.getBoundingClientRect().height > window.innerHeight / 2
   scrollToTarget(target, direction, tall, inset, replaced)
+  targetSettled.value = true
 }, { immediate: true })
 </script>
 
