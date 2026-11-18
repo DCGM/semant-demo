@@ -3,24 +3,48 @@
     <!-- The run options fold away while the suggestions are reviewed (#770). -->
     <div class="ai-options-header">
       <span class="ai-section-label q-mb-none">Run options</span>
-      <span v-if="optionsCollapsed" class="ai-options-summary" data-testid="ai-options-summary">
+      <span v-if="!optionsShown" class="ai-options-summary" data-testid="ai-options-summary">
         {{ optionsSummary }}
       </span>
       <q-space />
+      <!-- Without a selected tag there is nothing to run, so the options stay open. -->
       <q-btn
+        v-if="selectedAiTagIds.length"
         flat dense round size="sm"
-        :icon="optionsCollapsed ? 'expand_more' : 'expand_less'"
-        :aria-label="optionsCollapsed ? 'Show run options' : 'Hide run options'"
-        :aria-expanded="optionsCollapsed ? 'false' : 'true'"
+        :icon="optionsShown ? 'expand_less' : 'expand_more'"
+        :aria-label="optionsShown ? 'Hide run options' : 'Show run options'"
+        :aria-expanded="optionsShown ? 'true' : 'false'"
         aria-controls="ai-run-options"
         data-testid="ai-options-toggle"
         @click="toggleOptions"
       >
-        <q-tooltip>{{ optionsCollapsed ? 'Show run options' : 'Hide run options' }}</q-tooltip>
+        <q-tooltip>{{ optionsShown ? 'Hide run options' : 'Show run options' }}</q-tooltip>
       </q-btn>
     </div>
 
-    <div v-show="!optionsCollapsed" id="ai-run-options">
+    <!-- Folded: only the per-tag suggestion navigation of the tags that have suggestions. -->
+    <div v-if="!optionsShown && tagsWithSuggestions.length" class="ai-tag-list q-mb-sm" data-testid="ai-folded-nav">
+      <div v-for="tag in tagsWithSuggestions" :key="tag.id" class="ai-tag-list-row">
+        <span class="ai-tag-row ai-tag-checkbox">
+          <q-icon
+            :name="tag.pictogram || 'label'"
+            :style="{ color: tag.color || '#64748b' }"
+            size="16px"
+            class="q-mr-xs"
+          />
+          <span class="ai-tag-name">{{ tag.name }}</span>
+        </span>
+        <AiTagNav
+          :count="autoSpansByTag[tag.id].length"
+          :index="autoSpanNavIndex(tag.id)"
+          @prev="navigateAutoSpan(tag.id, 'prev')"
+          @next="navigateAutoSpan(tag.id, 'next')"
+        />
+      </div>
+    </div>
+
+    <!-- display: contents keeps the tag list a flex item of the panel, so its height cap holds. -->
+    <div v-show="optionsShown" id="ai-run-options" class="ai-run-options">
       <div class="text-caption text-grey-7 q-mb-xs">
         Pick the tags the AI should look for in this document and choose a mode.
       </div>
@@ -90,27 +114,13 @@
               </span>
             </template>
           </q-checkbox>
-          <div v-if="autoSpansByTag[tag.id]?.length" class="ai-tag-nav">
-            <q-btn
-              flat dense round size="xs"
-              icon="chevron_left"
-              :disable="autoSpansByTag[tag.id].length === 0"
-              @click="navigateAutoSpan(tag.id, 'prev')"
-            >
-              <q-tooltip>Previous suggestion</q-tooltip>
-            </q-btn>
-            <span class="ai-tag-nav-counter">
-              {{ autoSpanNavIndex(tag.id) != null ? (autoSpanNavIndex(tag.id)! + 1) : '–' }}/{{ autoSpansByTag[tag.id].length }}
-            </span>
-            <q-btn
-              flat dense round size="xs"
-              icon="chevron_right"
-              :disable="autoSpansByTag[tag.id].length === 0"
-              @click="navigateAutoSpan(tag.id, 'next')"
-            >
-              <q-tooltip>Next suggestion</q-tooltip>
-            </q-btn>
-          </div>
+          <AiTagNav
+            v-if="autoSpansByTag[tag.id]?.length"
+            :count="autoSpansByTag[tag.id].length"
+            :index="autoSpanNavIndex(tag.id)"
+            @prev="navigateAutoSpan(tag.id, 'prev')"
+            @next="navigateAutoSpan(tag.id, 'next')"
+          />
         </div>
       </div>
 
@@ -135,7 +145,9 @@
         no-caps
         @click="aiAssist.cancel"
       />
+      <!-- Acts on the selected tags, so only offered while they are in view. -->
       <q-btn
+        v-if="optionsShown"
         outline
         color="negative"
         icon="delete_sweep"
@@ -372,6 +384,7 @@ import useAiAssistance, {
   largeRunWarning, resolveAutoSpanFailure, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode
 } from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
+import AiTagNav from './AiTagNav.vue'
 import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
 import { describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
@@ -385,6 +398,7 @@ const props = defineProps<{
 }>()
 
 const OPTIONS_COLLAPSED_KEY = 'semant.aiRunOptionsCollapsed'
+const RUN_TAGS_KEY_PREFIX = 'semant.aiRunTags.'
 
 const $q = useQuasar()
 const { default: api } = useApi()
@@ -403,13 +417,20 @@ const topicerConfigOptions = computed(() => topicerModel.options.map((name) => (
   value: name
 })))
 onMounted(() => { void topicerModel.load() })
-const selectedAiTagIds = ref<string[]>([])
+// The tags chosen for runs, as remembered (#770); `selectedAiTagIds` keeps those of the
+// collection's current tags, so a deleted tag, or tags not loaded yet, never count.
+const chosenAiTagIds = ref<string[]>([])
+const selectedAiTagIds = computed(() => {
+  const known = new Set(tags.value.map((t) => t.id))
+  return chosenAiTagIds.value.filter((id) => known.has(id))
+})
 
-// Collapsed run options (#770): remembered per browser when the user toggles them; a run
-// collapses them too, without changing what is remembered.
+// Folded run options (#770): remembered per browser when the user folds or opens them; a run
+// folds them too, without changing what is remembered. They are open while no tag is selected.
 const optionsCollapsed = ref(readStored(OPTIONS_COLLAPSED_KEY) === 'true')
+const optionsShown = computed(() => !optionsCollapsed.value || !selectedAiTagIds.value.length)
 function toggleOptions () {
-  optionsCollapsed.value = !optionsCollapsed.value
+  optionsCollapsed.value = optionsShown.value
   writeStored(OPTIONS_COLLAPSED_KEY, String(optionsCollapsed.value))
 }
 const optionsSummary = computed(() => {
@@ -478,16 +499,16 @@ watch(
 
 function toggleAiTag(tagId: string, on: boolean) {
   if (on) {
-    if (!selectedAiTagIds.value.includes(tagId)) selectedAiTagIds.value.push(tagId)
+    if (!chosenAiTagIds.value.includes(tagId)) chosenAiTagIds.value = [...chosenAiTagIds.value, tagId]
   } else {
-    selectedAiTagIds.value = selectedAiTagIds.value.filter((id) => id !== tagId)
+    chosenAiTagIds.value = chosenAiTagIds.value.filter((id) => id !== tagId)
   }
 }
 function selectAllAiTags() {
-  selectedAiTagIds.value = tags.value.map((t) => t.id)
+  chosenAiTagIds.value = tags.value.map((t) => t.id)
 }
 function clearAiTags() {
-  selectedAiTagIds.value = []
+  chosenAiTagIds.value = []
 }
 
 function confirmDialog(title: string, message: string): Promise<boolean> {
@@ -579,6 +600,8 @@ const autoSpansByTag = computed<Record<string, TagSpan[]>>(() => {
   }
   return out
 })
+
+const tagsWithSuggestions = computed(() => tags.value.filter((t) => autoSpansByTag.value[t.id]?.length))
 
 function autoSpanNavIndex(tagId: string): number | null {
   const list = autoSpansByTag.value[tagId]
@@ -770,12 +793,27 @@ watch(
     lastStatusKind.value = null
   }
 )
+// The tags chosen for runs are remembered per collection and browser (#770), so folded run
+// options are ready to run after a reload.
+const runTagsKey = (collectionId: string) => `${RUN_TAGS_KEY_PREFIX}${collectionId}`
+function readRunTags (collectionId: string): string[] {
+  try {
+    const stored: unknown = JSON.parse(readStored(runTagsKey(collectionId)) ?? '[]')
+    return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
 watch(
   () => props.collectionId,
-  () => {
-    selectedAiTagIds.value = []
-  }
+  (collectionId) => {
+    chosenAiTagIds.value = readRunTags(collectionId)
+  },
+  { immediate: true }
 )
+watch(chosenAiTagIds, (ids) => {
+  writeStored(runTagsKey(props.collectionId), JSON.stringify(ids))
+})
 </script>
 
 <style scoped>
@@ -804,6 +842,10 @@ watch(
 
 .ai-assist-panel.has-pending .auto-span-list {
   flex: 4 1 0;
+}
+
+.ai-run-options {
+  display: contents;
 }
 
 .ai-options-header {
@@ -859,21 +901,6 @@ watch(
 .ai-tag-checkbox {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.ai-tag-nav {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  color: rgba(71, 85, 105, 0.85);
-}
-
-.ai-tag-nav-counter {
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-  min-width: 28px;
-  text-align: center;
-  color: rgba(71, 85, 105, 0.85);
 }
 
 .ai-tag-name {

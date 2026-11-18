@@ -17,9 +17,9 @@ export function usePendingSuggestions (collectionId: Ref<string>) {
   const userStore = useUserStore()
   const query = useQuery({
     queryKey: computed(() => userScopedKey(userStore.getUserId ?? '', COUNTS, collectionId.value)),
-    queryFn: async ({ queryKey }) => (await countAnnotations(queryKey[3] as string)).suggestions,
-    enabled: computed(() => !!collectionId.value && !!userStore.getUserId),
-    retry: false
+    // The signal lets the cache abort a count nobody shows any more (another table page).
+    queryFn: async ({ queryKey, signal }) => (await countAnnotations(queryKey[3] as string, undefined, { signal })).suggestions,
+    enabled: computed(() => !!collectionId.value && !!userStore.getUserId)
   })
   return { count: query.data, failed: query.isError }
 }
