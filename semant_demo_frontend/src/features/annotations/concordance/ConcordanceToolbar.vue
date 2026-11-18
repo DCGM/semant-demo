@@ -754,19 +754,19 @@ function toYear (value: string | number | null): number | null {
 }
 
 /** The annotations of the document under the whole query without the source filter (#667) when
- * read: 0 when none, the choice's own count when the facet left the document out (it lists the
- * documents with most annotations only). */
-function documentCount (d: AnnotatedDocument): number {
+ * read: 0 when none. Null (unknown, not shown) for a document the facet left out because it lists
+ * the 500 documents with most annotations only: the older count of the choices would overstate it. */
+function documentCount (d: AnnotatedDocument): number | null {
   const facet = facetOf('document')
   if (!facet) return d.count
-  return facet.byValue.get(d.id)?.count ?? (facet.truncated ? d.count : 0)
+  return facet.byValue.get(d.id)?.count ?? (facet.truncated ? null : 0)
 }
 
 function documentLabel (d: AnnotatedDocument): string {
   const count = documentCount(d)
-  const shown = props.facets ? countText(count) : count
-  if (!d.available) return `Unavailable source (${shown})`
-  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''} (${shown})`
+  const shown = count === null ? '' : ` (${props.facets ? countText(count) : count})`
+  if (!d.available) return `Unavailable source${shown}`
+  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''}${shown}`
 }
 
 const documentOptions = computed(() => props.documents.map(d => ({ label: documentLabel(d), value: d.id })))

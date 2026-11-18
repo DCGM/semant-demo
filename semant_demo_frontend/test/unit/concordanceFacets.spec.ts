@@ -137,6 +137,20 @@ describe('counts in the filter menus', () => {
     expect(options.map(o => [o.value, o.count, o.inapplicable])).toEqual([['v:a1:v1', 3, 1], ['v:a1:v2', 0, 0], ['u:a1', 2, 0]])
   })
 
+  it('shows no count for a document a truncated document facet left out, instead of an overstated one', () => {
+    const documents = [
+      { id: 'd1', title: 'Kronika', year: 1850, count: 9, available: true },
+      { id: 'd2', title: 'Dopisy', year: 1900, count: 7, available: true }
+    ]
+    const named = (truncated: boolean) => facets({
+      facets: [{ facet: 'document', values: [{ value: 'd1', count: 2 }], missing: 0, total: 2, distinct: 600, truncated }]
+    } as never)
+    const labels = (toolbar: ReturnType<typeof mountToolbar>) => (toolbar.findAllComponents(QSelect)
+      .find(s => s.props('label') === 'Sources')!.props('options') as { label: string }[]).map(o => o.label)
+    expect(labels(mountToolbar({ facets: named(true), documents }))).toEqual(['Kronika, 1850 (2)', 'Dopisy, 1900'])
+    expect(labels(mountToolbar({ facets: named(false), documents }))).toEqual(['Kronika, 1850 (2)', 'Dopisy, 1900 (0)'])
+  })
+
   it('hints the years with annotations', () => {
     const toolbar = mountToolbar({ facets: facets() })
     expect(toolbar.find('[data-testid="concordance-year-hint"]').text()).toBe('Annotations from 1850–1912; 1 without a year')

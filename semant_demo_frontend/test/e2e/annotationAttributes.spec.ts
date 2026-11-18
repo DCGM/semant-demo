@@ -145,6 +145,27 @@ test('a row is classified in the attribute column and in the sidebar, and filter
   await expect(page.getByTestId('concordance-chips')).toHaveCount(0)
 })
 
+test('the attribute menu counts follow an assignment (#667)', async ({ page, request }) => {
+  await createRole(request)
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await page.getByTestId('concordance-more-filters').click()
+  const statesman = () => page.getByRole('option', { name: /^Role: statesman( \d+)?$/ })
+  await page.getByTestId('concordance-attributes').click()
+  await expect(statesman().getByTestId('concordance-attribute-count')).toHaveText('0')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('listbox')).toHaveCount(0)
+
+  await toggleOption(page, 'concordance-show-attribute', 'Role')
+  await cell(page, 'Jan Novák').getByTestId('kwic-attribute-edit').click()
+  await picker(page).getByText('statesman', { exact: true }).click()
+  await expect(cell(page, 'Jan Novák')).toContainText('statesman')
+  await closePicker(page)
+
+  await page.getByTestId('concordance-attributes').click()
+  await expect(statesman().getByTestId('concordance-attribute-count')).toHaveText('1')
+})
+
 test('a selection is assigned in one batch, reported per annotation, without overwriting a newer change', async ({ page, request }) => {
   const role = await createRole(request)
   const novak = fixture.span('novak_manual').id
