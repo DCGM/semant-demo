@@ -380,8 +380,12 @@ onBeforeUnmount(() => edgeObserver?.disconnect())
 // and whether the user has scrolled since.
 const targetSettled = ref(false)
 const userScrolled = ref(false)
-const USER_SCROLL_EVENTS = ['wheel', 'touchmove', 'keydown', 'pointerdown'] as const
-function onUserScroll () { if (targetSettled.value) userScrolled.value = true }
+const USER_SCROLL_EVENTS = ['wheel', 'touchmove', 'keydown'] as const
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
+function onUserScroll (event: Event) {
+  // Not a click on a button: only gestures and keys that scroll.
+  if (targetSettled.value && (!(event instanceof KeyboardEvent) || SCROLL_KEYS.has(event.key))) userScrolled.value = true
+}
 onMounted(() => USER_SCROLL_EVENTS.forEach(e => window.document.addEventListener(e, onUserScroll, { passive: true })))
 onBeforeUnmount(() => USER_SCROLL_EVENTS.forEach(e => window.document.removeEventListener(e, onUserScroll)))
 watch(() => [nearEdge.before, nearEdge.after, props.hasBefore, props.hasAfter, props.extending, props.loading,
