@@ -546,6 +546,7 @@ describe('ChunkContextPanel', () => {
 
     /** Reports the edge (`before`/`after`) as scrolled near or away. */
     function reach (edge: string, intersecting: boolean) {
+      window.document.dispatchEvent(new Event('wheel')) // the user scrolls
       const observer = observers.at(-1)!
       const target = observer.targets.find(t => (t as HTMLElement).dataset.edge === edge)!
       observer.callback([{ target, isIntersecting: intersecting } as IntersectionObserverEntry], {} as IntersectionObserver)
@@ -570,6 +571,15 @@ describe('ChunkContextPanel', () => {
       expect(wrapper.emitted('extend')).toEqual([['after'], ['before']])
     })
 
+    it('does not extend a passage nobody has scrolled, however short it is', async () => {
+      const wrapper = mountPanel({ hasBefore: true, hasAfter: true })
+      await flushPromises()
+      const observer = observers.at(-1)!
+      observer.callback(observer.targets.map(target => ({ target, isIntersecting: true }) as IntersectionObserverEntry), {} as IntersectionObserver)
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toBeUndefined()
+    })
+
     it('does not extend at the document boundary, after a failure or before the target is shown', async () => {
       const wrapper = mountPanel({ hasBefore: true, visible: false })
       await flushPromises()
@@ -578,6 +588,8 @@ describe('ChunkContextPanel', () => {
       expect(wrapper.emitted('extend')).toBeUndefined() // target not scrolled to yet
 
       await wrapper.setProps({ visible: true })
+      await flushPromises()
+      window.document.dispatchEvent(new Event('wheel'))
       await flushPromises()
       expect(wrapper.emitted('extend')).toEqual([['before']])
 
