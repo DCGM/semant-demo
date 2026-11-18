@@ -152,6 +152,7 @@
                   :maxlength="MAX_NAME"
                   :rules="[() => draftTaken(index) ?? true]"
                   hide-bottom-space
+                  @keydown.enter="(event: KeyboardEvent) => onDraftEnter(event, index)"
                 />
               </div>
               <div class="col-auto">
@@ -332,12 +333,32 @@ const isDirty = computed(() =>
   (!props.attribute && (multiple.value || filledDrafts.value.length > 0 || specialDrafts.value.length > 0))
 )
 
+function focusDraft (index: number) {
+  const rows = document.querySelectorAll<HTMLInputElement>('[data-testid="attribute-dialog-value"] input')
+  rows[index]?.focus()
+}
+
 async function addDraft () {
   drafts.value.push('')
   // The new row is at the end of a list that may scroll.
   await nextTick()
-  const rows = document.querySelectorAll<HTMLInputElement>('[data-testid="attribute-dialog-value"] input')
-  rows[rows.length - 1]?.focus()
+  focusDraft(drafts.value.length - 1)
+}
+
+/** Enter in a draft value moves to the next value, or adds one after a valid last value. It never
+ * submits the form; an active IME composition keeps its own Enter. */
+async function onDraftEnter (event: KeyboardEvent, index: number) {
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  if (frozen.value) return
+  if (index < drafts.value.length - 1) {
+    focusDraft(index + 1)
+    return
+  }
+  const value = drafts.value[index]?.trim() ?? ''
+  if (!value || draftTaken(index) !== null) return
+  if (drafts.value.length + specialDrafts.value.length >= MAX_VALUES) return
+  await addDraft()
 }
 
 function removeDraft (index: number) {
