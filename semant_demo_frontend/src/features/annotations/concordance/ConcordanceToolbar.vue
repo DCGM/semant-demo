@@ -75,7 +75,7 @@
             :data-testid="`concordance-status-${option.value}`"
             @click="toggleType(option.value, !statusActive(option.value))"
           >
-<!-- A badge on the corner of the button takes no width, so late counts or a narrowed list never wrap the row. -->
+<!-- A small number in the corner of the button takes no width, so late counts or a narrowed list never wrap the row. -->
             <span v-if="statusCount(option.value) != null" class="concordance-toolbar__count" :class="ranked ? 'concordance-toolbar__count--ranked' : 'concordance-toolbar__count--badge'" :data-testid="`concordance-status-count-${option.value}`">{{ countText(statusCount(option.value)!) }}</span>
             <q-tooltip v-if="option.hint">{{ option.hint }}</q-tooltip>
           </q-btn>
@@ -874,17 +874,12 @@ const shownLabel = computed(() => {
 
 .concordance-toolbar__count--badge {
   position: absolute;
-  top: -8px;
-  right: -4px;
-  z-index: 1;
+  right: 4px;
+  bottom: 1px;
   margin: 0;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--q-primary);
-  color: #fff;
-  font-size: 0.72em;
-  line-height: 16px;
-  opacity: 1;
+  font-size: 0.68em;
+  line-height: 1;
+  opacity: 0.85;
 }
 
 .concordance-toolbar__count--ranked {
