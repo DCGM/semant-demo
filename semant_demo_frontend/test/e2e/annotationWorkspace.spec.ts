@@ -1076,6 +1076,34 @@ test('the open row follows edits made in the document view', async ({ page, requ
   }
 })
 
+test('the filter counts follow a review of selected annotations that are not on the page (#667)', async ({ page, request }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  const count = async (status: string) => Number(await page.getByTestId(`concordance-status-count-${status}`).innerText())
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  try {
+    // Select the proposals, then show only confirmed annotations: the selected ones are off the page.
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(rows(page)).toHaveCount(2)
+    await page.getByTestId('select-all-matches').click()
+    await page.getByTestId('concordance-status-pos').click()
+    await page.getByTestId('concordance-status-auto').click()
+    await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown by these filters')
+    await expect(page.getByTestId('concordance-status-count-auto')).toHaveText(/\d+/)
+    const [auto, rejected] = [await count('auto'), await count('neg')]
+
+    await page.getByTestId('review-reject').click()
+    // A change to annotations not on this page asks first.
+    await expect(page.getByRole('dialog')).toContainText('2 of them are not on this page')
+    await page.getByRole('dialog').getByRole('button', { name: 'Reject 2' }).click()
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2 annotations.')
+    await expect(page.getByTestId('concordance-status-count-auto')).toHaveText(String(auto - 2))
+    await expect(page.getByTestId('concordance-status-count-neg')).toHaveText(String(rejected + 2))
+  } finally {
+    for (const span of proposals) await patchSpan(request, span.id, { type: 'auto' })
+  }
+})
+
 test('all matches are a fixed selection that a shared user reviews in one batch', async ({ page, request }) => {
   const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
   await useViewport(page, 'wide')
