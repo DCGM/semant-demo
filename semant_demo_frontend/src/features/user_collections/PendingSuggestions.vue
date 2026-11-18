@@ -1,16 +1,18 @@
 <template>
-  <!-- A tile: a badge only when there are unresolved suggestions. -->
+  <!-- A tile: a corner badge only when there are unresolved suggestions. -->
   <q-badge
     v-if="badge"
     v-show="!!count"
+    floating
     color="deep-purple-1"
     text-color="deep-purple-9"
     class="pending-suggestions-badge"
+    role="img"
+    :aria-label="label"
     data-testid="pending-suggestions"
   >
-    <q-icon name="auto_awesome" size="12px" class="q-mr-xs" />
-    {{ count ? plural(count, 'AI suggestion') : '' }}
-    <q-tooltip>AI suggestions not yet confirmed or rejected</q-tooltip>
+    <q-icon name="auto_awesome" size="12px" class="q-mr-xs" aria-hidden="true" />{{ count }}
+    <q-tooltip>{{ label }}</q-tooltip>
   </q-badge>
   <!-- A table cell: the number, nothing for none. -->
   <span v-else data-testid="pending-suggestions">
@@ -23,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from 'vue'
+import { computed, toRef } from 'vue'
 import { plural } from 'src/shared/plural'
 import { usePendingSuggestions } from './usePendingSuggestions'
 
@@ -35,4 +37,12 @@ const props = defineProps<{
 }>()
 
 const { count, failed } = usePendingSuggestions(toRef(props, 'collectionId'))
+const label = computed(() => `${plural(count.value ?? 0, 'AI suggestion')} not yet confirmed or rejected`)
 </script>
+
+<style scoped>
+.pending-suggestions-badge {
+  border: 1px solid rgba(94, 53, 177, 0.3);
+  padding: 3px 6px;
+}
+</style>

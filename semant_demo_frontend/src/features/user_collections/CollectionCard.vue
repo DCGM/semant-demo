@@ -34,7 +34,6 @@
               <span class="col-5"> Sharing: </span>
               <span class="col"> {{ sharingLabel }} </span>
             </div>
-            <PendingSuggestions badge :collection-id="props.collection.id" class="q-mt-xs" />
           </div>
         </q-card-section>
         <q-separator vertical />
@@ -72,6 +71,8 @@
           </q-btn>
         </q-card-actions>
       </q-card-section>
+      <!-- On the corner, so the fixed-height tile loses no row to it (#770). -->
+      <PendingSuggestions badge :collection-id="props.collection.id" />
     </q-card>
   </div>
 </template>
