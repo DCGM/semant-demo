@@ -18,7 +18,7 @@ from semant_demo.adapters.weaviate.writes import delete_collection_cascade, step
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.user_collections.schemas import CollectionChunk, Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.features.documents.schemas import Document, DocumentStats
-from semant_demo.features.annotations.schemas import AnnotationChunk
+from semant_demo.features.annotations.schemas import AnnotationChunk, SpanType
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 
 logger = logging.getLogger(__name__)
@@ -312,8 +312,8 @@ class UserCollectionRepository:
     async def read_document_stats(self, collection_id: UUID, document_id: UUID) -> DocumentStats:
         """
         Per-document statistics within the collection: chunks in the collection, all
-        chunks, approved annotations of the collection whose chunk belongs to it, and the
-        number of distinct tags they use.
+        chunks, approved annotations of the collection whose chunk belongs to it, the
+        number of distinct tags they use, and its unresolved AI suggestions counted alike.
         """
         async def count(collection, filters) -> int:
             return (await collection.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
@@ -330,6 +330,7 @@ class UserCollectionRepository:
             total_chunks=await count(self._chunks(), document_filter),
             annotations_count=annotations_count,
             distinct_tags_count=len(distinct_tags),
+            suggestions_count=await self.spans.count_of_type(collection_id, SpanType.auto, document_id),
         )
 
     ##############

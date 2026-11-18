@@ -234,9 +234,11 @@ test('the AI Tagging run options fold away on a run and the choice to fold them 
   await toggle.click()
   await expect(options).toBeVisible()
 
-  // Without a selected tag there is nothing to run: the options stay open and can't be folded.
+  // They can be folded before any run, also with no tag selected.
   await page.locator('.ai-assist-panel').getByRole('button', { name: 'None' }).click()
-  await expect(toggle).toHaveCount(0)
+  await toggle.click()
+  await expect(options).toBeHidden()
+  await expect(page.getByTestId('ai-options-summary')).toHaveText('0 tags · Optimized')
 })
 
 // #479: a tag focused from the tags panel tags each new selection directly.

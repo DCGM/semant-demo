@@ -108,6 +108,21 @@
               </div>
             </q-tooltip>
           </span>
+          <!-- Only when there are some, as on the Collections page (#770). -->
+          <span
+            v-if="documentStatsMap[props.row.id].suggestionsCount"
+            class="doc-stat doc-stat--suggestions"
+            data-testid="document-pending-suggestions"
+          >
+            <q-icon name="auto_awesome" size="13px" />
+            {{ documentStatsMap[props.row.id].suggestionsCount }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Unresolved AI suggestions</strong><br />
+                {{ plural(documentStatsMap[props.row.id].suggestionsCount ?? 0, 'AI suggestion') }} in this document within this collection not yet confirmed or rejected.
+              </div>
+            </q-tooltip>
+          </span>
         </div>
         <span v-else class="text-grey-4">—</span>
       </q-td>
@@ -418,6 +433,12 @@ const columns: QTableColumn<Document>[] = [
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   padding: 2px 7px;
+}
+
+.doc-stat--suggestions {
+  color: #4527a0;
+  background: #ede7f6;
+  border-color: rgba(94, 53, 177, 0.3);
 }
 
 .doc-stat-tooltip {

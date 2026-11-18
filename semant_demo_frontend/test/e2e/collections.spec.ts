@@ -140,6 +140,16 @@ test('tiles and the table show the unresolved AI suggestions of each collection'
   await expect(page.getByRole('columnheader', { name: 'AI suggestions' })).not.toHaveClass(/sortable/)
 })
 
+// #770: a document's unresolved AI suggestions within the collection, in the documents table.
+test('the documents table shows the unresolved AI suggestions of each document', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openCollections(page)
+  await page.getByText(fixture.collection('chronicles').name, { exact: true }).click()
+  await page.getByText('Documents & Tagging').click()
+  const row = page.getByRole('row').filter({ hasText: fixture.document('chronicle').properties.title })
+  await expect(row.getByTestId('document-pending-suggestions')).toHaveText(/1$/) // lhota_automatic
+})
+
 test('collections table sorts Created and Updated chronologically', async ({ page, request }) => {
   await ensureLoggedIn(page, 'owner')
 

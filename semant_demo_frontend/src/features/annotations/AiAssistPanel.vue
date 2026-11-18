@@ -7,9 +7,7 @@
         {{ optionsSummary }}
       </span>
       <q-space />
-      <!-- Without a selected tag there is nothing to run, so the options stay open. -->
       <q-btn
-        v-if="selectedAiTagIds.length"
         flat dense round size="sm"
         :icon="optionsShown ? 'expand_less' : 'expand_more'"
         :aria-label="optionsShown ? 'Hide run options' : 'Show run options'"
@@ -426,11 +424,11 @@ const selectedAiTagIds = computed(() => {
 })
 
 // Folded run options (#770): remembered per browser when the user folds or opens them; a run
-// folds them too, without changing what is remembered. They are open while no tag is selected.
+// folds them too, without changing what is remembered.
 const optionsCollapsed = ref(readStored(OPTIONS_COLLAPSED_KEY) === 'true')
-const optionsShown = computed(() => !optionsCollapsed.value || !selectedAiTagIds.value.length)
+const optionsShown = computed(() => !optionsCollapsed.value)
 function toggleOptions () {
-  optionsCollapsed.value = optionsShown.value
+  optionsCollapsed.value = !optionsCollapsed.value
   writeStored(OPTIONS_COLLAPSED_KEY, String(optionsCollapsed.value))
 }
 const optionsSummary = computed(() => {
