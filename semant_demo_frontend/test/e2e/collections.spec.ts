@@ -147,7 +147,7 @@ test('the documents table shows the unresolved AI suggestions of each document',
   await page.getByText(fixture.collection('chronicles').name, { exact: true }).click()
   await page.getByText('Documents & Tagging').click()
   const row = page.getByRole('row').filter({ hasText: fixture.document('chronicle').properties.title })
-  await expect(row.getByTestId('document-pending-suggestions')).toHaveText(/1$/) // lhota_automatic
+  await expect(row.getByTestId('document-pending-suggestions')).toHaveText(/\b1\s*$/) // lhota_automatic; the icon's ligature comes first
 })
 
 test('collections table sorts Created and Updated chronologically', async ({ page, request }) => {
