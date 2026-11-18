@@ -113,6 +113,8 @@ describe('confirmation before a large AI run', () => {
       global: { plugins: [[Quasar, {}]] }
     })
     if (mode === 'thorough') await wrapper.findAll('.q-radio')[1].trigger('click')
+    // The panel remembers the run's tags per collection (#770): an earlier run's are cleared first.
+    await wrapper.findAll('button').find((b) => b.text() === 'None')!.trigger('click')
     for (const checkbox of wrapper.findAll('.ai-tag-checkbox').slice(0, tags)) await checkbox.trigger('click')
     const before = progress()
     await wrapper.findAll('button').find((b) => b.text().includes('Run AI'))!.trigger('click')

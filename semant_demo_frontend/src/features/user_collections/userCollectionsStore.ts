@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { Collection, PostCollection, PatchCollection } from 'src/generated/api'
 import { useUserCollectionsRepository } from './useUserCollectionsRepository'
 import { forgetCollectionStats } from './useCollectionStats'
+import { forgetRunTags } from 'src/features/annotations/aiRunTags'
 import { ongoingNotification } from 'src/shared/notification'
 import { incompleteWriteMessage } from 'src/shared/writeOutcome'
 import { captureSession, createContextGuard } from 'src/shared/api'
@@ -32,6 +33,7 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
     if (activeCollection.value && deletedIds.has(activeCollection.value.id)) activeCollection.value = null
     if (loadedCollectionId.value && deletedIds.has(loadedCollectionId.value)) loadedCollectionId.value = null
     forgetCollectionStats(ids)
+    forgetRunTags(ids)
   }
 
   // Collection[] visible in UI — excludes any IDs currently being deleted
