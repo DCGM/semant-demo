@@ -18,8 +18,9 @@ export function collectionStatsKey (userId: string, collectionId: string) {
  * Asked again each time a page showing them mounts (the default `staleTime` of 0), so
  * changes made since then on another page, in another tab or by another member of a
  * shared collection show up; the last known numbers of the same collection are shown
- * meanwhile. The Overview tab is the only page showing them, and no write that changes
- * them can happen while it is shown, so writes need not invalidate them.
+ * meanwhile. The Overview tab and the Collections page's unresolved AI suggestions (#770)
+ * show them; no write that changes them can happen there (a deleted collection's are
+ * forgotten), so writes need not invalidate them.
  *
  * `enabled` holds the request until the collection itself has loaded, so a collection
  * that is gone or no longer shared shows only its own error. Another collection, or

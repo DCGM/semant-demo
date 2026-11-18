@@ -49,6 +49,12 @@ export interface CollectionStats {
      * @memberof CollectionStats
      */
     tagsCount: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof CollectionStats
+     */
+    suggestionsCount?: number;
 }
 
 /**
@@ -78,6 +84,7 @@ export function CollectionStatsFromJSONTyped(json: any, ignoreDiscriminator: boo
         'chunksCount': json['chunks_count'],
         'annotationsCount': json['annotations_count'],
         'tagsCount': json['tags_count'],
+        'suggestionsCount': json['suggestions_count'] == null ? undefined : json['suggestions_count'],
     };
 }
 
@@ -97,6 +104,7 @@ export function CollectionStatsToJSONTyped(value?: CollectionStats | null, ignor
         'chunks_count': value['chunksCount'],
         'annotations_count': value['annotationsCount'],
         'tags_count': value['tagsCount'],
+        'suggestions_count': value['suggestionsCount'],
     };
 }
 

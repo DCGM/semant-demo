@@ -850,8 +850,13 @@ class SpanRepository:
     async def count_approved(self, collection_id: UUID, document_id: UUID | None = None) -> int:
         """Approved (``pos``) spans anchored on a chunk that belongs to the collection
         (and to the document, when given)."""
+        return await self.count_of_type(collection_id, SpanType.pos, document_id)
+
+    async def count_of_type(self, collection_id: UUID, span_type: SpanType, document_id: UUID | None = None) -> int:
+        """Spans of ``span_type`` anchored on a chunk that belongs to the collection (and to
+        the document, when given); with ``SpanType.auto``, its unresolved AI suggestions."""
         link = self.collectionNames.user_collection_link_name
-        filters = (Filter.by_property("type").equal(SpanType.pos.value)
+        filters = (Filter.by_property("type").equal(span_type.value)
                    & Filter.by_ref("text_chunk").by_ref(link).by_id().equal(collection_id))
         if document_id is not None:
             filters = filters & Filter.by_property("documentId").equal(document_id)

@@ -711,7 +711,9 @@ watch(editingAutoSpan, (span) => {
   if (span?.id) highlightAutoSpan(span.id)
 })
 
-const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
+// `label`: the gutter label clicked, to open the popover beside it, clear of the text (#770);
+// a click on the text opens it at the cursor.
+const onMarkerClick = (item: SpanMarker, e: MouseEvent, label?: DOMRect) => {
   annotations.editSpan({
     id: item.spanId,
     chunkId: item.chunkId,
@@ -719,7 +721,8 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
     start: item.start,
     end: item.end
   })
-  popoverRef.value?.moveTo(e)
+  if (label) popoverRef.value?.moveBeside(e, label)
+  else popoverRef.value?.moveTo(e)
   popoverRef.value?.showMode('actions')
 
   // Sync nav index
