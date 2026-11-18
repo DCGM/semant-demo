@@ -27,6 +27,13 @@ import {
     AnnotationResultSetToJSON,
     AnnotationResultSetToJSONTyped,
 } from './AnnotationResultSet';
+import type { ProximityCoverage } from './ProximityCoverage';
+import {
+    ProximityCoverageFromJSON,
+    ProximityCoverageFromJSONTyped,
+    ProximityCoverageToJSON,
+    ProximityCoverageToJSONTyped,
+} from './ProximityCoverage';
 
 /**
  * One page of a collection's concordance rows and the number of all rows of the result:
@@ -67,6 +74,12 @@ export interface AnnotationPage {
     result?: AnnotationResultSet;
     /**
      * 
+     * @type {ProximityCoverage}
+     * @memberof AnnotationPage
+     */
+    proximity?: ProximityCoverage | null;
+    /**
+     * 
      * @type {number}
      * @memberof AnnotationPage
      */
@@ -99,6 +112,7 @@ export function AnnotationPageFromJSONTyped(json: any, ignoreDiscriminator: bool
         'offset': json['offset'],
         'limit': json['limit'],
         'result': json['result'] == null ? undefined : AnnotationResultSetFromJSON(json['result']),
+        'proximity': json['proximity'] == null ? undefined : ProximityCoverageFromJSON(json['proximity']),
         'unsortable': json['unsortable'] == null ? undefined : json['unsortable'],
     };
 }
@@ -119,6 +133,7 @@ export function AnnotationPageToJSONTyped(value?: AnnotationPage | null, ignoreD
         'offset': value['offset'],
         'limit': value['limit'],
         'result': AnnotationResultSetToJSON(value['result']),
+        'proximity': ProximityCoverageToJSON(value['proximity']),
         'unsortable': value['unsortable'],
     };
 }

@@ -9,6 +9,48 @@
 export interface TextPart {
   text: string
   match: boolean
+  /** Part of a neighbor annotation that made the row match the proximity filter (#333): its tag's
+   * color and a label. */
+  near?: { color: string, label: string }
+}
+
+/** A neighbor annotation's range within one field of a row, in UTF-16 offsets of that field. */
+export interface NeighborRange {
+  start: number
+  end: number
+  color: string
+  label: string
+}
+
+/**
+ * `parts` (one field of a row, e.g. the left context) with the characters of `ranges` marked
+ * as neighbors (#333); ranges outside the field are ignored, overlapping ones keep the first
+ * (nearest) neighbor.
+ */
+export function markNeighbors (parts: TextPart[], ranges: NeighborRange[]): TextPart[] {
+  const length = parts.reduce((n, p) => n + p.text.length, 0)
+  const inField = ranges
+    .map(r => ({ ...r, start: Math.max(0, r.start), end: Math.min(length, r.end) }))
+    .filter(r => r.start < r.end)
+  if (!inField.length) return parts
+  const owner = new Array<NeighborRange | undefined>(length)
+  for (const range of inField) {
+    for (let i = range.start; i < range.end; i++) owner[i] ??= range
+  }
+  const result: TextPart[] = []
+  let position = 0
+  for (const part of parts) {
+    let from = 0
+    for (let i = 1; i <= part.text.length; i++) {
+      if (i === part.text.length || owner[position + i] !== owner[position + from]) {
+        const range = owner[position + from]
+        result.push({ text: part.text.slice(from, i), match: part.match, ...(range ? { near: { color: range.color, label: range.label } } : {}) })
+        from = i
+      }
+    }
+    position += part.text.length
+  }
+  return result
 }
 
 const WORD = /[\p{L}\p{N}]+/gu
@@ -65,8 +107,8 @@ export function splitParts (parts: TextPart[]): [TextPart[], TextPart[]] {
     if (end <= at) head.push(part)
     else if (position >= at) tail.push(part)
     else {
-      head.push({ text: part.text.slice(0, at - position), match: part.match })
-      tail.push({ text: part.text.slice(at - position), match: part.match })
+      head.push({ ...part, text: part.text.slice(0, at - position) })
+      tail.push({ ...part, text: part.text.slice(at - position) })
     }
     position = end
   }

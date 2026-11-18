@@ -105,6 +105,8 @@ class DocumentStats(BaseModel):
     total_chunks: int
     annotations_count: int
     distinct_tags_count: int
+    suggestions_count: int = 0
+    """Unresolved AI suggestions (``auto`` spans) on the document's chunks in the collection (#770)."""
     ai_max_chunks_per_tag: int | None = None
     """The most chunks one tag of optimized AI suggestions evaluates (``TOPICER_MAX_CHUNKS_PER_TAG``),
     for workload warnings; thorough suggestions evaluate ``chunks_in_collection``."""

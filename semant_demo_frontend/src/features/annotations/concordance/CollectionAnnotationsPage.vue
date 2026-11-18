@@ -24,6 +24,14 @@
       @open="openContext"
     />
 
+    <SimilarSourceBar
+      :filters="store.filters"
+      :has-previous="!!store.previousView"
+      @open="openContext"
+      @change="store.setFilters"
+      @back="store.returnFromSimilar"
+    />
+
     <SelectionBar
       class="q-mb-xs"
       :selected-count="selection.size"
@@ -62,6 +70,7 @@
       <span data-testid="concordance-range">{{ rangeLabel }}</span>
       <span v-if="rankedText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-ranked">{{ rankedText }}</span>
       <span v-if="unsortableText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-unsortable">{{ unsortableText }}</span>
+      <span v-if="proximityText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-proximity">{{ proximityText }}</span>
       <q-spinner v-if="store.loading" color="primary" size="1.2em" aria-label="Loading annotations" />
       <!-- Reviewed rows stay in place until the list is read again (#690). -->
       <span v-if="store.unmatched.size" class="collection-annotations__unmatched text-grey-8" data-testid="concordance-unmatched">
@@ -129,6 +138,7 @@
       similar
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
+      @open-neighbor="openNeighbor"
       @similar="findSimilar"
       @toggle="toggleRow"
       @select-page="selectPage"
@@ -443,6 +453,7 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
+import SimilarSourceBar from './SimilarSourceBar.vue'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
@@ -461,7 +472,7 @@ import {
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
-import { concordanceChips, rankedLabel, unsortableLabel } from './filterChips'
+import { concordanceChips, proximityLabel, rankedLabel, unsortableLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
@@ -508,6 +519,9 @@ const rankedText = computed(() => rankedLabel(store.page?.result, store.total))
 
 /** Text and context sorts (#666): how many rows have no current sort key, and where they are. */
 const unsortableText = computed(() => unsortableLabel(store.page?.unsortable, store.filters.descending))
+
+/** Proximity (#333): what could not be compared for lack of current positions. */
+const proximityText = computed(() => proximityLabel(store.page?.proximity))
 
 const emptyText = computed(() => {
   if (ranked.value) return 'No annotation matching these filters has a current vector to rank by.'
@@ -636,6 +650,19 @@ async function openContext (row: AnnotationListRow) {
   await nextTick() // the panel registers when the first row is opened
   rightSidebar.activate(CONTEXT_PANEL_ID)
   await opening
+}
+
+/** Opens a neighbor that made a row match the proximity filter (#333), read as it is now; it need
+ * not be listed. */
+async function openNeighbor (id: string) {
+  try {
+    const row = await store.readRow(id)
+    if (row) await openContext(row)
+    else $q.notify({ type: 'warning', message: 'This annotation no longer exists.' })
+  } catch (e) {
+    console.error('Reading the neighbor annotation failed', e)
+    $q.notify({ type: 'negative', message: 'The annotation could not be read.' })
+  }
 }
 
 /** Lists the annotations most similar to `row` within the current filters (#664); the row stays

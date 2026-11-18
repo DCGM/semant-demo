@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from semant_demo.features.annotations.schemas import TagSpan
 from semant_demo.features.annotations import export, service
 from semant_demo.features.annotations.schemas import (
+    MAX_NEAR_DISTANCE, DistanceUnit, NearDirection, NearRelation,
     MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
     AnnotationExportRequest, AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
     AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, SpanType,
@@ -250,6 +251,19 @@ def annotation_filters(
         "one attribute match any, different attributes all)")),
     unassigned: list[str] | None = Query(default=None, max_length=20, description=(
         "Only annotations without an accepted value of this attribute id (repeat)")),
+    near_relation: NearRelation | None = Query(default=None, description=(
+        "Proximity (#333): only annotations with a neighbor annotation of the same document in this relation "
+        "(within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; "
+        "same_document); the other near_ parameters apply only with it")),
+    near_tag_id: list[str] | None = Query(default=None, description="Proximity: neighbor tags (repeat; default any)"),
+    near_type: list[SpanType] | None = Query(default=None, description="Proximity: neighbor types (default pos and auto)"),
+    near_attribute: list[str] | None = Query(default=None, max_length=20, description=(
+        "Proximity: neighbor attribute values, as <attribute id>:<value id> (repeat)")),
+    near_distance: int = Query(default=50, ge=0, le=MAX_NEAR_DISTANCE, description="Proximity within: the largest gap"),
+    near_unit: DistanceUnit = Query(default=DistanceUnit.words, description="Proximity within: words or chars"),
+    near_direction: NearDirection = Query(default=NearDirection.either, description=(
+        "Proximity within: where the neighbor lies (before or after the annotation, or either)")),
+    near_absent: bool = Query(default=False, description="Proximity: only annotations without such a neighbor"),
 ) -> AnnotationFilters:
     """The annotation query (``AnnotationFilters``, #663) of a GET request's parameters. The
     document filters are the shared ``DocumentFilters`` with the parameter names of document
@@ -259,7 +273,11 @@ def annotation_filters(
             "tag_ids": tag_id, "types": types, "q": q, "ranking_query": ranking_query, "text_scope": text_scope, "document_ids": document_id,
             "document_filters": {"year_min": year_min, "year_max": year_max, "title_contains": title_contains,
                                  "libraries": libraries, "languages": languages},
-            "attribute_values": attribute or [], "attribute_unassigned": unassigned or []})
+            "attribute_values": attribute or [], "attribute_unassigned": unassigned or [],
+            "near": None if near_relation is None else {
+                "relation": near_relation, "tag_ids": near_tag_id, "types": near_type,
+                "attribute_values": near_attribute or [], "distance": near_distance, "unit": near_unit,
+                "direction": near_direction, "absent": near_absent}})
     except ValidationError as e:
         raise RequestValidationError([{**error, "loc": ("query", *error["loc"])} for error in e.errors()]) from e
 
