@@ -182,6 +182,10 @@ class AnnotationRow(BaseModel):
     vectorStatus: VectorStatus | None = None
     vectorRevision: int | None = None
     vectorConfig: str | None = None
+    sortKeyVersion: str | None = None
+    sortKeyRevision: int | None = None
+    """The collation of the stored sort keys and the revision they were computed for (#666,
+    ``collation.py``); read only when the collection holds them."""
     distance: float | None = None
     """Vector distance, for semantic and similar ranking (#664)."""
     score: float | None = None
@@ -229,7 +233,11 @@ SCOPE_FIELDS = {
     TextScope.context: ("leftContext", "rightContext"),
     TextScope.both: ("text", "leftContext", "rightContext"),
 }
-"""The stored text fields a lexical query (and hybrid's BM25, #664) searches per ``TextScope``."""
+"""The stored text fields a lexical query searches per ``TextScope``."""
+
+HYBRID_FIELDS = SCOPE_FIELDS[TextScope.both]
+"""The stored text fields hybrid ranking's BM25 side searches (#664, #716): the annotated text and both
+contexts, whatever ``text_scope`` the words filter ``q`` has. Ranking and word filtering are independent."""
 
 
 class AnnotationQuery(BaseModel):
@@ -253,6 +261,14 @@ class AnnotationQuery(BaseModel):
     """Only annotations with a ``ready`` vector of this configuration and text ``ready`` under
     ``derivation_version`` (ranked retrieval, #664). Whether the vector belongs to the current
     revision cannot be filtered in Weaviate; the caller checks it per row (``vector_current``)."""
+    sort_key_version: str | None = None
+    """Only annotations whose sort keys are of this version (#666: counting the sortable ones)."""
+    holds_value: str | None = None
+    """Only approved annotations holding this ``<attribute id>:<value id>`` element (#666: one
+    partition of the attribute sort)."""
+    holds_none_of: list[str] = []
+    """Only annotations holding none of these elements, or not approved (whose values are not
+    shown, as for ``attribute_unassigned``)."""
 
 
 class VectorRanking(BaseModel):
@@ -275,8 +291,19 @@ class AnnotationSort(str, Enum):
     year = "year"
     """Document year (missing last), then as ``document``."""
     text = "text"
-    """Annotated text as Weaviate orders it (ignoring case; rows without current text first,
-    last when descending)."""
+    """Annotated text in Czech dictionary order (its ``textSortKey``, #666), or, on a store
+    without sort keys, as Weaviate orders the text; rows without a key first, last when
+    descending."""
+    left = "left"
+    """Left context from the annotation outwards (its nearest word first; ``leftSortKey``, #666);
+    rows without a key first, last when descending."""
+    right = "right"
+    """Right context in reading order (``rightSortKey``, #666); rows without a key as ``left``."""
+    attribute = "attribute"
+    """Values of the attribute ``sort_attribute`` in its value order, active values before
+    retired ones, then document order (#666); an annotation holding several sorts once, by its
+    first value; annotations without a value (and not approved ones) last. Descending reverses
+    the value order only."""
 
 
 class TextStatus(str, Enum):
@@ -326,10 +353,12 @@ class RetrievalMode(str, Enum):
     lexical = "lexical"
     """Every annotation matching the filters (``q``: words, ``TextScope``), in an ``AnnotationSort``."""
     semantic = "semantic"
-    """The ``k`` nearest in meaning to ``q``: its query embedding against the stored contextual vectors."""
+    """The ``k`` nearest in meaning to ``ranking_query`` among the annotations matching the filters
+    (``q`` included): its query embedding against the stored contextual vectors."""
     hybrid = "hybrid"
-    """The ``k`` best by Weaviate hybrid of the contextual vector and BM25 of ``q`` on the fields of
-    ``text_scope``, with the fixed weight ``HYBRID_ALPHA``."""
+    """The ``k`` best by Weaviate hybrid of the contextual vector and BM25 of ``ranking_query`` on
+    ``HYBRID_FIELDS`` (annotation and both contexts; not ``text_scope``), with the fixed weight
+    ``HYBRID_ALPHA``, among the annotations matching the filters (``q`` included)."""
     similar = "similar"
     """The ``k`` nearest to the stored vector of the annotation ``similar_to``; no embedding call.
     ``q`` stays a lexical filter."""
@@ -407,6 +436,9 @@ class AnnotationPage(BaseModel):
     offset: int
     limit: int
     result: AnnotationResultSet = Field(default_factory=AnnotationResultSet)
+    unsortable: int | None = None
+    """Text and context sorts (#666): rows of the result without current sort keys (not derived or
+    not yet backfilled), placed as rows without a key; ``None`` for other orders."""
 
 
 class AnnotationCounts(BaseModel):
@@ -438,8 +470,6 @@ MAX_RESOLVED_IDS = 5000
 """Annotations "select all matches" may resolve at once (#459); more is refused."""
 MAX_REVIEW_BATCH = 200
 """Annotations one review request may change (#459); a client sends larger selections in parts."""
-MAX_SYNC_PAIRS = 1000
-"""(chunk, tag) pairs one chunk tag repair request may re-derive (#459)."""
 MAX_ATTRIBUTE_FILTERS = 20
 """Attributes one concordance query may filter by (#331), with values or as unassigned."""
 MAX_ATTRIBUTE_FILTER_VALUES = 200
@@ -466,8 +496,12 @@ class AnnotationFilters(BaseModel):
     types: list[SpanType] | None = None
     """Default ``pos`` and ``auto``; rejected ``neg`` only when asked."""
     q: str | None = Field(default=None, max_length=MAX_QUERY_TEXT_LENGTH)
-    """Lexical and ``similar`` modes: words that must each occur in a field of ``text_scope``, inside
-    one of its words, ignoring case. ``semantic`` and ``hybrid``: the query ranked by (#664), required."""
+    """In every mode: words that must each occur in a field of ``text_scope``, inside one of its
+    words, ignoring case (#663). Always a hard filter, applied before any ranking (#716)."""
+    ranking_query: str | None = Field(default=None, max_length=MAX_QUERY_TEXT_LENGTH)
+    """The text ranked by (#716), separate from the words ``q``: required by ``semantic`` and ``hybrid``
+    (``hybrid`` also scores its BM25 side with it on ``HYBRID_FIELDS``, independent of ``text_scope``) and refused by the
+    other modes. It filters nothing."""
     text_scope: TextScope = TextScope.annotation
     document_ids: list[UUID] | None = None
     document_filters: DocumentFilters = Field(default_factory=DocumentFilters)
@@ -573,9 +607,8 @@ class AnnotationReviewResult(WriteResult):
     action asks. ``failed``: ``update_span`` / ``delete_span`` (``uncertain`` when the
     write timed out and may have been applied), ``find_annotation`` (no such annotation in
     the collection, e.g. deleted meanwhile), ``edit_conflict`` (written by someone else
-    since the expected version; not changed) and ``update_chunk_tags`` (item
-    ``chunk_id:tag_id``: the change was saved, tag-filtered search does not reflect it;
-    ``annotations/chunk-tags/sync`` with that pair repairs it, also after a deletion).
+    since the expected version; not changed), and best-effort steps of changed
+    annotations whose change was saved (``derive_annotation``, ``embed_annotation``).
     ``versions``: the ``editVersion`` of each changed annotation after the action, and the
     current one of each conflicting annotation.
     ``previous``: for each annotation the action changed, the values it changed as they were
@@ -584,23 +617,11 @@ class AnnotationReviewResult(WriteResult):
     previous: dict[UUID, AnnotationValues] = {}
 
 
-class ChunkTagPair(BaseModel):
-    chunk_id: UUID
-    tag_id: UUID
-
-
-class ChunkTagSyncRequest(BaseModel):
-    """(chunk, tag) pairs of the collection's tags whose tag-filtered search references to
-    re-derive: the items of ``update_chunk_tags`` failures (``chunk_id:tag_id``)."""
-    pairs: list[ChunkTagPair] = Field(min_length=1, max_length=MAX_SYNC_PAIRS)
-
-
 class TagSpanWriteResult(TagSpan, WriteResult):
     """
     A created or updated span with the outcome of the write. ``succeeded`` holds the span
     id. ``failed`` lists the later steps that did not complete; the span is saved either
-    way, and saving it again retries them: ``update_chunk_tags`` (tag-filtered search
-    does not reflect the span), ``derive_annotation`` (its stored text, context and
+    way, and saving it again retries them: ``derive_annotation`` (its stored text, context and
     positions could not be updated), ``embed_annotation`` (its contextual vector could
     not be computed or stored; semantic search leaves the span out) and, for a span moved
     to another chunk, ``update_chunk_reference`` (collection statistics may still count it
@@ -722,8 +743,7 @@ class SuggestSpansChunkResult(BaseModel):
     error: str | None = None
     """Set if processing this chunk failed, or if some proposals could not be saved
     (then ``spans`` holds the ones that were saved and ``unsaved`` counts the rest), or
-    if the chunk tag of a saved span (used by tag-filtered search) or its derived text or
-    vector could not be updated."""
+    if the derived text or vector of a saved span could not be updated."""
 
     unsaved: int = 0
     """Proposals returned by the provider that were not saved: storage failures or
@@ -733,7 +753,7 @@ class SuggestSpansChunkResult(BaseModel):
 
 class SuggestionRunOutcome(str, Enum):
     complete = "complete"
-    """Every provider call succeeded and every valid proposal was saved with its chunk tag
+    """Every provider call succeeded and every valid proposal was saved with its derived data
     (also when there was nothing to propose). Invalid proposals may have been rejected."""
     partial = "partial"
     """Some provider calls or writes failed; the rest of the work was done and kept."""
@@ -775,8 +795,6 @@ class SuggestSpansRunEnd(BaseModel):
     """Invalid provider proposals, not saved."""
     save_failures: int = 0
     """Valid proposals whose storage write failed (a timed-out write may have landed)."""
-    search_tag_failures: int = 0
-    """Saved spans whose chunk tag (tag-filtered search) could not be updated."""
     enrichment_failures: int = 0
     """Saved spans whose derived text or contextual vector (#328) could not be stored."""
     provider_failures: int = 0

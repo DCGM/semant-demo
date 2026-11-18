@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter
-from semant_demo.core.errors import InvalidRequestError, ServiceUnavailableError
+from semant_demo.core.errors import InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION
 from semant_demo.features.annotations.schemas import (
@@ -21,6 +21,8 @@ from semant_demo.features.annotations.schemas import (
     AnnotationSort, EnrichmentStatus, SpanType, TextScope, TextStatus,
 )
 from semant_demo.features.documents.criteria import AnyOf, ContainsWords, DocumentFilters, NumberRange
+from semant_demo.features.annotations.collation import sort_keys
+from semant_demo.features.annotations.enrichment import Enrichment
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.documents.schemas import Document
@@ -106,6 +108,9 @@ class FakeSpans:
         self.queries = 0
         self.provenance = False
         self.attributes = True
+        self.keys: dict[UUID, dict] = {}
+        """Stored sort key properties by row id (#666); rows read only ``sortKeyVersion``."""
+        self.sorted_by: list[str | None] = []
 
     def _match(self, query, document_ids):
         return [r for r in self.rows
@@ -120,7 +125,11 @@ class FakeSpans:
                 and all(any(codec.encode(a, v) in (r.attributeValues or []) for v in vs)
                         for a, vs in query.attribute_values.items())
                 and not any(c.startswith(f"{a}:") for a in query.attribute_unassigned
-                            for c in (r.attributeValues or []) if r.type == SpanType.pos)]
+                            for c in (r.attributeValues or []) if r.type == SpanType.pos)
+                and (query.sort_key_version is None or r.sortKeyVersion == query.sort_key_version)
+                and (query.holds_value is None
+                     or (r.type == SpanType.pos and query.holds_value in (r.attributeValues or [])))
+                and (r.type != SpanType.pos or not set(query.holds_none_of) & set(r.attributeValues or []))]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
@@ -132,17 +141,19 @@ class FakeSpans:
     async def count_rows(self, cid, query, document_ids=None):
         return len(self._match(query, document_ids))
 
-    async def query_rows(self, cid, query, *, by_text, document_ids=None, limit, offset=0, descending=False):
+    async def query_rows(self, cid, query, *, sort_by=None, document_ids=None, limit, offset=0, descending=False):
         self.queries += 1
+        self.sorted_by.append(sort_by)
         rows = self._match(query, document_ids)
-        if not by_text:
+        value = (lambda r: getattr(r, sort_by)) if sort_by in ("text", None) else (lambda r: self.keys.get(r.id, {}).get(sort_by))
+        if sort_by is None:
             ordered = sorted(rows, key=_position_key)
-        elif descending:  # as Weaviate: without text last, then the id ascending
+        elif descending:  # as Weaviate: without a value last, then the id ascending
             by_id = sorted(rows, key=lambda r: str(r.id))
-            ordered = (sorted([r for r in by_id if r.text is not None], key=lambda r: r.text, reverse=True)
-                       + [r for r in by_id if r.text is None])
+            ordered = (sorted([r for r in by_id if value(r) is not None], key=value, reverse=True)
+                       + [r for r in by_id if value(r) is None])
         else:
-            ordered = sorted(rows, key=lambda r: (r.text is not None, r.text or "", str(r.id)))
+            ordered = sorted(rows, key=lambda r: (value(r) is not None, value(r) or "", str(r.id)))
         return ordered[offset:offset + limit]
 
 
@@ -160,10 +171,39 @@ def row(document, start, text="slovo", *, tag=TAG, type=SpanType.pos, current=Tr
                          end=len(text), revision=1, **derived)
 
 
+def with_keys(store) -> None:
+    """The store holds the sort keys of #666 and every row with current text has its keys."""
+    store.enrichment = Enrichment(derived=True, sort_keys=True)
+    for r in store.spans.rows:
+        if r.text is not None:
+            keys = sort_keys(r.text, r.leftContext or "", r.rightContext or "")
+            store.spans.keys[r.id] = keys.properties(r.revision or 0)
+            r.sortKeyVersion, r.sortKeyRevision = keys.version, r.revision
+
+
+ATTRIBUTE = UUID("00000000-0000-4000-8000-0000000000a1")
+RED, GREEN, BLUE, OLD = (UUID(f"00000000-0000-4000-8000-0000000000b{i}") for i in range(4))
+
+
+class FakeAttributes:
+    """The collection's attribute definitions: ``ATTRIBUTE`` with values red, green, blue and the
+    retired old (defined between green and blue)."""
+
+    def __init__(self):
+        self.reads = 0
+
+    async def read(self, collection_id, attribute_id):
+        self.reads += 1
+        if collection_id != COLLECTION or attribute_id != ATTRIBUTE:
+            return None
+        values = [SimpleNamespace(id=RED, retired=False), SimpleNamespace(id=GREEN, retired=False),
+                  SimpleNamespace(id=OLD, retired=True), SimpleNamespace(id=BLUE, retired=False)]
+        return SimpleNamespace(id=ATTRIBUTE, values=values)
+
+
 @pytest.fixture
 def store():
-    return AnnotationStore(collections=FakeCollections(), tags=None, spans=FakeSpans(), chunk_tags=None,
-                           documents=FakeDocuments())
+    return AnnotationStore(collections=FakeCollections(), tags=None, spans=FakeSpans(), documents=FakeDocuments())
 
 
 def ids(page):
@@ -408,10 +448,13 @@ async def test_context_search_also_needs_current_derived_text(store):
 @pytest.mark.parametrize("sort", list(AnnotationSort))
 async def test_document_filters_select_the_annotations_of_the_documents_they_select(store, sort):
     store.spans.rows = [row(DOC_A, 0), row(DOC_A, 5), row(DOC_B, 0), row(DOC_NO_YEAR, 0), row(DOC_GONE, 0)]
+    with_keys(store)
+    extra = {"sort_attribute": ATTRIBUTE, "attributes": FakeAttributes()} if sort == AnnotationSort.attribute else {}
 
     async def documents(**filters):
         page = await service.query_annotations(
-            store, OWNER, COLLECTION, AnnotationFilters(document_filters=DocumentFilters(**filters)), sort=sort)
+            store, OWNER, COLLECTION, AnnotationFilters(document_filters=DocumentFilters(**filters)), sort=sort,
+            **extra)
         assert page.total == len(page.rows)
         return [r.documentId for r in page.rows]
 
@@ -712,3 +755,119 @@ async def test_too_many_attribute_filters_are_refused(store):
         AnnotationIdsRequest(attribute_values=many)
     with pytest.raises(ValueError):
         AnnotationIdsRequest(attribute_unassigned=[uuid4() for _ in range(MAX_ATTRIBUTE_FILTERS + 1)])
+
+
+# ── Czech text and context sorts, attribute sort (#666) ─────────────────────
+
+def in_context(document, start, text, left, right, **kwargs):
+    r = row(document, start, text, **kwargs)
+    return r.model_copy(update={"leftContext": left, "rightContext": right})
+
+
+@pytest.mark.parametrize("sort, prop", [(AnnotationSort.text, "textSortKey"), (AnnotationSort.left, "leftSortKey"),
+                                        (AnnotationSort.right, "rightSortKey")])
+async def test_text_and_context_sorts_page_by_their_sort_keys_in_both_directions(store, sort, prop):
+    words = ["chata", "cesta", "Hrad", "hrad", "čas", "dub"]
+    store.spans.rows = [in_context(DOC_A if i % 2 else DOC_B, i, w, f"x {w}", f" {w} y") for i, w in enumerate(words)]
+    store.spans.rows.append(row(DOC_A, 99, current=False))  # not derived: no keys
+    with_keys(store)
+
+    for descending in (False, True):
+        expected = [r.id for r in await store.spans.query_rows(COLLECTION, service._filters_query(AnnotationFilters()),
+                                                               sort_by=prop, limit=100, descending=descending)]
+        for size in range(1, 8):
+            rows, total = await all_pages(store, size, sort=sort, descending=descending)
+            assert rows == expected and total == 7, (descending, size)
+    by_word = [r.text for r in (await service.query_annotations(store, OWNER, COLLECTION, sort=sort)).rows]
+    assert by_word == [None, "cesta", "čas", "dub", "hrad", "Hrad", "chata"]
+    assert set(store.spans.sorted_by) == {prop}
+
+
+async def test_sorted_pages_report_the_rows_without_current_sort_keys(store):
+    store.spans.rows = [row(DOC_A, 0, "a"), row(DOC_A, 1, "b"), row(DOC_B, 0, current=False)]
+    with_keys(store)
+    store.spans.rows[1].sortKeyVersion = "0:icu-1.0:00000000"  # another collator: not yet backfilled
+
+    page = await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.left)
+    assert (page.total, page.unsortable) == (3, 2)
+    assert (await service.query_annotations(store, OWNER, COLLECTION)).unsortable is None
+
+
+async def test_without_sort_keys_text_sorts_by_code_point_and_context_sorts_are_unavailable(store):
+    store.spans.rows = [row(DOC_A, 0, "čas"), row(DOC_A, 1, "dub")]
+
+    page = await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.text)
+    assert store.spans.sorted_by == ["text"] and page.unsortable is None
+    for sort in (AnnotationSort.left, AnnotationSort.right):
+        with pytest.raises(ServiceUnavailableError, match="add-schema"):
+            await service.query_annotations(store, OWNER, COLLECTION, sort=sort)
+    assert store.spans.queries == 1
+
+
+def held(document, start, *values, **kwargs):
+    r = row(document, start, **kwargs)
+    return r.model_copy(update={"attributeValues": [codec.encode(ATTRIBUTE, v) for v in values]})
+
+
+async def attribute_pages(store, size, descending=False, **kwargs):
+    return await all_pages(store, size, sort=AnnotationSort.attribute, sort_attribute=ATTRIBUTE,
+                           attributes=FakeAttributes(), descending=descending, **kwargs)
+
+
+async def test_attribute_sort_orders_by_value_then_document_order_with_missing_last(store):
+    multi, red_b, red_a, green, blue, old, none, auto = (
+        held(DOC_A, 50, BLUE, GREEN), held(DOC_B, 0, RED), held(DOC_A, 9, RED), held(DOC_A, 1, GREEN),
+        held(DOC_A, 2, BLUE), held(DOC_B, 3, OLD), held(DOC_A, 0), held(DOC_A, 4, RED, type=SpanType.auto))
+    other = row(DOC_B, 7).model_copy(update={"attributeValues": [codec.encode(uuid4(), uuid4())]})
+    store.spans.rows = [multi, red_b, red_a, green, blue, old, none, auto, other]
+    # red (document order: Almanach before Bulletin), green (with the multi-valued one once, under
+    # green: its first value), blue, the retired value, then no value: unassigned, of another
+    # attribute, or not approved (its values are not shown), in document order.
+    expected = [red_a.id, red_b.id, green.id, multi.id, blue.id, old.id, none.id, auto.id, other.id]
+    for size in range(1, 10):
+        rows, total = await attribute_pages(store, size)
+        assert rows == expected and total == 9, size
+
+
+async def test_descending_attribute_sort_reverses_the_values_only(store):
+    red, green, blue, old, none = held(DOC_A, 0, RED), held(DOC_A, 1, GREEN), held(DOC_A, 2, BLUE), \
+        held(DOC_A, 3, OLD), held(DOC_A, 4)
+    both = held(DOC_A, 5, RED, BLUE)
+    store.spans.rows = [red, green, blue, old, none, both]
+    for size in (1, 2, 6):
+        rows, _ = await attribute_pages(store, size, descending=True)
+        assert rows == [blue.id, both.id, green.id, red.id, old.id, none.id], size
+
+
+async def test_attribute_sort_applies_the_filters_and_document_filters(store):
+    store.spans.rows = [held(DOC_A, 0, GREEN), held(DOC_B, 0, RED), held(DOC_A, 1, RED, tag=OTHER_TAG)]
+    rows, total = await attribute_pages(store, 10, filters=AnnotationFilters(tag_ids=[TAG]))
+    assert rows == [store.spans.rows[1].id, store.spans.rows[0].id] and total == 2
+    rows, total = await attribute_pages(store, 10, filters=years(year_min=1900))
+    assert rows == [store.spans.rows[2].id, store.spans.rows[0].id] and total == 2
+
+
+async def test_attribute_sort_needs_a_known_attribute_of_the_collection(store):
+    store.spans.rows = [held(DOC_A, 0, RED)]
+    attributes = FakeAttributes()
+    with pytest.raises(InvalidRequestError, match="sort_attribute"):
+        await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.attribute, attributes=attributes)
+    with pytest.raises(NotFoundError):
+        await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.attribute,
+                                        sort_attribute=uuid4(), attributes=attributes)
+    with pytest.raises(InvalidRequestError, match="only used with"):
+        await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.text, sort_attribute=ATTRIBUTE)
+    store.spans.attributes = False
+    with pytest.raises(ServiceUnavailableError):
+        await service.query_annotations(store, OWNER, COLLECTION, sort=AnnotationSort.attribute,
+                                        sort_attribute=ATTRIBUTE, attributes=attributes)
+    assert store.spans.queries == 0
+
+
+@pytest.mark.parametrize("user, error", [(None, AuthenticationRequired), (OTHER, ResourceNotFound)])
+async def test_a_denied_attribute_sort_reads_no_definition(store, user, error):
+    attributes = FakeAttributes()
+    with pytest.raises(error):
+        await service.query_annotations(store, user, COLLECTION, sort=AnnotationSort.attribute,
+                                        sort_attribute=ATTRIBUTE, attributes=attributes)
+    assert attributes.reads == 0 and store.spans.queries == 0

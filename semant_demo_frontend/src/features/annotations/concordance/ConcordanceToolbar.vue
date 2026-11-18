@@ -76,20 +76,6 @@
         </q-btn-group>
 
         <div class="concordance-toolbar__search" role="group" aria-label="Text search">
-          <q-select
-            :model-value="filters.mode"
-            :options="modeOptions"
-            emit-value
-            map-options
-            dense
-            outlined
-            options-dense
-            hide-bottom-space
-            label="Find by"
-            class="concordance-toolbar__mode"
-            data-testid="concordance-mode"
-            @update:model-value="value => emit('change', modeChange(value))"
-          />
           <q-input
             ref="textInput"
             :model-value="filters.text"
@@ -97,7 +83,7 @@
             outlined
             clearable
             debounce="400"
-            :label="textLabel"
+            label="Contains words"
             hide-bottom-space
             class="concordance-toolbar__text"
             data-testid="concordance-text"
@@ -121,7 +107,6 @@
             </template>
           </q-input>
           <q-select
-            v-if="filters.mode !== RetrievalMode.semantic"
             :model-value="filters.textScope"
             :options="scopeOptions"
             emit-value
@@ -135,6 +120,35 @@
             data-testid="concordance-text-scope"
             @update:model-value="value => emit('change', { textScope: value })"
           />
+          <q-input
+            :model-value="filters.similarity"
+            dense
+            outlined
+            clearable
+            debounce="400"
+            label="Similar meaning"
+            hide-bottom-space
+            class="concordance-toolbar__text"
+            data-testid="concordance-similarity"
+            @update:model-value="value => emit('change', { similarity: String(value ?? '') })"
+          >
+            <template #prepend><q-icon name="auto_awesome" /></template>
+            <template #append>
+              <q-btn
+                flat
+                round
+                dense
+                size="sm"
+                icon="help_outline"
+                aria-label="How the similarity text ranks"
+                data-testid="concordance-similarity-help"
+              >
+                <q-popup-proxy>
+                  <p class="concordance-toolbar__help">{{ similarityHint }}</p>
+                </q-popup-proxy>
+              </q-btn>
+            </template>
+          </q-input>
           <q-checkbox
             v-if="filters.mode === RetrievalMode.similar"
             dense
@@ -384,9 +398,9 @@ import {
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
-import { modeChange, type ConcordanceFilters } from './concordanceStore'
+import { type ConcordanceFilters } from './concordanceStore'
 import type { FilterField } from './ConcordanceTable.vue'
-import { MODE_LABELS, SCOPE_LABELS, concordanceChips, modeHintText, titleProblem } from './filterChips'
+import { SCOPE_LABELS, concordanceChips, scopeHintText, similarityHintText, titleProblem } from './filterChips'
 
 const props = defineProps<{
   filters: ConcordanceFilters
@@ -476,15 +490,8 @@ const statusOptions = [
 ]
 
 const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOPE_LABELS[value] }))
-const scopeLabel = computed(() => props.filters.textScope === TextScope.annotation ? 'Annotated text'
-  : props.filters.textScope === TextScope.context ? 'Context text' : 'Annotation or context text')
-// Find similar is entered from an annotation; the selector only shows it while it is active.
-const modeOptions = computed(() => Object.values(RetrievalMode)
-  .filter(value => value !== RetrievalMode.similar || props.filters.mode === RetrievalMode.similar)
-  .map(value => ({ value, label: MODE_LABELS[value], disable: value === RetrievalMode.similar })))
-const textLabel = computed(() => props.filters.mode === RetrievalMode.semantic ? 'Meaning of'
-  : props.filters.mode === RetrievalMode.hybrid ? 'Meaning and words of' : scopeLabel.value)
-const textHint = computed(() => modeHintText(props.filters.mode, props.filters.textScope))
+const textHint = computed(() => scopeHintText(props.filters.textScope))
+const similarityHint = computed(() => similarityHintText())
 
 function setDocumentFilters (change: Partial<DocumentFilters>) {
   emit('change', { documentFilters: { ...props.filters.documentFilters, ...change } })
@@ -659,11 +666,6 @@ const shownLabel = computed(() => {
   flex: 1 1 380px;
   min-width: 0;
   gap: 8px;
-}
-
-.concordance-toolbar__mode {
-  flex: 0 1 150px;
-  min-width: 120px;
 }
 
 .concordance-toolbar__text {

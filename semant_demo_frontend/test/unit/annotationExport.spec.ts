@@ -137,8 +137,7 @@ describe('AnnotationExportDialog', () => {
     selectedIds: new Set<string>(),
     hiddenSelected: 0,
     total: 42,
-    ranked: false,
-    needsText: false
+    ranked: false
   }
   const open = async (change: Partial<typeof props> = {}) => {
     const wrapper = mount(AnnotationExportDialog, { props: { ...props, ...change }, global: { plugins: [[Quasar, {}]] }, attachTo: document.body })

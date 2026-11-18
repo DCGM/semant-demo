@@ -199,8 +199,7 @@ async def test_vectors_endpoint_lists_the_configured_vectors_without_provider_de
 
 async def test_search_with_an_unknown_vector_is_a_bad_request(tmp_path):
     app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
-    body = {"query": "Novák", "type": "hybrid", "tag_uuids": [], "positive": False, "automatic": False,
-            "vector": "missing"}
+    body = {"query": "Novák", "type": "hybrid", "vector": "missing"}
 
     async with LifespanManager(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -223,8 +222,7 @@ class SearchingRag(BaseRag):
     async def rag_request(self, request: RagRequest, retrieve) -> RagResponse:
         self.calls += 1
         for is_hyde in (False, True):
-            await retrieve(SearchRequest(query=request.question, type="hybrid", is_hyde=is_hyde, tag_uuids=[],
-                                         positive=False, automatic=False))
+            await retrieve(SearchRequest(query=request.question, type="hybrid", is_hyde=is_hyde))
         return RagResponse(rag_answer="answer", time_spent=0.0, response_id="r", sources=[])
 
 

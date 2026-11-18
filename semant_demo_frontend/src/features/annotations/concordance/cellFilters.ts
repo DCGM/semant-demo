@@ -1,4 +1,4 @@
-import { RetrievalMode, SpanType, TextScope, type AnnotationListRow, type Attribute } from 'src/generated/api'
+import { SpanType, TextScope, type AnnotationListRow, type Attribute } from 'src/generated/api'
 import { heldName, heldValues } from 'src/features/attributes/assignment'
 import { defaultFilters, type ConcordanceFilters } from './concordanceStore'
 import { SCOPE_LABELS, scopeHintText } from './filterChips'
@@ -153,11 +153,9 @@ const WORD_LABELS: Record<TextScope, (quoted: string) => string> = {
 /**
  * The filter by the words of `selected` (text selected in a row), in `scope`, the field(s) it was
  * selected in: they are added to the text filter of the same scope; a text filter of another scope
- * (or one that would grow too long) is replaced, which the caption says. None without a word, or
- * while the text ranks by meaning (`semantic`, `hybrid`), where it is no word filter.
+ * (or one that would grow too long) is replaced, which the caption says. None without a word.
  */
 export function wordFilterGroup (selected: string, scope: TextScope, f: ConcordanceFilters): CellFilterGroup | null {
-  if (f.mode === RetrievalMode.semantic || f.mode === RetrievalMode.hybrid) return null
   const words = [...new Set(queryWords(selected))]
   if (!words.length) return null
   const current = f.text.trim()

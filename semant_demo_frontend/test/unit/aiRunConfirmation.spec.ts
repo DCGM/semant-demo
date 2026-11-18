@@ -74,7 +74,7 @@ describe('confirmation before a large AI run', () => {
     localStorage.clear()
     Object.assign(stats, { chunksInCollection: 10, aiMaxChunksPerTag: 40 })
     statsFail = false
-    const end = JSON.stringify({ event: 'end', outcome: 'complete', saved: 0, rejected: 0, save_failures: 0, search_tag_failures: 0, provider_failures: 0 })
+    const end = JSON.stringify({ event: 'end', outcome: 'complete', saved: 0, rejected: 0, save_failures: 0, provider_failures: 0 })
     globalThis.fetch = vi.fn((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       requested.push(String(url))
       bodies.push(JSON.parse(String(init?.body)))

@@ -33,7 +33,6 @@ import type {
   AttributeChange,
   BulkUpdateSpansRequest,
   BulkUpdateSpansResponse,
-  ChunkTagSyncRequest,
   Collection,
   CollectionChunk,
   CollectionExportRequest,
@@ -147,8 +146,6 @@ import {
     BulkUpdateSpansRequestToJSON,
     BulkUpdateSpansResponseFromJSON,
     BulkUpdateSpansResponseToJSON,
-    ChunkTagSyncRequestFromJSON,
-    ChunkTagSyncRequestToJSON,
     CollectionFromJSON,
     CollectionToJSON,
     CollectionChunkFromJSON,
@@ -506,6 +503,7 @@ export interface ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotations
     tagId?: Array<string> | null;
     type?: Array<SpanType> | null;
     q?: string | null;
+    rankingQuery?: string | null;
     textScope?: TextScope;
     documentId?: Array<string> | null;
     yearMin?: number | null;
@@ -530,12 +528,14 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     collectionId: string;
     sort?: AnnotationSort | null;
     descending?: boolean;
+    sortAttribute?: string | null;
     limit?: number;
     offset?: number;
     annotationId?: Array<string> | null;
     tagId?: Array<string> | null;
     type?: Array<SpanType> | null;
     q?: string | null;
+    rankingQuery?: string | null;
     textScope?: TextScope;
     documentId?: Array<string> | null;
     yearMin?: number | null;
@@ -690,11 +690,6 @@ export interface SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumen
     collectionId: string;
     documentId: string;
     length?: SummaryLength | null;
-}
-
-export interface SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest {
-    collectionId: string;
-    chunkTagSyncRequest: ChunkTagSyncRequest;
 }
 
 export interface UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest {
@@ -913,7 +908,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRequestOpts(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and failed best-effort steps of updated spans (derived text or vector). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * @summary Bulk Update Tag Spans
      * @param {BulkUpdateSpansRequest} bulkUpdateSpansRequest 
      * @param {*} [options] Override http request option.
@@ -923,7 +918,7 @@ export interface DefaultApiInterface {
     bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>>;
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and failed best-effort steps of updated spans (derived text or vector). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * Bulk Update Tag Spans
      */
     bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse>;
@@ -1161,7 +1156,7 @@ export interface DefaultApiInterface {
     createTagSpanApiTagSpansPostRequestOpts(requestParameters: CreateTagSpanApiTagSpansPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
+     * Adds new TagSpan with its derived text and vector. ``outcome`` is ``partial`` when the span was saved but its derived data could not be stored. Offsets outside the text of the chunk\'s document are rejected (400).
      * @summary Create Tag Span
      * @param {PostSpan} postSpan 
      * @param {*} [options] Override http request option.
@@ -1171,7 +1166,7 @@ export interface DefaultApiInterface {
     createTagSpanApiTagSpansPostRaw(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>>;
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
+     * Adds new TagSpan with its derived text and vector. ``outcome`` is ``partial`` when the span was saved but its derived data could not be stored. Offsets outside the text of the chunk\'s document are rejected (400).
      * Create Tag Span
      */
     createTagSpanApiTagSpansPost(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
@@ -1263,7 +1258,7 @@ export interface DefaultApiInterface {
     deleteAutoSpansApiAiAutoSpansDeletePostRequestOpts(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * @summary Delete Auto Spans
      * @param {DeleteAutoSpansRequest} deleteAutoSpansRequest 
      * @param {*} [options] Override http request option.
@@ -1273,7 +1268,7 @@ export interface DefaultApiInterface {
     deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>>;
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * Delete Auto Spans
      */
     deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse>;
@@ -1311,7 +1306,7 @@ export interface DefaultApiInterface {
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequestOpts(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * @summary Delete Spans For Tags In Document
      * @param {DeleteSpansForTagsRequest} deleteSpansForTagsRequest 
      * @param {*} [options] Override http request option.
@@ -1321,7 +1316,7 @@ export interface DefaultApiInterface {
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>>;
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * Delete Spans For Tags In Document
      */
     deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse>;
@@ -1361,7 +1356,7 @@ export interface DefaultApiInterface {
     deleteTagSpanApiTagSpansSpanIdDeleteRequestOpts(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
+     * Delete a TagSpan. A span written by someone else since ``expected_version`` is not deleted (409).
      * @summary Delete Tag Span
      * @param {string} spanId 
      * @param {string} collectionId Collection of the span; a span of another collection is not found
@@ -1373,7 +1368,7 @@ export interface DefaultApiInterface {
     deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
+     * Delete a TagSpan. A span written by someone else since ``expected_version`` is not deleted (409).
      * Delete Tag Span
      */
     deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
@@ -1961,6 +1956,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -1982,6 +1978,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -2057,13 +2054,15 @@ export interface DefaultApiInterface {
      * Creates request options for listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet without sending the request
      * @param {string} collectionId 
      * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
-     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id
+     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows without a text or context sort key move from first to last, ties stay by id
+     * @param {string} [sortAttribute] Sort attribute: the attribute whose values order the rows
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -2073,7 +2072,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
-     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)
+     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
      * @param {boolean} [includeSource] Mode similar: rank the source annotation too
@@ -2083,17 +2082,19 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequestOpts(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * @summary List Collection Annotations
      * @param {string} collectionId 
      * @param {AnnotationSort} [sort] Lexical mode: the row order, default document; ranked modes are in relevance order and take none
-     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id
+     * @param {boolean} [descending] Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows without a text or context sort key move from first to last, ties stay by id
+     * @param {string} [sortAttribute] Sort attribute: the attribute whose values order the rows
      * @param {number} [limit] 
      * @param {number} [offset] 
      * @param {Array<string>} [annotationId] Only these annotations
      * @param {Array<string>} [tagId] Only annotations of these tags (repeat the parameter)
      * @param {Array<SpanType>} [type] Only annotations of these types: pos (manual or approved), auto (unresolved suggestion), neg (rejected); default pos and auto
      * @param {string} [q] Words that must each occur inside a word of the fields of text_scope, ignoring case
+     * @param {string} [rankingQuery] Modes semantic and hybrid: the text ranked by (separate from the filter words q, which always apply first); refused by the other modes
      * @param {TextScope} [textScope] Where the words of q must occur: annotation (the annotated text), context (left or right context) or both; each word may occur in another field
      * @param {Array<string>} [documentId] Only annotations in these documents
      * @param {number} [yearMin] Only documents issued in or after this year
@@ -2103,7 +2104,7 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
-     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)
+     * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
      * @param {boolean} [includeSource] Mode similar: rank the source annotation too
@@ -2114,7 +2115,7 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>>;
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
@@ -2878,32 +2879,6 @@ export interface DefaultApiInterface {
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse>;
 
     /**
-     * Creates request options for syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost without sending the request
-     * @param {string} collectionId 
-     * @param {ChunkTagSyncRequest} chunkTagSyncRequest 
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequestOpts(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest): Promise<runtime.RequestOpts>;
-
-    /**
-     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
-     * @summary Sync Collection Annotation Chunk Tags
-     * @param {string} collectionId 
-     * @param {ChunkTagSyncRequest} chunkTagSyncRequest 
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof DefaultApiInterface
-     */
-    syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRaw(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>>;
-
-    /**
-     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
-     * Sync Collection Annotation Chunk Tags
-     */
-    syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult>;
-
-    /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
      * @param {string} collectionId 
      * @param {string} userId 
@@ -3077,7 +3052,7 @@ export interface DefaultApiInterface {
     updateTagSpanApiTagSpansSpanIdPatchRequestOpts(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
+     * Update TagSpan\'s information (start, end, tagId, ...). ``outcome`` is ``partial`` when the span was updated but its derived data (or a moved span\'s chunk reference) could not be; saving again retries. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * @summary Update Tag Span
      * @param {string} spanId 
      * @param {string} collectionId Collection of the span; a span of another collection is not found
@@ -3090,7 +3065,7 @@ export interface DefaultApiInterface {
     updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>>;
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
+     * Update TagSpan\'s information (start, end, tagId, ...). ``outcome`` is ``partial`` when the span was updated but its derived data (or a moved span\'s chunk reference) could not be; saving again retries. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * Update Tag Span
      */
     updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
@@ -3497,7 +3472,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and failed best-effort steps of updated spans (derived text or vector). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePostRaw(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BulkUpdateSpansResponse>> {
@@ -3508,7 +3483,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
+     * Apply the same :class:`PatchSpan` to many spans in one round-trip.  Used by the AI-assist \"Approve / Reject all selected\" action — collapses N PATCH calls into one and lets the server fan them out concurrently.  All spans must belong to ``collection_id``, which the user may annotate; otherwise nothing is updated. Updates are best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not be updated (``update_span``) and failed best-effort steps of updated spans (derived text or vector). Spans written by someone else since their version in ``expected_versions`` are not changed (``edit_conflict``; their current state in ``conflicts``).
      * Bulk Update Tag Spans
      */
     async bulkUpdateTagSpansApiTagSpansBulkUpdatePost(requestParameters: BulkUpdateTagSpansApiTagSpansBulkUpdatePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BulkUpdateSpansResponse> {
@@ -4044,7 +4019,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
+     * Adds new TagSpan with its derived text and vector. ``outcome`` is ``partial`` when the span was saved but its derived data could not be stored. Offsets outside the text of the chunk\'s document are rejected (400).
      * Create Tag Span
      */
     async createTagSpanApiTagSpansPostRaw(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>> {
@@ -4055,7 +4030,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when the span was saved but the chunk tag could not be updated. Offsets outside the text of the chunk\'s document are rejected (400).
+     * Adds new TagSpan with its derived text and vector. ``outcome`` is ``partial`` when the span was saved but its derived data could not be stored. Offsets outside the text of the chunk\'s document are rejected (400).
      * Create Tag Span
      */
     async createTagSpanApiTagSpansPost(requestParameters: CreateTagSpanApiTagSpansPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {
@@ -4279,7 +4254,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * Delete Auto Spans
      */
     async deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>> {
@@ -4290,7 +4265,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * Delete Auto Spans
      */
     async deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse> {
@@ -4384,7 +4359,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * Delete Spans For Tags In Document
      */
     async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRaw(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteSpansForTagsResponse>> {
@@ -4395,7 +4370,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``) and the chunk tag updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``).
+     * Bulk-delete approved (``type == \'pos\'``) spans for the given tag ids within a single (collection, document) scope. Negatives and unresolved auto suggestions are left untouched.  Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
      * Delete Spans For Tags In Document
      */
     async deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost(requestParameters: DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteSpansForTagsResponse> {
@@ -4502,7 +4477,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
+     * Delete a TagSpan. A span written by someone else since ``expected_version`` is not deleted (409).
      * Delete Tag Span
      */
     async deleteTagSpanApiTagSpansSpanIdDeleteRaw(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
@@ -4513,7 +4488,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could not be updated. A span written by someone else since ``expected_version`` is not deleted (409).
+     * Delete a TagSpan. A span written by someone else since ``expected_version`` is not deleted (409).
      * Delete Tag Span
      */
     async deleteTagSpanApiTagSpansSpanIdDelete(requestParameters: DeleteTagSpanApiTagSpansSpanIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
@@ -5797,6 +5772,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['q'] = requestParameters['q'];
         }
 
+        if (requestParameters['rankingQuery'] != null) {
+            queryParameters['ranking_query'] = requestParameters['rankingQuery'];
+        }
+
         if (requestParameters['textScope'] != null) {
             queryParameters['text_scope'] = requestParameters['textScope'];
         }
@@ -6005,6 +5984,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['descending'] = requestParameters['descending'];
         }
 
+        if (requestParameters['sortAttribute'] != null) {
+            queryParameters['sort_attribute'] = requestParameters['sortAttribute'];
+        }
+
         if (requestParameters['limit'] != null) {
             queryParameters['limit'] = requestParameters['limit'];
         }
@@ -6027,6 +6010,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['q'] != null) {
             queryParameters['q'] = requestParameters['q'];
+        }
+
+        if (requestParameters['rankingQuery'] != null) {
+            queryParameters['ranking_query'] = requestParameters['rankingQuery'];
         }
 
         if (requestParameters['textScope'] != null) {
@@ -6101,7 +6088,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationPage>> {
@@ -6112,7 +6099,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
+     * One page of the collection\'s annotations matching the annotation query as concordance rows (stored text, left and right context, tag, type, document title and year) and the number of all matches. Rows are in a total order, so paging is deterministic. Rows whose text is not derived for their current revision have ``textStatus`` other than ``ready`` and no text. A document filter this corpus database cannot evaluate is refused (422).  A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result`` describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a usable embedding service answer 503; a similar source without a current vector 400.
      * List Collection Annotations
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage> {
@@ -7839,68 +7826,6 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Creates request options for syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost without sending the request
-     */
-    async syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequestOpts(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest): Promise<runtime.RequestOpts> {
-        if (requestParameters['collectionId'] == null) {
-            throw new runtime.RequiredError(
-                'collectionId',
-                'Required parameter "collectionId" was null or undefined when calling syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost().'
-            );
-        }
-
-        if (requestParameters['chunkTagSyncRequest'] == null) {
-            throw new runtime.RequiredError(
-                'chunkTagSyncRequest',
-                'Required parameter "chunkTagSyncRequest" was null or undefined when calling syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && this.configuration.accessToken) {
-            // oauth required
-            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
-        }
-
-
-        let urlPath = `/api/user_collections/{collection_id}/annotations/chunk-tags/sync`;
-        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
-
-        return {
-            path: urlPath,
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: ChunkTagSyncRequestToJSON(requestParameters['chunkTagSyncRequest']),
-        };
-    }
-
-    /**
-     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
-     * Sync Collection Annotation Chunk Tags
-     */
-    async syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRaw(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<WriteResult>> {
-        const requestOptions = await this.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequestOpts(requestParameters);
-        const response = await this.request(requestOptions, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => WriteResultFromJSON(jsonValue));
-    }
-
-    /**
-     * Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the collection\'s tags from its annotations: repairs the ``update_chunk_tags`` failures of a review, also after a deletion. Needs annotation-edit access.
-     * Sync Collection Annotation Chunk Tags
-     */
-    async syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost(requestParameters: SyncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<WriteResult> {
-        const response = await this.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPostRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
      */
     async unshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequestOpts(requestParameters: UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest): Promise<runtime.RequestOpts> {
@@ -8352,7 +8277,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
+     * Update TagSpan\'s information (start, end, tagId, ...). ``outcome`` is ``partial`` when the span was updated but its derived data (or a moved span\'s chunk reference) could not be; saving again retries. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * Update Tag Span
      */
     async updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TagSpanWriteResult>> {
@@ -8363,7 +8288,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Update TagSpan\'s information (start, end, tagId, ...), then re-derive the chunk tag references of its (chunk, tag) pair (and the new pair on a tag change), so saving again retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated but the chunk tags could not be. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
+     * Update TagSpan\'s information (start, end, tagId, ...). ``outcome`` is ``partial`` when the span was updated but its derived data (or a moved span\'s chunk reference) could not be; saving again retries. A span written by someone else since ``expected_version`` is not changed (409), unless it already is as the patch asks.
      * Update Tag Span
      */
     async updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {

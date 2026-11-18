@@ -6,8 +6,6 @@ import { useAnnotationSelectionStore, type SelectionEntry } from '../annotationS
 
 /** Annotations sent per review request (the backend accepts at most 200). */
 export const REVIEW_BATCH = 200
-/** (chunk, tag) pairs per search repair request (the backend accepts at most 1,000). */
-export const SYNC_BATCH = 1000
 
 /** An annotation whose review write did not succeed, or may not have. */
 export interface ReviewFailure {
@@ -59,9 +57,6 @@ export interface ReviewReport {
   conflicts: ReviewConflict[]
   /** Not annotations of the collection (any more): deleted meanwhile, or never there. */
   missing: string[]
-  /** Saved changes that tag-filtered search does not reflect yet, as the `chunkId:tagId`
-   * pairs to re-derive; a retry repairs them, also those of deleted annotations. */
-  unsynced: string[]
   /** Targets not sent because a request was refused (e.g. access was revoked) or the
    * selection changed. */
   notSent: number
@@ -79,8 +74,7 @@ export interface ReviewReport {
  * Each annotation is sent with the version it was selected at (#460): one changed by someone
  * else since is refused and reported as a conflict, never retried; this user's saved writes
  * move the selection's versions on. Retrying sends only failed and uncertain items (an
- * uncertain write that landed counts as saved) and repairs the search references whose
- * update failed.
+ * uncertain write that landed counts as saved).
  *
  * Undo (#461): the last approve, reject, retag or boundary edit of at most `REVIEW_BATCH`
  * annotations can be undone once (`undoable`), from the previous values the backend returned
@@ -108,7 +102,7 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
   let run = 0
 
   function emptyReport (action: ReportAction, tagId: string | null, target: number): ReviewReport {
-    return { action, tagId, target, saved: [], failed: [], conflicts: [], missing: [], unsynced: [], notSent: 0, error: null }
+    return { action, tagId, target, saved: [], failed: [], conflicts: [], missing: [], notSent: 0, error: null }
   }
 
   /** The request of `into`'s action for one part of its annotations. */
@@ -165,7 +159,6 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
           const id = f.itemId
           if (!id) continue
           if (f.step === 'find_annotation') into.missing.push(id)
-          else if (f.step === 'update_chunk_tags') into.unsynced.push(id)
           else if (f.step === 'edit_conflict') into.conflicts.push({ id, version: versions[id] ?? expected[id] ?? 0 })
           else into.failed.push({ id, message: f.message, uncertain: !!f.uncertain, version: expected[id] ?? 0 })
         }
@@ -184,36 +177,6 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
       }
       progress.value = Math.min(items.length, i + part.length)
     }
-    return true
-  }
-
-  /** Re-derives the search references of `into.unsynced`, keeping the pairs still not
-   * updated; false when stopped because the context changed. */
-  async function sync (collectionId: string, into: ReviewReport, applies: () => boolean) {
-    const pairs = [...new Set(into.unsynced)]
-    const left: string[] = []
-    for (let i = 0; i < pairs.length; i += SYNC_BATCH) {
-      if (!applies()) return false
-      const part = pairs.slice(i, i + SYNC_BATCH)
-      try {
-        const result = await api.syncCollectionAnnotationChunkTagsApiUserCollectionsCollectionIdAnnotationsChunkTagsSyncPost({
-          collectionId,
-          chunkTagSyncRequest: {
-            pairs: part.map(pair => {
-              const [chunkId = '', tagId = ''] = pair.split(':')
-              return { chunkId, tagId }
-            })
-          }
-        })
-        if (!applies()) return false
-        for (const f of result.failed ?? []) if (f.itemId) left.push(f.itemId)
-      } catch (e) {
-        if (!applies()) return false
-        left.push(...part)
-        into.error ??= await apiErrorMessage(e, 'Tag-filtered search could not be updated.')
-      }
-    }
-    into.unsynced = left
     return true
   }
 
@@ -270,7 +233,6 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
       // leaves the change before it to undo.
       if (applies() && (action === ReviewAction.delete ? next.saved.length : changed.length)) noteUndo(action, changed)
       if (!sent) return null
-      next.unsynced = [...new Set(next.unsynced)]
       report.value = next
       return next
     } finally {
@@ -301,7 +263,6 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
       const sent = await send(collectionId, next, change.items.map(i => [i.id, i.version]), applies, () => true)
       if (!sent) return null
       if (undoable.value === change) noteChange(null)
-      next.unsynced = [...new Set(next.unsynced)]
       report.value = next
       return next
     } finally {
@@ -309,11 +270,10 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
     }
   }
 
-  /** Sends the failed and uncertain items of the last report again and repairs its
-   * search references that were not updated. */
+  /** Sends the failed and uncertain items of the last report again. */
   async function retry (collectionId: string): Promise<ReviewReport | null> {
     const last = report.value
-    if (!last || (!last.failed.length && !last.unsynced.length)) return last
+    if (!last || !last.failed.length) return last
     const { mine, applies, unchanged } = startRun()
     const next: ReviewReport = {
       ...last,
@@ -322,8 +282,7 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
       error: null,
       saved: [...last.saved],
       conflicts: [...last.conflicts],
-      missing: [...last.missing],
-      unsynced: [...last.unsynced]
+      missing: [...last.missing]
     }
     target.value = last.failed.length
     running.value = true
@@ -337,7 +296,6 @@ export const useAnnotationReviewStore = defineStore('annotationReview', () => {
         noteUndo(last.action, [...kept, ...changed])
       }
       if (!sent) return null
-      if (!await sync(collectionId, next, applies)) return null
       report.value = next
       return next
     } finally {

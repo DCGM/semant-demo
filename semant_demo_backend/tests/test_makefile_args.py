@@ -41,7 +41,7 @@ def _pytest_argv(tmp_path, args):
 
 @pytest.mark.parametrize(("args", "expected"), [
     (None, []),
-    ("tests/integration/test_chunk_tags.py -k bulk", ["tests/integration/test_chunk_tags.py", "-k", "bulk"]),
+    ("tests/integration/test_annotations.py -k bulk", ["tests/integration/test_annotations.py", "-k", "bulk"]),
     ("tests/integration/test_access.py -k 'case_a or case_b'",
      ["tests/integration/test_access.py", "-k", "case_a or case_b"]),
     ("-k \"(a and not b) or c\" -x", ["-k", "(a and not b) or c", "-x"]),

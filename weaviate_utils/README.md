@@ -46,9 +46,8 @@ Updated weaviate schema: [create_schema.py](https://github.com/Martin-Toma/db_be
 - tag collection (added, does not exist in original)
 - references from TextChunk to 
     - userCollection
-    - automaticTag
-    - positiveTag
-    - negativeTag
+    - (historically also automaticTag, positiveTag and negativeTag; these chunk tag
+      references are no longer read or written, see `docs/adr/0013-no-chunk-tag-references.md`)
 - Also on the semant server the class is named 'Chunks' not 'TextChunks' as in the schema script
 
 The db has this header:

@@ -19,7 +19,10 @@ the purpose, the safety requirements and the usual sequence. Detailed notes and 
 - Writing to the shared test or production stores needs explicit authorization for that task.
   Practise on a copy of the development snapshot first (below).
 - Back up first (`backup-filesystem` backup or an offline copy); `document_cleanup --delete`
-  refuses to run without a verified backup id.
+  refuses to run without a verified backup id. Production also has daily scheduled backups
+  (weekly full, incremental in between; ids `auto-…`, the newest in `last_status`):
+  [Weaviate backup](../deploy/README.md#weaviate-backup-469). An incremental backup is a valid
+  `--backup-id`; Weaviate restores it through its base backups.
 - Run while nothing else writes the affected data (ingestion, metadata edits): the checks and
   the writes are not atomic. Checkpointed runs resume by running the same command again.
 - Keep the reports, checkpoints and manifests; record outcomes (counts, backup ids, failures)
@@ -29,21 +32,13 @@ The scripts in `weaviate_utils/` are older standalone tools; several drop collec
 delete data (for example `delete_*.py`, `build_db/create_schema.py`) and connect to a
 hard-coded or configured endpoint. The same rules apply.
 
-## Chunk tag audit (`chunk_tag_audit`)
+## Chunk tag references (removed, #733)
 
-Compares the chunk `automaticTag` / `positiveTag` / `negativeTag` references with the spans
-([ADR 0004](adr/0004-storage-and-annotation-search.md)): `unbacked` references (no matching
-span) and `missing` references (a span whose chunk lacks the reference, invisible to
-tag-filtered search).
-
-```bash
-python -m semant_demo.maintenance.chunk_tag_audit --report chunk_tags.json   # read-only
-python -m semant_demo.maintenance.chunk_tag_audit --apply chunk_tags.json \
-  --remove-unbacked --confirm-endpoint localhost:8080
-```
-
-Add `--add-missing` only when the reviewed repair also needs to create absent references.
-Applying re-derives every listed (chunk, tag) pair from the spans stored at that moment.
+The chunk tag audit (`chunk_tag_audit`) and its repair were removed with the chunk tag
+references themselves ([ADR 0013](adr/0013-no-chunk-tag-references.md)). Existing stores keep
+the `automaticTag` / `positiveTag` / `negativeTag` properties and references, inert; do not
+clear or drop them without a separately reviewed issue. Earlier audits and repairs (#422) are
+recorded in the [run records](archive/data-maintenance-2026/RUN_RECORDS.md).
 
 ## Documents without chunks (`document_cleanup`, #281)
 
@@ -460,8 +455,7 @@ The dry run is the inventory: legacy and per-collection counts (`would_copy`,
 Weaviate 1.40 returns no reference to a deleted object, so spans of deleted tags or chunks
 appear here —, tags without exactly one collection, chunks without a document, unknown types,
 offsets that are not `0 <= start < end`) with their ids, and the tag inventory. Skipped spans
-are never assigned to a guessed collection; review them before the cutover. Their chunk tag
-references become unbacked and are then reported by `chunk_tag_audit`.
+are never assigned to a guessed collection; review them before the cutover.
 
 `--execute` creates `Annotation` when missing and the tenants it needs, inserts only spans
 absent from their tenant (a differing copy is a reported `conflict`, never overwritten), saves
@@ -478,8 +472,7 @@ existing backup recorded with `--offline-backup`, also qualifies. Production ser
 backfill creates `Annotation` itself (no alias), with its `text_chunk` reference targeting the
 collection behind `Chunks`, since Weaviate refuses a reference to an alias.
 
-1. Before the pause, on the running store: `backfill --state dry.json` and
-   `chunk_tag_audit --report audit-before.json`. Review the skipped records, the tag inventory
+1. Before the pause, on the running store: `backfill --state dry.json`. Review the skipped records, the tag inventory
    and the counts; expect the pause to take about as long as the dry run plus writing (the
    rehearsal wrote ~16,000 spans/s into existing tenants and created ~16 tenants/s).
 2. **Write pause:** stop the backend (`./update.sh app-down`, for the test store every app
@@ -491,11 +484,10 @@ collection behind `Chunks`, since Weaviate refuses a reference to an alias.
    to the store: `backfill --state run.json --execute --confirm-endpoint HOST:PORT
    --offline-backup PATH`, until it exits 0 (`failed` and `conflict` empty).
 5. `verify --report verify.json` must report no `missing`, `different`, `target_only` or
-   `orphan_tenants`; `chunk_tag_audit --report audit-after.json` must report what
-   `audit-before.json` reported plus the references of skipped spans.
+   `orphan_tenants`.
 6. Deploy and start the new release. Check the document view (annotations, AI suggestions,
-   approve/reject), collection statistics, tag-filtered search and a span discussion.
-7. Keep `Span`, the copy, the state, the reports and the audits; record counts, the copy
+   approve/reject), collection statistics and a span discussion.
+7. Keep `Span`, the copy, the state and the reports; record counts, the copy
    and the outcome on the issue.
 
 **Rollback.** Before any annotation was written in the new store, redeploy the previous
@@ -503,8 +495,7 @@ release: it reads `Span`, which the migration did not change (`Annotation` can s
 release ignores it). After writes in the new store, switching back would lose them: run
 `verify --report`, which lists the spans created (`target_only`), changed (`different`) and
 deleted (`missing`) since the cutover, and reconcile them into `Span` in a separately reviewed
-step (no tool is provided), or roll forward. The chunk tag references follow the new store's
-writes, so run `chunk_tag_audit` against whichever store is current. Restoring the offline
+step (no tool is provided), or roll forward. Restoring the offline
 copy also returns to the pre-migration state, losing every later write in all collections.
 
 **Rehearsed** on disposable Weaviate 1.40.1 (2026-10-18; `tests/integration/test_annotation_migration.py`
@@ -828,8 +819,10 @@ python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--
   [--no-vectors] --execute --confirm-endpoint HOST:PORT                                 # without --execute: status
 ```
 
-- `add-schema` adds the missing derived properties and the named vector (`target_vector` of
-  the configured vector) to the existing collection; it changes no object and is idempotent.
+- `add-schema` adds the missing derived properties, the sort keys of #666 (`leftSortKey`,
+  `rightSortKey`, `textSortKey`, `sortKeyVersion`, `sortKeyRevision`) and the named vector
+  (`target_vector` of the configured vector) to the existing collection; it changes no object
+  and is idempotent.
   Restart the backend afterwards: it decides at startup what it stores and logs an error while
   properties or the vector are missing.
 - Contextual annotation vectors may set `max_input_chars` to limit the rendered embedding input.
@@ -838,11 +831,14 @@ python -m semant_demo.maintenance.annotation_enrichment backfill --limit 500 [--
   Existing successful vectors remain current. Failed or incomplete vectors can be retried during
   the next scheduled annotation enrichment maintenance; no immediate backfill is required.
 - `status` counts each tenant's spans by text state (`current`, `outdated` derivation policy,
-  `missing`, `failed`, `invalid`) and vector state (`current`, `pending`, `failed`, `stale`),
-  and `incomplete` (what a backfill would write). Reading a tenant activates it.
+  `missing`, `failed`, `invalid`), vector state (`current`, `pending`, `failed`, `stale`) and
+  sort key state (`current`, `missing`, `stale`: another collator or revision, `pending`: written
+  with text that is not current yet; `unconfigured` without the properties), and `incomplete`
+  (what a backfill would write); `sort_key_version` is the collator of the running code. Reading
+  a tenant activates it.
 - `backfill` writes only derived properties of at most `--limit` incomplete spans, never offsets,
   chunk, tag, type or revision, and deletes nothing. It reports `processed`, `text_written`,
-  `vector_written`, `not_processed` (incomplete spans skipped because of `--limit`),
+  `vector_written`, `sort_keys_written`, `not_processed` (incomplete spans skipped because of `--limit`),
   `remaining_incomplete` (every span still incomplete for the configured vector when the run
   ended, read again afterwards: not processed ones, failed steps and, with `--no-vectors`, vectors
   still to embed) and `failed`. Text re-derived under a new derivation policy marks its vector
@@ -877,6 +873,98 @@ Rolling back the release needs no data change (older releases ignore the
 derived properties). Rehearsed only on disposable Weaviate 1.40.1
 (`tests/integration/test_annotation_enrichment.py`); production counts and duration are unknown
 until `status` runs there.
+
+### Czech sort keys (#666)
+
+The text and context sorts of the workspace read the sort keys stored on each annotation
+([DATABASE.md](DATABASE.md#collection-annotation-multi-tenant-327)); they are computed by ICU
+(PyICU against the image's system ICU). Until a collection has the properties, the backend sorts
+the annotated text in Weaviate's code-point order and refuses the context sorts (503); once it
+has them, new and edited annotations get their keys, and existing annotations get theirs from
+the backfill. Until then they are listed as "not sortable yet" (first ascending, last
+descending). Nothing else changes: text, vectors and `derivationVersion` stay as they are, so
+search keeps working during the whole procedure.
+
+- **Run the commands with the release's image**, not with a development `.venv`: the keys depend
+  on the ICU version, and keys computed by another ICU than the backend's count as `stale` there.
+  Use a one-off container of the deployment's `app` service, from its deployment directory
+  (`$RUNNER_WORKDIR/semant-demo` for production, `…/semant-demo-test-main` for test-main; see
+  [deploy/README.md](../deploy/README.md#runners)), so it gets the release's image, `.env` and
+  Weaviate network while the app itself is stopped. The image's entrypoint starts the web server,
+  so the command needs `--entrypoint python`; without it the container starts the app instead:
+
+  ```bash
+  cd /opt/runner-workdir/semant-demo   # production; test-main: semant-demo-test-main, -p semant-demo-test-main -f docker-compose.app-test.yml
+  docker compose -p semant-demo -f docker-compose.app.yaml run --rm --no-deps -T -l traefik.enable=false \
+    --entrypoint python app -m semant_demo.maintenance.annotation_enrichment status
+  ```
+
+  With plain `docker run`, pass the same `--entrypoint python`, the deployment's environment
+  and its Weaviate network.
+  `status` prints the `sort_key_version` of the code that runs it; it must equal the one the
+  deployed backend logs at startup ("Annotation sort keys: collator …").
+- Keys alone need no chunk read and no embedding: on spans with current text, `backfill
+  --no-vectors` writes only `leftSortKey`, `rightSortKey`, `textSortKey`, `sortKeyVersion` and
+  `sortKeyRevision` (one read and one write per span). Without `--no-vectors` it also embeds
+  vectors that are not current, as before.
+- Measured on a disposable Weaviate 1.40.1 tenant of 28,000 synthetic annotations (the size of
+  the largest production tenant; `tests/integration/test_annotation_sort_benchmark.py`, 2026-11-16,
+  development machine): the key backfill of 1,000 spans took 13.5 s including two full reads of
+  the tenant (~13 ms per span, so ~6 min for 28,000); the deepest sortable page (rows
+  9,950–10,000) of the text, left and right sorts 307–363 ms median, the first page 112–159 ms;
+  the attribute sort (12 values) 146–168 ms on the first and the last page; document order
+  89–104 ms. Production counts and durations are unknown until `status` runs there.
+
+Rollout on an existing store (operator task; requires authorization for that store).
+**Add the schema while the old backend is still running; deploy the new backend normally;
+stop writers only for the short backfill; then restart.** The keys of old annotations may
+be missing between deployment and backfill, so their text/context ordering is temporarily
+incomplete. This does not affect ordinary annotation storage, retrieval or vectors.
+
+1. **Backup and schema, before deploying the new backend.** Verify a recoverable backup
+   and record its identifier. Use the candidate/release backend image against the target
+   Weaviate store to run `add-schema` as a dry run (check that `missing_properties` lists
+   the five sort-key fields), then `add-schema --execute --confirm-endpoint HOST:PORT`.
+   Re-run the dry run to verify that no properties remain missing. The old backend keeps
+   running and ignores these optional properties; no application shutdown is required
+   for this additive schema step. Use an image containing this PR's maintenance command.
+2. **Deploy the new backend normally.** Once the schema exists, the new backend detects the
+   fields at startup and writes sort keys for newly created or changed annotations.
+   Check health and the startup log for the sort-key collator; if the properties were
+   added after the backend started, restart it so detection is refreshed. Existing
+   annotations still need backfilling.
+3. **Stop all annotation writers** (every backend instance, Topicer-driven suggestion jobs
+   and other scripts) and confirm they are stopped. Leave Weaviate running so the
+   maintenance command can connect. This is the short maintenance window: the backfill's
+   revision check and write are not atomic against concurrent edits.
+4. **Backfill using the same backend image/ICU as the running release**, with the same
+   Weaviate connection configuration:
+   `backfill --limit N --no-vectors --execute --confirm-endpoint HOST:PORT`.
+   Run in bounded batches as needed, then `status`. Continue until every tenant has
+   zero `sort_keys.missing` and zero `sort_keys.stale` and there are no backfill
+   failures. `sort_keys.pending` may remain for annotations without current text and
+   is not a sort-key-only backfill failure. `remaining_incomplete` can include unrelated
+   vectors because `--no-vectors` intentionally skips them.
+5. **Start the backend and other writers.** Check health and KWIC ascending/descending
+   sorts for *Left context*, *Annotation* and *Right context* (`č` after `c`, `ch` after
+   `h`), attribute ordering and page traversal. Recheck `status` if unexpected
+   unsortable counts remain.
+
+**Environment order:** For the shared test store, add the properties before merging
+because a merge to `main` automatically deploys the new test backend; then stop the
+test writers, backfill and verify. For production, add the properties **before creating
+the release tag**, because a `v*.*.*` tag automatically deploys production; after
+deployment, stop the production writers, run the backfill with that deployed image and
+restart. No special deployment checkpoint or concurrent-safe backfill implementation
+is required. Do not run the backfill against a live writing backend.
+
+Rolling back the release needs no data change: older releases neither read nor write the sort
+keys. Boundary edits made by an older release leave keys of the previous revision, which count as
+`stale` (`sortKeyRevision`); after returning to the new release, run step 5 again. The same
+applies after any change of the image's ICU (e.g. a new Debian base image): `status` then reports
+every key `stale` and the sorts list rows by their old keys until the backfill has run, so plan
+step 5 with such an upgrade. Rehearsed only on disposable Weaviate 1.40.1
+(`tests/integration/test_annotation_sorting.py`).
 
 ## Annotation provenance (`annotation_provenance`, #460)
 

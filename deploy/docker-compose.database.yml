@@ -14,6 +14,8 @@ services:
       - "127.0.0.1:50051:50051"
     volumes:
       - /mnt/ssd2/weaviate_semant:/var/lib/weaviate
+      # backup-filesystem target on the ZFS pool (#469); the host path is weaviate_backup.py's BACKUP_ROOT
+      - /mnt/zfs1/weaviate_semant/backups:/var/lib/weaviate/backups
     restart: always
     stop_grace_period: 120s
     environment:
@@ -28,7 +30,14 @@ services:
       # memory-pressure checks (batch admission, compaction, vector index growth) are inert.
       # CPUs stay unlimited (no CPU quota is set).
       LIMIT_RESOURCES: "true"
-    mem_limit: 128g
+      # Paced deletion of tombstoned vectors (as deployed since the October 2026 audits)
+      TOMBSTONE_DELETION_CONCURRENCY: "1"
+      TOMBSTONE_DELETION_MIN_PER_CYCLE: "1000"
+      TOMBSTONE_DELETION_MAX_PER_CYCLE: "100000"
+      # Filesystem backups (#469): deploy/weaviate_backup.py, see deploy/README.md#weaviate-backup-469
+      ENABLE_MODULES: backup-filesystem
+      BACKUP_FILESYSTEM_PATH: /var/lib/weaviate/backups
+    mem_limit: 98g
     memswap_limit: 0g
     networks:
       - semant_demo_database

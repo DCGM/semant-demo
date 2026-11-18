@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
-import { apiToken, deleteAddedAttributes, ensureLoggedIn, fixture, useViewport } from './support'
+import { apiToken, deleteAddedAttributes, ensureLoggedIn, expectMenusClosed, fixture, useViewport } from './support'
 
 // Assigning attribute values in the annotation workspace (#331, ADR 0011): an optional column
 // shows one attribute's values and assigns them on a row, the sidebar edits every attribute of
@@ -72,6 +72,8 @@ async function toggleOption (page: Page, testid: string, option: string) {
   await choose(page, testid, option)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('listbox')).toHaveCount(0)
+  // Its deferred refocus has run: focus moved next stays where it is moved (#626).
+  await expectMenusClosed(page)
 }
 
 test.afterEach(async ({ request }) => {
@@ -277,7 +279,7 @@ test('several attribute columns are shown side by side and edited one by one, ch
   // Shown in the collection's order (by name), whatever order they are chosen in.
   await toggleOption(page, 'concordance-show-attribute', 'Role')
   await toggleOption(page, 'concordance-show-attribute', 'Place type')
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type', 'Role'])
   await expect(page.getByTestId('concordance-show-attribute')).toContainText('Place type, Role')
   // Each option says its state itself; its checkbox is only a picture of it, not a tab stop.
   await page.getByTestId('concordance-show-attribute').click()
@@ -321,11 +323,11 @@ test('several attribute columns are shown side by side and edited one by one, ch
   await page.getByTestId('chunk-context').getByTestId('chunk-context-title').click()
   await expect(page.locator('.doc-header').getByTestId('document-title')).toBeVisible()
   await page.getByRole('link', { name: 'Back to annotations' }).click()
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type', 'Role'])
 
   // Hiding one changes nothing else either.
   await toggleOption(page, 'concordance-show-attribute', 'Role')
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type'])
   await expect(rows(page).locator('.kwic__key-label')).toHaveText(order)
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
 })
@@ -343,7 +345,7 @@ test('on a phone several attribute columns scroll sideways under the annotation'
   await expect.poll(overflow).toBeLessThanOrEqual(0)
   await toggleOption(page, 'concordance-show-attribute', 'Place type')
   await toggleOption(page, 'concordance-show-attribute', 'Stance')
-  await expect(page.getByTestId('kwic-attribute-head')).toHaveText(['Place type', 'Role', 'Stance'])
+  await expect(page.getByTestId('kwic-attribute-head').locator('.kwic-head__label')).toHaveText(['Place type', 'Role', 'Stance'])
   await expect.poll(overflow).toBeGreaterThan(0)
   // The annotation header keeps room for its name and controls (#665).
   await expect(page.getByTestId('kwic-sort-annotation')).toBeVisible()

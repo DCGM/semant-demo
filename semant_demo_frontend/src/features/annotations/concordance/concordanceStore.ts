@@ -12,8 +12,8 @@ import { useAnnotationReviewStore } from './annotationReviewStore'
 /** Rows per page of the concordance. */
 export const PAGE_SIZE = 50
 
-/** The choices of `k` of a ranked query (#664); the server allows 1–500. */
-export const TOP_K_OPTIONS = [20, 50, 100, 200, 500]
+/** The `k` of a ranked query (#664) is not a toolbar choice (#716): the server default applies, and
+ * results always report it as a bounded top-k. */
 export const DEFAULT_TOP_K = 100
 
 /** What the concordance shows; every change goes back to the first page. */
@@ -21,8 +21,12 @@ export interface ConcordanceFilters {
   tagIds: string[]
   /** `pos` (manual or approved) and `auto` (proposals) by default; `neg` only when chosen. */
   types: SpanType[]
-  /** Words that must each occur inside a word of a field of `textScope`, ignoring case (#663). */
+  /** Words that must each occur inside a word of a field of `textScope`, ignoring case (#663): a
+   * hard filter, whatever else ranks (#716). */
   text: string
+  /** Text to rank by (#716): with it the annotations matching every filter (words included) are
+   * ranked by meaning and words (hybrid), as a bounded top-k; never a filter itself. */
+  similarity: string
   /** Where the words of `text` must occur: the annotated text, its context, or either. */
   textScope: TextScope
   documentIds: string[]
@@ -36,11 +40,13 @@ export interface ConcordanceFilters {
   attributeUnassigned: string[]
   /** Lexical mode only; ranked results are in relevance order. */
   sort: AnnotationSort
-  /** Reverses `sort` (missing titles, years and texts stay last). */
+  /** The attribute whose values order the rows (#666), with `sort` `attribute`; otherwise null. */
+  sortAttribute: string | null
+  /** Reverses `sort` (missing titles, years and attribute values stay last; rows without a text
+   * or context sort key move from first to last). */
   descending: boolean
-  /** Every match (`lexical`) or a ranked top `k` (#664): by meaning of `text` (`semantic`),
-   * meaning and words of `text` (`hybrid`), or like `similarTo` (`similar`; `text` then stays a
-   * lexical filter). */
+  /** Derived by `withMode`, never chosen: every match (`lexical`), a ranked top `k` by `similarity`
+   * (`hybrid`), or like `similarTo` (`similar`). */
   mode: RetrievalMode
   k: number
   /** Mode `similar`: the source annotation, as listed when it was chosen. */
@@ -49,20 +55,22 @@ export interface ConcordanceFilters {
   includeSource: boolean
 }
 
-/** The modes that rank by the query text (it is then no lexical filter). */
-export function ranksText (mode: RetrievalMode): boolean {
-  return mode === RetrievalMode.semantic || mode === RetrievalMode.hybrid
+/** The filter change that drops the Find similar source. */
+export function clearSimilar (): Partial<ConcordanceFilters> {
+  return { similarTo: null, includeSource: false }
 }
 
-/** The filter change that switches to `mode` (never `similar`, which needs a source). */
-export function modeChange (mode: RetrievalMode): Partial<ConcordanceFilters> {
-  return { mode, similarTo: null, includeSource: false }
+/** The filter change of Find similar from `row`, keeping the other filters. It replaces a
+ * similarity text (two rankings cannot combine) and never turns that text into a source query. */
+export function similarChange (row: AnnotationListRow): Partial<ConcordanceFilters> {
+  return { similarTo: row, includeSource: false, similarity: '' }
 }
 
-/** The filter change of Find similar from `row`, keeping the other filters; a text that ranked
- * by meaning is dropped, since in mode `similar` it would filter by words. */
-export function similarChange (f: ConcordanceFilters, row: AnnotationListRow): Partial<ConcordanceFilters> {
-  return { mode: RetrievalMode.similar, similarTo: row, includeSource: false, ...(ranksText(f.mode) ? { text: '' } : {}) }
+/** `f` with its retrieval mode derived from what is set: a Find similar source, else a similarity
+ * text (hybrid), else none (every match). The source and the text exclude each other. */
+export function withMode (f: ConcordanceFilters): ConcordanceFilters {
+  const mode = f.similarTo ? RetrievalMode.similar : f.similarity.trim() ? RetrievalMode.hybrid : RetrievalMode.lexical
+  return { ...f, mode, includeSource: mode === RetrievalMode.similar && f.includeSource }
 }
 
 /** The ranking of the filters for the API; none in lexical mode. */
@@ -81,12 +89,14 @@ export function defaultFilters (): ConcordanceFilters {
     tagIds: [],
     types: [SpanType.pos, SpanType.auto],
     text: '',
+    similarity: '',
     textScope: TextScope.annotation,
     documentIds: [],
     documentFilters: {},
     attributeValues: [],
     attributeUnassigned: [],
     sort: AnnotationSort.document,
+    sortAttribute: null,
     descending: false,
     mode: RetrievalMode.lexical,
     k: DEFAULT_TOP_K,
@@ -120,6 +130,7 @@ export function annotationFilters (f: ConcordanceFilters): AnnotationFilters {
     tagIds: f.tagIds.length ? f.tagIds : null,
     types: f.types,
     q: f.text.trim() || null,
+    rankingQuery: f.mode === RetrievalMode.hybrid ? f.similarity.trim() : null,
     textScope: f.textScope,
     documentIds: f.documentIds.length ? f.documentIds : null,
     documentFilters: normalizeDocumentFilters(f.documentFilters),
@@ -188,8 +199,6 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const refreshRequests = createContextGuard()
 
   const rows = computed(() => page.value?.rows ?? [])
-  /** A ranked mode that ranks by the text, without one: nothing is read until it is entered. */
-  const needsText = computed(() => ranksText(filters.value.mode) && !filters.value.text.trim())
   const total = computed(() => page.value?.total ?? 0)
   /** The offset of the next page: rows of this page that left the result moved the later ones
    * up, so these are not skipped (#690). */
@@ -322,13 +331,6 @@ export const useConcordanceStore = defineStore('concordance', () => {
     const f = filters.value
     const key = JSON.stringify([f, offset.value])
     error.value = null
-    if (needsText.value) {
-      page.value = null
-      pageKey = key
-      loading.value = false
-      rowAbort = null
-      return
-    }
     const ranked = ranking(f)
     loading.value = true
     try {
@@ -337,7 +339,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
         tagId: f.tagIds.length ? f.tagIds : undefined,
         type: f.types,
         q: f.text.trim() || undefined,
-        textScope: f.text.trim() && f.mode !== RetrievalMode.semantic ? f.textScope : undefined,
+        rankingQuery: f.mode === RetrievalMode.hybrid ? f.similarity.trim() : undefined,
+        textScope: f.text.trim() ? f.textScope : undefined,
         documentId: f.documentIds.length ? f.documentIds : undefined,
         yearMin: f.documentFilters.yearMin ?? undefined,
         yearMax: f.documentFilters.yearMax ?? undefined,
@@ -347,6 +350,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         attribute: f.attributeValues.length ? f.attributeValues : undefined,
         unassigned: f.attributeUnassigned.length ? f.attributeUnassigned : undefined,
         sort: ranked ? undefined : f.sort,
+        sortAttribute: !ranked && f.sort === AnnotationSort.attribute ? f.sortAttribute ?? undefined : undefined,
         descending: !ranked && f.descending ? true : undefined,
         mode: ranked?.mode,
         k: ranked?.k,
@@ -373,10 +377,13 @@ export const useConcordanceStore = defineStore('concordance', () => {
       page.value = null
       const status = errorStatus(e)
       // A ranked query is refused with a message of its own: no vector of the source (400), no
-      // embedding service (503).
+      // embedding service (503); so is a sort this store cannot give (503: no sort keys or
+      // attributes, #666; 404: the sort attribute was deleted).
       const message = ranked && (status === 400 || status === 503)
         ? await apiErrorMessage(e, 'Search by meaning is not available now.')
-        : failure(e, 'annotations')
+        : !ranked && (status === 503 || (status === 404 && f.sort === AnnotationSort.attribute))
+            ? await apiErrorMessage(e, 'This sort is not available now.')
+            : failure(e, 'annotations')
       if (applies()) error.value = message
     } finally {
       if (applies()) {
@@ -491,11 +498,6 @@ export const useConcordanceStore = defineStore('concordance', () => {
       known.value = new Set()
       return
     }
-    if (needsText.value) { // nothing is shown until the text is entered
-      shown.value = new Set()
-      known.value = new Set(ids)
-      return
-    }
     const isCurrent = shownRequests.capture()
     const inScope = scope.capture()
     const inSession = captureSession()
@@ -565,8 +567,10 @@ export const useConcordanceStore = defineStore('concordance', () => {
   /** Changes the query and shows its first page. */
   async function setFilters (change: Partial<ConcordanceFilters>) {
     const before = filters.value
-    filters.value = { ...before, ...change }
+    // A new similarity text replaces a Find similar source; the mode follows from what is set.
+    filters.value = withMode({ ...before, ...change, ...(change.similarity?.trim() ? clearSimilar() : {}) })
     if (change.documentFilters) filters.value.documentFilters = normalizeDocumentFilters(change.documentFilters)
+    if (filters.value.sort !== AnnotationSort.attribute) filters.value.sortAttribute = null
     offset.value = 0
     stopResolving()
     shown.value = new Set()
@@ -577,7 +581,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
 
   /** Lists the annotations most similar to `row`, within the current filters (#664). */
   async function findSimilar (row: AnnotationListRow) {
-    await setFilters(similarChange(filters.value, row))
+    await setFilters(similarChange(row))
   }
 
   async function resetFilters () {
@@ -653,7 +657,6 @@ export const useConcordanceStore = defineStore('concordance', () => {
     nextOffset,
     hasNextPage,
     unmatched,
-    needsText,
     loading,
     error,
     documents,

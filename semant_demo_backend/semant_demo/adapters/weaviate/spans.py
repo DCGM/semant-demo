@@ -16,9 +16,8 @@ only for the collection-membership filters of the statistics. Offsets are stored
 Tenants are created lazily, by the first write (``ensure_tenant``); reading a collection
 without a tenant returns nothing and creates none. Tenants may be inactive
 (``maintenance.annotation_tenants``); the collection activates them on access
-(``auto_tenant_activation``). This repository only reads and writes spans; the chunk tag
-references derived from them are updated by ``chunk_tags.ChunkTagRepository`` and the
-order of these writes is decided by the Annotations service.
+(``auto_tenant_activation``). This repository only reads and writes spans; the order of
+span, derived-field and vector writes is decided by the Annotations service.
 
 Derived fields (#328, ``features/annotations/derivation.py`` and ``enrichment.py``) live
 on the same objects: ``revision`` counts boundary changes; ``text``, the contexts and
@@ -34,6 +33,10 @@ elements, ``features/annotations/attribute_codec.py``) and ``attributeVersion`` 
 creation, separate from ``editVersion``). Read and written only when the collection holds them
 (``SpanRepository.attributes``, set at startup from ``attribute_schema``); ``add_attribute_schema`` adds
 them on the operator's request.
+
+Sort keys (#666): ``leftSortKey``, ``rightSortKey``, ``textSortKey`` (hex Czech collation keys,
+``features/annotations/collation.py``), ``sortKeyVersion`` and ``sortKeyRevision``, written with the derived text when
+the collection holds them (``sort_key_schema``; ``add_enrichment_schema`` adds them).
 
 Provenance (#460): ``origin``, ``createdBy``/``createdAt``, ``reviewedBy``/``reviewedAt``,
 ``lastEditedBy``/``lastEditedAt``, ``aiRunId`` and ``editVersion`` (span writes since
@@ -56,7 +59,6 @@ from weaviate.classes.tenants import Tenant, TenantActivityStatus
 from weaviate.exceptions import WeaviateBaseError
 
 from semant_demo.adapters.weaviate.names import CollectionNames
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTag
 from semant_demo.adapters.weaviate.document_cleanup import resolve_collection
 from semant_demo.adapters.weaviate.paging import fetch_all
 from semant_demo.adapters.weaviate.writes import NoProgressError
@@ -113,6 +115,17 @@ ENRICHMENT_PROPERTIES: list[Property] = [
 """Derived properties of #328, in the order ``add_enrichment_schema`` adds them. (Collections
 enriched before #463 also declare ``positionSegment``, which is no longer read or written.)"""
 
+SORT_KEY_PROPERTIES: list[Property] = [
+    # Hex collation keys (``features/annotations/collation.py``), only sorted by: whole-value
+    # tokenization, neither searchable nor filterable.
+    *(Property(name=name, data_type=DataType.TEXT, tokenization=Tokenization.FIELD, index_searchable=False,
+               index_filterable=False) for name in ("leftSortKey", "rightSortKey", "textSortKey")),
+    _status("sortKeyVersion"),
+    Property(name="sortKeyRevision", data_type=DataType.INT),
+]
+"""Sort keys of #666, in the order ``add_enrichment_schema`` adds them. Tracked apart from the
+#328 properties: a collection without them still derives text, contexts and vectors."""
+
 PROVENANCE_PROPERTIES: list[Property] = [
     _status("origin"),
     Property(name="createdBy", data_type=DataType.UUID),
@@ -146,7 +159,9 @@ _STORED = [*_PROPERTIES, "documentId"]
 derived text)."""
 _PROVENANCE = [p.name for p in PROVENANCE_PROPERTIES]
 _ATTRIBUTES = [p.name for p in ATTRIBUTE_PROPERTIES]
-_ROW_FIELDS = {*_ROW, *_PROVENANCE, *_ATTRIBUTES}
+_SORT_KEYS = ["sortKeyVersion", "sortKeyRevision"]
+"""What rows read of the sort keys: whether they are current (the keys themselves are only sorted by)."""
+_ROW_FIELDS = {*_ROW, *_PROVENANCE, *_ATTRIBUTES, *_SORT_KEYS}
 _CURRENCY = ["revision", "enrichmentStatus", "enrichedRevision", "derivationVersion", "vectorStatus",
              "vectorRevision", "vectorConfig"]
 """What ``enrichment.vector_current`` reads: a ranked candidate is read with these only."""
@@ -163,7 +178,8 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
 
     No tenant is created here. Vectors are self-provided: ``default`` (flat index, unused)
     and the contextual vector ``annotation_vector`` (#328; ``None``: none). The derived
-    properties of #328, the provenance of #460 and the attributes of #331 are included. A reference cannot target an alias, so when the chunk
+    properties of #328, the sort keys of #666, the provenance of #460 and the attributes of #331
+    are included. A reference cannot target an alias, so when the chunk
     collection name is an alias (production: ``Chunks`` -> ``Chunks_test``) the reference
     targets the collection it names.
     """
@@ -188,6 +204,7 @@ async def create_annotation_collection(client: WeaviateAsyncClient, names: Colle
             Property(name="reason", data_type=DataType.TEXT),
             Property(name="confidence", data_type=DataType.NUMBER),
             *ENRICHMENT_PROPERTIES,
+            *SORT_KEY_PROPERTIES,
             *PROVENANCE_PROPERTIES,
             *ATTRIBUTE_PROPERTIES,
         ],
@@ -205,16 +222,25 @@ async def enrichment_schema(client: WeaviateAsyncClient, names: CollectionNames,
     return missing, annotation_vector is not None and annotation_vector in (config.vector_config or {})
 
 
+async def sort_key_schema(client: WeaviateAsyncClient, names: CollectionNames) -> list[str]:
+    """The sort key properties (#666) the annotation collection lacks."""
+    config = await client.collections.get(names.annotation_collection_name).config.get()
+    present = {p.name for p in config.properties}
+    return [p.name for p in SORT_KEY_PROPERTIES if p.name not in present]
+
+
 async def add_enrichment_schema(client: WeaviateAsyncClient, names: CollectionNames,
                                 annotation_vector: str | None) -> list[str]:
-    """Add the missing derived properties and the named vector to the existing annotation
-    collection; returns what was added. Existing objects and vectors are not changed."""
+    """Add the missing derived properties, sort keys (#666) and the named vector to the
+    existing annotation collection; returns what was added. Existing objects and vectors are
+    not changed (their sort keys are missing until the backfill computes them)."""
     missing, has_vector = await enrichment_schema(client, names, annotation_vector)
+    missing_keys = await sort_key_schema(client, names)
     config = client.collections.get(names.annotation_collection_name).config
-    for prop in ENRICHMENT_PROPERTIES:
-        if prop.name in missing:
+    for prop in [*ENRICHMENT_PROPERTIES, *SORT_KEY_PROPERTIES]:
+        if prop.name in missing or prop.name in missing_keys:
             await config.add_property(prop)
-    added = list(missing)
+    added = [*missing, *missing_keys]
     if annotation_vector is not None and not has_vector:
         await config.add_vector(vector_config=_contextual_vector(annotation_vector))
         added.append(f"vector:{annotation_vector}")
@@ -316,6 +342,14 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
     for attribute, values in query.attribute_values.items():
         conditions.append(Filter.by_property("attributeValues").contains_any(
             [codec.encode(attribute, v) for v in values]))
+    if query.sort_key_version is not None:
+        conditions.append(Filter.by_property("sortKeyVersion").equal(query.sort_key_version))
+    if query.holds_value is not None:
+        conditions.append(Filter.by_property("type").equal(SpanType.pos.value))
+        conditions.append(Filter.by_property("attributeValues").contains_any([query.holds_value]))
+    if query.holds_none_of:
+        conditions.append(Filter.not_(Filter.by_property("attributeValues").contains_any(list(query.holds_none_of)))
+                          | Filter.by_property("type").not_equal(SpanType.pos.value))
     for attribute in query.attribute_unassigned:
         # Explicit: no stored element carries the attribute's fixed-length id prefix. Values kept on a
         # non-approved annotation are not shown, so it counts as unassigned too.
@@ -325,16 +359,14 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
     return Filter.all_of(conditions)
 
 
-def pair_of(span: TagSpan) -> ChunkTag:
-    """The (chunk, tag) pair whose chunk tag references the span backs."""
-    return ChunkTag.of(span.chunkId, span.tagId)
-
-
 class SpanRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames, provenance: bool = False,
-                 attributes: bool = False):
+                 attributes: bool = False, sort_keys: bool = False):
         self.client = client
         self.collectionNames = collectionNames
+        self.sort_keys = sort_keys
+        """The collection holds the sort keys (#666): rows read their version. Decided at startup
+        with the enrichment (``bootstrap.detect_enrichment``)."""
         self.provenance = provenance
         """The collection holds the provenance properties (#460): they are read, and the
         service writes them. Decided at startup (``bootstrap.detect_provenance``)."""
@@ -362,9 +394,11 @@ class SpanRepository:
         return [*_PROPERTIES, *(["editVersion"] if self.provenance else []),
                 *(["attributeVersion"] if self.attributes else [])]
 
-    def _row_properties(self, base: list[str] = _ROW) -> list[str]:
-        """``base`` and the optional property groups the collection holds (provenance, attributes)."""
-        return [*base, *(_PROVENANCE if self.provenance else []), *(_ATTRIBUTES if self.attributes else [])]
+    def _row_properties(self, base: list[str] = _ROW, sort_keys: bool = True) -> list[str]:
+        """``base`` and the optional property groups the collection holds (provenance, attributes
+        and, unless ``sort_keys`` is false, the sort-key currency of #715)."""
+        return [*base, *(_PROVENANCE if self.provenance else []), *(_ATTRIBUTES if self.attributes else []),
+                *(_SORT_KEYS if sort_keys and self.sort_keys else [])]
 
     async def _iterate(self, collection_id: UUID, properties: list[str]):
         """Every span object of the collection (cursor order, no 10k limit); nothing when the
@@ -602,16 +636,17 @@ class SpanRepository:
             return result.total_count or 0
         return await self._read(collection_id, count, 0)
 
-    async def query_rows(self, collection_id: UUID, query: AnnotationQuery, *, by_text: bool,
+    async def query_rows(self, collection_id: UUID, query: AnnotationQuery, *, sort_by: str | None = None,
                          document_ids: list[UUID] | None = None, limit: int, offset: int = 0,
                          descending: bool = False) -> list[AnnotationRow]:
         """One page of matching spans (of the given documents when ``document_ids`` is not
-        None) with their derived fields, by annotated text (``descending``: reversed; Weaviate
-        puts spans without text first ascending, last descending) or by position in the
-        document, each ending with the span id (ascending)."""
+        None) with their derived fields, by the text property ``sort_by`` (``text`` or a sort
+        key of #666; ``descending``: reversed; Weaviate puts spans without a value first
+        ascending, last descending) or, without it, by position in the document, each ending
+        with the span id (ascending)."""
         if document_ids is not None and not document_ids:
             return []
-        sort = (Sort.by_property("text", ascending=not descending) if by_text else
+        sort = (Sort.by_property(sort_by, ascending=not descending) if sort_by is not None else
                 Sort.by_property("documentStartChar").by_property("documentEndChar"))
 
         async def read():
@@ -704,28 +739,22 @@ class SpanRepository:
         tenant. ``revision`` only when asked: a store without the derived properties
         of #328 has none, and Weaviate refuses to return an undeclared property."""
         base = [*_STORED, "revision"] if revision else _STORED
-        async for obj in self._iterate(collection_id, self._row_properties(base)):
+        async for obj in self._iterate(collection_id, self._row_properties(base, sort_keys=False)):
             yield {"id": UUID(str(obj.uuid)), **obj.properties}
 
     async def list_in_document(self, collection_id: UUID, document_id: UUID, tag_ids: list[UUID],
-                               span_type: SpanType) -> dict[UUID, set[ChunkTag]]:
+                               span_type: SpanType) -> list[UUID]:
         """
         Ids of the collection's spans of one type and the given tags that start on a chunk
-        of the document, with their (chunk, tag) pairs. Listed completely before the
-        caller writes, so failed deletions cannot make the listing loop.
+        of the document. Listed completely before the caller writes, so failed deletions
+        cannot make the listing loop.
         """
         if not tag_ids:
-            return {}
+            return []
         filters = (Filter.by_property("tagId").contains_any(list(tag_ids))
                    & Filter.by_property("documentId").equal(document_id)
                    & Filter.by_property("type").equal(span_type.value))
-        return {UUID(str(o.uuid)): {pair_of(to_span(o))} for o in await self._fetch(collection_id, filters)}
-
-    async def types_on_pair(self, collection_id: UUID, pair: ChunkTag) -> set[str]:
-        """Types of the collection's spans with the pair's tag anchored on its chunk."""
-        filters = (Filter.by_property("tagId").equal(pair.tag_id)
-                   & Filter.by_property("chunkId").equal(pair.chunk_id))
-        return {o.properties.get("type") for o in await self._fetch(collection_id, filters, ["type"])}
+        return [UUID(str(o.uuid)) for o in await self._fetch(collection_id, filters, ["tagId"])]
 
     async def delete_by_tag(self, collection_id: UUID, tag_id: UUID) -> int:
         """Delete every span of the tag; returns how many were deleted.

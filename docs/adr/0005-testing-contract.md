@@ -97,8 +97,7 @@ changes. Do not require all layers for every PR or demand features that do not e
 | Area | Cases to prove |
 | --- | --- |
 | Access | Owner/shared/unrelated/anonymous; shared annotation edits allowed but document/chunk membership changes denied; explicit admin actions; guessed IDs; mixed-scope batches; revocation; no unauthorized read/write/provider call. |
-| Search | Text/vector/hybrid; collection + chunk-tag + metadata filters compose; excluded chunks never become eligible; optional summarization failure retains hits. |
-| Annotation/search consistency | Create, status/tag change, and delete maintain the existing chunk-tag representation; removing one of several backing annotations retains the tag; final removal clears it; collection/category/cross-chunk rules remain compatible. |
+| Search | Text/vector/hybrid; collection + metadata filters compose; excluded chunks never become eligible; removed legacy tag filters are refused, never broadened (ADR 0013); optional summarization failure retains hits. |
 | Pagination | Empty, exact page, page + 1, multi-page; stable ordering; configured limits; shrinking mutation sets; persistent failure/no-progress terminates. |
 | Partial writes | One/all failures, already-completed retry, unattempted steps, uncertain timeout; returned item/step outcomes and counts match acknowledged work. |
 | AI streams | Save before saved-result event; provider/persistence failure; explicit terminal event; unexpected EOF is incomplete; cancel retains saved work; saved proposals reload. |
@@ -109,9 +108,10 @@ changes. Do not require all layers for every PR or demand features that do not e
 | Old job removal | Login/users survive; SQL metadata, callers, and generated clients do not accidentally depend on removed jobs. |
 
 Annotation-query details are compatibility/correctness checks, not a mandate to redesign
-search. The one-off inconsistent-data cleanup has separate tests: dry-run report, remove
-only unsupported chunk tag entries, retain valid multi-annotation references, and treat
-failed reads as errors rather than absence. A real production cleanup is not a test fixture.
+search. One-off data cleanups have separate tests: dry-run report, remove only proven
+inconsistencies, and treat failed reads as errors rather than absence. A real production
+cleanup is not a test fixture. (The annotation/search consistency cases for chunk tag
+references were dropped with the references, ADR 0013.)
 
 A minimal release browser suite exercises login, collection membership, annotation editing,
 shared annotation access with membership denial, search, and streamed AI/cancellation.

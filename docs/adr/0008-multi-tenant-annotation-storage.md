@@ -3,7 +3,7 @@
 Status: storage, access, lifecycle and migration tooling implemented in #327; production and
 the shared test store were migrated on 2026-10-18. Enabling idle deactivation is pending.
 Date: 2026-10-18. Agreed in the collection-workspace plan (#311, #323); refines ADR 0004's
-storage of span annotations, not its chunk tag search. Derived annotation data on the same
+storage of span annotations (its chunk tag search was later removed, ADR 0013). Derived annotation data on the same
 objects: [ADR 0009](0009-derived-annotation-data.md) (#328); provenance and edit versions:
 [ADR 0010](0010-annotation-provenance-and-edit-versions.md) (#460).
 
@@ -21,8 +21,8 @@ annotation queries and enrichment (#328) for the same annotations the document v
   collection keeps it. No physical collection per user collection, tag or attribute.
 - Keep span UUIDs, tags, anchor chunks, UTF-16 half-open offsets and `pos`/`auto`/`neg`
   semantics. Store `tagId`, `chunkId` and `documentId` as filterable UUID properties; keep
-  Tags, Chunks and Documents where they are. The chunk tag projection used by search (ADR 0004)
-  is unchanged and derived from the tag's collection tenant.
+  Tags, Chunks and Documents where they are. (The chunk tag projection of ADR 0004 was derived
+  from the tag's collection tenant until [ADR 0013](0013-no-chunk-tag-references.md) removed it.)
 - The service authorizes the collection before it uses its tenant (ADR 0007). A caller's
   tenant or span id is no credential: span-id routes carry the collection explicitly, ids are
   looked up only in its tenant, and nothing scans tenants to locate a span.

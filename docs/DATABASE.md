@@ -113,9 +113,6 @@ erDiagram
     }
 
     Chunks }o--|| Documents : "document (many:1)"
-    Chunks }o--o{ Tag : "automaticTag (many:many)"
-    Chunks }o--o{ Tag : "positiveTag (many:many)"
-    Chunks }o--o{ Tag : "negativeTag (many:many)"
     Chunks }o--o{ UserCollection : "userCollection (many:many)"
     Tag }o--o{ UserCollection : "userCollection (many:many)"
     Annotation }o--|| Chunks : "text_chunk (many:1)"
@@ -269,21 +266,14 @@ The core searchable collection. Each chunk is a contiguous text block (typically
 | Reference | Target | Cardinality | Description |
 |---|---|---|---|
 | `document` | Documents | 1 | Parent document |
-| `automaticTag` | Tag | many | Tags of `auto` spans anchored on this chunk (unresolved AI suggestions) |
-| `positiveTag` | Tag | many | Tags of `pos` spans anchored on this chunk (approved) |
-| `negativeTag` | Tag | many | Tags of `neg` spans anchored on this chunk (rejected) |
 | `userCollection` | UserCollection | many | User collections containing this chunk |
 
-The three tag references are what tag-filtered search uses. They are derived from the
-`Annotation` collection: a chunk holds a tag reference exactly when at least one span of the
-matching type with that tag is anchored on the chunk (its `chunkId`), in the tenant of the
-tag's collection. The
-lists follow the spans' current type: approving a suggestion (`auto` → `pos`) moves its
-tag from `automaticTag` to `positiveTag` unless another `auto` span of that tag remains;
-`automaticTag` does not record that the AI once proposed an approved tag. Span
-writes maintain this; a reference without such a span is a data inconsistency, not a
-supported legacy state (ADR 0004). `python -m semant_demo.maintenance.chunk_tag_audit`
-reports inconsistencies.
+Chunks hold no annotation tag references ([ADR 0013](adr/0013-no-chunk-tag-references.md),
+#733): annotations are stored only as spans in the `Annotation` tenants. Existing stores
+(production, shared test, older development snapshots) still have the legacy `automaticTag`,
+`positiveTag` and `negativeTag` references to `Tag`. They are inert: no application code
+reads or writes them, deleting a tag leaves them in place, and they are not cleaned up by
+this change. New stores are created without them.
 
 ### Collection: `Tag`
 
@@ -308,7 +298,7 @@ Named collections of chunks per user:
 Character-level annotations of a tag, one **tenant per user collection**: the tenant name is
 the collection's UUID (canonical lowercase form), never a user id. Sharing uses the same
 tenant; renaming or changing the owner does not change it. Spans drive the manual
-highlighting UI, the AI-assisted tagging workflow and the chunk tag projection. Multi-tenancy:
+highlighting UI, the AI-assisted tagging workflow, concordance, exports and annotation search. Multi-tenancy:
 `auto_tenant_creation` off (the backend creates a tenant on a collection's first span write),
 `auto_tenant_activation` on (an inactive tenant is activated by the next read or write).
 
@@ -339,6 +329,16 @@ fields above stay authoritative). Absent on spans saved before #328 until the ba
 - `documentStartWord` / `documentEndWord` (`INT`, range filters) — half-open word range from the
   document start: the words ending at or before the span start, the words starting before its
   end; partially covered words are included
+- `leftSortKey` / `rightSortKey` / `textSortKey` (`TEXT`, `field` tokenization, neither searchable
+  nor filterable; #666) — hex-encoded ICU sort keys under the Czech collation of the nearest 5
+  words of the left context (nearest first), the first 5 of the right context and the first 10
+  of the text, joined by a space (`features/annotations/collation.py`); `""` for a side without
+  words. Weaviate sorts them by code point, which is Czech dictionary order of the words
+- `sortKeyVersion` (`TEXT`, `field`, filterable; #666) — the policy and collator of the keys
+  (`1:icu-<ICU version>:<tailoring digest>`); `""` when the text could not be derived. Keys of
+  another version are not current: the backfill recomputes them (e.g. after an ICU upgrade)
+- `sortKeyRevision` (`INT`; #666) — the `revision` the keys were computed for: a release before
+  #666 changes the text on an offset edit without its keys, which are then not current either
 - `positionSegment` (`INT`, legacy) — the `order` where the span's gap-free run of chunks
   started (#328). Neither written nor read since #463; it stays declared on collections that
   have it until a separately approved cleanup. On documents with consecutive orders the
@@ -394,16 +394,16 @@ annotation vector `contextual` (#328, self-provided, flat index per tenant; its 
 `target_vector` of `ANNOTATION_VECTOR_CONFIG`). On a collection created before #328, the
 derived properties and the vector are added by `annotation_enrichment add-schema`
 (`config.add_property` / `config.add_vector`, supported on 1.40), and on one created before
-#460 the provenance properties by `annotation_provenance add-schema`; the backend writes them
+#460 the provenance properties by `annotation_provenance add-schema`, and the sort keys of #666
+(also on a collection created before it) by `annotation_enrichment add-schema`; the backend writes them
 only when they exist (decided at startup), so Weaviate's auto-schema never guesses their types.
 
 The application never creates the collection; the migration does
 (`python -m semant_demo.maintenance.annotation_migration backfill --execute`,
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#annotation-migration-annotation_migration-327)).
 
-> **Cascades.** Deleting a Tag first removes the chunk tag references to it, then its spans in
-> its collection's tenant (`delete_many`), then the Tag. Deleting a collection removes its
-> chunk/document links, its tags (with their chunk tag references), then its tenant (all its
+> **Cascades.** Deleting a Tag removes its spans in its collection's tenant (`delete_many`),
+> then the Tag. Deleting a collection removes its chunk/document links, its tags, then its tenant (all its
 > spans at once), then the collection; the tenant counts as removed only when a lookup no
 > longer finds it. Done by the backend (`adapters/weaviate/writes.py`), not atomic: a failed
 > step keeps the completed deletions and is reported, and deleting again continues.

@@ -3,8 +3,8 @@
 A ``prepare_*`` function checks access and loads the tags and chunks (before anything is
 streamed, so a denied request gets an HTTP error and makes no provider call) and returns a
 ``SuggestionRun``. Iterating ``SuggestionRun.events()`` calls Topicer, validates every
-proposal against the request, saves each valid one as an ``auto`` span (chunk tag
-included, ``service.save_span``) and yields a ``SuggestSpansChunkResult`` once it is
+proposal against the request, saves each valid one as an ``auto`` span (with its
+derived data, ``service.save_span``) and yields a ``SuggestSpansChunkResult`` once it is
 stored, then a final ``SuggestSpansRunEnd`` with the outcome.
 
 - Concurrency: at most ``PROVIDER_CONCURRENCY`` Topicer calls of one run at a time;
@@ -31,7 +31,7 @@ stored, then a final ``SuggestSpansRunEnd`` with the outcome.
   spans are kept and failures are counted in the events and the summary. No rollback.
 - Cancellation: closing the iterator (client disconnect) or cancelling its task cancels
   the running Topicer calls and waits for them to end; a span write in progress is
-  finished first, so it is never cut between the span and its chunk tag. Saved spans
+  finished first, so it is never cut between the span and its derived data. Saved spans
   remain. ``summary.outcome`` is then ``cancelled``.
 - Duplicates: proposals are not compared with stored spans. Running suggestions again
   stores a second ``auto`` span for a proposal identical to an existing span (of any
@@ -98,7 +98,6 @@ class _Tally:
     saved: int = 0
     rejected: int = 0
     save_failures: int = 0
-    search_tag_failures: int = 0
     enrichment_failures: int = 0
     provider_failures: int = 0
     completed_calls: int = 0
@@ -118,8 +117,8 @@ class _Tally:
     """The user who started the run and the run's id, recorded on its spans (#460)."""
 
     def summary(self) -> SuggestSpansRunEnd:
-        failures = (self.provider_failures + self.save_failures + self.search_tag_failures
-                    + self.enrichment_failures + bool(self.error) + bool(self.quota_exhausted))
+        failures = (self.provider_failures + self.save_failures + self.enrichment_failures
+                    + bool(self.error) + bool(self.quota_exhausted))
         if not failures:
             outcome = SuggestionRunOutcome.complete
         elif self.saved or self.completed_calls:
@@ -128,7 +127,7 @@ class _Tally:
             outcome = SuggestionRunOutcome.failed
         return SuggestSpansRunEnd(
             outcome=outcome, saved=self.saved, rejected=self.rejected, save_failures=self.save_failures,
-            search_tag_failures=self.search_tag_failures, enrichment_failures=self.enrichment_failures,
+            enrichment_failures=self.enrichment_failures,
             provider_failures=self.provider_failures,
             error=self.error, unit=self.unit, units_total=self.units_total, units_processed=self.units_processed,
             stop_reason="quota_exhausted" if self.quota_exhausted else None,
@@ -147,7 +146,6 @@ class _ChunkEvent:
     spans: list[TagSpan] = field(default_factory=list)
     unsaved: int = 0
     reasons: set[str] = field(default_factory=set)
-    untagged: int = 0
     unenriched: int = 0
     save_failed: bool = False
 
@@ -164,8 +162,6 @@ class _ChunkEvent:
         errors = [self.error] if self.error else []
         if self.unsaved:
             errors.append(f"{self.unsaved} proposal(s) not saved ({', '.join(sorted(self.reasons))})")
-        if self.untagged:
-            errors.append(f"{self.untagged} saved proposal(s) not yet findable by tag search")
         if self.unenriched:
             errors.append(f"{self.unenriched} saved proposal(s) without current search text or vector")
         return SuggestSpansChunkResult(
@@ -445,11 +441,7 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
         return
     event.spans.append(TagSpan(**result.model_dump(include=set(TagSpan.model_fields))))
     event.tally.saved += 1
-    steps = {f.step for f in result.failed}
-    if "update_chunk_tags" in steps:
-        event.untagged += 1
-        event.tally.search_tag_failures += 1
-    if steps - {"update_chunk_tags"}:
+    if result.failed:
         event.unenriched += 1
         event.tally.enrichment_failures += 1
 

@@ -11,6 +11,7 @@
         <q-form ref="formRef" @submit.prevent="submit" class="q-gutter-md">
           <q-input
             v-model="username"
+            :autofocus="$q.platform.is.desktop"
             label="Username"
             outlined
             dense

@@ -6,8 +6,8 @@ holds the derived properties. Spans saved before, spans whose derivation or embe
 failed, and vectors of another configuration (``ANNOTATION_VECTOR_CONFIG`` ``id``) are
 completed by an explicit, bounded backfill.
 
-Add the derived properties and the named vector to an existing ``Annotation`` collection
-(no existing object is changed; a dry run lists what is missing)::
+Add the derived properties, the sort keys of #666 and the named vector to an existing
+``Annotation`` collection (no existing object is changed; a dry run lists what is missing)::
 
     python -m semant_demo.maintenance.annotation_enrichment add-schema
     python -m semant_demo.maintenance.annotation_enrichment add-schema --execute --confirm-endpoint localhost:8080
@@ -15,8 +15,9 @@ Add the derived properties and the named vector to an existing ``Annotation`` co
 Then restart the backend: it decides at startup what it derives.
 
 Status: spans per collection by text state (current / outdated / missing / failed /
-invalid) and vector state (current / pending / failed / stale), and how many are
-incomplete (read-only; reading a tenant activates it)::
+invalid), vector state (current / pending / failed / stale) and sort key state (current /
+stale / missing / pending), and how many are incomplete (read-only; reading a tenant
+activates it)::
 
     python -m semant_demo.maintenance.annotation_enrichment status [--collection ID ...]
 
@@ -29,7 +30,9 @@ Stop every backend and other writer of the store first (docs/DATA_MAINTENANCE.md
 revision check before each write is not atomic against a running backend.
 
 Only derived properties are written, never a span's offsets, chunk, tag, type or revision;
-nothing is deleted. ``not_processed`` counts incomplete spans skipped by ``--limit``;
+nothing is deleted. Sort keys missing or of another collator (``sortKeyVersion``, e.g. after
+an ICU upgrade) on spans with current text are computed from the stored text and contexts:
+no chunk read and no embedding (``sort_keys_written``). ``not_processed`` counts incomplete spans skipped by ``--limit``;
 ``remaining_incomplete`` (read again after the run) counts every span still incomplete for
 the configured vector, including failed steps and, with ``--no-vectors``, vectors still to
 embed. Embedding calls the configured provider once per span. Exits 1 when some steps
@@ -62,10 +65,11 @@ def _parser() -> argparse.ArgumentParser:
 
 async def _main(argv: list[str]) -> int:
     from semant_demo.adapters.weaviate.client import connect_weaviate
-    from semant_demo.adapters.weaviate.spans import add_enrichment_schema, enrichment_schema
+    from semant_demo.adapters.weaviate.spans import add_enrichment_schema, enrichment_schema, sort_key_schema
     from semant_demo.bootstrap import WeaviateRepositories, detect_enrichment, load_annotation_vector
     from semant_demo.config import Config
     from semant_demo.features.annotations import backfill
+    from semant_demo.features.annotations.collation import sort_key_version
     from semant_demo.features.annotations.service import AnnotationStore
 
     args = _parser().parse_args(argv)
@@ -88,6 +92,7 @@ async def _main(argv: list[str]) -> int:
         target = vector.target_vector if vector else None
         if args.command == "add-schema":
             missing, has_vector = await enrichment_schema(client, names, target)
+            missing += await sort_key_schema(client, names)
             if not execute:
                 print(json.dumps({"missing_properties": missing,
                                   "missing_vector": target if target and not has_vector else None}, indent=2))
@@ -97,15 +102,17 @@ async def _main(argv: list[str]) -> int:
 
         repos = WeaviateRepositories.create(client, config)
         enrichment = await detect_enrichment(client, config, vector)
+        repos.spans.sort_keys = enrichment.sort_keys
         if not enrichment.derived:
             print("The annotation collection lacks the derived properties: run add-schema first.", file=sys.stderr)
             return 2
         store = AnnotationStore(collections=repos.user_collections, tags=repos.tags, spans=repos.spans,
-                                chunk_tags=repos.chunk_tags, documents=repos.documents, enrichment=enrichment)
+                                documents=repos.documents, enrichment=enrichment)
         collections = args.collection or sorted(UUID(name) for name in await repos.spans.list_tenants())
         if args.command == "status" or not execute:
             reports = await backfill.status(store, collections)
             print(json.dumps({"vector_config": enrichment.vector.id if enrichment.vector else None,
+                              "sort_key_version": sort_key_version() if enrichment.sort_keys else None,
                               "incomplete": sum(r.incomplete for r in reports),
                               "collections": [r.as_dict() for r in reports]}, indent=2))
             return 0

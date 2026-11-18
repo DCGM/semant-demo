@@ -22,7 +22,8 @@ contracts. Include relevant tests, documentation and generated-client changes.
 ## 2. Setup and commands
 
 Use an isolated checkout and local services, never production credentials/data. Toolchain:
-Python 3.12, Node 22, npm, Make and Java 11+ (API generator). Use the repository `.venv`.
+Python 3.12 with the ICU headers and `pkg-config` (PyICU, [backend guide](semant_demo_backend/README.md#installation-and-checks)),
+Node 22, npm, Make and Java 11+ (API generator). Use the repository `.venv`.
 Docker is needed for local application, integration and browser workflows, not fast tests
 ([which checks need Docker](docs/DEVELOPMENT.md#which-checks-need-docker)).
 
@@ -75,7 +76,7 @@ reuse coverage; do not add a test at every layer by default.
 | --- | --- |
 | Service or access rule | Fast tests with fakes; denial prevents protected reads, mutations and AI calls. |
 | HTTP/schema contract | Validation, status/serialization tests and client drift check. |
-| Weaviate query/mutation | Real isolated-store test, including annotation/chunk-tag consistency when affected. |
+| Weaviate query/mutation | Real isolated-store test of the changed query or write. |
 | Store, composable, component | Frontend behavior tests; rendering/events where relevant. |
 | Selection, streaming, navigation | Targeted browser tests when browser behavior is essential. |
 | Prompt/model/retrieval quality | Deterministic contracts and a recorded small evaluation for intentional quality changes. |
@@ -88,7 +89,7 @@ runs the full suites before merge and is never bypassed. For example:
 ```sh
 (cd semant_demo_backend && ../.venv/bin/python -m ruff check . && ../.venv/bin/python -m pytest tests/test_attributes.py -k codec)
 (cd semant_demo_frontend && npm run lint && npm run typecheck && npx vitest run test/unit/routes.spec.ts)
-make test-integration ARGS="tests/integration/test_chunk_tags.py -k bulk"
+make test-integration ARGS="tests/integration/test_annotations.py -k deletion"
 make e2e-dev-start; make e2e-dev-test ARGS="test/e2e/searchResultCards.spec.ts"; make e2e-dev-stop
 ```
 
@@ -110,6 +111,10 @@ shared databases. Live tests/benchmarks are separately marked and explicitly opt
 not ordinary PR gates. Assert outcomes, not incidental internals; no weakened assertions,
 blanket skips, hidden flakiness or empty test selections. Do not encode bugs as intended
 behavior or rely on exact LLM wording. No arbitrary coverage percentage is required.
+Do not sleep a fixed time (`setTimeout` in a test, `page.waitForTimeout`) to wait for a UI
+update, transition or operation: wait for its observable completion, or control the clock
+(Vitest fake timers for e.g. Quasar's dialog transitions), unless elapsed time itself is
+what the test checks (#736).
 Detailed guidance: [ADR 0005](docs/adr/0005-testing-contract.md).
 
 ## 5. Data, failures, and safety

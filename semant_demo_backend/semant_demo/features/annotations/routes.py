@@ -11,7 +11,7 @@ from semant_demo.features.annotations import export, service
 from semant_demo.features.annotations.schemas import (
     MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
     AnnotationExportRequest, AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
-    AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, ChunkTagSyncRequest, SpanType,
+    AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
 )
@@ -97,9 +97,9 @@ async def create_tag_span(span: PostSpan,
                           store: AnnotationStore = Depends(get_annotation_store),
                           current_user: User = Depends(current_active_user)) -> TagSpanWriteResult:
     """
-    Adds new TagSpan and the matching chunk tag reference. ``outcome`` is ``partial`` when
-    the span was saved but the chunk tag could not be updated. Offsets outside the text
-    of the chunk's document are rejected (400).
+    Adds new TagSpan with its derived text and vector. ``outcome`` is ``partial`` when the
+    span was saved but its derived data could not be stored. Offsets outside the text of
+    the chunk's document are rejected (400).
     """
     return await service.create_span(store, current_user, span)
 
@@ -146,10 +146,9 @@ async def update_tag_span(
     current_user: User = Depends(current_active_user),
 ):
     """
-    Update TagSpan's information (start, end, tagId, ...), then re-derive the chunk tag
-    references of its (chunk, tag) pair (and the new pair on a tag change), so saving again
-    retries a failed chunk tag update. ``outcome`` is ``partial`` when the span was updated
-    but the chunk tags could not be. A span written by someone else since
+    Update TagSpan's information (start, end, tagId, ...). ``outcome`` is ``partial`` when
+    the span was updated but its derived data (or a moved span's chunk reference) could not
+    be; saving again retries. A span written by someone else since
     ``expected_version`` is not changed (409), unless it already is as the patch asks.
     """
     return await service.update_span(store, current_user, collection_id, span_id, body, expected_version)
@@ -172,8 +171,8 @@ async def bulk_update_tag_spans(
 
     All spans must belong to ``collection_id``, which the user may annotate; otherwise
     nothing is updated. Updates are best effort: ``spans`` holds the updated spans and
-    ``failed`` the spans that could not be updated (``update_span``) and the chunk tag
-    updates that failed (``update_chunk_tags``, item ``chunk_id:tag_id``). Spans written by
+    ``failed`` the spans that could not be updated (``update_span``) and failed best-effort
+    steps of updated spans (derived text or vector). Spans written by
     someone else since their version in ``expected_versions`` are not changed
     (``edit_conflict``; their current state in ``conflicts``).
     """
@@ -190,9 +189,8 @@ async def delete_tag_span(
     current_user: User = Depends(current_active_user),
 ) -> WriteResult:
     """
-    Delete a TagSpan and the chunk tag reference no other span backs. ``outcome`` is
-    ``partial`` when the span was deleted but the chunk tag could not be updated. A span
-    written by someone else since ``expected_version`` is not deleted (409).
+    Delete a TagSpan. A span written by someone else since ``expected_version`` is not
+    deleted (409).
     """
     return await service.delete_span(store, current_user, collection_id, span_id, expected_version)
 
@@ -212,8 +210,7 @@ async def delete_spans_for_tags_in_document(
     auto suggestions are left untouched.
 
     Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could
-    not be deleted (``delete_span``) and the chunk tag updates that failed
-    (``update_chunk_tags``, item ``chunk_id:tag_id``).
+    not be deleted (``delete_span``).
     """
     result = await service.delete_approved_spans_in_document(
         store, current_user, body.collection_id, body.document_id, body.tag_ids)
@@ -235,6 +232,9 @@ def annotation_filters(
     types: list[SpanType] | None = _TYPE_FILTER,
     q: str | None = Query(default=None, max_length=MAX_QUERY_TEXT_LENGTH, description=(
         "Words that must each occur inside a word of the fields of text_scope, ignoring case")),
+    ranking_query: str | None = Query(default=None, max_length=MAX_QUERY_TEXT_LENGTH, description=(
+        "Modes semantic and hybrid: the text ranked by (separate from the filter words q, which "
+        "always apply first); refused by the other modes")),
     text_scope: TextScope = Query(default=TextScope.annotation, description=(
         "Where the words of q must occur: annotation (the annotated text), context (left or right "
         "context) or both; each word may occur in another field")),
@@ -256,7 +256,7 @@ def annotation_filters(
     browsing; an invalid one is refused (422) as there."""
     try:
         return AnnotationFilters.model_validate({
-            "tag_ids": tag_id, "types": types, "q": q, "text_scope": text_scope, "document_ids": document_id,
+            "tag_ids": tag_id, "types": types, "q": q, "ranking_query": ranking_query, "text_scope": text_scope, "document_ids": document_id,
             "document_filters": {"year_min": year_min, "year_max": year_max, "title_contains": title_contains,
                                  "libraries": libraries, "languages": languages},
             "attribute_values": attribute or [], "attribute_unassigned": unassigned or []})
@@ -266,8 +266,8 @@ def annotation_filters(
 
 def annotation_ranking(
     mode: RetrievalMode = Query(default=RetrievalMode.lexical, description=(
-        "lexical: every match of the filters; semantic: the k nearest in meaning to q; hybrid: the k best by "
-        "meaning and BM25 of q; similar: the k nearest to the annotation similar_to (filters apply first)")),
+        "lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by "
+        "meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)")),
     k: int = Query(default=DEFAULT_TOP_K, ge=1, le=MAX_TOP_K, description="Ranked modes: at most this many"),
     similar_to: str | None = Query(default=None, description="Mode similar: the source annotation id"),
     include_source: bool = Query(default=False, description="Mode similar: rank the source annotation too"),
@@ -293,12 +293,15 @@ async def list_collection_annotations(
     sort: AnnotationSort | None = Query(default=None, description=(
         "Lexical mode: the row order, default document; ranked modes are in relevance order and take none")),
     descending: bool = Query(default=False, description=(
-        "Lexical mode: reverse the sort; missing titles, years and texts stay last, ties stay by id")),
+        "Lexical mode: reverse the sort; missing titles, years and attribute values stay last, rows "
+        "without a text or context sort key move from first to last, ties stay by id")),
+    sort_attribute: str | None = Query(default=None, description="Sort attribute: the attribute whose values order the rows"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     annotation_id: list[str] | None = Query(default=None, max_length=200,
                                             description="Only these annotations"),
     store: AnnotationStore = Depends(get_annotation_store),
+    attributes: AttributeRepository = Depends(get_attribute_definitions),
     current_user: User = Depends(current_active_user),
 ) -> AnnotationPage:
     """
@@ -309,12 +312,16 @@ async def list_collection_annotations(
     and no text. A document filter this corpus database cannot evaluate is refused (422).
 
     A ranked ``mode`` (#664) pages through its top ``k`` in relevance order, and ``result``
-    describes it (``top_k``, truncation, vector coverage). Semantic and hybrid without a
+    describes it (``top_k``, truncation, vector coverage). Text and context sorts are in Czech
+    dictionary order and report ``unsortable`` rows (no current sort key yet, #666); sorting by
+    context on a store without the sort keys answers 503, by an unknown attribute 404. Semantic and hybrid without a
     usable embedding service answer 503; a similar source without a current vector 400.
     """
     try:
         return await service.query_annotations(store, current_user, collection_id, filters, ranking=ranking,
-                                               sort=sort, descending=descending, limit=limit, offset=offset, annotation_ids=annotation_id)
+                                               sort=sort, descending=descending, limit=limit, offset=offset,
+                                               annotation_ids=annotation_id, sort_attribute=sort_attribute,
+                                               attributes=attributes)
     except UnavailableFilter as e:
         raise _unavailable(e) from e
 
@@ -404,21 +411,6 @@ async def restore_collection_annotations(
     versions.
     """
     return await service.restore_annotations(store, current_user, collection_id, body)
-
-
-@span_router.post("/api/user_collections/{collection_id}/annotations/chunk-tags/sync", response_model=WriteResult)
-async def sync_collection_annotation_chunk_tags(
-    collection_id: str,
-    body: ChunkTagSyncRequest,
-    store: AnnotationStore = Depends(get_annotation_store),
-    current_user: User = Depends(current_active_user),
-) -> WriteResult:
-    """
-    Re-derive the tag-filtered search references of up to 1,000 (chunk, tag) pairs of the
-    collection's tags from its annotations: repairs the ``update_chunk_tags`` failures of a
-    review, also after a deletion. Needs annotation-edit access.
-    """
-    return await service.sync_annotation_chunk_tags(store, current_user, collection_id, body)
 
 
 #############################

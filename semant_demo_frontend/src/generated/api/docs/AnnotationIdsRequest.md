@@ -10,6 +10,7 @@ Name | Type
 `tagIds` | Array&lt;string&gt;
 `types` | [Array&lt;SpanType&gt;](SpanType.md)
 `q` | string
+`rankingQuery` | string
 `textScope` | [TextScope](TextScope.md)
 `documentIds` | Array&lt;string&gt;
 `documentFilters` | [DocumentFilters](DocumentFilters.md)
@@ -28,6 +29,7 @@ const example = {
   "tagIds": null,
   "types": null,
   "q": null,
+  "rankingQuery": null,
   "textScope": null,
   "documentIds": null,
   "documentFilters": null,

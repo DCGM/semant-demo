@@ -29,3 +29,15 @@ def test_production_and_test_main_wait_for_every_required_check():
     for name in ("deploy-production", "deploy-test-main"):
         assert set(JOBS[name]["needs"]) == REQUIRED | {"ci-result"}, name
         assert "always()" not in JOBS[name]["if"], name
+
+
+def test_production_and_test_main_deploy_when_the_gate_passes_on_a_push():
+    # The gate needs deploy-test-pr, which is skipped on pushes. With the implicit success(),
+    # a skipped ancestor skips the deployment too (test-main was not deployed after #687), so
+    # each deployment checks the gate's result explicitly; the gate fails on any failed check.
+    assert "deploy-test-pr" in JOBS["ci-result"]["needs"]
+    for name in ("deploy-production", "deploy-test-main"):
+        condition = JOBS[name]["if"]
+        assert "!cancelled()" in condition, name
+        assert "needs.ci-result.result == 'success'" in condition, name
+        assert "github.event_name == 'push'" in condition, name

@@ -18,9 +18,11 @@
         aria-hidden="true"
       />
       <q-tooltip v-if="sortDisabled">Ranked results are in order of relevance</q-tooltip>
+      <q-tooltip v-else-if="sortHint">{{ sortHint }}</q-tooltip>
     </button>
     <span v-else class="kwic-head__label" :title="notSortableHint">{{ label }}</span>
     <q-btn
+      v-if="filterable"
       flat
       dense
       round
@@ -54,8 +56,12 @@ const props = withDefaults(defineProps<{
   sortable?: boolean
   sortState?: SortState
   sortDisabled?: boolean
+  /** How the column sorts (e.g. "nearest word first"), shown on hover. */
+  sortHint?: string
   notSortableHint?: string
-  filterLabel: string
+  /** Shows the filter button (attribute columns filter in their cells, #665). */
+  filterable?: boolean
+  filterLabel?: string
   filterActive?: boolean
   filterDisabled?: boolean
   filterHint?: string
@@ -64,7 +70,10 @@ const props = withDefaults(defineProps<{
   sortable: false,
   sortState: null,
   sortDisabled: false,
+  sortHint: undefined,
   notSortableHint: undefined,
+  filterable: true,
+  filterLabel: '',
   filterActive: false,
   filterDisabled: false,
   filterHint: undefined

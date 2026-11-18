@@ -103,7 +103,6 @@ async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, cor
     ])
     await insert_documents(client, names, corpus)
 
-    chunk_tags = {entry["chunk"]: entry for entry in corpus.chunk_tags}
     positions = corpus_positions(chunks)
     chunk_objects = []
     for key, chunk in chunks.items():
@@ -112,10 +111,6 @@ async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, cor
             "document": corpus.documents[chunk["document"]]["id"],
             names.user_collection_link_name: [collections[c]["id"] for c in chunk["collections"]],
         }
-        for ref in ("positiveTag", "negativeTag", "automaticTag"):
-            tag_keys = chunk_tags.get(key, {}).get(ref, [])
-            if tag_keys:
-                references[ref] = [tags[t]["id"] for t in tag_keys]
         chunk_objects.append(DataObject(
             uuid=chunk["id"],
             properties={
@@ -235,9 +230,10 @@ async def derive_annotations(client: WeaviateAsyncClient, config, corpus: Corpus
     vector = load_annotation_vector(config, transport)
     repos = WeaviateRepositories.create(client, config)
     enrichment = await detect_enrichment(client, config, vector)
+    repos.spans.sort_keys = enrichment.sort_keys
     repos.documents.positions = await detect_chunk_positions(client, config)
     store = AnnotationStore(collections=repos.user_collections, tags=repos.tags, spans=repos.spans,
-                            chunk_tags=repos.chunk_tags, documents=repos.documents, enrichment=enrichment)
+                            documents=repos.documents, enrichment=enrichment)
     collections = sorted(UUID(name) for name in await repos.spans.list_tenants())
     result = await backfill.backfill(store, collections, limit=len(corpus.spans) + 1)
     if result.failed or result.remaining_incomplete:

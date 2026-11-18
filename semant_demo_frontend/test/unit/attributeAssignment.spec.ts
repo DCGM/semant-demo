@@ -458,7 +458,7 @@ describe('attribute components', () => {
   it('shows several attribute columns side by side, each with its own heading, values and assignment (#537)', async () => {
     const rows = [row('r1', { attributes: { a1: ['v1'], a2: ['v2', 'v3'] } }), row('r2', { attributes: { a2: ['v1'] } })]
     const table = mountIt(ConcordanceTable, { rows, tags: [], selected: new Set(), attributes: [topic(), speaker()] })
-    expect(table.findAll('[data-testid="kwic-attribute-head"]').map(h => h.text())).toEqual(['Topic', 'Speaker'])
+    expect(table.findAll('[data-testid="kwic-attribute-head"] .kwic-head__label').map(h => h.text())).toEqual(['Topic', 'Speaker'])
     const cells = (id: string) => table.find(`[data-annotation-id="${id}"]`).findAll('[data-testid="kwic-attribute"]')
     expect(cells('r1').map(c => c.attributes('data-attribute-id'))).toEqual(['a2', 'a1'])
     expect(cells('r1')[0]!.text()).toContain('journalist')

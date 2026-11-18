@@ -8,7 +8,8 @@ What it does:
 - Recreates every Tag of the source collection as a new Tag linked to the new
   collection (props copied verbatim).
 - Spans are NOT copied.
-- Chunk-level tag refs (positiveTag/negativeTag/automaticTag) are NOT remapped.
+- Legacy chunk-level tag refs (positiveTag/negativeTag/automaticTag, inert since ADR 0013)
+  are NOT copied or remapped.
 
 Usage:
     python clone_collection.py \

@@ -7,19 +7,19 @@ as derived; filters by type, tag, words (any case, inside a word), document and 
 applied by the store; spans saved without derived data are listed as pending. Through the
 API, owner and shared users read and other users are refused. Selections (#459): all matches
 resolve to ids by the store's filters (also among given ids), and review writes reach the
-annotations and their chunk tags per item.
+annotations per item.
 """
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTagRepository
 from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.features.annotations.source import ChunkSource
 from semant_demo.features.annotations import service
+from semant_demo.features.annotations.collation import sort_keys
 from semant_demo.features.annotations.enrichment import Enrichment
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.annotations.schemas import (
@@ -33,12 +33,11 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def store(seeded_store, collection_names, documents) -> AnnotationStore:
-    spans = SpanRepository(seeded_store, collection_names)
+    spans = SpanRepository(seeded_store, collection_names, sort_keys=True)
     return AnnotationStore(collections=UserCollectionRepository(seeded_store, collection_names, spans),
                            tags=TagRepository(seeded_store, collection_names, spans), spans=spans,
-                           chunk_tags=ChunkTagRepository(seeded_store, collection_names, spans),
                            documents=documents,
-                           enrichment=Enrichment(derived=True))
+                           enrichment=Enrichment(derived=True, sort_keys=True))
 
 
 @pytest.fixture
@@ -83,12 +82,28 @@ async def all_pages(store, owner, ids, size, filters=None, **kwargs):
 
 
 @pytest.mark.parametrize("descending", [False, True])
-@pytest.mark.parametrize("sort", list(AnnotationSort))
+@pytest.mark.parametrize("sort", [s for s in AnnotationSort if s != AnnotationSort.attribute])  # attribute: test_annotation_sorting
 async def test_pages_partition_one_total_order(store, owner, ids, created, sort, descending):
     full = await query(store, owner, ids, sort=sort, descending=descending, limit=200)
     assert full.total == len(full.rows) == 10  # 6 created; seeded: pos Novák, Brně, auto Lhoty, Prahy
     for size in (1, 2, 3, 5):
         assert await all_pages(store, owner, ids, size, sort=sort, descending=descending) == [r.id for r in full.rows], size
+
+
+async def test_created_and_edited_annotations_store_the_sort_keys_of_their_derived_text(store, owner, ids, created):
+    collection = UUID(ids.col["chronicles"])
+    for sid in (created.cross, created.zdenka):
+        row = await store.spans.read_row(collection, sid)
+        keys = sort_keys(row.text, row.leftContext, row.rightContext)
+        assert row.sortKeyVersion == keys.version
+        stored = await store.spans._tenant(collection).query.fetch_object_by_id(
+            sid, return_properties=["leftSortKey", "rightSortKey", "textSortKey"])
+        assert stored.properties == {"leftSortKey": keys.left, "rightSortKey": keys.right, "textSortKey": keys.text}
+    await service.update_span(store, owner, collection, created.zdenka, PatchSpan(start=11))
+    stored = await store.spans._tenant(collection).query.fetch_object_by_id(created.zdenka,
+                                                                            return_properties=["textSortKey"])
+    row = await store.spans.read_row(collection, created.zdenka)
+    assert stored.properties["textSortKey"] == sort_keys(row.text, "", "").text
 
 
 async def test_descending_text_order_reverses_texts_and_puts_missing_text_last(store, owner, ids, created):

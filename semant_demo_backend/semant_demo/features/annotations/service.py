@@ -11,11 +11,8 @@ ids of other collections are "not found". Each use of a tenant is recorded for t
 deactivation (``store.activity``). ``user`` is the authenticated user or ``None``; ids
 may be strings or UUIDs, malformed ids are "not found".
 
-Span writes are followed by the re-derivation of the chunk tag references that
-tag-filtered search uses (ADR 0004, ``adapters/weaviate/chunk_tags.py``) for every
-(chunk, tag) pair they touched, also when the span write raised (a timed-out write may
-have landed). That second write is best effort (ADR 0002): its failure keeps the span
-write and is reported as step ``update_chunk_tags``.
+Spans are the only stored form of annotations: chunks hold no tag references derived
+from them (ADR 0013).
 
 Span creates and boundary (offset) edits also store the span's derived text, context
 and positions in the same write and then its contextual vector (#328,
@@ -55,22 +52,22 @@ from uuid import UUID
 from semant_demo.features.annotations.schemas import (
     MAX_ATTRIBUTE_FILTER_VALUES, MAX_ATTRIBUTE_FILTERS, MAX_RESOLVED_IDS, MAX_REVIEW_BATCH, AnnotatedDocument, AnnotationCounts, AnnotationIds, AnnotationIdsRequest, AnnotationListRow,
     AnnotationFilters, AnnotationOrigin, AnnotationPage, AnnotationQuery, AnnotationRestoreRequest, AnnotationReviewRequest,
-    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort, ChunkTagSyncRequest,
-    MAX_TOP_K, AnnotationRanking, AnnotationResultSet, HYBRID_ALPHA, ResultKind, RetrievalMode, SCOPE_FIELDS, VectorCoverage, VectorRanking, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
+    AnnotationReviewResult, AnnotationRow, AnnotationValues, AnnotationSort,
+    MAX_TOP_K, AnnotationRanking, AnnotationResultSet, HYBRID_ALPHA, ResultKind, RetrievalMode, HYBRID_FIELDS, VectorCoverage, VectorRanking, EnrichmentStatus, ReviewAction, SpanType, TagSpan, TextScope, TextStatus, VectorStatus,
 )
 from semant_demo.features.documents.criteria import Condition, document_conditions
 from semant_demo.features.documents.schemas import Document
 from semant_demo.adapters.sql.tenant_activity import NoTenantActivity, TenantActivity
-from semant_demo.adapters.weaviate.chunk_tags import ChunkTag, ChunkTagRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
-from semant_demo.adapters.weaviate.spans import SpanRepository, pair_of
+from semant_demo.adapters.weaviate.spans import SpanRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import (
     EditConflictError, IncompleteWriteError, InvalidRequestError, NotFoundError, ServiceUnavailableError,
 )
 from semant_demo.features.annotations import attribute_codec as codec
+from semant_demo.features.annotations.collation import NO_SORT_KEYS, sort_key_version, sort_keys
 from semant_demo.features.annotations.derivation import DERIVATION_VERSION, DerivedText, MissingChunkPositions, derive
 from semant_demo.features.annotations.enrichment import Enrichment, text_current, vector_current
 from semant_demo.features.annotations.offsets import InvalidSpanRange, check_span_range
@@ -93,7 +90,6 @@ class AnnotationStore:
     collections: UserCollectionRepository
     tags: TagRepository
     spans: SpanRepository
-    chunk_tags: ChunkTagRepository
     documents: DocumentRepository
     activity: TenantActivity | NoTenantActivity = field(default_factory=NoTenantActivity)
     """Records each use of a collection's annotation tenant (idle deactivation)."""
@@ -238,7 +234,7 @@ class TagReferences(Protocol):
 async def delete_tag(store: AnnotationStore, user: Principal | None, tag_id: Id,
                      references: TagReferences) -> None:
     """
-    Deletes the tag with its spans and chunk tag references, then removes its id from the
+    Deletes the tag with its spans, then removes its id from the
     attributes that list it (#508; ``all_tags`` is never changed, so an attribute that loses
     its last tag applies to no tag). A failed step raises ``IncompleteWriteError`` naming it
     and the completed steps. Deleting again continues a failed cascade; the removal goes last
@@ -305,24 +301,19 @@ async def save_span(store: AnnotationStore, collection_id: UUID, document_id: UU
                     actor: Actor | None = None) -> TagSpanWriteResult:
     """
     Stores a span in the collection's tenant (``document_id``: its chunk's document) with
-    its derived fields and the provenance of ``actor``, re-derives its chunk tag, then
-    stores its contextual vector. No access or offset check: the caller has checked
-    annotation-edit access to the collection, the tag and the chunk scope (``create_span``,
-    or the AI suggestion run for validated provider proposals). ``source`` keeps the chunks
+    its derived fields and the provenance of ``actor``, then stores its contextual vector.
+    No access or offset check: the caller has checked annotation-edit access to the
+    collection, the tag and the chunk scope (``create_span``, or the AI suggestion run for
+    validated provider proposals). ``source`` keeps the chunks
     read across the saves of one run (source text is immutable).
     """
-    pairs = {ChunkTag.of(span.chunkId, span.tagId)}
     refresh = None
     if store.enrichment.derived:
         refresh = await derive_refresh(store, span.chunkId, span.start, span.end, 1, source)
-    try:
-        span_id = await store.spans.insert(collection_id, span, document_id,
-                                           refresh.properties(reset_vector=True) if refresh else None,
-                                           _created(store, actor))
-    except Exception:
-        await store.chunk_tags.sync(collection_id, pairs)
-        raise
-    failed = await store.chunk_tags.sync(collection_id, pairs)
+    span_id = await store.spans.insert(collection_id, span, document_id,
+                                       refresh.properties(reset_vector=True) if refresh else None,
+                                       _created(store, actor))
+    failed: list[StepFailure] = []
     if refresh is not None:
         failed += refresh.failures + await refresh_vector(store, collection_id, span_id, refresh)
     return _write_result(TagSpan(id=str(span_id), **span.model_dump()), failed)
@@ -333,7 +324,7 @@ async def create_span(store: AnnotationStore, user: Principal | None, span: Post
     Creates a span with the tag's collection as scope; the chunk must be in that
     collection and the offsets must describe text of its document (cross-chunk spans
     continue into the following consecutive chunks; see ``offsets.py``).
-    ``outcome`` is ``partial`` when the span was saved but its chunk tag was not.
+    ``outcome`` is ``partial`` when the span was saved but its derived data was not.
     """
     collection_id = await access.collection_of_tags(store.tags, [span.tagId])
     grant = await access.require_annotation_edit(store.collections, user, collection_id)
@@ -375,16 +366,6 @@ async def _check_patched_ranges(store: AnnotationStore, spans: dict[UUID, TagSpa
             current = await source.chunk(access.parse_id(span.chunkId, "Chunk"))
             if current is None or current.document_id != anchor.document_id:
                 raise InvalidRequestError("A span can only move to another chunk of its document")
-
-
-def _pairs_touched_by(spans: dict[UUID, TagSpan], patches: dict[UUID, PatchSpan]) -> set[ChunkTag]:
-    """The spans' current (chunk, tag) pairs and those they have after their patch: on a tag
-    change the new tag's, on a move the new chunk's."""
-    pairs = {pair_of(span) for span in spans.values()}
-    for sid, span in spans.items():
-        patch = patches[sid]
-        pairs.add(ChunkTag.of(patch.chunkId or span.chunkId, patch.tagId or span.tagId))
-    return pairs
 
 
 class _Updated(NamedTuple):
@@ -452,6 +433,7 @@ async def _patch_with_derived(store: AnnotationStore, collection_id: UUID, span_
     moved = (chunk_id, start, end) != (row.chunkId, row.start, row.end)
     vector = store.enrichment.vector
     stale_vector = vector is not None and not vector_current(row, vector.id)
+    # Sort keys of another collator alone are left to the backfill: re-deriving here would re-embed.
     if not moved and text_current(row) and not stale_vector:
         await store.spans.update(collection_id, span_id, patch, provenance=provenance)
         return None
@@ -466,27 +448,16 @@ async def update_span(store: AnnotationStore, user: Principal | None, collection
     """
     Updates offsets, type (approve: ``auto`` -> ``pos``, reject: -> ``neg``) or tag of a
     span of the collection, or moves it to another chunk of its document in the collection
-    (``chunkId`` with the offsets counted from there; the span keeps its id and provenance),
-    then re-derives the span's (chunk, tag) pair and, on a tag change or move, the new pair. This runs for every patch, also offset-only, so saving a span
-    again retries a chunk tag update that failed before. Changed offsets are validated
-    like on creation; offsets that are not sent are not re-checked (approving an old
+    (``chunkId`` with the offsets counted from there; the span keeps its id and provenance).
+    Saving the same offsets again retries derived data that is not current. Changed offsets
+    are validated like on creation; offsets that are not sent are not re-checked (approving an old
     span works whatever its offsets). ``expected_version``: the span's ``editVersion`` as
     the caller knows it; ``EditConflictError`` (nothing written) when it was written since.
     """
     cid, spans = await _authorize_span_patch(store, user, collection_id, [span_id], patch)
     await _check_patched_ranges(store, spans, patch)
     [sid] = spans
-    pairs = _pairs_touched_by(spans, {sid: patch})
-    try:
-        span, refresh, anchor_failed, _ = await _update_and_read(store, cid, sid, patch, Actor.of(user),
-                                                                 expected_version)
-    except EditConflictError:
-        raise
-    except Exception:
-        # The update may have been partly applied (or applied despite a timeout).
-        await store.chunk_tags.sync(cid, pairs)
-        raise
-    failed = anchor_failed + await store.chunk_tags.sync(cid, pairs)
+    span, refresh, failed, _ = await _update_and_read(store, cid, sid, patch, Actor.of(user), expected_version)
     if refresh is not None:
         failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
     return _write_result(span, failed)
@@ -508,9 +479,8 @@ async def _replace_anchor_reference(store: AnnotationStore, cid: UUID, span_id: 
 
 
 SPAN_UPDATE_CONCURRENCY = 8
-"""At most this many span updates of one request run at a time (the same bound as the
-chunk tag sync, ``chunk_tags._SYNC_CONCURRENCY``); clients send large selections in
-batches (``AiAssistPanel``)."""
+"""At most this many span updates of one request run at a time; clients send large
+selections in batches (``AiAssistPanel``)."""
 
 
 async def bulk_update_spans(store: AnnotationStore, user: Principal | None, collection_id: Id, span_ids: list[Id],
@@ -524,9 +494,8 @@ async def bulk_update_spans(store: AnnotationStore, user: Principal | None, coll
     whole batch is validated before any write; otherwise nothing is updated. Updates are
     best effort: ``spans`` holds the updated spans and ``failed`` the spans that could not
     be updated (``update_span``), those written by someone else since their version in
-    ``expected_versions`` (``edit_conflict``, their current state in ``conflicts``) and the
-    chunk tag updates that failed (``update_chunk_tags``). Chunk tags are re-derived once
-    per touched pair after all span updates, also for spans whose update failed.
+    ``expected_versions`` (``edit_conflict``, their current state in ``conflicts``) and
+    failed best-effort steps of updated spans (derived data, vectors, a move's reference).
     """
     if patch.chunkId is not None:
         raise InvalidRequestError("Spans are moved to another chunk one at a time")
@@ -546,8 +515,7 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
                         patches: dict[UUID, PatchSpan], actor: Actor, expected: dict[UUID, int] | None = None
                         ) -> tuple[list[TagSpan], list[StepFailure], list[TagSpan], set[UUID]]:
     """Applies each span's checked patch concurrently (each checked against its version in
-    ``expected``), then re-derives every touched chunk tag pair once (also of spans whose
-    update failed) and stores new vectors; returns the updated spans in request order, the
+    ``expected``), then stores new vectors; returns the updated spans in request order, the
     failures, the current state of the conflicting spans and the ids this call wrote (not
     those it found already as asked)."""
     updated: list[TagSpan] = []
@@ -581,7 +549,6 @@ async def _update_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, Tag
                 written.add(sid)
             if res.refresh is not None:
                 refreshes[sid] = res.refresh
-    failed += await store.chunk_tags.sync(cid, _pairs_touched_by(spans, patches))
     for sid, refresh in refreshes.items():
         failed += refresh.failures + await refresh_vector(store, cid, sid, refresh)
     return updated, failed, conflicts, written
@@ -598,6 +565,8 @@ class Refresh:
     needs_vector: bool = True
     vector_stored: bool = False
     """Set by ``refresh_vector`` when the vector was written."""
+    sort_keys: bool = False
+    """The collection holds the sort keys (#666): they are written with the text."""
 
     def properties(self, *, reset_vector: bool, with_revision: bool = True) -> dict:
         """The derived fields (when derived) and their state; with ``reset_vector`` the
@@ -614,11 +583,15 @@ class Refresh:
         if d is None:
             # Text of an earlier revision or policy must not stay searchable or sortable (#329).
             props |= {"text": "", "leftContext": "", "rightContext": ""}
+            if self.sort_keys:
+                props |= NO_SORT_KEYS
         else:
             props |= {"text": d.text, "leftContext": d.left_context, "rightContext": d.right_context,
                       "documentStartChar": d.start_char,
                       "documentEndChar": d.end_char, "documentStartWord": d.start_word,
                       "documentEndWord": d.end_word}
+            if self.sort_keys:
+                props |= sort_keys(d.text, d.left_context, d.right_context).properties(self.revision)
         return props
 
 
@@ -639,16 +612,17 @@ async def derive_refresh(store: AnnotationStore, chunk_id: Id, start: int, end: 
     a ``derive_annotation`` failure (never a reason to read the whole document); offsets
     that describe no text (or a missing anchor chunk or document) are ``invalid``."""
     source = source or ChunkSource(store.documents)
+    keys = store.enrichment.sort_keys
     try:
         anchor = await source.chunk(access.parse_id(chunk_id, "Chunk"))
         if anchor is None or anchor.document_id is None:
-            return Refresh(revision, None, EnrichmentStatus.invalid)
+            return Refresh(revision, None, EnrichmentStatus.invalid, sort_keys=keys)
         derived = derive(await source.span_source(anchor, start, end), start, end)
-        return Refresh(revision, derived, EnrichmentStatus.ready)
+        return Refresh(revision, derived, EnrichmentStatus.ready, sort_keys=keys)
     except InvalidSpanRange:
-        return Refresh(revision, None, EnrichmentStatus.invalid)
+        return Refresh(revision, None, EnrichmentStatus.invalid, sort_keys=keys)
     except Exception as e:
-        return Refresh(revision, None, EnrichmentStatus.failed, [_derivation_failure(chunk_id, e)])
+        return Refresh(revision, None, EnrichmentStatus.failed, [_derivation_failure(chunk_id, e)], sort_keys=keys)
 
 
 async def write_if_revision(store: AnnotationStore, collection_id: UUID, span_id: UUID, revision: int,
@@ -727,26 +701,15 @@ async def _delete_checked(store: AnnotationStore, cid: UUID, span_id: UUID, expe
 async def delete_span(store: AnnotationStore, user: Principal | None, collection_id: Id, span_id: Id,
                       expected_version: int | None = None) -> WriteResult:
     """
-    Deletes a span of the collection, then removes chunk tag references no other span
-    backs. ``outcome`` is ``partial`` when the span was deleted but the chunk tag could
-    not be updated. ``expected_version``: the span's ``editVersion`` as the caller knows
-    it; ``EditConflictError`` (nothing deleted) when it was written since.
+    Deletes a span of the collection. ``expected_version``: the span's ``editVersion`` as
+    the caller knows it; ``EditConflictError`` (nothing deleted) when it was written since.
     """
     grant = await access.require_annotation_edit(store.collections, user, collection_id)
     spans = await access.require_spans_in_collection(store.spans, [span_id], grant.collection_id)
     cid = await use_tenant(store, grant)
-    [(sid, span)] = spans.items()
-    pairs = {pair_of(span)}
-    try:
-        await _delete_checked(store, cid, sid, expected_version)
-    except EditConflictError:
-        raise
-    except Exception:
-        # A timed-out delete may still have been applied.
-        await store.chunk_tags.sync(cid, pairs)
-        raise
-    failed = await store.chunk_tags.sync(cid, pairs)
-    return WriteResult(outcome=outcome_of(1, len(failed)), succeeded=[str(sid)], failed=failed)
+    [sid] = spans
+    await _delete_checked(store, cid, sid, expected_version)
+    return WriteResult(outcome=outcome_of(1, 0), succeeded=[str(sid)])
 
 
 async def _delete_in_document(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -763,17 +726,16 @@ async def _delete_in_document(store: AnnotationStore, user: Principal | None, co
     return WriteResult(outcome=outcome_of(len(deleted), len(failed)), succeeded=deleted, failed=failed)
 
 
-async def _delete_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, set[ChunkTag]],
+async def _delete_spans(store: AnnotationStore, cid: UUID, span_ids: list[UUID],
                         expected: dict[UUID, int] | None = None
                         ) -> tuple[list[str], list[StepFailure], dict[UUID, int]]:
     """Deletes the listed spans one by one (each checked against its version in
-    ``expected``), keeping going after a failure, then re-derives their chunk tag pairs,
-    also of spans whose deletion failed (it may have been applied); returns the deleted
-    ids, the failures and the current versions of the conflicting spans."""
+    ``expected``), keeping going after a failure; returns the deleted ids, the failures
+    and the current versions of the conflicting spans."""
     deleted: list[str] = []
     failed: list[StepFailure] = []
     conflicts: dict[UUID, int] = {}
-    for sid in spans:
+    for sid in span_ids:
         try:
             await _delete_checked(store, cid, sid, (expected or {}).get(sid))
             deleted.append(str(sid))
@@ -784,7 +746,6 @@ async def _delete_spans(store: AnnotationStore, cid: UUID, spans: dict[UUID, set
             failed.append(_missing_failure(sid))
         except Exception as e:
             failed.append(step_failure("delete_span", sid, e))
-    failed += await store.chunk_tags.sync(cid, set().union(*spans.values()) if spans else set())
     return deleted, failed, conflicts
 
 
@@ -794,7 +755,7 @@ async def delete_approved_spans_in_document(store: AnnotationStore, user: Princi
     Deletes the approved (``pos``) spans of the tags on the document's chunks within the
     collection. Rejections (``neg``) and unresolved suggestions (``auto``) are kept.
     Best effort: ``succeeded`` lists the deleted spans; ``failed`` the spans that could
-    not be deleted (``delete_span``) and failed chunk tag updates (``update_chunk_tags``).
+    not be deleted (``delete_span``).
     The spans are listed before deleting, so failing deletions cannot loop.
     """
     return await _delete_in_document(store, user, collection_id, document_id, tag_ids, SpanType.pos)
@@ -1035,12 +996,12 @@ async def _rows_in_document_order(store: AnnotationStore, cid: UUID, query: Anno
     async def cut(document: UUID, skip: int, take: int) -> list[AnnotationRow]:
         if skip + take > _MAX_WINDOW:
             raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} of one document cannot be paged.")
-        return await store.spans.query_rows(cid, query, by_text=False, document_ids=[document], limit=take, offset=skip)
+        return await store.spans.query_rows(cid, query, document_ids=[document], limit=take, offset=skip)
 
     async def read_whole() -> list[AnnotationRow]:
         if not whole:
             return []
-        return await store.spans.query_rows(cid, query, by_text=False, document_ids=whole,
+        return await store.spans.query_rows(cid, query, document_ids=whole,
                                             limit=sum(found.counts[d] for d in whole))
 
     parts = await asyncio.gather(read_whole(), *(cut(d, s, t) for d, s, t in slices if d not in whole))
@@ -1072,15 +1033,18 @@ class _Ranked:
 
 def _ranking_query(filters: AnnotationFilters, ranking: AnnotationRanking,
                    ids: list[UUID] | None = None) -> tuple[AnnotationQuery, str | None]:
-    """The stored-field conditions of a ranked query and the text it ranks by: ``semantic`` and
-    ``hybrid`` rank by ``q`` (required), which then filters nothing; ``similar`` keeps ``q`` as
-    a lexical filter. Checked before any read or provider call."""
+    """The stored-field conditions of a ranked query and the text it ranks by (#716): ``semantic``
+    and ``hybrid`` rank by ``ranking_query`` (required); ``similar`` ranks by its source and takes
+    none. ``q`` is a lexical filter in every mode, applied before ranking. Checked before any read
+    or provider call."""
+    text = " ".join((filters.ranking_query or "").split())
     if ranking.mode == RetrievalMode.similar:
+        if text:
+            raise InvalidRequestError("Find similar ranks by its source annotation; it takes no similarity text.")
         return _filters_query(filters, ids), None
-    text = " ".join((filters.q or "").split())
     if not text:
         raise InvalidRequestError("Enter a text to search by meaning.")
-    return _filters_query(filters.model_copy(update={"q": None}), ids), text
+    return _filters_query(filters, ids), text
 
 
 async def _query_vector(store: AnnotationStore, cid: UUID, ranking: AnnotationRanking,
@@ -1122,7 +1086,7 @@ async def _rank(store: AnnotationStore, cid: UUID, filters: AnnotationFilters, r
     embedded, exclude = await _query_vector(store, cid, ranking, text)
     ranked_query = query.model_copy(update={"vector_config": vector.id})
     order = VectorRanking(target_vector=vector.target_vector, vector=embedded, exclude=exclude,
-                          **({"text": text, "fields": SCOPE_FIELDS[filters.text_scope], "alpha": HYBRID_ALPHA}
+                          **({"text": text, "fields": HYBRID_FIELDS, "alpha": HYBRID_ALPHA}
                              if ranking.mode == RetrievalMode.hybrid else {}))
     counts = [store.spans.count_rows(cid, ranked_query, documents)]
     if matching is None:
@@ -1157,6 +1121,91 @@ def _check_ranking(store: AnnotationStore, ranking: AnnotationRanking, sort: Ann
         raise ServiceUnavailableError(SEMANTIC_NOT_CONFIGURED)
 
 
+_TEXT_SORTS = (AnnotationSort.text, AnnotationSort.left, AnnotationSort.right)
+_SORT_KEY_PROPERTIES = {AnnotationSort.text: "textSortKey", AnnotationSort.left: "leftSortKey",
+                        AnnotationSort.right: "rightSortKey"}
+SORT_KEYS_NOT_ENABLED = ("Sorting by the context needs the annotation sort keys, which this store does not hold yet: run "
+                         "python -m semant_demo.maintenance.annotation_enrichment add-schema and restart the backend.")
+_MAX_PARTITION_QUERIES = 16
+"""Partition counts of the attribute sort run at once."""
+
+
+async def _none() -> None:
+    return None
+
+
+def _sort_property(store: AnnotationStore, sort: AnnotationSort) -> str:
+    """The property a text or context sort orders by: its sort key (#666), or, on a store without
+    the keys, ``text`` for the text sort (the code-point order of before)."""
+    if store.enrichment.sort_keys:
+        return _SORT_KEY_PROPERTIES[sort]
+    if sort == AnnotationSort.text:
+        return "text"
+    raise ServiceUnavailableError(SORT_KEYS_NOT_ENABLED)
+
+
+class AttributeDefinitions(Protocol):
+    """The collection's attribute definitions (``adapters/sql/attributes.py``): the value order of
+    the attribute sort (#666). ``read`` returns an attribute with ``values`` in definition order,
+    each with ``id`` and ``retired``, or None."""
+
+    async def read(self, collection_id: UUID, attribute_id: UUID): ...
+
+
+async def _attribute_order(store: AnnotationStore, collection_id: UUID, attribute_id: Id | None,
+                           attributes: AttributeDefinitions | None, descending: bool) -> list[str]:
+    """The stored elements (``<attribute id>:<value id>``) of the sort attribute's values in sort
+    order: active values in definition order, then retired ones; ``descending`` reverses each
+    group (retired values stay after active ones)."""
+    if attribute_id is None:
+        raise InvalidRequestError("Choose the attribute to sort by (sort_attribute)")
+    if not store.spans.attributes:
+        raise ServiceUnavailableError(ATTRIBUTES_NOT_ENABLED)
+    attribute = await attributes.read(collection_id, access.parse_id(attribute_id, "Attribute")) \
+        if attributes is not None else None
+    if attribute is None:
+        raise NotFoundError("Attribute not found")
+    active = [v.id for v in attribute.values if not v.retired]
+    retired = [v.id for v in attribute.values if v.retired]
+    if descending:
+        active, retired = active[::-1], retired[::-1]
+    return [codec.encode(attribute.id, v) for v in active + retired]
+
+
+async def _rows_by_attribute(store: AnnotationStore, cid: UUID, query: AnnotationQuery, found: _Documents,
+                             document_ids: list[UUID] | None, values: list[str], limit: int,
+                             offset: int) -> list[AnnotationRow]:
+    """The page ``[offset, offset + limit)`` of the attribute sort: one partition per value in
+    ``values`` order, holding the approved annotations with that value and none before it (so an
+    annotation with several values appears once, under its first), then the rest (no value of the
+    attribute, or not approved); each partition in ``found``'s document order. Counts every
+    partition per document (one aggregation each, bounded by the attribute's value count), then
+    reads only the partitions the page touches, as ``_rows_in_document_order``. ``document_ids``:
+    the documents the query is restricted to (``None``: those of ``found``, all annotated ones)."""
+    partitions = [query.model_copy(update={"holds_value": v, "holds_none_of": values[:i]})
+                  for i, v in enumerate(values)]
+    partitions.append(query.model_copy(update={"holds_none_of": values}))
+    limiter = asyncio.Semaphore(_MAX_PARTITION_QUERIES)
+
+    async def count(partition: AnnotationQuery) -> dict[UUID, int]:
+        async with limiter:
+            return await store.spans.count_by_document(cid, partition, _MAX_DOCUMENTS + 1, document_ids)
+    counts = await asyncio.gather(*(count(p) for p in partitions))
+    rows: list[AnnotationRow] = []
+    position = 0
+    for partition, by_document in zip(partitions, counts):
+        within = _Documents(order=[d for d in found.order if by_document.get(d)], counts=by_document,
+                            documents=found.documents)
+        size = sum(by_document[d] for d in within.order)
+        skip, end = max(0, offset - position), min(size, offset + limit - position)
+        if end > skip:
+            rows += await _rows_in_document_order(store, cid, partition, within, end - skip, skip)
+        position += size
+        if position >= offset + limit:
+            break
+    return rows
+
+
 async def count_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id, *,
                             tag_ids: list[Id] | None = None) -> AnnotationCounts:
     """
@@ -1173,7 +1222,9 @@ async def count_annotations(store: AnnotationStore, user: Principal | None, coll
 async def query_annotations(store: AnnotationStore, user: Principal | None, collection_id: Id,
                             filters: AnnotationFilters | None = None, *,
                             ranking: AnnotationRanking | None = None, sort: AnnotationSort | None = None,
-                            descending: bool = False, limit: int = 50, offset: int = 0, annotation_ids: list[Id] | None = None) -> AnnotationPage:
+                            descending: bool = False, limit: int = 50, offset: int = 0, annotation_ids: list[Id] | None = None,
+                            sort_attribute: Id | None = None,
+                            attributes: "AttributeDefinitions | None" = None) -> AnnotationPage:
     """
     One page of the collection's annotations matching the annotation query ``filters``
     (``AnnotationFilters``, #663) as concordance (KWIC) rows, and the number of all that match.
@@ -1181,6 +1232,12 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
     title or year and rows without text last, rows of one document still in reading order, ties
     by id), so pages do not overlap or skip rows while the annotations do not change. ``annotation_ids``: only these annotations (the workspace reads
     one it shows as it is now, whether or not it still matches the page's filters; #460).
+
+    Text and context sorts (#666) use the stored Czech sort keys (``collation.py``) when the
+    collection holds them (the text sort falls back to Weaviate's order of the text otherwise; the
+    context sorts are unavailable, 503) and report how many rows have no current keys
+    (``unsortable``). The attribute sort (``sort_attribute``, read from ``attributes`` after
+    authorization) pages through one partition per value of the attribute (``_rows_by_attribute``).
 
     Reads the annotations and, for document order or document filters, the metadata of the
     annotated documents once (at most ``_MAX_DOCUMENTS``); never the source chunks.
@@ -1198,11 +1255,19 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
         _check_ranking(store, ranking, sort, descending)
         query, text = _ranking_query(filters, ranking, ids)
     else:
+        if filters.ranking_query:
+            raise InvalidRequestError("A similarity text needs a ranked mode (semantic or hybrid).")
         query, text = _filters_query(filters, ids), None
     sort = sort or AnnotationSort.document
     _require_attribute_properties(store, query)
+    if sort_attribute is not None and sort != AnnotationSort.attribute:
+        raise InvalidRequestError("sort_attribute is only used with the attribute sort")
+    sort_by = _sort_property(store, sort) if sort in _TEXT_SORTS else None
     documents = filters.document_ids or None
     conditions = document_conditions(filters.document_filters)
+    values = None
+    if sort == AnnotationSort.attribute:
+        values = await _attribute_order(store, grant.collection_id, sort_attribute, attributes, descending)
     cid = await use_tenant(store, grant)
     if ranking.ranked:
         ranked = await _rank(store, cid, filters, ranking, query, text, conditions)
@@ -1213,27 +1278,37 @@ async def query_annotations(store: AnnotationStore, user: Principal | None, coll
             list({r.documentId for r in rows if r.documentId is not None}))
         return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
                               total=len(ranked.ids), offset=offset, limit=limit, result=ranked.result)
-    if sort == AnnotationSort.text and not conditions:
+    unsortable = None
+    if sort in _TEXT_SORTS:
         if offset + limit > _MAX_WINDOW:
             raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
-        total, rows = await asyncio.gather(
-            store.spans.count_rows(cid, query, documents),
-            store.spans.query_rows(cid, query, by_text=True, document_ids=documents, limit=limit, offset=offset,
-                                   descending=descending))
-        joined = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
+        if conditions:
+            found = await _annotated_documents(store, cid, query, AnnotationSort.document, documents, conditions)
+            total, documents, joined = sum(found.counts.values()), found.order, found.documents
+        else:
+            total, joined = await store.spans.count_rows(cid, query, documents), None
+        keyed = query.model_copy(update={"sort_key_version": sort_key_version()})
+        rows, sortable = await asyncio.gather(
+            store.spans.query_rows(cid, query, sort_by=sort_by, document_ids=documents, limit=limit, offset=offset,
+                                   descending=descending),
+            store.spans.count_rows(cid, keyed, documents) if store.enrichment.sort_keys else _none())
+        if sortable is not None:
+            unsortable = max(0, total - sortable)
+        if joined is None:
+            joined = await store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
     else:
-        found = await _annotated_documents(store, cid, query, sort, documents, conditions, descending)
+        found = await _annotated_documents(store, cid, query, sort if sort != AnnotationSort.attribute
+                                           else AnnotationSort.document, documents, conditions,
+                                           descending and sort != AnnotationSort.attribute)
         total = sum(found.counts.values())
-        if sort == AnnotationSort.text:
-            if offset + limit > _MAX_WINDOW:
-                raise InvalidRequestError(f"Rows beyond the first {_MAX_WINDOW} cannot be paged; narrow the filters.")
-            rows = await store.spans.query_rows(cid, query, by_text=True, document_ids=found.order,
-                                                limit=limit, offset=offset, descending=descending)
+        if sort == AnnotationSort.attribute:
+            rows = await _rows_by_attribute(store, cid, query, found, found.order if conditions else documents,
+                                            values, limit, offset)
         else:
             rows = await _rows_in_document_order(store, cid, query, found, limit, offset)
         joined = found.documents
     return AnnotationPage(rows=[_list_row(r, joined.get(r.documentId) if r.documentId else None) for r in rows],
-                          total=total, offset=offset, limit=limit)
+                          total=total, offset=offset, limit=limit, unsortable=unsortable)
 
 
 async def list_annotated_documents(store: AnnotationStore, user: Principal | None, collection_id: Id,
@@ -1278,6 +1353,8 @@ async def resolve_annotation_ids(store: AnnotationStore, user: Principal | None,
         _check_ranking(store, ranking, None)
         query, text = _ranking_query(filters, ranking)  # ``within`` is applied to the top k, not before ranking
     else:
+        if filters.ranking_query:
+            raise InvalidRequestError("A similarity text needs a ranked mode (semantic or hybrid).")
         query, text = _filters_query(filters, within), None
     _require_attribute_properties(store, query)
     documents = request.document_ids or None
@@ -1340,7 +1417,7 @@ async def review_annotations(store: AnnotationStore, user: Principal | None, col
         succeeded, failed = [], []
     elif request.action == ReviewAction.delete:
         succeeded, failed, versions = await _delete_spans(
-            store, cid, {i: {pair_of(s)} for i, s in found.items()}, expected)
+            store, cid, list(found), expected)
     else:
         patch = _REVIEW_PATCHES.get(request.action) or PatchSpan(tagId=str(request.tag_id))
         updated, failed, conflicts, written = await _update_spans(store, cid, found, dict.fromkeys(found, patch),
@@ -1417,21 +1494,3 @@ async def restore_annotations(store: AnnotationStore, user: Principal | None, co
         failed += update_failed
     return AnnotationReviewResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded,
                                   failed=failed, versions=versions)
-
-
-async def sync_annotation_chunk_tags(store: AnnotationStore, user: Principal | None, collection_id: Id,
-                                     request: ChunkTagSyncRequest) -> WriteResult:
-    """
-    Re-derives the tag-filtered search references of (chunk, tag) pairs of the
-    collection's tags from the annotations stored now: the repair of ``update_chunk_tags``
-    failures, which also works after the annotation was deleted. Idempotent. ``succeeded``
-    and ``failed`` name the pairs as ``chunk_id:tag_id``.
-    """
-    grant = await access.require_annotation_edit(store.collections, user, collection_id)
-    pairs = sorted({ChunkTag.of(p.chunk_id, p.tag_id) for p in request.pairs})
-    await access.require_tags_in_collection(store.tags, [p.tag_id for p in pairs], grant.collection_id)
-    cid = await use_tenant(store, grant)
-    failed = await store.chunk_tags.sync(cid, pairs)
-    unsynced = {f.item_id for f in failed}
-    succeeded = [p.label() for p in pairs if p.label() not in unsynced]
-    return WriteResult(outcome=outcome_of(len(succeeded), len(failed)), succeeded=succeeded, failed=failed)
