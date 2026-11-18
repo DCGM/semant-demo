@@ -121,6 +121,12 @@ export interface TagSpanWriteResult {
     confidence?: number | null;
     /**
      * 
+     * @type {Date}
+     * @memberof TagSpanWriteResult
+     */
+    createdAt?: Date | null;
+    /**
+     *
      * @type {number}
      * @memberof TagSpanWriteResult
      */
@@ -169,6 +175,7 @@ export function TagSpanWriteResultFromJSONTyped(json: any, ignoreDiscriminator: 
         'type': json['type'] == null ? undefined : SpanTypeFromJSON(json['type']),
         'reason': json['reason'] == null ? undefined : json['reason'],
         'confidence': json['confidence'] == null ? undefined : json['confidence'],
+        'createdAt': json['createdAt'] == null ? undefined : (new Date(json['createdAt'])),
         'editVersion': json['editVersion'] == null ? undefined : json['editVersion'],
         'attributeVersion': json['attributeVersion'] == null ? undefined : json['attributeVersion'],
     };
@@ -197,6 +204,7 @@ export function TagSpanWriteResultToJSONTyped(value?: TagSpanWriteResult | null,
         'type': SpanTypeToJSON(value['type']),
         'reason': value['reason'],
         'confidence': value['confidence'],
+        'createdAt': value['createdAt'] == null ? value['createdAt'] : value['createdAt'].toISOString(),
         'editVersion': value['editVersion'],
         'attributeVersion': value['attributeVersion'],
     };
