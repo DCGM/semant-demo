@@ -12,7 +12,6 @@
         :icon="optionsShown ? 'expand_less' : 'expand_more'"
         :aria-label="optionsShown ? 'Hide run options' : 'Show run options'"
         :aria-expanded="optionsShown ? 'true' : 'false'"
-        aria-controls="ai-run-options"
         data-testid="ai-options-toggle"
         @click="toggleOptions"
       >
@@ -23,15 +22,7 @@
     <!-- Folded: only the per-tag suggestion navigation of the tags that have suggestions. -->
     <div v-if="!optionsShown && tagsWithSuggestions.length" class="ai-tag-list q-mb-sm" data-testid="ai-folded-nav">
       <div v-for="tag in tagsWithSuggestions" :key="tag.id" class="ai-tag-list-row">
-        <span class="ai-tag-row ai-tag-checkbox">
-          <q-icon
-            :name="tag.pictogram || 'label'"
-            :style="{ color: tag.color || '#64748b' }"
-            size="16px"
-            class="q-mr-xs"
-          />
-          <span class="ai-tag-name">{{ tag.name }}</span>
-        </span>
+        <AiTagLabel :tag="tag" class="ai-tag-checkbox" />
         <AiTagNav
           :count="autoSpansByTag[tag.id].length"
           :index="autoSpanNavIndex(tag.id)"
@@ -41,8 +32,9 @@
       </div>
     </div>
 
-    <!-- display: contents keeps the tag list a flex item of the panel, so its height cap holds. -->
-    <div v-show="optionsShown" id="ai-run-options" class="ai-run-options">
+    <!-- display: contents keeps the tag list a flex item of the panel, so its height cap holds.
+         The toggle has no aria-controls: such a wrapper may be missing from the accessibility tree. -->
+    <div v-show="optionsShown" class="ai-run-options" data-testid="ai-run-options">
       <div class="text-caption text-grey-7 q-mb-xs">
         Pick the tags the AI should look for in this document and choose a mode.
       </div>
@@ -101,15 +93,7 @@
             class="ai-tag-checkbox"
           >
             <template v-slot:default>
-              <span class="ai-tag-row">
-                <q-icon
-                  :name="tag.pictogram || 'label'"
-                  :style="{ color: tag.color || '#64748b' }"
-                  size="16px"
-                  class="q-mr-xs"
-                />
-                <span class="ai-tag-name">{{ tag.name }}</span>
-              </span>
+              <AiTagLabel :tag="tag" />
             </template>
           </q-checkbox>
           <AiTagNav
@@ -383,6 +367,9 @@ import useAiAssistance, {
 } from './useAiAssistance'
 import { useTagEditing } from './useTagEditing'
 import AiTagNav from './AiTagNav.vue'
+import AiTagLabel from './AiTagLabel.vue'
+import { readRunTags, writeRunTags } from './aiRunTags'
+import { useUserStore } from 'src/features/auth/userStore'
 import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
 import { describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
@@ -396,7 +383,6 @@ const props = defineProps<{
 }>()
 
 const OPTIONS_COLLAPSED_KEY = 'semant.aiRunOptionsCollapsed'
-const RUN_TAGS_KEY_PREFIX = 'semant.aiRunTags.'
 
 const $q = useQuasar()
 const { default: api } = useApi()
@@ -791,26 +777,18 @@ watch(
     lastStatusKind.value = null
   }
 )
-// The tags chosen for runs are remembered per collection and browser (#770), so folded run
-// options are ready to run after a reload.
-const runTagsKey = (collectionId: string) => `${RUN_TAGS_KEY_PREFIX}${collectionId}`
-function readRunTags (collectionId: string): string[] {
-  try {
-    const stored: unknown = JSON.parse(readStored(runTagsKey(collectionId)) ?? '[]')
-    return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : []
-  } catch {
-    return []
-  }
-}
+// The tags chosen for runs are remembered per user and collection (#770, `aiRunTags`), so
+// folded run options are ready to run after a reload.
+const userStore = useUserStore()
 watch(
-  () => props.collectionId,
-  (collectionId) => {
-    chosenAiTagIds.value = readRunTags(collectionId)
+  [() => props.collectionId, () => userStore.getUserId],
+  ([collectionId, userId]) => {
+    chosenAiTagIds.value = readRunTags(userId, collectionId)
   },
   { immediate: true }
 )
 watch(chosenAiTagIds, (ids) => {
-  writeStored(runTagsKey(props.collectionId), JSON.stringify(ids))
+  writeRunTags(userStore.getUserId, props.collectionId, ids)
 })
 </script>
 
@@ -884,12 +862,6 @@ watch(chosenAiTagIds, (ids) => {
   border-radius: 6px;
 }
 
-.ai-tag-row {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.9rem;
-}
-
 .ai-tag-list-row {
   display: flex;
   align-items: center;
@@ -899,10 +871,6 @@ watch(chosenAiTagIds, (ids) => {
 .ai-tag-checkbox {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.ai-tag-name {
-  color: rgba(15, 23, 42, 0.9);
 }
 
 .ai-actions {

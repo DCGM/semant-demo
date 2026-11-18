@@ -256,7 +256,6 @@ import { createContextGuard } from 'src/shared/api'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
-import { countAnnotations } from 'src/features/annotations/annotationCounts'
 import { useCollectionStats } from './useCollectionStats'
 import { collectionRights } from './permissions'
 import { useUserCollectionsRepository } from './useUserCollectionsRepository'
@@ -296,7 +295,7 @@ const collectionId = computed(() => {
 })
 
 // The collection is loaded (again) before anything below asks for its statistics, members
-// or suggestions, so an earlier visit's answer doesn't count as loaded. The same page shown
+// or members, so an earlier visit's answer doesn't count as loaded. The same page shown
 // for another collection loads that one; earlier answers are dropped.
 watch(collectionId, (id, previous) => {
   if (id !== previous) void fetchCollection(id)
@@ -328,15 +327,12 @@ const isDescriptionSaveDisabled = computed(() =>
   normalizedEditedDescription.value === normalizedDescription.value
 )
 
-// The users the collection is shared with (#479), as in the Members tab, and its unresolved
-// AI suggestions, which the collection stats don't count. Answers for an earlier
-// collection are dropped.
+// The users the collection is shared with (#479), as in the Members tab. Answers for an
+// earlier collection are dropped.
 const collectionRepository = useUserCollectionsRepository()
 const members = ref<UserSearchResult[]>([])
 const membersLoading = ref(false)
 const membersError = ref<string | null>(null)
-const suggestionsCount = ref<number | null>(null)
-const suggestionsError = ref(false)
 const overviewGuard = createContextGuard()
 
 async function loadMembers (isCurrent: () => boolean) {
@@ -353,17 +349,7 @@ async function loadMembers (isCurrent: () => boolean) {
   }
 }
 
-async function loadSuggestionsCount (isCurrent: () => boolean) {
-  try {
-    const counts = await countAnnotations(collectionId.value)
-    if (isCurrent()) suggestionsCount.value = counts.suggestions
-  } catch (err) {
-    console.error('Error counting AI suggestions:', err)
-    if (isCurrent()) suggestionsError.value = true
-  }
-}
-
-// Members and the suggestion count are asked for once this collection has loaded (here or
+// Members are asked for once this collection has loaded (here or
 // by the enclosing layout), so a collection that is gone or no longer shared shows only its
 // own error. Another collection starts over.
 watch(collectionLoaded, (loaded) => {
@@ -371,12 +357,9 @@ watch(collectionLoaded, (loaded) => {
   members.value = []
   membersLoading.value = false
   membersError.value = null
-  suggestionsCount.value = null
-  suggestionsError.value = false
   if (!loaded) return
   const isCurrent = overviewGuard.capture()
   void loadMembers(isCurrent)
-  void loadSuggestionsCount(isCurrent)
 }, { immediate: true })
 
 const createdAtText = computed(() =>
@@ -432,8 +415,9 @@ const statCards = computed(() => {
     {
       key: 'suggestions',
       label: 'Unresolved AI Suggestions',
-      value: suggestionsCount.value ?? '–',
-      helper: suggestionsError.value ? 'Could not be counted' : 'AI suggestions not yet confirmed or rejected',
+      // Counted like the annotations: on chunks still in the collection (#770).
+      value: stats?.suggestionsCount ?? '–',
+      helper: 'AI suggestions not yet confirmed or rejected',
       icon: 'auto_awesome',
       color: 'deep-purple'
     }

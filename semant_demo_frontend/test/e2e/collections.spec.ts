@@ -98,11 +98,11 @@ test('the collections table columns are resized by dragging and reset by a doubl
 
 test('the collection overview lists the members and counts the unresolved AI suggestions', async ({ page, request }) => {
   const collection = fixture.collection('chronicles')
-  const counts = await request.get(`/api/user_collections/${collection.id}/annotations/counts`, {
+  const stats = await request.get(`/api/user_collections/${collection.id}/stats`, {
     headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
   })
-  expect(counts.ok()).toBe(true)
-  const { suggestions } = await counts.json() as { suggestions: number }
+  expect(stats.ok()).toBe(true)
+  const suggestions = (await stats.json() as { suggestions_count: number }).suggestions_count
 
   await ensureLoggedIn(page, 'owner')
   await openCollections(page)
@@ -119,12 +119,12 @@ test('the collection overview lists the members and counts the unresolved AI sug
 // #770: the unresolved AI suggestions of each shown collection, on its tile and in the table.
 test('tiles and the table show the unresolved AI suggestions of each collection', async ({ page, request }) => {
   const collection = fixture.collection('chronicles')
-  const counts = await request.get(`/api/user_collections/${collection.id}/annotations/counts`, {
+  const stats = await request.get(`/api/user_collections/${collection.id}/stats`, {
     headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
   })
-  expect(counts.ok()).toBe(true)
-  const { suggestions } = await counts.json() as { suggestions: number }
-  expect(suggestions).toBeGreaterThan(0) // the fixture has an unresolved "place" suggestion
+  expect(stats.ok()).toBe(true)
+  const suggestions = (await stats.json() as { suggestions_count: number }).suggestions_count
+  expect(suggestions).toBeGreaterThan(0) // the fixture has unresolved "place" suggestions
 
   await ensureLoggedIn(page, 'owner')
   await openCollections(page)

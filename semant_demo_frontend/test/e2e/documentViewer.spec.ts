@@ -195,7 +195,7 @@ test('the AI Tagging run options fold away on a run and the choice to fold them 
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
-  const options = page.locator('#ai-run-options')
+  const options = page.getByTestId('ai-run-options')
   const toggle = page.getByTestId('ai-options-toggle')
   await expect(options).toBeVisible()
 

@@ -27,16 +27,20 @@
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
 import { plural } from 'src/shared/plural'
-import { usePendingSuggestions } from './usePendingSuggestions'
+import { useCollectionStats } from './useCollectionStats'
 
-// A collection's unresolved AI suggestions on the Collections page (#770).
+// A collection's unresolved AI suggestions on the Collections page (#770), from its
+// statistics: the cache the Overview tab shares, and a read that leaves the collection's
+// annotation store's recorded use alone. Only the shown tiles or rows ask for them.
 const props = defineProps<{
   collectionId: string
   /** As a tile's badge (hidden for none and when it could not be counted), else a table cell's number. */
   badge?: boolean
 }>()
 
-const { count, failed } = usePendingSuggestions(toRef(props, 'collectionId'))
+const stats = useCollectionStats(toRef(props, 'collectionId'), computed(() => true))
+const count = computed(() => stats.data.value?.suggestionsCount)
+const failed = stats.isError
 const label = computed(() => `${plural(count.value ?? 0, 'AI suggestion')} not yet confirmed or rejected`)
 </script>
 
