@@ -580,6 +580,8 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
 
 .chunk-context__back {
   position: absolute;
+  /* Room after the label: the last letter is not squeezed against the edge. */
+  padding-right: 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 
