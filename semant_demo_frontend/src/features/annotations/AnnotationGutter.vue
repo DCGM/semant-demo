@@ -30,7 +30,7 @@
           :title="markerTitle(item)"
           @mouseenter="emit('hover', item.spanId)"
           @mouseleave="emit('hover', null)"
-          @click.stop="emit('select', item, $event)"
+          @click.stop="onSelect(item, $event)"
         >
           <q-icon v-if="item.isAuto" name="auto_awesome" size="10px" class="gutter-icon" />
           <span class="gutter-shorthand">{{ tagInfo(item.tagId).shorthand }}</span>
@@ -77,8 +77,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   hover: [spanId: string | null]
-  select: [marker: SpanMarker, event: MouseEvent]
+  /** `label`: where the clicked label is on screen, to place a popover beside it (#770). */
+  select: [marker: SpanMarker, event: MouseEvent, label: DOMRect]
 }>()
+
+const onSelect = (item: SpanMarker, e: MouseEvent) =>
+  emit('select', item, e, (e.currentTarget as HTMLElement).getBoundingClientRect())
 
 const COLUMN_WIDTH = 50
 const GUTTER_PADDING = 4

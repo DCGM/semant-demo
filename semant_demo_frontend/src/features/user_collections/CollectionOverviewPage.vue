@@ -249,31 +249,28 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { UserSearchResult } from 'src/generated/api'
 import { createContextGuard } from 'src/shared/api'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import ErrorDisplay from 'src/shared/ui/ErrorDisplay.vue'
-import { countAnnotations } from 'src/features/annotations/annotationCounts'
-import { useCollectionStatsStore } from './collectionStatsStore'
+import { useCollectionStats } from './useCollectionStats'
 import { collectionRights } from './permissions'
 import { useUserCollectionsRepository } from './useUserCollectionsRepository'
 import { memberName } from './members'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
-const { activeCollection, loading: collectionLoading, error: collectionError } = storeToRefs(collectionsStore)
+const { activeCollection, loadedCollectionId, loading: collectionLoading, error: collectionError } = storeToRefs(collectionsStore)
 const { fetchCollection, updateCollection } = collectionsStore
-
-const collectionStatsStore = useCollectionStatsStore()
-const { collectionStats, loading: collectionStatsLoading, error: collectionStatsError } = storeToRefs(collectionStatsStore)
-const { fetchCollectionStats } = collectionStatsStore
 
 // Name, description and color are owner-only metadata (ADR 0007). Nothing is granted until
 // this collection has loaded, so the previous collection's rights don't show meanwhile.
-const collectionLoaded = computed(() => !!activeCollection.value && activeCollection.value.id === collectionId.value)
+// Loaded means its latest load succeeded: coming back to the same collection, its earlier
+// answer doesn't count until access is checked again (it may no longer be shared).
+const collectionLoaded = computed(() => loadedCollectionId.value === collectionId.value && activeCollection.value?.id === collectionId.value)
 const rights = computed(() => collectionRights(collectionLoaded.value ? activeCollection.value : null))
 const isEditingDescription = ref(false)
 const isSavingDescription = ref(false)
@@ -297,6 +294,22 @@ const collectionId = computed(() => {
   return typeof value === 'string' ? value : ''
 })
 
+// The collection is loaded (again) before anything below asks for its statistics, members
+// or members, so an earlier visit's answer doesn't count as loaded. The same page shown
+// for another collection loads that one; earlier answers are dropped.
+watch(collectionId, (id, previous) => {
+  if (id !== previous) void fetchCollection(id)
+}, { immediate: true })
+
+// Statistics of this collection only, asked again on every visit (`useCollectionStats`),
+// and shown only while the collection is loaded: a collection seen before keeps its cached
+// statistics, which must not show while it loads again or once it can no longer be loaded
+// (e.g. no longer shared).
+const collectionStatsQuery = useCollectionStats(collectionId, collectionLoaded)
+const collectionStatsLoading = computed(() => collectionLoaded.value && collectionStatsQuery.isFetching.value)
+const collectionStatsFailed = computed(() => collectionLoaded.value && collectionStatsQuery.isError.value)
+const collectionStatsError = computed(() => collectionStatsFailed.value ? 'Failed to fetch collection statistics' : null)
+
 const normalizedDescription = computed(() => (activeCollection.value?.description ?? '').trim())
 const normalizedEditedDescription = computed(() => editableDescription.value.trim())
 const normalizedName = computed(() => (activeCollection.value?.name ?? '').trim())
@@ -314,15 +327,12 @@ const isDescriptionSaveDisabled = computed(() =>
   normalizedEditedDescription.value === normalizedDescription.value
 )
 
-// The users the collection is shared with (#479), as in the Members tab, and its unresolved
-// AI suggestions, which the collection stats don't count. Answers for an earlier
-// collection are dropped.
+// The users the collection is shared with (#479), as in the Members tab. Answers for an
+// earlier collection are dropped.
 const collectionRepository = useUserCollectionsRepository()
 const members = ref<UserSearchResult[]>([])
 const membersLoading = ref(false)
 const membersError = ref<string | null>(null)
-const suggestionsCount = ref<number | null>(null)
-const suggestionsError = ref(false)
 const overviewGuard = createContextGuard()
 
 async function loadMembers (isCurrent: () => boolean) {
@@ -339,22 +349,7 @@ async function loadMembers (isCurrent: () => boolean) {
   }
 }
 
-async function loadSuggestionsCount (isCurrent: () => boolean) {
-  try {
-    const counts = await countAnnotations(collectionId.value)
-    if (isCurrent()) suggestionsCount.value = counts.suggestions
-  } catch (err) {
-    console.error('Error counting AI suggestions:', err)
-    if (isCurrent()) suggestionsError.value = true
-  }
-}
-
-const refreshOverviewData = async () => {
-  await fetchCollection(collectionId.value)
-  await fetchCollectionStats(collectionId.value)
-}
-
-// Members and the suggestion count are asked for once this collection has loaded (here or
+// Members are asked for once this collection has loaded (here or
 // by the enclosing layout), so a collection that is gone or no longer shared shows only its
 // own error. Another collection starts over.
 watch(collectionLoaded, (loaded) => {
@@ -362,12 +357,9 @@ watch(collectionLoaded, (loaded) => {
   members.value = []
   membersLoading.value = false
   membersError.value = null
-  suggestionsCount.value = null
-  suggestionsError.value = false
   if (!loaded) return
   const isCurrent = overviewGuard.capture()
   void loadMembers(isCurrent)
-  void loadSuggestionsCount(isCurrent)
 }, { immediate: true })
 
 const createdAtText = computed(() =>
@@ -383,13 +375,15 @@ const updatedAtText = computed(() =>
 )
 
 const statCards = computed(() => {
-  const stats = collectionStats.value
+  // Unknown while loading or after a failed load ('–', not 0): a failed refresh doesn't
+  // leave the earlier numbers on screen as if they were current.
+  const stats = collectionLoaded.value && !collectionStatsFailed.value ? collectionStatsQuery.data.value : undefined
 
   return [
     {
       key: 'documents',
       label: 'Documents in Collection',
-      value: stats?.documentsCount ?? 0,
+      value: stats?.documentsCount ?? '–',
       helper: 'Number of linked documents',
       icon: 'description',
       color: 'primary'
@@ -397,7 +391,7 @@ const statCards = computed(() => {
     {
       key: 'chunks',
       label: 'Chunks in Collection',
-      value: stats?.chunksCount ?? 0,
+      value: stats?.chunksCount ?? '–',
       helper: 'Text chunks assigned to this collection',
       icon: 'notes',
       color: 'secondary'
@@ -405,7 +399,7 @@ const statCards = computed(() => {
     {
       key: 'tags',
       label: 'Tags in Collection',
-      value: stats?.tagsCount ?? 0,
+      value: stats?.tagsCount ?? '–',
       helper: 'Defined tags for this collection',
       icon: 'label',
       color: 'teal'
@@ -413,7 +407,7 @@ const statCards = computed(() => {
     {
       key: 'annotations',
       label: 'Annotations in Collection',
-      value: stats?.annotationsCount ?? 0,
+      value: stats?.annotationsCount ?? '–',
       helper: 'Confirmed annotations in this collection',
       icon: 'sell',
       color: 'accent'
@@ -421,8 +415,9 @@ const statCards = computed(() => {
     {
       key: 'suggestions',
       label: 'Unresolved AI Suggestions',
-      value: suggestionsCount.value ?? '–',
-      helper: suggestionsError.value ? 'Could not be counted' : 'AI suggestions not yet confirmed or rejected',
+      // Counted like the annotations: on chunks still in the collection (#770).
+      value: stats?.suggestionsCount ?? '–',
+      helper: 'AI suggestions not yet confirmed or rejected',
       icon: 'auto_awesome',
       color: 'deep-purple'
     }
@@ -455,10 +450,10 @@ const submitDescriptionEdit = async () => {
   const descriptionPayload = normalizedEditedDescription.value || null
   isSavingDescription.value = true
 
-  await updateCollection(collectionId.value, { description: descriptionPayload })
+  const saved = await updateCollection(collectionId.value, { description: descriptionPayload })
 
   isSavingDescription.value = false
-  if (!collectionStatsError.value) {
+  if (saved) {
     isEditingDescription.value = false
   }
 }
@@ -467,10 +462,10 @@ const submitNameEdit = async () => {
   if (!collectionId.value || isNameSaveDisabled.value) return
 
   isSavingName.value = true
-  await updateCollection(collectionId.value, { name: normalizedEditedName.value })
+  const saved = await updateCollection(collectionId.value, { name: normalizedEditedName.value })
 
   isSavingName.value = false
-  if (!collectionStatsError.value) {
+  if (saved) {
     isEditingName.value = false
   }
 }
@@ -492,22 +487,13 @@ const submitColorEdit = async () => {
   }
 
   isSavingColor.value = true
-  await updateCollection(collectionId.value, { color: currentColor.value })
+  const saved = await updateCollection(collectionId.value, { color: currentColor.value })
   isSavingColor.value = false
 
-  if (!collectionStatsError.value) {
+  if (saved) {
     closeColor()
   }
 }
-
-onMounted(() => {
-  refreshOverviewData()
-})
-
-// The same page shown for another collection loads that one; earlier answers are dropped.
-watch(collectionId, (id, previous) => {
-  if (id && id !== previous) void refreshOverviewData()
-})
 </script>
 
 <style scoped lang="scss">

@@ -1,6 +1,13 @@
 import { computed, type Ref } from 'vue'
 import type { Tag } from 'src/generated/api'
 
+/**
+ * Whether a tag's name or shorthand contains `term` (already trimmed and lower-cased); the
+ * tags panel and the popover's tag picker search alike (#770).
+ */
+export const tagMatches = (tag: Tag, term: string): boolean =>
+  tag.name.toLowerCase().includes(term) || !!tag.shorthand?.toLowerCase().includes(term)
+
 export function useTagSearch(sortedTags: Ref<Tag[]>, searchedTagName: Ref<string>) {
   // A ".*term.*" match is just "contains" — using RegExp here would mean
   // interpolating raw user input into `new RegExp(...)`, which throws on
@@ -9,7 +16,7 @@ export function useTagSearch(sortedTags: Ref<Tag[]>, searchedTagName: Ref<string
   const filteredTags = computed(() => {
     const term = searchedTagName.value.trim().toLowerCase()
     if (!term) return sortedTags.value
-    return sortedTags.value.filter((tag) => tag.name.toLowerCase().includes(term))
+    return sortedTags.value.filter((tag) => tagMatches(tag, term))
   })
 
   return { filteredTags }
