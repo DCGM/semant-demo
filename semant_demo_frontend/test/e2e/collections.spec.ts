@@ -130,7 +130,9 @@ test('tiles and the table show the unresolved AI suggestions of each collection'
   await openCollections(page)
   await page.getByRole('button', { name: 'Tiles' }).click()
   const tile = page.locator('.project-card').filter({ hasText: collection.name })
-  await expect(tile.getByTestId('pending-suggestions')).toHaveText(new RegExp(`${suggestions} AI suggestions?$`))
+  const badge = tile.getByTestId('pending-suggestions')
+  await expect(badge).toContainText(String(suggestions))
+  await expect(badge).toHaveAttribute('aria-label', new RegExp(`^${suggestions} AI suggestions? not yet confirmed or rejected$`))
 
   await page.getByRole('button', { name: 'Table' }).click()
   const row = page.getByRole('row').filter({ hasText: collection.name })
