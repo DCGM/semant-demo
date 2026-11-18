@@ -61,6 +61,7 @@ docs/DeleteSpansForTagsRequest.md
 docs/DeleteSpansForTagsResponse.md
 docs/Detail.md
 docs/DiscussSpanRequest.md
+docs/DistanceUnit.md
 docs/Document.md
 docs/DocumentBrowse.md
 docs/DocumentChunk.md
@@ -95,6 +96,10 @@ docs/MaxValue.md
 docs/MaxValue1.md
 docs/MinValue.md
 docs/MinValue1.md
+docs/NearDirection.md
+docs/NearFilter.md
+docs/NearNeighbor.md
+docs/NearRelation.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
 docs/Partnumber.md
@@ -113,6 +118,7 @@ docs/PostAttributeValue.md
 docs/PostCollection.md
 docs/PostSpan.md
 docs/PostTag.md
+docs/ProximityCoverage.md
 docs/PublicationYearCounts.md
 docs/PublicationYearDistribution.md
 docs/QuestionRequest.md
@@ -232,6 +238,7 @@ models/DeleteSpansForTagsRequest.ts
 models/DeleteSpansForTagsResponse.ts
 models/Detail.ts
 models/DiscussSpanRequest.ts
+models/DistanceUnit.ts
 models/Document.ts
 models/DocumentBrowse.ts
 models/DocumentChunk.ts
@@ -266,6 +273,10 @@ models/MaxValue.ts
 models/MaxValue1.ts
 models/MinValue.ts
 models/MinValue1.ts
+models/NearDirection.ts
+models/NearFilter.ts
+models/NearNeighbor.ts
+models/NearRelation.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts
 models/Partnumber.ts
@@ -284,6 +295,7 @@ models/PostAttributeValue.ts
 models/PostCollection.ts
 models/PostSpan.ts
 models/PostTag.ts
+models/ProximityCoverage.ts
 models/PublicationYearCounts.ts
 models/PublicationYearDistribution.ts
 models/QuestionRequest.ts

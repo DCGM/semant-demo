@@ -5,7 +5,7 @@ import { QSelect, Quasar } from 'quasar'
 
 import { RetrievalMode, type AnnotationFacets } from 'src/generated/api'
 import ConcordanceToolbar from 'src/features/annotations/concordance/ConcordanceToolbar.vue'
-import { defaultFilters, facetsRequest, useConcordanceStore, withMode } from 'src/features/annotations/concordance/concordanceStore'
+import { MAX_FACET_ATTRIBUTES, defaultFilters, facetsRequest, useConcordanceStore, withMode } from 'src/features/annotations/concordance/concordanceStore'
 
 // Facet counts of the annotation query (#667): the request carries the query and every menu's
 // facet, a failed read only leaves the menus without counts, and the menus show the counts.
@@ -72,6 +72,15 @@ describe('facets of the concordance store', () => {
     const request = facetsRequest(withMode({ ...defaultFilters(), similarity: 'hejtman' }), [])
     expect(request.ranking).toMatchObject({ mode: RetrievalMode.hybrid, k: 100 })
     expect(request.rankingQuery).toBe('hejtman')
+  })
+
+  it('asks for at most 90 attribute facets, so a request never exceeds the 100 the API takes', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ids = Array.from({ length: 120 }, (_, i) => `a${i}`)
+    const facetNames = facetsRequest(defaultFilters(), ids).facets
+    expect(facetNames.filter(f => f.startsWith('attribute:'))).toHaveLength(MAX_FACET_ATTRIBUTES)
+    expect(facetNames).toHaveLength(6 + 90)
+    expect(facetsRequest(defaultFilters(), ids.slice(0, 3)).facets).toHaveLength(9)
   })
 
   it('shows the list without counts when reading them failed', async () => {

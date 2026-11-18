@@ -68,6 +68,8 @@ async def _lexical_scope(store: service.AnnotationStore, cid: UUID, filters: Ann
     query = service._filters_query(filters)
     documents = filters.document_ids or None
     conditions = document_conditions(filters.document_filters)
+    # The proximity filter (#333) restricts the annotations before any counting, as for the list.
+    query, _ = await service._apply_near(store, cid, filters, query, conditions)
     if conditions:
         found = await service._annotated_documents(store, cid, query, AnnotationSort.document, documents, conditions)
         return _Scope(query, found.order, sum(found.counts.values()), found)
@@ -170,7 +172,9 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
     limiter = asyncio.Semaphore(service._MAX_PARTITION_QUERIES)
 
     if ranking.ranked:
-        ranked = await service._rank(store, cid, request, ranking, query, text, document_conditions(request.document_filters))
+        conditions = document_conditions(request.document_filters)
+        query, _ = await service._apply_near(store, cid, request, query, conditions)  # before ranking, as the list
+        ranked = await service._rank(store, cid, request, ranking, query, text, conditions)
         everything = service._concordance_query(None, list(SpanType), None, ranked.ids)
         top = _Scope(everything, None, await store.spans.count_rows(cid, everything) if ranked.ids else 0)
 

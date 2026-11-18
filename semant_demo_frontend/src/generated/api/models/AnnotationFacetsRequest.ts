@@ -34,6 +34,13 @@ import {
     AnnotationRankingToJSON,
     AnnotationRankingToJSONTyped,
 } from './AnnotationRanking';
+import type { NearFilter } from './NearFilter';
+import {
+    NearFilterFromJSON,
+    NearFilterFromJSONTyped,
+    NearFilterToJSON,
+    NearFilterToJSONTyped,
+} from './NearFilter';
 import type { TextScope } from './TextScope';
 import {
     TextScopeFromJSON,
@@ -106,6 +113,12 @@ export interface AnnotationFacetsRequest {
     attributeUnassigned?: Array<string>;
     /**
      * 
+     * @type {NearFilter}
+     * @memberof AnnotationFacetsRequest
+     */
+    near?: NearFilter | null;
+    /**
+     * 
      * @type {Array<string>}
      * @memberof AnnotationFacetsRequest
      */
@@ -147,6 +160,7 @@ export function AnnotationFacetsRequestFromJSONTyped(json: any, ignoreDiscrimina
         'documentFilters': json['document_filters'] == null ? undefined : DocumentFiltersFromJSON(json['document_filters']),
         'attributeValues': json['attribute_values'] == null ? undefined : json['attribute_values'],
         'attributeUnassigned': json['attribute_unassigned'] == null ? undefined : json['attribute_unassigned'],
+        'near': json['near'] == null ? undefined : NearFilterFromJSON(json['near']),
         'facets': json['facets'],
         'ranking': json['ranking'] == null ? undefined : AnnotationRankingFromJSON(json['ranking']),
     };
@@ -172,6 +186,7 @@ export function AnnotationFacetsRequestToJSONTyped(value?: AnnotationFacetsReque
         'document_filters': DocumentFiltersToJSON(value['documentFilters']),
         'attribute_values': value['attributeValues'],
         'attribute_unassigned': value['attributeUnassigned'],
+        'near': NearFilterToJSON(value['near']),
         'facets': value['facets'],
         'ranking': AnnotationRankingToJSON(value['ranking']),
     };

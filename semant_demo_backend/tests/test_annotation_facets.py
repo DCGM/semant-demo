@@ -240,3 +240,27 @@ async def test_a_count_that_needs_more_documents_than_allowed_is_left_out_not_th
     found = await facet_counts(populated, "tag", "type", "year")
     assert set(found) == {"tag", "type"}  # the annotations are in 4 documents: only the per-document facet fails
     assert found["tag"].total == 6
+
+
+async def test_the_proximity_filter_restricts_every_facet_before_counting(populated, monkeypatch):
+    kept = {populated.spans.rows[0].id, populated.spans.rows[3].id}
+    seen = []
+
+    async def near(store, cid, filters, query, conditions):
+        seen.append(filters.near)
+        return query.model_copy(update={"ids": list(kept)}), None
+
+    monkeypatch.setattr(service, "_apply_near", near)
+    found = await facet_counts(populated, "tag", "type", "year")
+    assert len(seen) == 3 and all(n is None for n in seen)  # once per facet, with the request's own filter
+    assert [f.total for f in found.values()] == [2, 2, 2]
+    assert counts(found["type"]) == {"pos": 2}
+
+
+def test_at_most_a_hundred_facets_are_accepted():
+    from semant_demo.features.annotations.schemas import MAX_FACETS
+    assert MAX_FACETS == 100
+    attributes = [f"attribute:{uuid4()}" for _ in range(MAX_FACETS)]
+    assert len(AnnotationFacetsRequest(facets=attributes).facets) == 100
+    with pytest.raises(ValidationError):
+        AnnotationFacetsRequest(facets=[*attributes, "tag"])
