@@ -113,6 +113,7 @@ USER_COLLECTION_ROUTES = {
     ("get", "/api/user_collections/{collection_id}/annotations"),
     ("get", "/api/user_collections/{collection_id}/annotations/documents"),
     ("get", "/api/user_collections/{collection_id}/annotations/counts"),
+    ("post", "/api/user_collections/{collection_id}/annotations/facets"),
     ("post", "/api/user_collections/{collection_id}/annotations/ids"),
     ("post", "/api/user_collections/{collection_id}/annotations/export"),
     ("post", "/api/user_collections/{collection_id}/annotations/review"),

@@ -725,12 +725,25 @@ test('find similar from the sidebar, ranked by meaning, as a top k (#664)', asyn
   const chip = page.getByTestId('concordance-chip-similar')
   await expect(chip).toContainText('Similar to:\'Jan Novák\'')
 
-  await page.getByTestId('concordance-include-source').click()
+  // The source stays pinned above the results, named and reachable, while it is not ranked.
+  const pinned = page.getByTestId('similar-source')
+  await expect(pinned).toContainText("'Jan Novák'")
+  await expect(pinned.getByTestId('similar-source-status')).toContainText('not one of the ranked matches')
+
+  await pinned.getByTestId('similar-source-include').click()
   await expect(range).toHaveText('Rows 1–4 of 4 ranked annotations')
   await expect(rows(page).first()).toContainText('Jan Novák') // nearest to itself
 
   await chip.locator('.filter-chips__value').click()
   await expect(page.getByTestId('annotation-context-text')).toHaveText('Jan Novák')
+
+  // Back to the previous view: the query from before Find similar, not a reconstruction.
+  await pinned.getByTestId('similar-source-back').click()
+  await expect(range).toHaveText('Rows 1–4 of 4 matching annotations')
+  await expect(pinned).toHaveCount(0)
+  await row(page, 'Jan Novák').click()
+  await page.getByTestId('row-find-similar').click()
+  await expect(pinned).toBeVisible()
 
   // Removing the chip leaves the mode; every match again, sortable.
   await page.getByRole('button', { name: 'Stop finding annotations similar to \'Jan Novák\'' }).click()
@@ -1060,6 +1073,34 @@ test('the open row follows edits made in the document view', async ({ page, requ
     await expect(panel(page).getByTestId('chunk-context-mark')).toHaveCount(0)
   } finally {
     await patchSpan(request, novak.id, { start: 34, type: 'pos' })
+  }
+})
+
+test('the filter counts follow a review of selected annotations that are not on the page (#667)', async ({ page, request }) => {
+  const proposals = [fixture.span('lhota_automatic'), fixture.span('praha_automatic')]
+  const count = async (status: string) => Number(await page.getByTestId(`concordance-status-count-${status}`).innerText())
+  await useViewport(page, 'wide')
+  await openWorkspace(page, 'annotator')
+  try {
+    // Select the proposals, then show only confirmed annotations: the selected ones are off the page.
+    await page.getByTestId('concordance-status-pos').click()
+    await expect(rows(page)).toHaveCount(2)
+    await page.getByTestId('select-all-matches').click()
+    await page.getByTestId('concordance-status-pos').click()
+    await page.getByTestId('concordance-status-auto').click()
+    await expect(page.getByTestId('hidden-selected')).toContainText('2 selected not shown by these filters')
+    await expect(page.getByTestId('concordance-status-count-auto')).toHaveText(/\d+/)
+    const [auto, rejected] = [await count('auto'), await count('neg')]
+
+    await page.getByTestId('review-reject').click()
+    // A change to annotations not on this page asks first.
+    await expect(page.getByRole('dialog')).toContainText('2 of them are not on this page')
+    await page.getByRole('dialog').getByRole('button', { name: 'Reject 2' }).click()
+    await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2 annotations.')
+    await expect(page.getByTestId('concordance-status-count-auto')).toHaveText(String(auto - 2))
+    await expect(page.getByTestId('concordance-status-count-neg')).toHaveText(String(rejected + 2))
+  } finally {
+    for (const span of proposals) await patchSpan(request, span.id, { type: 'auto' })
   }
 })
 
