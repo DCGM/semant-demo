@@ -83,6 +83,7 @@ async def test_document_stats_within_collection(collections, corpus):
 
     assert (stats.chunks_in_collection, stats.total_chunks) == (2, 3)
     assert (stats.annotations_count, stats.distinct_tags_count) == (2, 2)
+    assert stats.suggestions_count == 1  # lhota_automatic; the rejected span is not one (#770)
 
 
 async def test_chunk_spans_keep_type_offsets_and_ai_metadata(spans, corpus):
