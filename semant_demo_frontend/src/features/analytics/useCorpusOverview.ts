@@ -19,7 +19,10 @@ export const SLOW_AFTER_MS = 4000
  *
  * `userCollectionId` (Explore with a collection, #768) counts that collection's documents
  * instead of the corpus; it is kept for `retry`. Only an answer about the searchable corpus
- * (`scope`) is ever kept as `corpus`.
+ * (`scope`) is ever kept as `corpus`. Counts of another population (another collection, or the
+ * corpus instead of a collection and back) are dropped as soon as the new one is requested, so
+ * they are never shown, even dimmed, while it is counted; other filters in the same population
+ * keep the shown counts until answered.
  */
 export function useCorpusOverview () {
   const api = useApi().default
@@ -48,6 +51,7 @@ export function useCorpusOverview () {
     stop()
     const current = new AbortController()
     controller = current
+    if (distributions.value && (distributions.value.userCollectionId ?? null) !== collection) distributions.value = null
     filters.value = requested
     chunkFilters.value = requestedChunks
     userCollectionId.value = collection

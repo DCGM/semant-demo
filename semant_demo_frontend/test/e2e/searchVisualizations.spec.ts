@@ -190,6 +190,45 @@ for (const viewport of ['wide', 'phone'] as const) {
   })
 }
 
+test('another collection or signing out shows none of the previous counts while the new ones are counted', async ({ page }) => {
+  // Review of #769: the counts (and the heatmap) of the previous population never stay on screen,
+  // not even dimmed, while the request of the new one is pending.
+  await ensureLoggedIn(page, 'owner')
+  await openSearch(page, '/#/search')
+  await scopeToCollection(page, 'Kroniky a dopisy')
+  await viewTab(page, 'visualizations').click()
+  await expect(page.getByTestId('charts-collection-name')).toHaveText('Kroniky a dopisy')
+  await page.getByTestId('heatmap-show').click()
+  await expect(page.getByTestId('heatmap-note')).toBeVisible()
+
+  // Every count is held until released.
+  const held: (() => void)[] = []
+  await page.route('**/api/analytics/corpus/distributions', async (route) => {
+    await new Promise<void>(resolve => held.push(resolve))
+    await route.continue()
+  })
+  const nothingOfTheEarlierPopulation = async () => {
+    await expect.poll(() => held.length).toBe(1)
+    await expect(page.getByTestId('charts-loading')).toBeVisible()
+    for (const id of ['charts-total', 'charts-collection-name', 'corpus-years', 'heatmap']) {
+      await expect(page.getByTestId(id)).toHaveCount(0)
+    }
+    held.pop()!()
+  }
+
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  await page.getByLabel('Select a Collection').click()
+  await page.getByRole('option', { name: 'Noviny' }).click()
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  await input(page).press('Enter')
+  await nothingOfTheEarlierPopulation()
+  await expect(page.getByTestId('charts-collection-name')).toHaveText('Noviny')
+
+  await logOut(page)
+  await nothingOfTheEarlierPopulation()
+  await expect(page.getByTestId('charts-scope')).toContainText('3 documents match (the whole searchable corpus).')
+})
+
 test('adding results to the charted collection counts its charts again when they are shown next', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openSearch(page, '/#/search?year_max=1900')
