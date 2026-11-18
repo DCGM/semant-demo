@@ -16,6 +16,7 @@ Name | Type
 `documentFilters` | [DocumentFilters](DocumentFilters.md)
 `attributeValues` | Array&lt;string&gt;
 `attributeUnassigned` | Array&lt;string&gt;
+`near` | [NearFilter](NearFilter.md)
 `within` | Array&lt;string&gt;
 `ranking` | [AnnotationRanking](AnnotationRanking.md)
 
@@ -35,6 +36,7 @@ const example = {
   "documentFilters": null,
   "attributeValues": null,
   "attributeUnassigned": null,
+  "near": null,
   "within": null,
   "ranking": null,
 } satisfies AnnotationIdsRequest
