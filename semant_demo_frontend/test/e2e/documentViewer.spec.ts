@@ -204,20 +204,29 @@ test('the AI Tagging run options fold away on a run and the choice to fold them 
   await expect(options).toBeHidden()
   await expect(page.getByTestId('ai-options-summary')).toHaveText('1 tag · Optimized')
   await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible() // the run stays in reach
+  // Folded, the per-tag suggestion arrows stay (the fixture's "place" suggestion), and
+  // Clear unresolved, which acts on the hidden tag selection, is not offered.
+  await expect(page.getByTestId('ai-folded-nav')).toContainText(fixture.tag('place').name)
+  await expect(page.getByRole('button', { name: 'Clear unresolved' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cancel' }).click()
 
-  // A run folds them only until the next visit; the user's own choice is kept.
+  // A run folds them only until the next visit; the tag selection and the user's own fold are kept.
   await page.reload()
   await sidebarPanelButton(page, 'AI Tagging').click()
   await expect(options).toBeVisible()
+  await expect(page.locator('.ai-tag-list').getByRole('checkbox', { name: fixture.tag('person').name })).toHaveAttribute('aria-checked', 'true')
   await toggle.click()
   await expect(options).toBeHidden()
   await page.reload()
   await sidebarPanelButton(page, 'AI Tagging').click()
-  await expect(page.getByTestId('ai-options-summary')).toBeVisible()
+  await expect(page.getByTestId('ai-options-summary')).toHaveText('1 tag · Optimized')
   await expect(options).toBeHidden()
   await toggle.click()
   await expect(options).toBeVisible()
+
+  // Without a selected tag there is nothing to run: the options stay open and can't be folded.
+  await page.locator('.ai-assist-panel').getByRole('button', { name: 'None' }).click()
+  await expect(toggle).toHaveCount(0)
 })
 
 // #479: a tag focused from the tags panel tags each new selection directly.

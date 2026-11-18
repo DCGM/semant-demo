@@ -63,7 +63,7 @@
         :highlighted-span-id="highlightedAutoSpanId"
         :focused-tag-id="tagNav.focusedTagId.value"
         @hover="hoveredSpanId = $event"
-        @select="onGutterMarkerClick"
+        @select="onMarkerClick"
       />
 
       <q-card class="paper-card" :class="{ 'has-gutter': gutters.spanMarkers.value.length > 0 }">
@@ -711,12 +711,8 @@ watch(editingAutoSpan, (span) => {
   if (span?.id) highlightAutoSpan(span.id)
 })
 
-// A gutter label opens its span with the popover beside the label, clear of the text (#770).
-const onGutterMarkerClick = (item: SpanMarker, e: MouseEvent) => {
-  const label = (e.target as HTMLElement | null)?.closest?.('.gutter-item')?.getBoundingClientRect()
-  onMarkerClick(item, e, label)
-}
-
+// `label`: the gutter label clicked, to open the popover beside it, clear of the text (#770);
+// a click on the text opens it at the cursor.
 const onMarkerClick = (item: SpanMarker, e: MouseEvent, label?: DOMRect) => {
   annotations.editSpan({
     id: item.spanId,

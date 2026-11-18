@@ -3,10 +3,10 @@ import { useApi } from 'src/shared/api'
 import { plural } from 'src/shared/plural'
 
 /** How many annotations a collection holds per type, of the given tags only when `tagIds` is set. */
-export async function countAnnotations (collectionId: string, tagIds?: string[]): Promise<AnnotationCounts> {
+export async function countAnnotations (collectionId: string, tagIds?: string[], init?: RequestInit): Promise<AnnotationCounts> {
   return await useApi().default.countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet({
     collectionId, tagId: tagIds
-  })
+  }, init)
 }
 
 /** The annotations as text ("1 confirmed annotation and 2 rejected suggestions"); empty when there are none. */
