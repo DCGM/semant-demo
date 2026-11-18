@@ -1,5 +1,5 @@
 <template>
-  <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" persistent>
+  <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" no-backdrop-dismiss no-route-dismiss :persistent="loading" @escape-key="resetForm">
     <q-card style="min-width: 380px">
       <q-card-section class="row items-center q-pb-none">
         <div class="text-h6">Create Account</div>
@@ -111,6 +111,7 @@ function resetForm() {
   password.value = ''
   confirmPassword.value = ''
   errorMsg.value = ''
+  showPassword.value = false
   formRef.value?.resetValidation()
 }
 
