@@ -11,6 +11,10 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
   const collectionRepository = useUserCollectionsRepository()
   const collections = ref<Collection[]>([])
   const activeCollection = ref<Collection | null>(null)
+  // The open collection once its latest load succeeded: null while it loads again (when
+  // `activeCollection` keeps its previous answer) or after that load failed, so access is
+  // revalidated before anything else of the collection is asked for or shown.
+  const loadedCollectionId = ref<string | null>(null)
   const error = ref<string | null>(null)
   const loading = ref<boolean>(false)
   const pendingDeleteIds = ref<Set<string>>(new Set())
@@ -26,6 +30,7 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
     ids.forEach((id) => deletedIds.add(id))
     collections.value = collections.value.filter((c) => !deletedIds.has(c.id))
     if (activeCollection.value && deletedIds.has(activeCollection.value.id)) activeCollection.value = null
+    if (loadedCollectionId.value && deletedIds.has(loadedCollectionId.value)) loadedCollectionId.value = null
     forgetCollectionStats(ids)
   }
 
@@ -55,11 +60,14 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
     const isCurrent = activeRequests.capture()
     // Never show another collection's metadata (or rights) while this one loads.
     if (activeCollection.value?.id !== collectionId) activeCollection.value = null
+    loadedCollectionId.value = null
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getById(collectionId)
-      if (isCurrent()) activeCollection.value = data
+      if (!isCurrent()) return
+      activeCollection.value = data
+      loadedCollectionId.value = data.id
     } catch (err) {
       if (!isCurrent()) return
       error.value = 'Failed to fetch collection'
@@ -76,6 +84,7 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
     deletedIds.clear()
     collections.value = []
     activeCollection.value = null
+    loadedCollectionId.value = null
     error.value = null
     loading.value = false
   }
@@ -210,6 +219,7 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
   return {
     collections: visibleCollections,
     activeCollection,
+    loadedCollectionId,
     error,
     loading,
     fetchCollections,

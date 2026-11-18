@@ -249,7 +249,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { UserSearchResult } from 'src/generated/api'
 import { createContextGuard } from 'src/shared/api'
@@ -264,12 +264,14 @@ import { memberName } from './members'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
-const { activeCollection, loading: collectionLoading, error: collectionError } = storeToRefs(collectionsStore)
+const { activeCollection, loadedCollectionId, loading: collectionLoading, error: collectionError } = storeToRefs(collectionsStore)
 const { fetchCollection, updateCollection } = collectionsStore
 
 // Name, description and color are owner-only metadata (ADR 0007). Nothing is granted until
 // this collection has loaded, so the previous collection's rights don't show meanwhile.
-const collectionLoaded = computed(() => !!activeCollection.value && activeCollection.value.id === collectionId.value)
+// Loaded means its latest load succeeded: coming back to the same collection, its earlier
+// answer doesn't count until access is checked again (it may no longer be shared).
+const collectionLoaded = computed(() => loadedCollectionId.value === collectionId.value && activeCollection.value?.id === collectionId.value)
 const rights = computed(() => collectionRights(collectionLoaded.value ? activeCollection.value : null))
 const isEditingDescription = ref(false)
 const isSavingDescription = ref(false)
@@ -292,6 +294,13 @@ const collectionId = computed(() => {
   const value = $route.params.collectionId
   return typeof value === 'string' ? value : ''
 })
+
+// The collection is loaded (again) before anything below asks for its statistics, members
+// or suggestions, so an earlier visit's answer doesn't count as loaded. The same page shown
+// for another collection loads that one; earlier answers are dropped.
+watch(collectionId, (id, previous) => {
+  if (id !== previous) void fetchCollection(id)
+}, { immediate: true })
 
 // Statistics of this collection only, asked again on every visit (`useCollectionStats`),
 // and shown only while the collection is loaded: a collection seen before keeps its cached
@@ -501,15 +510,6 @@ const submitColorEdit = async () => {
     closeColor()
   }
 }
-
-onMounted(() => {
-  void fetchCollection(collectionId.value)
-})
-
-// The same page shown for another collection loads that one; earlier answers are dropped.
-watch(collectionId, (id, previous) => {
-  if (id && id !== previous) void fetchCollection(id)
-})
 </script>
 
 <style scoped lang="scss">

@@ -234,6 +234,45 @@ describe('collection statistics on the Overview tab', () => {
     expect(getStats.mock.calls.map(([id]) => id)).toEqual(['A', 'B'])
   })
 
+  it('revalidates the same collection before showing or asking for its statistics again', async () => {
+    getStats.mockResolvedValue(stats('A', 3))
+    const first = mountPage()
+    await flushPromises()
+    expect(counts(first)).toEqual(['3', '30', '2', '5'])
+    unmount(first) // another tab of A; A stays the open collection
+
+    // A is no longer shared with the user when they come back to its Overview.
+    const loadingA = held<Collection>()
+    getById.mockReturnValue(loadingA.promise)
+    const again = mountPage()
+    await flushPromises()
+    expect(useUserCollectionsStore().activeCollection?.id).toBe('A')
+    expect(counts(again)).toEqual(['–', '–', '–', '–'])
+    expect(getStats).toHaveBeenCalledTimes(1)
+
+    loadingA.fail(new Error('404'))
+    await flushPromises()
+
+    expect(again.text()).toContain('Failed to fetch collection')
+    expect(again.text()).not.toContain(statsError)
+    expect(counts(again)).toEqual(['–', '–', '–', '–'])
+    expect(getStats).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not show the cached statistics as current once asking for them again fails', async () => {
+    getStats.mockResolvedValue(stats('A', 3))
+    unmount(mountPage())
+    await flushPromises()
+
+    getStats.mockReset().mockRejectedValue(new Error('503'))
+    const again = mountPage()
+    await flushPromises()
+
+    expect(getStats).toHaveBeenCalledTimes(1)
+    expect(again.text()).toContain(statsError)
+    expect(counts(again)).toEqual(['–', '–', '–', '–'])
+  })
+
   it('forgets the statistics of a deleted collection, and keeps the others', async () => {
     queryClient.setQueryData(collectionStatsKey('u1', 'A'), stats('A', 3))
     queryClient.setQueryData(collectionStatsKey('u1', 'B'), stats('B', 7))
