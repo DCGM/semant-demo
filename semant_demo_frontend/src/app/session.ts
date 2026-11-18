@@ -8,16 +8,15 @@ import { useAttributesStore } from 'src/features/attributes/attributesStore'
 import { useTagSpansStore } from 'src/features/annotations/tagSpansStore'
 import { useConcordanceStore } from 'src/features/annotations/concordance/concordanceStore'
 import { useChunksStore } from 'src/features/documents/chunksStore'
-import { useCollectionStatsStore } from 'src/features/user_collections/collectionStatsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import { endSession, onStoredTokenChange, onUnauthorized } from 'src/shared/api'
 import { forgetUserQueries } from 'src/shared/query'
 
 /**
  * Forgets everything loaded for the signed-in user: collections, documents, tags, attributes,
- * annotations (also the annotation workspace with its selection, review and attribute assignments), statistics and running AI suggestion runs. Requests still under way
- * for that user are ignored when they answer. Cached queries not marked shared are
- * forgotten too (`forgetUserQueries`).
+ * annotations (also the annotation workspace with its selection, review and attribute assignments) and running AI suggestion runs. Requests still under way
+ * for that user are ignored when they answer. Cached queries not marked shared (such as
+ * collection statistics) are forgotten too (`forgetUserQueries`).
  */
 export function clearUserScopedState (): void {
   endSession()
@@ -28,7 +27,6 @@ export function clearUserScopedState (): void {
   useAttributesStore().clear()
   useChunksStore().clear()
   useDocumentsStore().clear()
-  useCollectionStatsStore().clear()
   useUserCollectionsStore().clear()
   forgetUserQueries()
 }
