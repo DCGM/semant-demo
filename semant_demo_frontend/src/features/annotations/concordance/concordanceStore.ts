@@ -139,12 +139,15 @@ export function annotationFilters (f: ConcordanceFilters): AnnotationFilters {
   }
 }
 
+/** The API takes at most 100 facets: the six menus and this many attributes (more get no counts). */
+const MAX_FACET_ATTRIBUTES = 90
+
 /** The facets of the concordance filters (#667): the choices of every filter menu, the attributes by id. */
 export function facetsRequest (f: ConcordanceFilters, attributeIds: string[]) {
   return {
     ...annotationFilters(f),
     ranking: ranking(f),
-    facets: ['tag', 'type', 'document', 'year', 'library', 'language', ...attributeIds.map(id => `attribute:${id}`)]
+    facets: ['tag', 'type', 'document', 'year', 'library', 'language', ...attributeIds.slice(0, MAX_FACET_ATTRIBUTES).map(id => `attribute:${id}`)]
   }
 }
 

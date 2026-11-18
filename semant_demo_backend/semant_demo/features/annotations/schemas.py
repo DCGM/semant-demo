@@ -533,7 +533,7 @@ class AnnotationIds(BaseModel):
     """Each one's ``attributeVersion`` then, which attribute assignments send back (#331)."""
 
 
-MAX_FACETS = 30
+MAX_FACETS = 100
 """Facets one request may ask for (#667)."""
 MAX_FACET_VALUES = 500
 """Values of the document facet returned (most annotations first); the rest are reported as truncated.

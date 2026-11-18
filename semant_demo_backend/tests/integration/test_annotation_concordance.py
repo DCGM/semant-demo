@@ -340,7 +340,8 @@ async def test_facet_counts_equal_the_totals_of_choosing_each_value(store, owner
         result = await facets.annotation_facets(store, owner, ids.col["chronicles"], request)
         assert result.population == "filtered"
         for facet in result.facets:
-            assert facet.total >= sum(v.count for v in facet.values) and facet.missing >= 0
+            # Single-valued facets: every annotation has one value or none (missing).
+            assert facet.total - sum(v.count for v in facet.values) == facet.missing >= 0, (base, facet.facet)
             for value in facet.values:
                 # The facet ignores its own filter only: add the value to the others.
                 merged = request.model_dump(exclude={"facets", "ranking"}, exclude_unset=True)
