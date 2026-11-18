@@ -751,7 +751,7 @@ example().catch(console.error);
 
 Corpus Distributions
 
-Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\&#39; chunk-value summaries) is rejected (422), never answered with 0.
+Document counts of the searchable corpus (public), or of one user collection\&#39;s documents (&#x60;&#x60;user_collection_id&#x60;&#x60;, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\&#39;s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\&#39; chunk-value summaries) is rejected (422), never answered with 0.
 
 ### Example
 
@@ -764,7 +764,11 @@ import type { CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest } fr
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // CorpusDistributionsRequest
@@ -796,7 +800,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -819,7 +823,7 @@ No authorization required
 
 Corpus Library Years
 
-Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+Document counts of the searchable corpus (public), or of one user collection\&#39;s documents (&#x60;&#x60;user_collection_id&#x60;&#x60;), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
 
 ### Example
 
@@ -832,7 +836,11 @@ import type { CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest } from
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // CorpusDistributionsRequest
@@ -864,7 +872,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 

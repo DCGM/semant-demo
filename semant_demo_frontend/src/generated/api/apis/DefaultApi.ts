@@ -1020,7 +1020,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * @summary Corpus Distributions
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -1030,7 +1030,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions>;
@@ -1044,7 +1044,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * @summary Corpus Library Years
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -1054,7 +1054,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution>;
@@ -3724,6 +3724,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/analytics/corpus/distributions`;
 
@@ -3737,7 +3742,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>> {
@@ -3748,7 +3753,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions> {
@@ -3773,6 +3778,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/analytics/corpus/library-years`;
 
@@ -3786,7 +3796,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>> {
@@ -3797,7 +3807,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution> {
