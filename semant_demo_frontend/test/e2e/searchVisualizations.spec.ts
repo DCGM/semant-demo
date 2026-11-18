@@ -134,32 +134,97 @@ test('filter-only passages and a failed count are stated, never charted as the c
   await expect(page.getByTestId('charts-total')).toHaveText('1')
 })
 
-test('signing out drops the collection scope and charts the public corpus for the same criteria', async ({ page }) => {
-  // Review of #621: the collection state must not stay, nor a spinner without a request.
-  await ensureLoggedIn(page, 'owner')
-  const counts = countRequests(page)
-  await openSearch(page, '/#/search?year_max=1900')
-  await expect(documentTitles(page)).toHaveText(['1. Kronika obce Lhota'])
+/** Chooses the collection scope in the search filters and applies it (Enter); its id. */
+async function scopeToCollection (page: Page, name: string): Promise<string> {
   await page.getByRole('button', { name: 'Search filters' }).click()
   await page.getByLabel('Select a Collection').click()
-  await page.getByRole('option', { name: 'Kroniky a dopisy' }).click()
+  await page.getByRole('option', { name }).click()
   await page.getByRole('button', { name: 'Search filters' }).click()
   const scoped = page.waitForRequest(isDocumentSearch)
   await input(page).press('Enter')
-  expect((await scoped).postDataJSON().user_collection_id).toBeTruthy()
-  await expect(chip(page, 'Kroniky a dopisy')).toBeVisible()
+  const id = (await scoped).postDataJSON().user_collection_id
+  expect(id).toBeTruthy()
+  await expect(chip(page, name)).toBeVisible()
+  return id
+}
 
+for (const viewport of ['wide', 'phone'] as const) {
+  test(`a collection without a text query charts its documents; signing out charts the corpus (${viewport})`, async ({ page }) => {
+    // #768; review of #621: the collection's counts must not stay, nor a spinner without a request.
+    await useViewport(page, viewport)
+    await ensureLoggedIn(page, 'owner')
+    await openSearch(page, '/#/search?chunk_languages=ces')
+    await expect(documentTitles(page)).toHaveCount(3)
+    const collection = await scopeToCollection(page, 'Kroniky a dopisy')
+    await expect(documentTitles(page)).toHaveCount(2)
+
+    const counted = page.waitForRequest(isDistributions)
+    await viewTab(page, 'visualizations').click()
+    expect((await counted).postDataJSON()).toEqual({
+      filters: { year_min: null, year_max: null, title_contains: [], libraries: [], languages: [] },
+      chunk_filters: { languages: ['ces'], classifications: {} },
+      user_collection_id: collection
+    })
+    // The chronicle and the letters, as in the collection's Documents Results.
+    await expect(page.getByTestId('charts-total')).toHaveText('2')
+    await expect(page.getByTestId('charts-scope')).toContainText('2 documents of collection Kroniky a dopisy match the applied filters.')
+    await expect(page.getByTestId('charts-scope')).toContainText('All passages of each document count, not only those in the collection.')
+    await expect(page.getByTestId('corpus-years')).toContainText('2 of 2 collection documents (100 %) have a publication year')
+    await expect(page.getByTestId('charts-collection')).toHaveCount(0) // the former "not available yet" state
+
+    const heatmap = page.waitForRequest(r => new URL(r.url()).pathname.endsWith('/api/analytics/corpus/library-years'))
+    await page.getByTestId('heatmap-show').click()
+    expect((await heatmap).postDataJSON().user_collection_id).toBe(collection)
+
+    const corpus = page.waitForRequest(isDistributions)
+    await logOut(page)
+    expect((await corpus).postDataJSON()).toEqual({
+      filters: { year_min: null, year_max: null, title_contains: [], libraries: [], languages: [] },
+      chunk_filters: { languages: ['ces'], classifications: {} }
+    })
+    await expect(page.getByTestId('charts-total')).toHaveText('3')
+    await expect(page.getByTestId('charts-scope')).toContainText('3 documents match the applied filters.')
+    await expect(page.getByTestId('charts-collection-name')).toHaveCount(0)
+    await expect(chip(page, 'Kroniky a dopisy')).toHaveCount(0)
+    expect(hash(page)).toBe('#/search?chunk_languages=ces&view=visualizations')
+  })
+}
+
+test('adding results to the charted collection counts its charts again when they are shown next', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openSearch(page, '/#/search?year_max=1900')
+  await expect(documentTitles(page)).toHaveText(['1. Kronika obce Lhota'])
+  await scopeToCollection(page, 'Noviny')
+  const counts = countRequests(page)
   await viewTab(page, 'visualizations').click()
-  await expect(page.getByTestId('charts-collection')).toBeVisible()
-  expect(counts.distributions).toBe(0)
-
-  const counted = page.waitForRequest(isDistributions)
-  await logOut(page)
-  expect((await counted).postDataJSON()).toEqual({ filters: { year_min: null, year_max: 1900, title_contains: [], libraries: [], languages: [] } })
   await expect(page.getByTestId('charts-total')).toHaveText('1')
-  await expect(page.getByTestId('charts-collection')).toHaveCount(0)
-  await expect(chip(page, 'Kroniky a dopisy')).toHaveCount(0)
-  expect(hash(page)).toBe('#/search?year_max=1900&view=visualizations')
+  await viewTab(page, 'results').click()
+  await viewTab(page, 'visualizations').click()
+  await expect(page.getByTestId('charts-total')).toHaveText('1')
+  expect(counts.distributions).toBe(1) // a view switch alone does not count again
+
+  // A text query's passages, one added to the collection (answered here: the shared store stays as it is).
+  await viewTab(page, 'results').click()
+  await input(page).fill('Lhota')
+  await input(page).press('Enter')
+  const result = page.locator('.search-result').first()
+  await result.getByRole('checkbox').click()
+  const toolbar = page.locator('.selection-toolbar')
+  await toolbar.getByLabel('Select Collection').click()
+  await page.getByRole('option', { name: 'Noviny' }).click()
+  await page.route('**/api/user_collections/*/chunks/*', route => route.request().method() === 'POST'
+    ? route.fulfill({ json: { outcome: 'complete', succeeded: [], failed: [], unattempted: [] } })
+    : route.continue())
+  await toolbar.getByRole('button', { name: 'Add Chunks' }).click()
+  await expect(page.getByText('Added 1 chunk(s) to collection')).toBeVisible()
+
+  // Back to the same criteria without the text query: counted again, not the earlier counts.
+  const recounted = page.waitForRequest(isDistributions)
+  await page.goBack()
+  await viewTab(page, 'visualizations').click()
+  expect((await recounted).postDataJSON().user_collection_id).toBeTruthy()
+  await expect(page.getByTestId('charts-total')).toHaveText('1')
+  expect(counts.distributions).toBe(2)
 })
 
 const RANKED_ROUTE = '**/api/analytics/results/distributions'

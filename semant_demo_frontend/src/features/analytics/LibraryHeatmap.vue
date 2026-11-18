@@ -97,6 +97,8 @@ const props = defineProps<{
   filters: DocumentFilters
   /** The chunk filters of those counts (per dimension, #529), if any. */
   chunkFilters?: ChunkFilters
+  /** The collection those counts describe (#768); none: the searchable corpus. */
+  userCollectionId?: string | null
   /** The timeline's shown window and bin width. */
   view: { window: YearWindow, width: number }
 }>()
@@ -119,7 +121,13 @@ async function load () {
   error.value = null
   try {
     const result = await api.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(
-      { corpusDistributionsRequest: { filters: props.filters, ...(hasChunkFilters(props.chunkFilters) ? { chunkFilters: props.chunkFilters } : {}) } },
+      {
+        corpusDistributionsRequest: {
+          filters: props.filters,
+          ...(hasChunkFilters(props.chunkFilters) ? { chunkFilters: props.chunkFilters } : {}),
+          ...(props.userCollectionId ? { userCollectionId: props.userCollectionId } : {})
+        }
+      },
       { signal: current.signal })
     if (controller !== current) return
     data.value = result
@@ -138,7 +146,7 @@ async function load () {
   }
 }
 
-watch(() => [props.filters, props.chunkFilters], load, { immediate: true })
+watch(() => [props.filters, props.chunkFilters, props.userCollectionId], load, { immediate: true })
 onBeforeUnmount(() => {
   controller?.abort()
   controller = null
