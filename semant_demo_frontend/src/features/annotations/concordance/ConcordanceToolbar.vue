@@ -36,7 +36,8 @@
           label="Tags"
           :display-value="tagsLabel"
           class="concordance-toolbar__tags"
-          data-testid="concordance-tags"
+          :popup-content-style="popupStyle"
+            data-testid="concordance-tags"
           @update:model-value="value => emit('change', { tagIds: value ?? [] })"
         >
           <template #option="{ itemProps, opt, selected, toggleOption }">
@@ -51,7 +52,7 @@
                 </q-item-label>
               </q-item-section>
               <q-item-section v-if="opt.count != null" side>
-                <span class="concordance-toolbar__count" :title="countTitle" data-testid="concordance-tag-count">{{ opt.count }}</span>
+                <span class="concordance-toolbar__count" :class="{ 'concordance-toolbar__count--ranked': ranked }" data-testid="concordance-tag-count">{{ countText(opt.count) }}</span>
               </q-item-section>
             </q-item>
           </template>
@@ -74,7 +75,7 @@
             :data-testid="`concordance-status-${option.value}`"
             @click="toggleType(option.value, !statusActive(option.value))"
           >
-            <span v-if="statusCount(option.value) != null" class="concordance-toolbar__count" :title="countTitle" :data-testid="`concordance-status-count-${option.value}`">{{ statusCount(option.value) }}</span>
+            <span v-if="statusCount(option.value) != null" class="concordance-toolbar__count" :class="{ 'concordance-toolbar__count--ranked': ranked }" :data-testid="`concordance-status-count-${option.value}`">{{ countText(statusCount(option.value)!) }}</span>
             <q-tooltip v-if="option.hint">{{ option.hint }}</q-tooltip>
           </q-btn>
         </q-btn-group>
@@ -257,6 +258,7 @@
             hide-bottom-space
             :error="!!documentsError"
             :error-message="documentsError ?? undefined"
+            :popup-content-style="popupStyle"
             data-testid="concordance-sources"
             @filter="filterDocuments"
             @update:model-value="value => emit('change', { documentIds: value ?? [] })"
@@ -327,6 +329,7 @@
             hide-bottom-space
             :label="libraryOptions.length ? 'Source library' : 'Source library (none recorded)'"
             :disable="!libraryOptions.length"
+            :popup-content-style="popupStyle"
             data-testid="concordance-libraries"
             @update:model-value="value => setDocumentFilters({ libraries: value ?? [] })"
           />
@@ -344,6 +347,7 @@
             hide-bottom-space
             :label="languageOptions.length ? 'Document language' : 'Document language (none recorded)'"
             :disable="!languageOptions.length"
+            :popup-content-style="popupStyle"
             data-testid="concordance-languages"
             @update:model-value="value => setDocumentFilters({ languages: value ?? [] })"
           />
@@ -369,6 +373,7 @@
             class="concordance-toolbar__attributes"
             aria-describedby="concordance-attribute-rule"
             :display-value="attributesLabel"
+            :popup-content-style="popupStyle"
             data-testid="concordance-attributes"
             @filter="filterAttributes"
             @update:model-value="setAttributeFilter"
@@ -383,7 +388,7 @@
                   <q-item-label v-if="opt.inapplicable" caption>{{ opt.inapplicable }} on annotations it no longer applies to</q-item-label>
                 </q-item-section>
                 <q-item-section v-if="opt.count != null" side>
-                  <span class="concordance-toolbar__count" :title="countTitle" data-testid="concordance-attribute-count">{{ opt.count }}</span>
+                  <span class="concordance-toolbar__count" :class="{ 'concordance-toolbar__count--ranked': ranked }" data-testid="concordance-attribute-count">{{ countText(opt.count) }}</span>
                 </q-item-section>
               </q-item>
             </template>
@@ -493,10 +498,11 @@ function countOf (name: string, value: string): number | null {
   return facet ? facet.byValue.get(value)?.count ?? 0 : null
 }
 
-/** Shown on hover only (no text in the layout): a ranked query counts its top k, not every match. */
-const countTitle = computed(() => props.facets?.population === 'top_k' ? `In these ${props.facets.k} results` : undefined)
-/** A count inside a menu label; a ranked query says which results it counts. */
-const countText = (n: number) => props.facets?.population === 'top_k' ? `${n} in top ${props.facets.k}` : String(n)
+/** A ranked query counts its top k results, not every match: the counts then say so, in bold. */
+const ranked = computed(() => props.facets?.population === 'top_k')
+const countText = (n: number) => ranked.value ? `${n} in top ${props.facets?.k}` : String(n)
+/** Menus of counts are wider when each count carries its "in top k". */
+const popupStyle = computed(() => ranked.value ? 'min-width: 320px' : undefined)
 
 const tagFacet = computed(() => facetOf('tag'))
 const tagOptions = computed(() => props.tags.map(t => ({
@@ -700,6 +706,12 @@ const shownLabel = computed(() => {
   font-size: 0.85em;
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
+}
+
+.concordance-toolbar__count--ranked {
+  font-weight: 600;
+  opacity: 1;
+  white-space: nowrap;
 }
 
 .concordance-toolbar__tags {

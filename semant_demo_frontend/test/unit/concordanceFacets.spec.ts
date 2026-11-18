@@ -100,12 +100,15 @@ describe('counts in the filter menus', () => {
     expect((tags.props('options') as { count: number }[]).map(o => o.count)).toEqual([5, 0])
   })
 
-  it('names the counted results on hover only when a ranked query counts its top k', async () => {
+  it('says in the count itself that a ranked query counts its top k', async () => {
     const toolbar = mountToolbar({ facets: facets() })
-    expect(toolbar.find('[data-testid="concordance-status-count-pos"]').attributes('title')).toBeUndefined()
+    expect(toolbar.find('[data-testid="concordance-status-count-pos"]').text()).toBe('4')
     await toolbar.setProps({ facets: facets({ population: 'top_k', selfExclusion: false, k: 100 } as never) })
-    expect(toolbar.find('[data-testid="concordance-status-count-pos"]').attributes('title')).toBe('In these 100 results')
-    expect(toolbar.text()).not.toContain('Counts')
+    const count = toolbar.find('[data-testid="concordance-status-count-pos"]')
+    expect(count.text()).toBe('4 in top 100')
+    expect(count.classes()).toContain('concordance-toolbar__count--ranked')
+    const tags = toolbar.findAllComponents(QSelect).find(s => s.props('label') === 'Tags')!
+    expect(tags.props('popupContentStyle')).toBe('min-width: 320px')
   })
 
   it('counts the attribute values, marks the ones no longer applying and counts the unassigned', () => {
