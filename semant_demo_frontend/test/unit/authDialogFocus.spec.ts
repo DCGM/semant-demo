@@ -58,3 +58,28 @@ describe('auth dialogs focus their first field', () => {
     expect(document.activeElement?.tagName).not.toBe('INPUT')
   })
 })
+
+// Escape closes the topmost auth dialog like its Close/Cancel button and clears the form (#761).
+describe('auth dialogs close with Escape', () => {
+  const escape = async () => {
+    // Quasar closes on the key's release, after seeing it go down.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27 }))
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', keyCode: 27 }))
+    await flushPromises()
+  }
+
+  it.each([
+    ['login', LoginDialog],
+    ['registration', RegisterDialog]
+  ])('%s dialog emits close and clears typed input', async (_name, component) => {
+    Platform.is.desktop = true
+    const wrapper = await open(component)
+    const input = document.querySelector('input') as HTMLInputElement
+    input.value = 'typed'
+    input.dispatchEvent(new Event('input'))
+    await flushPromises()
+    await escape()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false])
+    expect(input.value).toBe('')
+  })
+})
