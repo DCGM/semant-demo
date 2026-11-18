@@ -155,14 +155,6 @@
               </q-btn>
             </template>
           </q-input>
-          <q-checkbox
-            v-if="filters.mode === RetrievalMode.similar"
-            dense
-            :model-value="filters.includeSource"
-            label="Include source"
-            data-testid="concordance-include-source"
-            @update:model-value="value => emit('change', { includeSource: !!value })"
-          />
         </div>
 
         <q-btn
@@ -530,7 +522,7 @@ import {
   QBtn, QBtnGroup, QBtnToggle, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
 } from 'quasar'
 import {
-  DistanceUnit, NearRelation, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationFacets, type Attribute,
+  DistanceUnit, NearRelation, SpanType, TextScope, type AnnotatedDocument, type AnnotationFacets, type Attribute,
   type DocumentFilters, type NearFilter, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'

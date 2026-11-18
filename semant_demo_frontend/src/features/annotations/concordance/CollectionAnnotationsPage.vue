@@ -25,6 +25,14 @@
       @open="openContext"
     />
 
+    <SimilarSourceBar
+      :filters="store.filters"
+      :has-previous="!!store.previousView"
+      @open="openContext"
+      @change="store.setFilters"
+      @back="store.returnFromSimilar"
+    />
+
     <SelectionBar
       class="q-mb-xs"
       :selected-count="selection.size"
@@ -446,6 +454,7 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
+import SimilarSourceBar from './SimilarSourceBar.vue'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
