@@ -199,6 +199,15 @@ test('the AI Tagging run options fold away on a run and the choice to fold them 
   const toggle = page.getByTestId('ai-options-toggle')
   await expect(options).toBeVisible()
 
+  // The run is held and never reaches Topicer: it would spend the owner's AI allowance,
+  // shared by the tests of this shard (a warning banner then shifts later page layouts).
+  let release!: () => void
+  const released = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/ai/suggest_spans/**', async (route) => {
+    await released
+    await route.abort().catch(() => undefined) // already cancelled by the page
+  })
+
   await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
   await page.getByRole('button', { name: 'Run AI' }).click()
   await expect(options).toBeHidden()
@@ -209,6 +218,7 @@ test('the AI Tagging run options fold away on a run and the choice to fold them 
   await expect(page.getByTestId('ai-folded-nav')).toContainText(fixture.tag('place').name)
   await expect(page.getByRole('button', { name: 'Clear unresolved' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cancel' }).click()
+  release()
 
   // A run folds them only until the next visit; the tag selection and the user's own fold are kept.
   await page.reload()
