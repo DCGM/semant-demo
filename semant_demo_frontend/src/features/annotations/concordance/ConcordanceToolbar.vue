@@ -226,13 +226,6 @@
       </div>
     </div>
 
-    <!-- Always one line high, so the counts arriving later do not move the list. -->
-    <p v-show="formVisible" class="concordance-toolbar__population" data-testid="concordance-facets-note">
-      <template v-if="!facets" />
-      <template v-else-if="facets.population === 'top_k'">Counts are of these {{ facets.k }} results.</template>
-      <template v-else>Counts show how many annotations each choice gives; a filter does not narrow its own counts.</template>
-    </p>
-
     <div
       v-show="formVisible && moreOpen"
       id="concordance-more-filters"
@@ -701,13 +694,6 @@ const shownLabel = computed(() => {
   font-size: 0.85em;
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
-}
-
-.concordance-toolbar__population {
-  margin: 0;
-  min-height: 1.3em;
-  font-size: 0.85em;
-  opacity: 0.75;
 }
 
 .concordance-toolbar__tags {

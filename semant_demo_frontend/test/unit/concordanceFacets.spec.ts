@@ -98,15 +98,6 @@ describe('counts in the filter menus', () => {
     expect(toolbar.find('[data-testid="concordance-status-count-neg"]').text()).toBe('0')
     const tags = toolbar.findAllComponents(QSelect).find(s => s.props('label') === 'Tags')!
     expect((tags.props('options') as { count: number }[]).map(o => o.count)).toEqual([5, 0])
-    expect(toolbar.find('[data-testid="concordance-facets-note"]').text()).toContain('does not narrow its own counts')
-  })
-
-  it('labels the counts of a ranked query and shows none before they are read', async () => {
-    const toolbar = mountToolbar({ facets: facets({ population: 'top_k', selfExclusion: false, k: 100 } as never) })
-    expect(toolbar.find('[data-testid="concordance-facets-note"]').text()).toBe('Counts are of these 100 results.')
-    await toolbar.setProps({ facets: null } as never)
-    expect(toolbar.find('[data-testid="concordance-facets-note"]').text()).toBe('')
-    expect(toolbar.find('[data-testid="concordance-status-count-pos"]').exists()).toBe(false)
   })
 
   it('counts the attribute values, marks the ones no longer applying and counts the unassigned', () => {
