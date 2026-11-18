@@ -535,8 +535,9 @@ class AnnotationIds(BaseModel):
 
 MAX_FACETS = 30
 """Facets one request may ask for (#667)."""
-MAX_FACET_VALUES = 100
-"""Values of the document facet returned (most annotations first); the rest are reported as truncated."""
+MAX_FACET_VALUES = 500
+"""Values of the document facet returned (most annotations first); the rest are reported as truncated.
+A ranked query has at most ``MAX_TOP_K`` annotations, so its facet is never truncated."""
 FACET_NAMES = ("tag", "type", "document", "year", "library", "language")
 """The facets besides ``attribute:<attribute id>`` (#667)."""
 

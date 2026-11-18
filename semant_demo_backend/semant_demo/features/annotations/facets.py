@@ -180,7 +180,15 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
         async def scope_of(facet: str) -> _Scope:
             return await _lexical_scope(store, cid, _without(request, facet))
 
-    async def one(facet: str) -> Facet:
+    async def one(facet: str) -> Facet | None:
+        try:
+            return await counted(facet)
+        except InvalidRequestError:
+            # Annotations in more than 10,000 documents: a count that needs the documents cannot be made (the
+            # filters of #663 refuse that too), the others still can. Left out; the menu shows no counts.
+            return None
+
+    async def counted(facet: str) -> Facet:
         scope = await scope_of(facet)
         name = facet.partition(":")[0]
         if name == "attribute":
@@ -194,4 +202,4 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
     facets = await asyncio.gather(*(one(f) for f in request.facets))
     return AnnotationFacets(population=FacetPopulation.top_k if ranking.ranked else FacetPopulation.filtered,
                             self_exclusion=not ranking.ranked, k=ranking.k if ranking.ranked else None,
-                            facets=list(facets))
+                            facets=[f for f in facets if f is not None])

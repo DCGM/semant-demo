@@ -233,3 +233,10 @@ def test_the_facet_names_are_validated():
             request(bad)
     with pytest.raises(ValidationError):
         AnnotationFacetsRequest(facets=[])
+
+
+async def test_a_count_that_needs_more_documents_than_allowed_is_left_out_not_the_whole_answer(populated, monkeypatch):
+    monkeypatch.setattr(service, "_MAX_DOCUMENTS", 2)
+    found = await facet_counts(populated, "tag", "type", "year")
+    assert set(found) == {"tag", "type"}  # the annotations are in 4 documents: only the per-document facet fails
+    assert found["tag"].total == 6

@@ -442,6 +442,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
         })
       ])
       if (!applies() || !page.value) return
+      void loadFacets() // a review changes what the choices give
       const current = new Map(fresh.rows.map(r => [r.id, r]))
       const matched = new Set(matching.ids)
       const read = new Set(listed)
