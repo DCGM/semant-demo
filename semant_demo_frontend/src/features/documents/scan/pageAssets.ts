@@ -19,6 +19,25 @@ export function readDocumentPages (documentId: string, collectionId: string | nu
   return useApi().default.readDocumentPagesApiDocumentsDocumentIdPagesGet({ documentId, collectionId }, { signal })
 }
 
+/** A signed manifest is read again this long before its URLs expire (#279, #789). */
+export const URL_REFRESH_MARGIN_MS = 2 * 60 * 1000
+
+/**
+ * Puts the asset URLs of `fresh` (a manifest read again) into the matching `pages` in place, so
+ * every holder of those page objects (the scan viewer, the text/scan correspondence) uses the new
+ * signed URLs without its state being reset. Pages missing from `fresh` keep their URLs.
+ */
+export function replaceAssetUrls (pages: DocumentPage[], fresh: DocumentPage[]): void {
+  const byId = new Map(fresh.map(p => [p.pageId, p]))
+  for (const page of pages) {
+    const next = byId.get(page.pageId)
+    if (!next) continue
+    page.imageUrl = next.imageUrl
+    page.layoutUrl = next.layoutUrl
+    page.thumbnailUrl = next.thumbnailUrl
+  }
+}
+
 async function fetchLayout (page: DocumentPage, signal?: AbortSignal): Promise<PageLayout> {
   if (!page.layoutUrl) throw new Error('The page has no layout')
   // No token: a public document's URL needs none, another's is signed (#279); the backend

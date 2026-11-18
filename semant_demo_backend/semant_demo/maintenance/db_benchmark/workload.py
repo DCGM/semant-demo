@@ -229,7 +229,8 @@ async def sample_inputs(client: WeaviateAsyncClient, names: CollectionNames, pro
     if "user_collection" in needs:
         inputs.scoped["user_collection"], inputs.filter_values_checked["user_collection"] = await _sample_matching_ids(
             client.collections.get(names.user_collection_name), rnd, q.sample_user_collections,
-            lambda i: chunk_inside(collection_id=i))
+            # The application authorizes the collection, which makes its documents readable (#279).
+            lambda i: chunk_inside(collection_id=i, readable_collection_id=i))
         inputs.user_collections = [value for value, _ in inputs.scoped["user_collection"]]
     if "document_type" in needs:
         inputs.document_types = list(q.document_types)
@@ -346,7 +347,9 @@ class Workload:
                 text=chunk.terms, mode=SearchType(scenario.mode), limit=scenario.limit, alpha=scenario.alpha,
                 vector=chunk.vector if scenario.mode != "text" else None,
                 target_vector=self.inputs.vector_name if scenario.mode != "text" else None,
-                collection_id=collection_id, conditions=conditions))
+                # A collection search reads that (authorized) collection's documents whatever their
+                # rights, like the application's (#279); without one, public documents only.
+                collection_id=collection_id, readable_collection_id=collection_id, conditions=conditions))
             return [h.id for h in hits]
         return run
 

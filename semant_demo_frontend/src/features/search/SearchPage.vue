@@ -513,6 +513,7 @@ import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
 import { whileShown } from 'src/shared/whileShown'
 import { documentLink } from 'src/features/documents/workspace/documentLink'
 import { useChunkContext } from 'src/features/documents/useChunkContext'
+import { addRestrictedWarning, nonPublicDocuments } from 'src/features/documents/documentRights'
 
 // The Search page is being evolved into Explore Results (#605, docs/EXPLORATION.md): it edits
 // draft search criteria, and Enter or Search applies them. The applied criteria, the search
@@ -1278,6 +1279,28 @@ watch([filtersStatus, vectorsStatus], () => {
   if (waitingForOptions) void runApplied()
 })
 
+/**
+ * Confirms adding the selected results' restricted or unknown documents to the target
+ * collection (#279): resolves true when there are none, or none would gain a new route (the
+ * results' own collection), or the user confirms. Adding a chunk also links its document.
+ */
+function confirmRestrictedAdd (collectionId: string): Promise<boolean> {
+  const ownCollection = passages.results.value?.query.userCollectionId ?? null
+  const selected = results.value.filter(r => selectedResults.value.includes(r.id)).map(r => r.documentObject)
+  const restricted = collectionId === ownCollection ? [] : nonPublicDocuments(selected)
+  if (!restricted.length) return Promise.resolve(true)
+  const target = targetCollectionOptions.value.find(o => o.value === collectionId)?.label ?? 'the collection'
+  return new Promise(resolve => {
+    $q.dialog({
+      title: 'Add documents that are not public?',
+      message: addRestrictedWarning(restricted.map(d => d.title ?? ''), target),
+      cancel: { label: 'Cancel', flat: true },
+      ok: { label: 'Add anyway', color: 'primary', flat: true },
+      persistent: true
+    }).onOk(() => resolve(true)).onCancel(() => resolve(false))
+  })
+}
+
 async function addSelectedChunksToCollection () {
   if (!targetCollectionId.value) {
     Notify.create({ message: 'Please select a collection first.', position: 'top', color: 'warning' })
@@ -1292,6 +1315,7 @@ async function addSelectedChunksToCollection () {
   // and the old session's outcome is no longer reported.
   const inSession = captureSession()
   const collectionId = targetCollectionId.value
+  if (!await confirmRestrictedAdd(collectionId) || !inSession()) return
   let successCount = 0
   let failedCount = 0
   for (const chunkId of [...selectedResults.value]) {
@@ -1333,6 +1357,7 @@ async function addSelectedDocumentsToCollection () {
 
   const inSession = captureSession()
   const collectionId = targetCollectionId.value
+  if (!await confirmRestrictedAdd(collectionId) || !inSession()) return
   for (const documentId of docIds) {
     if (!inSession()) return // signed out meanwhile: stop, keep what was added
     // The store reports failures itself and returns true only for a complete add.

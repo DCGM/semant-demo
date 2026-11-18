@@ -157,7 +157,10 @@ is "not found" before any file is touched.
   the URL of each available asset (`image_url`, `layout_url`, `thumbnail_url`). Without a
   manifest, `available` is false and `pages` empty: a text-only document. Read through a
   collection, a document that is not public gets signed asset URLs (`?access=<token>`, valid
-  12 hours and only while the user can read the collection and it holds the document).
+  30 minutes and only while the user can read the collection and it holds the document; the
+  manifest gives their expiry, `access_expires_at`, and the scan viewer reads it again before
+  then). Such a URL is a bearer credential: anyone holding it can use it while it is valid and
+  the user still has the collection route; signing out or account deactivation does not end it.
   `Cache-Control: no-cache`; through a collection `private, no-store`.
 - `GET /api/documents/{document_id}/pages/{page_id}/{image|layout|thumbnail}[?access=]`: the
   file (`image/jpeg` or `application/json`), 404 when absent or not readable. A public

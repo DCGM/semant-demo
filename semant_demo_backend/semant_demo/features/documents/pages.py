@@ -50,13 +50,14 @@ async def read_pages(documents: DocumentRepository, collections: UserCollectionR
                      signer: AssetSigner | None = None) -> DocumentPages:
     """The page manifest of a readable document (``readable_document``) with the URL of each
     available asset; read through a collection, a document that is not public gets signed
-    asset URLs (``signer``; none: its assets are not readable). No stored manifest, or one that
+    asset URLs (``signer``; none: its assets are not readable), with their expiry. No stored manifest, or one that
     cannot be read (logged), gives ``available: false``."""
     doc_id = await readable_document(documents, collections, user, document_id, collection_id)
-    token = None
+    signed = None
     if collection_id is not None and user is not None and signer is not None \
             and not await documents.is_public(doc_id):
-        token = signer.sign(AssetGrant(doc_id, access.parse_id(collection_id, "Collection"), user.id))
+        signed = signer.sign(AssetGrant(doc_id, access.parse_id(collection_id, "Collection"), user.id))
+    token = signed.token if signed else None
     try:
         manifest = await asyncio.to_thread(assets.read_manifest, doc_id)
     except InvalidManifest as e:
@@ -70,7 +71,8 @@ async def read_pages(documents: DocumentRepository, collections: UserCollectionR
                           layout_url=asset_url(doc_id, p.pageId, "layout", token) if p.layout else None,
                           thumbnail_url=asset_url(doc_id, p.pageId, "thumbnail", token) if p.thumbnail else None)
              for p in manifest.pages]
-    return DocumentPages(document_id=doc_id, available=True, pages=pages)
+    return DocumentPages(document_id=doc_id, available=True, pages=pages,
+                         access_expires_at=signed.expires_at if signed else None)
 
 
 async def read_page_asset(documents: DocumentRepository, collections: UserCollectionRepository,
