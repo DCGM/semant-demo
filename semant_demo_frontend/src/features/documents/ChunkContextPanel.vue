@@ -77,7 +77,11 @@
       </div>
 
       <!-- The passage: laid out with the header (display: contents), or scrolled by itself. -->
-      <div ref="bodyEl" class="chunk-context__body" data-testid="chunk-context-body" @scroll.passive="checkTargetInView">
+      <div ref="bodyEl" class="chunk-context__body" data-testid="chunk-context-body" @scroll.passive="onBodyScroll">
+        <!-- With `scrollText`: edge fades, shown only while there is more text in that direction. -->
+        <div v-if="scrollText" class="chunk-context__fade-anchor chunk-context__fade-anchor--top" aria-hidden="true">
+          <div class="chunk-context__fade" :class="{ 'chunk-context__fade--on': fadeTop }" data-testid="chunk-context-fade-top" :data-active="fadeTop" />
+        </div>
         <!-- With `scrollText` and `backLabel`: a way back to the target when it is scrolled
              out of view, on the side where it is. Always present, so showing it moves nothing. -->
         <div v-if="scrollText && backLabel" class="chunk-context__back-anchor chunk-context__back-anchor--top">
@@ -162,6 +166,9 @@
           />
           <div v-else class="chunk-context__edge text-caption text-grey-6">End of document</div>
         </template>
+        <div v-if="scrollText" class="chunk-context__fade-anchor chunk-context__fade-anchor--bottom" aria-hidden="true">
+          <div class="chunk-context__fade" :class="{ 'chunk-context__fade--on': fadeBottom }" data-testid="chunk-context-fade-bottom" :data-active="fadeBottom" />
+        </div>
         <div v-if="scrollText && backLabel" class="chunk-context__back-anchor chunk-context__back-anchor--bottom">
           <q-btn
             v-show="targetAway === 'below'"
@@ -339,12 +346,33 @@ function checkTargetInView () {
     targetAway.value = rect.bottom < view.top + 4 ? 'above' : rect.top > view.bottom - 4 ? 'below' : null
   })
 }
-const bodyObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => checkTargetInView())
+
+// With `scrollText`: whether there is text beyond the top / bottom edge of the passage's view.
+const fadeTop = ref(false)
+const fadeBottom = ref(false)
+function updateFades () {
+  const body = bodyEl.value
+  if (!props.scrollText || !body) {
+    fadeTop.value = false
+    fadeBottom.value = false
+    return
+  }
+  fadeTop.value = body.scrollTop > 1
+  fadeBottom.value = body.scrollHeight - body.clientHeight - body.scrollTop > 1
+}
+function onBodyScroll () {
+  updateFades()
+  checkTargetInView()
+}
+const bodyObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { updateFades(); checkTargetInView() })
 watch(bodyEl, (el, old) => {
   if (old) bodyObserver?.unobserve(old)
   if (el) bodyObserver?.observe(el)
+  updateFades()
 })
-watch(() => [props.chunks, props.highlight, props.targetChunkId] as const, () => { void nextTick(checkTargetInView) })
+watch(() => [props.chunks, props.highlight, props.targetChunkId, props.scrollText, props.loading] as const, () => {
+  void nextTick(() => { updateFades(); checkTargetInView() })
+})
 onBeforeUnmount(() => {
   bodyObserver?.disconnect()
   if (checkFrame) cancelAnimationFrame(checkFrame)
@@ -458,6 +486,58 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   min-height: 160px;
   overflow-y: auto;
   overflow-anchor: auto;
+  /* A region of its own below the header. */
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+}
+
+/* Zero-height anchors at the passage's edges carry the fades (they take no room and
+   let every click, selection and touch through). */
+.chunk-context__fade-anchor {
+  position: sticky;
+  z-index: 1;
+  height: 0;
+  margin: -4px 0;
+  pointer-events: none;
+}
+
+.chunk-context__fade-anchor--top {
+  top: -4px;
+}
+
+.chunk-context__fade-anchor--bottom {
+  bottom: -4px;
+}
+
+.chunk-context__fade {
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  height: 28px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.chunk-context__fade--on {
+  opacity: 1;
+}
+
+.chunk-context__fade-anchor--top .chunk-context__fade {
+  top: 0;
+  background: linear-gradient(to bottom, #fff, rgba(255, 255, 255, 0));
+}
+
+.chunk-context__fade-anchor--bottom .chunk-context__fade {
+  bottom: 0;
+  background: linear-gradient(to top, #fff, rgba(255, 255, 255, 0));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chunk-context__fade {
+    transition: none;
+  }
 }
 
 .chunk-context__meta {
