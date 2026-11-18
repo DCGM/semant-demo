@@ -49,6 +49,7 @@ import type {
   DeleteSpansForTagsRequest,
   DeleteSpansForTagsResponse,
   DiscussSpanRequest,
+  DistanceUnit,
   Document,
   DocumentBrowse,
   DocumentChunkWindow,
@@ -64,6 +65,8 @@ import type {
   FeedbackRequest,
   HTTPValidationError,
   LibraryYearDistribution,
+  NearDirection,
+  NearRelation,
   PageChunks,
   PassageReadRequest,
   PassageReadResponse,
@@ -178,6 +181,8 @@ import {
     DeleteSpansForTagsResponseToJSON,
     DiscussSpanRequestFromJSON,
     DiscussSpanRequestToJSON,
+    DistanceUnitFromJSON,
+    DistanceUnitToJSON,
     DocumentFromJSON,
     DocumentToJSON,
     DocumentBrowseFromJSON,
@@ -208,6 +213,10 @@ import {
     HTTPValidationErrorToJSON,
     LibraryYearDistributionFromJSON,
     LibraryYearDistributionToJSON,
+    NearDirectionFromJSON,
+    NearDirectionToJSON,
+    NearRelationFromJSON,
+    NearRelationToJSON,
     PageChunksFromJSON,
     PageChunksToJSON,
     PassageReadRequestFromJSON,
@@ -513,6 +522,14 @@ export interface ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotations
     languages?: Array<string>;
     attribute?: Array<string> | null;
     unassigned?: Array<string> | null;
+    nearRelation?: NearRelation | null;
+    nearTagId?: Array<string> | null;
+    nearType?: Array<SpanType> | null;
+    nearAttribute?: Array<string> | null;
+    nearDistance?: number;
+    nearUnit?: DistanceUnit;
+    nearDirection?: NearDirection;
+    nearAbsent?: boolean;
 }
 
 export interface ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest {
@@ -545,6 +562,14 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     languages?: Array<string>;
     attribute?: Array<string> | null;
     unassigned?: Array<string> | null;
+    nearRelation?: NearRelation | null;
+    nearTagId?: Array<string> | null;
+    nearType?: Array<SpanType> | null;
+    nearAttribute?: Array<string> | null;
+    nearDistance?: number;
+    nearUnit?: DistanceUnit;
+    nearDirection?: NearDirection;
+    nearAbsent?: boolean;
     mode?: RetrievalMode;
     k?: number;
     similarTo?: string | null;
@@ -1966,6 +1991,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1988,6 +2021,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2072,6 +2113,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
@@ -2104,6 +2153,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
@@ -5812,6 +5869,38 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['unassigned'] = requestParameters['unassigned'];
         }
 
+        if (requestParameters['nearRelation'] != null) {
+            queryParameters['near_relation'] = requestParameters['nearRelation'];
+        }
+
+        if (requestParameters['nearTagId'] != null) {
+            queryParameters['near_tag_id'] = requestParameters['nearTagId'];
+        }
+
+        if (requestParameters['nearType'] != null) {
+            queryParameters['near_type'] = requestParameters['nearType'];
+        }
+
+        if (requestParameters['nearAttribute'] != null) {
+            queryParameters['near_attribute'] = requestParameters['nearAttribute'];
+        }
+
+        if (requestParameters['nearDistance'] != null) {
+            queryParameters['near_distance'] = requestParameters['nearDistance'];
+        }
+
+        if (requestParameters['nearUnit'] != null) {
+            queryParameters['near_unit'] = requestParameters['nearUnit'];
+        }
+
+        if (requestParameters['nearDirection'] != null) {
+            queryParameters['near_direction'] = requestParameters['nearDirection'];
+        }
+
+        if (requestParameters['nearAbsent'] != null) {
+            queryParameters['near_absent'] = requestParameters['nearAbsent'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && this.configuration.accessToken) {
@@ -6050,6 +6139,38 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['unassigned'] != null) {
             queryParameters['unassigned'] = requestParameters['unassigned'];
+        }
+
+        if (requestParameters['nearRelation'] != null) {
+            queryParameters['near_relation'] = requestParameters['nearRelation'];
+        }
+
+        if (requestParameters['nearTagId'] != null) {
+            queryParameters['near_tag_id'] = requestParameters['nearTagId'];
+        }
+
+        if (requestParameters['nearType'] != null) {
+            queryParameters['near_type'] = requestParameters['nearType'];
+        }
+
+        if (requestParameters['nearAttribute'] != null) {
+            queryParameters['near_attribute'] = requestParameters['nearAttribute'];
+        }
+
+        if (requestParameters['nearDistance'] != null) {
+            queryParameters['near_distance'] = requestParameters['nearDistance'];
+        }
+
+        if (requestParameters['nearUnit'] != null) {
+            queryParameters['near_unit'] = requestParameters['nearUnit'];
+        }
+
+        if (requestParameters['nearDirection'] != null) {
+            queryParameters['near_direction'] = requestParameters['nearDirection'];
+        }
+
+        if (requestParameters['nearAbsent'] != null) {
+            queryParameters['near_absent'] = requestParameters['nearAbsent'];
         }
 
         if (requestParameters['mode'] != null) {
