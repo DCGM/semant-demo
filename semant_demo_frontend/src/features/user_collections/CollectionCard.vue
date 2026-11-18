@@ -34,6 +34,7 @@
               <span class="col-5"> Sharing: </span>
               <span class="col"> {{ sharingLabel }} </span>
             </div>
+            <PendingSuggestions badge :collection-id="props.collection.id" class="q-mt-xs" />
           </div>
         </q-card-section>
         <q-separator vertical />
@@ -78,6 +79,7 @@
 <script setup lang="ts">
 import { Collection } from 'src/generated/api'
 import { collectionRights } from './permissions'
+import PendingSuggestions from './PendingSuggestions.vue'
 import { useCollectionExport } from './useCollectionExport'
 import { computed } from 'vue'
 

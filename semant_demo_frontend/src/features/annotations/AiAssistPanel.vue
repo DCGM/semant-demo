@@ -1,96 +1,119 @@
 <template>
   <div class="ai-assist-panel" :class="{ 'has-pending': pendingAutoSpans.length > 0 }">
-    <div class="text-caption text-grey-7 q-mb-xs">
-      Pick the tags the AI should look for in this document and choose a mode.
-    </div>
-
-    <div class="ai-section-label">Mode</div>
-    <q-option-group
-      v-model="aiMode"
-      :options="aiModeOptions"
-      type="radio"
-      dense
-      class="q-mb-xs"
-      :disable="aiAssist.isRunning.value"
-    />
-
-    <template v-if="topicerModel.loaded && topicerModel.options.length">
-      <div class="ai-section-label">Model</div>
-      <q-select
-        v-model="topicerModel.selected"
-        :options="topicerConfigOptions"
-        emit-value
-        map-options
-        dense
-        outlined
-        options-dense
-        class="q-mb-sm"
-        data-testid="ai-model-select"
-        :disable="aiAssist.isRunning.value || isPreparingRun"
-      />
-    </template>
-    <div v-else-if="topicerModel.failed" class="text-caption text-grey-7 q-mb-sm" data-testid="ai-model-unavailable">
-      The AI models could not be listed; the default model is used.
-    </div>
-
-    <div class="ai-section-label">
-      Tags
-      <span class="text-caption text-grey-6 q-ml-xs">({{ selectedAiTagIds.length }}/{{ tags.length }})</span>
+    <!-- The run options fold away while the suggestions are reviewed (#770). -->
+    <div class="ai-options-header">
+      <span class="ai-section-label q-mb-none">Run options</span>
+      <span v-if="optionsCollapsed" class="ai-options-summary" data-testid="ai-options-summary">
+        {{ optionsSummary }}
+      </span>
       <q-space />
-      <q-btn flat dense no-caps size="sm" label="All" @click="selectAllAiTags" :disable="aiAssist.isRunning.value" />
-      <q-btn flat dense no-caps size="sm" label="None" @click="clearAiTags" :disable="aiAssist.isRunning.value" />
-    </div>
-    <div v-if="!tags.length" class="text-body2 text-grey-6 q-mb-sm">
-      No tags in this collection yet.
-    </div>
-    <div v-else class="ai-tag-list q-mb-sm">
-      <div
-        v-for="tag in tags"
-        :key="tag.id"
-        class="ai-tag-list-row"
+      <q-btn
+        flat dense round size="sm"
+        :icon="optionsCollapsed ? 'expand_more' : 'expand_less'"
+        :aria-label="optionsCollapsed ? 'Show run options' : 'Hide run options'"
+        :aria-expanded="optionsCollapsed ? 'false' : 'true'"
+        aria-controls="ai-run-options"
+        data-testid="ai-options-toggle"
+        @click="toggleOptions"
       >
-        <q-checkbox
-          :model-value="selectedAiTagIds.includes(tag.id)"
-          @update:model-value="(v: unknown) => toggleAiTag(tag.id, !!v)"
+        <q-tooltip>{{ optionsCollapsed ? 'Show run options' : 'Hide run options' }}</q-tooltip>
+      </q-btn>
+    </div>
+
+    <div v-show="!optionsCollapsed" id="ai-run-options">
+      <div class="text-caption text-grey-7 q-mb-xs">
+        Pick the tags the AI should look for in this document and choose a mode.
+      </div>
+
+      <div class="ai-section-label">Mode</div>
+      <q-option-group
+        v-model="aiMode"
+        :options="aiModeOptions"
+        type="radio"
+        dense
+        class="q-mb-xs"
+        :disable="aiAssist.isRunning.value"
+      />
+
+      <template v-if="topicerModel.loaded && topicerModel.options.length">
+        <div class="ai-section-label">Model</div>
+        <q-select
+          v-model="topicerModel.selected"
+          :options="topicerConfigOptions"
+          emit-value
+          map-options
           dense
-          size="sm"
-          :disable="aiAssist.isRunning.value"
-          class="ai-tag-checkbox"
+          outlined
+          options-dense
+          class="q-mb-sm"
+          data-testid="ai-model-select"
+          :disable="aiAssist.isRunning.value || isPreparingRun"
+        />
+      </template>
+      <div v-else-if="topicerModel.failed" class="text-caption text-grey-7 q-mb-sm" data-testid="ai-model-unavailable">
+        The AI models could not be listed; the default model is used.
+      </div>
+
+      <div class="ai-section-label">
+        Tags
+        <span class="text-caption text-grey-6 q-ml-xs">({{ selectedAiTagIds.length }}/{{ tags.length }})</span>
+        <q-space />
+        <q-btn flat dense no-caps size="sm" label="All" @click="selectAllAiTags" :disable="aiAssist.isRunning.value" />
+        <q-btn flat dense no-caps size="sm" label="None" @click="clearAiTags" :disable="aiAssist.isRunning.value" />
+      </div>
+      <div v-if="!tags.length" class="text-body2 text-grey-6 q-mb-sm">
+        No tags in this collection yet.
+      </div>
+      <div v-else class="ai-tag-list q-mb-sm">
+        <div
+          v-for="tag in tags"
+          :key="tag.id"
+          class="ai-tag-list-row"
         >
-          <template v-slot:default>
-            <span class="ai-tag-row">
-              <q-icon
-                :name="tag.pictogram || 'label'"
-                :style="{ color: tag.color || '#64748b' }"
-                size="16px"
-                class="q-mr-xs"
-              />
-              <span class="ai-tag-name">{{ tag.name }}</span>
+          <q-checkbox
+            :model-value="selectedAiTagIds.includes(tag.id)"
+            @update:model-value="(v: unknown) => toggleAiTag(tag.id, !!v)"
+            dense
+            size="sm"
+            :disable="aiAssist.isRunning.value"
+            class="ai-tag-checkbox"
+          >
+            <template v-slot:default>
+              <span class="ai-tag-row">
+                <q-icon
+                  :name="tag.pictogram || 'label'"
+                  :style="{ color: tag.color || '#64748b' }"
+                  size="16px"
+                  class="q-mr-xs"
+                />
+                <span class="ai-tag-name">{{ tag.name }}</span>
+              </span>
+            </template>
+          </q-checkbox>
+          <div v-if="autoSpansByTag[tag.id]?.length" class="ai-tag-nav">
+            <q-btn
+              flat dense round size="xs"
+              icon="chevron_left"
+              :disable="autoSpansByTag[tag.id].length === 0"
+              @click="navigateAutoSpan(tag.id, 'prev')"
+            >
+              <q-tooltip>Previous suggestion</q-tooltip>
+            </q-btn>
+            <span class="ai-tag-nav-counter">
+              {{ autoSpanNavIndex(tag.id) != null ? (autoSpanNavIndex(tag.id)! + 1) : '–' }}/{{ autoSpansByTag[tag.id].length }}
             </span>
-          </template>
-        </q-checkbox>
-        <div v-if="autoSpansByTag[tag.id]?.length" class="ai-tag-nav">
-          <q-btn
-            flat dense round size="xs"
-            icon="chevron_left"
-            :disable="autoSpansByTag[tag.id].length === 0"
-            @click="navigateAutoSpan(tag.id, 'prev')"
-          >
-            <q-tooltip>Previous suggestion</q-tooltip>
-          </q-btn>
-          <span class="ai-tag-nav-counter">
-            {{ autoSpanNavIndex(tag.id) != null ? (autoSpanNavIndex(tag.id)! + 1) : '–' }}/{{ autoSpansByTag[tag.id].length }}
-          </span>
-          <q-btn
-            flat dense round size="xs"
-            icon="chevron_right"
-            :disable="autoSpansByTag[tag.id].length === 0"
-            @click="navigateAutoSpan(tag.id, 'next')"
-          >
-            <q-tooltip>Next suggestion</q-tooltip>
-          </q-btn>
+            <q-btn
+              flat dense round size="xs"
+              icon="chevron_right"
+              :disable="autoSpansByTag[tag.id].length === 0"
+              @click="navigateAutoSpan(tag.id, 'next')"
+            >
+              <q-tooltip>Next suggestion</q-tooltip>
+            </q-btn>
+          </div>
         </div>
       </div>
+
     </div>
 
     <div class="ai-actions q-mb-xs">
@@ -342,6 +365,8 @@ import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
 import { errorNotification } from 'src/shared/notification'
 import { describeIncomplete } from 'src/shared/writeOutcome'
+import { readStored, writeStored } from 'src/shared/browserStorage'
+import { plural } from 'src/shared/plural'
 import { useTagsStore } from './tagsStore'
 import useAiAssistance, {
   largeRunWarning, resolveAutoSpanFailure, UNKNOWN_RUN_SIZE_WARNING, type AiAssistanceMode
@@ -358,6 +383,8 @@ const props = defineProps<{
   collectionId: string
   documentId: string
 }>()
+
+const OPTIONS_COLLAPSED_KEY = 'semant.aiRunOptionsCollapsed'
 
 const $q = useQuasar()
 const { default: api } = useApi()
@@ -377,6 +404,19 @@ const topicerConfigOptions = computed(() => topicerModel.options.map((name) => (
 })))
 onMounted(() => { void topicerModel.load() })
 const selectedAiTagIds = ref<string[]>([])
+
+// Collapsed run options (#770): remembered per browser when the user toggles them; a run
+// collapses them too, without changing what is remembered.
+const optionsCollapsed = ref(readStored(OPTIONS_COLLAPSED_KEY) === 'true')
+function toggleOptions () {
+  optionsCollapsed.value = !optionsCollapsed.value
+  writeStored(OPTIONS_COLLAPSED_KEY, String(optionsCollapsed.value))
+}
+const optionsSummary = computed(() => {
+  const mode = aiMode.value === 'thorough' ? 'Thorough' : 'Optimized'
+  return `${plural(selectedAiTagIds.value.length, 'tag')} · ${mode}`
+})
+
 const isPreparingRun = ref(false)
 const busyAutoSpanIds = ref<Set<string>>(new Set())
 const isBulkDeleting = ref(false)
@@ -394,7 +434,9 @@ watch(
 watch(
   () => aiAssist.isRunning.value,
   (v) => {
-    if (v) lastStatusKind.value = 'processed'
+    if (!v) return
+    lastStatusKind.value = 'processed'
+    optionsCollapsed.value = true
   }
 )
 
@@ -762,6 +804,22 @@ watch(
 
 .ai-assist-panel.has-pending .auto-span-list {
   flex: 4 1 0;
+}
+
+.ai-options-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.ai-options-summary {
+  font-size: 0.78rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .ai-section-label {
