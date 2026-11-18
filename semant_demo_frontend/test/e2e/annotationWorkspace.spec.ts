@@ -1080,6 +1080,9 @@ test('the filter counts follow a review of selected annotations that are not on 
     const [auto, rejected] = [await count('auto'), await count('neg')]
 
     await page.getByTestId('review-reject').click()
+    // A change to annotations not on this page asks first.
+    await expect(page.getByRole('dialog')).toContainText('2 of them are not on this page')
+    await page.getByRole('dialog').getByRole('button', { name: 'Reject 2' }).click()
     await expect(page.getByTestId('review-report')).toContainText('Rejected 2 of 2 annotations.')
     await expect(page.getByTestId('concordance-status-count-auto')).toHaveText(String(auto - 2))
     await expect(page.getByTestId('concordance-status-count-neg')).toHaveText(String(rejected + 2))
