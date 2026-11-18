@@ -32,6 +32,7 @@ All URIs are relative to *http://localhost*
 | [**downloadCollectionExportApiExportsCollectionsTokenGet**](DefaultApi.md#downloadcollectionexportapiexportscollectionstokenget) | **GET** /api/exports/collections/{token} | Download Collection Export |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost**](DefaultApi.md#exportcollectionannotationsapiusercollectionscollectionidannotationsexportpost) | **POST** /api/user_collections/{collection_id}/annotations/export | Export Collection Annotations |
+| [**facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost**](DefaultApi.md#facetcollectionannotationsapiusercollectionscollectionidannotationsfacetspost) | **POST** /api/user_collections/{collection_id}/annotations/facets | Facet Collection Annotations |
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#fetchcollectiondocumentapiusercollectionscollectioniddocumentsdocumentidget) | **GET** /api/user_collections/{collection_id}/documents/{document_id} | Fetch Collection Document |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
@@ -2177,6 +2178,81 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | UTF-8 CSV with a byte order mark, one row per annotation |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost
+
+> AnnotationFacets facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(collectionId, annotationFacetsRequest)
+
+Facet Collection Annotations
+
+How many annotations each choice of the facets &#x60;&#x60;tag&#x60;&#x60;, &#x60;&#x60;type&#x60;&#x60;, &#x60;&#x60;document&#x60;&#x60;, &#x60;&#x60;year&#x60;&#x60;, &#x60;&#x60;library&#x60;&#x60;, &#x60;&#x60;language&#x60;&#x60; and &#x60;&#x60;attribute:&lt;id&gt;&#x60;&#x60; would give for the annotation query (#667), with the annotations without a value (&#x60;&#x60;missing&#x60;&#x60;). Lexical queries are counted over every match, each facet with its own filter removed (&#x60;&#x60;population&#x60;&#x60; &#x60;&#x60;filtered&#x60;&#x60;); a ranked &#x60;&#x60;ranking&#x60;&#x60; over exactly its top &#x60;&#x60;k&#x60;&#x60; (&#x60;&#x60;top_k&#x60;&#x60;). Attribute facets on a store without attribute properties answer 503.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // AnnotationFacetsRequest
+    annotationFacetsRequest: ...,
+  } satisfies FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest;
+
+  try {
+    const data = await api.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **annotationFacetsRequest** | [AnnotationFacetsRequest](AnnotationFacetsRequest.md) |  | |
+
+### Return type
+
+[**AnnotationFacets**](AnnotationFacets.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

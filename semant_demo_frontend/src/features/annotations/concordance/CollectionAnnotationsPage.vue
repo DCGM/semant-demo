@@ -6,6 +6,7 @@
       :tags="tags"
       :documents="store.documents"
       :documents-error="store.documentsError"
+      :facets="store.facets"
       :attributes="attributesStore.attributes"
       :shown-attribute-ids="store.shownAttributeIds"
       class="q-mb-sm"
@@ -815,6 +816,9 @@ function afterReview (report: ReviewReport) {
   ])
   void store.loadShown()
   if (report.action !== ReviewAction.approve) void store.loadDocuments()
+  // The counts of the filter menus follow a review that changed (or may have changed) annotations,
+  // once per review, whether or not they are on this page (#667).
+  if (report.saved.length || report.missing.length || report.failed.length) void store.loadFacets()
   return loading
 }
 
@@ -1140,6 +1144,7 @@ async function saveBoundary () {
         values: { start: saved.start, end: saved.end, ...(result.chunkId !== saved.chunkId ? { chunkId: saved.chunkId } : {}) }
       }]
     })
+    void store.loadFacets() // the text, and so the words filter's counts, may have changed
     if (boundary.value === b) boundary.value = null
     await followFocused()
     if (applies() && !boundary.value) await cancelBoundary()
@@ -1195,6 +1200,8 @@ const answered = (attributeId: string) => (result: AttributeAssignResult) => sto
  * found every annotation already as asked changed nothing and keeps it (#569). */
 function noteAssigned (changed: number) {
   if (changed && (review.undoable || review.undoNote)) review.noteChange(null, 'Attribute assignments cannot be undone.')
+  // The attribute menu's counts follow an assignment that changed something, once per assignment (#667).
+  if (changed) void store.loadFacets()
 }
 
 /** Assigns values to one annotation (a row's column or the sidebar), at the attribute version
@@ -1303,6 +1310,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onReviewShortcut))
 // ── Workspace state across navigation ──
 onBeforeRouteLeave(() => {
   store.scrollY = window.scrollY
+})
+
+// The attribute facets follow the collection's attributes (#667); read again when they arrive.
+watch(() => attributesStore.attributes.map(a => a.id).join(','), () => {
+  store.facetAttributeIds = attributesStore.attributes.map(a => a.id)
+  if (store.collectionId) void store.loadFacets()
 })
 
 watch(collectionId, async (id) => {
