@@ -77,6 +77,15 @@ class FakeWeaviate:
         return {"id": backup_id, "status": self.statuses[backup_id]}
 
 
+@pytest.fixture(autouse=True)
+def syslog_messages(monkeypatch):
+    """Collect syslog messages instead of writing them to the host's journal, where the
+    operator reads the production runs (``journalctl -t semant-weaviate-backup``)."""
+    messages: list[str] = []
+    monkeypatch.setattr(wb, "to_syslog", messages.append)
+    return messages
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     root, state = tmp_path / "backups", tmp_path / "state"
@@ -323,6 +332,13 @@ def test_backup_and_check_refuse_a_backup_mount_that_is_not_mounted(env, tmp_pat
     assert env.run("backup", BACKUP_MOUNT=str(tmp_path)) == 1
     assert env.fake.created == []
     assert env.run("check", BACKUP_MOUNT=str(tmp_path)) == 1
+
+
+def test_a_run_logs_to_syslog_and_the_log_file(env, syslog_messages):
+    assert env.run("backup") == 0
+    assert [m.split()[0] for m in syslog_messages] == ["START", "OK"]
+    logged = (env.state / "backup.log").read_text().splitlines()
+    assert [line.split(" ", 1)[1] for line in logged] == syslog_messages
 
 
 # ── check ─────────────────────────────────────────────────────────────────

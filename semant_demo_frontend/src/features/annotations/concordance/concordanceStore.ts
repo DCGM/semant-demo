@@ -208,6 +208,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const collectionId = ref<string | null>(null)
   const filters = ref<ConcordanceFilters>(defaultFilters())
   const offset = ref(0)
+  /** The query and page Find similar was started from (#691), to return to; null outside a Find similar session. */
+  const previousView = ref<{ filters: ConcordanceFilters, offset: number } | null>(null)
   const page = shallowRef<AnnotationPage | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -279,6 +281,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
   function reset () {
     stop()
     filters.value = defaultFilters()
+    previousView.value = null
     offset.value = 0
     page.value = null
     error.value = null
@@ -293,6 +296,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     unmatched.value = new Set()
     pageKey = null
     scrollY.value = 0
+    previousView.value = null
   }
 
   /** Brings the focused row up to date with a newly read page of the query `key`. */
@@ -673,6 +677,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     filters.value = withMode({ ...before, ...change, ...(change.similarity?.trim() ? clearSimilar() : {}) })
     if (change.documentFilters) filters.value.documentFilters = normalizeDocumentFilters(change.documentFilters)
     if (filters.value.sort !== AnnotationSort.attribute) filters.value.sortAttribute = null
+    if (!filters.value.similarTo) previousView.value = null
     offset.value = 0
     stopResolving()
     shown.value = new Set()
@@ -685,12 +690,25 @@ export const useConcordanceStore = defineStore('concordance', () => {
 
   /** Lists the annotations most similar to `row`, within the current filters (#664). */
   async function findSimilar (row: AnnotationListRow) {
+    // Remember the view the session started from; switching the source keeps the first one.
+    const start = filters.value.similarTo ? previousView.value : { filters: { ...filters.value }, offset: offset.value }
+    previousView.value = start // set first: setFilters drops it only when no source is left
     await setFilters(similarChange(row))
+  }
+
+  /** Leaves Find similar for the query and page it was started from (#691), the other filters intact. */
+  async function returnFromSimilar () {
+    const view = previousView.value
+    if (!view) return
+    previousView.value = null
+    await setFilters(view.filters)
+    if (view.offset > 0) await goTo(view.offset)
   }
 
   async function resetFilters () {
     // The order of the rows is a display setting, not a filter: it stays.
     filters.value = { ...defaultFilters(), sort: filters.value.sort, descending: filters.value.descending }
+    previousView.value = null
     offset.value = 0
     stopResolving()
     shown.value = new Set()
@@ -786,7 +804,9 @@ export const useConcordanceStore = defineStore('concordance', () => {
     selectAllMatches,
     deselectHidden,
     setFilters,
+    previousView,
     findSimilar,
+    returnFromSimilar,
     resetFilters,
     goTo,
     setPageSelected,
