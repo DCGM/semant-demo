@@ -48,7 +48,7 @@
       </template>
     </q-banner>
 
-    <div v-else-if="!distributions" class="explore-visualizations__status" role="status" data-testid="charts-loading">
+    <div v-else-if="!shown" class="explore-visualizations__status" role="status" data-testid="charts-loading">
       <q-spinner color="primary" size="2.5em" />
       <div class="q-mt-sm">{{ slow ? 'Counting the matching documents takes longer than usual…' : 'Counting the matching documents…' }}</div>
     </div>
@@ -56,13 +56,13 @@
     <template v-else>
       <div class="explore-visualizations__scope" data-testid="charts-scope">
         <div v-if="collectionName !== null" class="text-subtitle1">
-          <strong data-testid="charts-total">{{ formatCount(distributions.totalDocuments) }}</strong>
-          {{ distributions.totalDocuments === 1 ? 'document' : 'documents' }} of collection
-          <strong data-testid="charts-collection-name">{{ collectionName }}</strong>{{ filtered ? (distributions.totalDocuments === 1 ? ' matches' : ' match') + ' the applied filters' : '' }}.
+          <strong data-testid="charts-total">{{ formatCount(shown.totalDocuments) }}</strong>
+          {{ shown.totalDocuments === 1 ? 'document' : 'documents' }} of collection
+          <strong data-testid="charts-collection-name">{{ collectionName }}</strong>{{ filtered ? (shown.totalDocuments === 1 ? ' matches' : ' match') + ' the applied filters' : '' }}.
         </div>
         <div v-else class="text-subtitle1">
-          <strong data-testid="charts-total">{{ formatCount(distributions.totalDocuments) }}</strong>
-          {{ distributions.totalDocuments === 1 ? 'document matches' : 'documents match' }}
+          <strong data-testid="charts-total">{{ formatCount(shown.totalDocuments) }}</strong>
+          {{ shown.totalDocuments === 1 ? 'document matches' : 'documents match' }}
           {{ filtered ? 'the applied filters' : '(the whole searchable corpus)' }}.
         </div>
         <p class="text-caption text-grey-8 q-mb-none">
@@ -85,7 +85,7 @@
         <q-spinner size="20px" color="primary" />
         <span>{{ slow ? 'Counting the matching documents takes longer than usual…' : 'Counting the matching documents…' }}</span>
       </div>
-      <div v-if="distributions.totalDocuments === 0" class="explore-visualizations__status" role="status" data-testid="charts-empty">
+      <div v-if="shown.totalDocuments === 0" class="explore-visualizations__status" role="status" data-testid="charts-empty">
         <template v-if="collectionName !== null && !filtered">
           <q-icon name="folder_open" size="2.5em" />
           <div class="q-mt-sm text-subtitle1">This collection has no documents.</div>
@@ -98,7 +98,7 @@
         </template>
       </div>
       <DocumentDistributions
-        v-else :distributions="distributions" :loading="loading"
+        v-else :distributions="shown" :loading="loading"
         :unit-label="collectionName !== null ? 'collection documents' : 'documents'"
         @apply-filter="(filter) => emit('applyFilter', filter)"
       />
@@ -112,7 +112,9 @@
  * applied criteria (of the corpus, or of a collection's documents, #768), of a text query's
  * ranked results (`RankedResultCharts`), or why there are none for them (`chartsAvailability`).
  * What the document counts describe is taken from their answer (`scope`), never from the
- * criteria being requested. The page owns the counts (`useExploreCharts`,
+ * criteria being requested; counts of another population than the one the page charts
+ * (`userCollectionId`: after a change of collection or account, before they are counted again)
+ * are not shown at all, not even dimmed. The page owns the counts (`useExploreCharts`,
  * `useResultCharts`), the search and the criteria; a clicked chart category (or the shown
  * period) is emitted as a filter, which the page applies (a new search or count).
  */
@@ -127,7 +129,7 @@ import type { ChartsAvailability } from './useExploreCharts'
 
 type CollectionLabel = (id: string) => string
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   availability: ChartsAvailability
   distributions: CorpusDistributions | null
   loading: boolean
@@ -139,7 +141,9 @@ const props = defineProps<{
   ranked?: RankedChartsState
   /** The name of a collection by id (the scope of collection counts). */
   collectionLabel?: CollectionLabel
-}>()
+  /** The collection the page charts now (null: the searchable corpus). */
+  userCollectionId?: string | null
+}>(), { userCollectionId: null })
 const emit = defineEmits<{
   retry: []
   retryRanked: []
@@ -154,12 +158,17 @@ const ranked = computed(() => props.ranked ?? NOTHING_RANKED)
 const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
 
+/** The counts, when they are of the population the page charts; else none (yet). */
+const shown = computed(() => {
+  const d = props.distributions
+  return d && (d.userCollectionId ?? null) === props.userCollectionId ? d : null
+})
 // From the counts' own (echoed) filters, not the ones being requested.
-const perDimension = computed(() => hasChunkFilters(props.distributions?.chunkFilters))
-const filtered = computed(() => !!props.distributions && (!isUnfiltered(props.distributions.filters) || perDimension.value))
+const perDimension = computed(() => hasChunkFilters(shown.value?.chunkFilters))
+const filtered = computed(() => !!shown.value && (!isUnfiltered(shown.value.filters) || perDimension.value))
 /** The counted collection's name when the counts describe a collection, else null. */
 const collectionName = computed(() => {
-  const d = props.distributions
+  const d = shown.value
   if (d?.scope !== 'user_collection' || !d.userCollectionId) return null
   return props.collectionLabel?.(d.userCollectionId) ?? `Collection ${d.userCollectionId}`
 })

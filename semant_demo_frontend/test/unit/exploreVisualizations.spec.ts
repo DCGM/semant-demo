@@ -6,6 +6,7 @@ import { effectScope } from 'vue'
 import { normalizeCriteria } from 'src/features/explore/criteria'
 import { chartFilters, chartsAvailability, useExploreCharts } from 'src/features/explore/useExploreCharts'
 import ExploreVisualizations from 'src/features/explore/ExploreVisualizations.vue'
+import LibraryHeatmap from 'src/features/analytics/LibraryHeatmap.vue'
 import type { CorpusDistributions } from 'src/generated/api'
 import { loadEmbed } from 'src/shared/visualization/loadEmbed'
 import { muteConsole } from './console'
@@ -207,6 +208,39 @@ describe('useExploreCharts with a collection (#768)', () => {
     scope.stop()
   })
 
+  it('drops the counts of another population as soon as it is requested, but keeps them for other filters', async () => {
+    // Review of #769: switching collection, or to the corpus (signed out) and back, never leaves
+    // the previous population's counts in place while the new ones are counted.
+    const scope = effectScope()
+    const charts = scope.run(() => useExploreCharts())!
+    charts.show(normalizeCriteria({}), 'c1')
+    await flush()
+    requests[0].answer(collectionBody(3))
+    await flushPromises()
+
+    charts.show(filtered(), 'c1') // other filters, same collection: the shown counts stay meanwhile
+    await flush()
+    expect([charts.loading.value, charts.distributions.value?.userCollectionId]).toEqual([true, 'c1'])
+    requests[1].answer(collectionBody(2))
+    await flushPromises()
+
+    charts.show(filtered(), 'c2')
+    expect([charts.loading.value, charts.distributions.value]).toEqual([true, null])
+    await flush()
+    requests[2].answer(collectionBody(4, 'c2'))
+    await flushPromises()
+    expect(charts.distributions.value?.userCollectionId).toBe('c2')
+
+    charts.show(filtered(), null)
+    expect(charts.distributions.value).toBeNull()
+    await flush()
+    requests[3].answer(distributionsBody(40))
+    await flushPromises()
+    charts.show(filtered(), 'c2')
+    expect(charts.distributions.value).toBeNull()
+    scope.stop()
+  })
+
   it('never keeps a collection\'s unfiltered counts as the corpus', async () => {
     const scope = effectScope()
     const charts = scope.run(() => useExploreCharts())!
@@ -292,7 +326,7 @@ describe('ExploreVisualizations', () => {
   const unfiltered = { titleContains: [], libraries: [], languages: [] }
 
   it('names the collection and its documents as the unit of every chart', async () => {
-    const wrapper = view({ distributions: ofCollection(6, { filters: unfiltered }), collectionLabel: label })
+    const wrapper = view({ distributions: ofCollection(6, { filters: unfiltered }), collectionLabel: label, userCollectionId: 'c1' })
     await flushPromises()
     const scope = wrapper.get('[data-testid="charts-scope"]').text()
     expect(scope).toMatch(/^6\s+documents of collection\s+Kroniky a dopisy\./)
@@ -306,7 +340,8 @@ describe('ExploreVisualizations', () => {
   it('says that passage filters consider every passage of a collection document', async () => {
     const wrapper = view({
       distributions: ofCollection(1, { filters: unfiltered, chunkFilters: { languages: ['ces'], classifications: {} } }),
-      collectionLabel: label
+      collectionLabel: label,
+      userCollectionId: 'c1'
     })
     await flushPromises()
     const scope = wrapper.get('[data-testid="charts-scope"]').text()
@@ -314,24 +349,39 @@ describe('ExploreVisualizations', () => {
     expect(scope).toContain('All passages of each document count, not only those in the collection.')
   })
 
-  it('shows the corpus wording for corpus counts even while a collection is being counted', async () => {
-    const wrapper = view({ distributions: distributions(10, { filters: unfiltered }), loading: true, collectionLabel: label })
+  it('shows no counts of another population while the charted one is counted, not even dimmed', async () => {
+    // Review of #769: the corpus while a collection is counted, another collection, a collection
+    // after signing out; only the loading state, never the previous population's numbers.
+    const cases = [
+      { distributions: distributions(10, { filters: unfiltered }), userCollectionId: 'c1' },
+      { distributions: ofCollection(6), userCollectionId: 'c2' },
+      { distributions: ofCollection(6), userCollectionId: null }
+    ]
+    for (const props of cases) {
+      const wrapper = view({ ...props, loading: true, collectionLabel: label })
+      await flushPromises()
+      expect(testIds(wrapper)).toEqual(['charts-loading'])
+      expect(wrapper.find('[data-testid="corpus-years"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="heatmap"]').exists()).toBe(false)
+    }
+    // Other filters of the same collection: the shown counts stay, dimmed, until answered.
+    const refiltered = view({ distributions: ofCollection(6), userCollectionId: 'c1', loading: true, collectionLabel: label })
     await flushPromises()
-    expect(wrapper.get('[data-testid="charts-scope"]').text()).toContain('the whole searchable corpus')
-    expect(wrapper.find('[data-testid="charts-collection-name"]').exists()).toBe(false)
+    expect(refiltered.get('[data-testid="charts-collection-name"]').text()).toBe('Kroniky a dopisy')
+    expect(refiltered.find('[data-testid="corpus-years"]').exists()).toBe(true)
   })
 
   it('tells an empty collection apart from a collection without matching documents', async () => {
-    const empty = view({ distributions: ofCollection(0, { filters: unfiltered }), collectionLabel: label })
+    const empty = view({ distributions: ofCollection(0, { filters: unfiltered }), collectionLabel: label, userCollectionId: 'c1' })
     expect(empty.get('[data-testid="charts-empty"]').text()).toContain('This collection has no documents.')
-    const none = view({ distributions: ofCollection(0), collectionLabel: label })
+    const none = view({ distributions: ofCollection(0), collectionLabel: label, userCollectionId: 'c1' })
     expect(none.get('[data-testid="charts-empty"]').text()).toContain('No documents of this collection match these filters.')
     expect(view({ distributions: distributions(0) }).get('[data-testid="charts-empty"]').text())
       .toContain('No documents match these filters.')
   })
 
   it('counts the heatmap of the same collection', async () => {
-    const wrapper = view({ distributions: ofCollection(6, { filters: unfiltered }), collectionLabel: label })
+    const wrapper = view({ distributions: ofCollection(6, { filters: unfiltered }), collectionLabel: label, userCollectionId: 'c1' })
     await flushPromises()
     await wrapper.get('[data-testid="heatmap-show"]').trigger('click')
     await flushPromises()
@@ -339,5 +389,53 @@ describe('ExploreVisualizations', () => {
     const heatmap = requests.filter(r => r.path === '/api/analytics/corpus/library-years')
     expect(heatmap).toHaveLength(1)
     expect(heatmap[0].body).toMatchObject({ user_collection_id: 'c1' })
+  })
+})
+
+describe('LibraryHeatmap with a collection (#768)', () => {
+  const heatmapBody = (id: string | null, library: string) => ({
+    scope: id ? 'user_collection' : 'searchable_corpus',
+    ...(id ? { user_collection_id: id } : {}),
+    unit: 'documents',
+    filters: NO_DOCUMENT_FILTERS,
+    total_documents: 2,
+    computed_at: '2026-11-18T12:00:00Z',
+    available: true,
+    rows: [{ library, kind: 'value', total_documents: 2, years: [{ year: 1905, count: 2 }], unknown_year_count: 0 }]
+  })
+  const mountHeatmap = (userCollectionId: string | null) => mount(LibraryHeatmap, {
+    props: { filters: {}, userCollectionId, view: { window: { start: 1900, end: 1909 }, width: 1 } },
+    global: { plugins: [[Quasar, {}]] }
+  })
+
+  it('drops the rows of another collection while its own are counted, and keeps them dimmed for other filters', async () => {
+    const wrapper = mountHeatmap('c1')
+    await flush()
+    requests[0].answer(heatmapBody('c1', 'mzk'))
+    await flushPromises()
+    await flush()
+    expect(wrapper.find('[data-testid="heatmap-note"]').exists()).toBe(true)
+
+    await wrapper.setProps({ filters: { yearMin: 1900 } }) // same collection: still shown, dimmed
+    await flush()
+    expect(requests).toHaveLength(2)
+    expect(wrapper.find('.library-heatmap--stale [data-testid="heatmap-note"]').exists()).toBe(true)
+    requests[1].answer(heatmapBody('c1', 'mzk'))
+    await flushPromises()
+
+    for (const [index, id] of [[2, 'c2'], [3, null]] as const) {
+      await wrapper.setProps({ userCollectionId: id })
+      await flush()
+      expect(requests).toHaveLength(index + 1)
+      expect(requests[index].signal?.aborted).toBe(false)
+      // Pending: no row, note or table of the previous scope.
+      expect(wrapper.find('[data-testid="heatmap-note"]').exists()).toBe(false)
+      expect(wrapper.text()).toContain('Counting the documents per library and period…')
+      expect(wrapper.text()).not.toContain('Show data table')
+      requests[index].answer(heatmapBody(id, 'nkp'))
+      await flushPromises()
+      await flush()
+      expect(wrapper.find('[data-testid="heatmap-note"]').exists()).toBe(true)
+    }
   })
 })

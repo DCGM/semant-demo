@@ -286,6 +286,7 @@
           :invalid="charts.invalid.value"
           :ranked="rankedState"
           :collection-label="collectionLabel"
+          :user-collection-id="appliedCollection"
           @retry="charts.retry"
           @retry-ranked="resultCharts.retry"
           @retry-search="runApplied({ force: true })"
