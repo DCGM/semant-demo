@@ -45,6 +45,8 @@ async def test_collection_stats_count_membership_and_approved_annotations(collec
     assert (stats.documents_count, stats.chunks_count, stats.tags_count) == (2, 4, 2)
     # Only `pos` spans whose chunk and tag both belong to the collection.
     assert stats.annotations_count == 2
+    # Unresolved AI suggestions counted alike: lhota_automatic and praha_automatic (#770).
+    assert stats.suggestions_count == 2
 
 
 async def test_document_shared_by_two_collections_lists_in_both(collections, corpus):

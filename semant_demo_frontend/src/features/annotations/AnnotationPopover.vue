@@ -343,22 +343,27 @@ function clampPopover() {
     const left = label.left - rect.width - POPOVER_LABEL_GAP
     const above = label.top - rect.height - POPOVER_LABEL_GAP
     const below = label.bottom + POPOVER_LABEL_GAP
-    if (!labelSide) {
-      labelSide = left >= m
-        ? 'left'
-        : above >= m ? 'above' : below + rect.height + m <= vh ? 'below' : 'cursor'
+    const fits: Record<LabelSide, boolean> = {
+      left: left >= m,
+      above: above >= m,
+      below: below + rect.height + m <= vh,
+      cursor: true
     }
-    // Once chosen, only kept inside the viewport.
+    // The side chosen first is kept while the popover still fits there (no jumping as it
+    // grows); once it doesn't (the wider tag picker), the first side that does.
+    if (!labelSide || !fits[labelSide]) {
+      labelSide = (['left', 'above', 'below', 'cursor'] as const).find((side) => fits[side])!
+    }
     if (labelSide === 'left') {
-      popoverPos.value = { x: Math.max(m, left), y: clampY(anchor.y - 8) }
+      popoverPos.value = { x: left, y: clampY(anchor.y - 8) }
       return
     }
     if (labelSide === 'above') {
-      popoverPos.value = { x: clampX(anchor.x + 12), y: Math.max(m, above) }
+      popoverPos.value = { x: clampX(anchor.x + 12), y: above }
       return
     }
     if (labelSide === 'below') {
-      popoverPos.value = { x: clampX(anchor.x + 12), y: clampY(below) }
+      popoverPos.value = { x: clampX(anchor.x + 12), y: below }
       return
     }
   }
