@@ -27,6 +27,13 @@ import {
     TextStatusToJSON,
     TextStatusToJSONTyped,
 } from './TextStatus';
+import type { NearNeighbor } from './NearNeighbor';
+import {
+    NearNeighborFromJSON,
+    NearNeighborFromJSONTyped,
+    NearNeighborToJSON,
+    NearNeighborToJSONTyped,
+} from './NearNeighbor';
 import type { AnnotationProvenance } from './AnnotationProvenance';
 import {
     AnnotationProvenanceFromJSON,
@@ -160,6 +167,12 @@ export interface AnnotationListRow {
      * @memberof AnnotationListRow
      */
     attributeVersion?: number;
+    /**
+     * 
+     * @type {Array<NearNeighbor>}
+     * @memberof AnnotationListRow
+     */
+    neighbors?: Array<NearNeighbor>;
 }
 
 
@@ -204,6 +217,7 @@ export function AnnotationListRowFromJSONTyped(json: any, ignoreDiscriminator: b
         'provenance': json['provenance'] == null ? undefined : AnnotationProvenanceFromJSON(json['provenance']),
         'attributes': json['attributes'] == null ? undefined : json['attributes'],
         'attributeVersion': json['attributeVersion'] == null ? undefined : json['attributeVersion'],
+        'neighbors': json['neighbors'] == null ? undefined : ((json['neighbors'] as Array<any>).map(NearNeighborFromJSON)),
     };
 }
 
@@ -237,6 +251,7 @@ export function AnnotationListRowToJSONTyped(value?: AnnotationListRow | null, i
         'provenance': AnnotationProvenanceToJSON(value['provenance']),
         'attributes': value['attributes'],
         'attributeVersion': value['attributeVersion'],
+        'neighbors': value['neighbors'] == null ? undefined : ((value['neighbors'] as Array<any>).map(NearNeighborToJSON)),
     };
 }
 
