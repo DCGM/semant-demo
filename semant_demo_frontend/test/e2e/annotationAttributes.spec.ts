@@ -57,7 +57,9 @@ async function createForAllTags (request: APIRequestContext, name: string, cardi
 
 async function choose (page: Page, testid: string, option: string) {
   await page.getByTestId(testid).click()
-  await page.getByRole('option', { name: option, exact: true }).click()
+  // The menu shows how many annotations each choice gives after its label (#667).
+  const escaped = option.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  await page.getByRole('option', { name: new RegExp(`^${escaped}( \\d+)?$`) }).click()
 }
 
 /** Closes the open value picker and waits until it has faded out, so the next picker opened is

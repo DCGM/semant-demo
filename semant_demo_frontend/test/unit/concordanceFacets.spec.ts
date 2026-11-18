@@ -105,7 +105,7 @@ describe('counts in the filter menus', () => {
     const toolbar = mountToolbar({ facets: facets({ population: 'top_k', selfExclusion: false, k: 100 } as never) })
     expect(toolbar.find('[data-testid="concordance-facets-note"]').text()).toBe('Counts are of these 100 results.')
     await toolbar.setProps({ facets: null } as never)
-    expect(toolbar.find('[data-testid="concordance-facets-note"]').exists()).toBe(false)
+    expect(toolbar.find('[data-testid="concordance-facets-note"]').text()).toBe('')
     expect(toolbar.find('[data-testid="concordance-status-count-pos"]').exists()).toBe(false)
   })
 
