@@ -12,13 +12,17 @@ export function assetUrl (url: string): string {
   return /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
-export function readDocumentPages (documentId: string, signal?: AbortSignal): Promise<DocumentPages> {
-  return useApi().default.readDocumentPagesApiDocumentsDocumentIdPagesGet({ documentId }, { signal })
+/** The page manifest; through `collectionId` for a document that is not public (#279), whose
+ * asset URLs are then signed for this user and need no token. */
+export function readDocumentPages (documentId: string, collectionId: string | null = null,
+  signal?: AbortSignal): Promise<DocumentPages> {
+  return useApi().default.readDocumentPagesApiDocumentsDocumentIdPagesGet({ documentId, collectionId }, { signal })
 }
 
 async function fetchLayout (page: DocumentPage, signal?: AbortSignal): Promise<PageLayout> {
   if (!page.layoutUrl) throw new Error('The page has no layout')
-  // Public corpus data: no token; the backend revalidates layout files (ETag).
+  // No token: a public document's URL needs none, another's is signed (#279); the backend
+  // revalidates layout files (ETag).
   const response = await fetch(assetUrl(page.layoutUrl), { credentials: API_CREDENTIALS, signal })
   if (!response.ok) throw await apiErrorFromResponse(response)
   return parsePageLayout(await response.json(), page.pageId)

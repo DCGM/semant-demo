@@ -153,7 +153,9 @@ const props = withDefaults(defineProps<{
   /** The layouts' cache, shared with the text/scan correspondence (#544) so that a layout is
    * read once; the pane's own when null. Replace it with the document. */
   layoutCache?: LayoutCache | null
-}>(), { pageId: null, highlights: () => [], showThumbnails: true, documentTitle: '', layoutCache: null })
+  /** The collection the document is read through (#279); needed for one that is not public. */
+  collectionId?: string | null
+}>(), { pageId: null, highlights: () => [], showThumbnails: true, documentTitle: '', layoutCache: null, collectionId: null })
 
 const emit = defineEmits<{
   'update:pageId': [pageId: string]
@@ -216,7 +218,7 @@ async function loadManifest () {
   manifestState.value = 'loading'
   pages.value = []
   try {
-    const result = await readDocumentPages(props.documentId, controller.signal)
+    const result = await readDocumentPages(props.documentId, props.collectionId, controller.signal)
     if (controller.signal.aborted) return
     pages.value = result.available ? result.pages : []
     manifestState.value = 'loaded'
@@ -368,7 +370,7 @@ function onKeydown (e: KeyboardEvent) {
   if (handled) e.preventDefault()
 }
 
-watch(() => props.documentId, () => {
+watch(() => [props.documentId, props.collectionId], () => {
   cache = props.layoutCache ?? createLayoutCache()
   focusGeneration++
   void loadManifest()

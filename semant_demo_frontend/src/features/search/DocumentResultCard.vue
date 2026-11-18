@@ -11,6 +11,7 @@
           :aria-label="`Open document ${number}: ${title}`"
           data-testid="document-result-open"
         >{{ number }}. {{ title }}</router-link>
+        <DocumentRightsBadge :value="document._public" class="q-ml-sm q-mt-xs" />
       </div>
       <div v-if="document.subtitle" class="text-body2 text-grey-8 document-result__wrap">{{ document.subtitle }}</div>
       <div class="document-result__meta row text-caption text-grey-8">
@@ -25,7 +26,7 @@
       </div>
       <router-link
         v-if="hit.chunk"
-        :to="documentLink(document.id, { chunkId: hit.chunk.id, from: 'search' })"
+        :to="documentLink(document.id, { chunkId: hit.chunk.id, from: 'search', collectionId })"
         class="document-result__evidence text-body2"
         :aria-label="`Open document ${number} at its best-matching passage`"
         data-testid="document-result-evidence"
@@ -42,12 +43,15 @@ import { computed } from 'vue'
 import { QCard, QCardSection, QIcon } from 'quasar'
 import type { DocumentHit } from 'src/generated/api'
 import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
+import DocumentRightsBadge from 'src/features/documents/DocumentRightsBadge.vue'
 import { documentLink } from 'src/features/documents/workspace/documentLink'
 
 const props = defineProps<{
   hit: DocumentHit
   /** 1-based position in the whole result list. */
   number: number
+  /** The collection the results were read through (#279); links keep it. */
+  collectionId?: string | null
 }>()
 
 /** Characters of the best-matching passage shown; the reader shows all of it. */
@@ -55,7 +59,9 @@ const EXCERPT_LENGTH = 320
 
 const document = computed(() => props.hit.document)
 const title = computed(() => document.value.title?.trim() || 'Untitled document')
-const openLink = computed(() => documentLink(document.value.id, { chunkId: props.hit.chunk?.id ?? null, from: 'search' }))
+const openLink = computed(() => documentLink(document.value.id, {
+  chunkId: props.hit.chunk?.id ?? null, from: 'search', collectionId: props.collectionId ?? null
+}))
 const matchLabel = computed(() => {
   if (props.hit.match === 'metadata') {
     return props.hit.chunk ? 'Matches the title, author or publisher; best passage:' : 'Matches the title, author or publisher'

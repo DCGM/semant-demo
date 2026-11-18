@@ -449,3 +449,7 @@ class ChunkQuery:
     ``collection_id``, which selects the chunks linked to a collection themselves."""
     chunk_conditions: tuple[Condition, ...] = ()
     """Search criteria predicates that the returned chunk itself must satisfy (same-chunk)."""
+    readable_collection_id: UUID | None = None
+    """The collection the caller was authorized to read (#279): chunks of its documents are
+    eligible whatever their rights. Every other chunk must belong to a public document
+    (``Documents.public`` true); without it, only those are."""

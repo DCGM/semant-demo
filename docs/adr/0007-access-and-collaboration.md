@@ -1,7 +1,8 @@
 # ADR 0007 - Annotation editing without membership editing
 
-Status: adopted and implemented across #201, #206, #207 and #209. Future collaborative
-real-time synchronization is outside the current contract.
+Status: adopted and implemented across #201, #206, #207 and #209; amended for corpus
+document rights by #279 (2026-11-18, below). Future collaborative real-time synchronization
+is outside the current contract.
 Date: 2026-10-07. Q1/Q4 clarification supersedes the earlier read-only-share proposal.
 
 ## Permission boundary
@@ -60,11 +61,60 @@ Collection+document requests also require the document to be linked to that coll
 (the document's collection reference, not chunk membership, since the Document view
 shows non-member chunks of member documents).
 Corpus reads without a collection (document metadata, corpus browse, chunk counts,
-search without a collection or tags) remain public. Search tag filters (#205): every
+search without a collection or tags) cover public documents only; see "Corpus document
+rights" below (#279). Search tag filters (#205): every
 requested tag must belong to a collection the user can read, and to the searched
 collection when one is given; unknown, malformed and inaccessible tags all get the same
 "Tag not found" (anonymous users: 401). This is checked before any embedding or
 retrieval, also for tags sent without a selected tag kind.
+
+## Corpus document rights (#279, decided 2026-11-18)
+
+Private collection data (membership, annotations, tags) and source-document rights are
+related but distinct. A corpus document's rights come from its source library record,
+`Documents.public` (copied by the Kramerius metadata sync, docs/DATA_MAINTENANCE.md):
+
+| `Documents.public` | Without a collection (anonymous or signed in) | Through a collection the user can read |
+| --- | --- | --- |
+| `true` | readable | readable |
+| `false` (UI: **Restricted**) | not found | readable when the document belongs to the collection |
+| no value (UI: **Access unknown**) | not found | readable when the document belongs to the collection |
+
+- **Signing in is not enough.** A restricted or unknown document is readable only through a
+  specific collection the user owns or reads through sharing, *and* the document's link to
+  that collection (`Documents.collection`). Membership is document-level: such a read shows
+  all the document's chunks, also those not selected as collection chunks (see above). A
+  document or chunk id, or a collection id the user cannot read or that does not hold the
+  document, grants nothing. Unknown and unreadable documents get the same "not found".
+- **One rule, applied at the service boundary.** `features/documents/service.py`
+  (`readable_document`) decides every single-document read (metadata, chunk count, passage
+  window, adjacent chunks, page chunks, page manifest and assets; also for MCP, which calls
+  anonymously); every corpus-wide read applies it inside the store query, before ranking,
+  limits, pagination and counts: document browse and search, passage search and its readback
+  by client ids, Search chat, RAG, ranked-result analytics and the corpus overview and
+  distributions (`DocumentRepository`, `ChunkQuery.readable_collection_id`,
+  `CorpusAnalyticsRepository`). Unscoped Explore is public-only; a selected collection scope
+  adds that collection's documents, never the union of every collection a user can read.
+- **Page assets.** The browser loads scans and layout files without a bearer token. A public
+  document's assets need none and are cached as `public, no-cache` (revalidated with `ETag`
+  on every use, so a document that stops being public is not served from a cache). The page
+  manifest read through a collection gives a restricted or unknown document signed asset URLs
+  (`features/documents/asset_access.py`: an HMAC over document, collection, user and expiry);
+  every asset read with one checks again that the user can read that collection and that it
+  still holds the document, and such responses are `private, no-store`.
+- **Adding documents.** An owner can add a document or chunk to a collection only when the
+  document is already readable by them: public, or linked to a collection they can read
+  (`access.require_document_addable`). Owning a collection does not unlock a restricted id.
+- **Revocation and removal.** Unsharing a collection or removing the document from it denies
+  that route at the next request, including signed asset URLs already handed out. Existing
+  memberships, annotations and sharing are never changed by the rule.
+- **Annotations stay collection data.** A collection's annotation views (concordance,
+  exports, span chat) are authorized by the collection, not by document rights; they read
+  their annotated documents whatever their rights.
+
+There is no per-document ACL, no source-library login or entitlement federation, and no
+generalized permission engine: the collection owner/shared-user rights above are the only
+route to a document that is not public.
 
 ## Local real-time Document view
 

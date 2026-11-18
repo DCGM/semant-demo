@@ -72,8 +72,10 @@ class FakeDocuments:
         self.reads.append(list(ids))
         return {i: DOCUMENTS[i] for i in ids if i in DOCUMENTS}
 
-    async def read_eligible(self, ids, collection_id=None, conditions=()):
+    async def read_eligible(self, ids, collection_id=None, conditions=(), include_restricted=False):
         assert collection_id is None  # annotated documents of a collection need not be in it
+        # The collection is authorized: its annotated documents are not limited to public ones (#279).
+        assert include_restricted
         if self.unavailable is not None:
             raise self.unavailable
         self.eligible_reads.append((list(ids), list(conditions)))

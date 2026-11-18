@@ -41,8 +41,15 @@ def row(document_id: str, library: str, **values) -> dict:
             "metadata_json": None, **values}
 
 
+async def set_public(seeded_store, collection_names, document_id: str, public: bool | None) -> None:
+    """The fixture documents are all public; these tests start from other source rights (#279)."""
+    await seeded_store.collections.get(collection_names.document_collection_name).data.update(
+        uuid=document_id, properties={"public": public})
+
+
 async def test_report_apply_and_read_back(seeded_store, collection_names, corpus, source, tmp_path):
     gazette, chronicle, letters = (corpus.documents[k]["id"] for k in ("gazette", "chronicle", "letters"))
+    await set_public(seeded_store, collection_names, gazette, None)  # rights not known before the sync
     source.execute(insert(META_RECORDS), [
         row(gazette, "mzk", date="12.5.1899", public=True,
             metadata_json={"Publisher": [["Pražský tisk"], ["Parent publisher"]], "SeriesNumber": [["IV"]]}),
@@ -107,6 +114,7 @@ def page_row(page_id: str, library: str, parent: str) -> dict:
 async def test_inferred_libraries_are_applied_with_their_access(seeded_store, collection_names, corpus, source,
                                                                 tmp_path):
     chronicle, gazette, letters = (corpus.documents[k]["id"] for k in ("chronicle", "gazette", "letters"))
+    await set_public(seeded_store, collection_names, letters, False)  # restricted before the sync
     start = {key: c["start_page_id"] for key, c in corpus.chunks.items()}
     source.execute(insert(META_RECORDS), [
         row(chronicle, "mzk", public=True, metadata_json={"Publisher": [["MZK tisk"]]}),
@@ -144,7 +152,6 @@ async def test_inferred_libraries_are_applied_with_their_access(seeded_store, co
     assert (chronicle_doc.library, chronicle_doc.publisher, chronicle_doc.public) == ("nkp", "NKP tisk", False)
     gazette_doc = await documents.read(UUID(gazette))
     assert (gazette_doc.library, gazette_doc.publisher) == ("mzk", "MZK noviny")
-    assert corpus.documents["letters"]["properties"]["public"] is False
     assert ((await documents.read(UUID(letters))).library, (await documents.read(UUID(letters))).public) == ("mzk", True)
 
     inferred = tmp_path / "inferred.csv"

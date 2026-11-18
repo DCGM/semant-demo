@@ -28,6 +28,7 @@
       ref="workspacePane"
       v-model:narrow="workspace.narrow.value"
       :document-id="documentId"
+      :collection-id="collectionId"
       :mode="workspace.shown.value"
       :page-id="scanPageId"
       :highlights="scanSync.sync.scanHighlights.value"
@@ -487,7 +488,7 @@ async function linkedChunkOrder(chunk: string, order: unknown): Promise<number |
   const given = typeof order === 'string' ? Number(order) : Number.NaN
   if (Number.isInteger(given)) return given
   try {
-    return await chunksRepository.getChunkOrder(props.documentId, chunk)
+    return await chunksRepository.getChunkOrder(props.documentId, chunk, props.collectionId)
   } catch (e) {
     console.error('Resolving the linked annotation\'s chunk failed', e)
     return null
@@ -521,6 +522,7 @@ const workspacePane = ref<InstanceType<typeof DocumentWorkspace> | null>(null)
 const workspace = useWorkspaceMode(parseMode(route.query.view))
 const scanSync = useReaderScanSync({
   documentId: () => props.documentId,
+  collectionId: () => props.collectionId,
   chunkWindow,
   loadSpans: (chunkIds) => tagSpans.loadSpansForChunksInCollection(chunkIds, props.collectionId),
   focusScan: (request) => workspacePane.value?.focus(request) ?? Promise.resolve(false),
@@ -1071,7 +1073,7 @@ onMounted(async () => {
     loadChunksInCollectionDocument(props.collectionId, props.documentId)
   ])
 
-  void countDocumentChunks(props.documentId).then(n => { totalDocumentChunks.value = n })
+  void countDocumentChunks(props.documentId, props.collectionId).then(n => { totalDocumentChunks.value = n })
 
   await nextTick()
   if (documentTextRef.value) {

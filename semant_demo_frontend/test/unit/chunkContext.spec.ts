@@ -568,3 +568,51 @@ describe('SearchResultCard context action', () => {
     expect(wrapper.emitted('view-context')).toBeUndefined()
   })
 })
+
+describe('useChunkContext through a collection (#279)', () => {
+  const originalFetch = globalThis.fetch
+  let calls: ReturnType<typeof controlledFetch>['calls']
+
+  beforeEach(() => {
+    const controlled = controlledFetch()
+    calls = controlled.calls
+    globalThis.fetch = controlled.fetchMock as typeof fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('names the results\' collection in every read, so a restricted document can be read', async () => {
+    const context = useChunkContext()
+
+    const opening = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10', collectionId: 'col-1' })
+    await flush()
+    expect(calls[0].url.searchParams.get('collection_id')).toBe('col-1')
+    calls[0].answer(windowBody(10, [9, 10, 11], { after: true }))
+    await opening
+
+    const extending = context.extend('after')
+    await flush()
+    expect(calls[1].url.pathname).toBe('/api/documents/doc-1/chunks/doc-1-c11/adjacent')
+    expect(calls[1].url.searchParams.get('collection_id')).toBe('col-1')
+    calls[1].answer(adjacentBody([12], false))
+    await extending
+  })
+
+  it('reads the passage again when the same chunk is opened through another collection', async () => {
+    const context = useChunkContext()
+    const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10', collectionId: 'col-1' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await first
+
+    const second = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+
+    expect(calls).toHaveLength(2)
+    expect(calls[1].url.searchParams.has('collection_id')).toBe(false)
+    calls[1].answer(windowBody(10, [9, 10, 11]))
+    await second
+  })
+})

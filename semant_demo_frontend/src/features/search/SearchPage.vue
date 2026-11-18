@@ -333,6 +333,7 @@
               :key="item.document.id"
               :hit="item"
               :number="index + 1"
+              :collection-id="documents.results.value?.query.userCollectionId ?? null"
             />
           </div>
           <div class="column items-center q-mt-xl q-gutter-y-sm">
@@ -461,7 +462,7 @@
         :loading="chunkContext.loading"
         :extending="chunkContext.extending"
         :error="chunkContext.error"
-        :open-link="chunkContext.target ? documentLink(chunkContext.target.documentId, { chunkId: chunkContext.target.chunkId, from: 'search' }) : null"
+        :open-link="chunkContext.target ? documentLink(chunkContext.target.documentId, { chunkId: chunkContext.target.chunkId, from: 'search', collectionId: chunkContext.target.collectionId }) : null"
         return-label="Focus on result"
         @extend="chunkContext.extend"
         @reload="chunkContext.load"
@@ -840,7 +841,9 @@ const contextResultNumber = ref<number | null>(null)
 
 async function viewContext (chunk: { document: string, id: string }, number: number) {
   contextResultNumber.value = number
-  const opening = chunkContext.open({ documentId: chunk.document, chunkId: chunk.id })
+  // The results' own collection (#279): a restricted document of it is readable only through it.
+  const collectionId = passages.results.value?.query.userCollectionId ?? null
+  const opening = chunkContext.open({ documentId: chunk.document, chunkId: chunk.id, collectionId })
   await nextTick() // the panel registers when the first result is opened
   rightSidebar.activate(CONTEXT_PANEL_ID)
   await opening

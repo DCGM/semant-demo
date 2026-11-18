@@ -156,7 +156,11 @@ Key fields:
 - `documentType`, `genre`, `keywords` — categorical metadata
 - `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
   id, not a link; source links are built from `library` and the id (above)
-- `public` — whether the document is publicly accessible
+- `public` — the source library's rights (#279): `true` is readable by anyone; `false`
+  (restricted) and no value (unknown) are readable only through a user collection that holds
+  the document ([ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18)).
+  Every unscoped read filters on it (`public == true`), on `Chunks` through the `document`
+  reference; the flag is copied from the selected source row and not verified otherwise
 - `chunk_language`, `chunk_<classification>` (one per `TASK_CLASSES` entry; `text[]`, `field`
   tokenization) and `chunk_summaries_computed_at` (`date`) — the distinct chunk values of the
   document and when they were last recomputed, for document-level chunk filters (#529).

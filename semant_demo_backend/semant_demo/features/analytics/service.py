@@ -2,10 +2,10 @@
 decade, source library and document language; and the same counts per publication year for
 the documents matching optional metadata filters (#361, ``corpus_distributions``).
 
-Scope: the public corpus as Search covers it, i.e. every corpus document; anonymous users
-may read it. ``Documents.public`` is not used: its values are not verified (#279). When a
-public-read policy restricts documents, it must be applied by the counting query, before
-anything is counted, so no restricted document is ever reflected in these numbers.
+Scope: the public corpus as unscoped Search covers it, i.e. the documents whose
+``Documents.public`` is true (#279), for anonymous and signed-in users alike. The counting
+query applies it before anything is counted (``CorpusAnalyticsRepository``), so no restricted
+or unknown document is ever reflected in these numbers.
 
 Counts are read from the store with native aggregates (no objects are downloaded). They
 take about 2 s for 300,000 documents (docs/ARCHITECTURE.md), so the application keeps the
@@ -66,8 +66,9 @@ _REASONS: dict[str, UnavailableReason] = {"missing": "missing_property", "unsupp
 
 
 class OverviewCache:
-    """The last computed unfiltered counts of one application. There is one corpus scope today;
-    once the public-read policy (#279) distinguishes readers, the cache must be kept per scope."""
+    """The last computed unfiltered counts of one application. They are of the one scope that
+    corpus counts have, the public documents (#279), the same for every reader; counts of a
+    collection's documents (ranked results) are never cached."""
 
     def __init__(self, max_age_seconds: float):
         self.max_age = timedelta(seconds=max_age_seconds)
