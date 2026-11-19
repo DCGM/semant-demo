@@ -485,6 +485,7 @@ import { useDocumentsStore } from 'src/features/documents/documentsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
 import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, toSearchCriteria, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
+import { hasExploreHandoff, takeExploreHandoff } from 'src/features/explore/exploreHandoff'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
 import { useSearchVectors } from './useSearchVectors'
@@ -542,6 +543,10 @@ const draftCriteria = computed(() => normalizeCriteria({ ...draftFilters.value, 
 // collection scope it was applied with.
 const appliedCollection = ref<string | null>(null)
 const applied = shallowRef<ExploreLocation>(emptyLocation())
+// A collection handed over by the collection page is being checked (`receiveHandoff`): nothing
+// runs meanwhile. `handoffs` counts them, so a check that is no longer current changes nothing.
+const checkingHandoff = ref(false)
+let handoffs = 0
 
 const pending = computed(() => !sameCriteria(draftCriteria.value, applied.value.criteria) ||
   draftVector.value !== applied.value.vector || draftCollection.value !== appliedCollection.value)
@@ -669,6 +674,7 @@ const rankedState = computed<RankedChartsState>(() => {
 const resultsState = computed<'results' | 'documents' | 'loading' | 'error' | 'empty' | 'needsQuery' | 'idle'>(() => {
   const location = applied.value
   if (isIdleLocation(location)) return 'idle'
+  if (checkingHandoff.value) return 'loading'
   if (mode.value === 'documents') {
     if (documents.loading.value) return 'loading'
     if (documents.error.value) return 'error'
@@ -897,6 +903,9 @@ watch(
       draftCollection.value = null
       appliedCollection.value = null
       targetCollectionId.value = null
+      // A collection handed over to the previous user is not checked (or searched) any more.
+      handoffs++
+      checkingHandoff.value = false
       // Without the collection scope the Visualizations chart the public corpus now: count the
       // applied criteria again rather than keep the collection's counts or an unanswered spinner.
       if (view.value === 'visualizations') void runApplied()
@@ -1197,7 +1206,7 @@ function onApplied (location: ExploreLocation, { reason, invalid }: { reason: Ap
 }
 
 async function runApplied ({ force = false } = {}) {
-  if (filtersStatus.value === 'loading' || vectorsStatus.value === 'loading') {
+  if (filtersStatus.value === 'loading' || vectorsStatus.value === 'loading' || checkingHandoff.value) {
     waitingForOptions = true
     waitingForce ||= force
     return
@@ -1274,7 +1283,7 @@ async function runApplied ({ force = false } = {}) {
   }
 }
 
-watch([filtersStatus, vectorsStatus], () => {
+watch([filtersStatus, vectorsStatus, checkingHandoff], () => {
   if (waitingForOptions) void runApplied()
 })
 
@@ -1359,12 +1368,52 @@ async function addSelectedDocumentsToCollection () {
   Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })
 }
 
-// The applied location: the URL now, and on every Back/Forward or link (applies at once).
+const currentUserId = () => (userStore.getUserId ? String(userStore.getUserId) : null)
+
+/**
+ * A collection handed over by the collection page ("Explore this collection", a chart click;
+ * `exploreHandoff`, #795) becomes the collection scope at once, but nothing is searched until the
+ * user's collections, loaded again for it (it may be new), confirm it can be read, as when a
+ * search is restored from the history. One that cannot is left out with a notice and the location
+ * runs without it; if the collections cannot be loaded, the server's access check decides.
+ */
+function receiveHandoff (collectionId: string) {
+  // The results of the previous scope are not finished or shown while the collection is checked.
+  passages.cancel()
+  documents.cancel()
+  resultsKey = null
+  appliedCollection.value = collectionId
+  draftCollection.value = collectionId
+  const handoff = ++handoffs
+  checkingHandoff.value = true
+  void checkHandoff(collectionId, handoff)
+}
+
+async function checkHandoff (collectionId: string, handoff: number) {
+  await loadCollections()
+  if (handoff !== handoffs) return // signed out, another user or a newer hand-off
+  if (collectionsLoad.value?.status === 'ready' && appliedCollection.value === collectionId &&
+    !collections.value.some(c => c.id === collectionId)) {
+    appliedCollection.value = null
+    if (draftCollection.value === collectionId) draftCollection.value = null
+    Notify.create({
+      message: 'The collection is not searched: it no longer exists or is no longer shared with you.',
+      position: 'top',
+      color: 'warning'
+    })
+  }
+  checkingHandoff.value = false // runs the location waiting for it
+}
+
+// The applied location: the URL now, and on every Back/Forward or link (applies at once); a
+// navigation a collection was handed over for applies it with that collection, even unchanged.
 const explore = useExploreLocation('search', (location, details) => {
   const again = details.reason === 'apply' && locationKey(location) === locationKey(applied.value)
   applied.value = location
-  onApplied(location, details, again)
-})
+  const handedOver = details.reason === 'navigation' ? takeExploreHandoff(location, currentUserId()) : null
+  if (handedOver) receiveHandoff(handedOver)
+  onApplied(location, details, again || handedOver !== null)
+}, { appliesUnchanged: (location) => hasExploreHandoff(location, currentUserId()) })
 
 // Kept alive while a document opened from a result is shown: the listeners only while shown.
 whileShown(() => {
