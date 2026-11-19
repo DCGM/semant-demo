@@ -90,14 +90,19 @@
             {{ activeCollectionLabel }}
             <q-tooltip v-if="activeCollectionLabel">{{ activeCollectionLabel }}</q-tooltip>
           </h1>
+          <!-- Its place is kept while the collection loads (hidden, not removed): appearing must
+               not move the page below, whose rows may already be measured or scrolled. -->
           <q-btn
-            v-if="collectionLoaded"
+            :class="{ 'collection-explore-button--pending': !collectionLoaded }"
+            :disable="!collectionLoaded"
+            :aria-hidden="!collectionLoaded"
             outline
             dense
             no-caps
             color="primary"
             icon="travel_explore"
-            label="Explore this collection"
+            label="Explore"
+            aria-label="Explore this collection"
             class="collection-explore-button"
             data-testid="explore-collection"
             @click="exploreThisCollection"
@@ -327,9 +332,9 @@ onMounted(async () => {
 .collection-title-row {
   display: flex;
   align-items: center;
-  // A long name shrinks first; on a phone the Explore button may go to the next line.
-  flex-wrap: wrap;
-  gap: 4px 8px;
+  // One line whatever the width: a long name shrinks and ends in an ellipsis. Wrapping would
+  // make the header taller once the name arrives and move the page below it.
+  gap: 8px;
 }
 
 .collection-title-button {
@@ -344,6 +349,10 @@ onMounted(async () => {
 .collection-explore-button {
   flex: 0 0 auto;
   margin-left: 4px;
+}
+
+.collection-explore-button--pending {
+  visibility: hidden;
 }
 
 .collection-title-input {
