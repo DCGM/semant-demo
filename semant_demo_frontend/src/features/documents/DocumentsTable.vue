@@ -159,6 +159,7 @@ import { storeToRefs } from 'pinia'
 import { Document, DocumentStats } from 'src/generated/api'
 import { useDocumentsStore } from './documentsStore'
 import useBrowseLibraryDialog from './useBrowseLibraryDialog'
+import { bulkRemovalConfirmation, singleRemovalConfirmation } from './removalConfirmation'
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
@@ -240,16 +241,21 @@ const handleTagDocument = (documentId: string) => {
   })
 }
 
-const handleRemoveFromCollection = async (document: Document) => {
+// The confirmations name the annotations the collection stops showing (#765); a document
+// whose stats are missing (not loaded yet, or failed) is described as unknown, not as none.
+const removalTarget = (document: Document) => ({
+  title: document.title,
+  stats: documentStatsMap.value[document.id]
+})
+
+const handleRemoveFromCollection = (document: Document) => {
+  // The title as text, not HTML (#479).
+  const { title, message, okLabel } = singleRemovalConfirmation(removalTarget(document))
   $q.dialog({
-    title: 'Remove Document',
-    // The title as text, not HTML (#479).
-    message: `Are you sure you want to remove the document "${document.title}" from the collection?`,
+    title,
+    message,
     cancel: true,
-    ok: {
-      label: 'Delete',
-      color: 'negative'
-    },
+    ok: { label: okLabel, color: 'negative' },
     persistent: true
   }).onOk(async () => {
     await removeFromCollection(document.id, collectionId.value)
@@ -262,16 +268,13 @@ const handleBulkRemoveFromCollection = () => {
   }
 
   const selectedIds = selected.value.map((doc) => doc.id)
-  const count = selectedIds.length
+  const { title, message, okLabel } = bulkRemovalConfirmation(selected.value.map(removalTarget))
 
   $q.dialog({
-    title: 'Remove Selected Documents',
-    message: `Are you sure you want to remove ${plural(count, 'selected document')} from the collection?`,
+    title,
+    message,
     cancel: true,
-    ok: {
-      label: 'Delete selected',
-      color: 'negative'
-    },
+    ok: { label: okLabel, color: 'negative' },
     persistent: true
   }).onOk(async () => {
     await removeManyFromCollection(selectedIds, collectionId.value)
