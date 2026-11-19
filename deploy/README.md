@@ -183,7 +183,7 @@ production size (startup and drop duration unknown).
 
 `Dockerfile.topicer` clones [DCGM/topicer](https://github.com/DCGM/topicer) at the release
 tag in the compose file's `TOPICER_VERSION` (`v0.1.0`, #392; built from `main` until then,
-from `semant-debug` until 2026-10-17). The service reserves a GPU (CrossBERT config).
+from `semant-debug` until 2026-10-17). The service reserves a GPU (CrossBERT configs).
 
 **One Topicer serves production, test-main and every PR preview (#792).** semANT sends it
 only text (`POST /v1/tags/propose/texts`); for optimized suggestions semANT ranks the
@@ -227,11 +227,38 @@ reservation, the provider must report cost (OpenRouter `usage.cost`) or the conf
 `TOPICER_MAX_CHUNKS_PER_TAG` (40) is semANT's own limit of candidate chunks per tag; it is no
 longer sent to Topicer.
 
-Production configs (#470), named after the method:
+Production configs (#470, #140), named after the method:
 
 - `llm-openrouter` — `LLMTopicer` on OpenRouter; used by semANT.
-- `crossbert` — `CrossBertTopicer` (GPU), model in `/app/data/topicer/models`; not used by
-  semANT by default. Since #792 it can serve optimized suggestions too (no stream needed).
+- `crossbert-<model type>-<training YYYY-MM>` — `CrossBertTopicer` cross-encoders (GPU), listed
+  below; offered in the AI Assist model picker, not used by semANT by default. Since #792 they
+  serve optimized suggestions too. The name carries the training date, which identifies the
+  weights; the deployment date is in the table.
+
+| Config | Model type | Provenance | Trained | Deployed | Threshold / max_length | CzechTopic test span-F1 | Model directory |
+|---|---|---|---|---|---|---|---|
+| `crossbert-czechtopic-2026-05` | BERT (WordPiece) | Best model from CzechTopic | before 2026-05 | 2026-05 (as `crossbert`; renamed 2026-11-19) | 0.77 / 350 | not measured with Topicer | `models/czechtopic-2026-05/` |
+| `crossbert-mmbert-2026-08` | mmBERT-base | Best of 9 variants of the 2026-08-05 training (`normalize_score`, `soft_max_score`, no `scale_positives`, max_length 512); threshold calibrated on validation | 2026-08-05 | 2026-11-19 | 0.32 / 512 | 0.440 [0.412, 0.467] (token-topicer inference) | `models/mmbert-2026-08/` |
+
+Both use `stride: 32`, `normalize_score: true` and `soft_max_score: true`; mmBERT also sets
+`gap_tolerance: 5` and `confidence_mode: mean`. Topicer loads every config at startup and keeps
+its model on the GPU (about 2 GB for both, 2026-11-19); mmBERT is much slower per chunk than the
+BERT model.
+
+Server layout (`/opt/semant-demo/data/topicer/`, mounted at `/app/data/topicer`; a
+`README.md` there points here):
+
+```text
+configs/<config>.yaml           one Topicer config per file (only *.yaml loads; backups use .bak-<date>)
+models/<type>-<YYYY-MM>/        one traced model per directory, referenced by its config's `model:`
+  model_cuda.pt                 traced model (torch.jit) for device cuda
+  tokenizer.json, tokenizer_config.json, special_tokens_map.json   tokenizer (vocab.txt for BERT)
+```
+
+To add a cross-encoder: copy the traced model and its tokenizer files into a new
+`models/<type>-<YYYY-MM>/`, add `configs/crossbert-<type>-<YYYY-MM>.yaml` with the calibrated
+threshold and the training max_length, `docker restart semant-demo-topicer-1`, check the loaded
+configs and GPU memory (`nvidia-smi`), and add a row to the table above.
 
 `openai-xsucha` (`TagProposalV2`, mDeBERTa NLI) was removed: nothing has called it since
 `propose_tags_routes.py` was deleted.
