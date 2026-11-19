@@ -45,6 +45,11 @@ selects currently matching proposals; previously selected hidden IDs remain sele
 are counted separately, and are still included in a bulk confirm/reject snapshot.
 Clicking a proposal in the text clears active proposal filters if necessary so its
 virtualized card can be reached. Proposal filters and sort reset on document changes.
+The AI Tagging panel scrolls with the right sidebar rather than squeezing the run
+options into a fixed-height panel. Pending suggestions can be collapsed independently;
+sorting stays visible while the optional filters are folded, with removable chips for
+active tag, minimum confidence and explanation filters. Folding does not clear filters
+or selected proposals, and text navigation can reopen the suggestions list.
 
 ## 1. Files
 

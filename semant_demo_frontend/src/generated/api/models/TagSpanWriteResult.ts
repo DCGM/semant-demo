@@ -126,7 +126,7 @@ export interface TagSpanWriteResult {
      */
     createdAt?: Date | null;
     /**
-     *
+     * 
      * @type {number}
      * @memberof TagSpanWriteResult
      */

@@ -82,7 +82,7 @@ export interface TagSpan {
      */
     createdAt?: Date | null;
     /**
-     *
+     * 
      * @type {number}
      * @memberof TagSpan
      */
