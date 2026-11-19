@@ -983,11 +983,11 @@ class SuggestSpansRunEnd(BaseModel):
     """Provider calls that failed (their chunks or tags got no proposals)."""
     error: str | None = None
     """Why the run did not complete, if it did not."""
-    unit: Literal["chunk", "tag", "selection"] = "chunk"
+    unit: Literal["chunk", "call", "tag", "selection"] = "chunk"
     units_total: int = 0
-    """Units the run would process: Topicer calls of chunks (thorough: the document's chunks;
-    optimized: the candidate chunks of all tags, known once they are ranked) or 1 selection.
-    ``tag`` is no longer used (#792)."""
+    """Units the run would process: ``chunk`` (thorough: the document's chunks), ``call``
+    (optimized: one Topicer call per candidate chunk and tag, known once the candidates are
+    ranked, #792) or 1 ``selection``. ``tag`` is no longer used."""
     units_processed: int = 0
     """Units admitted and sent to Topicer."""
     stop_reason: Literal["quota_exhausted"] | None = None

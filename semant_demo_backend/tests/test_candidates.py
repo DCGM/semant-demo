@@ -61,9 +61,19 @@ async def test_a_chunk_ranked_twice_is_a_candidate_once():
     first, second = uuid4(), uuid4()
 
     candidates = await rank_candidates(backends(Chunks([first, second, first]), Embedder()), TAG, uuid4(), uuid4(),
-                                       limit=2)
+                                       limit=3)
 
     assert (candidates.ids, candidates.truncated) == ([str(first), str(second)], False)
+
+
+async def test_duplicates_filling_the_extra_place_still_report_truncation():
+    # [a, b, a] for a limit of 2: a third distinct chunk may exist beyond the search's places.
+    first, second = uuid4(), uuid4()
+
+    candidates = await rank_candidates(backends(Chunks([first, second, first]), Embedder()), TAG, uuid4(), uuid4(),
+                                       limit=2)
+
+    assert (candidates.ids, candidates.truncated) == ([str(first), str(second)], True)
 
 
 async def test_more_chunks_than_the_limit_are_cut_and_reported():

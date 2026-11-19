@@ -234,4 +234,4 @@ async def test_optimized_ai_sends_only_the_documents_chunks_in_the_collection(ap
 
     assert sorted(sent) == sorted([corpus.chunks["chronicle_1"]["id"], corpus.chunks["chronicle_2"]["id"]])
     end = end_of(response)
-    assert (end["outcome"], end["unit"], end["units_total"], end["max_chunks_per_tag"]) == ("complete", "chunk", 2, 40)
+    assert (end["outcome"], end["unit"], end["units_total"], end["max_chunks_per_tag"]) == ("complete", "call", 2, 40)

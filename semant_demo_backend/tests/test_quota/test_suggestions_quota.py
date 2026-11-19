@@ -182,7 +182,7 @@ async def test_each_candidate_chunk_is_admitted_and_settled_with_its_usage(ledge
 
     _, end = await run_all(await optimized(world, provider, ledger, rank))
 
-    assert (end.outcome.value, end.unit, end.units_processed, end.max_chunks_per_tag) == ("complete", "chunk", 2, 40)
+    assert (end.outcome.value, end.unit, end.units_processed, end.max_chunks_per_tag) == ("complete", "call", 2, 40)
     assert sorted(operations(ledger.db)) == [("topicer_optimized", "settled", 10_000, 1_000),
                                              ("topicer_optimized", "settled", 10_000, 3_000)]
 
