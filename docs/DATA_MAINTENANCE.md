@@ -643,6 +643,40 @@ python -m semant_demo.maintenance.classification_provenance_schema --apply --con
 - Run it once before the first chunk import into a store: `chunk_ingest` refuses a store without
   the property.
 
+## Stored named vectors on chunks (`chunk_have_vector`, #805)
+
+`Chunks.haveVector` (`text[]`, `field` tokenization, filterable, not searchable) lists the named
+vectors stored on a chunk, so an embedder can select the chunks lacking one with
+`haveVector contains_none([name])` (#560). `chunk_have_vector` declares the property if missing
+and adds the name (default `Qwen3_Embedding_0_6B`) to every chunk that actually stores that
+vector. It reads the vector of each chunk only to learn whether it is stored.
+
+```bash
+python -m semant_demo.maintenance.chunk_have_vector --check check.json [--limit N]   # read-only
+python -m semant_demo.maintenance.chunk_have_vector --write write.json --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.chunk_have_vector --check check_after.json         # expect exit 0
+```
+
+- A chunk without the vector is left without the name and reported (`no_vector`): the embedder
+  selects it. A chunk listing the name without the vector is reported (`listed_without_vector`)
+  and left as it is.
+- Other names already listed are kept. The write is a merge of the single property, read back
+  per page. The checkpoint resumes and retries failed ids, like `chunk_year`.
+- After a complete pass, the counts of `contains_any([name])`, `contains_none([name])` and all
+  chunks are compared with the pass; exit code 0 only when they match, nothing is
+  `listed_without_vector` and, for a check, nothing is left to set. 1 otherwise, 2 when refused.
+- Run it while no embedder or import writes chunks: an update replaces the whole list.
+- A property-only merge does not re-index the vectors: during the #793 and #805 runs (8.3 M
+  merges each), the HNSW commit log and the compressed-vector segments gained no data. Each merge
+  rewrites the whole object into `lsm/objects`, so that bucket grows by about its live size until
+  the segment cleanup (`PERSISTENCE_LSM_SEGMENTS_CLEANUP_INTERVAL_HOURS`) rewrites it.
+- Runs on 2026-11-19 (#805), without a separate backup (the nightly backup had run): the shared test
+  store (3 260 chunks) and production (8 280 272 chunks, 2 h 34 min at about 890 writes/s). Every
+  chunk stored the vector, so every chunk got the name; the checks afterwards exited 0. On
+  production, the count right after the last write found more `contains_none` chunks than the
+  collection held (8 759 358); a few minutes later it was 0, so the comparison counts again on a
+  mismatch, and a selection should use a filtered fetch, not a count taken right after a bulk write.
+
 ## Chunk classification (`data_tools/meta_data_enrichment`, #590)
 
 The offline classifier fills the classification fields of the chunks that await
