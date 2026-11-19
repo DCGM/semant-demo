@@ -32,6 +32,7 @@ All URIs are relative to *http://localhost*
 | [**downloadCollectionExportApiExportsCollectionsTokenGet**](DefaultApi.md#downloadcollectionexportapiexportscollectionstokenget) | **GET** /api/exports/collections/{token} | Download Collection Export |
 | [**explainSelectionApiRagExplainPost**](DefaultApi.md#explainselectionapiragexplainpost) | **POST** /api/rag/explain | Explain Selection |
 | [**exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost**](DefaultApi.md#exportcollectionannotationsapiusercollectionscollectionidannotationsexportpost) | **POST** /api/user_collections/{collection_id}/annotations/export | Export Collection Annotations |
+| [**facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost**](DefaultApi.md#facetcollectionannotationsapiusercollectionscollectionidannotationsfacetspost) | **POST** /api/user_collections/{collection_id}/annotations/facets | Facet Collection Annotations |
 | [**fetchCollectionApiUserCollectionsCollectionIdGet**](DefaultApi.md#fetchcollectionapiusercollectionscollectionidget) | **GET** /api/user_collections/{collection_id} | Fetch Collection |
 | [**fetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdGet**](DefaultApi.md#fetchcollectiondocumentapiusercollectionscollectioniddocumentsdocumentidget) | **GET** /api/user_collections/{collection_id}/documents/{document_id} | Fetch Collection Document |
 | [**fetchCollectionsApiUserCollectionsGet**](DefaultApi.md#fetchcollectionsapiusercollectionsget) | **GET** /api/user_collections | Fetch Collections |
@@ -750,7 +751,7 @@ example().catch(console.error);
 
 Corpus Distributions
 
-Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\&#39; chunk-value summaries) is rejected (422), never answered with 0.
+Document counts of the searchable corpus (public), or of one user collection\&#39;s documents (&#x60;&#x60;user_collection_id&#x60;&#x60;, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\&#39;s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\&#39; chunk-value summaries) is rejected (422), never answered with 0.
 
 ### Example
 
@@ -763,7 +764,11 @@ import type { CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest } fr
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // CorpusDistributionsRequest
@@ -795,7 +800,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -818,7 +823,7 @@ No authorization required
 
 Corpus Library Years
 
-Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+Document counts of the searchable corpus (public), or of one user collection\&#39;s documents (&#x60;&#x60;user_collection_id&#x60;&#x60;), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
 
 ### Example
 
@@ -831,7 +836,11 @@ import type { CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest } from
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // CorpusDistributionsRequest
@@ -863,7 +872,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2177,6 +2186,81 @@ example().catch(console.error);
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 | **200** | UTF-8 CSV with a byte order mark, one row per annotation |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost
+
+> AnnotationFacets facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(collectionId, annotationFacetsRequest)
+
+Facet Collection Annotations
+
+How many annotations each choice of the facets &#x60;&#x60;tag&#x60;&#x60;, &#x60;&#x60;type&#x60;&#x60;, &#x60;&#x60;document&#x60;&#x60;, &#x60;&#x60;year&#x60;&#x60;, &#x60;&#x60;library&#x60;&#x60;, &#x60;&#x60;language&#x60;&#x60; and &#x60;&#x60;attribute:&lt;id&gt;&#x60;&#x60; would give for the annotation query (#667), with the annotations without a value (&#x60;&#x60;missing&#x60;&#x60;). Lexical queries are counted over every match, each facet with its own filter removed (&#x60;&#x60;population&#x60;&#x60; &#x60;&#x60;filtered&#x60;&#x60;); a ranked &#x60;&#x60;ranking&#x60;&#x60; over exactly its top &#x60;&#x60;k&#x60;&#x60; (&#x60;&#x60;top_k&#x60;&#x60;). Attribute facets on a store without attribute properties answer 503.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // AnnotationFacetsRequest
+    annotationFacetsRequest: ...,
+  } satisfies FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest;
+
+  try {
+    const data = await api.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **annotationFacetsRequest** | [AnnotationFacetsRequest](AnnotationFacetsRequest.md) |  | |
+
+### Return type
+
+[**AnnotationFacets**](AnnotationFacets.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
@@ -5838,7 +5922,7 @@ example().catch(console.error);
 
 Suggest Spans Optimized
 
-Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most &#x60;&#x60;TOPICER_MAX_CHUNKS_PER_TAG&#x60;&#x60; chunks per tag (sent as &#x60;&#x60;max_chunks&#x60;&#x60;; never set by the caller). Results are streamed as they arrive, then a :class:&#x60;SuggestSpansRunEnd&#x60; that lists the tags that reached the limit.
+Optimized AI span suggestion: per tag, a hybrid search picks the document\&#39;s chunks most similar to the tag, at most &#x60;&#x60;TOPICER_MAX_CHUNKS_PER_TAG&#x60;&#x60; (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:&#x60;SuggestSpansRunEnd&#x60; that lists the tags that reached the limit.
 
 ### Example
 

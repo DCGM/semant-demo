@@ -657,6 +657,12 @@ const recordTagUsage = (tagId: string) => {
   setLastUsedTagId(props.collectionId, tagId)
 }
 
+// A saved annotation must be visible even when its tag was hidden in the panel (#589).
+const onTagApplied = (tagId: string) => {
+  tagNav.showTag(tagId)
+  recordTagUsage(tagId)
+}
+
 // The span being edited when it is an AI suggestion: the popover offers approve/reject, also
 // after its start was dragged into another chunk (it is stored on its own chunk until saved).
 const editingAutoSpan = computed(() => {
@@ -871,7 +877,7 @@ async function saveWithFocusedTag(tagId: string, sel: Selection) {
     : null
   // Failed and still open: the popover shows it in the picker.
   if (focusTaggedSelection.value === sel) focusTaggedSelection.value = null
-  if (applied) recordTagUsage(tagId)
+  if (applied) onTagApplied(tagId)
 }
 
 // A double-clicked word waiting for its tag is not saved with a tag the user has left.
@@ -889,7 +895,7 @@ const onTagClick = async (tagId: string) => {
     ? await runSpanRequest(() => annotations.updateSpanTag(tagId), 'The tag could not be changed.')
     : await runSpanRequest(() => annotations.createSpan(tagId), 'The tag could not be saved.')
   // Only a tag that really went onto a span becomes the last-used suggestion.
-  if (applied) recordTagUsage(tagId)
+  if (applied) onTagApplied(tagId)
 }
 
 const onSavePosition = () =>

@@ -79,6 +79,17 @@ async def test_collection_scope_excludes_other_chunks(chunks, keys, ids):
     assert keys(await chunks.search(query(collection_id=ids.col["outsider_notes"]))) == {"gazette_1"}
 
 
+async def test_document_scope_keeps_only_that_documents_chunks(chunks, keys, ids, corpus):
+    # Optimized AI suggestion candidates (#792): a document, with and without a collection.
+    text = corpus.chunks["chronicle_3"]["text"]
+    document = ids.doc["chronicle"]
+
+    assert keys(await chunks.search(query(document_id=document))) == {"chronicle_1", "chronicle_2", "chronicle_3"}
+    hybrid = query(text=text, mode=SearchType.hybrid, vector=fake_embedding(text), document_id=document,
+                   collection_id=ids.col["chronicles"])
+    assert keys(await chunks.search(hybrid)) == {"chronicle_1", "chronicle_2"}
+
+
 @pytest.mark.parametrize("condition, expected", [
     (FieldCondition("yearIssued", Op.greater_or_equal, 1900), {"letters_1", "letters_2"}),
     (FieldCondition("yearIssued", Op.less_or_equal, 1860), {"chronicle_1", "chronicle_2", "chronicle_3"}),

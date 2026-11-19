@@ -2,8 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { chunkText, deleteSuggestions, ensureLoggedIn, fixture, openDocument, sidebarPanelButton } from './support'
 
 // Request-scoped AI suggestions in the document view (ADR 0003/0007). The fake Topicer
-// streams one chunk event, then waits FAKE_TOPICER_STREAM_DELAY (3 s) before the next, so
-// the run is still under way when the test acts. Runs save suggestions: each test deletes
+// answers the first chunk at once and each further one FAKE_TOPICER_STREAM_DELAY (3 s)
+// later, so the run is still under way when the test acts. Runs save suggestions: each test deletes
 // the unresolved "person" suggestions it created (fixture spans have other tags or types).
 
 async function openProposalFilters (page: Page) {

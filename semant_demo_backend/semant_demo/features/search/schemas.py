@@ -439,6 +439,8 @@ class ChunkQuery:
     target_vector: str | None = None
     """Stored named vector that ``vector`` is compared with; required with ``vector``."""
     collection_id: UUID | None = None
+    document_id: UUID | None = None
+    """Only chunks of this document (AI suggestion candidates, #792)."""
     conditions: tuple[FieldCondition, ...] = ()
     """Older filters (``SearchRequest.filters`` and the legacy fields)."""
     document_conditions: tuple[Condition, ...] = ()

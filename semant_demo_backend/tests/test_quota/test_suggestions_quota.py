@@ -1,29 +1,23 @@
 """Topicer suggestions charged to the account's daily AI allowance (#408).
 
-Each thorough chunk, optimized tag stream and selection is one operation on a SQLite
-ledger: admitted before Topicer is contacted (the first one before the stream starts, a
-refusal is ``QuotaExhausted``), settled with Topicer's reported usage. A refusal later in
-a run starts no further unit and the end event says why; unknown usage (errors,
-cancellation) charges at least the reservation, a tag stream that ends without a usable
-summary a quarter of it.
+Each Topicer call (a thorough chunk, an optimized candidate chunk, a selection) is one
+operation on a SQLite ledger: admitted before Topicer is contacted (the first one before the
+stream starts, a refusal is ``QuotaExhausted``), settled with Topicer's reported usage. A
+refusal later in a run starts no further call and the end event says why; unknown usage
+(errors, cancellation) charges at least the reservation.
 """
 import asyncio
-import json
-import logging
 
-import httpx
 import pytest
 
-from semant_demo.adapters.topicer.client import (
-    TopicerCall, TopicerClient, TopicerError, TopicerStreamSummary, TopicerUsage,
-)
+from semant_demo.adapters.topicer.client import TopicerCall, TopicerError, TopicerUsage
 from semant_demo.features.annotations import suggestions
 from semant_demo.features.quota import service
 from semant_demo.features.quota.service import AllowanceBudget, QuotaExhausted, QuotaPolicy
 from tests.test_quota.test_ledger import ACCOUNT, NOON, call, ledgers  # noqa: F401
 from tests.test_quota.test_operations import rows
 from tests.test_suggestions import (
-    DOCUMENT, OWNER, PERSON, PLACE, FakeProvider, World, proposal, request, run_all, selection,
+    OWNER, PERSON, PLACE, FakeProvider, Ranker, World, proposal, request, run_all, selection,
 )
 
 DAY = "2026-10-17"
@@ -60,21 +54,14 @@ def usage(*costs: float | None, source: str = "reported") -> TopicerUsage:
     return TopicerUsage(calls=calls, attempted_calls=len(calls))
 
 
-def summary(*costs: float, processed: int | None = None, limit_reached=False, truncated=False,
-            status="complete") -> TopicerStreamSummary:
-    return TopicerStreamSummary(status=status, max_chunks=40, processed_chunks=len(costs) if processed is None
-                                else processed, limit_reached=limit_reached, candidates_truncated=truncated,
-                                usage=usage(*costs))
-
-
 async def thorough(world, provider, ledger, reserve_usd=0.1):
     return await suggestions.prepare_document_run(world.store(), provider, OWNER, request(), "thorough",
                                                   budget(ledger, reserve_usd))
 
 
-async def optimized(world, provider, ledger, reserve_usd=0.01, tags=(PERSON, PLACE)):
+async def optimized(world, provider, ledger, rank, reserve_usd=0.01, tags=(PERSON, PLACE)):
     return await suggestions.prepare_document_run(world.store(), provider, OWNER, request(tags), "optimized",
-                                                  budget(ledger, reserve_usd))
+                                                  budget(ledger, reserve_usd), rank)
 
 
 def operations(db) -> list[tuple]:
@@ -183,141 +170,36 @@ async def test_cancelled_chunks_keep_their_reservation_charged(ledger):
     assert rows(ledger.db, "SELECT count(*) FROM llm_quota_call WHERE outcome = 'unfinished'") == [(2,)]
 
 
-# ── Optimized: one operation per tag stream ────────────────────────────────
+# ── Optimized: one operation per candidate chunk ───────────────────────────
 
 
-async def test_each_tag_is_admitted_for_its_chunk_limit_and_settled_with_the_stream_usage(ledger):
-    world = World("Jan Novák")
-    chunk_id = str(world.chunks[0].id)
-    provider = FakeProvider(world, stream={
-        "person": [{"id": chunk_id, "tag_span_proposals": [proposal(PERSON, 0, 3)]}, summary(0.002, 0.001)],
-        "place": [summary(0.001)],  # no proposals, still charged
-    })
+async def test_each_candidate_chunk_is_admitted_and_settled_with_its_usage(ledger):
+    world = World("Jan Novák", "Brno")
+    first, second = world.chunks
+    provider = FakeProvider(world, {"Jan Novák": [proposal(PERSON, 0, 3)]},
+                            usage={"Jan Novák": usage(0.002, 0.001), "Brno": usage(0.001)})
+    rank = Ranker(world, {"person": [first], "place": [second]})
 
-    _, end = await run_all(await optimized(world, provider, ledger))
+    _, end = await run_all(await optimized(world, provider, ledger, rank))
 
-    assert (end.outcome.value, end.unit, end.units_processed, end.max_chunks_per_tag) == ("complete", "tag", 2, 40)
-    assert operations(ledger.db) == [("topicer_optimized", "settled", 400_000, 3_000),
-                                     ("topicer_optimized", "settled", 400_000, 1_000)]
+    assert (end.outcome.value, end.unit, end.units_processed, end.max_chunks_per_tag) == ("complete", "call", 2, 40)
+    assert sorted(operations(ledger.db)) == [("topicer_optimized", "settled", 10_000, 1_000),
+                                             ("topicer_optimized", "settled", 10_000, 3_000)]
 
 
-async def test_an_optimized_run_stops_before_the_next_tag_when_refused(ledger):
-    world = World("Jan Novák")
-    provider = FakeProvider(world, stream={"person": [summary(0.2)], "place": [summary(0.2)]})
+async def test_an_optimized_run_stops_before_the_next_chunk_when_refused(ledger):
+    world = World("Jan Novák", "Brno")
+    first, second = world.chunks
+    provider = FakeProvider(world, usage={"Jan Novák": usage(0.2), "Brno": usage(0.2)})
+    rank = Ranker(world, {"person": [first], "place": [second]})
     await spend(ledger, 0.5)
 
-    results, end = await run_all(await optimized(world, provider, ledger))
+    results, end = await run_all(await optimized(world, provider, ledger, rank, reserve_usd=0.4))
 
-    # person: 0.5 + 0.4 reserved fits, settles at 0.2; place: 0.7 + 0.4 does not.
-    assert provider.calls == ["person"] and results == []
+    # First chunk: 0.5 + 0.4 reserved fits, settles at 0.2; the second: 0.7 + 0.4 does not.
+    assert provider.calls == ["Jan Novák"] and len(results) == 1
     assert (end.outcome.value, end.units_processed, end.units_total, end.stop_reason) == \
         ("partial", 1, 2, "quota_exhausted")
-
-
-@pytest.mark.parametrize("summary_line", [
-    None,                                                                    # an older Topicer
-    {"event": "usage_summary", "status": "complete", "processed_chunks": 1},  # no usage
-    {"event": "usage_summary", "status": "complete", "processed_chunks": 1, "usage": {"calls": "x"}},
-])
-async def test_a_stream_ending_without_a_usable_summary_is_charged_a_quarter_of_its_reservation(
-        ledger, summary_line, caplog):
-    world = World("Jan Novák")
-    chunk_line = {"id": str(world.chunks[0].id), "tag_span_proposals": [proposal(PERSON, 0, 3)]}
-    lines = [chunk_line] + ([summary_line] if summary_line else [])
-    body = "".join(json.dumps(line) + "\n" for line in lines)
-    provider = TopicerClient("http://topicer", "test-config", 5.0,
-                             transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body)))
-    caplog.set_level(logging.WARNING)
-
-    results, end = await run_all(await optimized(world, provider, ledger, tags=(PERSON,)))
-
-    # Otherwise successful: no failure is shown for the missing summary.
-    assert [r.error for r in results] == [None]
-    assert (end.outcome.value, end.saved, end.provider_failures) == ("complete", 1, 0)
-    # $0.01 × 40 chunks reserved, a quarter charged and recorded as a fallback estimate.
-    assert operations(ledger.db) == [("topicer_optimized", "settled", 400_000, 100_000)]
-    assert rows(ledger.db, "SELECT tier, provider, outcome, usage_source, cost_source, cost_micro_usd, "
-                           "input_tokens, output_tokens FROM llm_quota_call") == \
-        [("topicer", "", "usage_missing", "unavailable", "fallback", 100_000, None, None)]
-    warning = next(r.getMessage() for r in caplog.records if "usable usage summary" in r.getMessage())
-    assert warning == (f"Topicer stream of tag {PERSON} (document {DOCUMENT}, config "
-                       "test-config) ended without a usable usage summary (missing or malformed); charged 25% "
-                       "of its reservation as a fallback estimate")
-    assert "Novák" not in caplog.text
-
-
-async def test_a_failed_stream_without_its_summary_charges_the_reservation(ledger):
-    world = World("Jan Novák")
-    chunk_id = str(world.chunks[0].id)
-    provider = FakeProvider(world, stream={
-        "person": [{"id": chunk_id, "tag_span_proposals": []}, TopicerError("RemoteProtocolError")],
-    })
-
-    _, end = await run_all(await optimized(world, provider, ledger, tags=(PERSON,)))
-
-    assert (end.outcome.value, end.provider_failures) == ("failed", 1)
-    assert operations(ledger.db) == [("topicer_optimized", "settled", 400_000, 400_000)]
-    assert rows(ledger.db, "SELECT outcome, cost_source FROM llm_quota_call") == [("unfinished", "unknown")]
-
-
-async def test_a_stream_closed_by_a_disconnect_keeps_its_reservation_charged(ledger):
-    world = World("Jan Novák")
-    chunk_id = str(world.chunks[0].id)
-    provider = FakeProvider(world, stream={
-        "person": [{"id": chunk_id, "tag_span_proposals": []}, summary(0.001)],
-    })
-    events = (await optimized(world, provider, ledger, tags=(PERSON,))).events()
-
-    await anext(events)
-    await events.aclose()
-
-    assert operations(ledger.db) == [("topicer_optimized", "settled", 400_000, 400_000)]
-
-
-async def test_a_rejected_chunk_limit_is_a_free_reported_failure(ledger):
-    world = World("Jan Novák")
-    provider = FakeProvider(world, stream={"person": [TopicerError("HTTP 422", no_work=True)], "place": [summary()]})
-
-    results, end = await run_all(await optimized(world, provider, ledger))
-
-    assert "HTTP 422" in results[0].error and "per-tag limit of 40 chunks" in results[0].error
-    assert (end.outcome.value, end.provider_failures) == ("partial", 1)
-    assert [charged for *_, charged in operations(ledger.db)] == [0, 0]
-
-
-async def test_tags_that_reached_the_chunk_limit_are_reported_with_truncation(ledger):
-    world = World("Jan Novák")
-    provider = FakeProvider(world, stream={
-        "person": [summary(processed=40, limit_reached=True, truncated=True)],
-        "place": [summary(processed=40, limit_reached=True, truncated=False)],
-    })
-
-    _, end = await run_all(await optimized(world, provider, ledger, tags=(PERSON, PLACE)))
-
-    assert [(t.tag_name, t.max_chunks, t.processed_chunks, t.candidates_truncated) for t in end.tag_limits] == [
-        ("person", 40, 40, True), ("place", 40, 40, False)]
-    assert end.outcome.value == "complete"
-
-
-async def test_a_partly_failed_stream_is_a_provider_failure(ledger):
-    world = World("Jan Novák")
-    provider = FakeProvider(world, stream={"person": [summary(0.001, status="partial")]})
-
-    results, end = await run_all(await optimized(world, provider, ledger, tags=(PERSON,)))
-
-    assert results[0].error == "topicer (tag=person): some chunks failed"
-    assert end.outcome.value == "failed" and [c for *_, c in operations(ledger.db)] == [1_000]
-
-
-async def test_the_tag_reservation_follows_a_non_default_chunk_limit(ledger):
-    world = World("Jan Novák")
-    provider = FakeProvider(world, stream={"person": [summary()]})
-    provider.max_chunks_per_tag = 20
-
-    _, end = await run_all(await optimized(world, provider, ledger, tags=(PERSON,)))
-
-    assert end.max_chunks_per_tag == 20
-    assert [reserved for _, _, reserved, _ in operations(ledger.db)] == [200_000]
 
 
 # ── Selection: one operation ───────────────────────────────────────────────

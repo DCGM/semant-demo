@@ -636,6 +636,22 @@ class SpanRepository:
             return {UUID(str(g.grouped_by.value)): g.total_count or 0 for g in result.groups}
         return await self._read(collection_id, count, {})
 
+    async def count_by_property(self, collection_id: UUID, query: AnnotationQuery, prop: str, limit: int,
+                                document_ids: list[UUID] | None = None) -> dict[str, int]:
+        """Matching spans per value of the single-valued property ``prop`` (``tagId`` or ``type``,
+        the facets of #667; spans without a value are not grouped), for at most ``limit`` values
+        (one aggregation)."""
+        assert prop in ("tagId", "type")
+        if document_ids is not None and not document_ids:
+            return {}
+
+        async def count():
+            result = await self._tenant(collection_id).aggregate.over_all(
+                filters=_query_filter(query, document_ids), group_by=GroupByAggregate(prop=prop, limit=limit),
+                total_count=True)
+            return {str(g.grouped_by.value): g.total_count or 0 for g in result.groups}
+        return await self._read(collection_id, count, {})
+
     async def count_rows(self, collection_id: UUID, query: AnnotationQuery,
                          document_ids: list[UUID] | None = None) -> int:
         """Matching spans, of the given documents when ``document_ids`` is not None."""
