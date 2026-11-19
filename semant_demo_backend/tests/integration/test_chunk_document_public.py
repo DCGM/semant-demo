@@ -1,8 +1,9 @@
 """Copying document visibility to the chunks against the real test store (#793).
 
-The fixture corpus: chronicle (``public=true``, chunks chronicle_1-3), letters (``false``,
-letters_1-2), gazette (no ``public``, gazette_1-2); the seeded chunks store
-``documentPublic`` derived from their document. The tests change document rights, add chunks
+The fixture corpus seeds every document public (#279); ``rights`` makes letters (chunks
+letters_1-2) restricted (``false``) and gazette (gazette_1-2) unknown (no ``public``), with
+their chunks' ``documentPublic`` lowered to ``false`` as the seed would derive it; chronicle
+(chronicle_1-3) stays public. The tests change document rights, add chunks
 without a single existing document, and check, write and check again; they cover the per-
 document synchronization ``metadata_sync`` uses and declaring the property through an alias.
 """
@@ -28,6 +29,18 @@ def quiet(line: str) -> None:
     pass
 
 
+@pytest.fixture
+async def rights(seeded_store, collection_names, corpus):
+    """letters restricted, gazette unknown, and their chunks not public."""
+    documents = seeded_store.collections.get(collection_names.document_collection_name)
+    for key, value in (("letters", False), ("gazette", None)):
+        await documents.data.update(uuid=corpus.documents[key]["id"], properties={"public": value})
+        for chunk in corpus.chunks.values():
+            if chunk["document"] == key:
+                await store.set_chunk_public(seeded_store, collection_names.chunks_collection_name,
+                                             UUID(chunk["id"]), False)
+
+
 async def public_chunks(client, names, keys) -> set[str]:
     """What an unscoped search admits: ``documentPublic == true``."""
     response = await client.collections.get(names.chunks_collection_name).query.fetch_objects(
@@ -39,7 +52,7 @@ async def flags(client, names, ids) -> dict[UUID, object]:
     return {i: c.public for i, c in (await store.read_chunks(client, names.chunks_collection_name, ids)).items()}
 
 
-async def test_check_write_and_check_again_fail_closed(seeded_store, collection_names, corpus, tmp_path):
+async def test_check_write_and_check_again_fail_closed(seeded_store, rights, collection_names, corpus, tmp_path):
     names, d = collection_names, {k: UUID(v["id"]) for k, v in corpus.documents.items()}
     keys = {c["id"]: k for k, c in corpus.chunks.items()}
     documents = seeded_store.collections.get(names.document_collection_name)
@@ -99,7 +112,7 @@ async def test_check_write_and_check_again_fail_closed(seeded_store, collection_
     assert again["counts"]["consistent"] == 11 and backfill.exit_code(again) == 0
 
 
-async def test_chunks_become_public_only_while_their_document_still_is(seeded_store, collection_names, corpus):
+async def test_chunks_become_public_only_while_their_document_still_is(seeded_store, rights, collection_names, corpus):
     names = collection_names
     chunks_name = names.chunks_collection_name
     documents_name = names.document_collection_name
@@ -116,7 +129,7 @@ async def test_chunks_become_public_only_while_their_document_still_is(seeded_st
     assert (await store.read_document_public(seeded_store, documents_name, [letters]))[letters] is False
 
 
-async def test_an_interrupted_write_resumes_and_retries_its_failures(seeded_store, collection_names, corpus,
+async def test_an_interrupted_write_resumes_and_retries_its_failures(seeded_store, rights, collection_names, corpus,
                                                                     tmp_path, monkeypatch):
     names = collection_names
     chronicle = UUID(corpus.documents["chronicle"]["id"])
@@ -150,7 +163,7 @@ async def test_an_interrupted_write_resumes_and_retries_its_failures(seeded_stor
         await backfill.run(seeded_store, names, checkpoint=checkpoint, endpoint="test", write=True, progress=quiet)
 
 
-async def test_sync_document_also_sets_chunks_without_a_flag_and_verifies_all(seeded_store, collection_names,
+async def test_sync_document_also_sets_chunks_without_a_flag_and_verifies_all(seeded_store, rights, collection_names,
                                                                               corpus):
     names, chunks_name = collection_names, collection_names.chunks_collection_name
     chronicle = UUID(corpus.documents["chronicle"]["id"])
@@ -168,7 +181,7 @@ async def test_sync_document_also_sets_chunks_without_a_flag_and_verifies_all(se
     assert (unchanged.written, unchanged.verified) == (0, True)
 
 
-async def test_document_mode_follows_each_listed_document(seeded_store, collection_names, corpus, tmp_path):
+async def test_document_mode_follows_each_listed_document(seeded_store, rights, collection_names, corpus, tmp_path):
     names = collection_names
     d = {k: UUID(v["id"]) for k, v in corpus.documents.items()}
     await seeded_store.collections.get(names.document_collection_name).data.update(
