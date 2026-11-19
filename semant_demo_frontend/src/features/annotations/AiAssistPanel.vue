@@ -595,6 +595,29 @@ const suggestionVirtualScroll = ref<{ $el: HTMLElement; scrollTo:(index: number,
 const revealedSuggestion = ref(false)
 let suggestionFocusRequest = 0
 
+// The list and the right sidebar are independent scrollers. Bring the selected
+// card towards the top third of the sidebar even if it was just barely visible
+// at the bottom; otherwise repeated text clicks can appear to do nothing.
+function scrollCardIntoSidebar(card: HTMLElement) {
+  const scroller = card.closest<HTMLElement>('.sidebar-panel')?.parentElement
+  if (!scroller) return
+  const cardRect = card.getBoundingClientRect()
+  const sidebarRect = scroller.getBoundingClientRect()
+  const preferredTop = sidebarRect.top + Math.min(140, Math.max(8, (sidebarRect.height - cardRect.height) / 3))
+  scroller.scrollTop += cardRect.top - preferredTop
+}
+
+function cardVisibleInBothScrollers(card: HTMLElement): boolean {
+  const scroller = card.closest<HTMLElement>('.sidebar-panel')?.parentElement
+  const list = card.closest<HTMLElement>('.auto-span-list')
+  if (!scroller || !list || !card.isConnected) return false
+  const cardRect = card.getBoundingClientRect()
+  const outerRect = scroller.getBoundingClientRect()
+  const listRect = list.getBoundingClientRect()
+  return cardRect.top >= Math.max(outerRect.top, listRect.top, 0) - 1 &&
+    cardRect.bottom <= Math.min(outerRect.bottom, listRect.bottom, window.innerHeight) + 1
+}
+
 async function focusSuggestionById(id: string) {
   const request = ++suggestionFocusRequest
   const collectionId = props.collectionId
@@ -618,26 +641,43 @@ async function focusSuggestionById(id: string) {
     collectionId !== props.collectionId || documentId !== props.documentId ||
     visibleSuggestions.value[index]?.span.id !== id) return
   suggestionVirtualScroll.value?.scrollTo(index, 'center')
-  // QVirtualScroll can mount the destination on an animation frame after scrollTo.
-  // Keep trying while the highlight and document context are unchanged.
+  // With variable-height cards QVirtualScroll may refine the destination over
+  // several frames. Focus is not enough: verify both scroll viewports too.
   await nextTick()
-  for (let frame = 0; frame < 8; frame++) {
+  for (let frame = 0; frame < 24; frame++) {
     if (request !== suggestionFocusRequest || collectionId !== props.collectionId ||
         documentId !== props.documentId || aiAssist.highlightedAutoSpanId.value !== id ||
         visibleSuggestions.value[index]?.span.id !== id) return
     const viewport = suggestionVirtualScroll.value?.$el
     const card = Array.from(viewport?.querySelectorAll<HTMLElement>('.auto-span-card') ?? [])
       .find((el) => el.dataset.suggestionId === id)
-    const action = card?.querySelector<HTMLButtonElement>('.auto-span-highlight')
+    if (!card || !viewport) {
+      // Retry the index jump when the destination is not mounted yet.
+      if (frame > 0 && frame % 5 === 0) suggestionVirtualScroll.value?.scrollTo(index, 'center')
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      continue
+    }
+    const cardRect = card.getBoundingClientRect()
+    const listRect = viewport.getBoundingClientRect()
+    // Correct the approximate virtual offset using the real row height.
+    if (cardRect.top < listRect.top) viewport.scrollTop += cardRect.top - listRect.top - 4
+    else if (cardRect.bottom > listRect.bottom) viewport.scrollTop += cardRect.bottom - listRect.bottom + 4
+    scrollCardIntoSidebar(card)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (!cardVisibleInBothScrollers(card)) continue
+    const action = card.querySelector<HTMLButtonElement>('.auto-span-highlight')
     action?.focus({ preventScroll: true })
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    if (action && document.activeElement === action) return
+    if (action && document.activeElement === action && cardVisibleInBothScrollers(card)) return
   }
 }
 
-watch(() => aiAssist.highlightedAutoSpanId.value, (id) => {
-  if (id) void focusSuggestionById(id)
-})
+// Watch both the highlighted ID and explicit navigation requests. Vue batches
+// updates in the same click, but re-clicking the same ID still reruns scrolling.
+watch(
+  [() => aiAssist.highlightedAutoSpanId.value, () => aiAssist.highlightedAutoSpanNavigationRequest.value],
+  ([id]) => { if (id) void focusSuggestionById(id) }
+)
 watch(() => aiAssist.aiPanelActive.value, (active) => {
   const id = aiAssist.highlightedAutoSpanId.value
   if (active && id) void focusSuggestionById(id)

@@ -707,7 +707,7 @@ async function changeEditingSpanType(type: SpanType) {
 // (its prev/next position) is kept.
 let highlightFromSelection: string | null = null
 const highlightAutoSpan = (spanId: string) => {
-  aiAssist.highlightedAutoSpanId.value = spanId
+  aiAssist.requestAutoSpanNavigation(spanId)
   highlightFromSelection = spanId
 }
 
