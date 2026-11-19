@@ -192,13 +192,16 @@ class Ranker:
     exception; a tag without an entry gets every chunk of the world, also those outside the
     collection."""
 
-    def __init__(self, world: World, ranked: dict | None = None):
+    def __init__(self, world: World, ranked: dict | None = None, gate: asyncio.Event | None = None):
         self.world = world
         self.ranked = ranked or {}
         self.calls: list[tuple] = []
+        self.gate = gate  # every search waits for it
 
     async def __call__(self, tag, collection_id, document_id, limit):
         self.calls.append((tag.name, collection_id, document_id, limit))
+        if self.gate is not None:
+            await self.gate.wait()
         ranked = self.ranked.get(tag.name, self.world.chunks)
         if isinstance(ranked, Exception):
             raise ranked
@@ -710,6 +713,35 @@ async def test_tags_whose_candidates_reach_the_limit_are_reported():
     assert [(t.tag_name, t.max_chunks, t.processed_chunks, t.candidates_truncated) for t in end.tag_limits] == [
         ("person", 2, 2, False), ("place", 2, 2, True)]
     assert end.units_total == 4
+
+
+async def test_all_tags_are_ranked_at_once():
+    # A slow embedder delays the run by one search, not by one per tag.
+    world = World("Jan Novák")
+    gate = asyncio.Event()
+    rank = Ranker(world, gate=gate)
+    events = (await optimized(world, FakeProvider(world), request((PERSON, PLACE)), rank)).events()
+
+    first = asyncio.ensure_future(anext(events))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    searching = [name for name, *_ in rank.calls]
+    gate.set()
+    await first
+    await events.aclose()
+
+    assert searching == ["person", "place"]
+
+
+async def test_a_tag_limit_counts_candidates_that_left_the_collection_meanwhile():
+    world = World("Jan Novák", ("Jan", False))
+    provider = FakeProvider(world)
+    provider.max_chunks_per_tag = 2
+    rank = Ranker(world, {"person": [world.chunks[1], world.chunks[0], world.chunks[0]]})
+
+    _, end = await run_all(await optimized(world, provider, rank=rank))
+
+    assert [(t.max_chunks, t.processed_chunks, t.candidates_truncated) for t in end.tag_limits] == [(2, 1, True)]
 
 
 async def test_a_document_without_collection_chunks_searches_nothing():

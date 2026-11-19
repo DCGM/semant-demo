@@ -57,6 +57,15 @@ async def test_a_hybrid_search_of_the_document_in_the_collection_ranks_the_candi
     assert (candidates.ids, candidates.truncated) == ([str(i) for i in ids], False)
 
 
+async def test_a_chunk_ranked_twice_is_a_candidate_once():
+    first, second = uuid4(), uuid4()
+
+    candidates = await rank_candidates(backends(Chunks([first, second, first]), Embedder()), TAG, uuid4(), uuid4(),
+                                       limit=2)
+
+    assert (candidates.ids, candidates.truncated) == ([str(first), str(second)], False)
+
+
 async def test_more_chunks_than_the_limit_are_cut_and_reported():
     ids = [uuid4() for _ in range(4)]
 
