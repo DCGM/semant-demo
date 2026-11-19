@@ -15,8 +15,9 @@ type Stored = { id: string, public?: boolean | null }
 function withRights<T extends Stored> (document: T): T {
   if (document.id === letters.id) return { ...document, public: false }
   if (document.id === chronicle.id) {
-    const { public: _public, ...rest } = document
-    return rest as T
+    const rest = { ...document }
+    delete rest.public
+    return rest
   }
   return document
 }
@@ -65,4 +66,77 @@ test('collection-scoped results are labelled and open the document through the c
   await open.click()
   expect(new URL((await read).url()).searchParams.get('collection_id')).toBe(chronicles.id)
   await expect(page.getByTestId('document-error')).toHaveCount(0)
+})
+
+// Adding a document that is not public to another collection is intended, but gives it a new,
+// lasting route there: Explore asks first, for a document and for a chunk (#789).
+for (const action of ['Add Documents', 'Add Chunks'] as const) {
+  test(`${action} asks before linking a restricted document to another collection`, async ({ page }) => {
+    await useViewport(page, 'wide')
+    const newspapers = fixture.collection('newspapers')
+    await rewrite<{ items: { document_object: Stored }[] }>(page, '**/api/search/passages', (body) => ({
+      ...body, items: body.items.map(hit => ({ ...hit, document_object: withRights(hit.document_object) }))
+    }))
+    // The adds are answered here: the shared fixture store keeps its membership.
+    const adds: string[] = []
+    await page.route(`**/api/user_collections/${newspapers.id}/**`, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue()
+      adds.push(new URL(route.request().url()).pathname)
+      await route.fulfill({ json: { outcome: 'complete', succeeded: [], failed: [], unattempted: [] } })
+    })
+    await ensureLoggedIn(page, 'owner')
+    await page.goto('/#/search')
+    await page.getByRole('combobox', { name: 'Search query' }).fill('Prahy')
+    await page.getByRole('button', { name: 'Search filters' }).click()
+    await page.getByLabel('Select a Collection').click()
+    await page.getByRole('option', { name: chronicles.name }).click()
+    await page.getByRole('button', { name: 'Search filters' }).click()
+    await page.getByRole('combobox', { name: 'Search query' }).press('Enter')
+
+    const result = page.locator('.search-result', { hasText: fixture.chunk('letters_1').text })
+    await expect(result.getByTestId('document-rights-label')).toHaveText('Restricted')
+    await result.getByRole('checkbox').click()
+    const toolbar = page.locator('.selection-toolbar')
+    await toolbar.getByLabel('Select Collection').click()
+    await page.getByRole('option', { name: newspapers.name }).click()
+
+    const dialog = page.getByRole('dialog')
+    await toolbar.getByRole('button', { name: action }).click()
+    await expect(dialog).toContainText('Add documents that are not public?')
+    await expect(dialog).toContainText(`“${letters.properties.title}”`)
+    await expect(dialog).toContainText('lasting access')
+    if (action === 'Add Documents') await page.screenshot({ path: test.info().outputPath('add-restricted-confirm.png'), animations: 'disabled' })
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(adds).toEqual([])
+
+    await toolbar.getByRole('button', { name: action }).click()
+    await dialog.getByRole('button', { name: 'Add anyway' }).click()
+    await expect.poll(() => adds).toEqual([action === 'Add Documents'
+      ? `/api/user_collections/${newspapers.id}/documents/${letters.id}`
+      : `/api/user_collections/${newspapers.id}/chunks/${fixture.chunk('letters_1').id}`])
+  })
+}
+
+test('adding public documents asks nothing', async ({ page }) => {
+  await useViewport(page, 'wide')
+  const newspapers = fixture.collection('newspapers')
+  const adds: string[] = []
+  await page.route(`**/api/user_collections/${newspapers.id}/**`, async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    adds.push(new URL(route.request().url()).pathname)
+    await route.fulfill({ json: { outcome: 'complete', succeeded: [], failed: [], unattempted: [] } })
+  })
+  await ensureLoggedIn(page, 'owner')
+  await page.goto('/#/search')
+  await page.getByRole('combobox', { name: 'Search query' }).fill('Prahy')
+  await page.getByRole('combobox', { name: 'Search query' }).press('Enter')
+  await page.locator('.search-result', { hasText: fixture.chunk('letters_1').text }).getByRole('checkbox').click()
+  const toolbar = page.locator('.selection-toolbar')
+  await toolbar.getByLabel('Select Collection').click()
+  await page.getByRole('option', { name: newspapers.name }).click()
+  await toolbar.getByRole('button', { name: 'Add Chunks' }).click()
+
+  await expect.poll(() => adds).toHaveLength(1)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })

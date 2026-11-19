@@ -287,11 +287,16 @@ async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_
                                                                                       tmp_path, monkeypatch, capsys):
     from semantembedder.__main__ import main
     # A run refuses a missing vector with create_vector disabled before reading anything, so the check
-    # must not report "nothing left" (exit 0) for an empty collection or 1 for a populated one.
+    # must not report "nothing left" (exit 0) for an empty collection or 1 for a populated one, and it
+    # returns at once (#642): the answer is known before the scan.
     await tool_store.collections.create(f"{TEST_COLLECTION}Empty",
                                         properties=[Property(name="text", data_type=DataType.TEXT)],
                                         vector_config=Configure.Vectors.self_provided(name="default"))
     await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
+
+    def no_scan(*args, **kwargs):
+        raise AssertionError("a refused check must not read the records")
+    monkeypatch.setattr(EmbeddingPipeline, "_scan", no_scan)
 
     def check_cli(**settings) -> int:
         make_pipeline(create_vector=False, **settings)
@@ -301,8 +306,9 @@ async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_
             main()
         return exit_.value.code
 
-    stats = await make_pipeline(create_vector=False, collection=f"{TEST_COLLECTION}Empty").check_async()
-    assert (stats.scanned, stats.missing) == (0, 0) and "create_vector is disabled" in stats.refused
+    for collection in (f"{TEST_COLLECTION}Empty", TEST_COLLECTION):
+        stats = await make_pipeline(create_vector=False, collection=collection).check_async()
+        assert (stats.scanned, stats.missing) == (0, 0) and "create_vector is disabled" in stats.refused
     for collection in (f"{TEST_COLLECTION}Empty", TEST_COLLECTION):
         assert await asyncio.to_thread(check_cli, collection=collection) == 2
         assert "A run would be refused" in capsys.readouterr().err

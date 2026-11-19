@@ -6,11 +6,13 @@ document, readable only through a collection (``documents.service.readable_docum
 authorized page manifest gives asset URLs with an ``access`` token: an HMAC over the
 document, the collection, the user and an expiry, keyed by the application secret.
 
-The token is not a permission by itself: every asset read with it checks again that the
-token's user can read the token's collection and that the document is still linked to it
-(``pages.read_page_asset``), so revoking a share or removing the document denies the next
-read at once. The expiry only bounds how long a leaked URL stays usable by the original
-user's rights; the manifest is read again whenever the viewer opens a document.
+A signed URL is a bearer credential: anyone holding it can read that document's asset while
+the token is valid (``TOKEN_LIFETIME_SECONDS``) and the original user can still read the
+token's collection, which still holds the document. Every asset read checks those two again
+(``pages.read_page_asset``), so revoking a share or removing the document denies the next read
+at once. Signing out and account deactivation are *not* checked: the token stays valid until
+it expires. The manifest says when its URLs expire (``DocumentPages.access_expires_at``); the
+scan viewer reads it again before then, so a long reading session keeps working.
 """
 from __future__ import annotations
 
@@ -19,11 +21,13 @@ import hashlib
 import hmac
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Callable
 from uuid import UUID
 
-TOKEN_LIFETIME_SECONDS = 12 * 3600
-"""How long a signed asset URL is accepted after its manifest was read."""
+TOKEN_LIFETIME_SECONDS = 30 * 60
+"""How long a signed asset URL is accepted after its manifest was read (maintainer decision
+on #789): short, since the URL is a bearer credential."""
 
 _KEY_PURPOSE = b"semant-page-asset-v1"
 
@@ -34,6 +38,13 @@ class AssetGrant:
     document_id: UUID
     collection_id: UUID
     user_id: UUID
+
+
+@dataclass(frozen=True)
+class SignedAccess:
+    """A token and the time it stops being accepted."""
+    token: str
+    expires_at: datetime
 
 
 class AssetSigner:
@@ -49,10 +60,10 @@ class AssetSigner:
         digest = hmac.new(self._key, payload.encode(), hashlib.sha256).digest()
         return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
-    def sign(self, grant: AssetGrant) -> str:
+    def sign(self, grant: AssetGrant) -> "SignedAccess":
         expires = int(self._clock()) + self._lifetime
         payload = f"{grant.document_id.hex}.{grant.collection_id.hex}.{grant.user_id.hex}.{expires}"
-        return f"{payload}.{self._signature(payload)}"
+        return SignedAccess(f"{payload}.{self._signature(payload)}", datetime.fromtimestamp(expires, UTC))
 
     def verify(self, token: str | None, document_id: UUID) -> AssetGrant | None:
         """The grant of a valid, unexpired token for ``document_id``; None otherwise."""

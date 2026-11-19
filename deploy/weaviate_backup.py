@@ -463,18 +463,23 @@ def wait_for(get_status: Callable[[], dict], settings: Settings, what: str,
 
 # ── Logging, status, lock ─────────────────────────────────────────────────
 
+def to_syslog(message: str) -> None:
+    """Log under TAG; tests replace this so their runs stay out of the host's journal."""
+    try:
+        import syslog
+        syslog.openlog(TAG)
+        syslog.syslog(message)
+    except Exception:
+        pass
+
+
 class Journal:
     def __init__(self, state_dir: Path, clock: Callable[[], datetime]):
         self.state_dir = state_dir
         self.clock = clock
 
     def log(self, message: str) -> None:
-        try:
-            import syslog
-            syslog.openlog(TAG)
-            syslog.syslog(message)
-        except Exception:
-            pass
+        to_syslog(message)
         try:
             with open(self.state_dir / "backup.log", "a") as handle:
                 handle.write(f"{stamp(self.clock())} {message}\n")

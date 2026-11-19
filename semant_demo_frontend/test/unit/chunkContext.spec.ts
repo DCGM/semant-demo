@@ -523,6 +523,41 @@ describe('ChunkContextPanel', () => {
     expect(wrapper.find('[data-testid="chunk-context-reloading"]').exists()).toBe(false)
     expect(scrolled.at(-1)).toBe(wrapper.get('[aria-current="true"]').element)
   })
+
+  it('fades the scrolled passage only towards text that is out of view', async () => {
+    const wrapper = mountPanel({ scrollText: true })
+    await flushPromises()
+    const body = wrapper.get('[data-testid="chunk-context-body"]')
+    const fade = (side: 'top' | 'bottom') => wrapper.get(`[data-testid="chunk-context-fade-${side}"]`).attributes('data-active')
+    const layout = (scrollTop: number, scrollHeight: number) => {
+      Object.defineProperty(body.element, 'clientHeight', { configurable: true, value: 200 })
+      Object.defineProperty(body.element, 'scrollHeight', { configurable: true, value: scrollHeight })
+      body.element.scrollTop = scrollTop
+    }
+
+    layout(0, 600) // at the start of a long text: more below only
+    await body.trigger('scroll')
+    expect([fade('top'), fade('bottom')]).toEqual(['false', 'true'])
+
+    layout(150, 600) // in the middle: both
+    await body.trigger('scroll')
+    expect([fade('top'), fade('bottom')]).toEqual(['true', 'true'])
+
+    layout(400, 600) // at the end: more above only
+    await body.trigger('scroll')
+    expect([fade('top'), fade('bottom')]).toEqual(['true', 'false'])
+
+    layout(0, 200) // a short text: none
+    await body.trigger('scroll')
+    expect([fade('top'), fade('bottom')]).toEqual(['false', 'false'])
+    expect(wrapper.get('[data-testid="chunk-context-fade-top"]').element.parentElement?.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('has no fades unless the passage scrolls by itself', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="chunk-context-fade-top"]').exists()).toBe(false)
+  })
 })
 
 describe('SearchResultCard context action', () => {

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import {
-  AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationFilters, type AnnotationListRow, type AnnotationPage,
+  AnnotationSort, RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type AnnotationFacets, type AnnotationFilters, type AnnotationListRow, type AnnotationPage,
   type AnnotationRanking, type AttributeAssignResult, type CollectionPerson, type DocumentFilters, type NearFilter
 } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, errorStatus, isAbortError, useApi } from 'src/shared/api'
@@ -159,6 +159,22 @@ export function nearParameters (near: NearFilter | null) {
   }
 }
 
+/** The API takes at most 100 facets: the six menus and this many attributes (more get no counts). */
+export const MAX_FACET_ATTRIBUTES = 90
+
+/** The facets of the concordance filters (#667): the choices of every filter menu, the attributes by id. */
+export function facetsRequest (f: ConcordanceFilters, attributeIds: string[]) {
+  if (attributeIds.length > MAX_FACET_ATTRIBUTES) {
+    console.warn(`Counting the choices of the first ${MAX_FACET_ATTRIBUTES} of ${attributeIds.length} attributes only`)
+  }
+  return {
+    ...annotationFilters(f),
+    ranking: ranking(f),
+    facets: ['tag', 'type', 'document', 'year', 'library', 'language',
+      ...attributeIds.slice(0, MAX_FACET_ATTRIBUTES).map(id => `attribute:${id}`)]
+  }
+}
+
 /** The request body of the concordance filters for resolving annotation ids. */
 function idsRequest (f: ConcordanceFilters, within?: string[]) {
   return { ...annotationFilters(f), within: within ?? null, ranking: ranking(f) }
@@ -186,15 +202,25 @@ export const useConcordanceStore = defineStore('concordance', () => {
   const selection = useAnnotationSelectionStore()
   let rowAbort: AbortController | null = null
   let documentAbort: AbortController | null = null
+  let facetAbort: AbortController | null = null
+  const facetRequests = createContextGuard()
 
   const collectionId = ref<string | null>(null)
   const filters = ref<ConcordanceFilters>(defaultFilters())
   const offset = ref(0)
+  /** The query and page Find similar was started from (#691), to return to; null outside a Find similar session. */
+  const previousView = ref<{ filters: ConcordanceFilters, offset: number } | null>(null)
   const page = shallowRef<AnnotationPage | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
   const documents = shallowRef<AnnotatedDocument[]>([])
   const documentsError = ref<string | null>(null)
+  /** How many annotations each choice of the filter menus would give (#667); null until read, and
+   * after a failed read (the menus then show no counts). Of the whole filtered result, or of the
+   * ranked top k (`population`), each facet without its own filter. */
+  const facets = shallowRef<AnnotationFacets | null>(null)
+  /** The attributes whose choices are counted: the collection's attributes, set by the page. */
+  const facetAttributeIds = ref<string[]>([])
   /** Annotations known to match the current filters (listed, resolved, or the selected
    * ones the filters show); selected annotations of `known` not in it are hidden, or no
    * longer exist. */
@@ -236,9 +262,11 @@ export const useConcordanceStore = defineStore('concordance', () => {
   function stop () {
     rowAbort?.abort()
     documentAbort?.abort()
-    rowAbort = documentAbort = null
+    facetAbort?.abort()
+    rowAbort = documentAbort = facetAbort = null
     rowRequests.enter()
     documentRequests.enter()
+    facetRequests.enter()
     shownRequests.enter()
     loading.value = false
     stopResolving()
@@ -253,11 +281,13 @@ export const useConcordanceStore = defineStore('concordance', () => {
   function reset () {
     stop()
     filters.value = defaultFilters()
+    previousView.value = null
     offset.value = 0
     page.value = null
     error.value = null
     documents.value = []
     documentsError.value = null
+    facets.value = null
     shown.value = new Set()
     known.value = new Set()
     shownError.value = null
@@ -266,6 +296,7 @@ export const useConcordanceStore = defineStore('concordance', () => {
     unmatched.value = new Set()
     pageKey = null
     scrollY.value = 0
+    previousView.value = null
   }
 
   /** Brings the focused row up to date with a newly read page of the query `key`. */
@@ -324,6 +355,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
     selection.enter(id)
     // Names only label provenance: the workspace does not wait for them.
     void loadPeople()
+    // The counts only label the filter menus: the list does not wait for them.
+    void loadFacets()
     await Promise.all([load(), loadDocuments(), loadShown()])
   }
 
@@ -524,6 +557,35 @@ export const useConcordanceStore = defineStore('concordance', () => {
     }
   }
 
+  /**
+   * The counts of the filter menus' choices for the current query (#667). A failure only leaves the
+   * menus without counts: the list itself does not depend on them.
+   */
+  async function loadFacets () {
+    const id = collectionId.value
+    if (!id) return
+    facetAbort?.abort()
+    facetRequests.enter()
+    const isCurrent = facetRequests.capture()
+    const inScope = scope.capture()
+    const inSession = captureSession()
+    const applies = () => isCurrent() && inScope() && inSession()
+    const controller = new AbortController()
+    facetAbort = controller
+    try {
+      const result = await api.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost({
+        collectionId: id, annotationFacetsRequest: facetsRequest(filters.value, facetAttributeIds.value)
+      }, { signal: controller.signal })
+      if (applies()) facets.value = result
+    } catch (e) {
+      if (!applies() || isAbortError(e)) return
+      console.error('Loading the filter counts failed', e)
+      facets.value = null
+    } finally {
+      if (applies()) facetAbort = null
+    }
+  }
+
   /** Marks ids as matching the current filters (they were just listed or resolved for them). */
   function noteShown (ids: string[]) {
     shown.value = new Set([...shown.value, ...ids])
@@ -615,26 +677,43 @@ export const useConcordanceStore = defineStore('concordance', () => {
     filters.value = withMode({ ...before, ...change, ...(change.similarity?.trim() ? clearSimilar() : {}) })
     if (change.documentFilters) filters.value.documentFilters = normalizeDocumentFilters(change.documentFilters)
     if (filters.value.sort !== AnnotationSort.attribute) filters.value.sortAttribute = null
+    if (!filters.value.similarTo) previousView.value = null
     offset.value = 0
     stopResolving()
     shown.value = new Set()
     known.value = new Set()
     const facetsChanged = 'tagIds' in change || 'types' in change
+    const queryChanged = Object.keys(change).some(k => !['sort', 'sortAttribute', 'descending'].includes(k))
+    if (queryChanged) void loadFacets()
     await Promise.all([load(), facetsChanged ? loadDocuments() : Promise.resolve(), loadShown()])
   }
 
   /** Lists the annotations most similar to `row`, within the current filters (#664). */
   async function findSimilar (row: AnnotationListRow) {
+    // Remember the view the session started from; switching the source keeps the first one.
+    const start = filters.value.similarTo ? previousView.value : { filters: { ...filters.value }, offset: offset.value }
+    previousView.value = start // set first: setFilters drops it only when no source is left
     await setFilters(similarChange(row))
+  }
+
+  /** Leaves Find similar for the query and page it was started from (#691), the other filters intact. */
+  async function returnFromSimilar () {
+    const view = previousView.value
+    if (!view) return
+    previousView.value = null
+    await setFilters(view.filters)
+    if (view.offset > 0) await goTo(view.offset)
   }
 
   async function resetFilters () {
     // The order of the rows is a display setting, not a filter: it stays.
     filters.value = { ...defaultFilters(), sort: filters.value.sort, descending: filters.value.descending }
+    previousView.value = null
     offset.value = 0
     stopResolving()
     shown.value = new Set()
     known.value = new Set()
+    void loadFacets()
     await Promise.all([load(), loadDocuments(), loadShown()])
   }
 
@@ -705,6 +784,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
     error,
     documents,
     documentsError,
+    facets,
+    facetAttributeIds,
     shown,
     shownError,
     hiddenSelected,
@@ -718,11 +799,14 @@ export const useConcordanceStore = defineStore('concordance', () => {
     readFocused,
     readRow,
     loadDocuments,
+    loadFacets,
     loadShown,
     selectAllMatches,
     deselectHidden,
     setFilters,
+    previousView,
     findSimilar,
+    returnFromSimilar,
     resetFilters,
     goTo,
     setPageSelected,

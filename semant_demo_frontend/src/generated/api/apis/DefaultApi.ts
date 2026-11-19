@@ -19,6 +19,8 @@ import type {
   AnnotatedDocument,
   AnnotationCounts,
   AnnotationExportRequest,
+  AnnotationFacets,
+  AnnotationFacetsRequest,
   AnnotationIds,
   AnnotationIdsRequest,
   AnnotationPage,
@@ -122,6 +124,10 @@ import {
     AnnotationCountsToJSON,
     AnnotationExportRequestFromJSON,
     AnnotationExportRequestToJSON,
+    AnnotationFacetsFromJSON,
+    AnnotationFacetsToJSON,
+    AnnotationFacetsRequestFromJSON,
+    AnnotationFacetsRequestToJSON,
     AnnotationIdsFromJSON,
     AnnotationIdsToJSON,
     AnnotationIdsRequestFromJSON,
@@ -448,6 +454,11 @@ export interface ExplainSelectionApiRagExplainPostRequest {
 export interface ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest {
     collectionId: string;
     annotationExportRequest: AnnotationExportRequest;
+}
+
+export interface FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest {
+    collectionId: string;
+    annotationFacetsRequest: AnnotationFacetsRequest;
 }
 
 export interface FetchCollectionApiUserCollectionsCollectionIdGetRequest {
@@ -1025,7 +1036,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * @summary Corpus Distributions
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -1035,7 +1046,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions>;
@@ -1049,7 +1060,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * @summary Corpus Library Years
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -1059,7 +1070,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution>;
@@ -1512,6 +1523,32 @@ export interface DefaultApiInterface {
      * Export Collection Annotations
      */
     exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string>;
+
+    /**
+     * Creates request options for facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost without sending the request
+     * @param {string} collectionId 
+     * @param {AnnotationFacetsRequest} annotationFacetsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequestOpts(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * @summary Facet Collection Annotations
+     * @param {string} collectionId 
+     * @param {AnnotationFacetsRequest} annotationFacetsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRaw(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationFacets>>;
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * Facet Collection Annotations
+     */
+    facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationFacets>;
 
     /**
      * Creates request options for fetchCollectionApiUserCollectionsCollectionIdGet without sending the request
@@ -2846,7 +2883,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * @summary Suggest Spans Optimized
      * @param {SuggestSpansRequest} suggestSpansRequest 
      * @param {*} [options] Override http request option.
@@ -2856,7 +2893,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -3745,6 +3782,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/analytics/corpus/distributions`;
 
@@ -3758,7 +3800,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>> {
@@ -3769,7 +3811,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions> {
@@ -3794,6 +3836,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/analytics/corpus/library-years`;
 
@@ -3807,7 +3854,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>> {
@@ -3818,7 +3865,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution> {
@@ -4838,6 +4885,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string> {
         const response = await this.exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost without sending the request
+     */
+    async facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequestOpts(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost().'
+            );
+        }
+
+        if (requestParameters['annotationFacetsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'annotationFacetsRequest',
+                'Required parameter "annotationFacetsRequest" was null or undefined when calling facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/facets`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AnnotationFacetsRequestToJSON(requestParameters['annotationFacetsRequest']),
+        };
+    }
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * Facet Collection Annotations
+     */
+    async facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRaw(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationFacets>> {
+        const requestOptions = await this.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationFacetsFromJSON(jsonValue));
+    }
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * Facet Collection Annotations
+     */
+    async facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationFacets> {
+        const response = await this.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -7808,7 +7917,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -7819,7 +7928,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

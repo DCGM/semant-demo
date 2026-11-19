@@ -16,6 +16,12 @@ own. The overview is derived from them. Filtered counts match fewer documents, t
 a second and are always computed live (never answered from the unfiltered cache). A failed
 read raises (an error response, never a zero or empty overview) and is not cached.
 
+A user collection (#622, ``collection_distributions``, ``library_years`` with a collection):
+the same counts over the documents linked to the collection (``Documents.collection``, also
+those without an included passage), for readers of the collection only (checked on every
+request). They are always counted live: they never read or fill the ``OverviewCache``, which
+holds the public corpus only, so a collection's counts are never the corpus's and the reverse.
+
 Ranked results (#619, ``ranked_results_distributions``): the same counts over exactly the ids
 a text-query search ranked (Documents or Passages Results), read by id under that search's
 access and eligibility again; see the function.
@@ -32,6 +38,7 @@ from typing import Any
 from uuid import UUID
 
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository, Unavailable, ValueCounts
+from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.analytics.schemas import (
     CategoryCount, CategoryDistribution, CorpusDistributions, CorpusOverview, DocumentFilters, LibraryYearDistribution,
@@ -113,15 +120,47 @@ async def corpus_distributions(analytics: CorpusAnalyticsRepository, filters: Do
     return await _distributions(analytics, filters, chunks, conditions)
 
 
+@dataclass(frozen=True)
+class CollectionScope:
+    """A user collection whose documents are counted, read access checked (``collection_scope``)."""
+    collection_id: UUID
+
+
+async def collection_scope(collections: UserCollectionRepository, user: Principal | None, collection_id: str,
+                           filters: DocumentFilters, chunk_filters: ChunkFilters | None,
+                           vocabulary: ChunkVocabulary | None) -> CollectionScope:
+    """The collection to count, as a browse of it resolves it (``documents.service.browse_scope``):
+    chunk filters are checked first, then read access (``AuthenticationRequired`` without a user,
+    ``ResourceNotFound`` for a collection the user cannot read)."""
+    scope, _ = await document_service.browse_scope(collections, user, collection_id, filters, chunk_filters, vocabulary)
+    assert scope is not None
+    return CollectionScope(scope)
+
+
+async def collection_distributions(analytics: CorpusAnalyticsRepository, collection: CollectionScope,
+                                   filters: DocumentFilters, chunk_filters: ChunkFilters | None = None,
+                                   vocabulary: ChunkVocabulary | None = None) -> CorpusDistributions:
+    """New counts of the collection's documents matching ``filters`` and ``chunk_filters`` (as
+    ``corpus_distributions``), computed from the store now; never cached."""
+    chunks, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
+    return await _distributions(analytics, filters, chunks, conditions, collection)
+
+
+def _scope(collection: CollectionScope | None) -> dict[str, Any]:
+    if collection is None:
+        return {"scope": "searchable_corpus", "user_collection_id": None}
+    return {"scope": "user_collection", "user_collection_id": str(collection.collection_id)}
+
+
 async def _distributions(analytics: CorpusAnalyticsRepository, filters: DocumentFilters, chunk_filters: ChunkFilters,
-                         conditions: list[Condition]) -> CorpusDistributions:
+                         conditions: list[Condition], collection: CollectionScope | None = None) -> CorpusDistributions:
     computed_at = datetime.now(UTC)
     counts = await analytics.count_documents(
         {YEAR_PROPERTY: "number", LIBRARY_PROPERTY: "text", LANGUAGE_PROPERTY: "text"}, group_limit=GROUP_LIMIT,
-        conditions=conditions)
+        conditions=conditions, collection_id=collection.collection_id if collection else None)
     total = counts.total
     return CorpusDistributions(
-        scope="searchable_corpus", unit="documents", filters=filters, chunk_filters=chunk_filters,
+        **_scope(collection), unit="documents", filters=filters, chunk_filters=chunk_filters,
         total_documents=total,
         computed_at=computed_at, data_source="live_aggregation",
         publication_year=_years(counts.properties[YEAR_PROPERTY], total, max_year=computed_at.year),
@@ -131,9 +170,11 @@ async def _distributions(analytics: CorpusAnalyticsRepository, filters: Document
 
 async def library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters,
                         chunk_filters: ChunkFilters | None = None,
-                        vocabulary: ChunkVocabulary | None = None) -> LibraryYearDistribution:
+                        vocabulary: ChunkVocabulary | None = None,
+                        collection: CollectionScope | None = None) -> LibraryYearDistribution:
     """Documents per source library and publication year (#361, optional heatmap), restricted as
-    ``corpus_distributions`` is.
+    ``corpus_distributions`` is, and to the collection's documents when one is given (every
+    count, the per-library ones too, so the rows add up to the collection's total).
 
     Weaviate groups by one property only, so the years are counted once per library (a filter
     on that library) and the remaining documents are the difference to the distributions, which
@@ -147,15 +188,15 @@ async def library_years(analytics: CorpusAnalyticsRepository, filters: DocumentF
     readings, everything is counted once more before ``IncompleteCounts`` is raised."""
     chunks, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
     try:
-        return await _library_years(analytics, filters, chunks, conditions)
+        return await _library_years(analytics, filters, chunks, conditions, collection)
     except IncompleteCounts:
-        return await _library_years(analytics, filters, chunks, conditions)
+        return await _library_years(analytics, filters, chunks, conditions, collection)
 
 
 async def _library_years(analytics: CorpusAnalyticsRepository, filters: DocumentFilters, chunk_filters: ChunkFilters,
-                         conditions: list[Condition]) -> LibraryYearDistribution:
-    distributions = await _distributions(analytics, filters, chunk_filters, conditions)
-    base = dict(scope="searchable_corpus", unit="documents", filters=filters, chunk_filters=chunk_filters,
+                         conditions: list[Condition], collection: CollectionScope | None) -> LibraryYearDistribution:
+    distributions = await _distributions(analytics, filters, chunk_filters, conditions, collection)
+    base = dict(**_scope(collection), unit="documents", filters=filters, chunk_filters=chunk_filters,
                 total_documents=distributions.total_documents, computed_at=datetime.now(UTC))
     for prop, counted in (("library", distributions.libraries), ("publication_year", distributions.publication_year)):
         if not counted.available:
@@ -168,7 +209,8 @@ async def _library_years(analytics: CorpusAnalyticsRepository, filters: Document
     every = sorted(merged, key=lambda library: (-merged[library], library))
     listed = every[:MAX_HEATMAP_LIBRARIES]
     counts = await analytics.count_documents_per_value(
-        LIBRARY_PROPERTY, listed, {YEAR_PROPERTY: "number"}, group_limit=GROUP_LIMIT, conditions=conditions)
+        LIBRARY_PROPERTY, listed, {YEAR_PROPERTY: "number"}, group_limit=GROUP_LIMIT, conditions=conditions,
+        collection_id=collection.collection_id if collection else None)
 
     rows: list[LibraryYears] = []
     rest = Counter({y.year: y.count for y in distributions.publication_year.years or []})
@@ -292,7 +334,7 @@ def _known(value: Any) -> str | None:
 def _overview(distributions: CorpusDistributions) -> CorpusOverview:
     """The same counts with years grouped into decades; empty decades in between have count 0."""
     return CorpusOverview(
-        scope=distributions.scope, unit=distributions.unit, total_documents=distributions.total_documents,
+        scope="searchable_corpus", unit=distributions.unit, total_documents=distributions.total_documents,
         computed_at=distributions.computed_at, data_source=distributions.data_source,
         publication_year=_decades(distributions.publication_year),
         libraries=distributions.libraries, languages=distributions.languages)

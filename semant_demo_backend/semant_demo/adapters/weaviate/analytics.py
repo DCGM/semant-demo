@@ -4,8 +4,9 @@ Only aggregates are run: no objects, texts or vectors are read, and documents ar
 directly (never through their chunks). A single-valued property is described by the number
 of documents that have a value (``known``, empty strings included) and the documents per
 distinct value, most frequent first; documents without a value are ``total - known``.
-Optional conditions (#361) restrict every count to the same documents: one filter is built
-once and applied to the total and to each grouped aggregate.
+Optional conditions (#361) and a user collection (#622, the documents linked to it) restrict
+every count to the same documents: one filter is built once (``_restriction``) and applied to
+the total, to each grouped aggregate and to each per-value count.
 
 The documents of a ranked search result (#619) are few (at most a configured cap) and named by
 id: ``document_values`` reads the values of just those documents, in batches, for the service
@@ -14,8 +15,8 @@ lack, so missing values are never counted directly.
 
 Access (#279): counts without a collection cover only public documents (``Documents.public``
 true), the population of unscoped Search and Explore; the filter is part of every aggregate, so
-no restricted or unknown document is ever counted. ``document_values`` with a collection reads
-that (authorized) collection's documents whatever their rights.
+no restricted or unknown document is ever counted. Counts and ``document_values`` with a
+collection cover that (authorized) collection's documents whatever their rights.
 
 The collection name is resolved through an alias for the schema read (the deployment serves
 ``Documents`` as an alias of ``Documents_test``). Never creates or alters a collection.
@@ -88,23 +89,28 @@ class CorpusAnalyticsRepository:
         return await declared(self.client, self.collection_names.document_collection_name)
 
     async def count_documents(self, properties: dict[str, ValueKind], group_limit: int,
-                              conditions: Sequence[Condition] = ()) -> DocumentCounts:
-        """The number of documents meeting every condition and, for each property, their value
-        counts (at most ``group_limit`` values each). One aggregate reads the total and every
-        property's ``known`` count together, one grouped aggregate per property runs alongside.
-        Raises ``UnavailableFilter`` when a condition's property cannot be filtered."""
+                              conditions: Sequence[Condition] = (), collection_id: UUID | None = None) -> DocumentCounts:
+        """The number of documents meeting every condition (and linked to the collection, if
+        given) and, for each property, their value counts (at most ``group_limit`` values each).
+        One aggregate reads the total and every property's ``known`` count together, one grouped
+        aggregate per property runs alongside. Raises ``UnavailableFilter`` when a condition's
+        property cannot be filtered."""
         types, tokenizations = await self._declared()
-        return await self._count(_public(where(conditions, types, tokenizations)), properties, types, group_limit)
+        return await self._count(_restriction(conditions, collection_id, types, tokenizations), properties, types,
+                                 group_limit)
 
     async def count_documents_per_value(self, prop: str, values: Sequence[str], properties: dict[str, ValueKind],
-                                        group_limit: int, conditions: Sequence[Condition] = ()) -> dict[str, DocumentCounts]:
+                                        group_limit: int, conditions: Sequence[Condition] = (),
+                                        collection_id: UUID | None = None) -> dict[str, DocumentCounts]:
         """``count_documents`` for each value of ``prop`` separately: the documents meeting every
-        condition that also equal the value (``AnyOf``, so the property's tokenization applies;
-        values that match the same documents must be passed once). At most
-        ``PER_VALUE_CONCURRENCY`` values are counted at once, also across concurrent calls.
-        Weaviate groups by one property only, so this is how two properties are crossed."""
+        condition (and linked to the collection, if given) that also equal the value (``AnyOf``,
+        so the property's tokenization applies; values that match the same documents must be
+        passed once). At most ``PER_VALUE_CONCURRENCY`` values are counted at once, also across
+        concurrent calls. Weaviate groups by one property only, so this is how two properties are
+        crossed."""
         types, tokenizations = await self._declared()
-        filters = [_public(where([*conditions, AnyOf(prop, (value,))], types, tokenizations)) for value in values]
+        filters = [_restriction([*conditions, AnyOf(prop, (value,))], collection_id, types, tokenizations)
+                   for value in values]
 
         async def count(value_filter) -> DocumentCounts:
             async with self.per_value_slots:
@@ -127,19 +133,13 @@ class CorpusAnalyticsRepository:
         the others, also ids of no document, are left out. Read in batches of ``READ_BATCH``.
         Raises ``UnavailableFilter`` when a condition's property cannot be filtered."""
         types, tokenizations = await self._declared()
-        restrictions = []
-        if collection_id is not None:
-            restrictions.append(Filter.by_ref("collection").by_id().equal(collection_id))
-        else:
-            restrictions.append(public_documents())
-        if conditions:
-            restrictions.append(where(conditions, types, tokenizations))
+        restriction = _restriction(conditions, collection_id, types, tokenizations)
         documents = self._documents()
 
         async def read(batch: Sequence[UUID]) -> list:
             by_ids = Filter.by_id().contains_any(list(batch))
             response = await documents.query.fetch_objects(
-                filters=Filter.all_of([by_ids, *restrictions]) if restrictions else by_ids, limit=len(batch),
+                filters=by_ids & restriction, limit=len(batch),
                 return_properties=list(properties))
             return response.objects
 
@@ -171,9 +171,15 @@ class CorpusAnalyticsRepository:
         return DocumentCounts(total=overall.total_count or 0, properties=result)
 
 
-def _public(filters):
-    """``filters`` restricted to the public documents (#279)."""
-    return public_documents() if filters is None else Filter.all_of([public_documents(), filters])
+def _restriction(conditions: Sequence[Condition], collection_id: UUID | None, types: dict[str, str],
+                 tokenizations: dict[str, str]):
+    """The one filter of the counted documents: every condition and, with a collection, a link
+    to it (``Documents.collection``, as the collection's document list and ``CollectionStats``
+    read it); without a collection, the public documents only (#279)."""
+    criteria = where(conditions, types, tokenizations)
+    scope = (public_documents() if collection_id is None
+             else Filter.by_ref("collection").by_id().equal(collection_id))
+    return scope if criteria is None else Filter.all_of([scope, criteria])
 
 
 def _unavailable(data_type: str | None, kind: ValueKind) -> Literal["missing", "unsupported_type"] | None:

@@ -82,7 +82,8 @@ async def test_an_uploaded_document_is_private_complete_and_searchable_in_its_co
     assert result["status"] == "completed", result
     document_id = result["document_id"]
 
-    # Stored: private, the CSV metadata, ordered chunks with positions, UNPROCESSED and both vectors.
+    # Stored: private, the CSV metadata, ordered chunks with positions, UNPROCESSED, not public
+    # (documentPublic) and both vectors.
     stored = await seeded_store.collections.get(collection_names.document_collection_name).query.fetch_object_by_id(
         UUID(document_id))
     assert stored.properties["public"] is False and stored.properties["title"] == "Kronika Zahrádků"
@@ -96,6 +97,7 @@ async def test_an_uploaded_document_is_private_complete_and_searchable_in_its_co
     assert [o.properties["startChar"] for o in chunks] == [p.start_char for p in chunk_positions(
         o.properties["text"] for o in chunks)]
     assert {o.properties["classification_provenance"] for o in chunks} == {"UNPROCESSED"}
+    assert {o.properties["documentPublic"] for o in chunks} == {False}  # #793, declared by the seed
     assert {o.properties["yearIssued"] for o in chunks} == {1925}
     assert all(len(o.vector["default"]) == 16 and len(o.vector[SECOND_VECTOR]) == 8 for o in chunks)
 

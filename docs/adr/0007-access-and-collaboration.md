@@ -99,12 +99,21 @@ related but distinct. A corpus document's rights come from its source library re
   document's assets need none and are cached as `public, no-cache` (revalidated with `ETag`
   on every use, so a document that stops being public is not served from a cache). The page
   manifest read through a collection gives a restricted or unknown document signed asset URLs
-  (`features/documents/asset_access.py`: an HMAC over document, collection, user and expiry);
-  every asset read with one checks again that the user can read that collection and that it
-  still holds the document, and such responses are `private, no-store`.
+  (`features/documents/asset_access.py`: an HMAC over document, collection, user and a
+  30-minute expiry, decided on #789); every asset read with one checks again that the user can
+  read that collection and that it still holds the document, and such responses are
+  `private, no-store`. A signed URL is a bearer credential: anyone holding it can use it while
+  it is valid and the original user keeps the collection route. Signing out and account
+  deactivation are not checked. The manifest gives the URLs' expiry and the scan viewer reads
+  it again before then.
 - **Adding documents.** An owner can add a document or chunk to a collection only when the
   document is already readable by them: public, or linked to a collection they can read
   (`access.require_document_addable`). Owning a collection does not unlock a restricted id.
+  Adding a restricted or unknown document found through a shared collection to one's own
+  collection is intended (decided on #789): the new link is an independent, durable route
+  (it survives revocation of the source share, and the target may itself be shared), not a
+  copy or ownership of the document. Explore asks for confirmation before such an add, of a
+  document or of a chunk (which also links its document); public documents need none.
 - **Uploaded documents (#785).** A text document uploaded into a collection by its owner
   ([TEXT_UPLOAD.md](../TEXT_UPLOAD.md)) is created with `public` false, so this rule alone
   governs it; nothing the client sends can make it public. It is linked to its collection only

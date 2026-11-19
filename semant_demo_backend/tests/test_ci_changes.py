@@ -189,7 +189,7 @@ def test_deployment_only_change_runs_everything_until_the_mode_is_enabled():
     ".github/workflows/ci-cd.yml",
     "deploy/docker-compose.app.yaml",  # production-only, not previewed
     "deploy/docker-compose.database.yml",
-    "deploy/docker-compose.topicer-test.yml",
+    "deploy/docker-compose.topicer.yml",
     "deploy/update.sh",
     "deploy/.env.example",
     "deploy/test_sqlite_backup.sh",

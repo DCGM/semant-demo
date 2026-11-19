@@ -170,11 +170,14 @@ class DocumentPage(BaseModel):
 
 
 class DocumentPages(BaseModel):
-    """A document's page manifest (public). ``available`` is false, with no pages, when the
+    """A document's page manifest. ``available`` is false, with no pages, when the
     document has no imported pages: it is then a text-only document."""
     document_id: UUID
     available: bool
     pages: list[DocumentPage]
+    access_expires_at: datetime | None = None
+    """When the signed asset URLs of a document that is not public, read through a collection,
+    stop working (#279); read the manifest again before then. None: the URLs need no signature."""
 
 
 class PageChunks(BaseModel):

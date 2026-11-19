@@ -83,7 +83,7 @@
           :image-alt="`Scan of ${pageName(currentPage, currentIndex).toLowerCase()}`"
           @line-click="onLineClick"
           @zoom="zoomPercent = $event"
-          @image-state="imageState = $event"
+          @image-state="onImageState"
         />
         <div v-else class="image-pane__message text-grey-8" data-testid="no-scan">
           <q-icon name="hide_image" size="22px" class="q-mr-sm" />
@@ -112,7 +112,9 @@ import type { DocumentPage } from 'src/generated/api'
 import { apiErrorMessage, isAbortError } from 'src/shared/api'
 import ScanPageView, { type LineHighlight } from './ScanPageView.vue'
 import PageThumbnailStrip from './PageThumbnailStrip.vue'
-import { assetUrl, createLayoutCache, readDocumentPages, type LayoutCache } from './pageAssets'
+import {
+  URL_REFRESH_MARGIN_MS, assetUrl, createLayoutCache, readDocumentPages, replaceAssetUrls, type LayoutCache
+} from './pageAssets'
 import { adjacentLine, findPage, pageName } from './pageNavigation'
 import type { PageLayout } from './pageLayout'
 
@@ -221,6 +223,7 @@ async function loadManifest () {
     const result = await readDocumentPages(props.documentId, props.collectionId, controller.signal)
     if (controller.signal.aborted) return
     pages.value = result.available ? result.pages : []
+    scheduleRefresh(result.accessExpiresAt ?? null)
     manifestState.value = 'loaded'
     emit('loaded', { available: result.available, pageCount: pages.value.length, pages: pages.value })
     if (pages.value.length) showPage(indexOf(props.pageId) ?? 0, { force: true })
@@ -229,6 +232,48 @@ async function loadManifest () {
     manifestError.value = await apiErrorMessage(e, 'The pages of this document could not be loaded.')
     manifestState.value = 'error'
   }
+}
+
+// Signed asset URLs (a restricted document read through a collection, #279) expire after 30
+// minutes: the manifest is read again shortly before, and at once when a signed scan fails to
+// load (a sleeping computer may miss the timer). Only the URLs change, on the same page objects.
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+let refreshing: Promise<void> | null = null
+let urlsExpireAt: number | null = null
+
+function scheduleRefresh (expiresAt: Date | null) {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = null
+  urlsExpireAt = expiresAt?.getTime() ?? null
+  if (!expiresAt) return
+  const delay = Math.max(expiresAt.getTime() - Date.now() - URL_REFRESH_MARGIN_MS, 0)
+  refreshTimer = setTimeout(() => { void refreshUrls() }, delay)
+}
+
+function refreshUrls (): Promise<void> {
+  if (refreshing) return refreshing
+  const documentId = props.documentId
+  const collectionId = props.collectionId
+  refreshing = (async () => {
+    try {
+      const result = await readDocumentPages(documentId, collectionId)
+      if (documentId !== props.documentId || collectionId !== props.collectionId) return
+      replaceAssetUrls(pages.value, result.pages)
+      scheduleRefresh(result.accessExpiresAt ?? null)
+    } catch (e) {
+      // The URLs stay; a scan that cannot load says so itself. Tried again on the next failure.
+      if (!isAbortError(e)) console.error('Reading the page URLs again failed', e)
+    } finally {
+      refreshing = null
+    }
+  })()
+  return refreshing
+}
+
+function onImageState (state: 'loading' | 'loaded' | 'error') {
+  imageState.value = state
+  // Only URLs about to expire (or expired) are read again: another failure would only repeat.
+  if (state === 'error' && urlsExpireAt !== null && Date.now() > urlsExpireAt - URL_REFRESH_MARGIN_MS) void refreshUrls()
 }
 
 function indexOf (pageId: string | null | undefined): number | null {
@@ -384,6 +429,7 @@ watch(() => props.pageId, (pageId) => {
 onBeforeUnmount(() => {
   manifestController?.abort()
   layoutController?.abort()
+  if (refreshTimer) clearTimeout(refreshTimer)
 })
 
 defineExpose({ focus, goToPage, currentPage, layout, view })

@@ -285,6 +285,8 @@
           :error="charts.error.value"
           :invalid="charts.invalid.value"
           :ranked="rankedState"
+          :collection-label="collectionLabel"
+          :user-collection-id="appliedCollection"
           @retry="charts.retry"
           @retry-ranked="resultCharts.retry"
           @retry-search="runApplied({ force: true })"
@@ -513,6 +515,7 @@ import ChunkContextPanel from 'src/features/documents/ChunkContextPanel.vue'
 import { whileShown } from 'src/shared/whileShown'
 import { documentLink } from 'src/features/documents/workspace/documentLink'
 import { useChunkContext } from 'src/features/documents/useChunkContext'
+import { addRestrictedWarning, nonPublicDocuments } from 'src/features/documents/documentRights'
 
 // The Search page is being evolved into Explore Results (#605, docs/EXPLORATION.md): it edits
 // draft search criteria, and Enter or Search applies them. The applied criteria, the search
@@ -521,7 +524,8 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 // Passages (`POST /api/search/passages`) for a text query, and Documents (`POST /api/search/documents`)
 // for filters alone (#606) or ranked by a text query (#607), each loaded page by page. The
 // Visualizations view (#618) charts the same applied criteria: for Documents without a text
-// query, every matching document (`useExploreCharts`); for a text query, exactly the results its
+// query, every matching document of the corpus or of the collection scope (`useExploreCharts`,
+// #768); for a text query, exactly the results its
 // search ranked (`useResultCharts`, #620). Clicking a chart category applies it as a filter (a new
 // search). Switching between the views searches or counts again only when the shown ones are of
 // other criteria.
@@ -624,7 +628,7 @@ const isIdleLocation = (location: ExploreLocation) =>
 // Views: Results or Visualizations of the applied criteria, kept in the URL (`view`).
 const view = computed<ExploreView>(() => applied.value.view ?? 'results')
 const charts = useExploreCharts()
-const chartsShown = computed(() => chartsAvailability(applied.value.criteria, mode.value, appliedCollection.value))
+const chartsShown = computed(() => chartsAvailability(applied.value.criteria, mode.value))
 
 // Charts of a text query's results (#620): the counts of the ranking the Results hold.
 const resultCharts = useResultCharts()
@@ -897,8 +901,8 @@ watch(
       draftCollection.value = null
       appliedCollection.value = null
       targetCollectionId.value = null
-      // Without the collection scope the Visualizations may chart the public corpus now: count
-      // the applied criteria rather than keep the collection's state or an unanswered spinner.
+      // Without the collection scope the Visualizations chart the public corpus now: count the
+      // applied criteria again rather than keep the collection's counts or an unanswered spinner.
       if (view.value === 'visualizations') void runApplied()
     }
     await loadCollections()
@@ -1225,7 +1229,7 @@ async function runApplied ({ force = false } = {}) {
   }
 
   // A text query's charts count the ranking of its search: searched as for Results (#620).
-  const ranked = chartsAvailability(location.criteria, effectiveMode(location), appliedCollection.value) === 'ranked'
+  const ranked = chartsAvailability(location.criteria, effectiveMode(location)) === 'ranked'
   if (location.view === 'visualizations' && !ranked) {
     // The Results are searched when shown; a search of other criteria is not finished meanwhile.
     if (resultsKeyOf(location) !== resultsKey) {
@@ -1233,8 +1237,8 @@ async function runApplied ({ force = false } = {}) {
       documents.cancel()
       resultsKey = null
     }
-    if (chartsAvailability(location.criteria, effectiveMode(location), appliedCollection.value) === 'documents') {
-      charts.show(location.criteria, { force })
+    if (chartsAvailability(location.criteria, effectiveMode(location)) === 'documents') {
+      charts.show(location.criteria, appliedCollection.value, { force })
     }
     return
   }
@@ -1278,6 +1282,37 @@ watch([filtersStatus, vectorsStatus], () => {
   if (waitingForOptions) void runApplied()
 })
 
+/**
+ * Confirms adding the selected results' restricted or unknown documents to the target
+ * collection (#279): resolves true when there are none, or none would gain a new route (the
+ * results' own collection), or the user confirms. Adding a chunk also links its document.
+ */
+function confirmRestrictedAdd (collectionId: string): Promise<boolean> {
+  const ownCollection = passages.results.value?.query.userCollectionId ?? null
+  const selected = results.value.filter(r => selectedResults.value.includes(r.id)).map(r => r.documentObject)
+  const restricted = collectionId === ownCollection ? [] : nonPublicDocuments(selected)
+  if (!restricted.length) return Promise.resolve(true)
+  const target = targetCollectionOptions.value.find(o => o.value === collectionId)?.label ?? 'the collection'
+  return new Promise(resolve => {
+    $q.dialog({
+      title: 'Add documents that are not public?',
+      message: addRestrictedWarning(restricted.map(d => d.title ?? ''), target),
+      cancel: { label: 'Cancel', flat: true },
+      ok: { label: 'Add anyway', color: 'primary', flat: true },
+      persistent: true
+    }).onOk(() => resolve(true)).onCancel(() => resolve(false))
+  })
+}
+
+/**
+ * An add batch to the collection ended (complete, partial or failed): any of its documents may be
+ * new, so its charts are counted again when shown next (#768), at once if they are shown now.
+ */
+function collectionChanged (collectionId: string) {
+  charts.markStale(collectionId)
+  if (view.value === 'visualizations') void runApplied()
+}
+
 async function addSelectedChunksToCollection () {
   if (!targetCollectionId.value) {
     Notify.create({ message: 'Please select a collection first.', position: 'top', color: 'warning' })
@@ -1292,19 +1327,24 @@ async function addSelectedChunksToCollection () {
   // and the old session's outcome is no longer reported.
   const inSession = captureSession()
   const collectionId = targetCollectionId.value
+  if (!await confirmRestrictedAdd(collectionId) || !inSession()) return
   let successCount = 0
   let failedCount = 0
-  for (const chunkId of [...selectedResults.value]) {
-    if (!inSession()) return
-    try {
-      const data = await api.addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost({ collectionId, chunkId })
-      // Partial: the chunk may be linked while its document link failed.
-      if (data.outcome === WriteOutcome.complete) successCount++
-      else failedCount++
-    } catch (e) {
-      failedCount++
-      console.error(e)
+  try {
+    for (const chunkId of [...selectedResults.value]) {
+      if (!inSession()) return
+      try {
+        const data = await api.addChunkToCollectionApiUserCollectionsCollectionIdChunksChunkIdPost({ collectionId, chunkId })
+        // Partial: the chunk may be linked while its document link failed.
+        if (data.outcome === WriteOutcome.complete) successCount++
+        else failedCount++
+      } catch (e) {
+        failedCount++
+        console.error(e)
+      }
     }
+  } finally {
+    collectionChanged(collectionId)
   }
   if (!inSession()) return
   Notify.create({ message: `Added ${successCount} chunk(s) to collection`, position: 'top', color: 'positive' })
@@ -1333,10 +1373,15 @@ async function addSelectedDocumentsToCollection () {
 
   const inSession = captureSession()
   const collectionId = targetCollectionId.value
-  for (const documentId of docIds) {
-    if (!inSession()) return // signed out meanwhile: stop, keep what was added
-    // The store reports failures itself and returns true only for a complete add.
-    if (await documentsStore.addToCollection(documentId, collectionId)) successCount++
+  if (!await confirmRestrictedAdd(collectionId) || !inSession()) return
+  try {
+    for (const documentId of docIds) {
+      if (!inSession()) return // signed out meanwhile: stop, keep what was added
+      // The store reports failures itself and returns true only for a complete add.
+      if (await documentsStore.addToCollection(documentId, collectionId)) successCount++
+    }
+  } finally {
+    collectionChanged(collectionId)
   }
   if (!inSession()) return
   Notify.create({ message: `Added ${successCount} document(s) to collection`, position: 'top', color: 'positive' })

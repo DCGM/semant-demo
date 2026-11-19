@@ -9,6 +9,7 @@ before touching any file and gives a text-only document (no manifest) an explici
 """
 import json
 import os
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -359,7 +360,8 @@ def test_asset_tokens_name_one_document_and_expire():
     now = [1_000_000.0]
     signer = AssetSigner(SECRET, lifetime_seconds=60, clock=lambda: now[0])
     grant = AssetGrant(RESTRICTED, COLLECTION, OWNER)
-    token = signer.sign(grant)
+    signed = signer.sign(grant)
+    token = signed.token
 
     assert signer.verify(token, RESTRICTED) == grant
     assert signer.verify(token, DOC) is None                                  # another document
@@ -367,7 +369,20 @@ def test_asset_tokens_name_one_document_and_expire():
     tampered = token.replace(OWNER.hex, OTHER.hex)
     assert tampered != token and signer.verify(tampered, RESTRICTED) is None
     assert signer.verify(None, RESTRICTED) is None and signer.verify("x.y", RESTRICTED) is None
+    assert signed.expires_at.timestamp() == 1_000_060
     now[0] += 61
+    assert signer.verify(token, RESTRICTED) is None
+
+
+def test_asset_tokens_expire_after_thirty_minutes():
+    """Maintainer decision on #789: a signed URL is a bearer credential, valid 30 minutes."""
+    now = [1_000_000.0]
+    signer = AssetSigner(SECRET, clock=lambda: now[0])
+    token = signer.sign(AssetGrant(RESTRICTED, COLLECTION, OWNER)).token
+
+    now[0] += 30 * 60
+    assert signer.verify(token, RESTRICTED) is not None
+    now[0] += 1
     assert signer.verify(token, RESTRICTED) is None
 
 
@@ -393,6 +408,7 @@ async def test_a_public_document_read_through_a_collection_keeps_plain_urls(stor
                                     AssetSigner(SECRET))
 
     assert result.pages[0].image_url == f"/api/documents/{DOC}/pages/{PAGE_1}/image"
+    assert result.access_expires_at is None
 
 
 async def _restricted_image_url(client, signed_in, user=OWNER) -> str:
@@ -400,6 +416,9 @@ async def _restricted_image_url(client, signed_in, user=OWNER) -> str:
     manifest = await client.get(f"/api/documents/{RESTRICTED}/pages", params={"collection_id": str(COLLECTION)})
     assert manifest.status_code == 200, manifest.text
     assert manifest.headers["cache-control"] == "private, no-store"
+    # The viewer reads the manifest again before its signed URLs expire.
+    expires = datetime.fromisoformat(manifest.json()["access_expires_at"])
+    assert timedelta(minutes=29) < expires - datetime.now(UTC) <= timedelta(minutes=30)
     signed_in["user"] = None  # the browser loads the image without a token
     return manifest.json()["pages"][0]["image_url"]
 

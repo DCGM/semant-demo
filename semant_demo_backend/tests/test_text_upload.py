@@ -231,6 +231,10 @@ async def test_a_vector_not_approved_for_private_text_disables_uploads():
                  SCHEMA.chunk_references, SCHEMA.chunk_vectors),
     UploadSchema(SCHEMA.document_properties, SCHEMA.document_references, SCHEMA.chunk_properties,
                  SCHEMA.chunk_references, frozenset({"default"})),
+    UploadSchema(SCHEMA.document_properties, SCHEMA.document_references,
+                 {**SCHEMA.chunk_properties, "documentPublic": "text"}, SCHEMA.chunk_references, SCHEMA.chunk_vectors),
+    UploadSchema(SCHEMA.document_properties, SCHEMA.document_references,
+                 {**SCHEMA.chunk_properties, "haveVector": "text"}, SCHEMA.chunk_references, SCHEMA.chunk_vectors),
 ])
 async def test_a_store_that_lacks_what_the_upload_writes_is_refused_before_reading(schema):
     store = Store(schema=schema)
@@ -312,8 +316,23 @@ async def test_a_completed_upload_is_private_ordered_embedded_and_linked():
     assert all(c["properties"]["classification_provenance"] == "UNPROCESSED" for c in chunks)
     assert all(c["collections"] == {COLLECTION} and set(c["vectors"]) == {"default", "second"} for c in chunks)
     assert all(len(batch) <= 5 for batch in main.calls + small.calls)
-    assert not any(k in chunks[0]["properties"] for k in ("start_page_id", "from_page", "to_page", "yearIssued"))
+    assert not any(k in chunks[0]["properties"] for k in ("start_page_id", "from_page", "to_page", "yearIssued",
+                                                          "documentPublic", "haveVector"))  # not declared
     assert store.calls[-1] == "link_document"  # linked only after the readback
+
+
+async def test_declared_chunk_flags_mark_the_chunks_private_and_list_their_vectors():
+    """``documentPublic=false`` (#793) and ``haveVector`` (#805), when the store declares them."""
+    schema = UploadSchema(SCHEMA.document_properties, SCHEMA.document_references,
+                          {**SCHEMA.chunk_properties, "documentPublic": "boolean", "haveVector": "text[]"},
+                          SCHEMA.chunk_references, SCHEMA.chunk_vectors)
+    result, store, _ = await upload([("a.txt", b"Jeden.\n\nDva.")], store=Store(schema=schema),
+                                    search_vectors=vectors(Embedder(), Embedder(dim=2)))
+    [file] = result.files
+    chunks = store.chunks_of(file.document_id)
+    assert file.status == "completed" and chunks
+    assert all(c["properties"]["documentPublic"] is False for c in chunks)
+    assert all(c["properties"]["haveVector"] == ["default", "second"] for c in chunks)
 
 
 async def test_csv_metadata_is_stored_and_the_year_copied_to_the_chunks():

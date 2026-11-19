@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.documents.criteria import DocumentFilters
@@ -640,6 +640,81 @@ class AnnotationIds(BaseModel):
     """Each one's ``attributeVersion`` then, which attribute assignments send back (#331)."""
 
 
+MAX_FACETS = 100
+"""Facets one request may ask for (#667)."""
+MAX_FACET_VALUES = 500
+"""Values of the document facet returned (most annotations first); the rest are reported as truncated.
+A ranked query has at most ``MAX_TOP_K`` annotations, so its facet is never truncated."""
+FACET_NAMES = ("tag", "type", "document", "year", "library", "language")
+"""The facets besides ``attribute:<attribute id>`` (#667)."""
+
+
+class AnnotationFacetsRequest(AnnotationFilters):
+    """The annotation query whose facet counts to compute (#667): the filters of #663, the retrieval
+    ``ranking`` of #664 and the ``facets`` wanted: ``tag``, ``type``, ``document``, ``year``,
+    ``library``, ``language`` and ``attribute:<attribute id>``."""
+    facets: list[str] = Field(min_length=1, max_length=MAX_FACETS)
+    ranking: AnnotationRanking = Field(default_factory=AnnotationRanking)
+
+    @field_validator("facets")
+    @classmethod
+    def _known(cls, facets: list[str]) -> list[str]:
+        for facet in facets:
+            name, _, attribute = facet.partition(":")
+            if name == "attribute":
+                try:
+                    UUID(attribute)
+                except ValueError:
+                    raise ValueError(f"Malformed attribute facet {facet!r}: use attribute:<attribute id>") from None
+            elif facet not in FACET_NAMES:
+                raise ValueError(f"Unknown facet {facet!r}")
+        return list(dict.fromkeys(facets))
+
+
+class FacetPopulation(str, Enum):
+    filtered = "filtered"
+    """Every annotation matching the filters (lexical queries): exact counts."""
+    top_k = "top_k"
+    """The retrieved top ``k`` of a ranked query: counts of exactly the returned annotations."""
+
+
+class FacetValue(BaseModel):
+    value: str
+    """The tag, document, attribute value id, type, year, library or language code."""
+    count: int
+    """Annotations of the facet's population with this value."""
+    inapplicable: int = 0
+    """Attribute facets: of ``count``, annotations whose current tag the attribute no longer applies to
+    (#500); their values are kept but are no current classification."""
+
+
+class Facet(BaseModel):
+    facet: str
+    values: list[FacetValue]
+    """Values with at least one annotation, most first, then by value; attribute facets list every
+    value of the attribute in its definition order (retired ones only with annotations), also with 0."""
+    missing: int
+    """Annotations of the population without a value (no year, no value of the attribute, ...)."""
+    total: int
+    """Annotations of the facet's population: the query with this facet's own filter removed."""
+    distinct: int | None = None
+    """Document facet: how many documents have annotations in the population (``values`` may be fewer)."""
+    truncated: bool = False
+    """Document facet: ``values`` leaves out documents (at most ``MAX_FACET_VALUES`` are returned)."""
+
+
+class AnnotationFacets(BaseModel):
+    """Facet counts of an annotation query (#667). ``population``: what is counted. With
+    ``filtered`` every facet is counted with the query's filter on that same facet removed
+    (``self_exclusion``), so the other choices of an active filter stay visible; with ``top_k`` the
+    fixed top ``k`` set is counted as it is. Multi-valued attributes count an annotation once per value
+    it holds, so value counts may add up to more than ``total``."""
+    population: FacetPopulation
+    self_exclusion: bool
+    k: int | None = None
+    facets: list[Facet]
+
+
 class ReviewAction(str, Enum):
     approve = "approve"
     """Set type ``pos`` (confirmed)."""
@@ -872,7 +947,7 @@ class SuggestionRunOutcome(str, Enum):
 
 
 class SuggestTagLimit(BaseModel):
-    """An optimized-mode tag whose Topicer stream reached the per-tag chunk limit."""
+    """An optimized-mode tag whose candidate chunks reached the per-tag chunk limit."""
     tag_id: str
     tag_name: str
     max_chunks: int
@@ -908,9 +983,11 @@ class SuggestSpansRunEnd(BaseModel):
     """Provider calls that failed (their chunks or tags got no proposals)."""
     error: str | None = None
     """Why the run did not complete, if it did not."""
-    unit: Literal["chunk", "tag", "selection"] = "chunk"
+    unit: Literal["chunk", "call", "tag", "selection"] = "chunk"
     units_total: int = 0
-    """Units the run would process (document chunks, tags, or 1)."""
+    """Units the run would process: ``chunk`` (thorough: the document's chunks), ``call``
+    (optimized: one Topicer call per candidate chunk and tag, known once the candidates are
+    ranked, #792) or 1 ``selection``. ``tag`` is no longer used."""
     units_processed: int = 0
     """Units admitted and sent to Topicer."""
     stop_reason: Literal["quota_exhausted"] | None = None
@@ -918,7 +995,7 @@ class SuggestSpansRunEnd(BaseModel):
     quota_exhausted: QuotaExhaustedResponse | None = None
     """The refusal that stopped the run (its ``reset_at``), with ``stop_reason``."""
     max_chunks_per_tag: int | None = None
-    """Optimized mode: the per-tag chunk limit sent to Topicer."""
+    """Optimized mode: the most candidate chunks sent to Topicer per tag."""
     tag_limits: list[SuggestTagLimit] = Field(default_factory=list)
     """Optimized mode: the tags that reached ``max_chunks_per_tag``."""
 

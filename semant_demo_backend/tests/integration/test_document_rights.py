@@ -10,6 +10,7 @@ restricted and ``gazette`` unknown (``rights``); ``chronicle`` stays public. Fix
 import pytest
 
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
+from semant_demo.maintenance.chunk_document_public import sync_document
 
 pytestmark = pytest.mark.integration
 
@@ -19,8 +20,13 @@ EVERY_WORD = "Novák Požár Prahy rodinu Slavia trh"
 
 @pytest.fixture
 async def rights(seeded_store, collection_names, ids):
-    """letters restricted (``public`` false), gazette unknown (no value)."""
+    """letters restricted (``public`` false), gazette unknown (no value). Their chunks'
+    ``documentPublic`` copy is lowered first, as ``metadata_sync`` does (#793): chunk searches
+    filter on the copy."""
     documents = seeded_store.collections.get(collection_names.document_collection_name)
+    for key in ("letters", "gazette"):
+        synced = await sync_document(seeded_store, collection_names.chunks_collection_name, ids.doc[key], False)
+        assert synced.verified and synced.written > 0, synced
     await documents.data.update(uuid=ids.doc["letters"], properties={"public": False})
     await documents.data.update(uuid=ids.doc["gazette"], properties={"public": None})
     stored = {key: (await documents.query.fetch_object_by_id(ids.doc[key], return_properties=["public"]))

@@ -39,7 +39,9 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
 from uuid import UUID, uuid4
 
+from semant_demo.adapters.weaviate.chunk_visibility import PROPERTY as DOCUMENT_PUBLIC
 from semant_demo.adapters.weaviate.classification_provenance import PROPERTY as PROVENANCE, UNPROCESSED
+from semant_demo.adapters.weaviate.have_vector import PROPERTY as HAVE_VECTOR
 from semant_demo.adapters.weaviate.documents import POSITION_PROPERTIES
 from semant_demo.adapters.weaviate.text_upload import StoredUploadChunk, UploadSchema
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
@@ -358,6 +360,10 @@ REQUIRED_CHUNK_PROPERTIES = {"text": "text", "order": "int", "end_paragraph": "b
 """What every uploaded chunk stores, with the declared type it needs."""
 OPTIONAL_CHUNK_PROPERTIES = {"yearIssued": "int", "language": "text"}
 """Copies of the document's year (the year filter, #153) and language, written when declared."""
+FLAG_CHUNK_PROPERTIES = {DOCUMENT_PUBLIC: "boolean", HAVE_VECTOR: "text[]"}
+"""Written when declared: ``documentPublic=false`` (the document is private, #793) and
+``haveVector`` listing the vectors written (#805), so no embedder selects the chunk again.
+Declared with another type, they refuse the upload."""
 DOCUMENT_PROPERTY_TYPES = {"title": ("text",), "public": ("boolean",), "author": ("text[]",),
                            "yearIssued": ("int", "number"), "language": ("text",), "description": ("text",)}
 
@@ -372,6 +378,9 @@ def check_schema(schema: UploadSchema, vectors: list[SearchVector], link: str) -
         problems.append("Documents.collection")
     for name, kind in REQUIRED_CHUNK_PROPERTIES.items():
         if schema.chunk_properties.get(name) != kind:
+            problems.append(f"Chunks.{name}")
+    for name, kind in FLAG_CHUNK_PROPERTIES.items():
+        if schema.chunk_properties.get(name) not in (None, kind):
             problems.append(f"Chunks.{name}")
     for name in ("document", link):
         if name not in schema.chunk_references:
@@ -501,7 +510,7 @@ class _Written:
 
 
 def _chunk_properties(prepared: PreparedFile, chunks: list[TextChunk], first_order: int,
-                      positions: list, schema: UploadSchema) -> list[dict[str, Any]]:
+                      positions: list, schema: UploadSchema, vector_names: list[str]) -> list[dict[str, Any]]:
     result = []
     for i, (chunk, position) in enumerate(zip(chunks, positions)):
         properties: dict[str, Any] = {
@@ -514,6 +523,10 @@ def _chunk_properties(prepared: PreparedFile, chunks: list[TextChunk], first_ord
             properties["yearIssued"] = m.yearIssued
         if m.language and schema.chunk_properties.get("language") == "text":
             properties["language"] = m.language
+        if DOCUMENT_PUBLIC in schema.chunk_properties:
+            properties[DOCUMENT_PUBLIC] = False
+        if HAVE_VECTOR in schema.chunk_properties:
+            properties[HAVE_VECTOR] = sorted(vector_names)
         result.append(properties)
     return result
 
@@ -541,7 +554,8 @@ async def _write_chunks(store: UploadStore, vectors: list[SearchVector], prepare
         batch = prepared.chunks[start:start + limits.embed_batch]
         texts = [c.text for c in batch]
         embedded = {v.target_vector: await embed_batch(v, texts, limits) for v in vectors}
-        properties = _chunk_properties(prepared, batch, start, positions[start:start + len(batch)], schema)
+        properties = _chunk_properties(prepared, batch, start, positions[start:start + len(batch)], schema,
+                                       list(embedded))
         ids = [uuid4() for _ in batch]
         failures = await _bounded([
             store.insert_chunk(chunk_id, document_id, collection_id, props,

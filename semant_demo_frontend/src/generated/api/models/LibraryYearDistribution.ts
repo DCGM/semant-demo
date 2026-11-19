@@ -51,6 +51,12 @@ export interface LibraryYearDistribution {
     scope: LibraryYearDistributionScopeEnum;
     /**
      * 
+     * @type {string}
+     * @memberof LibraryYearDistribution
+     */
+    userCollectionId?: string | null;
+    /**
+     * 
      * @type {LibraryYearDistributionUnitEnum}
      * @memberof LibraryYearDistribution
      */
@@ -110,7 +116,8 @@ export interface LibraryYearDistribution {
  * @export
  */
 export const LibraryYearDistributionScopeEnum = {
-    searchableCorpus: 'searchable_corpus'
+    searchableCorpus: 'searchable_corpus',
+    userCollection: 'user_collection'
 } as const;
 export type LibraryYearDistributionScopeEnum = typeof LibraryYearDistributionScopeEnum[keyof typeof LibraryYearDistributionScopeEnum];
 
@@ -165,6 +172,7 @@ export function LibraryYearDistributionFromJSONTyped(json: any, ignoreDiscrimina
     return {
         
         'scope': json['scope'],
+        'userCollectionId': json['user_collection_id'] == null ? undefined : json['user_collection_id'],
         'unit': json['unit'],
         'filters': DocumentFiltersFromJSON(json['filters']),
         'chunkFilters': json['chunk_filters'] == null ? undefined : ChunkFiltersFromJSON(json['chunk_filters']),
@@ -189,6 +197,7 @@ export function LibraryYearDistributionToJSONTyped(value?: LibraryYearDistributi
     return {
         
         'scope': value['scope'],
+        'user_collection_id': value['userCollectionId'],
         'unit': value['unit'],
         'filters': DocumentFiltersToJSON(value['filters']),
         'chunk_filters': ChunkFiltersToJSON(value['chunkFilters']),

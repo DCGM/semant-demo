@@ -67,7 +67,9 @@ up to 1,000 characters, and a paragraph longer than 1,500 is split at whitespace
 (paragraph breaks included), so positions (`startChar`, `startWord`, `wordOpenAtStart`,
 computed by `features/documents/positions.py`, #463) and annotation offsets refer to that
 text. `end_paragraph` marks a chunk that ends a paragraph. Every chunk gets
-`classification_provenance = UNPROCESSED` (#590). No classification, title generation or
+`classification_provenance = UNPROCESSED` (#590) and, where the store declares them,
+`documentPublic = false` (#793; the document is private) and `haveVector` listing the vectors
+written (#805; no embedder selects the chunk again). No classification, title generation or
 chunk summaries run during an upload (below).
 
 Each chunk gets a vector for **every configured search vector** (`SEARCH_VECTORS_CONFIG`),
@@ -82,7 +84,8 @@ that is decided.
 The store must declare what the upload writes (`Documents.title`, `public`, the
 `collection` reference; `Chunks.text`, `order`, `end_paragraph`, the position properties,
 `classification_provenance`, the `document` and collection references and every configured
-named vector); otherwise uploads answer 503 and the server log names what is missing. The
+named vector; `documentPublic` and `haveVector` are optional but must have their documented
+types when declared); otherwise uploads answer 503 and the server log names what is missing. The
 schema is never changed by an upload.
 
 ## Write order and results

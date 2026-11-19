@@ -2,7 +2,9 @@
 
 The one supported way to add chunks. The only writes are inserting an absent ``Chunks``
 object (with its text, order, document reference, the source fields below, its
-absolute position, #463, and ``classification_provenance=UNPROCESSED``, #590) and, before
+absolute position, #463, ``classification_provenance=UNPROCESSED``, #590, and, where the
+collection declares it, ``documentPublic=false``, #793, so that a new chunk is never public
+before its document's rights are copied) and, before
 the first chunk of a new document, inserting an absent ``Documents`` object without
 properties. Nothing existing is ever updated or deleted, and the schema is only read: it is
 the importer of #128's read-only contract. Both modes refuse a ``Chunks`` collection without
@@ -109,7 +111,9 @@ both readers ignore the repetition. A check writes no list.
 Afterwards (``docs/DATA_MAINTENANCE.md``, *Chunk import*): ``metadata_sync`` (document
 metadata; ``--report --document-ids`` with the list and an evidence-backed library, e.g.
 ``--infer-library-from-pages``, since new documents have none; then ``--apply``), then
-``chunk_year`` (the year on the new chunks) and ``chunk_titles`` (their titles; it uses the
+``chunk_year`` (the year on the new chunks), ``chunk_document_public --document-ids`` with the
+list (their visibility from the documents' ``public``; until then they are not public) and
+``chunk_titles`` (their titles; it uses the
 document titles); ``data_tools/embedder`` (their vectors; until then they are missing from
 vector and hybrid search); ``chunk_summaries`` as the final pass after the classification
 (until then the new documents match no chunk filter). ``chunk_year`` and ``chunk_summaries``
@@ -140,6 +144,7 @@ import numpy as np
 from weaviate import WeaviateAsyncClient
 
 from semant_demo.adapters.weaviate import chunk_ingest as store
+from semant_demo.adapters.weaviate import chunk_visibility as visibility
 from semant_demo.adapters.weaviate import classification_provenance as provenance
 from semant_demo.adapters.weaviate.chunk_positions import (
     PROPERTY_TYPES as POSITION_TYPES, OrderStats, count_chunks, order_stats,
@@ -404,10 +409,14 @@ def _expected_properties(chunk: InputChunk, position: ChunkPosition) -> dict[str
             **{name: getattr(position, attr) for name, attr in POSITION_PROPERTIES.items()}}
 
 
-def _insert_properties(chunk: InputChunk, position: ChunkPosition) -> dict[str, Any]:
+def _insert_properties(chunk: InputChunk, position: ChunkPosition, flag: bool = False) -> dict[str, Any]:
     """What an insert writes: the compared properties and the classification status
-    (``UNPROCESSED``, #590), which is not compared: a chunk classified since still replays."""
-    return {**_expected_properties(chunk, position), provenance.PROPERTY: provenance.UNPROCESSED}
+    (``UNPROCESSED``, #590), which is not compared: a chunk classified since still replays.
+    With ``flag`` (the collection declares ``documentPublic``) also ``documentPublic=false``:
+    a new chunk is never public before ``chunk_document_public`` derives it from its document
+    (#793). It is not compared either: a chunk made public since still replays."""
+    flags = {visibility.PROPERTY: False} if flag else {}
+    return {**_expected_properties(chunk, position), provenance.PROPERTY: provenance.UNPROCESSED, **flags}
 
 
 def matches(stored: store.StoredChunk, chunk: InputChunk, position: ChunkPosition | None) -> str | None:
@@ -491,6 +500,8 @@ class Target:
     documents: str
     fields: tuple[str, ...]
     """The source fields declared on the chunks collection."""
+    document_public: bool = False
+    """Whether the chunks collection declares ``documentPublic`` (#793)."""
 
 
 async def preflight(client: WeaviateAsyncClient, names: CollectionNames) -> Target:
@@ -515,7 +526,10 @@ async def preflight(client: WeaviateAsyncClient, names: CollectionNames) -> Targ
         problems.append(f"the document reference targets {targets}, expected ({documents},)")
     if problems:
         raise LookupError(f"{chunks}: {'; '.join(problems)}. The import never changes the schema; nothing was written")
-    return Target(chunks, documents, tuple(n for n in SOURCE_FIELDS if n in declared.properties))
+    flag = declared.properties.get(visibility.PROPERTY)
+    if flag not in (None, "boolean"):
+        raise LookupError(f"{chunks}.{visibility.PROPERTY} is {flag}, expected boolean; nothing was written")
+    return Target(chunks, documents, tuple(n for n in SOURCE_FIELDS if n in declared.properties), flag is not None)
 
 
 async def examine(client: WeaviateAsyncClient, target: Target, chunks: list[InputChunk]) -> Plan:
@@ -585,7 +599,7 @@ async def write(client: WeaviateAsyncClient, target: Target, plan_: Plan) -> Out
         return outcome
     document = plan_.inserts[0][0].document
     for chunk, position in plan_.inserts:
-        properties = _insert_properties(chunk, position)
+        properties = _insert_properties(chunk, position, target.document_public)
         try:
             await store.insert_chunk(client, target.chunks, chunk.id, document, properties)
         except store.AlreadyExists:
@@ -622,7 +636,8 @@ async def write_bulk(client: WeaviateAsyncClient, target: Target, plans: dict[UU
         round_ = [(d, *queue[0]) for d, queue in pending.items()][:batch]
         try:
             errors = await store.insert_chunks(client, target.chunks, [
-                (chunk.id, d, _insert_properties(chunk, position)) for d, chunk, position in round_])
+                (chunk.id, d, _insert_properties(chunk, position, target.document_public))
+                for d, chunk, position in round_])
         except Exception as e:  # uncertain: what arrived is decided by the read-back
             errors = {chunk.id: f"{type(e).__name__}: {e}" for _, chunk, _ in round_}
         try:
