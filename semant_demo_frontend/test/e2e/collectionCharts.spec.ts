@@ -24,9 +24,15 @@ function bodies (page: Page, kind: (r: Request) => boolean) {
   return seen
 }
 
-async function openCollection (page: Page, name: string) {
-  await page.locator('.q-drawer').getByText('Collections', { exact: true }).click()
-  await page.getByText(name, { exact: true }).click()
+/**
+ * Opens the collection's Overview tab within the app (a hash change, no reload), so kept-alive
+ * Explore stays as it was. Not by clicking the Collections list: with the list already in the
+ * store, it renders at once and again when its fresh answer arrives, and a click in between can
+ * be lost (seen in CI).
+ */
+async function openCollection (page: Page, id: string) {
+  await page.evaluate((hash) => { window.location.hash = hash }, `#/collections/${id}/overview`)
+  await expect(page.getByTestId('explore-collection')).toBeVisible()
 }
 
 for (const viewport of ['wide', 'phone'] as const) {
@@ -71,7 +77,7 @@ test('"Explore this collection" scopes Explore to it, also when Explore was left
   await expect(chip(page, 'Noviny')).toBeVisible()
   expect(hash(page)).toBe('#/search?mode=documents')
 
-  await openCollection(page, chronicles.name)
+  await openCollection(page, chronicles.id)
   const searches = bodies(page, isDocumentSearch)
   await page.getByTestId('explore-collection').click()
 
@@ -119,7 +125,7 @@ test('the collection check ends also when the Collections page loads the list me
   // Review of #796: the check waited for a load of the store that another page replaced, and
   // Explore stayed on "loading" for good.
   await ensureLoggedIn(page, 'owner')
-  await openCollection(page, chronicles.name)
+  await openCollection(page, chronicles.id)
   const held: (() => void)[] = []
   let first = true
   await page.route(url => url.pathname.endsWith('/api/user_collections'), async (route) => {
