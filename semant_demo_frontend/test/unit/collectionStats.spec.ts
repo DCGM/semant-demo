@@ -6,7 +6,10 @@ import { defineComponent, h, reactive } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 
-import type { Collection, CollectionStats } from 'src/generated/api'
+import type { Collection, CollectionStats, CorpusDistributions } from 'src/generated/api'
+import ScopedDocumentCharts from 'src/features/analytics/ScopedDocumentCharts.vue'
+import { exploreCollection } from 'src/features/explore/exploreHandoff'
+import { collectionDocumentChartsKey } from 'src/features/user_collections/useCollectionDocumentCharts'
 import CollectionOverviewPage from 'src/features/user_collections/CollectionOverviewPage.vue'
 import { collectionStatsKey } from 'src/features/user_collections/useCollectionStats'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
@@ -19,10 +22,23 @@ import { queryClient } from 'src/shared/query'
 
 const getById = vi.fn()
 const getStats = vi.fn()
+const getDocumentDistributions = vi.fn()
 const remove = vi.fn()
 
 vi.mock('src/features/user_collections/useUserCollectionsRepository', () => ({
-  useUserCollectionsRepository: () => ({ getById, getStats, remove, getMembers: async () => [] })
+  useUserCollectionsRepository: () => ({ getById, getStats, getDocumentDistributions, remove, getMembers: async () => [] })
+}))
+// The charts are drawn by a stand-in, not Vega (no canvas in jsdom).
+vi.mock('src/shared/visualization/loadEmbed', () => ({
+  loadEmbed: async () => async (element: HTMLElement) => {
+    element.innerHTML = '<svg></svg>'
+    const view = { addSignalListener: () => view }
+    return { finalize: () => undefined, view }
+  }
+}))
+vi.mock('src/features/explore/exploreHandoff', async () => ({
+  ...(await vi.importActual<typeof import('src/features/explore/exploreHandoff')>('src/features/explore/exploreHandoff')),
+  exploreCollection: vi.fn(async () => undefined)
 }))
 vi.mock('src/features/annotations/annotationCounts', () => ({
   countAnnotations: async () => ({ approved: 0, suggestions: 0, rejected: 0 })
@@ -40,6 +56,22 @@ const collection = (id: string): Collection => ({
   updatedAt: new Date('2026-01-02'),
   color: '#123456',
   isSharedWithMe: false
+})
+
+/** The unfiltered document charts of a collection, as the server answers them (#768). */
+const distributions = (collectionId: string, total: number, changes: Partial<CorpusDistributions> = {}): CorpusDistributions => ({
+  scope: 'user_collection',
+  userCollectionId: collectionId,
+  unit: 'documents',
+  filters: { titleContains: [], libraries: [], languages: [] },
+  chunkFilters: { languages: [], classifications: {} },
+  totalDocuments: total,
+  computedAt: new Date('2026-11-19T12:00:00Z'),
+  dataSource: 'live_aggregation',
+  publicationYear: { available: true, years: total ? [{ year: 1905, count: total }] : [], unknownCount: 0 },
+  libraries: { available: true, values: total ? [{ value: 'mzk', count: total }] : [], otherCount: 0, unknownCount: 0 },
+  languages: { available: true, values: total ? [{ value: 'ces', count: total }] : [], otherCount: 0, unknownCount: 0 },
+  ...changes
 })
 
 const stats = (collectionId: string, documentsCount: number): CollectionStats =>
@@ -98,6 +130,8 @@ beforeEach(async () => {
   setActivePinia(createPinia())
   getById.mockReset().mockImplementation(async (id: string) => collection(id))
   getStats.mockReset()
+  getDocumentDistributions.mockReset().mockImplementation(async (id: string) => distributions(id, 3))
+  vi.mocked(exploreCollection).mockClear()
   remove.mockReset().mockResolvedValue(undefined)
   route.params.collectionId = 'A'
   await signIn('u1')
@@ -322,5 +356,89 @@ describe('collection statistics at the session boundary', () => {
 
     expect(counts(page)).toEqual(['1', '10', '2', '5'])
     expect(queryClient.getQueryData(collectionStatsKey('u2', 'A'))).toEqual(stats('A', 1))
+  })
+})
+
+// #795: the document charts of the whole collection, loaded as the statistics are.
+describe('collection document charts on the Overview tab', () => {
+  const chartIds = (page: ReturnType<typeof mountPage>) =>
+    page.findAll('[data-testid]').map(e => e.attributes('data-testid')).filter(id => id?.startsWith('charts-'))
+
+  beforeEach(() => getStats.mockResolvedValue(stats('A', 3)))
+
+  it('charts the documents of the loaded collection, named from the answer, asked for once it has loaded', async () => {
+    const loaded = held<Collection>()
+    getById.mockReturnValue(loaded.promise)
+    const page = mountPage()
+    await flushPromises()
+    expect(getDocumentDistributions).not.toHaveBeenCalled()
+    expect(page.find('[data-testid="collection-document-charts"]').exists()).toBe(false)
+
+    loaded.answer(collection('A'))
+    await flushPromises()
+
+    expect(getDocumentDistributions).toHaveBeenCalledTimes(1)
+    expect(getDocumentDistributions.mock.calls[0][0]).toBe('A')
+    const scope = page.get('[data-testid="charts-scope"]').text()
+    expect(scope).toMatch(/^3\s+documents of collection\s+Collection A\./)
+    expect(page.get('[data-testid="corpus-libraries"]').text()).toContain('of 3 collection documents')
+    expect(queryClient.getQueryData(collectionDocumentChartsKey('u1', 'A'))).toEqual(distributions('A', 3))
+  })
+
+  it('shows no counts that are not of this collection', async () => {
+    getDocumentDistributions.mockImplementation(async () => distributions('B', 7))
+    const page = mountPage()
+    await flushPromises()
+    expect(chartIds(page)).toEqual(['charts-loading'])
+
+    getDocumentDistributions.mockImplementation(async () => distributions('A', 7, { scope: 'searchable_corpus', userCollectionId: null }))
+    await queryClient.refetchQueries()
+    await flushPromises()
+    expect(chartIds(page)).toEqual(['charts-loading'])
+  })
+
+  it('reports a failed count without zeros, and counts again on Try again', async () => {
+    getDocumentDistributions.mockRejectedValueOnce(new Error('503'))
+    const page = mountPage()
+    await flushPromises()
+    expect(page.get('[data-testid="charts-error"]').text()).toContain('could not be counted')
+    expect(page.find('[data-testid="charts-total"]').exists()).toBe(false)
+    expect(getDocumentDistributions).toHaveBeenCalledTimes(1) // not retried behind the user's back
+
+    await page.get('[data-testid="charts-retry"]').trigger('click')
+    await flushPromises()
+    expect(getDocumentDistributions).toHaveBeenCalledTimes(2)
+    expect(page.get('[data-testid="charts-total"]').text()).toBe('3')
+  })
+
+  it('says that an empty collection has no documents', async () => {
+    getDocumentDistributions.mockImplementation(async (id: string) => distributions(id, 0))
+    const page = mountPage()
+    await flushPromises()
+    expect(page.get('[data-testid="charts-empty"]').text()).toContain('This collection has no documents.')
+  })
+
+  it('opens Explore with the collection and the clicked filter alone', async () => {
+    const page = mountPage()
+    await flushPromises()
+
+    page.findComponent(ScopedDocumentCharts).vm.$emit('applyFilter', { dimension: 'libraries', value: 'mzk' })
+
+    expect(exploreCollection).toHaveBeenCalledTimes(1)
+    const [, handoff] = vi.mocked(exploreCollection).mock.calls[0]
+    expect(handoff.userId).toBe('u1')
+    expect(handoff.collectionId).toBe('A')
+    expect(handoff.location).toMatchObject({ mode: 'documents', view: 'visualizations', vector: null })
+    expect(handoff.location.criteria.documentFilters.libraries).toEqual(['mzk'])
+  })
+
+  it('forgets the charts of a deleted collection with its statistics, and keeps the others', async () => {
+    queryClient.setQueryData(collectionDocumentChartsKey('u1', 'A'), distributions('A', 3))
+    queryClient.setQueryData(collectionDocumentChartsKey('u1', 'B'), distributions('B', 7))
+
+    await useUserCollectionsStore().deleteCollection('A')
+
+    expect(queryClient.getQueryData(collectionDocumentChartsKey('u1', 'A'))).toBeUndefined()
+    expect(queryClient.getQueryData(collectionDocumentChartsKey('u1', 'B'))).toEqual(distributions('B', 7))
   })
 })

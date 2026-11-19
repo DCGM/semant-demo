@@ -53,56 +53,11 @@
       <div class="q-mt-sm">{{ slow ? 'Counting the matching documents takes longer than usual…' : 'Counting the matching documents…' }}</div>
     </div>
 
-    <template v-else>
-      <div class="explore-visualizations__scope" data-testid="charts-scope">
-        <div v-if="collectionName !== null" class="text-subtitle1">
-          <strong data-testid="charts-total">{{ formatCount(shown.totalDocuments) }}</strong>
-          {{ shown.totalDocuments === 1 ? 'document' : 'documents' }} of collection
-          <strong data-testid="charts-collection-name">{{ collectionName }}</strong>{{ filtered ? (shown.totalDocuments === 1 ? ' matches' : ' match') + ' the applied filters' : '' }}.
-        </div>
-        <div v-else class="text-subtitle1">
-          <strong data-testid="charts-total">{{ formatCount(shown.totalDocuments) }}</strong>
-          {{ shown.totalDocuments === 1 ? 'document matches' : 'documents match' }}
-          {{ filtered ? 'the applied filters' : '(the whole searchable corpus)' }}.
-        </div>
-        <p class="text-caption text-grey-8 q-mb-none">
-          <template v-if="collectionName !== null">
-            Every chart counts distinct documents of the collection: all documents added to it, also those without a
-            passage in it, counted in the corpus database, not the loaded results or a sample.
-          </template>
-          <template v-else>
-            Every chart counts distinct documents: all that match, counted in the corpus database, not the loaded results
-            or a sample.
-          </template>
-          <template v-if="perDimension">
-            A document matches the passage filters when, for each of them, at least one of its passages has a chosen value;
-            different filters may be met by different passages.
-            <template v-if="collectionName !== null">All passages of each document count, not only those in the collection.</template>
-          </template>
-        </p>
-      </div>
-      <div v-if="loading" class="explore-visualizations__updating" role="status" aria-live="polite">
-        <q-spinner size="20px" color="primary" />
-        <span>{{ slow ? 'Counting the matching documents takes longer than usual…' : 'Counting the matching documents…' }}</span>
-      </div>
-      <div v-if="shown.totalDocuments === 0" class="explore-visualizations__status" role="status" data-testid="charts-empty">
-        <template v-if="collectionName !== null && !filtered">
-          <q-icon name="folder_open" size="2.5em" />
-          <div class="q-mt-sm text-subtitle1">This collection has no documents.</div>
-          <div class="text-caption">Add documents or passages to it from the Results.</div>
-        </template>
-        <template v-else>
-          <q-icon name="search_off" size="2.5em" />
-          <div class="q-mt-sm text-subtitle1">{{ collectionName !== null ? 'No documents of this collection match these filters.' : 'No documents match these filters.' }}</div>
-          <div class="text-caption">Remove some of the filters above.</div>
-        </template>
-      </div>
-      <DocumentDistributions
-        v-else :distributions="shown" :loading="loading"
-        :unit-label="collectionName !== null ? 'collection documents' : 'documents'"
-        @apply-filter="(filter) => emit('applyFilter', filter)"
-      />
-    </template>
+    <ScopedDocumentCharts
+      v-else :distributions="shown" :loading="loading" :slow="slow" :collection-name="collectionName"
+      empty-hint="Add documents or passages to it from the Results."
+      @apply-filter="(filter) => emit('applyFilter', filter)"
+    />
   </section>
 </template>
 
@@ -122,8 +77,7 @@ import { computed } from 'vue'
 import type { CorpusDistributions } from 'src/generated/api'
 import RankedResultCharts from './RankedResultCharts.vue'
 import type { RankedChartsState } from './useResultCharts'
-import DocumentDistributions from 'src/features/analytics/DocumentDistributions.vue'
-import { hasChunkFilters, isUnfiltered } from 'src/features/analytics/corpusOverview'
+import ScopedDocumentCharts from 'src/features/analytics/ScopedDocumentCharts.vue'
 import type { ChartFilter } from 'src/features/analytics/corpusOverview'
 import type { ChartsAvailability } from './useExploreCharts'
 
@@ -155,17 +109,11 @@ const emit = defineEmits<{
 const NOTHING_RANKED: RankedChartsState = { searching: false, searchError: null, counts: null, slow: false, error: null, invalid: false, vectorName: null }
 const ranked = computed(() => props.ranked ?? NOTHING_RANKED)
 
-const numberFormat = new Intl.NumberFormat('en')
-const formatCount = (n: number) => numberFormat.format(n)
-
 /** The counts, when they are of the population the page charts; else none (yet). */
 const shown = computed(() => {
   const d = props.distributions
   return d && (d.userCollectionId ?? null) === props.userCollectionId ? d : null
 })
-// From the counts' own (echoed) filters, not the ones being requested.
-const perDimension = computed(() => hasChunkFilters(shown.value?.chunkFilters))
-const filtered = computed(() => !!shown.value && (!isUnfiltered(shown.value.filters) || perDimension.value))
 /** The counted collection's name when the counts describe a collection, else null. */
 const collectionName = computed(() => {
   const d = shown.value
@@ -182,19 +130,6 @@ const collectionName = computed(() => {
   min-height: 160px;
   padding: 32px 16px;
   text-align: center;
-  color: #4a5568;
-}
-
-.explore-visualizations__scope {
-  margin-bottom: 16px;
-  max-width: 80ch;
-}
-
-.explore-visualizations__updating {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
   color: #4a5568;
 }
 </style>
