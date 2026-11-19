@@ -204,28 +204,75 @@
     <div class="ai-section-label">
       Pending suggestions
       <span class="text-caption text-grey-6 q-ml-xs">({{ pendingAutoSpans.length }})</span>
+      <q-space />
+      <q-btn
+        flat dense round size="sm"
+        :icon="pendingSuggestionsOpen ? 'expand_less' : 'expand_more'"
+        :aria-label="pendingSuggestionsOpen ? 'Hide pending suggestions' : 'Show pending suggestions'"
+        :aria-expanded="pendingSuggestionsOpen ? 'true' : 'false'"
+        data-testid="pending-suggestions-toggle"
+        @click="pendingSuggestionsOpen = !pendingSuggestionsOpen"
+      >
+        <q-tooltip>{{ pendingSuggestionsOpen ? 'Hide pending suggestions' : 'Show pending suggestions' }}</q-tooltip>
+      </q-btn>
     </div>
-    <div v-if="!pendingAutoSpans.length" class="text-body2 text-grey-6">
+    <div v-if="pendingSuggestionsOpen && !pendingAutoSpans.length" class="text-body2 text-grey-6">
       No unresolved AI suggestions in the displayed chunks.
     </div>
-    <template v-else>
-      <!-- These controls only change the presentation of pending proposals. They do
-           not affect the tag checkboxes used to run AI / Clear unresolved above. -->
-      <div class="proposal-controls">
-        <div class="proposal-control-row">
-          <q-select
-            v-model="proposalSort"
-            :options="proposalSortOptions"
-            emit-value map-options dense outlined options-dense
-            label="Sort by" class="proposal-control" data-testid="proposal-sort"
-          />
-          <q-btn
-            flat dense round :icon="proposalDescending ? 'south' : 'north'"
-            :aria-label="proposalDescending ? 'Sort descending' : 'Sort ascending'"
-            @click="proposalDescending = !proposalDescending"
-          >
-            <q-tooltip>Reverse sort direction</q-tooltip>
-          </q-btn>
+    <template v-else-if="pendingSuggestionsOpen">
+      <!-- Sorting is always available; only optional filters are folded away. -->
+      <div class="proposal-toolbar" role="group" aria-label="Sort and filter suggestions">
+        <q-select
+          v-model="proposalSort"
+          :options="proposalSortOptions"
+          emit-value map-options dense outlined options-dense
+          label="Sort by" class="proposal-sort" data-testid="proposal-sort"
+        />
+        <q-btn
+          flat dense round size="sm"
+          :icon="proposalDescending ? 'south' : 'north'"
+          :aria-label="proposalDescending ? 'Sort descending' : 'Sort ascending'"
+          @click="proposalDescending = !proposalDescending"
+        >
+          <q-tooltip>Reverse sort direction</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat dense no-caps size="sm" color="primary" icon="filter_list"
+          :label="activeProposalFilterCount ? `Filters (${activeProposalFilterCount})` : 'Filters'"
+          :aria-expanded="proposalFiltersOpen ? 'true' : 'false'"
+          data-testid="proposal-filters-toggle"
+          @click="proposalFiltersOpen = !proposalFiltersOpen"
+        >
+          <q-tooltip>{{ proposalFiltersOpen ? 'Hide filters' : 'Show filters' }}</q-tooltip>
+        </q-btn>
+      </div>
+      <div v-if="!proposalFiltersOpen && hasActiveProposalFilters" class="proposal-active-filters"
+        role="group" aria-label="Active suggestion filters" data-testid="proposal-active-filters">
+        <q-chip v-if="proposalTagId !== null" dense removable color="grey-2" text-color="grey-9" class="proposal-filter-chip"
+          data-testid="proposal-filter-tag-chip" remove-aria-label="Remove tag filter"
+          @remove="proposalTagId = null">
+          <span class="proposal-chip-text">Tag: {{ selectedProposalTag?.name || 'Unknown tag' }}</span>
+        </q-chip>
+        <q-chip v-if="minimumConfidencePercent !== null" dense removable color="grey-2" text-color="grey-9" class="proposal-filter-chip"
+          data-testid="proposal-filter-confidence-chip" remove-aria-label="Remove confidence filter"
+          @remove="minimumConfidencePercent = null">
+          ≥{{ minimumConfidencePercent }}%
+        </q-chip>
+        <q-chip v-if="proposalReasonQuery.trim()" dense removable color="grey-2" text-color="grey-9" class="proposal-filter-chip"
+          data-testid="proposal-filter-reason-chip" remove-aria-label="Remove explanation filter"
+          @remove="proposalReasonQuery = ''">
+          <span class="proposal-chip-text">Explanation: {{ proposalReasonQuery.trim() }}</span>
+        </q-chip>
+      </div>
+      <!-- Filters only change the presentation of proposals, not the AI-run tag choices. -->
+      <div v-if="proposalFiltersOpen" class="proposal-controls">
+        <div class="proposal-controls-header">
+          <span class="text-caption text-grey-7" data-testid="proposal-filter-count">
+            {{ activeProposalFilterCount }} active {{ activeProposalFilterCount === 1 ? 'filter' : 'filters' }}
+          </span>
+          <q-btn flat dense no-caps color="primary" label="Reset filters" size="sm" icon="refresh"
+            :disable="!hasActiveProposalFilters" data-testid="proposal-reset-filters"
+            @click="resetProposalFilters" />
         </div>
         <div class="proposal-control-row">
           <q-select
@@ -248,33 +295,31 @@
             </template>
           </q-select>
           <q-input
-            :model-value="proposalReasonQuery" @update:model-value="setProposalReason"
-            dense outlined clearable
-            label="Explanation contains" class="proposal-control"
-            data-testid="proposal-reason-filter"
+            :model-value="minimumConfidencePercent"
+            @update:model-value="setMinimumConfidence"
+            type="number" min="0" max="100" step="1"
+            dense outlined clearable label="Min. confidence(%)"
+            class="proposal-control" data-testid="proposal-confidence-filter"
           />
         </div>
         <div class="proposal-control-row">
           <q-input
-            :model-value="minimumConfidencePercent"
-            @update:model-value="setMinimumConfidence"
-            type="number" min="0" max="100" step="1"
-            dense outlined clearable label="Minimum confidence (%)"
-            class="proposal-control" data-testid="proposal-confidence-filter"
+            :model-value="proposalReasonQuery" @update:model-value="setProposalReason"
+            dense outlined clearable
+            label="Explanation contains" class="proposal-control proposal-control--full"
+            data-testid="proposal-reason-filter"
           />
-          <q-btn flat dense no-caps label="Reset filters" size="sm"
-            :disable="!hasActiveProposalFilters" @click="resetProposalFilters" />
         </div>
-        <div class="text-caption text-grey-7" data-testid="proposal-match-count">
-          {{ visibleSuggestions.length }} of {{ pendingAutoSpans.length }} matching
-        </div>
-        <div v-if="documentOrderUnavailable"
-          class="text-caption text-warning" role="status">
-          Document order is unavailable until the reader has loaded the canonical chunk positions.
-        </div>
-        <div v-if="revealedSuggestion" class="text-caption text-grey-7" role="status">
-          Filters were reset to reveal the suggestion selected in the text.
-        </div>
+      </div>
+      <div class="text-caption text-grey-7 q-mb-xs" data-testid="proposal-match-count">
+        {{ visibleSuggestions.length }} of {{ pendingAutoSpans.length }} matching
+      </div>
+      <div v-if="documentOrderUnavailable"
+        class="text-caption text-warning" role="status">
+        Document order is unavailable until the reader has loaded the canonical chunk positions.
+      </div>
+      <div v-if="revealedSuggestion" class="text-caption text-grey-7" role="status">
+        Filters were reset to reveal the suggestion selected in the text.
       </div>
       <div v-if="!visibleSuggestions.length && !documentOrderUnavailable" class="text-body2 text-grey-6 q-my-xs"
         data-testid="no-matching-proposals">
@@ -566,6 +611,8 @@ async function focusSuggestionById(id: string) {
     index = visibleSuggestions.value.findIndex((e) => e.span.id === id)
   }
   if (index < 0) return // already resolved or removed in a stream
+  // Text/gutter navigation can reveal a proposal even after the list was folded.
+  pendingSuggestionsOpen.value = true
   await nextTick()
   if (request !== suggestionFocusRequest ||
     collectionId !== props.collectionId || documentId !== props.documentId ||
@@ -689,6 +736,10 @@ const pendingAutoSpans = computed<AutoSpanEntry[]>(() =>
   }))
 )
 
+// UI-only sections; collapsing must not change filters or the selected IDs.
+const pendingSuggestionsOpen = ref(true)
+const proposalFiltersOpen = ref(false)
+
 const proposalSort = ref<ProposalSort>('confidence')
 const proposalDescending = ref(true)
 // Natural defaults per mode: confidence/newest first, document/alphabetical first.
@@ -722,8 +773,9 @@ const proposalTagOptions = computed(() => [
     label: tag.name, value: tag.id, icon: tag.pictogram || 'label', color: tag.color
   }))
 ])
-const hasActiveProposalFilters = computed(() => proposalTagId.value !== null ||
-  minimumConfidencePercent.value !== null || !!proposalReasonQuery.value.trim())
+const activeProposalFilterCount = computed(() => Number(proposalTagId.value !== null) +
+  Number(minimumConfidencePercent.value !== null) + Number(!!proposalReasonQuery.value.trim()))
+const hasActiveProposalFilters = computed(() => activeProposalFilterCount.value > 0)
 
 function setMinimumConfidence(value: string | number | null) {
   if (value === '' || value === null) {
@@ -969,6 +1021,8 @@ watch(
     proposalSort.value = 'confidence'
     proposalDescending.value = true
     resetProposalFilters()
+    pendingSuggestionsOpen.value = true
+    proposalFiltersOpen.value = false
     revealedSuggestion.value = false
     lastDeletedCount.value = null
     lastStatusKind.value = null
@@ -1047,20 +1101,77 @@ watch(chosenAiTagIds, (ids) => {
   margin-bottom: 6px;
 }
 
-/* Let the sidebar scroll when the controls exceed its available height.
-   Keep a usable QVirtualScroll viewport instead of collapsing it behind
-   the bulk-action bar. */
+/* The AI panel is not `fill`: the parent right sidebar scrolls over run options,
+   filters and actions. The virtualized list keeps a bounded inner viewport. */
 .ai-assist-panel {
-  min-height: 100%;
+  min-height: 0;
   height: auto;
 }
+.ai-assist-panel .ai-tag-list,
+.ai-assist-panel.has-pending .ai-tag-list {
+  flex: none;
+}
+.ai-assist-panel .auto-span-list,
 .ai-assist-panel.has-pending .auto-span-list {
-  min-height: 180px;
+  flex: none;
+  min-height: 0;
+  max-height: 360px;
 }
 
+.proposal-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 4px;
+  margin: 4px 0 5px;
+}
+.proposal-sort {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.proposal-toolbar > .q-btn {
+  flex: 0 0 auto;
+}
+.proposal-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+.proposal-active-filters .q-chip {
+  margin: 2px;
+  max-width: 100%;
+}
+.proposal-active-filters .proposal-filter-chip {
+  border: 1px solid #dadce0;
+}
+.proposal-active-filters .proposal-filter-chip :deep(.q-chip__icon--remove) {
+  opacity: 0.65;
+  font-size: 18px;
+}
+.proposal-chip-text {
+  display: inline-block;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
 .proposal-controls {
   flex: 0 0 auto;
-  padding: 2px 0 6px;
+  padding: 4px 0 6px;
+}
+.proposal-control--full {
+  flex-basis: 100%;
+}
+.proposal-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .proposal-control-row {
@@ -1109,7 +1220,7 @@ watch(chosenAiTagIds, (ids) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 15%;
+  max-height: min(260px, 40vh);
   overflow-y: auto;
   padding: 4px 6px;
   background: rgba(15, 23, 42, 0.03);

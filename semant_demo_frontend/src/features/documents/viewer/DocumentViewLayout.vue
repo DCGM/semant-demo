@@ -24,14 +24,13 @@
     <RightSidebarPanel :id="DOCUMENT_SIDEBAR_PANELS.tags" label="Tags" icon="sell" :order="0">
       <DocumentTagsPanel ref="tagsPanelRef" :collection-id="collectionId" :document-id="documentId" />
     </RightSidebarPanel>
-    <!-- fill: only the suggestion list scrolls, the run controls stay in view -->
+    <!-- The AI panel grows naturally and scrolls with the right sidebar. -->
     <RightSidebarPanel
       :id="DOCUMENT_SIDEBAR_PANELS.ai"
       label="AI Tagging"
       icon="auto_awesome"
       :order="1"
       :busy="aiAssist.isRunning.value || aiAssist.isSelectionRunning.value"
-      fill
     >
       <AiAssistPanel :collection-id="collectionId" :document-id="documentId" />
     </RightSidebarPanel>

@@ -6,6 +6,11 @@ import { chunkText, deleteSuggestions, ensureLoggedIn, fixture, openDocument, si
 // the run is still under way when the test acts. Runs save suggestions: each test deletes
 // the unresolved "person" suggestions it created (fixture spans have other tags or types).
 
+async function openProposalFilters (page: Page) {
+  await page.getByTestId('proposal-filters-toggle').click()
+  await expect(page.getByTestId('proposal-tag-filter')).toBeVisible()
+}
+
 async function startPersonRun (page: Page) {
   await sidebarPanelButton(page, 'AI Tagging').click()
   await page.locator('.ai-tag-list').getByText(fixture.tag('person').name, { exact: true }).click()
@@ -113,6 +118,7 @@ test('proposal filters preserve hidden selection and AI-run tags (#465)', async 
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
   const panel = page.locator('.ai-assist-panel')
+  await openProposalFilters(page)
   const runTagCheckboxes = () => panel.locator('[data-testid="ai-run-options"] .q-checkbox')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-checked')))
   const runTagsBefore = await runTagCheckboxes()
@@ -154,6 +160,7 @@ test('clicking a gutter annotation reveals a filtered-out proposal and focuses i
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
+  await openProposalFilters(page)
 
   await page.getByTestId('proposal-tag-filter').click()
   await page.getByRole('option', { name: fixture.tag('person').name, exact: true }).click()
@@ -171,6 +178,7 @@ test('changing collection/document clears proposal filters and selection (#465)'
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
+  await openProposalFilters(page)
   const panel = page.locator('.ai-assist-panel')
   await panel.locator('.auto-span-bulk-bar .q-checkbox').click()
   await expect(page.getByTestId('proposal-selection-count')).toContainText('1 / 1 visible selected')
@@ -193,6 +201,7 @@ test('tag filter displays pictograms and confidence remains a numeric input (#46
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
+  await openProposalFilters(page)
   const confidence = page.getByTestId('proposal-confidence-filter')
   await expect(confidence).toHaveAttribute('type', 'number')
   await confidence.fill('75')
@@ -207,4 +216,42 @@ test('tag filter displays pictograms and confidence remains a numeric input (#46
 
   const tagField = page.locator('.q-field').filter({ has: tagFilter })
   await expect(tagField.locator('.q-field__prepend .q-icon')).toHaveCount(1)
+})
+
+test('compact filters and pending suggestions fold without losing filter state (#465)', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Tagging').click()
+
+  await expect(page.getByTestId('proposal-sort')).toBeVisible()
+  await expect(page.getByTestId('proposal-tag-filter')).toHaveCount(0)
+  await openProposalFilters(page)
+  await page.getByTestId('proposal-tag-filter').click()
+  await page.getByRole('option', { name: fixture.tag('person').name, exact: true }).click()
+  await expect(page.getByTestId('proposal-active-filters')).toHaveCount(0)
+  await expect(page.getByTestId('proposal-filter-count')).toHaveText('1 active filter')
+  await expect(page.getByTestId('proposal-reset-filters')).toBeEnabled()
+  await expect(page.getByTestId('no-matching-proposals')).toBeVisible()
+
+  await page.getByTestId('proposal-filters-toggle').click()
+  await expect(page.getByTestId('proposal-tag-filter')).toHaveCount(0)
+  await expect(page.getByTestId('proposal-active-filters')).toBeVisible()
+  await page.getByTestId('pending-suggestions-toggle').click()
+  await expect(page.getByTestId('proposal-sort')).toHaveCount(0)
+  await page.getByTestId('pending-suggestions-toggle').click()
+  await expect(page.getByTestId('proposal-active-filters')).toBeVisible()
+  await page.getByTestId('proposal-filter-tag-chip').locator('.q-chip__icon--remove').click()
+  await expect(page.getByTestId('proposal-match-count')).toContainText('1 of 1 matching')
+
+  await openProposalFilters(page)
+  await expect(page.getByTestId('proposal-filter-count')).toHaveText('0 active filters')
+  await expect(page.getByTestId('proposal-reset-filters')).toBeDisabled()
+  await page.getByTestId('proposal-tag-filter').click()
+  await page.getByRole('option', { name: fixture.tag('person').name, exact: true }).click()
+  await page.getByTestId('proposal-reset-filters').click()
+  await expect(page.getByTestId('proposal-filter-count')).toHaveText('0 active filters')
+  await expect(page.getByTestId('proposal-match-count')).toContainText('1 of 1 matching')
+  await expect(page.locator('[data-sidebar-panel] .ai-assist-panel')).toBeVisible()
+  await expect(page.locator('.sidebar-panel').filter({ has: page.locator('.ai-assist-panel') }))
+    .not.toHaveClass(/sidebar-panel--fill/)
 })
