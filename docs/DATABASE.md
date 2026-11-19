@@ -223,6 +223,12 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   declared (never selected for classification). Declared by `classification_provenance_schema`
   ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-classification-status-classification_provenance_schema-590));
   `chunk_ingest` refuses a store without it.
+- `haveVector` (`text[]`, `field` tokenization, filterable, not searchable) — the names of the
+  named vectors stored on the chunk, e.g. `["Qwen3_Embedding_0_6B"]` (#805, #590); an embedder
+  selects the chunks lacking a vector with `haveVector contains_none([name])`. Declared and
+  filled on the existing corpus by `chunk_have_vector`
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#stored-named-vectors-on-chunks-chunk_have_vector-805)),
+  only where the vector is stored. Chunk ingestion and the embedder do not maintain it yet (#560).
 - `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
   `yearIssued`, absent when the document has none; the search's year filters use it, not the
   document reference (#153). It is not maintained by document writes or chunk ingestion:
