@@ -241,12 +241,18 @@ const handleTagDocument = (documentId: string) => {
   })
 }
 
-// The confirmations name the annotations the collection stops showing (#765); a document
-// whose stats are missing (not loaded yet, or failed) is described as unknown, not as none.
-const removalTarget = (document: Document) => ({
-  title: document.title?.trim() || 'Untitled document',
-  stats: documentStatsMap.value[document.id]
-})
+// The confirmations name the document's annotations in the collection (#765). Stats are
+// used only when loaded for this collection and no reload is under way (the map keeps the
+// previous load until the next one finishes); otherwise the count is described as unknown,
+// never as none.
+const removalTarget = (document: Document) => {
+  const stats = documentStatsMap.value[document.id]
+  return {
+    title: document.title?.trim() || 'Untitled document',
+    stats: !statsLoading.value && stats?.collectionId === collectionId.value ? stats : null,
+    loading: statsLoading.value
+  }
+}
 
 const handleRemoveFromCollection = (document: Document) => {
   // The title as text, not HTML (#479).
