@@ -1,11 +1,15 @@
 """Page assets (#541): the filesystem store, the page reads and their HTTP contract.
 
 The store derives every path from UUIDs and never serves a file outside its root. The
-reads are public, check that the document exists before touching any file, and give a
-text-only document (no manifest) an explicit ``available: false``.
+reads follow the document access rule (#279): a public document's pages are readable by
+anyone; a restricted or unknown one's only through a collection the user can read that holds
+it, with signed asset URLs checked again on every asset read. Every read checks the document
+before touching any file and gives a text-only document (no manifest) an explicit
+``available: false``.
 """
 import json
 import os
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -17,13 +21,19 @@ from semant_demo.adapters.filesystem.page_assets import (
 from semant_demo.adapters.weaviate.documents import chunk_properties
 from semant_demo.core.errors import InvalidRequestError, NotFoundError
 from semant_demo.features.documents import pages
+from semant_demo.features.documents.asset_access import AssetGrant, AssetSigner
 from semant_demo.features.documents.schemas import DocumentChunk, LayoutStart
 from semant_demo.main import create_app
-from semant_demo.routes.dependencies import get_documents
+from semant_demo.routes.dependencies import get_documents, get_user_collections
+from semant_demo.users.auth import current_active_optional_user
 from tests.app_support import make_test_config, offline_weaviate
 
 DOC = UUID("5e3a0000-0000-4000-8000-00000000d541")
 TEXT_ONLY = UUID("5e3a0000-0000-4000-8000-00000000d542")
+RESTRICTED = UUID("5e3a0000-0000-4000-8000-00000000d543")
+"""A document with ``public`` false (or no value), in ``COLLECTION``."""
+COLLECTION = UUID("5e3a0000-0000-4000-8000-0000000c0279")
+OWNER, SHARED, OTHER = (UUID(f"5e3a0000-0000-4000-8000-00000000a{i:03d}") for i in range(3))
 PAGE_1, PAGE_2, PAGE_3 = (UUID(f"5e3a0000-0000-4000-8000-0000000d2f0{i}") for i in (1, 2, 3))
 JPEG = b"\xff\xd8\xff\xe0 synthetic jpeg \xff\xd9"
 LAYOUT = {"schema": "semant.page-layout", "version": 1, "pageId": str(PAGE_1), "regions": []}
@@ -47,6 +57,8 @@ def store(tmp_path) -> PageAssetStore:
     store.write_asset(DOC, PAGE_1, "thumbnail", JPEG[:8])
     store.write_asset(DOC, PAGE_1, "layout", json.dumps(LAYOUT).encode())
     store.write_asset(DOC, PAGE_2, "layout", json.dumps({**LAYOUT, "pageId": str(PAGE_2)}).encode())
+    store.write_manifest(_manifest(RESTRICTED))
+    store.write_asset(RESTRICTED, PAGE_1, "image", JPEG)
     return store
 
 
@@ -114,13 +126,32 @@ class FakeDocuments:
         self.chunks = list(chunks)
         self.calls: list[tuple] = []
 
-    async def exists(self, document_id):
-        self.calls.append(("exists", document_id))
+    async def is_public(self, document_id):
+        self.calls.append(("is_public", document_id))
         return document_id in (DOC, TEXT_ONLY)
 
     async def read_chunks_covering_page(self, document_id, page, limit):
         self.calls.append(("page", document_id, page, limit))
         return [c for c in self.chunks if c.from_page <= page <= c.to_page][:limit]
+
+
+class FakeCollections:
+    """``COLLECTION`` of ``OWNER``, shared with ``SHARED``, holding ``RESTRICTED``."""
+
+    def __init__(self):
+        self.shared = {SHARED}
+        self.documents = {RESTRICTED}
+
+    async def read_access_record(self, cid):
+        return (OWNER, set(self.shared)) if cid == COLLECTION else None
+
+    async def document_in_collection(self, document_id, cid):
+        return cid == COLLECTION and document_id in self.documents
+
+
+class User:
+    def __init__(self, user_id):
+        self.id, self.is_superuser = user_id, False
 
 
 class RecordingStore(PageAssetStore):
@@ -143,7 +174,7 @@ def _chunk(order, from_page, to_page, anchor=None) -> DocumentChunk:
 
 
 async def test_manifest_lists_every_page_with_urls_of_available_assets(store):
-    result = await pages.read_pages(FakeDocuments(), store, str(DOC))
+    result = await pages.read_pages(FakeDocuments(), FakeCollections(), store, None, str(DOC))
 
     assert result.available
     first, second, blank = result.pages
@@ -155,7 +186,7 @@ async def test_manifest_lists_every_page_with_urls_of_available_assets(store):
 
 
 async def test_a_text_only_document_has_no_pages(store):
-    result = await pages.read_pages(FakeDocuments(), store, TEXT_ONLY)
+    result = await pages.read_pages(FakeDocuments(), FakeCollections(), store, None, TEXT_ONLY)
 
     assert (result.available, result.pages) == (False, [])
 
@@ -163,18 +194,18 @@ async def test_a_text_only_document_has_no_pages(store):
 async def test_an_unreadable_manifest_falls_back_to_text_only(store, caplog):
     store.manifest_path(DOC).write_text("{")
 
-    result = await pages.read_pages(FakeDocuments(), store, DOC)
+    result = await pages.read_pages(FakeDocuments(), FakeCollections(), store, None, DOC)
 
     assert (result.available, result.pages) == (False, [])
     assert "Unreadable page manifest" in caplog.text
 
 
-@pytest.mark.parametrize("document_id", [str(uuid4()), "not-a-uuid", "../5e"])
+@pytest.mark.parametrize("document_id", [str(uuid4()), "not-a-uuid", "../5e", str(RESTRICTED)])
 async def test_unknown_documents_touch_no_files(store, document_id):
     recording = RecordingStore(store)
 
-    for read in (pages.read_pages(FakeDocuments(), recording, document_id),
-                 pages.read_page_asset(FakeDocuments(), recording, document_id, PAGE_1, "image")):
+    for read in (pages.read_pages(FakeDocuments(), FakeCollections(), recording, None, document_id),
+                 pages.read_page_asset(FakeDocuments(), FakeCollections(), recording, document_id, PAGE_1, "image")):
         with pytest.raises(NotFoundError):
             await read
     assert not recording.touched
@@ -184,23 +215,23 @@ async def test_unknown_documents_touch_no_files(store, document_id):
                                            (uuid4(), "thumbnail")])
 async def test_absent_assets_are_not_found(store, page_id, kind):
     with pytest.raises(NotFoundError):
-        await pages.read_page_asset(FakeDocuments(), store, DOC, page_id, kind)
+        await pages.read_page_asset(FakeDocuments(), FakeCollections(), store, DOC, page_id, kind)
 
 
 async def test_page_chunks_are_the_chunks_covering_the_page_and_bounded():
     chunks = [_chunk(0, 0, 1), _chunk(1, 1, 1, LayoutStart(**ANCHOR)), _chunk(2, 1, 3), _chunk(3, 3, 3)]
     documents = FakeDocuments(chunks)
 
-    result = await pages.read_page_chunks(documents, DOC, 1, 2)
+    result = await pages.read_page_chunks(documents, FakeCollections(), None, DOC, 1, 2)
 
     assert [c.order for c in result.chunks] == [0, 1]
     assert result.has_more and result.page == 1
     assert result.chunks[1].layoutStart == LayoutStart(**ANCHOR)
     assert documents.calls[-1] == ("page", DOC, 1, 3)
-    assert (await pages.read_page_chunks(documents, DOC, 2, 5)).chunks == [chunks[2]]
+    assert (await pages.read_page_chunks(documents, FakeCollections(), None, DOC, 2, 5)).chunks == [chunks[2]]
     for page, limit in ((-1, 5), (0, 0), (0, pages.MAX_PAGE_CHUNKS + 1)):
         with pytest.raises(InvalidRequestError):
-            await pages.read_page_chunks(documents, DOC, page, limit)
+            await pages.read_page_chunks(documents, FakeCollections(), None, DOC, page, limit)
 
 
 def test_stored_anchors_are_parsed_and_invalid_ones_left_out(caplog):
@@ -215,9 +246,22 @@ def test_stored_anchors_are_parsed_and_invalid_ones_left_out(caplog):
 # --- HTTP --------------------------------------------------------------------------------
 
 @pytest.fixture
-async def client(tmp_path, store):
+def collections():
+    return FakeCollections()
+
+
+@pytest.fixture
+def signed_in():
+    """The signed-in user of ``client``'s requests (``user`` = None: anonymous)."""
+    return {"user": None}
+
+
+@pytest.fixture
+async def client(tmp_path, store, collections, signed_in):
     app = create_app(make_test_config(tmp_path, PAGE_ASSETS_DIR=str(store.root)), weaviate_connector=offline_weaviate)
     app.dependency_overrides[get_documents] = lambda: FakeDocuments([_chunk(0, 0, 1, LayoutStart(**ANCHOR))])
+    app.dependency_overrides[get_user_collections] = lambda: collections
+    app.dependency_overrides[current_active_optional_user] = lambda: signed_in["user"]
     async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
 
@@ -228,9 +272,10 @@ async def test_assets_are_served_anonymously_with_type_and_caching(client):
     thumbnail = await client.get(f"/api/documents/{DOC}/pages/{PAGE_1}/thumbnail")
 
     assert (image.status_code, image.headers["content-type"], image.content) == (200, "image/jpeg", JPEG)
-    assert image.headers["cache-control"] == "public, max-age=86400"
+    # Revalidated on every use, so a document that stops being public is not served from a cache.
+    assert image.headers["cache-control"] == "public, no-cache"
     assert (layout.status_code, layout.headers["content-type"], layout.json()) == (200, "application/json", LAYOUT)
-    assert layout.headers["cache-control"] == "no-cache"
+    assert layout.headers["cache-control"] == "public, no-cache"
     assert (thumbnail.status_code, thumbnail.headers["content-type"]) == (200, "image/jpeg")
 
 
@@ -292,12 +337,128 @@ async def test_without_an_asset_directory_every_document_is_text_only(tmp_path):
     assert image.status_code == 404
 
 
-def test_page_reads_are_public_operations(tmp_path):
+def test_page_reads_need_no_login_and_take_a_collection(tmp_path):
+    """Assets are loaded by the browser without a token; the manifest and page chunks take an
+    optional login and ``collection_id`` (#279), and are answered anonymously (tests above)."""
     paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
 
-    for path in ("/api/documents/{document_id}/pages", "/api/documents/{document_id}/pages/{page_id}/{kind}",
-                 "/api/documents/{document_id}/chunks/by_page"):
-        assert "security" not in paths[path]["get"]
+    assert "security" not in paths["/api/documents/{document_id}/pages/{page_id}/{kind}"]["get"]
+    for path in ("/api/documents/{document_id}/pages", "/api/documents/{document_id}/chunks/by_page"):
+        parameters = {p["name"]: p for p in paths[path]["get"]["parameters"]}
+        assert not parameters["collection_id"]["required"]
     kind = next(p for p in paths["/api/documents/{document_id}/pages/{page_id}/{kind}"]["get"]["parameters"]
                 if p["name"] == "kind")
     assert kind["schema"]["enum"] == ["image", "layout", "thumbnail"]
+
+
+# --- restricted documents (#279) ----------------------------------------------------------
+
+SECRET = "test-asset-secret"
+
+
+def test_asset_tokens_name_one_document_and_expire():
+    now = [1_000_000.0]
+    signer = AssetSigner(SECRET, lifetime_seconds=60, clock=lambda: now[0])
+    grant = AssetGrant(RESTRICTED, COLLECTION, OWNER)
+    signed = signer.sign(grant)
+    token = signed.token
+
+    assert signer.verify(token, RESTRICTED) == grant
+    assert signer.verify(token, DOC) is None                                  # another document
+    assert AssetSigner("another secret").verify(token, RESTRICTED) is None   # another key
+    tampered = token.replace(OWNER.hex, OTHER.hex)
+    assert tampered != token and signer.verify(tampered, RESTRICTED) is None
+    assert signer.verify(None, RESTRICTED) is None and signer.verify("x.y", RESTRICTED) is None
+    assert signed.expires_at.timestamp() == 1_000_060
+    now[0] += 61
+    assert signer.verify(token, RESTRICTED) is None
+
+
+def test_asset_tokens_expire_after_thirty_minutes():
+    """Maintainer decision on #789: a signed URL is a bearer credential, valid 30 minutes."""
+    now = [1_000_000.0]
+    signer = AssetSigner(SECRET, clock=lambda: now[0])
+    token = signer.sign(AssetGrant(RESTRICTED, COLLECTION, OWNER)).token
+
+    now[0] += 30 * 60
+    assert signer.verify(token, RESTRICTED) is not None
+    now[0] += 1
+    assert signer.verify(token, RESTRICTED) is None
+
+
+@pytest.mark.parametrize("user", [None, OWNER, OTHER])
+async def test_a_restricted_document_has_no_pages_without_its_collection(store, user):
+    recording = RecordingStore(store)
+    reader = User(user) if user else None
+
+    for read in (pages.read_pages(FakeDocuments(), FakeCollections(), recording, reader, RESTRICTED),
+                 pages.read_page_chunks(FakeDocuments(), FakeCollections(), reader, RESTRICTED, 0, 5),
+                 pages.read_page_asset(FakeDocuments(), FakeCollections(), recording, RESTRICTED, PAGE_1, "image",
+                                       None, AssetSigner(SECRET))):
+        with pytest.raises(NotFoundError):
+            await read
+    assert not recording.touched
+
+
+async def test_a_public_document_read_through_a_collection_keeps_plain_urls(store):
+    collections = FakeCollections()
+    collections.documents.add(DOC)
+
+    result = await pages.read_pages(FakeDocuments(), collections, store, User(OWNER), DOC, COLLECTION,
+                                    AssetSigner(SECRET))
+
+    assert result.pages[0].image_url == f"/api/documents/{DOC}/pages/{PAGE_1}/image"
+    assert result.access_expires_at is None
+
+
+async def _restricted_image_url(client, signed_in, user=OWNER) -> str:
+    signed_in["user"] = User(user)
+    manifest = await client.get(f"/api/documents/{RESTRICTED}/pages", params={"collection_id": str(COLLECTION)})
+    assert manifest.status_code == 200, manifest.text
+    assert manifest.headers["cache-control"] == "private, no-store"
+    # The viewer reads the manifest again before its signed URLs expire.
+    expires = datetime.fromisoformat(manifest.json()["access_expires_at"])
+    assert timedelta(minutes=29) < expires - datetime.now(UTC) <= timedelta(minutes=30)
+    signed_in["user"] = None  # the browser loads the image without a token
+    return manifest.json()["pages"][0]["image_url"]
+
+
+@pytest.mark.parametrize("user", [OWNER, SHARED])
+async def test_a_restricted_document_scan_is_served_through_its_collection_only(client, signed_in, user):
+    plain = f"/api/documents/{RESTRICTED}/pages/{PAGE_1}/image"
+    url = await _restricted_image_url(client, signed_in, user)
+
+    image = await client.get(url)
+
+    assert url.startswith(plain + "?access=")
+    assert (image.status_code, image.content) == (200, JPEG)
+    assert image.headers["cache-control"] == "private, no-store"
+    assert (await client.get(plain)).status_code == 404
+    assert (await client.get(plain, params={"access": "forged"})).status_code == 404
+    # The token names its document: it opens no other restricted document's assets.
+    other = url.replace(str(RESTRICTED), str(uuid4()), 1)
+    assert (await client.get(other)).status_code == 404
+
+
+@pytest.mark.parametrize("user, status", [(None, 401), (OTHER, 404)])
+async def test_a_restricted_manifest_needs_read_access_to_the_collection(client, signed_in, user, status):
+    signed_in["user"] = User(user) if user else None
+
+    response = await client.get(f"/api/documents/{RESTRICTED}/pages", params={"collection_id": str(COLLECTION)})
+    unscoped = await client.get(f"/api/documents/{RESTRICTED}/pages")
+
+    assert (response.status_code, unscoped.status_code) == (status, 404)
+
+
+@pytest.mark.parametrize("change", ["unshare", "remove document"])
+async def test_a_signed_url_stops_working_when_the_collection_route_is_revoked(client, signed_in, collections,
+                                                                                change):
+    url = await _restricted_image_url(client, signed_in, SHARED)
+    assert (await client.get(url)).status_code == 200
+
+    if change == "unshare":
+        collections.shared.clear()
+    else:
+        collections.documents.clear()
+
+    assert (await client.get(url)).status_code == 404

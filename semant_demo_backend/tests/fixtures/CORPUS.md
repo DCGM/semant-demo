@@ -12,6 +12,11 @@ from there instead of copying IDs or text from here.
 | `letters` | `chronicles` | `letters_1`, `letters_2`: `chronicles` |
 | `gazette` | `newspapers`, `outsider_notes` | `gazette_1`: `newspapers`, `outsider_notes`; `gazette_2`: `newspapers` |
 
+Every fixture document is public (`public: true`), so suites that test other behavior see the
+whole corpus without a collection. Tests of the document access rule (#279) make a document
+restricted (`false`) or unknown (no value) themselves, for example
+`tests/integration/test_document_rights.py`.
+
 A chunk's collections are a subset of its document's. The subset can be smaller: for example,
 `chronicle_3` is not in `chronicles`, although its document is.
 

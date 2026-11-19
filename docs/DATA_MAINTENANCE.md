@@ -77,7 +77,12 @@ start-page ancestry in the mirror (`--infer-library-from-pages`), the stored `li
 (`--infer-library-from-mirror`). Among several candidate libraries, `--prefer-library-with-metadata`
 and then `--library-priority` decide. Documents without a decidable library are `unresolved`.
 `library` and `public` always follow the selected row; other values are filled when empty and
-replaced only with `--overwrite`; nothing is cleared.
+replaced only with `--overwrite`; nothing is cleared. `public` decides who can read the document
+(#279, [ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18)):
+a sync that changes it to `false` (or leaves it without a value) removes the document from
+unscoped Search, Explore, RAG, MCP and the corpus counts at once, while collections that hold it
+can still read it. Review a sync's `public` transitions before writing it; never set `public`
+to `true` to make documents searchable without checking the source library's rights.
 
 Modes:
 

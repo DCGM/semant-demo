@@ -21,6 +21,7 @@
         :document-title="documentTitle"
         :highlights="highlights"
         :layout-cache="layoutCache"
+        :collection-id="collectionId"
         @page-change="(page, index) => emit('pageChange', page, index)"
         @navigate="(page, index) => emit('navigate', page, index)"
         @line-select="emit('lineSelect', $event)"
@@ -89,7 +90,9 @@ withDefaults(defineProps<{
   documentTitle?: string
   highlights?: ScanHighlight[]
   layoutCache?: LayoutCache | null
-}>(), { pageId: null, documentTitle: '', highlights: () => [], layoutCache: null })
+  /** The collection the document is read through (#279). */
+  collectionId?: string | null
+}>(), { pageId: null, documentTitle: '', highlights: () => [], layoutCache: null, collectionId: null })
 
 const emit = defineEmits<{
   'update:narrow': [narrow: boolean]

@@ -72,6 +72,12 @@
         </div>
       </q-td>
     </template>
+    <template #body-cell-documentTitle="props">
+      <q-td :props="props">
+        {{ props.value }}
+        <DocumentRightsBadge :value="props.row._public" class="q-ml-xs" />
+      </q-td>
+    </template>
     <template #body-cell-docStats="props">
       <q-td :props="props" @click.stop>
         <div v-if="statsLoading" class="doc-stats-cell doc-stats-cell--loading">
@@ -163,6 +169,7 @@ import { bulkRemovalConfirmation, singleRemovalConfirmation } from './removalCon
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
+import DocumentRightsBadge from './DocumentRightsBadge.vue'
 import { plural } from 'src/shared/plural'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'

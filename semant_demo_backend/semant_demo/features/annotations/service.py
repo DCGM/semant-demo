@@ -921,7 +921,7 @@ async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilt
                                   "choose fewer neighbor tags or documents.")
     documents = list(counts)
     if conditions and documents:  # annotations of other documents are filtered out anyway
-        documents = list(await store.documents.read_eligible(documents, conditions=conditions))
+        documents = list(await store.documents.read_eligible(documents, conditions=conditions, include_restricted=True))
     limit = proximity.MAX_NEAR_ANNOTATIONS
     if sum(counts[d] for d in documents) > limit:
         raise InvalidRequestError(f"More than {limit} neighbor annotations would have to be compared; "
@@ -934,7 +934,7 @@ async def _apply_near(store: AnnotationStore, cid: UUID, filters: AnnotationFilt
         if len(annotated) > _MAX_DOCUMENTS:
             raise InvalidRequestError(f"The annotations are in more than {_MAX_DOCUMENTS} documents; "
                                       "filter by tag or text first.")
-        primary_documents = list(await store.documents.read_eligible(list(annotated), conditions=conditions)) \
+        primary_documents = list(await store.documents.read_eligible(list(annotated), conditions=conditions, include_restricted=True)) \
             if annotated else []
         candidates = sum(annotated[d] for d in primary_documents)
     elif primary_documents is None or primary_documents:
@@ -1035,7 +1035,7 @@ async def _annotated_documents(store: AnnotationStore, cid: UUID, query: Annotat
         raise InvalidRequestError(
             f"The annotations are in more than {_MAX_DOCUMENTS} documents; filter by tag or text first.")
     if conditions:
-        documents = await store.documents.read_eligible(list(counts), conditions=conditions)
+        documents = await store.documents.read_eligible(list(counts), conditions=conditions, include_restricted=True)
         counts = {d: n for d, n in counts.items() if d in documents}
     else:
         documents = await store.documents.read_many(list(counts))
