@@ -87,6 +87,10 @@ commands, input format and safety rules are in
 [DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313). The import never
 creates the schema.
 
+A store whose search filters on chunk visibility needs `Chunks.documentPublic` declared,
+backfilled and audited before that application is deployed
+([rollout order](DATA_MAINTENANCE.md#document-visibility-on-chunks-chunk_document_public-793)).
+
 ### 3. Embedding Service
 
 This runs the **former** Gemma service, which `configs/search_vectors_gemma.yaml` and `configs/annotation_vector_gemma.yaml` target (select them with `SEARCH_VECTORS_CONFIG` / `ANNOTATION_VECTOR_CONFIG`). The deployed embedder, and the default configuration, is Qwen3-Embedding-0.6B on vLLM ([deploy/README](../deploy/README.md#qwen-embedding-service-385)): `configs/search_vectors_qwen.yaml` (adjust its `base_url` outside the deployment).

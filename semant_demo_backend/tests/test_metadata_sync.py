@@ -1,6 +1,7 @@
 """Kramerius metadata synchronization: mapping, source-library policy, report and apply (#257)."""
 import json
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -10,6 +11,7 @@ from semant_demo.adapters.sql.kramerius_metadata import (
     META_RECORDS, PageChain, read_ancestors, read_meta_records, read_page_chains)
 from semant_demo.config import Config
 from semant_demo.maintenance import metadata_sync
+from semant_demo.maintenance.chunk_document_public import DocumentSync
 from semant_demo.maintenance.kramerius_mapping import (
     FIELDS, IssueDate, SourceRecord, compose_title, map_record, parse_issue_date, values)
 from semant_demo.maintenance.metadata_sync import (
@@ -376,6 +378,11 @@ class FakeDocuments:
         self.updates: list[tuple[UUID, dict]] = []
         self.fail: set[UUID] = set()
         self.lose_writes = False
+        self.flag: str | None = None
+        """The chunks collection declaring ``documentPublic`` (#793); None: not declared."""
+        self.events: list[tuple[str, UUID, Any]] = []
+        """Document writes (``document``, id, public) and chunk syncs (``chunks``, id, value) in order."""
+        self.chunk_fail: set[tuple[UUID, bool]] = set()
 
     def install(self, monkeypatch):
         async def property_types(client, names):
@@ -392,11 +399,22 @@ class FakeDocuments:
             if document_id in self.fail:
                 raise TimeoutError("timed out")
             self.updates.append((document_id, properties))
+            self.events.append(("document", document_id, properties.get("public")))
             if not self.lose_writes:
                 self.documents[document_id].update(properties)
 
+        async def flag_target(client, names):
+            return self.flag
+
+        async def sync_chunks(client, chunks, document_id, value):
+            assert chunks == self.flag
+            self.events.append(("chunks", document_id, value))
+            failed = (document_id, value) in self.chunk_fail
+            return DocumentSync(document_id, value, verified=not failed, error="boom" if failed else None)
+
         for name, fake in (("document_property_types", property_types), ("read_document_page", page),
-                           ("read_documents", read), ("update_document", update)):
+                           ("read_documents", read), ("update_document", update), ("flag_target", flag_target),
+                           ("sync_document", sync_chunks)):
             monkeypatch.setattr(metadata_sync, name, fake)
         return self
 
@@ -993,3 +1011,86 @@ async def test_report_titles_use_the_ancestors(source, monkeypatch):
              {"id": DOC, "library": "mzk", "parent_id": OTHER, "parent_library": "mzk", "title": "12"})
     report = await report_of(source)
     assert report["documents"][0]["changes"]["title"] == {"old": None, "new": "Periodical. 12"}
+
+
+# --- chunk visibility follows public changes, failing closed (#793) ---------------------
+
+async def test_chunks_stop_being_public_before_their_document_and_become_public_after_it(
+        source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk", "public": True}, OTHER: {"library": "mzk", "public": False}})
+    store.install(monkeypatch).flag = "Chunks_test"
+    add_rows(source, {"id": DOC, "library": "mzk", "public": False}, {"id": OTHER, "library": "mzk", "public": True})
+
+    result = await sync_of(source, tmp_path)
+
+    assert store.events == [("chunks", DOC, False), ("document", DOC, False),
+                            ("document", OTHER, True), ("chunks", OTHER, True)]
+    assert result["chunk_flag"] == "Chunks_test" and result["counts"]["chunks_pending"] == 0
+    assert sync_exit_code(result) == 0
+
+
+async def test_a_document_stays_public_when_its_chunks_could_not_be_made_restricted(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk", "public": True}}).install(monkeypatch)
+    store.flag = "Chunks_test"
+    store.chunk_fail.add((DOC, False))
+    add_rows(source, {"id": DOC, "library": "mzk", "public": False})
+
+    first = await sync_of(source, tmp_path)
+
+    assert store.events == [("chunks", DOC, False)] and store.documents[DOC]["public"] is True
+    assert first["to_retry"] == 1 and sync_exit_code(first) == 1
+    assert manifest_of(tmp_path)[0]["reason"].startswith("chunk visibility not lowered first")
+    store.chunk_fail.clear()
+
+    second = await sync_of(source, tmp_path)  # the retry lowers the chunks, then writes the document
+
+    assert store.events[1:] == [("chunks", DOC, False), ("document", DOC, False)]
+    assert second["to_retry"] == 0 and sync_exit_code(second) == 0
+
+
+async def test_chunks_not_made_public_after_their_document_are_reported_and_stay_restricted(
+        source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk", "public": False}}).install(monkeypatch)
+    store.flag = "Chunks_test"
+    store.chunk_fail.add((DOC, True))
+    add_rows(source, {"id": DOC, "library": "mzk", "public": True})
+
+    result = await sync_of(source, tmp_path)
+
+    assert store.events == [("document", DOC, True), ("chunks", DOC, True)]
+    assert result["counts"]["chunks_pending"] == 1 and result["to_retry"] == 0 and sync_exit_code(result) == 1
+    pending = manifest_of(tmp_path)[0]
+    assert pending["status"] == "chunks_pending" and "chunk_document_public" in pending["reason"]
+
+
+async def test_apply_orders_chunk_and_document_writes_and_reports_pending_chunks(source, monkeypatch):
+    store = FakeDocuments({DOC: {"library": "mzk", "public": True}, OTHER: {"library": "mzk", "public": False}})
+    store.install(monkeypatch).flag = "Chunks_test"
+    store.chunk_fail.add((OTHER, True))
+    add_rows(source, {"id": DOC, "library": "mzk", "public": False}, {"id": OTHER, "library": "mzk", "public": True})
+    report = json.loads(json.dumps(await report_of(source)))
+
+    result = await apply_report(None, NAMES, report)
+
+    assert store.events == [("chunks", DOC, False), ("document", DOC, False),
+                            ("document", OTHER, True), ("chunks", OTHER, True)]
+    assert [p["id"] for p in result["chunks_pending"]] == [str(OTHER)] and apply_exit_code(result) == 1
+
+
+async def test_apply_does_not_write_a_document_whose_chunks_stay_public(source, monkeypatch):
+    store = FakeDocuments({DOC: {"library": "mzk", "public": True}}).install(monkeypatch)
+    store.flag = "Chunks_test"
+    store.chunk_fail.add((DOC, False))
+    add_rows(source, {"id": DOC, "library": "mzk", "public": False})
+
+    result = await apply_report(None, NAMES, await report_of(source))
+
+    assert store.updates == [] and store.documents[DOC]["public"] is True
+    assert result["failed"][0]["error"].startswith("chunk visibility not lowered first")
+
+
+async def test_without_the_chunk_flag_only_documents_are_written(source, monkeypatch, tmp_path):
+    store = FakeDocuments({DOC: {"library": "mzk", "public": True}}).install(monkeypatch)
+    add_rows(source, {"id": DOC, "library": "mzk", "public": False})
+    result = await sync_of(source, tmp_path)
+    assert store.events == [("document", DOC, False)] and result["chunk_flag"] is None
