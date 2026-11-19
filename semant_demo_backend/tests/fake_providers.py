@@ -56,10 +56,10 @@ def fake_provider_environ(config_dir: Path, fake_url: str, fake_port: int) -> di
     search_vectors_path = config_dir / "search_vectors.yaml"
     search_vectors_path.write_text(yaml.safe_dump({"default": "fake-default", "vectors": [
         {"id": "fake-default", "name": "Fake default", "description": "The test store's default vector.",
-         "target_vector": "default", "embedding": {"provider": "embedding_service"}},
+         "target_vector": "default", "embedding": {"provider": "embedding_service"}, "private_text": True},
         {"id": "fake-small", "name": "Fake small", "description": "The test store's second vector.",
          "target_vector": SECOND_VECTOR, "embedding": {"provider": "openai", "base_url": f"{fake_url}/openai/v1",
-                                                 "model": "fake-small"}},
+                                                 "model": "fake-small"}, "private_text": True},
     ]}))
     return {
         "LLM_MODELS_CONFIG": str(llm_models_path),

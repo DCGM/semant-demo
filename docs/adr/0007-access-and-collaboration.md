@@ -105,6 +105,10 @@ related but distinct. A corpus document's rights come from its source library re
 - **Adding documents.** An owner can add a document or chunk to a collection only when the
   document is already readable by them: public, or linked to a collection they can read
   (`access.require_document_addable`). Owning a collection does not unlock a restricted id.
+- **Uploaded documents (#785).** A text document uploaded into a collection by its owner
+  ([TEXT_UPLOAD.md](../TEXT_UPLOAD.md)) is created with `public` false, so this rule alone
+  governs it; nothing the client sends can make it public. It is linked to its collection only
+  after all its chunks and vectors are stored, so a failed upload is readable by nobody.
 - **Revocation and removal.** Unsharing a collection or removing the document from it denies
   that route at the next request, including signed asset URLs already handed out. Existing
   memberships, annotations and sharing are never changed by the rule.

@@ -4,6 +4,7 @@ import { isAbortError } from 'src/shared/api'
 import type { FocusRequest, ScanHighlight, ScanTarget } from '../scan/DocumentImagePane.vue'
 import type { LayoutCache } from '../scan/pageAssets'
 import { pageName } from '../scan/pageNavigation'
+import { coversPage } from './pageChunks'
 import type { ChunkPageMarks } from '../viewer/documentTextPane'
 import { rangeByChunk, type ChunkRange } from '../viewer/readerOffsets'
 import {
@@ -24,8 +25,9 @@ import {
 
 export interface SyncChunk extends MappableChunk {
   order: number
-  fromPage: number
-  toPage: number
+  /** The stored page range; absent for a text-only document (#785), which has no scans. */
+  fromPage?: number | null
+  toPage?: number | null
 }
 
 /** The active passage in the text and whether its place is approximate. */
@@ -195,7 +197,7 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     }
   }
 
-  const covering = (index: number) => (c: T) => c.fromPage <= index && index <= c.toPage
+  const covering = (index: number) => (c: T) => coversPage(c, index)
 
   /**
    * The chunks that may hold page `index`'s text: those shown first, then those read for the
@@ -306,7 +308,8 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     marking?.abort()
     const controller = new AbortController()
     marking = controller
-    const near = o.chunks.value.filter(c => c.layoutStart && !maps.value.has(c.id) && c.toPage >= index - 1 && c.fromPage <= index + 1)
+    const near = o.chunks.value.filter(c => c.layoutStart && !maps.value.has(c.id) && c.fromPage != null && c.toPage != null &&
+      c.toPage >= index - 1 && c.fromPage <= index + 1)
     for (const chunk of near) {
       try {
         await mapOf(chunk, controller.signal)

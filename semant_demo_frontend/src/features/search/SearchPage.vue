@@ -785,8 +785,8 @@ function summarizeResults (length: SummaryLength) {
         chunkId: result.id,
         documentId: result.document,
         order: result.order ?? null,
-        fromPage: result.fromPage,
-        toPage: result.toPage
+        fromPage: result.fromPage ?? null,
+        toPage: result.toPage ?? null
       })))
     }
   })

@@ -65,6 +65,11 @@ class VectorSettings(BaseModel):
     """Weaviate named vector of the chunk collection. Weaviate builds GraphQL names from it, so
     it must be a GraphQL name: a vector named with `-` breaks GraphQL for the whole instance (#385)."""
     embedding: EmbeddingSettings
+    private_text: bool = False
+    """The embedding endpoint is approved to receive private text (#785): uploaded documents
+    are embedded with it. Set only for a self-hosted model on infrastructure the deployment
+    controls (the Qwen vLLM of ``deploy/docker-compose.embedder.yml``), never for an external
+    provider. Uploads are refused unless every configured vector is approved."""
 
 
 class SearchVectorsSettings(BaseModel):
@@ -103,6 +108,8 @@ class SearchVector:
     description: str
     target_vector: str
     embedder: Embedder
+    private_text: bool = False
+    """``VectorSettings.private_text``: may embed private uploaded text (#785)."""
 
 
 class SearchVectors:
@@ -117,8 +124,13 @@ class SearchVectors:
     @classmethod
     def build(cls, settings: SearchVectorsSettings,
               embedder: Callable[[EmbeddingSettings], Embedder]) -> "SearchVectors":
-        return cls([SearchVector(v.id, v.name, v.description, v.target_vector, embedder(v.embedding))
+        return cls([SearchVector(v.id, v.name, v.description, v.target_vector, embedder(v.embedding),
+                                 private_text=v.private_text)
                     for v in settings.vectors], settings.default)
+
+    def all(self) -> list[SearchVector]:
+        """Every configured vector: a new chunk needs a value for each (#785)."""
+        return list(self._by_id.values())
 
     def resolve(self, vector_id: str | None) -> SearchVector:
         """The selected vector, the default when ``vector_id`` is None.

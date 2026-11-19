@@ -108,6 +108,7 @@ import type {
   TagSpanBatchRequest,
   TagSpanWriteResult,
   TextScope,
+  TextUploadResponse,
   TopicerConfigsResponse,
   UserSearchResult,
   WriteResult,
@@ -299,6 +300,8 @@ import {
     TagSpanWriteResultToJSON,
     TextScopeFromJSON,
     TextScopeToJSON,
+    TextUploadResponseFromJSON,
+    TextUploadResponseToJSON,
     TopicerConfigsResponseFromJSON,
     TopicerConfigsResponseToJSON,
     UserSearchResultFromJSON,
@@ -762,6 +765,12 @@ export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
     collectionId: string;
     patchSpan: PatchSpan;
     expectedVersion?: number | null;
+}
+
+export interface UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest {
+    collectionId: string;
+    files: Array<Blob>;
+    metadata?: Blob;
 }
 
 /**
@@ -3147,6 +3156,34 @@ export interface DefaultApiInterface {
      * Update Tag Span
      */
     updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
+
+    /**
+     * Creates request options for uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost without sending the request
+     * @param {string} collectionId 
+     * @param {Array<Blob>} files The UTF-8 .txt files.
+     * @param {Blob} [metadata] Optional metadata CSV (docs/TEXT_UPLOAD.md).
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * @summary Upload Text Documents
+     * @param {string} collectionId 
+     * @param {Array<Blob>} files The UTF-8 .txt files.
+     * @param {Blob} [metadata] Optional metadata CSV (docs/TEXT_UPLOAD.md).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadResponse>>;
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadResponse>;
 
 }
 
@@ -8493,6 +8530,94 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {
         const response = await this.updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost without sending the request
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost().'
+            );
+        }
+
+        if (requestParameters['files'] == null) {
+            throw new runtime.RequiredError(
+                'files',
+                'Required parameter "files" was null or undefined when calling uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+        const consumes: runtime.Consume[] = [
+            { contentType: 'multipart/form-data' },
+        ];
+        // @ts-ignore: canConsumeForm may be unused
+        const canConsumeForm = runtime.canConsumeForm(consumes);
+
+        let formParams: { append(param: string, value: any): any };
+        let useForm = false;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        if (useForm) {
+            formParams = new FormData();
+        } else {
+            formParams = new URLSearchParams();
+        }
+
+        if (requestParameters['files'] != null) {
+            requestParameters['files'].forEach((element) => {
+                formParams.append('files', element as any);
+            })
+        }
+
+        if (requestParameters['metadata'] != null) {
+            formParams.append('metadata', requestParameters['metadata'] as any);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/text_documents`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: formParams,
+        };
+    }
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadResponse>> {
+        const requestOptions = await this.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TextUploadResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadResponse> {
+        const response = await this.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

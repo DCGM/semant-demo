@@ -93,6 +93,7 @@ All URIs are relative to *http://localhost*
 | [**updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapiusercollectionscollectionidownerpatch) | **PATCH** /api/user_collections/{collection_id}/owner | Update Collection Owner |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
 | [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
+| [**uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost**](DefaultApi.md#uploadtextdocumentsapiusercollectionscollectionidtextdocumentspost) | **POST** /api/user_collections/{collection_id}/text_documents | Upload Text Documents |
 
 
 
@@ -6782,6 +6783,84 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost
+
+> TextUploadResponse uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(collectionId, files, metadata)
+
+Upload Text Documents
+
+Uploads private UTF-8 &#x60;&#x60;.txt&#x60;&#x60; files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // Array<Blob> | The UTF-8 .txt files.
+    files: /path/to/file.txt,
+    // Blob | Optional metadata CSV (docs/TEXT_UPLOAD.md). (optional)
+    metadata: BINARY_DATA_HERE,
+  } satisfies UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest;
+
+  try {
+    const data = await api.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **files** | `Array<Blob>` | The UTF-8 .txt files. | |
+| **metadata** | `Blob` | Optional metadata CSV (docs/TEXT_UPLOAD.md). | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TextUploadResponse**](TextUploadResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `multipart/form-data`
 - **Accept**: `application/json`
 
 

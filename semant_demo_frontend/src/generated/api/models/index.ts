@@ -155,6 +155,8 @@ export * from './TagSpanBatchRequest';
 export * from './TagSpanWriteResult';
 export * from './TextScope';
 export * from './TextStatus';
+export * from './TextUploadFileResult';
+export * from './TextUploadResponse';
 export * from './TopicerConfigsResponse';
 export * from './Url';
 export * from './UserCreate';

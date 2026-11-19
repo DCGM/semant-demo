@@ -23,6 +23,7 @@ field_tasks: # Mapping of Weaviate property names (keys) to their classification
   temporal_reference_frame: temporal_reference_frame
   textual_stance: textual_stance
 filters: # List of query filters that further narrow the UNPROCESSED chunks; never on a mapped field or classification_provenance.
+include_restricted_documents: # Also classify chunks of documents that are not public (restricted, private uploads, #785). Unset: yes for a local model, no for an API model; true only for a provider approved to receive that text
 batch_size: 32 # Number of records to fetch per batch
 max_records: # Maximum total records to process (None or 0 for unlimited)
 max_consecutive_failures: 10 # Stop after this many consecutive chunks failed (e.g. an unreachable model); they stay UNPROCESSED

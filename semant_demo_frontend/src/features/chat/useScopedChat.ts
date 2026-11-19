@@ -52,8 +52,9 @@ export interface ChatSource {
   chunkId: string
   documentId: string
   order: number | null
-  fromPage: number
-  toPage: number
+  /** The stored page range; null for a text-only document (#785). */
+  fromPage: number | null
+  toPage: number | null
   /** Conversation-wide label: `S{label}`. */
   label: number
 }
@@ -106,8 +107,8 @@ interface WireSource {
   chunk_id: string
   document_id: string
   order: number | null
-  from_page: number
-  to_page: number
+  from_page: number | null
+  to_page: number | null
 }
 
 type ChatEvent =

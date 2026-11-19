@@ -39,8 +39,9 @@ class DocumentSummaryCitation(BaseModel):
     position in :attr:`DocumentSummaryResponse.citations`."""
     chunk_id: UUID
     order: int | None = None
-    from_page: int
-    to_page: int
+    from_page: int | None = None
+    to_page: int | None = None
+    """Absent for a text-only document (#785)."""
 
 
 class DocumentSummaryResponse(BaseModel):

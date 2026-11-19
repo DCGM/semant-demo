@@ -159,8 +159,8 @@ function summarizeDocument(length: SummaryLength) {
         chunkId: citation.chunkId,
         documentId: scope.documentId,
         order: citation.order ?? null,
-        fromPage: citation.fromPage,
-        toPage: citation.toPage
+        fromPage: citation.fromPage ?? null,
+        toPage: citation.toPage ?? null
       }))),
       coverage: {
         coverage: data.truncated ? 'part' : 'all',
