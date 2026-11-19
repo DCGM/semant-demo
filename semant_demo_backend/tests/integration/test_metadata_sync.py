@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import create_engine, insert
 
 from semant_demo.adapters.sql.kramerius_metadata import META_RECORDS
+from semant_demo.adapters.weaviate import chunk_visibility
 from semant_demo.adapters.weaviate.document_metadata import add_text_property, document_property_types
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
@@ -80,6 +81,11 @@ async def test_report_apply_and_read_back(seeded_store, collection_names, corpus
     result = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
     assert (result["eligible"], result["applied"], result["verified"], result["unresolved"]) == (1, 1, 1, 2)
     assert apply_exit_code(result) == 0
+    # the gazette became public: its chunks follow after the document is verified (#793)
+    assert result["chunk_flag"] == collection_names.chunks_collection_name and result["chunks_pending"] == []
+    gazette_chunks = [UUID(c["id"]) for c in corpus.chunks.values() if c["document"] == "gazette"]
+    flags = await chunk_visibility.read_chunks(seeded_store, collection_names.chunks_collection_name, gazette_chunks)
+    assert {c.public for c in flags.values()} == {True} and len(flags) == 2
 
     document = await DocumentRepository(seeded_store, collection_names).read(UUID(gazette))
     assert document.library == "mzk"

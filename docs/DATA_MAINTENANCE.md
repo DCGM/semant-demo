@@ -96,6 +96,15 @@ Modes:
 
 A changed `yearIssued` reaches the search only after `chunk_year --write` (below).
 
+**Chunk visibility (#793).** Where `Chunks.documentPublic` is declared, `--apply` and `--sync`
+keep it in step with a changed `public`, failing closed: before writing a document that stops
+being public they set its chunks to `false` and verify them (if that fails, the document is not
+written and is retried); after a document is verified `public=true` they set its chunks to
+`true`. A failure there leaves the chunks `false` (not searchable) and is listed in the manifest
+or result as `chunks_pending` (exit 1); repair it with `chunk_document_public --write
+--document-ids` ([below](#document-visibility-on-chunks-chunk_document_public-793)). Without the
+property, only documents are written and the run says so.
+
 Prerequisites: the PostgreSQL driver (`../.venv/bin/pip install "psycopg[binary]"`, not an
 application dependency) and `KRAMERIUS_METADATA_DSN`, a SQLAlchemy URL such as
 `postgresql+psycopg://librarymetadata_all@127.0.0.1:5888/librarymetadata_all` through an SSH
@@ -317,6 +326,58 @@ Run it on every store before deploying the chunk-year search (a store without th
 answers year-filtered searches with an error), and again after ingesting chunks or changing
 document years (for example after `metadata_sync`) until ingestion keeps the copy itself
 ([#313](https://github.com/DCGM/semant-demo/issues/313)).
+
+## Document visibility on chunks (`chunk_document_public`, #793)
+
+Unscoped search, RAG and Explore select chunks with `Chunks.documentPublic == true` instead of
+filtering through the `document` reference to `Documents.public`, which cost about 1.4 s per
+query on 8.3 million chunks (#789). The flag is derived from the document's `public` and fails
+closed: `true` only for a chunk with exactly one existing document whose `public` is exactly
+`true`; `false` for a restricted or unknown document, a chunk without a document (also one whose
+document was deleted: Weaviate resolves no dangling reference), or with several documents
+([DATABASE](DATABASE.md#collection-chunks)). A chunk without the value is not public.
+
+```bash
+python -m semant_demo.maintenance.chunk_document_public --check check.json             # read-only
+python -m semant_demo.maintenance.chunk_document_public --write write.json --confirm-endpoint HOST:PORT \
+    [--concurrency 16] [--rate N]
+python -m semant_demo.maintenance.chunk_document_public --check check_after.json       # expect exit 0
+# one document list (chunk_ingest's CHECKPOINT.documents.txt, metadata_sync's chunks_pending ids)
+python -m semant_demo.maintenance.chunk_document_public --write docs.json --confirm-endpoint HOST:PORT \
+    --document-ids ids.txt
+```
+
+- **Schema.** `--write` first declares `Chunks.documentPublic` (`bool`, filterable) through the
+  alias's collection when missing: additive, no reindexing of vectors, no copy of other metadata.
+  A property of another type is refused before any write.
+- **Full pass.** Reads every document's `public`, then every chunk once in id order (ids, the flag
+  and the document reference only). It writes only differing chunks (a merge of the one
+  property), `false` before `true` within a page; the documents of chunks to become `true` are
+  read again just before, and a document no longer public leaves them for the retry. Each page's
+  writes are read back. Counts: `reasons` (`public`, `restricted`, `unknown`, `no_document`,
+  `missing_document`, `several_documents`), actions `consistent`, `set` (no flag), `change`,
+  and `stale_true` (chunks storing `true` that must not).
+- **Checkpoint.** Resumable and idempotent like `chunk_year`: the cursor, the counts and the ids
+  to retry; a rerun retries those first; a finished checkpoint is refused. `--rate` caps the
+  writes per second, `--concurrency` the parallel writes.
+- **Audit.** After a complete pass with nothing to retry it counts the chunks the search predicate
+  finds (`documentPublic == true`, `== false`, all chunks) and compares them with the pass's
+  expectations. **A check exits 0 only when nothing is left to write and `true + false == all`
+  with the expected numbers**, which proves that every chunk has the flag. This is a full scan,
+  not a sample; on production it reads 8.3 million chunks.
+- **Document mode** (`--document-ids`): brings each listed document's chunks to its value through
+  the `document` reference and verifies its counts (`sync_document`, also used by
+  `metadata_sync`). It does not find chunks without a document; the full pass does.
+
+Run the full `--write` while nothing else changes `Documents.public` or imports chunks (other
+chunk writers, such as tagging or titles, only touch other properties and are kept by the merge).
+Run it on every store before deploying a search that filters on the flag; a store without the
+property answers such a search with an error.
+
+**Rollout order** (#793, #789): declare and backfill (`--write`) → audit (`--check`, exit 0) →
+deploy the application whose eligibility filters use the flag → benchmark (`db_benchmark`) →
+enable the access policy. From the backfill on, `metadata_sync` and `chunk_ingest` maintain the
+flag; run the audit again after other bulk changes to `Documents.public`.
 
 ## Chunk titles (`chunk_titles`, #575)
 
@@ -751,6 +812,7 @@ embedder, the classifier or another chunk writer.
 flowchart LR
   ingest["chunk_ingest --write"] --> meta["metadata_sync<br/>--document-ids"]
   meta --> year["chunk_year"]
+  meta --> vis["chunk_document_public<br/>--document-ids"]
   meta --> titles["chunk_titles"]
   ingest --> emb["data_tools/embedder"]
   ingest --> cls["data_tools/<br/>meta_data_enrichment"]
@@ -767,6 +829,10 @@ flowchart LR
    unless `--accept-incomplete` is given
    ([`metadata_sync`](#kramerius-metadata-sync-metadata_sync-257)).
 2. `chunk_year --write` copies their year to the chunks (a full scan); it needs the metadata.
+   `chunk_document_public --write --document-ids CHECKPOINT.documents.txt` copies their access
+   (`public`) to the chunks, which the import created not public
+   ([visibility](#document-visibility-on-chunks-chunk_document_public-793)); it needs the
+   metadata too.
 3. `chunk_titles --write` generates the new chunks' titles (every untitled chunk; no document
    list); after `metadata_sync`, since it uses the document titles
    ([Chunk titles](#chunk-titles-chunk_titles-575)).
