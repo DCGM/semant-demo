@@ -275,6 +275,7 @@
           :distributions="chartsShown"
           :loading="chartsQuery.isFetching.value"
           :collection-name="activeCollection?.name ?? `Collection ${collectionId}`"
+          opens-explore
           :empty-hint="rights.editMembership ? 'Add documents in the Documents tab, or documents and passages from Explore.' : 'No documents have been added to it yet.'"
           @apply-filter="exploreChartFilter"
         />
@@ -338,8 +339,9 @@ const collectionId = computed(() => {
 // The collection is loaded (again) before anything below asks for its statistics, members
 // or members, so an earlier visit's answer doesn't count as loaded. The same page shown
 // for another collection loads that one; earlier answers are dropped.
+// Leaving the collection pages (no collection id any more) loads nothing.
 watch(collectionId, (id, previous) => {
-  if (id !== previous) void fetchCollection(id)
+  if (id && id !== previous) void fetchCollection(id)
 }, { immediate: true })
 
 // Statistics of this collection only, asked again on every visit (`useCollectionStats`),

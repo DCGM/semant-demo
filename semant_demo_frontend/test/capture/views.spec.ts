@@ -1033,3 +1033,40 @@ test('explore visualizations of a text query, a chart filter and a data table (#
   await expect(page.getByTestId('results-years').locator('svg').first()).toBeVisible()
   await save(page, testInfo, 'explore-ranked-documents-bounded')
 })
+
+test('collection overview document charts and Explore this collection (#795)', async ({ page }, testInfo) => {
+  const collection = fixture.collection('chronicles')
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${collection.id}/overview`)
+  await page.reload() // without the sign-in notification
+  const charts = page.getByTestId('collection-document-charts')
+  await expect(charts.getByTestId('charts-total')).toHaveText('2')
+  await save(page, testInfo, 'collection-overview-header')
+  await charts.getByTestId('corpus-years').scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'collection-overview-charts')
+
+  // An empty collection, answered here (the fixture collections all hold documents).
+  await page.route('**/api/analytics/corpus/distributions', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json() as Record<string, Record<string, unknown>>
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        total_documents: 0,
+        publication_year: { ...body.publication_year, years: [], unknown_count: 0 },
+        libraries: { ...body.libraries, values: [], other_count: 0, unknown_count: 0 },
+        languages: { ...body.languages, values: [], other_count: 0, unknown_count: 0 }
+      }
+    })
+  })
+  await page.reload()
+  await expect(charts.getByTestId('charts-empty')).toBeVisible()
+  await charts.scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'collection-overview-charts-empty')
+  await page.unroute('**/api/analytics/corpus/distributions')
+
+  await page.getByTestId('explore-collection').click()
+  await expect(page.getByTestId('document-result-open')).toHaveCount(2)
+  await save(page, testInfo, 'collection-explore-handoff')
+})

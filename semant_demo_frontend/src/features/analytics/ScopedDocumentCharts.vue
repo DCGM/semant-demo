@@ -45,7 +45,7 @@
     </div>
     <DocumentDistributions
       v-else :distributions="distributions" :loading="loading"
-      :unit-label="collectionName !== null ? 'collection documents' : 'documents'"
+      :unit-label="collectionName !== null ? 'collection documents' : 'documents'" :opens-explore="opensExplore"
       @apply-filter="(filter) => emit('applyFilter', filter)"
     />
   </div>
@@ -74,7 +74,9 @@ const props = withDefaults(defineProps<{
   collectionName?: string | null
   /** What to do about an empty collection, where these charts are shown. */
   emptyHint?: string
-}>(), { loading: false, slow: false, collectionName: null, emptyHint: '' })
+  /** A clicked category opens Explore with it (the collection page) instead of filtering here. */
+  opensExplore?: boolean
+}>(), { loading: false, slow: false, collectionName: null, emptyHint: '', opensExplore: false })
 const emit = defineEmits<{ applyFilter: [filter: ChartFilter] }>()
 
 const numberFormat = new Intl.NumberFormat('en')

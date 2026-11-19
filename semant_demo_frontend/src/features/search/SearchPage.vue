@@ -884,9 +884,22 @@ async function loadCollections () {
   const userId = userStore.getUserId
   if (!userStore.isLoggedIn || !userId) return
   collectionsLoad.value = { userId: String(userId), status: 'loading' }
-  await fetchCollections()
-  if (collectionsLoad.value?.userId !== String(userId) || userStore.getUserId !== userId) return
-  collectionsLoad.value = { userId: String(userId), status: collectionsStore.error ? 'failed' : 'ready' }
+  const loaded = await fetchCollections()
+  // A newer load (undefined) sets the status itself.
+  if (loaded === undefined || collectionsLoad.value?.userId !== String(userId) || userStore.getUserId !== userId) return
+  collectionsLoad.value = { userId: String(userId), status: loaded ? 'ready' : 'failed' }
+}
+
+/** Resolves once no load of the user's collections is under way (`loadCollections`). */
+function collectionsSettled (): Promise<void> {
+  if (collectionsLoad.value?.status !== 'loading') return Promise.resolve()
+  return new Promise((resolve) => {
+    const stop = watch(() => collectionsLoad.value?.status, (status) => {
+      if (status === 'loading') return
+      stop()
+      resolve()
+    })
+  })
 }
 
 watch(
@@ -1391,6 +1404,7 @@ function receiveHandoff (collectionId: string) {
 
 async function checkHandoff (collectionId: string, handoff: number) {
   await loadCollections()
+  await collectionsSettled() // a load started meanwhile (the page opening) has the answer
   if (handoff !== handoffs) return // signed out, another user or a newer hand-off
   if (collectionsLoad.value?.status === 'ready' && appliedCollection.value === collectionId &&
     !collections.value.some(c => c.id === collectionId)) {
