@@ -206,8 +206,8 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
     async def check_async(self) -> PipelineStats:
         """Count the records a run would embed; read-only (no schema change, no embedding requests).
 
-        When a run would be refused (the vector is missing and ``create_vector`` is disabled), the counts
-        are still collected and ``refused`` says why.
+        When a run would be refused (the vector is missing and ``create_vector`` is disabled), it returns at
+        once with ``refused`` saying why, without reading any record: the counts stay 0.
 
         It reads every record with the target vector, like a run, so it costs the same scan. ``max_records``
         is not applied: the counts cover the whole collection.
@@ -228,6 +228,7 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 else:
                     stats.refused = f"{missing_vector} and create_vector is disabled."
                     print(f"{missing_vector}; a run would be refused (create_vector is disabled).")
+                    return stats
             collection = client.collections.use(self.collection)
             print(f"Checking collection '{self.collection}' (vector '{self.vector_name}'), nothing is written...")
             async for objects in self._scan(collection, include_vector=exists):
