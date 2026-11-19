@@ -1,8 +1,10 @@
 """The fake providers speak the protocol the real backend clients expect."""
+import asyncio
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from semant_demo.adapters.topicer.client import TopicerClient, TopicerStreamSummary, TopicerTag
+from semant_demo.adapters.topicer.client import TopicerClient, TopicerTag
 from semant_demo.config import Config
 from semant_demo.features.documents.schemas import DocumentChunk
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
@@ -49,35 +51,23 @@ async def test_text_proposals_mark_tag_examples(topicer):
     assert [c.cost_usd for c in answer.usage.calls] == [FAKE_TOPICER_CALL_COST_USD]
 
 
-async def test_db_stream_covers_collection_chunks_of_document(topicer):
+async def test_text_answers_are_paced_one_by_one_when_delayed():
+    # The browser tests rely on it to act while a suggestion run is under way.
     corpus = load_corpus()
+    chunk = corpus.chunks["chronicle_1"]
+    topicer = TopicerClient("http://fake", FAKE_TOPICER_CONFIGS[0], 5.0,
+                            transport=ASGITransport(app=create_fake_provider_app(corpus, stream_delay=0.2)))
+    loop = asyncio.get_running_loop()
+    started = loop.time()
 
-    events = [event async for event in topicer.propose_for_db_stream(
-        tag=topicer_tag(corpus.tags["person"]),
-        collection_id=corpus.collections["chronicles"]["id"],
-        document_id=corpus.documents["chronicle"]["id"],
-    )]
+    async def answered_after() -> float:
+        await topicer.propose_for_text(chunk_id=chunk["id"], text=chunk["text"],
+                                       tags=[topicer_tag(corpus.tags["person"])])
+        return loop.time() - started
 
-    *chunks, summary = events
-    assert [e["id"] for e in chunks] == [corpus.chunks["chronicle_1"]["id"], corpus.chunks["chronicle_2"]["id"]]
-    assert all(len(e["tag_span_proposals"]) == 1 for e in chunks)
-    assert isinstance(summary, TopicerStreamSummary)
-    assert (summary.max_chunks, summary.processed_chunks, summary.limit_reached) == (40, 2, False)
-    assert len(summary.usage.calls) == 2
+    first, second = sorted(await asyncio.gather(answered_after(), answered_after()))
 
-
-async def test_db_stream_stops_at_max_chunks(fake_app):
-    corpus = load_corpus()
-    topicer = TopicerClient("http://fake", FAKE_TOPICER_CONFIGS[0], 5.0, max_chunks_per_tag=1,
-                            transport=ASGITransport(app=fake_app))
-
-    events = [event async for event in topicer.propose_for_db_stream(
-        tag=topicer_tag(corpus.tags["person"]), collection_id=corpus.collections["chronicles"]["id"],
-        document_id=corpus.documents["chronicle"]["id"])]
-
-    chunk, summary = events
-    assert chunk["id"] == corpus.chunks["chronicle_1"]["id"]
-    assert (summary.processed_chunks, summary.limit_reached, summary.candidates_truncated) == (1, True, True)
+    assert second - first >= 0.15 and second >= 0.2
 
 
 async def test_configs_are_listed_and_an_unknown_one_is_refused(topicer, fake_client):

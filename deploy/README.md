@@ -10,7 +10,7 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `docker-compose.app-test.yml` | Test app for `test-main` and PR previews (CI/CD managed) |
 | `docker-compose.database.yml` / `docker-compose.database-test.yml` | Weaviate for production / for all test instances |
 | `docker-compose.embedder.yml` | GPU embedding service: Qwen3-Embedding-0.6B on vLLM (#385) |
-| `docker-compose.topicer.yml` / `docker-compose.topicer-test.yml` | Topicer service, started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks); see [Topicer](#topicer) |
+| `docker-compose.topicer.yml` | Topicer service of all instances (#792), started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks); see [Topicer](#topicer) |
 | `Dockerfile.topicer` | Build of the Topicer API from a branch of [DCGM/topicer](https://github.com/DCGM/topicer) |
 | `Dockerfile` | Multi-stage build of backend + frontend (`npm ci` and the committed generated API client, not regenerated) |
 | `Dockerfile.embedder` | Build of the former Gemma embedding service (`embedding_service/`); no longer used by `docker-compose.embedder.yml` |
@@ -29,9 +29,8 @@ The stack is split across several compose files that are started independently a
 | `docker-compose.database-test.yml` | `weaviate` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
 | `docker-compose.embedder.yml` | `qwen-embedder` | `semant_demo_embedder` | Single GPU embedder (vLLM) shared by **production, all test instances and the vector backfill** (`http://qwen-embedder:8000/v1`; host loopback port 8002) |
 | `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
-| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
-| `docker-compose.topicer.yml` | `topicer` | `semant_demo_topicer`, `semant_demo_database`, `semant_demo_embedder` | Production Topicer (`http://topicer:8089`; host loopback port 8089; GPU) |
-| `docker-compose.topicer-test.yml` | `topicer-test` | `semant_demo_test_topicer`, `semant_demo_test_database`, `semant_demo_embedder` | Topicer shared by **all** test instances (`http://topicer-test:8089`; no host port, reach it from a container on `semant_demo_test_topicer`; no GPU; project `semant-demo-test`) |
+| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_topicer` | One container per test instance (CI/CD managed); each has its own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
+| `docker-compose.topicer.yml` | `topicer` | `semant_demo_topicer` | Topicer shared by production and **all** test instances (`http://topicer:8089`; host loopback port 8089; GPU; reads no database, #792) |
 
 **`SQL_DB_PATH`** (set by `.github/workflows/ci-cd.yml`; the directory, its `tasks.db` file and the `feedback/` directory must exist, see [SQLite database directory](#sqlite-database-directory-406) and [In-app feedback storage](#in-app-feedback-storage)):
 - **Production:** `$SQL_DB_DIR` from the GitHub variables
@@ -89,8 +88,7 @@ them when called without one:
 | `./update.sh database-up` / `database-down` | production Weaviate (`docker-compose.database.yml`) |
 | `./update.sh test-database-up` / `test-database-down` | test Weaviate (`docker-compose.database-test.yml`, project `semant-demo-test`) |
 | `./update.sh embedder-up` / `embedder-down` / `embedder-pull` | Qwen embedding service (pulls the pinned vLLM image) |
-| `./update.sh topicer-up` / `topicer-down` / `topicer-build` | production Topicer ([below](#topicer)); `build` runs with `--no-cache` |
-| `./update.sh test-topicer-up` / `test-topicer-down` / `test-topicer-build` | Topicer of the test instances (`docker-compose.topicer-test.yml`, project `semant-demo-test`) |
+| `./update.sh topicer-up` / `topicer-down` / `topicer-build` | Topicer of all instances ([below](#topicer)); `build` runs with `--no-cache` |
 
 Other operations use `docker compose` with the same project and file, for example:
 
@@ -184,77 +182,79 @@ production size (startup and drop duration unknown).
 ### Topicer
 
 `Dockerfile.topicer` clones [DCGM/topicer](https://github.com/DCGM/topicer) at the release
-tag in the compose file's `TOPICER_VERSION` (both files: `v0.1.0`, #392; built from `main`
-until then, from `semant-debug` until 2026-10-17). The production service reserves a GPU
-(CrossBERT config); the test one does not.
+tag in the compose file's `TOPICER_VERSION` (`v0.1.0`, #392; built from `main` until then,
+from `semant-debug` until 2026-10-17). The service reserves a GPU (CrossBERT config).
 
-Each Weaviate needs its own Topicer: optimized suggestions make Topicer search semANT's
-`Chunks` in the Weaviate its config names (`host: weaviate`, which resolves to the Weaviate
-on the Topicer's database network). Production's Topicer serves the production app; the test
-Topicer (`topicer-test`, #473) serves test-main and all PR previews (`TOPICER_URL` in
-`.env.test.example`). Both share the image `semant-demo-topicer:<tag>` and the `./data` mount.
-The test service has its own service name, project and config directory, and publishes no host port: both
-Topicers are on `semant_demo_embedder`, where the service name is a DNS alias, so with one
-name for both an app could reach the other instance's Topicer, and with one project
-`test-topicer-up` would replace production's container.
+**One Topicer serves production, test-main and every PR preview (#792).** semANT sends it
+only text (`POST /v1/tags/propose/texts`); for optimized suggestions semANT ranks the
+candidate chunks itself (`features/annotations/candidates.py`). Topicer therefore reads no
+database and needs no embedder: it is only on `semant_demo_topicer`, which every app joins
+(`TOPICER_URL=http://topicer:8089` in both `.env` templates). Test traffic uses the same
+configs and provider keys as production. Topicer's own database endpoints
+(`/v1/tags/propose/db*`, topic discovery) are not used by semANT. Until #792, each Weaviate had
+its own Topicer (`topicer-test`, #473).
 
-The `semant_demo_topicer` and `semant_demo_test_topicer` networks are `external` in all
-Compose files; create them once with `docker network create <name>`.
+The `semant_demo_topicer` network is `external` in all Compose files; create it once with
+`docker network create semant_demo_topicer`.
 
 To change the Topicer version: read the release notes on
 [DCGM/topicer releases](https://github.com/DCGM/topicer/releases) for config changes, set
-`TOPICER_VERSION` in `docker-compose.topicer-test.yml`, then `./update.sh test-topicer-build`
-and `./update.sh test-topicer-up`. Check its image tag and loaded configs (below) and AI suggestions on
-test-main, then do the same with `docker-compose.topicer.yml` and `topicer-build` / `topicer-up`. Both files are changed by a PR,
-so the repository records what runs. Change the tag in `image` (`semant-demo-topicer:<tag>`)
-together with `TOPICER_VERSION`: `docker ps --filter name=topicer` then shows the running release.
-To roll back, build the previous tag the same way.
-Releases are made in the Topicer repository (its README, "Versions and releases").
+`TOPICER_VERSION` and the tag in `image` (`semant-demo-topicer:<tag>`) in
+`docker-compose.topicer.yml` by a PR, so the repository records what runs, then
+`./update.sh topicer-build` and `./update.sh topicer-up`. Check its image tag
+(`docker ps --filter name=topicer`), its loaded configs (below) and AI suggestions on test-main
+and production. To roll back, build the previous tag the same way. Releases are made in the
+Topicer repository (its README, "Versions and releases").
 
 The server's `deploy/data/` is mounted at `/app/data`. At startup the API loads every
-`*.yaml` in `TOPICER_API_CONFIGS_DIR` (top level only) as a config named after the file:
-production reads `/app/data/topicer/configs` (from `.env`), the test Topicer
-`/app/data/topicer-test/configs` (set in its Compose file, which overrides `.env`). The test
-directory holds only `llm-openrouter.yaml`, a copy of production's: it needs no change, because
-`weaviate` and `qwen-embedder` resolve to the test Weaviate and the shared embedder from the
-test service's networks. The apps choose a config with `TOPICER_CONFIG_NAME` (`llm-openrouter`). **A config that fails to load
-is only logged as a warning** (`Failed to load topicer config ...`) and is then missing; after
-a rebuild or a config change, check that the log line `Loaded topicer configurations: [...]`
-lists all of them (`docker logs --since 2m semant-demo-topicer-1`, test:
-`semant-demo-test-topicer-test-1`). `docker restart` does not re-read `.env`; after changing it,
-run `topicer-down` and `topicer-up`. Config files hold provider keys and are not in this repository.
+`*.yaml` in `TOPICER_API_CONFIGS_DIR` (`/app/data/topicer/configs`, from `.env`; top level
+only) as a config named after the file. The apps choose a config with `TOPICER_CONFIG_NAME`
+(`llm-openrouter`). Configs need no `db_connection` and no `embedding_service`: with the
+database networks gone, a `db_connection` would fail to connect at startup. **A config that
+fails to load is only logged as a warning** (`Failed to load topicer config ...`) and is then
+missing; after a rebuild or a config change, check that the log line
+`Loaded topicer configurations: [...]` lists all of them
+(`docker logs --since 2m semant-demo-topicer-1`). `docker restart` does not re-read `.env`;
+after changing it, run `topicer-down` and `topicer-up`. Config files hold provider keys and
+are not in this repository. Topicer `v0.1.0` requires `stride` (e.g. `32`) in
+`CrossBertTopicer` configs.
 
-Configs that use embeddings (vector pre-filtering of `POST /v1/tags/propose/db/stream`, topic
-discovery) must embed queries with the model of the Weaviate vector they search (#385):
+semANT charges AI suggestions to the daily allowance call by call from the usage Topicer
+reports (#408). This needs Topicer with DCGM/topicer#81 (`v0.1.0` and later); an older one
+reports no usage, so every call is charged its full reservation. For costs below the
+reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set
+`prices` per model; without either, cost is `unknown` and charged at least the reservation.
+`TOPICER_MAX_CHUNKS_PER_TAG` (40) is semANT's own limit of candidate chunks per tag; it is no
+longer sent to Topicer.
 
-```yaml
-embedding_service:
-  cls: OpenAIEmbeddingService            # Topicer main since DCGM/topicer#80
-  config:
-    base_url: "http://qwen-embedder:8000/v1"
-    model: "Qwen/Qwen3-Embedding-0.6B"   # Qwen query instruction and truncation are defaults
-    timeout: 30
-db_connection:
-  cls: WeaviateService
-  config:
-    # host, ports, chunks_limit as before
-    vector_name: "Qwen3_Embedding_0_6B"  # default "default", which no longer exists
-```
-
-`DefaultEmbeddingService` (the former Gemma service, 3,584 dimensions) cannot query the Qwen
-vector. Topicer `v0.1.0` requires `stride` (e.g. `32`) in `CrossBertTopicer` configs.
-
-semANT charges AI suggestions to the daily allowance from the usage Topicer reports and sends `max_chunks` (`TOPICER_MAX_CHUNKS_PER_TAG`, 40) with every optimized stream (#408). This needs Topicer with DCGM/topicer#81 (`v0.1.0` and later); an older one ignores `max_chunks` and reports no usage, so every chunk or tag is charged its full reservation. A config's `max_chunks_ceiling` (default 200) must be at least `TOPICER_MAX_CHUNKS_PER_TAG`. For costs below the reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set `prices` per model; without either, cost is `unknown` and charged at least the reservation.
 Production configs (#470), named after the method:
 
-- `llm-openrouter` — `LLMTopicer` on OpenRouter with Qwen embeddings, as above; used by semANT.
-  It replaces `openai-xjuric` (the same file under its old name), which stays until production
-  runs a release with `TOPICER_CONFIG_NAME=llm-openrouter`; change both files together until then.
-- `crossbert` — `CrossBertTopicer` (GPU), model in `/app/data/topicer/models`; not used by semANT.
-  It has no streaming endpoint, so it can't serve optimized suggestions.
+- `llm-openrouter` — `LLMTopicer` on OpenRouter; used by semANT.
+- `crossbert` — `CrossBertTopicer` (GPU), model in `/app/data/topicer/models`; not used by
+  semANT by default. Since #792 it can serve optimized suggestions too (no stream needed).
 
 `openai-xsucha` (`TagProposalV2`, mDeBERTa NLI) was removed: nothing has called it since
 `propose_tags_routes.py` was deleted.
+
+#### Rollout of one Topicer (#792, operator steps)
+
+1. **Merge** (CI deploys test-main): test-main and new previews join `semant_demo_topicer` and
+   call the production Topicer's `/texts`, which it already serves. Previews built from older
+   branches keep calling `topicer-test` (all their AI suggestions depend on it).
+2. **Release** to production: production no longer calls Topicer's database stream.
+3. **Remove the test Topicer** once no preview built from an older branch is needed. Such
+   previews still use `TOPICER_URL=http://topicer-test:8089` and the `semant_demo_test_topicer`
+   network: without the test Topicer they lose **all** AI suggestions (thorough and selection
+   too), and without the network they can no longer be redeployed, until rebased. Tear those
+   previews down (or rebase them) first, then on the server: `docker compose -p semant-demo-test
+   -f ./docker-compose.topicer-test.yml down`, delete that file, its `test-topicer-*` lines in
+   the server's `update.sh` and `data/topicer-test/`, and finally
+   `docker network rm semant_demo_test_topicer` (it fails while a container is still attached;
+   `docker network inspect semant_demo_test_topicer` lists them).
+4. **Take Topicer off the database**: remove `db_connection` and `embedding_service` from the
+   configs in `data/topicer/configs/` (`llm-openrouter.yaml`, `crossbert.yaml`), copy this
+   repository's `docker-compose.topicer.yml` over the server's (keeping its local differences),
+   then `./update.sh topicer-down && ./update.sh topicer-up` and check the loaded configs.
 
 ### In-app feedback storage
 

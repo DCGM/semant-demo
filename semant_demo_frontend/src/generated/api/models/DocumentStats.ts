@@ -60,6 +60,12 @@ export interface DocumentStats {
      * @type {number}
      * @memberof DocumentStats
      */
+    suggestionsCount?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof DocumentStats
+     */
     aiMaxChunksPerTag?: number | null;
 }
 
@@ -92,6 +98,7 @@ export function DocumentStatsFromJSONTyped(json: any, ignoreDiscriminator: boole
         'totalChunks': json['total_chunks'],
         'annotationsCount': json['annotations_count'],
         'distinctTagsCount': json['distinct_tags_count'],
+        'suggestionsCount': json['suggestions_count'] == null ? undefined : json['suggestions_count'],
         'aiMaxChunksPerTag': json['ai_max_chunks_per_tag'] == null ? undefined : json['ai_max_chunks_per_tag'],
     };
 }
@@ -113,6 +120,7 @@ export function DocumentStatsToJSONTyped(value?: DocumentStats | null, ignoreDis
         'total_chunks': value['totalChunks'],
         'annotations_count': value['annotationsCount'],
         'distinct_tags_count': value['distinctTagsCount'],
+        'suggestions_count': value['suggestionsCount'],
         'ai_max_chunks_per_tag': value['aiMaxChunksPerTag'],
     };
 }
