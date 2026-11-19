@@ -14,9 +14,10 @@ export interface RemovalConfirmation {
 }
 
 // Removing a document only unlinks it (and its chunks) from the collection: its annotations
-// stay stored, the collection stops showing them, and adding the document back shows them
-// again (#765). The wording must never claim they are deleted.
-const KEPT_UNKNOWN = 'Any annotations it has are not deleted: they show again if the document is added back.'
+// stay stored (the Annotations tab, the export and deleting their tag still include them),
+// but the document cannot be opened in the collection until it is added back (#765). The
+// wording must never claim they are deleted or entirely hidden.
+const NOT_OPENABLE = 'the document cannot be opened in this collection until it is added back.'
 
 function describeCounts (annotations: number, suggestions: number): string {
   const parts = []
@@ -38,7 +39,7 @@ export function singleRemovalConfirmation ({ title, stats }: RemovalTarget): Rem
   if (!stats) {
     return {
       title: 'Remove Document',
-      message: `${question} Its annotation count could not be loaded. ${KEPT_UNKNOWN}`,
+      message: `${question} Its annotation count could not be loaded. Any annotations it has are not deleted, but ${NOT_OPENABLE}`,
       okLabel: 'Remove'
     }
   }
@@ -47,12 +48,11 @@ export function singleRemovalConfirmation ({ title, stats }: RemovalTarget): Rem
   if (!annotations && !suggestions) {
     return { title: 'Remove Document', message: question, okLabel: 'Remove' }
   }
-  const [them, They] = annotations + suggestions === 1 ? ['it', 'It is'] : ['them', 'They are']
+  const kept = annotations + suggestions === 1 ? 'It is' : 'They are'
   return {
     title: annotations ? 'Remove Annotated Document' : 'Remove Document',
     message: `"${title}" has ${describeCounts(annotations, suggestions)} in this collection. ` +
-      `Removing it from the collection hides ${them} here. ` +
-      `${They} not deleted: ${them === 'it' ? 'it shows' : 'they show'} again if the document is added back.`,
+      `${kept} not deleted, but ${NOT_OPENABLE}`,
     okLabel: 'Remove'
   }
 }
@@ -72,14 +72,14 @@ export function bulkRemovalConfirmation (targets: RemovalTarget[]): RemovalConfi
   if (annotated.length) {
     sentences.push(
       `${annotated.length} of them ${annotated.length === 1 ? 'has' : 'have'} annotations in this collection ` +
-      `(${describeCounts(annotations, suggestions)} in total), which removing hides here.`
+      `(${describeCounts(annotations, suggestions)} in total).`
     )
   }
   if (unknown) {
     sentences.push(`The annotation count of ${plural(unknown, 'document')} could not be loaded.`)
   }
   if (annotated.length || unknown) {
-    sentences.push('Annotations are not deleted: they show again if a document is added back.')
+    sentences.push('Annotations are not deleted, but a removed document cannot be opened in this collection until it is added back.')
   }
   return {
     title: annotations ? 'Remove Annotated Documents' : 'Remove Selected Documents',
