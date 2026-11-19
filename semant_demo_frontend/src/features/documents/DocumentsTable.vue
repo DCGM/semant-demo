@@ -244,7 +244,7 @@ const handleTagDocument = (documentId: string) => {
 // The confirmations name the annotations the collection stops showing (#765); a document
 // whose stats are missing (not loaded yet, or failed) is described as unknown, not as none.
 const removalTarget = (document: Document) => ({
-  title: document.title,
+  title: document.title?.trim() || 'Untitled document',
   stats: documentStatsMap.value[document.id]
 })
 
