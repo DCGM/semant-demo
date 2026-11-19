@@ -195,6 +195,8 @@ class ChunkSearchRepository:
         if query.collection_id is not None:
             filters.append(Filter.by_ref(link_on=self.collectionNames.user_collection_link_name)
                            .by_id().equal(query.collection_id))
+        if query.document_id is not None:
+            filters.append(Filter.by_ref(link_on="document").by_id().equal(query.document_id))
         if query.document_collection_id is not None:
             filters.append(Filter.by_ref(link_on="document").by_ref(link_on="collection")
                            .by_id().equal(query.document_collection_id))

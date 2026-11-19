@@ -1,3 +1,4 @@
+import SimilarSourceBar from 'src/features/annotations/concordance/SimilarSourceBar.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -155,6 +156,30 @@ describe('ranked queries of the concordance store', () => {
     expect([params.get('mode'), params.get('similar_to'), params.get('sort')]).toEqual([null, null, 'document'])
   })
 
+  it('remembers the query Find similar started from and returns to it (#691)', async () => {
+    const store = await opened()
+    void store.setFilters({ tagIds: ['t1'], text: 'praha' })
+    await flush()
+    void store.findSimilar(row('a', 'Praha'))
+    await flush()
+    void store.findSimilar(row('b', 'Brno')) // switching the source keeps the first view
+    await flush()
+    expect(store.filters.similarTo?.id).toBe('b')
+    expect(store.previousView?.filters).toMatchObject({ tagIds: ['t1'], text: 'praha', similarTo: null })
+
+    void store.returnFromSimilar()
+    await flush()
+    const params = last().url.searchParams
+    expect([store.filters.similarTo, store.previousView, params.get('mode'), params.get('q'), params.getAll('tag_id')])
+      .toEqual([null, null, null, 'praha', ['t1']])
+
+    void store.findSimilar(row('a', 'Praha'))
+    await flush()
+    void store.setFilters(clearSimilar()) // leaving by the chip drops the way back
+    await flush()
+    expect(store.previousView).toBeNull()
+  })
+
   it('shows why a ranked query was refused: no source vector, no embedding service', async () => {
     const store = await opened()
     const refused = store.findSimilar(row('a'))
@@ -241,12 +266,25 @@ describe('ranked components', () => {
     input('Contains words').vm.$emit('update:modelValue', 'novak')
     input('Similar meaning').vm.$emit('update:modelValue', 'hejtman')
     expect(toolbar.emitted('change')).toEqual([[{ text: 'novak' }], [{ similarity: 'hejtman' }]])
-    expect(toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')).toBeUndefined()
-
+    // The source's controls live in the pinned bar (#691), not in the toolbar.
     await toolbar.setProps({ filters: withMode(filters({ similarTo: row('a') })) } as never)
-    const include = toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')!
-    include.vm.$emit('update:modelValue', true)
-    expect(toolbar.emitted('change')![2]).toEqual([{ includeSource: true }])
+    expect(toolbar.findAllComponents(QCheckbox).find(c => c.props('label') === 'Include source')).toBeUndefined()
+  })
+
+  it('pins the source with Show source, Include and Back to previous view (#691)', async () => {
+    const source = row('a', 'Praha')
+    const bar = mountIt(SimilarSourceBar, { filters: withMode(filters({ similarTo: source })), hasPrevious: true })
+    expect(bar.get('[data-testid="similar-source-text"]').text()).toBe("'Praha'")
+    expect(bar.get('[data-testid="similar-source-status"]').text()).toContain('not one of the ranked matches')
+    await bar.get('[data-testid="similar-source-show"]').trigger('click')
+    bar.findComponent(QCheckbox).vm.$emit('update:modelValue', true)
+    await bar.get('[data-testid="similar-source-back"]').trigger('click')
+    expect([bar.emitted('open'), bar.emitted('change'), bar.emitted('back')?.length])
+      .toEqual([[[source]], [[{ includeSource: true }]], 1])
+    await bar.setProps({ hasPrevious: false } as never)
+    expect(bar.find('[data-testid="similar-source-back"]').exists()).toBe(false)
+    await bar.setProps({ filters: filters({}) } as never)
+    expect(bar.find('[data-testid="similar-source"]').exists()).toBe(false)
   })
 
   it('opens the source from its reference chip', async () => {

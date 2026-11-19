@@ -26,6 +26,14 @@ describe('tag focus', () => {
     expect(tagNav.isTagVisible('a')).toBe(true)
   })
 
+  it('showing one hidden tag does not show others or focus it', () => {
+    tagNav.hideAllTags(['a', 'b'])
+    tagNav.showTag('a')
+    expect(tagNav.isTagVisible('a')).toBe(true)
+    expect(tagNav.isTagVisible('b')).toBe(false)
+    expect(tagNav.focusedTagId.value).toBeNull()
+  })
+
   it('hiding the focused tag ends the focus; hiding another tag keeps it', () => {
     tagNav.setFocusedTagId('a')
     tagNav.toggleTag('b')

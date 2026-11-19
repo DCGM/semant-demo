@@ -127,11 +127,10 @@ class Config:
         self.TOPICER_URL = env.get("TOPICER_URL", "http://topicer:8089")
         self.TOPICER_CONFIG_NAME = env.get("TOPICER_CONFIG_NAME", "llm-openrouter")
         self.TOPICER_TIMEOUT = float(env.get("TOPICER_TIMEOUT", 600.0))
-        # Most chunks one optimized suggestion stream evaluates per tag, sent to Topicer as
-        # max_chunks (semANT's policy; must not exceed Topicer's own max_chunks_ceiling).
+        # Most candidate chunks optimized suggestions send to Topicer per tag (semANT's policy, #792).
         self.TOPICER_MAX_CHUNKS_PER_TAG = int(env.get("TOPICER_MAX_CHUNKS_PER_TAG", 40))
         # Daily-allowance reservation (USD-equivalent) for one Topicer chunk evaluation: a
-        # thorough chunk or a selection chunk; an optimized tag reserves it per allowed chunk.
+        # thorough chunk, an optimized candidate chunk or a selection chunk.
         self.TOPICER_RESERVE_USD_PER_CHUNK = float(env.get("TOPICER_RESERVE_USD_PER_CHUNK", 0.005))
 
         # Annotation tenants (#327): the backend records when each collection's annotation
