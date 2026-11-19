@@ -240,6 +240,11 @@ Production configs (#470, #140), named after the method:
 | `crossbert-czechtopic-2026-05` | BERT (WordPiece) | Best model from CzechTopic | before 2026-05 | 2026-05 (as `crossbert`; renamed 2026-11-19) | 0.77 / 350 | not measured with Topicer | `models/czechtopic-2026-05/` |
 | `crossbert-mmbert-2026-08` | mmBERT-base | Best of 9 variants of the 2026-08-05 training (`normalize_score`, `soft_max_score`, no `scale_positives`, max_length 512); threshold calibrated on validation | 2026-08-05 | 2026-11-19 | 0.32 / 512 | 0.440 [0.412, 0.467] (token-topicer inference) | `models/mmbert-2026-08/` |
 
+mmBERT needs `TORCH_DISABLE_NATIVE_JIT=1`, set in `docker-compose.topicer.yml`: the image installs
+the newest torch (2.14.1 on 2026-11-19), which sends mmBERT's rotary embeddings to a Triton kernel
+that needs a C compiler the image lacks, so every mmBERT request failed with HTTP 500. Changing
+it needs `topicer-down` and `topicer-up`, not a restart.
+
 Both use `stride: 32`, `normalize_score: true` and `soft_max_score: true`; mmBERT also sets
 `gap_tolerance: 5` and `confidence_mode: mean`. Topicer loads every config at startup and keeps
 its model on the GPU (about 2 GB for both, 2026-11-19); mmBERT is much slower per chunk than the
