@@ -94,7 +94,7 @@ async def test_only_certainly_unprocessed_requests_are_marked_as_no_work(handler
     assert raised.value.no_work is no_work
 
 
-@pytest.mark.parametrize("limit", [0, -1, True, 2.5])
+@pytest.mark.parametrize("limit", [0, -1, True, 2.5, 201])
 def test_an_invalid_chunk_limit_is_refused(limit):
     with pytest.raises(ValueError, match="TOPICER_MAX_CHUNKS_PER_TAG"):
         TopicerClient("http://topicer", "c", 5.0, max_chunks_per_tag=limit)

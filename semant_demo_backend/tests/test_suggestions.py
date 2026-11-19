@@ -658,7 +658,7 @@ async def test_optimized_sends_each_tags_candidates_with_that_tag_alone():
     assert sorted((e.chunk_id, len(e.spans)) for e in results) == sorted(
         [(str(third.id), 1), (str(first.id), 0), (str(second.id), 1)])
     assert (end.outcome.value, end.saved, end.unit, end.units_total, end.units_processed) == (
-        "complete", 2, "chunk", 3, 3)
+        "complete", 2, "call", 3, 3)
     assert (end.max_chunks_per_tag, end.tag_limits) == (40, [])
 
 
@@ -731,6 +731,25 @@ async def test_all_tags_are_ranked_at_once():
     await events.aclose()
 
     assert searching == ["person", "place"]
+
+
+async def test_candidate_searches_are_capped(monkeypatch):
+    monkeypatch.setattr(suggestions, "CANDIDATE_SEARCH_CONCURRENCY", 1)
+    world = World("Jan Novák")
+    gate = asyncio.Event()
+    rank = Ranker(world, gate=gate)
+    events = (await optimized(world, FakeProvider(world), request((PERSON, PLACE)), rank)).events()
+
+    first = asyncio.ensure_future(anext(events))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    searching = [name for name, *_ in rank.calls]
+    gate.set()
+    await first
+    await events.aclose()
+
+    assert searching == ["person"]
+    assert [name for name, *_ in rank.calls] == ["person", "place"]
 
 
 async def test_a_tag_limit_counts_candidates_that_left_the_collection_meanwhile():

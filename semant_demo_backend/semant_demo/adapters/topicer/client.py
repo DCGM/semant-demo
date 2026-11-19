@@ -130,6 +130,8 @@ class TopicerProposals:
 
 CONFIGS_TIMEOUT = 10.0
 """Seconds for ``GET /v1/configs``, which needs no inference (proposal calls use ``timeout``)."""
+MAX_CHUNKS_PER_TAG_CEILING = 200
+"""Highest ``TOPICER_MAX_CHUNKS_PER_TAG``: each candidate chunk is a paid call (Topicer's former default ceiling)."""
 CONFIGS_MAX_AGE = 60.0
 """Seconds a configuration list is reused; Topicer changes it only when it is redeployed."""
 
@@ -146,9 +148,11 @@ class TopicerClient:
 
     def __init__(self, base_url: str, config_name: str, timeout: float, max_chunks_per_tag: int = 40,
                  transport: httpx.AsyncBaseTransport | None = None):
-        """Raises ``ValueError`` when ``max_chunks_per_tag`` is not a positive integer."""
-        if isinstance(max_chunks_per_tag, bool) or not isinstance(max_chunks_per_tag, int) or max_chunks_per_tag <= 0:
-            raise ValueError("TOPICER_MAX_CHUNKS_PER_TAG must be a positive integer")
+        """Raises ``ValueError`` when ``max_chunks_per_tag`` is not an integer from 1 to
+        ``MAX_CHUNKS_PER_TAG_CEILING``."""
+        if (isinstance(max_chunks_per_tag, bool) or not isinstance(max_chunks_per_tag, int)
+                or not 0 < max_chunks_per_tag <= MAX_CHUNKS_PER_TAG_CEILING):
+            raise ValueError(f"TOPICER_MAX_CHUNKS_PER_TAG must be an integer from 1 to {MAX_CHUNKS_PER_TAG_CEILING}")
         self.base_url = base_url
         self.config_name = config_name
         self.timeout = timeout

@@ -101,7 +101,7 @@ provider setting at them, with no API keys:
 | Feature | Fake behaviour |
 |---|---|
 | Vector/hybrid search, annotation vectors | hash-based 16-dimension embeddings: identical text matches, nothing else is semantically meaningful |
-| AI tag suggestions (Topicer) | proposes a span wherever a tag example occurs in a chunk; answers one call at a time, 0.5 s apart |
+| AI tag suggestions (Topicer) | proposes a span wherever a tag example occurs in a chunk; answers one call at a time, 0.1 s apart |
 | Search titles/summaries, RAG, span chat, document summaries | a fixed "Fake summary of N passage(s)" text with token usage; the agentic RAG calls its tools once |
 | RAG web search | switched off in the development RAG configurations (it would query a live search engine) |
 | Anything else | the fake answers HTTP 501, so the feature fails visibly instead of reaching a live service |

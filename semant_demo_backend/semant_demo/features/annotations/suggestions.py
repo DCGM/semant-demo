@@ -77,10 +77,12 @@ logger = logging.getLogger(__name__)
 # Topicer's internal OpenAI semaphore is set to 10, so we match that to
 # saturate it without overshooting.
 PROVIDER_CONCURRENCY = 10
+CANDIDATE_SEARCH_CONCURRENCY = 4
+"""Candidate searches (an embedding and a hybrid query each) of one optimized run at a time."""
 
 
 SuggestionEvent = SuggestSpansChunkResult | SuggestSpansRunEnd
-Unit = Literal["chunk", "tag", "selection"]
+Unit = Literal["chunk", "call", "tag", "selection"]
 Ranker = Callable[[TopicerTag, UUID, UUID, int], Awaitable[Candidates]]
 """``(tag, collection, document, limit)`` -> the tag's candidate chunks in optimized mode
 (``candidates.rank_candidates`` bound to the search backends)."""
@@ -512,9 +514,9 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
     description = f"{mode}, collection {collection_id}, document {document_id}"
     chunk_reserve = budget.policy.topicer_reserve_usd_per_chunk if budget is not None else 0.0
     allowance = _Allowance(budget, f"topicer_{mode}", chunk_reserve)
-    # Optimized: the number of calls is known once the candidates are ranked; until then every
-    # chunk may be one.
-    tally = _Tally(unit="chunk", units_total=len(chunks), actor=_run_actor(user),
+    # Optimized: one unit per Topicer call (a candidate chunk with one tag); their number is known
+    # once the candidates are ranked, until then it is the document's chunks.
+    tally = _Tally(unit="chunk" if mode == "thorough" else "call", units_total=len(chunks), actor=_run_actor(user),
                    max_chunks_per_tag=provider.max_chunks_per_tag if mode == "optimized" else None)
     first = await allowance.admit() if tally.units_total else None
     admit, release = allowance.admitter(tally, first)
@@ -566,10 +568,15 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
             return
         # Only chunks of this document in the collection are ever sent.
         by_id = {str(c.id): c for c in chunks}
-        # All tags at once: a slow or unavailable embedder costs one timeout, not one per tag.
-        found = await asyncio.gather(
-            *(rank(tag, collection_id, document_id, provider.max_chunks_per_tag) for tag in tags),
-            return_exceptions=True)
+        # Several tags at once: a slow or unavailable embedder costs about one timeout per
+        # CANDIDATE_SEARCH_CONCURRENCY tags, not one per tag, without flooding the shared embedder.
+        searches = asyncio.Semaphore(CANDIDATE_SEARCH_CONCURRENCY)
+
+        async def search(tag: TopicerTag) -> Candidates:
+            async with searches:
+                return await rank(tag, collection_id, document_id, provider.max_chunks_per_tag)
+
+        found = await service._gather(*(search(tag) for tag in tags))
         ranked: list[tuple[TopicerTag, Candidates, list[str]]] = []
         for tag, candidates in zip(tags, found):
             if isinstance(candidates, Exception):
@@ -579,8 +586,6 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                 event.provider_failed(f"candidate search (tag={tag.name}): {type(candidates).__name__}")
                 yield event.result()
                 continue
-            if isinstance(candidates, BaseException):
-                raise candidates
             ranked.append((tag, candidates, [i for i in candidates.ids if i in by_id]))
         pairs = [(by_id[i], [tag]) for tag, _, ids in ranked for i in ids]
         tally.units_total = len(pairs)

@@ -69,7 +69,7 @@ READY, INITIALIZING = "ready", "initializing"
 DEV_JWT_SECRET = "local-development-only-secret-not-for-any-deployment"
 FRONTEND_ORIGIN = "http://localhost:9000"
 # Seconds between two fake Topicer answers, so a suggestion run is visibly incremental.
-FAKE_TOPICER_STREAM_DELAY = 0.5
+FAKE_TOPICER_STREAM_DELAY = 0.1
 
 
 class Refused(RuntimeError):
