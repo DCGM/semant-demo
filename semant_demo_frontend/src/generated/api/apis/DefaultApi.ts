@@ -2853,7 +2853,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * @summary Suggest Spans Optimized
      * @param {SuggestSpansRequest} suggestSpansRequest 
      * @param {*} [options] Override http request option.
@@ -2863,7 +2863,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -7791,7 +7791,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -7802,7 +7802,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

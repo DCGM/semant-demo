@@ -5914,7 +5914,7 @@ example().catch(console.error);
 
 Suggest Spans Optimized
 
-Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most &#x60;&#x60;TOPICER_MAX_CHUNKS_PER_TAG&#x60;&#x60; chunks per tag (sent as &#x60;&#x60;max_chunks&#x60;&#x60;; never set by the caller). Results are streamed as they arrive, then a :class:&#x60;SuggestSpansRunEnd&#x60; that lists the tags that reached the limit.
+Optimized AI span suggestion: per tag, a hybrid search picks the document\&#39;s chunks most similar to the tag, at most &#x60;&#x60;TOPICER_MAX_CHUNKS_PER_TAG&#x60;&#x60; (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:&#x60;SuggestSpansRunEnd&#x60; that lists the tags that reached the limit.
 
 ### Example
 

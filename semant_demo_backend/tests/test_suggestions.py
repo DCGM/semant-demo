@@ -19,6 +19,7 @@ from weaviate.exceptions import WeaviateTimeoutError
 from semant_demo.adapters.topicer.client import TopicerError, TopicerProposals
 from semant_demo.core.errors import InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations import suggestions
+from semant_demo.features.annotations.candidates import Candidates
 from semant_demo.features.annotations.schemas import (
     SuggestSpansRequest, SuggestSpansSelectionRequest, Tag,
 )
@@ -140,7 +141,7 @@ class FakeProvider:
     max_chunks_per_tag = 40
     config_name = "fake-config"
 
-    def __init__(self, world: World, answers: dict | None = None, stream: dict | None = None,
+    def __init__(self, world: World, answers: dict | None = None,
                  usage: dict | None = None, configs: list[str] | Exception | None = None):
         self.world = world
         self.configs = ["fake-config", "fake-other"] if configs is None else configs
@@ -148,11 +149,11 @@ class FakeProvider:
         self.configs_used: list[str] = []
         self.usage = usage or {}
         self.answers = answers or {}
-        self.stream = stream or {}
         self.running = 0
         self.max_running = 0
         self.cancelled: list[str] = []
         self.calls: list[str] = []
+        self.tags_sent: list[tuple[str, list[str]]] = []  # (text, tag names) of each call
         self.cancel_delay = 0.0  # time a cancelled call needs to end (closing its connection)
 
     async def list_configs(self):
@@ -163,6 +164,7 @@ class FakeProvider:
 
     async def propose_for_text(self, *, chunk_id, text, tags, config_name=None):
         self.calls.append(text)
+        self.tags_sent.append((text, [t.name for t in tags]))
         self.configs_used.append(config_name or self.config_name)
         self.world.log.append(("provider", text))
         self.running += 1
@@ -184,13 +186,24 @@ class FakeProvider:
         finally:
             self.running -= 1
 
-    async def propose_for_db_stream(self, *, tag, collection_id, document_id, config_name=None):
-        self.calls.append(tag.name)
-        self.configs_used.append(config_name or self.config_name)
-        for item in self.stream.get(tag.name, []):
-            if isinstance(item, Exception):
-                raise item
-            yield item
+
+class Ranker:
+    """Fake candidate search: ``ranked[tag name]`` is a list of chunks (best first) or an
+    exception; a tag without an entry gets every chunk of the world, also those outside the
+    collection."""
+
+    def __init__(self, world: World, ranked: dict | None = None):
+        self.world = world
+        self.ranked = ranked or {}
+        self.calls: list[tuple] = []
+
+    async def __call__(self, tag, collection_id, document_id, limit):
+        self.calls.append((tag.name, collection_id, document_id, limit))
+        ranked = self.ranked.get(tag.name, self.world.chunks)
+        if isinstance(ranked, Exception):
+            raise ranked
+        ids = [str(c.id) for c in ranked]
+        return Candidates(ids=ids[:limit], truncated=len(ids) > limit)
 
 
 def request(tags=(PERSON,), collection=COLLECTION, config_name=None):
@@ -206,6 +219,11 @@ async def run_all(run):
 
 async def thorough(world, provider, user=OWNER, req=None):
     return await suggestions.prepare_document_run(world.store(), provider, user, req or request(), "thorough")
+
+
+async def optimized(world, provider, req=None, rank=None, budget=None):
+    return await suggestions.prepare_document_run(world.store(), provider, OWNER, req or request(), "optimized",
+                                                  budget, rank or Ranker(world))
 
 
 # ── Progressive persistence and outcomes ───────────────────────────────────
@@ -583,11 +601,10 @@ async def test_the_default_configuration_is_used_without_asking_for_the_list(con
 
 async def test_a_listed_configuration_is_used_in_every_mode():
     world = World("Jan Novák")
-    provider = FakeProvider(world, stream={"person": []})
+    provider = FakeProvider(world)
 
     await run_all(await thorough(world, provider, req=request(config_name="fake-other")))
-    await run_all(await suggestions.prepare_document_run(
-        world.store(), provider, OWNER, request(config_name="fake-other"), "optimized"))
+    await run_all(await optimized(world, provider, req=request(config_name="fake-other")))
     await run_all(await suggestions.prepare_selection_run(
         world.store(), provider, OWNER, selection(world, world.chunks, 0, 3, config_name="fake-other")))
 
@@ -611,19 +628,6 @@ async def test_an_unknown_configuration_or_an_unreadable_list_fails_before_any_p
     assert provider.calls == [] and world.log == []
 
 
-async def test_an_optimized_run_stops_when_the_configuration_has_no_optimized_mode():
-    world = World("Jan Novák")
-    refused = TopicerError("HTTP 409", no_work=True)
-    provider = FakeProvider(world, stream={"person": [refused], "place": [refused]})
-
-    results, end = await run_all(await suggestions.prepare_document_run(
-        world.store(), provider, OWNER, request(tags=(PERSON, PLACE), config_name="fake-other"), "optimized"))
-
-    assert provider.calls == ["person"] and results == []
-    assert (end.outcome.value, end.error, end.units_processed) == (
-        "failed", suggestions.UNSUPPORTED_OPTIMIZED, 1)
-
-
 async def test_access_is_checked_before_the_configurations_are_listed():
     world = World("Jan Novák")
     provider = FakeProvider(world)
@@ -637,28 +641,84 @@ async def test_access_is_checked_before_the_configurations_are_listed():
 # ── Optimized mode ─────────────────────────────────────────────────────────
 
 
-async def test_optimized_validates_chunks_returned_by_the_provider():
-    world = World("Jan Novák", ("Brno", False))
+async def test_optimized_sends_each_tags_candidates_with_that_tag_alone():
+    world = World("Jan Novák v Brně", "Brno", "Jan")
+    first, second, third = world.chunks
+    rank = Ranker(world, {"person": [third, first], "place": [second]})
+    provider = FakeProvider(world, {"Jan": [proposal(PERSON, 0, 3)], "Brno": [proposal(PLACE, 0, 4)]})
+
+    results, end = await run_all(await optimized(world, provider, request((PERSON, PLACE)), rank))
+
+    assert rank.calls == [("person", COLLECTION, DOCUMENT, 40), ("place", COLLECTION, DOCUMENT, 40)]
+    assert sorted(provider.tags_sent) == sorted([("Jan", ["person"]), ("Jan Novák v Brně", ["person"]),
+                                                 ("Brno", ["place"])])
+    assert sorted((e.chunk_id, len(e.spans)) for e in results) == sorted(
+        [(str(third.id), 1), (str(first.id), 0), (str(second.id), 1)])
+    assert (end.outcome.value, end.saved, end.unit, end.units_total, end.units_processed) == (
+        "complete", 2, "chunk", 3, 3)
+    assert (end.max_chunks_per_tag, end.tag_limits) == (40, [])
+
+
+async def test_optimized_never_sends_a_chunk_outside_the_collection():
+    world = World("Jan Novák", ("Jan v Brně", False))
     inside, outside = world.chunks
-    provider = FakeProvider(world, stream={
-        "person": [
-            {"id": str(inside.id), "tag_span_proposals": [{"span_start": 0, "span_end": 3}]},  # tag of the stream
-            {"id": str(outside.id), "tag_span_proposals": [proposal(PERSON, 0, 4)]},
-            {"id": "garbage", "tag_span_proposals": [proposal(PERSON, 0, 4)]},
-        ],
-        "place": [TopicerError("down")],
-    })
-    run = await suggestions.prepare_document_run(world.store(), provider, OWNER, request((PERSON, PLACE)),
-                                                 "optimized")
+    provider = FakeProvider(world, {"Jan Novák": [proposal(PERSON, 0, 3)]})
 
-    results, end = await run_all(run)
+    results, end = await run_all(await optimized(world, provider, rank=Ranker(world, {"person": [outside, inside]})))
 
-    assert [(e.chunk_id, len(e.spans), e.unsaved) for e in results] == [
-        (str(inside.id), 1, 0), (str(outside.id), 0, 1), ("", 0, 0)]
-    assert results[0].spans[0].tagId == str(PERSON)
-    assert "chunk outside the collection" in results[1].error
-    assert results[2].error == "topicer (tag=place): down"
-    assert (end.outcome.value, end.saved, end.rejected, end.provider_failures) == ("partial", 1, 2, 1)
+    assert provider.calls == ["Jan Novák"]
+    assert [e.chunk_id for e in results] == [str(inside.id)]
+    assert (end.saved, end.units_total) == (1, 1)
+
+
+async def test_optimized_validates_proposals_against_the_chunks_tag():
+    world = World("Jan Novák")
+    provider = FakeProvider(world, {"Jan Novák": [{"span_start": 0, "span_end": 3},  # the call's only tag
+                                                  proposal(PLACE, 4, 9)]})          # a tag not sent
+
+    results, end = await run_all(await optimized(world, provider, request((PERSON, PLACE)),
+                                                 Ranker(world, {"place": []})))
+
+    [event] = results
+    assert [s.tagId for s in event.spans] == [str(PERSON)] and event.unsaved == 1
+    assert "tag outside the request" in event.error
+    assert (end.saved, end.rejected) == (1, 1)
+
+
+async def test_a_failed_call_fails_its_chunk_and_a_failed_search_its_tag():
+    world = World("Jan Novák", "Jan")
+    provider = FakeProvider(world, {"Jan Novák": TopicerError("HTTP 500"), "Jan": [proposal(PERSON, 0, 3)]})
+    rank = Ranker(world, {"place": ConnectionError("embedder down")})
+
+    results, end = await run_all(await optimized(world, provider, request((PERSON, PLACE)), rank))
+
+    assert sorted((e.chunk_id, e.error) for e in results) == sorted([
+        ("", "candidate search (tag=place): ConnectionError"),
+        (str(world.chunks[0].id), "topicer: HTTP 500"),
+        (str(world.chunks[1].id), None)])
+    assert (end.outcome.value, end.saved, end.provider_failures, end.units_total) == ("partial", 1, 2, 2)
+
+
+async def test_tags_whose_candidates_reach_the_limit_are_reported():
+    world = World("Jan Novák", "Jan", "Brno")
+    provider = FakeProvider(world)
+    provider.max_chunks_per_tag = 2
+    rank = Ranker(world, {"person": world.chunks[:2], "place": world.chunks})  # place: 3 candidates, cut to 2
+
+    _, end = await run_all(await optimized(world, provider, request((PERSON, PLACE)), rank))
+
+    assert [(t.tag_name, t.max_chunks, t.processed_chunks, t.candidates_truncated) for t in end.tag_limits] == [
+        ("person", 2, 2, False), ("place", 2, 2, True)]
+    assert end.units_total == 4
+
+
+async def test_a_document_without_collection_chunks_searches_nothing():
+    world = World(("Jan", False))
+    rank = Ranker(world)
+
+    results, end = await run_all(await optimized(world, FakeProvider(world), rank=rank))
+
+    assert (results, rank.calls, end.outcome.value, end.units_total) == ([], [], "complete", 0)
 
 
 # ── Selection ──────────────────────────────────────────────────────────────

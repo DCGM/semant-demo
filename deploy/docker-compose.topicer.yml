@@ -16,10 +16,10 @@ services:
         required: true
     ports:
     - "127.0.0.1:8089:8089"
+    # Only the apps' network: semANT sends Topicer text, so it reads no database and needs no
+    # embedder (#792). Its configs must not name a db_connection (it would fail to connect).
     networks:
       - semant_demo_topicer
-      - semant_demo_embedder
-      - semant_demo_database
     volumes:
     - './data:/app/data'
     restart: always
@@ -37,10 +37,4 @@ networks:
   semant_demo_topicer:
     name: semant_demo_topicer
     driver: bridge
-    external: true
-  semant_demo_database:
-    name: semant_demo_database
-    external: true
-  semant_demo_embedder:
-    name: semant_demo_embedder
     external: true

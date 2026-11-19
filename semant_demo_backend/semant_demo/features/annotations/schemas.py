@@ -947,7 +947,7 @@ class SuggestionRunOutcome(str, Enum):
 
 
 class SuggestTagLimit(BaseModel):
-    """An optimized-mode tag whose Topicer stream reached the per-tag chunk limit."""
+    """An optimized-mode tag whose candidate chunks reached the per-tag chunk limit."""
     tag_id: str
     tag_name: str
     max_chunks: int
@@ -985,7 +985,9 @@ class SuggestSpansRunEnd(BaseModel):
     """Why the run did not complete, if it did not."""
     unit: Literal["chunk", "tag", "selection"] = "chunk"
     units_total: int = 0
-    """Units the run would process (document chunks, tags, or 1)."""
+    """Units the run would process: Topicer calls of chunks (thorough: the document's chunks;
+    optimized: the candidate chunks of all tags, known once they are ranked) or 1 selection.
+    ``tag`` is no longer used (#792)."""
     units_processed: int = 0
     """Units admitted and sent to Topicer."""
     stop_reason: Literal["quota_exhausted"] | None = None
@@ -993,7 +995,7 @@ class SuggestSpansRunEnd(BaseModel):
     quota_exhausted: QuotaExhaustedResponse | None = None
     """The refusal that stopped the run (its ``reset_at``), with ``stop_reason``."""
     max_chunks_per_tag: int | None = None
-    """Optimized mode: the per-tag chunk limit sent to Topicer."""
+    """Optimized mode: the most candidate chunks sent to Topicer per tag."""
     tag_limits: list[SuggestTagLimit] = Field(default_factory=list)
     """Optimized mode: the tags that reached ``max_chunks_per_tag``."""
 
