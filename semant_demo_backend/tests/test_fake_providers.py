@@ -67,7 +67,7 @@ async def test_text_answers_are_paced_one_by_one_when_delayed():
 
     first, second = sorted(await asyncio.gather(answered_after(), answered_after()))
 
-    assert first < 0.15 and second >= 0.2
+    assert second - first >= 0.15 and second >= 0.2
 
 
 async def test_configs_are_listed_and_an_unknown_one_is_refused(topicer, fake_client):

@@ -493,7 +493,8 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
     ``thorough``: every such chunk is sent to Topicer with all requested tags, one call
     per chunk. ``optimized``: per tag, ``rank`` picks the chunks most similar to it, at most
     ``provider.max_chunks_per_tag`` (``candidates.rank_candidates``, #792), and each of them
-    is sent to Topicer with that tag alone, tags one after another. One event per call, in
+    is sent to Topicer with that tag alone, tags one after another (all tags are ranked
+    first, concurrently). One event per call, in
     completion order; in optimized mode also one event with an empty ``chunk_id`` for a tag
     whose candidate search failed. Needs annotation-edit access; the tags and the document
     must belong to the collection.
@@ -565,32 +566,38 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
             return
         # Only chunks of this document in the collection are ever sent.
         by_id = {str(c.id): c for c in chunks}
-        ranked: list[tuple[TopicerTag, Candidates]] = []
-        for tag in tags:
-            try:
-                candidates = await rank(tag, collection_id, document_id, provider.max_chunks_per_tag)
-            except Exception as e:
+        # All tags at once: a slow or unavailable embedder costs one timeout, not one per tag.
+        found = await asyncio.gather(
+            *(rank(tag, collection_id, document_id, provider.max_chunks_per_tag) for tag in tags),
+            return_exceptions=True)
+        ranked: list[tuple[TopicerTag, Candidates, list[str]]] = []
+        for tag, candidates in zip(tags, found):
+            if isinstance(candidates, Exception):
                 logger.warning("Candidate search of tag %s (document %s) failed: %s", tag.id, document_id,
-                               type(e).__name__)
+                               type(candidates).__name__)
                 event = _ChunkEvent(tally, "")
-                event.provider_failed(f"candidate search (tag={tag.name}): {type(e).__name__}")
+                event.provider_failed(f"candidate search (tag={tag.name}): {type(candidates).__name__}")
                 yield event.result()
                 continue
-            ranked.append((tag, Candidates([i for i in candidates.ids if i in by_id], candidates.truncated)))
-        pairs = [(by_id[i], [tag]) for tag, candidates in ranked for i in candidates.ids]
+            if isinstance(candidates, BaseException):
+                raise candidates
+            ranked.append((tag, candidates, [i for i in candidates.ids if i in by_id]))
+        pairs = [(by_id[i], [tag]) for tag, _, ids in ranked for i in ids]
         tally.units_total = len(pairs)
         async with aclosing(results_of(pairs, tally, single_tag=True)) as results:
             async for result in results:
                 yield result
         # A tag reached the limit when it had that many candidates and all of them were sent
         # (calls are admitted in order, so a stop by the allowance cuts the last tags).
+        # The limit counts the ranked candidates, also any left out above (a chunk that left the
+        # collection meanwhile).
         admitted, sent = tally.units_processed, 0
-        for tag, candidates in ranked:
-            sent += len(candidates.ids)
+        for tag, candidates, ids in ranked:
+            sent += len(ids)
             if len(candidates.ids) >= provider.max_chunks_per_tag and sent <= admitted:
                 tally.tag_limits.append(SuggestTagLimit(
                     tag_id=tag.id, tag_name=tag.name, max_chunks=provider.max_chunks_per_tag,
-                    processed_chunks=len(candidates.ids), candidates_truncated=candidates.truncated))
+                    processed_chunks=len(ids), candidates_truncated=candidates.truncated))
 
     return SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
                          hold=lambda: store.activity.in_use(collection_id), release=release)

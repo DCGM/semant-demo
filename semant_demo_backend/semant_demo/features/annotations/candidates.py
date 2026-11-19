@@ -42,5 +42,6 @@ async def rank_candidates(backends: SearchBackends, tag: TopicerTag, collection_
     query = ChunkQuery(text=tag.name, mode=SearchType.hybrid, limit=limit + 1, alpha=HYBRID_ALPHA,
                        vector=await vector.embedder.embed_query(vector_text(tag)),
                        target_vector=vector.target_vector, collection_id=collection_id, document_id=document_id)
-    ids = [str(i) for i in await backends.chunks.ranked_ids(query)]
+    # Once each, best rank kept (as the passage search does), so a chunk is never sent twice.
+    ids = list(dict.fromkeys(str(i) for i in await backends.chunks.ranked_ids(query)))
     return Candidates(ids=ids[:limit], truncated=len(ids) > limit)

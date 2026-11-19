@@ -240,13 +240,17 @@ Production configs (#470), named after the method:
 
 1. **Merge** (CI deploys test-main): test-main and new previews join `semant_demo_topicer` and
    call the production Topicer's `/texts`, which it already serves. Previews built from older
-   branches keep calling `topicer-test`.
+   branches keep calling `topicer-test` (all their AI suggestions depend on it).
 2. **Release** to production: production no longer calls Topicer's database stream.
-3. **Remove the test Topicer** once no preview from an older branch is needed (such previews lose
-   optimized suggestions until rebased): `docker compose -p semant-demo-test -f
-   ./docker-compose.topicer-test.yml down` on the server, then delete that file, its
-   `test-topicer-*` lines in the server's `update.sh`, `data/topicer-test/` and the
-   `semant_demo_test_topicer` network (`docker network rm semant_demo_test_topicer`).
+3. **Remove the test Topicer** once no preview built from an older branch is needed. Such
+   previews still use `TOPICER_URL=http://topicer-test:8089` and the `semant_demo_test_topicer`
+   network: without the test Topicer they lose **all** AI suggestions (thorough and selection
+   too), and without the network they can no longer be redeployed, until rebased. Tear those
+   previews down (or rebase them) first, then on the server: `docker compose -p semant-demo-test
+   -f ./docker-compose.topicer-test.yml down`, delete that file, its `test-topicer-*` lines in
+   the server's `update.sh` and `data/topicer-test/`, and finally
+   `docker network rm semant_demo_test_topicer` (it fails while a container is still attached;
+   `docker network inspect semant_demo_test_topicer` lists them).
 4. **Take Topicer off the database**: remove `db_connection` and `embedding_service` from the
    configs in `data/topicer/configs/` (`llm-openrouter.yaml`, `crossbert.yaml`), copy this
    repository's `docker-compose.topicer.yml` over the server's (keeping its local differences),
