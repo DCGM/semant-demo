@@ -8,11 +8,17 @@ import asyncio
 import json
 
 import pytest
+import yaml
 from fastapi import FastAPI
+from httpx import ASGITransport
 from weaviate.classes.data import DataObject
 from weaviate.collections.classes.batch import DeleteManyReturn
 from weaviate.collections.data.async_ import _DataCollectionAsync
 from weaviate.exceptions import WeaviateTimeoutError
+
+from semant_demo.bootstrap import load_search_vectors
+from semant_demo.config import Config
+from tests.fake_providers import create_fake_provider_app
 
 
 pytestmark = pytest.mark.integration
@@ -216,9 +222,16 @@ async def test_ai_storage_failures_are_reported(api_client, login, ids, store, c
     assert await store.span_count() == spans_before
 
 
-async def test_optimized_ai_sends_only_the_documents_chunks_in_the_collection(api_client, login, ids, corpus,
-                                                                             use_topicer):
+async def test_optimized_ai_sends_only_the_documents_chunks_in_the_collection(api_app, api_client, login, ids,
+                                                                             corpus, use_topicer, tmp_path):
     # semANT ranks the candidates itself (#792): chronicle_3 is in newspapers, not chronicles.
+    # Candidate queries are embedded by the fake embedding service (the store's `default` vector).
+    path = tmp_path / "search_vectors.yaml"
+    path.write_text(yaml.safe_dump({"default": "fake", "vectors": [
+        {"id": "fake", "name": "Fake", "target_vector": "default",
+         "embedding": {"provider": "embedding_service", "base_url": "http://fake"}}]}))
+    api_app.state.resources.search_vectors = load_search_vectors(
+        Config(environ={"SEARCH_VECTORS_CONFIG": str(path)}), ASGITransport(app=create_fake_provider_app(corpus)))
     sent = []
     provider = FastAPI()
 
@@ -232,6 +245,7 @@ async def test_optimized_ai_sends_only_the_documents_chunks_in_the_collection(ap
 
     response = await api_client.post("/api/ai/suggest_spans/optimized", headers=await login("owner"), json=body)
 
-    assert sorted(sent) == sorted([corpus.chunks["chronicle_1"]["id"], corpus.chunks["chronicle_2"]["id"]])
     end = end_of(response)
-    assert (end["outcome"], end["unit"], end["units_total"], end["max_chunks_per_tag"]) == ("complete", "call", 2, 40)
+    assert (end["outcome"], end["provider_failures"], end["unit"], end["units_total"], end["max_chunks_per_tag"]) == (
+        "complete", 0, "call", 2, 40)
+    assert sorted(sent) == sorted([corpus.chunks["chronicle_1"]["id"], corpus.chunks["chronicle_2"]["id"]])
