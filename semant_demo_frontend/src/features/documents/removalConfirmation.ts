@@ -1,10 +1,14 @@
 import type { DocumentStats } from 'src/generated/api'
 import { plural } from 'src/shared/plural'
 
-/** A document to remove from the collection, with its stats unless they are unavailable. */
+/**
+ * A document to remove from the collection, with its stats unless they are unavailable;
+ * `loading`: they are unavailable because they are still (re)loading, not because they failed.
+ */
 export interface RemovalTarget {
   title: string
   stats?: DocumentStats | null
+  loading?: boolean
 }
 
 export interface RemovalConfirmation {
@@ -28,18 +32,20 @@ function describeCounts (annotations: number, suggestions: number): string {
 
 const annotationsOf = (stats: DocumentStats) => stats.annotationsCount
 const suggestionsOf = (stats: DocumentStats) => stats.suggestionsCount ?? 0
+const unavailable = (loading: boolean) => (loading ? 'is still loading' : 'could not be loaded')
 
 /**
  * Confirmation of removing one document from the collection. A document with confirmed
  * annotations or pending AI suggestions gets a stronger warning naming them; a document
  * whose stats are unavailable is never described as having none.
  */
-export function singleRemovalConfirmation ({ title, stats }: RemovalTarget): RemovalConfirmation {
+export function singleRemovalConfirmation ({ title, stats, loading = false }: RemovalTarget): RemovalConfirmation {
   const question = `Remove the document "${title}" from the collection?`
   if (!stats) {
     return {
       title: 'Remove Document',
-      message: `${question} Its annotation count could not be loaded. Any annotations it has are not deleted, but ${NOT_OPENABLE}`,
+      message: `${question} Its annotation count ${unavailable(loading)}. ` +
+        `Any annotations it has are not deleted, but ${NOT_OPENABLE}`,
       okLabel: 'Remove'
     }
   }
@@ -51,34 +57,38 @@ export function singleRemovalConfirmation ({ title, stats }: RemovalTarget): Rem
   const kept = annotations + suggestions === 1 ? 'It is' : 'They are'
   return {
     title: annotations ? 'Remove Annotated Document' : 'Remove Document',
-    message: `"${title}" has ${describeCounts(annotations, suggestions)} in this collection. ` +
+    message: `${question} It has ${describeCounts(annotations, suggestions)} in this collection. ` +
       `${kept} not deleted, but ${NOT_OPENABLE}`,
     okLabel: 'Remove'
   }
 }
 
 /**
- * Confirmation of removing several documents: how many of them have known annotations
- * or suggestions and their totals, and how many have unavailable stats.
+ * Confirmation of removing the selected documents: how many of them have known confirmed
+ * annotations or pending AI suggestions and their totals, and how many have unavailable
+ * stats. One selected document gets the single-document confirmation.
  */
 export function bulkRemovalConfirmation (targets: RemovalTarget[]): RemovalConfirmation {
+  if (targets.length === 1) return singleRemovalConfirmation(targets[0])
+
   const known = targets.flatMap(({ stats }) => (stats ? [stats] : []))
-  const unknown = targets.length - known.length
+  const unknown = targets.filter(({ stats }) => !stats)
   const annotated = known.filter((s) => annotationsOf(s) || suggestionsOf(s))
   const annotations = annotated.reduce((sum, s) => sum + annotationsOf(s), 0)
   const suggestions = annotated.reduce((sum, s) => sum + suggestionsOf(s), 0)
 
   const sentences = [`Remove ${plural(targets.length, 'selected document')} from the collection?`]
   if (annotated.length) {
-    sentences.push(
-      `${annotated.length} of them ${annotated.length === 1 ? 'has' : 'have'} annotations in this collection ` +
-      `(${describeCounts(annotations, suggestions)} in total).`
-    )
+    const counts = describeCounts(annotations, suggestions)
+    sentences.push(annotated.length === 1
+      ? `1 of them has ${counts} in this collection.`
+      : `${annotated.length} of them have ${counts} in this collection between them.`)
   }
-  if (unknown) {
-    sentences.push(`The annotation count of ${plural(unknown, 'document')} could not be loaded.`)
+  if (unknown.length) {
+    const loading = unknown.some((t) => t.loading)
+    sentences.push(`The annotation count of ${plural(unknown.length, 'document')} ${unavailable(loading)}.`)
   }
-  if (annotated.length || unknown) {
+  if (annotated.length || unknown.length) {
     sentences.push('Annotations are not deleted, but a removed document cannot be opened in this collection until it is added back.')
   }
   return {
