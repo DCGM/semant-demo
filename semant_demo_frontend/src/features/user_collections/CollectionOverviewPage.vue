@@ -358,7 +358,8 @@ const collectionStatsError = computed(() => collectionStatsFailed.value ? 'Faile
 // `userCollectionId`): never another collection's, the corpus's or the previous account's. A
 // failed load shows its error, never zeros.
 const chartsQuery = useCollectionDocumentCharts(collectionId, collectionLoaded)
-const chartsFailed = computed(() => collectionLoaded.value && chartsQuery.isError.value)
+// A retry in progress shows the loading state, not the error it may clear.
+const chartsFailed = computed(() => collectionLoaded.value && chartsQuery.isError.value && !chartsQuery.isFetching.value)
 const chartsShown = computed(() => {
   const d = chartsQuery.data.value
   if (!collectionLoaded.value || chartsFailed.value || !d) return null

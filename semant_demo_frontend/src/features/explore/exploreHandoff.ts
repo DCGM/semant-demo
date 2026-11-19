@@ -1,6 +1,6 @@
 import type { Router } from 'vue-router'
 import { withChartFilter, type ChartFilter } from 'src/features/analytics/corpusOverview'
-import { emptyCriteria, locationKey, locationQuery, normalizeCriteria, type ExploreLocation } from './criteria'
+import { emptyCriteria, locationKey, locationQuery, normalizeCriteria, parseLocationQuery, type ExploreLocation } from './criteria'
 
 /**
  * Opening Explore with a collection as its scope from another page (#795, #622 decision 7).
@@ -10,12 +10,16 @@ import { emptyCriteria, locationKey, locationQuery, normalizeCriteria, type Expl
  * to the Explore location; Explore takes it on that navigation (`takeExploreHandoff`) and applies
  * the location with the collection, also when it is kept alive with the same URL. The hand-off is
  * kept in memory only (not in the URL, the history state or local storage), belongs to the user
- * who left it, and is taken at most once.
+ * who left it, and is taken at most once: the next navigation to Explore takes it or, if it was
+ * left for another location or user, discards it.
  */
 interface ExploreHandoff {
   userId: string
   collectionId: string
-  /** The location it was left for: another navigation to Explore does not take it. */
+  /**
+   * The location it was left for, as Explore reads it from the URL (`parseLocationQuery`, which
+   * leaves out values it does not accept, e.g. a future year), so the two always match.
+   */
   locationKey: string
 }
 
@@ -32,19 +36,31 @@ export function collectionChartLocation (filter: ChartFilter): ExploreLocation {
   return { criteria, mode: 'documents', view: 'visualizations', vector: null }
 }
 
+/** The key of `location` as Explore will read it from the URL `router` pushes it with. */
+const urlKey = (router: Router, location: ExploreLocation) =>
+  locationKey(parseLocationQuery(router.resolve({ name: 'search', query: locationQuery(location) }).query).location)
+
 /**
  * Opens Explore (route `search`) at `location` with the collection `collectionId` as its scope,
- * for the signed-in user `userId`. A navigation that does not happen (refused or cancelled)
- * leaves no hand-off behind.
+ * for the signed-in user `userId`. A navigation that does not reach Explore (refused, cancelled,
+ * redirected or failed) leaves no hand-off behind; a failure is logged, not thrown, so callers
+ * need not handle it.
  */
 export async function exploreCollection (
   router: Router,
   { userId, collectionId, location }: { userId: string, collectionId: string, location: ExploreLocation }
 ): Promise<void> {
-  const handoff = { userId, collectionId, locationKey: locationKey(location) }
+  const handoff = { userId, collectionId, locationKey: urlKey(router, location) }
   pending = handoff
-  const failure = await router.push({ name: 'search', query: locationQuery(location) })
-  if (failure && pending === handoff) pending = null
+  let reached = false
+  try {
+    const failure = await router.push({ name: 'search', query: locationQuery(location) })
+    reached = !failure && router.currentRoute.value.name === 'search'
+  } catch (e) {
+    console.error('Opening Explore with the collection failed:', e)
+  } finally {
+    if (!reached && pending === handoff) pending = null
+  }
 }
 
 /** Whether a hand-off waits for a navigation to `location` by `userId` (not taken). */
@@ -53,16 +69,14 @@ export function hasExploreHandoff (location: ExploreLocation, userId: string | n
 }
 
 /**
- * Takes the hand-off left for a navigation to `location` by `userId`: its collection, once.
- * A hand-off of another user (signed out meanwhile) is discarded; one left for another location
- * stays for its own navigation.
+ * Takes the hand-off on a navigation to Explore at `location` by `userId`: its collection, once.
+ * Any other hand-off (another user, signed out meanwhile, or another location) is discarded, so a
+ * hand-off never waits for a later visit.
  */
 export function takeExploreHandoff (location: ExploreLocation, userId: string | null): string | null {
-  if (pending && pending.userId !== userId) pending = null
-  if (!pending || pending.locationKey !== locationKey(location)) return null
-  const { collectionId } = pending
+  const handoff = pending
   pending = null
-  return collectionId
+  return handoff && handoff.userId === userId && handoff.locationKey === locationKey(location) ? handoff.collectionId : null
 }
 
 /** Forgets any hand-off (tests). */

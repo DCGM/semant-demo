@@ -405,9 +405,16 @@ describe('collection document charts on the Overview tab', () => {
     expect(page.find('[data-testid="charts-total"]').exists()).toBe(false)
     expect(getDocumentDistributions).toHaveBeenCalledTimes(1) // not retried behind the user's back
 
+    const retried = held<CorpusDistributions>()
+    getDocumentDistributions.mockReturnValueOnce(retried.promise)
     await page.get('[data-testid="charts-retry"]').trigger('click')
     await flushPromises()
     expect(getDocumentDistributions).toHaveBeenCalledTimes(2)
+    // While it is counted again, the page says so instead of keeping the error (review of #796).
+    expect(chartIds(page)).toEqual(['charts-loading'])
+
+    retried.answer(distributions('A', 3))
+    await flushPromises()
     expect(page.get('[data-testid="charts-total"]').text()).toBe('3')
   })
 

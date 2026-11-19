@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 
-import { locationKey, type ExploreLocation } from 'src/features/explore/criteria'
+import { locationKey, locationQuery, parseLocationQuery, type ExploreLocation } from 'src/features/explore/criteria'
 import {
   clearExploreHandoff, collectionChartLocation, collectionExploreLocation, exploreCollection, hasExploreHandoff,
   takeExploreHandoff
@@ -51,16 +51,55 @@ describe('exploreCollection', () => {
     expect(hasExploreHandoff(location, 'u1')).toBe(true)
   })
 
-  it('is taken once, only by its user and for its location', () => {
+  it('is taken once, by its user and for its location', () => {
+    const router = makeRouter()
+    const location = collectionExploreLocation()
+    void exploreCollection(router, { userId: 'u1', collectionId: 'c1', location })
+
+    expect(takeExploreHandoff(location, 'u1')).toBe('c1')
+    expect(takeExploreHandoff(location, 'u1')).toBeNull()
+  })
+
+  it('is discarded by a navigation to Explore it was not left for, never waiting for a later visit', () => {
     const router = makeRouter()
     const location = collectionExploreLocation()
     void exploreCollection(router, { userId: 'u1', collectionId: 'c1', location })
 
     const other: ExploreLocation = { ...location, view: 'visualizations' }
     expect(locationKey(other)).not.toBe(locationKey(location))
-    expect(takeExploreHandoff(other, 'u1')).toBeNull() // another navigation to Explore
-    expect(takeExploreHandoff(location, 'u1')).toBe('c1')
+    expect(takeExploreHandoff(other, 'u1')).toBeNull()
     expect(takeExploreHandoff(location, 'u1')).toBeNull()
+  })
+
+  it('matches the location Explore reads from the URL, also with values the URL does not accept', async () => {
+    // A timeline bin of a document dated in the future: its end is clamped, its start is not
+    // (review of #796), so the URL's reversed years are left out when Explore reads it.
+    const router = makeRouter()
+    const location = collectionChartLocation({ dimension: 'years', start: 2200, end: 2026 })
+    await exploreCollection(router, { userId: 'u1', collectionId: 'c1', location })
+
+    const read = parseLocationQuery(router.currentRoute.value.query)
+    expect(read.invalid.length).toBeGreaterThan(0)
+    expect(locationKey(read.location)).not.toBe(locationKey(location))
+    expect(takeExploreHandoff(read.location, 'u1')).toBe('c1')
+  })
+
+  it('leaves no hand-off and throws nothing when the navigation fails or ends elsewhere', async () => {
+    const location = collectionExploreLocation()
+    const failing = makeRouter()
+    vi.spyOn(failing, 'push').mockRejectedValue(new Error('chunk load failed'))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await expect(exploreCollection(failing, { userId: 'u1', collectionId: 'c1', location })).resolves.toBeUndefined()
+    expect(logged).toHaveBeenCalledTimes(1)
+    expect(hasExploreHandoff(location, 'u1')).toBe(false)
+    logged.mockRestore()
+
+    const redirecting = makeRouter()
+    redirecting.beforeEach((to) => (to.name === 'search' ? { name: 'collectionOverview', params: { id: 'c1' } } : true))
+    await exploreCollection(redirecting, { userId: 'u1', collectionId: 'c1', location })
+    expect(redirecting.currentRoute.value.name).toBe('collectionOverview')
+    expect(hasExploreHandoff(location, 'u1')).toBe(false)
+    expect(locationQuery(location)).toEqual({ mode: 'documents' })
   })
 
   it('is discarded when another user (or nobody) comes to Explore', () => {

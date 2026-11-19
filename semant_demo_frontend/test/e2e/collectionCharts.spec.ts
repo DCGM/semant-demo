@@ -114,3 +114,29 @@ test('a member the collection is shared with sees its charts and can explore it'
   expect((await searched).postDataJSON().user_collection_id).toBe(chronicles.id)
   await expect(documentTitles(page)).toHaveCount(2)
 })
+
+test('the collection check ends also when the Collections page loads the list meanwhile', async ({ page }) => {
+  // Review of #796: the check waited for a load of the store that another page replaced, and
+  // Explore stayed on "loading" for good.
+  await ensureLoggedIn(page, 'owner')
+  await openCollection(page, chronicles.name)
+  const held: (() => void)[] = []
+  let first = true
+  await page.route(url => url.pathname.endsWith('/api/user_collections'), async (route) => {
+    if (route.request().method() === 'GET' && first) {
+      first = false
+      await new Promise<void>(resolve => held.push(resolve))
+    }
+    await route.continue()
+  })
+
+  await page.getByTestId('explore-collection').click()
+  await expect.poll(() => held.length).toBe(1) // the check's list, held
+  await page.locator('.q-drawer').getByText('Collections', { exact: true }).click()
+  await expect(page.getByText(chronicles.name, { exact: true })).toBeVisible()
+  held[0]()
+  await page.locator('.q-drawer').getByText('Document search', { exact: true }).click()
+
+  await expect(documentTitles(page)).toHaveCount(2)
+  await expect(chip(page, 'Kroniky a dopisy')).toBeVisible()
+})

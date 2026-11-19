@@ -486,6 +486,7 @@ import { collectionRights } from 'src/features/user_collections/permissions'
 import { criteriaKey, effectiveMode, emptyCriteria, emptyLocation, locationKey, MAX_TEXT_QUERY_LENGTH, normalizeCriteria, sameCriteria, hasFilters, toSearchCriteria, type Criteria, type ExploreLocation, type ExploreView, type ResultsMode } from 'src/features/explore/criteria'
 import { useExploreLocation, type AppliedReason } from 'src/features/explore/useExploreLocation'
 import { hasExploreHandoff, takeExploreHandoff } from 'src/features/explore/exploreHandoff'
+import { useUserCollectionsRepository } from 'src/features/user_collections/useUserCollectionsRepository'
 import { hasMorePassages, passageCoverage, usePassageSearch } from 'src/features/explore/usePassageSearch'
 import { documentCoverage, documentOrderLabel, hasMoreDocuments, useDocumentSearch } from 'src/features/explore/useDocumentSearch'
 import { useSearchVectors } from './useSearchVectors'
@@ -885,21 +886,11 @@ async function loadCollections () {
   if (!userStore.isLoggedIn || !userId) return
   collectionsLoad.value = { userId: String(userId), status: 'loading' }
   const loaded = await fetchCollections()
-  // A newer load (undefined) sets the status itself.
-  if (loaded === undefined || collectionsLoad.value?.userId !== String(userId) || userStore.getUserId !== userId) return
-  collectionsLoad.value = { userId: String(userId), status: loaded ? 'ready' : 'failed' }
-}
-
-/** Resolves once no load of the user's collections is under way (`loadCollections`). */
-function collectionsSettled (): Promise<void> {
-  if (collectionsLoad.value?.status !== 'loading') return Promise.resolve()
-  return new Promise((resolve) => {
-    const stop = watch(() => collectionsLoad.value?.status, (status) => {
-      if (status === 'loading') return
-      stop()
-      resolve()
-    })
-  })
+  if (collectionsLoad.value?.userId !== String(userId) || userStore.getUserId !== userId) return
+  // Replaced by a newer load of the store (undefined), e.g. from another page: as before, the
+  // store's state says how it went, so the status never stays 'loading'.
+  const failed = loaded === undefined ? Boolean(collectionsStore.error) : !loaded
+  collectionsLoad.value = { userId: String(userId), status: failed ? 'failed' : 'ready' }
 }
 
 watch(
@@ -1388,8 +1379,12 @@ const currentUserId = () => (userStore.getUserId ? String(userStore.getUserId) :
  * `exploreHandoff`, #795) becomes the collection scope at once, but nothing is searched until the
  * user's collections, loaded again for it (it may be new), confirm it can be read, as when a
  * search is restored from the history. One that cannot is left out with a notice and the location
- * runs without it; if the collections cannot be loaded, the server's access check decides.
+ * runs without it; if the collections cannot be loaded, the server's access check decides. The list
+ * is read for this check alone (not through the store, whose loads other pages may replace and
+ * whose error flag other requests share), so the check always ends.
  */
+const collectionsRepository = useUserCollectionsRepository()
+
 function receiveHandoff (collectionId: string) {
   // The results of the previous scope are not finished or shown while the collection is checked.
   passages.cancel()
@@ -1403,11 +1398,16 @@ function receiveHandoff (collectionId: string) {
 }
 
 async function checkHandoff (collectionId: string, handoff: number) {
-  await loadCollections()
-  await collectionsSettled() // a load started meanwhile (the page opening) has the answer
-  if (handoff !== handoffs) return // signed out, another user or a newer hand-off
-  if (collectionsLoad.value?.status === 'ready' && appliedCollection.value === collectionId &&
-    !collections.value.some(c => c.id === collectionId)) {
+  let readable: boolean | null = null // null: could not be checked
+  try {
+    readable = (await collectionsRepository.getAll()).some(c => c.id === collectionId)
+  } catch (e) {
+    console.error('Checking the handed-over collection failed:', e)
+  }
+  if (handoff !== handoffs) return // signed out, another user, a newer hand-off or the page left
+  // A collection the page's list does not know yet (new, or just shared): load it for its name.
+  if (readable && !collections.value.some(c => c.id === collectionId)) void loadCollections()
+  if (readable === false && appliedCollection.value === collectionId) {
     appliedCollection.value = null
     if (draftCollection.value === collectionId) draftCollection.value = null
     Notify.create({
@@ -1448,6 +1448,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  handoffs++ // a collection check still under way changes nothing any more
   passages.cancel()
   documents.cancel()
   if (clearHighlightTimer !== null) {
