@@ -15,7 +15,7 @@ from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
 from semant_demo.features.user_collections import service, text_upload
-from semant_demo.features.user_collections.schemas import TextUploadResponse
+from semant_demo.features.user_collections.schemas import TextUploadAvailability, TextUploadResponse
 from semant_demo.adapters.weaviate.text_upload import TextUploadRepository
 from semant_demo.features.search.vectors import SearchVectors
 from semant_demo.adapters.topicer.client import TopicerClient
@@ -209,14 +209,48 @@ async def _read_upload(request: Request, limits: text_upload.UploadLimits
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send the files as multipart/form-data.")
     form = await request.form(max_files=limits.max_files + 1, max_fields=4)
     try:
+        _check_upload_parts(form)
         files = [text_upload.UploadedFile(f.filename or "", await f.read(limits.max_file_bytes + 1))
-                 for f in form.getlist("files") if isinstance(f, UploadFile)]
+                 for f in form.getlist("files")]
         metadata = form.get("metadata")
         csv = (text_upload.UploadedFile(metadata.filename or "", await metadata.read(limits.max_csv_bytes + 1))
-               if isinstance(metadata, UploadFile) else None)
+               if metadata is not None else None)
     finally:
         await form.close()
     return files, csv
+
+
+def _check_upload_parts(form) -> None:
+    """Refuse a body whose parts are not file parts named ``files`` and at most one file part
+    named ``metadata``, so nothing the caller sent is silently ignored (#785)."""
+    problems = []
+    unknown = sorted({key for key in form.keys() if key not in ("files", "metadata")})
+    if unknown:
+        problems.append(f"Unexpected form part(s): {', '.join(unknown)}; send only 'files' and 'metadata'.")
+    if any(not isinstance(f, UploadFile) for f in form.getlist("files")):
+        problems.append("Every 'files' part must be a file.")
+    metadata = form.getlist("metadata")
+    if len(metadata) > 1:
+        problems.append("Send at most one 'metadata' CSV file.")
+    if any(not isinstance(m, UploadFile) for m in metadata):
+        problems.append("The 'metadata' part must be a CSV file, not a text field.")
+    if problems:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=" ".join(problems))
+
+
+@exp_router.get("/api/text_documents/availability", response_model=TextUploadAvailability,
+                response_model_exclude_none=True)
+async def text_upload_availability(collections: UserCollectionRepository = Depends(get_user_collections),
+                                   store: TextUploadRepository = Depends(get_text_upload_store),
+                                   vectors: SearchVectors = Depends(get_search_vectors)) -> TextUploadAvailability:
+    """
+    Whether this server can take text uploads: the configured search vectors are approved
+    for private text and the database declares what an upload writes. Reads only the schema;
+    the details of a refusal are in the server log, not the response. The upload dialog and
+    the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+    """
+    ready = await text_upload.availability(store, vectors, collections.link)
+    return TextUploadAvailability(available=ready.available, message=ready.message)
 
 
 @exp_router.post("/api/user_collections/{collection_id}/text_documents", response_model=TextUploadResponse,

@@ -8,7 +8,9 @@ is shared with ([ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-
 #279), and never appears in unscoped Search, Explore, RAG, MCP or corpus counts.
 
 The upload is the API route `POST /api/user_collections/{collection_id}/text_documents`
-(`multipart/form-data`: `files`, one or more; `metadata`, optional). Code:
+(`multipart/form-data`: `files`, one or more file parts; `metadata`, at most one file part).
+Any other part, a text field in their place or a second `metadata` answers 400 before
+anything is saved, so no metadata the caller sent is silently ignored. Code:
 `features/user_collections/text_upload.py` (validation, chunking, embedding, write order),
 `adapters/weaviate/text_upload.py` (the writes and readbacks), frontend
 `features/documents/upload/`.
@@ -37,7 +39,7 @@ Copy this template (also offered for download in the dialog):
 
 ```csv
 filename,title,author,yearIssued,language,description
-example.txt,Example document,Jane Doe,1925,cs,Optional description
+example.txt,Example document,Jane Doe,1925,ces,Optional description
 ```
 
 | Column | Required | Stored as |
@@ -46,7 +48,7 @@ example.txt,Example document,Jane Doe,1925,cs,Optional description
 | `title` | no | `Documents.title`; blank: the file name without `.txt`. At most 500 characters. |
 | `author` | no | `Documents.author`, a one-element list. At most 300 characters. |
 | `yearIssued` | no | `Documents.yearIssued` (an integer, e.g. `1925` or `-50`) and the chunks' copy `Chunks.yearIssued` used by year filters (#153). |
-| `language` | no | `Documents.language` and `Chunks.language`. At most 32 characters. |
+| `language` | no | `Documents.language` and `Chunks.language`, lowercased. Use the three-letter code of the Language search filter (`ces`, `deu`, `hun`, `lat`, `zxx`); the two-letter and bibliographic codes of these languages (`cs`, `cze`, `de`, `ger`, `hu`, `la`) are stored as that code. Other values are stored as given and no filter selects them. At most 32 characters. |
 | `description` | no | `Documents.description`. At most 5,000 characters. |
 
 Any other column (`public`, `library`, `id`, ...) refuses the upload: the CSV cannot set
@@ -88,6 +90,23 @@ named vector; `documentPublic` and `haveVector` are optional but must have their
 types when declared); otherwise uploads answer 503 and the server log names what is missing. The
 schema is never changed by an upload.
 
+### Deployment readiness
+
+`GET /api/text_documents/availability` (no login, reads only the schema) answers
+`{"available": true}`, or `false` with the message an upload would get; the store's details
+are not in the response. When unavailable the backend logs one line naming each missing or
+differently typed declaration with what is declared and what is needed:
+
+```text
+Text upload unavailable: the store does not declare what the upload writes: Chunks.startChar (not declared, needs int); Chunks vector default of search vector Main (not configured; the store has Qwen3_Embedding_0_6B)
+```
+
+The upload dialog asks it when it opens and disables **Upload** with that message. Every PR
+preview deployment asks it after the health check and reports an unavailable store as a
+warning on the deploy job with that log line (the preview still deploys; the shared test
+store is never changed by a deployment). Making a store ready is an operator's additive
+schema change on that store, authorized separately.
+
 ## Write order and results
 
 Access (owner only; a shared user gets 403, others 404, signed out 401) and the
@@ -98,7 +117,10 @@ configuration are checked before the request body is read. Then, per file:
    collection references and its vectors in one write;
 3. everything is read back: every chunk with its order, text, references and vectors, and no
    other chunk of the document;
-4. the document is linked to the collection. Only from now on can anyone read it.
+4. the uploader's ownership is checked again (embedding takes minutes; the collection may
+   have changed owner): if they no longer own it the file `failed` and its document stays
+   unlinked;
+5. the document is linked to the collection. Only from now on can anyone read it.
 
 Each file's result (`TextUploadFileResult`):
 
@@ -137,7 +159,9 @@ UNPROCESSED` together with their document's `public = false`. Their text must re
 models approved for private text:
 
 - `data_tools/meta_data_enrichment` (classification) selects chunks of documents that are
-  not public only for a local model, or with `include_restricted_documents: true`
+  not public only for a local model, or with `include_restricted_documents: true`; it
+  excludes them by the indexed `Chunks.documentPublic` when declared, else by the slow
+  `document` reference
   ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-classification-data_toolsmeta_data_enrichment-590)).
 - `chunk_titles` defers them (`deferred_restricted_document`) unless
   `--include-restricted-documents`

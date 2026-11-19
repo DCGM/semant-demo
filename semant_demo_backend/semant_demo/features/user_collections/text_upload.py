@@ -57,8 +57,13 @@ logger = logging.getLogger(__name__)
 CSV_COLUMNS = ("filename", "title", "author", "yearIssued", "language", "description")
 """The columns of the metadata CSV; ``filename`` is required, the others optional."""
 CSV_TEMPLATE = "filename,title,author,yearIssued,language,description\r\n" \
-               "example.txt,Example document,Jane Doe,1925,cs,Optional description\r\n"
+               "example.txt,Example document,Jane Doe,1925,ces,Optional description\r\n"
 """The downloadable template (also in docs/TEXT_UPLOAD.md)."""
+LANGUAGE_ALIASES = {"cs": "ces", "cze": "ces", "de": "deu", "ger": "deu", "hu": "hun", "la": "lat"}
+"""Two-letter (ISO 639-1) and bibliographic (ISO 639-2/B) codes of the language filter's
+languages (``configs/search_filters.yaml``, ISO 639-2/T), stored as the filter's code so the
+Language filter selects the chunks. Other values are stored as given, lowercased; the shared
+vocabulary is #562 / #812."""
 METADATA_LIMITS = {"title": 500, "author": 300, "language": 32, "description": 5000}
 """The longest accepted value of each text column, in characters."""
 YEAR = re.compile(r"-?\d{1,4}")
@@ -318,6 +323,8 @@ def parse_metadata_csv(content: bytes) -> ParsedCsv:
                 metadata.yearIssued = int(value)
             elif len(value) > METADATA_LIMITS[name]:
                 problems.append(f"{name} is longer than {METADATA_LIMITS[name]} characters")
+            elif name == "language":
+                metadata.language = LANGUAGE_ALIASES.get(value.lower(), value.lower())
             else:
                 setattr(metadata, name, value)
         if problems:
@@ -368,27 +375,69 @@ DOCUMENT_PROPERTY_TYPES = {"title": ("text",), "public": ("boolean",), "author":
                            "yearIssued": ("int", "number"), "language": ("text",), "description": ("text",)}
 
 
+def _declared(found: str | None, needed: str) -> str:
+    return f"{'not declared' if found is None else f'declared {found}'}, needs {needed}"
+
+
 def check_schema(schema: UploadSchema, vectors: list[SearchVector], link: str) -> list[str]:
-    """What the store lacks for an upload; empty when it can take one."""
+    """What the store lacks for an upload, each with what is declared and what is needed
+    (for the operator's log, not the API response); empty when it can take one."""
     problems = []
     for name in ("title", "public"):
-        if schema.document_properties.get(name) not in DOCUMENT_PROPERTY_TYPES[name]:
-            problems.append(f"Documents.{name}")
+        found = schema.document_properties.get(name)
+        if found not in DOCUMENT_PROPERTY_TYPES[name]:
+            problems.append(f"Documents.{name} ({_declared(found, ' or '.join(DOCUMENT_PROPERTY_TYPES[name]))})")
     if "collection" not in schema.document_references:
-        problems.append("Documents.collection")
+        problems.append("Documents.collection (reference not declared)")
     for name, kind in REQUIRED_CHUNK_PROPERTIES.items():
-        if schema.chunk_properties.get(name) != kind:
-            problems.append(f"Chunks.{name}")
+        found = schema.chunk_properties.get(name)
+        if found != kind:
+            problems.append(f"Chunks.{name} ({_declared(found, kind)})")
     for name, kind in FLAG_CHUNK_PROPERTIES.items():
-        if schema.chunk_properties.get(name) not in (None, kind):
-            problems.append(f"Chunks.{name}")
+        found = schema.chunk_properties.get(name)
+        if found not in (None, kind):
+            problems.append(f"Chunks.{name} ({_declared(found, kind + ' or not declared')})")
     for name in ("document", link):
         if name not in schema.chunk_references:
-            problems.append(f"Chunks.{name}")
+            problems.append(f"Chunks.{name} (reference not declared)")
     for vector in vectors:
         if vector.target_vector not in schema.chunk_vectors:
-            problems.append(f"Chunks vector {vector.target_vector}")
+            problems.append(f"Chunks vector {vector.target_vector} of search vector {vector.name} (not configured; "
+                            f"the store has {', '.join(sorted(schema.chunk_vectors)) or 'none'})")
     return problems
+
+
+@dataclass(frozen=True)
+class Availability:
+    """Whether this server can take uploads: ``message`` is safe to show any user;
+    ``problems`` are the operator's details (logged, never returned by the API)."""
+    message: str | None = None
+    problems: tuple[str, ...] = ()
+    schema: UploadSchema | None = None
+    """The schema read, when the store was asked."""
+
+    @property
+    def available(self) -> bool:
+        return self.message is None
+
+
+async def availability(store: UploadStore, search_vectors: SearchVectors, link: str) -> Availability:
+    """Read-only check of the configured vectors and the store's schema (#785): what the
+    upload endpoint refuses with 503, and what ``GET /api/text_documents/availability`` and
+    the preview deployment report before anyone uploads."""
+    vectors = search_vectors.all()
+    unapproved = [v.name for v in vectors if not v.private_text]
+    if unapproved:
+        return Availability("Uploading documents is not enabled on this server: the search vector(s) "
+                            f"{', '.join(unapproved)} are not approved to embed private text.")
+    schema = await store.schema()
+    problems = check_schema(schema, vectors, link)
+    if problems:
+        logger.error("Text upload unavailable: the store does not declare what the upload writes: %s",
+                     "; ".join(problems))
+        return Availability("Uploading documents is not available: the database does not support it yet.",
+                            tuple(problems), schema)
+    return Availability(schema=schema)
 
 
 def prepare(files: list[UploadedFile], metadata_csv: UploadedFile | None, schema: UploadSchema,
@@ -598,7 +647,7 @@ async def _verify(store: UploadStore, written: _Written, document_id: UUID, coll
 
 async def _import_file(store: UploadStore, collections: UserCollectionRepository, vectors: list[SearchVector],
                        prepared: PreparedFile, collection_id: UUID, schema: UploadSchema,
-                       limits: UploadLimits) -> TextUploadFileResult:
+                       limits: UploadLimits, user: Principal | None) -> TextUploadFileResult:
     result = TextUploadFileResult(filename=prepared.filename, status="failed", title=prepared.title,
                                   chunks=len(prepared.chunks))
     document_id = uuid4()
@@ -610,6 +659,13 @@ async def _import_file(store: UploadStore, collections: UserCollectionRepository
         written = await _write_chunks(store, vectors, prepared, document_id, collection_id, schema, limits)
         step = "verify"
         await _verify(store, written, document_id, collection_id)
+        # Embedding takes minutes: the collection may have changed owner meanwhile, and only
+        # its owner adds a document (#785 review).
+        step = "check_owner"
+        try:
+            await access.require_membership_edit(collections, user, collection_id)
+        except (access.AccessDenied, access.ResourceNotFound) as e:
+            return _failed(result, step, type(e).__name__, "you can no longer add documents to this collection")
     except EmbeddingFailed as e:
         return _failed(result, step, "EmbeddingFailed", str(e))
     except _WriteFailed as e:
@@ -660,17 +716,11 @@ async def upload_text_documents(collections: UserCollectionRepository, store: Up
     only; raises before reading the files when the user may not, when a configured vector is
     not approved for private text or when the store lacks what the upload writes."""
     grant = await access.require_membership_edit(collections, user, collection_id)
-    vectors = search_vectors.all()
-    unapproved = [v.name for v in vectors if not v.private_text]
-    if unapproved:
-        raise ServiceUnavailableError(
-            "Uploading documents is not enabled on this server: the search vector(s) "
-            f"{', '.join(unapproved)} are not approved to embed private text.")
-    schema = await store.schema()
-    missing = check_schema(schema, vectors, collections.link)
-    if missing:
-        logger.error("Text upload refused: the store does not declare %s", ", ".join(missing))
-        raise ServiceUnavailableError("Uploading documents is not available: the database does not support it yet.")
+    ready = await availability(store, search_vectors, collections.link)
+    if not ready.available:
+        raise ServiceUnavailableError(ready.message)
+    vectors, schema = search_vectors.all(), ready.schema
+    assert schema is not None
 
     if not RUNNING.acquire(limits.max_concurrent_uploads):
         raise ServiceUnavailableError("Other uploads are running; try again in a minute.")
@@ -686,7 +736,7 @@ async def upload_text_documents(collections: UserCollectionRepository, store: Up
         by_name = {r.filename: i for i, r in enumerate(results)}
         for item in prepared:
             results[by_name[item.filename]] = await _import_file(
-                store, collections, vectors, item, grant.collection_id, schema, limits)
+                store, collections, vectors, item, grant.collection_id, schema, limits, user)
         return TextUploadResponse(files=results, errors=[])
     finally:
         RUNNING.release()

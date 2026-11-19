@@ -160,6 +160,7 @@ export * from './TagSpanBatchRequest';
 export * from './TagSpanWriteResult';
 export * from './TextScope';
 export * from './TextStatus';
+export * from './TextUploadAvailability';
 export * from './TextUploadFileResult';
 export * from './TextUploadResponse';
 export * from './TopicerConfigsResponse';

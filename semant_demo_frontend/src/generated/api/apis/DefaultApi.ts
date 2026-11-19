@@ -110,6 +110,7 @@ import type {
   TagSpanBatchRequest,
   TagSpanWriteResult,
   TextScope,
+  TextUploadAvailability,
   TextUploadResponse,
   TopicerConfigsResponse,
   UserSearchResult,
@@ -306,6 +307,8 @@ import {
     TagSpanWriteResultToJSON,
     TextScopeFromJSON,
     TextScopeToJSON,
+    TextUploadAvailabilityFromJSON,
+    TextUploadAvailabilityToJSON,
     TextUploadResponseFromJSON,
     TextUploadResponseToJSON,
     TopicerConfigsResponseFromJSON,
@@ -3001,6 +3004,28 @@ export interface DefaultApiInterface {
      * Summarize Document
      */
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse>;
+
+    /**
+     * Creates request options for textUploadAvailabilityApiTextDocumentsAvailabilityGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * @summary Text Upload Availability
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadAvailability>>;
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadAvailability>;
 
     /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
@@ -8168,6 +8193,45 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse> {
         const response = await this.summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for textUploadAvailabilityApiTextDocumentsAvailabilityGet without sending the request
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/text_documents/availability`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadAvailability>> {
+        const requestOptions = await this.textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TextUploadAvailabilityFromJSON(jsonValue));
+    }
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadAvailability> {
+        const response = await this.textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides);
         return await response.value();
     }
 

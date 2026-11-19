@@ -3,7 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { Dialog, QBtn, QFile, Quasar } from 'quasar'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-import { ResponseError, type TextUploadResponse } from 'src/generated/api'
+import { ResponseError, type TextUploadAvailability, type TextUploadResponse } from 'src/generated/api'
 import TextUploadDialog from 'src/features/documents/upload/TextUploadDialog.vue'
 import { CSV_TEMPLATE, checkFiles, filesNotSaved, summary } from 'src/features/documents/upload/textUpload'
 
@@ -12,9 +12,11 @@ import { CSV_TEMPLATE, checkFiles, filesNotSaved, summary } from 'src/features/d
 // send again the files that failed, and reports a refused request without claiming success.
 
 const uploaded = vi.fn<[string, File[], File | null], Promise<TextUploadResponse>>()
+const availability = vi.fn<[], Promise<TextUploadAvailability>>()
 
 vi.mock('src/features/documents/useDocumentsRepository', () => ({
   useDocumentsRepository: () => ({
+    textUploadAvailability: () => availability(),
     uploadTextDocuments: (collectionId: string, files: File[], metadata: File | null) => uploaded(collectionId, files, metadata)
   })
 }))
@@ -88,6 +90,7 @@ describe('TextUploadDialog', () => {
 
   beforeEach(() => {
     uploaded.mockReset()
+    availability.mockReset().mockResolvedValue({ available: true })
     URL.createObjectURL = vi.fn(() => 'blob:template')
     URL.revokeObjectURL = vi.fn()
   })
@@ -156,6 +159,23 @@ describe('TextUploadDialog', () => {
 
     expect(document.querySelector('[data-testid="upload-error"]')?.textContent).toContain('not enabled')
     expect(document.querySelector('[data-testid="upload-results"]')).toBeNull()
+    expect(button(wrapper, /^Upload$/)!.props('disable')).toBe(false)
+  })
+
+  it('says before any upload that the server cannot take one, and does not send', async () => {
+    availability.mockResolvedValue({ available: false, message: 'Uploading documents is not available: the database does not support it yet.' })
+    const wrapper = await open()
+    expect(document.querySelector('[data-testid="upload-unavailable"]')?.textContent).toContain('the database does not support it yet')
+    await choose(wrapper, [txt('a.txt')])
+    expect(button(wrapper, /^Upload$/)!.props('disable')).toBe(true)
+    expect(uploaded).not.toHaveBeenCalled()
+  })
+
+  it('leaves the upload to report a server whose availability did not answer', async () => {
+    availability.mockRejectedValue(new Error('offline'))
+    const wrapper = await open()
+    await choose(wrapper, [txt('a.txt')])
+    expect(document.querySelector('[data-testid="upload-unavailable"]')).toBeNull()
     expect(button(wrapper, /^Upload$/)!.props('disable')).toBe(false)
   })
 

@@ -10,8 +10,11 @@ it. Chunks without a ``classification_provenance`` value are never selected.
 Chunks of documents that are not public (``Documents.public`` false or absent: restricted
 library documents and private uploaded texts, #279, #785) are selected only when
 ``include_restricted_documents`` is true; unset, they are for a local model and not for an
-API model, whose provider would receive their text. The exclusion needs the collection's
-``document`` reference; a collection without one has no document rights to apply.
+API model, whose provider would receive their text. The exclusion selects
+``documentPublic == true`` (the indexed copy of the document's ``public``, #793, fail closed)
+when the collection declares it, and otherwise filters on the ``document`` reference, which
+is slow on a large store (the search regression of #789); a collection with neither has no
+document rights to apply.
 
 The stored status is the state: there is no checkpoint. Every page is the first page of the
 remaining selection (classified chunks leave it, chunks that failed in this run are excluded),
@@ -27,7 +30,7 @@ from classconfig import ConfigurableMixin, CreatableMixin, ConfigurableValue, Co
 from tqdm import tqdm
 from weaviate.classes.query import Filter
 
-from .db import DOCUMENT_LINK, PROVENANCE, UNPROCESSED, Refused, build_weaviate_filters, check_schema, get_client
+from .db import DOCUMENT_LINK, DOCUMENT_PUBLIC, PROVENANCE, UNPROCESSED, Refused, build_weaviate_filters, check_schema, get_client
 # Import models to register their subclasses for ConfigurableSubclassFactory
 from .models import Model, LocalHFClassifierModel
 
@@ -56,6 +59,7 @@ class RunResult:
     refused: Optional[str] = None  # why the run or the check was refused (nothing written)
     model: Optional[dict] = None  # the model's fingerprint (runs only)
     restricted_documents: Optional[str] = None  # "included" or "excluded" (#785)
+    restricted_by: Optional[str] = None  # "documentPublic" or "document reference", when excluded
 
     def exit_code(self) -> int:
         """0 when nothing selected is left UNPROCESSED, 1 when chunks remain, 2 when refused."""
@@ -196,7 +200,10 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
         configured = build_weaviate_filters(self.filters)
         if configured is not None:
             parts.append(configured)
-        if getattr(self, "_public_only", False):
+        public_only = getattr(self, "_public_only", None)
+        if public_only == DOCUMENT_PUBLIC:
+            parts.append(Filter.by_property(DOCUMENT_PUBLIC).equal(True))
+        elif public_only:
             parts.append(Filter.by_ref(DOCUMENT_LINK).by_property("public").equal(True))
         if failed:
             parts.append(Filter.by_id().contains_none(list(failed)))
@@ -211,9 +218,17 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
         include = self.include_restricted_documents
         if include is None:
             include = not getattr(self.model, "remote", False)
-        references = {r.name for r in collection.config.get().references or []}
-        self._public_only = not include and DOCUMENT_LINK in references
+        config = collection.config.get()
+        references = {r.name for r in config.references or []}
+        flag = any(p.name == DOCUMENT_PUBLIC and str(getattr(p.data_type, "value", p.data_type)) == "boolean"
+                   for p in config.properties or [])
+        self._public_only = None
+        if not include and flag:
+            self._public_only = DOCUMENT_PUBLIC
+        elif not include and DOCUMENT_LINK in references:
+            self._public_only = "document reference"
         result.restricted_documents = "excluded" if self._public_only else "included"
+        result.restricted_by = self._public_only
         result.selected = collection.aggregate.over_all(total_count=True, filters=self._selection()).total_count
         return collection, result
 

@@ -45,6 +45,9 @@ configured model/version identifier. Declared by the backend's
 UNPROCESSED = "UNPROCESSED"
 DOCUMENT_LINK = "document"
 """The chunk's reference to its document, whose ``public`` decides who may read it (#279)."""
+DOCUMENT_PUBLIC = "documentPublic"
+"""The chunk's indexed, fail-closed copy of its document's ``public`` (#793): ``true`` only for a
+chunk of exactly one public document."""
 TEST_COLLECTION = "MetaDataEnrichmentTest"
 
 

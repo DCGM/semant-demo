@@ -107,6 +107,13 @@ class TextUploadFileResult(BaseModel):
     error: str | None = None
 
 
+class TextUploadAvailability(BaseModel):
+    """Whether this server takes text uploads (#785); ``message`` says why not, without the
+    store's details (those are logged)."""
+    available: bool
+    message: str | None = None
+
+
 class TextUploadResponse(BaseModel):
     """The result of every file of a text upload, in request order, and the problems of the
     upload as a whole (the metadata CSV, the number of files); any problem means nothing was saved."""

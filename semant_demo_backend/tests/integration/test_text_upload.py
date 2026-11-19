@@ -61,8 +61,10 @@ async def _upload(api_client, headers, collection, files, metadata=None):
     return await api_client.post(f"/api/user_collections/{collection}/text_documents", headers=headers, files=parts)
 
 
-async def _passages(api_client, headers, collection=None):
+async def _passages(api_client, headers, collection=None, languages=None):
     body = {"criteria": {"text_query": WORD}, "type": "text", "limit": 50}
+    if languages is not None:
+        body["criteria"]["chunk_filters"] = {"languages": languages}
     if collection:
         body["user_collection_id"] = collection
     response = await api_client.post("/api/search/passages", headers=headers, json=body)
@@ -75,7 +77,7 @@ async def test_an_uploaded_document_is_private_complete_and_searchable_in_its_co
     owner, annotator, outsider = await login("owner"), await login("annotator"), await login("outsider")
     collection = ids.col["chronicles"]
     response = await _upload(api_client, owner, collection, [("Kronika Zahrádků.txt", TEXT.encode())],
-                             "filename,author,yearIssued,language\nKronika Zahrádků.txt,Jan Zahrádka,1925,ces\n"
+                             "filename,author,yearIssued,language\nKronika Zahrádků.txt,Jan Zahrádka,1925,cs\n"
                              .encode())
     assert response.status_code == 200, response.text
     [result] = response.json()["files"]
@@ -99,6 +101,8 @@ async def test_an_uploaded_document_is_private_complete_and_searchable_in_its_co
     assert {o.properties["classification_provenance"] for o in chunks} == {"UNPROCESSED"}
     assert {o.properties["documentPublic"] for o in chunks} == {False}  # #793, declared by the seed
     assert {o.properties["yearIssued"] for o in chunks} == {1925}
+    assert stored.properties["language"] == "ces"  # the CSV's "cs", as the Language filter's code
+    assert {o.properties["language"] for o in chunks} == {"ces"}
     assert all(len(o.vector["default"]) == 16 and len(o.vector[SECOND_VECTOR]) == 8 for o in chunks)
 
     [match] = [o for o in chunks if WORD in o.properties["text"]]
@@ -121,6 +125,8 @@ async def test_an_uploaded_document_is_private_complete_and_searchable_in_its_co
         pages = await api_client.get(f"/api/documents/{document_id}/pages?collection_id={collection}", headers=headers)
         assert pages.status_code == 200 and pages.json()["available"] is False
         assert str(match.uuid) in await _passages(api_client, headers, collection)
+        assert str(match.uuid) in await _passages(api_client, headers, collection, ["ces"])
+        assert str(match.uuid) not in await _passages(api_client, headers, collection, ["deu"])
 
     # Nobody reads it without the collection, and others not at all.
     for headers in ({}, owner, annotator, outsider):

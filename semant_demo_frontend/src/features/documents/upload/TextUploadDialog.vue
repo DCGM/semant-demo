@@ -15,6 +15,9 @@
       <q-separator />
 
       <q-card-section class="q-gutter-md">
+        <q-banner v-if="unavailable" dense class="bg-orange-1 text-warning" data-testid="upload-unavailable">
+          {{ unavailable }}
+        </q-banner>
         <q-file
           v-model="files"
           multiple
@@ -109,7 +112,7 @@
           icon="upload"
           label="Upload"
           :loading="uploading"
-          :disable="!files.length || localProblems.size > 0"
+          :disable="!files.length || localProblems.size > 0 || !!unavailable"
           data-testid="upload-submit"
           @click="upload"
         />
@@ -119,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDialogPluginComponent } from 'quasar'
 import type { TextUploadResponse } from 'src/generated/api'
 import { apiErrorMessage } from 'src/shared/api'
@@ -139,6 +142,9 @@ const response = ref<TextUploadResponse | null>(null)
 const metadataCleared = ref(false)
 const requestError = ref<string | null>(null)
 const rejected = ref<string | null>(null)
+// Why this server cannot take uploads (its vectors or database), checked when the dialog opens;
+// an unanswered check leaves the upload to report it.
+const unavailable = ref<string | null>(null)
 // Documents were added in this dialog: the collection's list is reloaded when it closes.
 const added = ref(false)
 
@@ -150,6 +156,15 @@ const localProblems = computed(() => {
 
 const templateHref = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: 'text/csv' }))
 onBeforeUnmount(() => URL.revokeObjectURL(templateHref))
+
+onMounted(async () => {
+  try {
+    const availability = await repository.textUploadAvailability()
+    if (!availability.available) unavailable.value = availability.message ?? 'Uploading documents is not available on this server.'
+  } catch {
+    // The upload itself reports a server that cannot take it.
+  }
+})
 
 function onRejected () {
   rejected.value = `Only .txt files can be added, at most ${MAX_FILES}.`

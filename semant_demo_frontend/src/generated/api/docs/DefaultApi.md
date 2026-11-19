@@ -87,6 +87,7 @@ All URIs are relative to *http://localhost*
 | [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost**](DefaultApi.md#summarizedocumentapiusercollectionscollectioniddocumentsdocumentidsummarypost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/summary | Summarize Document |
+| [**textUploadAvailabilityApiTextDocumentsAvailabilityGet**](DefaultApi.md#textuploadavailabilityapitextdocumentsavailabilityget) | **GET** /api/text_documents/availability | Text Upload Availability |
 | [**unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapiusercollectionscollectionidshareuseriddelete) | **DELETE** /api/user_collections/{collection_id}/share/{user_id} | Unshare Collection |
 | [**updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch**](DefaultApi.md#updateattributeapiusercollectionscollectionidattributesattributeidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id} | Update Attribute |
 | [**updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch**](DefaultApi.md#updateattributevalueapiusercollectionscollectionidattributesattributeidvaluesvalueidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id} | Update Attribute Value |
@@ -6335,6 +6336,65 @@ example().catch(console.error);
 | **200** | Successful Response |  -  |
 | **429** | The caller\&#39;s daily AI allowance has no room for the operation; nothing was generated. |  * Retry-After - Seconds until the allowance resets (UTC midnight) <br>  |
 | **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## textUploadAvailabilityApiTextDocumentsAvailabilityGet
+
+> TextUploadAvailability textUploadAvailabilityApiTextDocumentsAvailabilityGet()
+
+Text Upload Availability
+
+Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { TextUploadAvailabilityApiTextDocumentsAvailabilityGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  try {
+    const data = await api.textUploadAvailabilityApiTextDocumentsAvailabilityGet();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TextUploadAvailability**](TextUploadAvailability.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

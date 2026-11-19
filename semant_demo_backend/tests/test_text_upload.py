@@ -175,7 +175,23 @@ def test_the_template_parses():
     assert not parsed.errors and not parsed.file_errors
     m = parsed.rows["example.txt"]
     assert (m.title, m.author, m.yearIssued, m.language, m.description) == (
-        "Example document", "Jane Doe", 1925, "cs", "Optional description")
+        "Example document", "Jane Doe", 1925, "ces", "Optional description")
+
+
+def test_the_dialog_offers_the_same_template():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    example = CSV_TEMPLATE.split("\r\n")[1]
+    assert example.split(",")[4] == "ces"  # the Language filter's code for Czech
+    assert example in (root / "semant_demo_frontend/src/features/documents/upload/textUpload.ts").read_text()
+
+
+@pytest.mark.parametrize("given, stored", [("ces", "ces"), ("cs", "ces"), ("CS", "ces"), ("cze", "ces"),
+                                           ("de", "deu"), ("ger", "deu"), ("hu", "hun"), ("la", "lat"),
+                                           ("zxx", "zxx"), ("Pol", "pol")])
+def test_the_language_is_stored_as_the_language_filter_code(given, stored):
+    parsed = parse_metadata_csv(f"filename,language\na.txt,{given}\n".encode())
+    assert parsed.rows["a.txt"].language == stored
 
 
 @pytest.mark.parametrize("content,error", [
@@ -242,6 +258,24 @@ async def test_a_store_that_lacks_what_the_upload_writes_is_refused_before_readi
     with pytest.raises(ServiceUnavailableError):
         await text_upload.upload_text_documents(Collections(store), store, vectors(), OWNER, COLLECTION, read)
     assert not read.calls and store.calls == ["schema"]
+
+
+async def test_the_operator_log_names_what_is_declared_and_what_is_needed(caplog):
+    schema = UploadSchema(SCHEMA.document_properties, SCHEMA.document_references,
+                          {**{k: v for k, v in SCHEMA.chunk_properties.items() if k != "startChar"},
+                           "order": "number"}, SCHEMA.chunk_references, frozenset({"default"}))
+    ready = await text_upload.availability(Store(schema=schema), vectors(), LINK)
+    assert not ready.available and "database does not support it" in ready.message
+    assert "startChar" not in ready.message  # the details are only logged
+    assert ready.problems == ("Chunks.order (declared number, needs int)", "Chunks.startChar (not declared, needs int)",
+                              "Chunks vector second of search vector Small (not configured; the store has default)")
+    assert all(p in caplog.text for p in ready.problems)
+
+
+async def test_a_ready_store_is_available_and_read_once():
+    store = Store()
+    ready = await text_upload.availability(store, vectors(), LINK)
+    assert ready.available and ready.message is None and store.calls == ["schema"]
 
 
 # ── Validation: nothing is written ───────────────────────────────────────
@@ -343,8 +377,8 @@ async def test_csv_metadata_is_stored_and_the_year_copied_to_the_chunks():
     assert (a.status, b.status) == ("completed", "completed")
     assert store.documents[a.document_id]["properties"] == {
         "title": "Dopisy z Prahy", "public": False, "author": ["Jana Nováková"], "yearIssued": 1925,
-        "language": "cs", "description": "Soukromé dopisy"}
-    assert all(c["properties"]["yearIssued"] == 1925 and c["properties"]["language"] == "cs"
+        "language": "ces", "description": "Soukromé dopisy"}
+    assert all(c["properties"]["yearIssued"] == 1925 and c["properties"]["language"] == "ces"
                for c in store.chunks_of(a.document_id))
     assert store.documents[b.document_id]["properties"] == {"title": "b", "public": False}
 
@@ -426,6 +460,23 @@ async def test_a_failed_link_is_read_back():
     result = await text_upload.upload_text_documents(BrokenCollections(store), store, vectors(), OWNER, COLLECTION,
                                                      reader([("a.txt", b"text")]), LIMITS)
     assert result.files[0].status == "uncertain" and "Reload" in result.files[0].error
+
+
+async def test_a_collection_that_changed_owner_during_the_upload_gets_no_further_document():
+    """Ownership is checked again before each document is linked: a transfer while the first
+    file was embedded leaves its document unlinked (and invisible)."""
+    class Transferred(Collections):
+        checks = 0
+
+        async def read_access_record(self, cid):
+            Transferred.checks += 1
+            return (OWNER.id if Transferred.checks == 1 else OTHER.id, set()) if cid == COLLECTION else None
+    store = Store()
+    result = await text_upload.upload_text_documents(Transferred(store), store, vectors(), OWNER, COLLECTION,
+                                                     reader([("a.txt", b"text")]), LIMITS)
+    [file] = result.files
+    assert file.status == "failed" and "can no longer add documents" in file.error
+    assert store.documents[file.document_id]["collections"] == set() and "link_document" not in store.calls
 
 
 async def test_concurrent_uploads_are_bounded_and_refused_before_reading():

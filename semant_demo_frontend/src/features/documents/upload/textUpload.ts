@@ -6,7 +6,7 @@ import type { TextUploadFileResult, TextUploadResponse } from 'src/generated/api
 /** The metadata CSV template (docs/TEXT_UPLOAD.md); `filename` is required, the rest optional. */
 export const CSV_TEMPLATE =
   'filename,title,author,yearIssued,language,description\r\n' +
-  'example.txt,Example document,Jane Doe,1925,cs,Optional description\r\n'
+  'example.txt,Example document,Jane Doe,1925,ces,Optional description\r\n'
 
 export const MAX_FILES = 20
 export const MAX_FILE_BYTES = 2_000_000

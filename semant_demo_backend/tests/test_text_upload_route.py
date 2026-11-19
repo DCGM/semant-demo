@@ -11,7 +11,8 @@ from semant_demo.main import create_app
 from semant_demo.routes.dependencies import get_search_vectors, get_text_upload_store, get_user_collections
 from tests.app_support import make_test_config, offline_weaviate
 from tests.auth_support import auth_headers, register
-from tests.test_text_upload import Embedder, Store
+from semant_demo.adapters.weaviate.text_upload import UploadSchema
+from tests.test_text_upload import SCHEMA, Embedder, Store
 
 URL = "/api/user_collections/{}/text_documents"
 OWNER = {"email": "owner@example.com", "password": "OwnerPass1!", "username": "owner"}
@@ -105,6 +106,34 @@ async def test_a_body_that_is_not_multipart_is_refused(setup):
     client, store, owner, _ = setup
     response = await client.post(URL.format(COLLECTION), headers=owner, json={"files": []})
     assert response.status_code == 400 and not store.documents
+
+
+TXT = ("files", ("a.txt", b"ok", "text/plain"))
+CSV = ("metadata", ("meta.csv", b"filename,title\na.txt,A\n", "text/csv"))
+
+
+@pytest.mark.parametrize("parts, data, problem", [
+    ([TXT], {"metadata": "filename,title\na.txt,A\n"}, "must be a CSV file"),
+    ([TXT, CSV, ("metadata", ("other.csv", b"filename\n", "text/csv"))], None, "at most one 'metadata'"),
+    ([TXT], {"files": "a text field"}, "Every 'files' part must be a file"),
+    ([TXT, ("meta", ("meta.csv", b"filename\n", "text/csv"))], None, "Unexpected form part(s): meta"),
+], ids=["metadata-as-text-field", "two-metadata-files", "files-as-text-field", "unknown-part"])
+async def test_malformed_parts_are_refused_before_anything_is_written(setup, parts, data, problem):
+    client, store, owner, _ = setup
+    response = await client.post(URL.format(COLLECTION), headers=owner, files=parts, data=data)
+    assert response.status_code == 400 and problem in response.json()["detail"]
+    assert "create_document" not in store.calls and not store.documents
+
+
+async def test_availability_is_answered_without_the_store_details(setup):
+    client, store, _, _ = setup
+    assert (await client.get("/api/text_documents/availability")).json() == {"available": True}
+    store.schema_value = UploadSchema(SCHEMA.document_properties, SCHEMA.document_references, SCHEMA.chunk_properties,
+                                      SCHEMA.chunk_references, frozenset({"default"}))
+    response = await client.get("/api/text_documents/availability")
+    assert response.status_code == 200 and response.json() == {
+        "available": False, "message": "Uploading documents is not available: the database does not support it yet."}
+    assert "create_document" not in store.calls
 
 
 async def test_the_operation_declares_the_multipart_body(setup):

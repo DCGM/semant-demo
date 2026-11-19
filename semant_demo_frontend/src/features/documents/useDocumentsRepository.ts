@@ -1,5 +1,5 @@
 import { useApi } from 'src/shared/api'
-import { Document, DocumentBrowse, DocumentStats, TextUploadResponse, WriteResult } from 'src/generated/api'
+import { Document, DocumentBrowse, DocumentStats, TextUploadAvailability, TextUploadResponse, WriteResult } from 'src/generated/api'
 import { requireComplete } from 'src/shared/writeOutcome'
 
 export type DocumentBrowseParams = {
@@ -43,6 +43,11 @@ export function useDocumentsRepository() {
      * Uploads private text files into the collection (#785); the result of each file, also
      * when some or all were not saved. Rejects when the request itself fails.
      */
+    /** Whether this server takes text uploads (its vectors and database), with why not. */
+    textUploadAvailability: async (): Promise<TextUploadAvailability> => {
+      return api.textUploadAvailabilityApiTextDocumentsAvailabilityGet()
+    },
+
     uploadTextDocuments: async (collectionId: string, files: File[], metadata: File | null): Promise<TextUploadResponse> => {
       return api.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost({
         collectionId, files, metadata: metadata ?? undefined
