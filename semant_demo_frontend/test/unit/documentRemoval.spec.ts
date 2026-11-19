@@ -174,7 +174,8 @@ describe('DocumentsTable removal', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     dialogs.opened = []
-    repo.getAllByCollection.mockResolvedValue([{ id: 'd1', title: 'First' }, { id: 'd2', title: 'Second' }])
+    // A new list per fetch, as from the API: the table reloads the stats when the list is replaced.
+    repo.getAllByCollection.mockImplementation(async () => [{ id: 'd1', title: 'First' }, { id: 'd2', title: 'Second' }])
     // d2's stats fail to load.
     repo.getStats.mockImplementation(async (_c: string, id: string) => {
       if (id === 'd2') throw new Error('stats failed')
