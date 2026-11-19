@@ -69,7 +69,7 @@ describe('singleRemovalConfirmation', () => {
     expect(title).toBe('Remove Annotated Document')
     expect(message).toBe(
       '"First" has 5 confirmed annotations and 1 pending AI suggestion in this collection. ' +
-      'Removing it from the collection hides them here. They are not deleted: they show again if the document is added back.'
+      'They are not deleted, but the document cannot be opened in this collection until it is added back.'
     )
   })
 
@@ -82,7 +82,7 @@ describe('singleRemovalConfirmation', () => {
   it('refers to a single annotation in the singular', () => {
     expect(singleRemovalConfirmation({ title: 'First', stats: stats('d1', 0, 1) }).message).toBe(
       '"First" has 1 pending AI suggestion in this collection. ' +
-      'Removing it from the collection hides it here. It is not deleted: it shows again if the document is added back.'
+      'It is not deleted, but the document cannot be opened in this collection until it is added back.'
     )
   })
 
@@ -118,9 +118,9 @@ describe('bulkRemovalConfirmation', () => {
     expect(title).toBe('Remove Annotated Documents')
     expect(message).toBe(
       'Remove 4 selected documents from the collection? ' +
-      '2 of them have annotations in this collection (5 confirmed annotations and 2 pending AI suggestions in total), ' +
-      'which removing hides here. The annotation count of 1 document could not be loaded. ' +
-      'Annotations are not deleted: they show again if a document is added back.'
+      '2 of them have annotations in this collection (5 confirmed annotations and 2 pending AI suggestions in total). ' +
+      'The annotation count of 1 document could not be loaded. ' +
+      'Annotations are not deleted, but a removed document cannot be opened in this collection until it is added back.'
     )
   })
 })
@@ -189,7 +189,7 @@ describe('DocumentsTable removal', () => {
     Array.from(document.body.querySelectorAll('button')).find((b) => b.textContent?.includes('Remove selected'))!.click()
     await flushPromises()
 
-    expect(dialogs.opened[0].options.message).toContain('1 of them has annotations in this collection (5 confirmed annotations in total)')
+    expect(dialogs.opened[0].options.message).toContain('1 of them has annotations in this collection (5 confirmed annotations in total).')
     expect(dialogs.opened[0].options.message).toContain('The annotation count of 1 document could not be loaded.')
     expect(repo.removeFromCollection).not.toHaveBeenCalled()
 
