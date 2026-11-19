@@ -9,7 +9,6 @@ import json
 
 import pytest
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
 from weaviate.classes.data import DataObject
 from weaviate.collections.classes.batch import DeleteManyReturn
 from weaviate.collections.data.async_ import _DataCollectionAsync
@@ -217,26 +216,22 @@ async def test_ai_storage_failures_are_reported(api_client, login, ids, store, c
     assert await store.span_count() == spans_before
 
 
-async def test_ai_proposals_for_chunks_outside_the_collection_are_not_saved(
-        api_client, login, ids, store, corpus, use_topicer):
-    # A provider returning a chunk that is not in the collection (chronicle_3 is in newspapers).
+async def test_optimized_ai_sends_only_the_documents_chunks_in_the_collection(api_client, login, ids, corpus,
+                                                                             use_topicer):
+    # semANT ranks the candidates itself (#792): chronicle_3 is in newspapers, not chronicles.
+    sent = []
     provider = FastAPI()
 
-    @provider.post("/v1/tags/propose/db/stream")
-    async def stream(body: dict):
-        foreign = corpus.chunks["chronicle_3"]
-        event = {"id": foreign["id"], "text": foreign["text"], "tag_span_proposals": [
-            {"tag": {"id": ids.tag["person"]}, "span_start": 0, "span_end": 5}]}
-        return StreamingResponse(iter([json.dumps(event) + "\n"]), media_type="application/x-ndjson")
+    @provider.post("/v1/tags/propose/texts")
+    async def propose(body: dict):
+        sent.append(body["text_chunk"]["id"])
+        return {"text_chunk": body["text_chunk"], "tag_span_proposals": []}
 
     use_topicer(provider)
-    spans_before = await store.span_count()
     body = {"collection_id": ids.col["chronicles"], "document_id": ids.doc["chronicle"], "tag_ids": [ids.tag["person"]]}
 
     response = await api_client.post("/api/ai/suggest_spans/optimized", headers=await login("owner"), json=body)
 
-    [event] = events_of(response)
-    assert (event["spans"], event["unsaved"]) == ([], 1)
-    assert "chunk outside the collection" in event["error"]
-    assert (end_of(response)["outcome"], end_of(response)["rejected"]) == ("complete", 1)
-    assert await store.span_count() == spans_before
+    assert sorted(sent) == sorted([corpus.chunks["chronicle_1"]["id"], corpus.chunks["chronicle_2"]["id"]])
+    end = end_of(response)
+    assert (end["outcome"], end["unit"], end["units_total"], end["max_chunks_per_tag"]) == ("complete", "chunk", 2, 40)

@@ -20,8 +20,8 @@ test-owned Weaviate. It
 * runs fake embedding/Topicer/LLM providers on ``port + 1`` and points every AI
   provider setting at them, with no API keys, so no live or paid provider can be reached
   (tiers on keyed providers are refused before any request).
-  The Topicer stream pauses ``FAKE_TOPICER_STREAM_DELAY`` seconds between chunks, so
-  browser tests can cancel or navigate while a suggestion run is under way.
+  The fake Topicer answers one ``/texts`` call at a time, ``FAKE_TOPICER_STREAM_DELAY``
+  seconds apart, so browser tests can cancel or navigate while a suggestion run is under way.
 
 Nothing here is used by the production application.
 """
