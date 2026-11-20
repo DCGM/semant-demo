@@ -5,6 +5,7 @@ See ``semant_demo/configs/search_benchmark_generator.yaml`` for a documented exa
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,6 +22,8 @@ INTENTS_FEATURE = "search_benchmark_intents"
 TRANSLATION_FEATURE = "search_benchmark_translation"
 JUDGE_FEATURE = "search_benchmark_judge"
 FEATURES = (INTENTS_FEATURE, TRANSLATION_FEATURE, JUDGE_FEATURE)
+ENV_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+"""An environment variable's name (``api_key_env`` names one; it never holds the key itself)."""
 
 
 class _Section(BaseModel):
@@ -118,7 +121,8 @@ class TranslationSection(_Section):
 
 class EndpointSection(_Section):
     base_url: str
-    api_key_env: str | None = None
+    api_key_env: str | None = Field(None, pattern=ENV_PATTERN)
+    """The name of the environment variable holding the key (never the key); it must be set when pooling."""
     timeout: float = 60.0
     batch_size: int = 32
     concurrency: int = 4
@@ -144,6 +148,8 @@ class PoolingMethodSection(_Section):
 
     @model_validator(mode="after")
     def _valid(self) -> "PoolingMethodSection":
+        if self.mode == "text" and (self.vector is not None or self.endpoint is not None):
+            raise ValueError(f"pooling method {self.id}: a text method takes no vector or endpoint")
         self.configuration()
         if self.mode != "text" and self.endpoint is None:
             raise ValueError(f"pooling method {self.id}: a {self.mode} method needs an endpoint")
@@ -178,7 +184,17 @@ class PoolingSection(_Section):
         ids = [m.id for m in self.methods]
         if len(set(ids)) != len(ids):
             raise ValueError("pooling method ids must be unique")
+        specs: dict[str, VectorSpec] = {}
+        for method in self.methods:
+            if method.vector is not None and specs.setdefault(method.vector.id, method.vector) != method.vector:
+                raise ValueError(f"vector {method.vector.id}: pooling methods sharing a vector id must share its "
+                                 "whole spec (model, target_vector, prefix, template, dimensions)")
         return self
+
+    def missing_key_envs(self) -> list[str]:
+        """The ``api_key_env`` variables of the pooling endpoints that are not set."""
+        names = {m.endpoint.api_key_env for m in self.methods if m.endpoint and m.endpoint.api_key_env}
+        return sorted(name for name in names if not os.environ.get(name))
 
 
 class JudgeSection(_Section):

@@ -2,12 +2,12 @@
 
 Manifests travel with datasets and runs, which may be shared (dataset summaries, reports on
 issues). They record what was run (models, prompts, settings, hashes), never where: host names,
-URLs of model or embedding servers, the store's host and the token file's path. A
-configuration's SHA-256 still identifies the exact file used.
+URLs of model or embedding servers, the store's host and local paths (the token file, the
+configuration, imported files). A configuration's SHA-256 still identifies the exact file used.
 """
 from typing import Any
 
-PRIVATE_KEYS = frozenset({"host", "base_url", "model_endpoint", "endpoint", "token_file"})
+PRIVATE_KEYS = frozenset({"host", "base_url", "model_endpoint", "endpoint", "token_file", "path"})
 NOT_RECORDED = "<not recorded>"
 
 

@@ -8,8 +8,13 @@ refreshed pool judges only new pairs.
 For a seeded share of intents (``per_language_fraction``) every candidate is judged once per
 query language (the need with that language's query): ``language_grades`` keeps them, ``grade``
 is their aggregate (``aggregation``: the median, the lower one of an even count, by default) and
-``consistent`` is false when they differ. A pair the judge could not grade is left out of the
-qrels (unjudged, counted by reason); an intent whose source chunk stays unjudged is dropped,
+``consistent`` is false when they differ. Every failed judgement (intent, chunk, language) is
+counted by reason (``failed_judgements``). When only some languages of a pair fail,
+``language_grades`` holds the judged ones, ``grade`` and ``consistent`` are derived from them and
+the pair counts as ``per_language.incomplete``; but with ``aggregation: source`` a pair without
+its source-language grade is unjudged (no other language stands in for it). A pair the judge
+could not grade is left out of the qrels (``unjudged``, pairs counted by the reason of the
+source-language failure, else another one); an intent whose source chunk stays unjudged is dropped,
 since the contract requires every source chunk graded. A source chunk graded 0 is flagged.
 """
 from __future__ import annotations
@@ -75,10 +80,12 @@ async def judge_pools(intents: list[Intent], queries: list[Query], pools: dict[s
                                                       section.max_chars), prompts.parse_grade)
     results = await gather(tasks, config.concurrency, grade)
     grades: dict[tuple[str, UUID], dict[str, int]] = {}
-    reasons: dict[tuple[str, UUID], str] = {}
+    reasons: dict[tuple[str, UUID], dict[str, str]] = {}
+    failed: Counter[str] = Counter()
     for (intent_id, chunk_id, query), (value, reason) in zip(tasks, results):
         if value is None:
-            reasons.setdefault((intent_id, chunk_id), reason or "unknown")
+            failed[reason or "unknown"] += 1
+            reasons.setdefault((intent_id, chunk_id), {})[query.language] = reason or "unknown"
         else:
             grades.setdefault((intent_id, chunk_id), {})[query.language] = value
     qrels: list[Qrel] = []
@@ -91,16 +98,18 @@ async def judge_pools(intents: list[Intent], queries: list[Query], pools: dict[s
         mine: list[Qrel] = []
         for candidate in pools.get(intent.intent_id, []):
             chunk_id = UUID(candidate["chunk_id"])
-            found = grades.get((intent.intent_id, chunk_id))
-            if not found:
-                unjudged[reasons.get((intent.intent_id, chunk_id), "not_judged")] += 1
+            found = grades.get((intent.intent_id, chunk_id)) or {}
+            missing = reasons.get((intent.intent_id, chunk_id), {})
+            if not found or (section.aggregation == "source" and source_language not in found):
+                # Unjudged: no grade at all, or no source-language grade to take.
+                unjudged[missing.get(source_language) or next(iter(missing.values()), "not_judged")] += 1
                 continue
             cut += len(corpus[chunk_id].text) > section.max_chars
             several = intent.intent_id in per_language
             mine.append(Qrel(intent_id=intent.intent_id, chunk_id=chunk_id, grade=aggregate(
                 found, source_language, section.aggregation), judge=judge, pooled_by=tuple(candidate["pooled_by"]),
                 language_grades=dict(sorted(found.items())) if several else None,
-                consistent=len(set(found.values())) == 1))
+                consistent=not several or len(set(found.values())) == 1))
         graded = {q.chunk_id: q for q in mine}
         if any(c not in graded for c in intent.source_chunk_ids):
             dropped.append(intent.intent_id)
@@ -112,11 +121,13 @@ async def judge_pools(intents: list[Intent], queries: list[Query], pools: dict[s
     per_language_qrels = [q for q in kept if q.language_grades is not None]
     report = {
         "judge": judge, "pairs": len({(t[0], t[1]) for t in tasks}), "calls": len(tasks), "judged": len(kept),
-        "unjudged": dict(unjudged), "dropped_intents": dropped,
+        "unjudged": dict(unjudged), "failed_judgements": dict(failed), "dropped_intents": dropped,
         "grades": {str(g): n for g, n in sorted(Counter(q.grade for q in kept).items())},
         "source_graded_0": source_zero,
         "per_language": {"intents": len(per_language - set(dropped)), "pairs": len(per_language_qrels),
                          "inconsistent": sum(1 for q in per_language_qrels if not q.consistent),
+                         "incomplete": sum(1 for q in per_language_qrels
+                                           if len(q.language_grades) < len(by_intent[q.intent_id])),
                          "aggregation": section.aggregation},
         "passages_cut": cut, "max_chars": section.max_chars,
         "pooled_by_grade": {m: {str(g): n for g, n in sorted(Counter(q.grade for q in kept if m in q.pooled_by).items())}

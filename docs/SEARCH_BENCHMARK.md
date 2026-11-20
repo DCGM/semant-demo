@@ -58,7 +58,7 @@ each file), `counts`, automated `checks` and `limitations`.
 
 ```sh
 cd semant_demo_backend
-python -m semant_demo.benchmarks.search_relevance.generate budget CONFIG [--work WORK]   # no model call; only the steps still to run
+python -m semant_demo.benchmarks.search_relevance.generate budget CONFIG [--work WORK] [--source-* as for run]   # no model call; only the steps run would redo
 python -m semant_demo.benchmarks.search_relevance.generate run CONFIG --work WORK [--out DATASET] \
     [--from STEP] [--until STEP] [--force] [--source-host H --source-port P --source-grpc-port G]
 python -m semant_demo.benchmarks.search_relevance.generate validate DATASET   # load_dataset + summary
@@ -72,15 +72,19 @@ seeds, sizes, languages, styles and their shares, pooling methods, judge setting
 from the environment, as for the backend. The source store is the config's `source`, the
 `--source-*` options or the environment (`WEAVIATE_HOST`, …); the options are part of the
 `sample` step's inputs, so another store reruns the sampling. The manifest describes the source
-by `source.description` and never names its host. The steps write to the work directory:
+by `source.description` and never names its host. A pooling endpoint's `api_key_env` is the
+*name* of an environment variable (`[A-Za-z_][A-Za-z0-9_]*`; a pasted key is refused at load),
+and `run` refuses (exit 2) to pool while a named variable is not set. A `text` pooling method
+takes no `vector` or `endpoint`, and methods sharing a vector `id` must give the same whole
+`VectorSpec`. The steps write to the work directory:
 
 | Step | Does | Output (`WORK/<step>/`) |
 |---|---|---|
 | `sample` | Reads the source store **read only**: language inventory, random-cursor batches after random UUIDs, language-filtered windows for a short language; per language toward its target, round-robin over (period, document type) strata, at most `max_per_document` per document; neighbours of a share of the chunks as context (`attributes.context_of`); near-duplicates kept and marked; mixed/unknown/other languages, short and documentless chunks excluded and counted | `corpus.jsonl` |
-| `intents` | Spreads `count` intents evenly over the corpus languages and by style shares; the model writes the `need` (one English sentence) and a query in the source language; a query repeating more than `max_copied_words` consecutive passage words is regenerated once, then the intent moves to a spare chunk. Optional `import` of JSONL intents (`question`/`query`, `language`, optional `corpus_id`, `need`, `style`; e.g. #41), whose source chunks the sample adds | `intents.jsonl`, `queries.jsonl` |
+| `intents` | Spreads `count` intents evenly over the corpus languages and by style shares; the model writes the `need` (one English sentence) and a query in the source language; a query repeating more than `max_copied_words` consecutive passage words is regenerated once, then the intent moves to a spare chunk. Optional `import` of JSONL intents (`question`/`query`, `language`, optional `corpus_id`, `need`, `style`; e.g. #41), whose source chunks the sample adds (the selected ids are part of the `sample` step's inputs, so a changed file, `limit`, intents seed or query languages resamples; a source chunk without text, document or a usable language is reported in `imported_sources_missing`) | `intents.jsonl`, `queries.jsonl` |
 | `translate` | Each query into the other query languages; flags a translation equal to its source, a doubtful language (stopword/diacritic heuristic) and, for `back_translate_fraction`, a low back-translation word overlap; drops an intent missing a language (`require_all_languages`) | `intents.jsonl`, `queries.jsonl` |
 | `pool` | Loads the corpus into the benchmark store (`store_api`), ensures the methods' vectors, searches every query with every method; per intent the union with its source chunks, capped (sources kept, then by best rank and number of methods) and fitted to `max_judgments` (refused when the source chunks alone exceed it) | `pools.jsonl` |
-| `judge` | Grades every (intent, candidate) 0/1/2 against the need and the source-language query, with the document title and the text cut at `max_chars` (the prompt says so); `per_language_fraction` of intents per query language (`language_grades`, `consistent`; `grade` is their median, the lower one of an even count, or `min`/`source`); unjudged pairs are left out and counted; an intent whose source chunk stays unjudged is dropped; a source graded 0 is flagged | `qrels.jsonl` |
+| `judge` | Grades every (intent, candidate) 0/1/2 against the need and the source-language query, with the document title and the text cut at `max_chars` (the prompt says so); `per_language_fraction` of intents per query language (`language_grades`, `consistent`; `grade` is their median, the lower one of an even count, or `min`/`source`); every failed judgement (intent, chunk, language) is counted in `failed_judgements`; when only some languages fail, `language_grades`, `grade` and `consistent` cover the judged languages and the pair counts as `per_language.incomplete` (a manifest limitation), except that with `aggregation: source` a pair without its source-language grade is unjudged; unjudged pairs are left out and counted; an intent whose source chunk stays unjudged is dropped; a source graded 0 is flagged | `qrels.jsonl` |
 | `write` | `write_dataset` with the manifest (config and SHA-256, git revision, seeds, source, models and prompt versions by role, pooling methods, judge, `store_schema`, checks, usage and limitations) and `summary.md` | `--out` |
 
 Each step records the hash of its inputs (its configuration, models, prompt versions and the
@@ -88,7 +92,10 @@ outputs of the earlier steps) in `WORK/<step>/state.json` and is skipped while t
 outputs are unchanged; `--from STEP` reruns a step and the later ones, `--force` all. Every model
 call is cached in `WORK/calls/<feature>.jsonl` by the SHA-256 of its prompt version, model and
 messages (a judgement thus by need, query, chunk text and judge), so a rerun asks nothing it
-asked before. The work directory and the dataset hold corpus text: keep them outside Git.
+asked before; identical asks in flight at once share one call. `budget --work` counts a step as
+done only when `run` would skip it (the same `state.json` check, against the models the
+environment and catalog give now, after only up-to-date steps): a changed judge model, for
+example, estimates the judge calls again. The work directory and the dataset hold corpus text: keep them outside Git.
 Prompts and their versions are in `benchmarks/search_relevance/prompts.py`; changing a prompt
 changes its version.
 
