@@ -88,3 +88,66 @@ instance), the application's collections, one dataset's corpus with its original
 vector per model with document embeddings cached on disk, and the application's own passage
 search per configuration (fusion type and BM25 properties included). The schema is the test
 schema's shape, not production's exact one (#128); `describe()` records it in the manifests.
+
+## Reports
+
+`semant_demo/benchmarks/search_relevance/report.py` (#728) renders reports from a dataset and
+saved runs only: no Weaviate, model or network. Plots need `matplotlib` (a development
+dependency, `requirements-dev.txt`).
+
+```sh
+cd semant_demo_backend
+python -m semant_demo.benchmarks.search_relevance.report report \
+    --dataset DATASET --run RUN [--run RUN2 ...] --out OUT [--exclude-inconsistent] [--examples 2]
+python -m semant_demo.benchmarks.search_relevance.report compare \
+    --dataset DATASET --run RUN [--run RUN2] --a CONFIG --b CONFIG --out OUT
+```
+
+Every run must be of exactly the dataset given (id, version and manifest SHA-256); another is
+refused. A configuration is named by its id, or `run_id/configuration_id` when several runs
+share an id. `--bootstrap N` (default 2000, 0: no CIs) and `--seed` (default 728) set the
+bootstrap; the same inputs and seed give the same numbers.
+
+- `report` writes `report.md` (summary, a conclusions placeholder for the reviewer,
+  provenance, configurations, metric definitions, overall table with CIs, the query language ×
+  source language matrices, same/cross language, query style, source chunk properties such as
+  `ocr_quality` or a chunk title, latency, best and worst examples, limitations),
+  `plots/*.png|svg` (nDCG@10 by configuration, language matrices, latency), `report.json`
+  (everything), `summary.csv` (every slice and metric), `queries.csv` (every query's status and
+  metrics) and `latency.csv`.
+- `compare` writes `comparison.md`, `comparison.json`, `comparison.csv` and plots: A and B side
+  by side with the delta B − A and its paired CI, overall and per slice, sample sizes, judged
+  coverage and the latency trade-off.
+
+The reports quote corpus text in their examples: write production-derived reports outside Git.
+
+### Metrics
+
+A query is scored against the qrels of its intent (its translations share them; the shared
+`grade` is used also when `consistent` is false).
+
+| Metric | Definition |
+|---|---|
+| nDCG@10 (primary) | DCG of the top 10 with gain 2^grade − 1 and discount log2(rank + 1), over the DCG of the ideal ranking of **all** the intent's qrels |
+| P@10, P@10 (grade 2) | share of the 10 slots holding a chunk graded ≥ 1 (≥ 2); missing slots count as misses |
+| Hit@10 (source) | 1 when one of `Intent.source_chunk_ids` is in the top 10 |
+| Recall@20, Recall@50 | share of the intent's judged relevant chunks (grade ≥ 1) in the top 20 / 50 |
+| unjudged@10 | share of the returned top-10 chunks without a qrel for the intent |
+
+An intent without a relevant qrel has no nDCG, P or recall, and one without a source chunk no
+Hit@10; those values are left out of the means and counted. Failed searches
+(`RunResult.error`) and queries missing from a run are counted per configuration and left out
+of the means. `--exclude-inconsistent` leaves out intents with a `consistent: false` qrel;
+the report always says how many such intents there are and how many were left out.
+
+**Unjudged results.** Pooled, LLM-judged qrels are incomplete. The **standard** variant
+(primary) counts an unjudged chunk as not relevant, a lower bound; the **condensed** variant
+removes unjudged chunks from the ranking before scoring (and tends to overestimate). Both are
+reported with the unjudged rate, which shows how much a score may be understated.
+
+**Uncertainty.** A mean is over the scored queries. Its 95% CI is a percentile bootstrap that
+resamples **intents** with replacement, keeping all formulations of an intent together, since
+its translations are not independent. `compare` pairs the queries both configurations scored
+and bootstraps the mean delta over the same resampled intents. Latency is reported as p50 and
+p95 of `embed_ms`, `search_ms` and their sum over successful searches; it is measured on the
+benchmark's isolated store and does not predict production-scale latency.
