@@ -17,7 +17,9 @@ The stages are separate commands that exchange only the files below
 builds on a maintenance tool (`chunk_ingest`, `data_tools/embedder`, `db_benchmark`). They share
 only libraries: `LlmGateway`, the passage search (`features/search/service.py`), the embedding
 clients, `connect_weaviate`, `CollectionNames` and `Config`, and the benchmark's own
-`contracts`, `store_api`, `llm` and `languages` modules.
+`contracts`, `store_api`, `llm` and `languages` modules. The benchmark changes none of the
+application's code: what the application does not offer (hybrid fusion, BM25 boosts, scores,
+batched document embeddings) lives in the benchmark package (`search.py`, `embeddings.py`).
 
 Production-derived corpus text, queries and grades stay **outside Git**. The tests use the
 synthetic fixture `tests/search_benchmark_fixture.py`
@@ -115,7 +117,13 @@ schema's shape, not production's exact one (#128); `describe()` records it in th
   configuration's mode, alpha, fusion, BM25 `properties` (`name^boost`), query prefix and depth
   (the retrieval limit), and reads the first 20 passages in full, as the application's first page.
   Scores are Weaviate's (BM25, hybrid) or the cosine similarity (vector), recorded by the search
-  repository's `record_scores` option; `embed_ms` is the query embedding, `search_ms` the rest.
+  benchmark's `BenchmarkChunkSearch` (`search.py`); `embed_ms` is the query embedding, `search_ms`
+  the rest. `BenchmarkChunkSearch` is the application's `ChunkSearchRepository` with only the
+  ranking query replaced (adding fusion, BM25 properties and score metadata); the access filter
+  and everything else stay the application's. A unit test checks that with default settings it
+  sends Weaviate the same query as the application, so a change of the application's ranking
+  shows up as a failing test. Document embeddings use the benchmark's batched client
+  (`embeddings.py`), query embeddings the application's own client.
 
 Its integration tests (`tests/integration/test_search_benchmark_store.py`) run against the test
 run's throwaway Weaviate, telling `open_store` to tolerate the tests' own marker
