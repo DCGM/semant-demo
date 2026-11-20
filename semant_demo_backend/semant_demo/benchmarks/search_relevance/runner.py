@@ -43,6 +43,7 @@ from semant_demo.benchmarks.search_relevance.contracts import (
     load_dataset, load_run, to_json, write_run)
 from semant_demo.benchmarks.search_relevance.runner_config import (
     ConfigError, RunnerConfig, expand, load_config, select, select_queries)
+from semant_demo.benchmarks.search_relevance.shareable import shareable
 from semant_demo.benchmarks.search_relevance.store_api import BenchmarkStore, OpenStore, Searcher
 
 PARTIAL_RESULTS = "results.partial.jsonl"
@@ -361,7 +362,7 @@ def finish(directory: Path, run_id: str, dataset: Dataset, state: RunState, envi
     results = sorted(state.results.values(), key=lambda r: (order[r.configuration_id], r.query_id))
     manifest = {"run_id": run_id, "created": state.created, "dataset": dataset.ref(),
                 "configurations": list(state.configurations.values()),
-                "environment": {**environment, "sessions": state.sessions},
+                "environment": shareable({**environment, "sessions": state.sessions}),
                 "counts": {"configurations": len(state.configurations)}}
     run = write_run(directory, manifest, results, dataset)
     (directory / PARTIAL_RESULTS).unlink(missing_ok=True)
