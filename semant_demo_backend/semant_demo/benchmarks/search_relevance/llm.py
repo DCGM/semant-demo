@@ -9,6 +9,11 @@ from semant_demo.adapters.llm.models import LlmConfigurationError, Provider
 from semant_demo.adapters.llm.usage import LlmInputTooLarge, LlmRequestRefused
 
 ATTEMPTS = 3
+"""Calls per item for a failed call (connection, timeout, 429, 5xx)."""
+INVALID_ATTEMPTS = 2
+"""Calls per item for an unusable reply: one retry; a model that keeps answering wrongly is not
+asked a third time."""
+RETRYABLE_CLIENT_ERRORS = frozenset({408, 409, 425, 429})
 BACKOFF = 1.0
 T = TypeVar("T")
 
@@ -60,16 +65,36 @@ def model_provenance(llm: LlmGateway, feature: str) -> dict[str, Any]:
             "max_output_tokens": limits.max_output_tokens}
 
 
+def http_status(error: BaseException) -> int | None:
+    """The HTTP status of a provider's error (OpenAI and Ollama clients: ``status_code``;
+    httpx: ``response.status_code``), None when it has none (connection errors, timeouts)."""
+    status = getattr(error, "status_code", None)
+    if status is None:
+        status = getattr(getattr(error, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def is_fatal(error: BaseException) -> bool:
+    """A client error that every further call would repeat: a wrong key (401), no credit (402),
+    no access (403), an unknown model (404), a bad request (400, 422). Rate limits and
+    timeouts are not fatal."""
+    status = http_status(error)
+    return status is not None and 400 <= status < 500 and status not in RETRYABLE_CLIENT_ERRORS
+
+
 async def ask(llm: LlmGateway, feature: str, messages: list[dict[str, str]], parse: Callable[[str], T]
               ) -> tuple[T | None, str | None]:
-    """``(parsed reply, None)``, or ``(None, reason)`` after ``ATTEMPTS`` failed or invalid
-    replies. The reason is an exception class or ``InvalidReply``'s message, never text.
-    Raises ``Refused`` when the gateway refuses the feature."""
+    """``(parsed reply, None)``, or ``(None, reason)`` after ``ATTEMPTS`` failed calls or
+    ``INVALID_ATTEMPTS`` unusable replies. The reason is an exception class or
+    ``InvalidReply``'s message, never text. Raises ``Refused`` when the gateway refuses the
+    feature or the provider answers with a fatal client error (``is_fatal``), which would repeat
+    for every item: the step stops instead of calling again for each."""
     limits = llm.catalog.policy(feature).limits
     context_size = (limits.max_input_tokens + limits.max_output_tokens
                     if limits.max_input_tokens and limits.max_output_tokens else None)
     reason = None
-    for attempt in range(1, ATTEMPTS + 1):
+    failed = invalid = 0
+    while failed < ATTEMPTS and invalid < INVALID_ATTEMPTS:
         try:
             async with llm.operation(feature):
                 reply = await llm.complete(feature, messages, context_size=context_size)
@@ -78,14 +103,19 @@ async def ask(llm: LlmGateway, feature: str, messages: list[dict[str, str]], par
         except LlmRequestRefused as e:
             raise Refused(f"The model call was refused: {type(e).__name__}") from None
         except Exception as e:  # the provider's message may hold the prompt: the class only
+            if is_fatal(e):
+                raise Refused(f"The {feature} model answered HTTP {http_status(e)} ({type(e).__name__}); "
+                              "every further call would fail the same way (key, credit, access or model?)") from None
+            failed += 1
             reason = f"model_failed: {type(e).__name__}"
         else:
             try:
                 return parse(reply), None
             except InvalidReply as e:
+                invalid += 1
                 reason = f"invalid_output: {e}"
-        if attempt < ATTEMPTS:
-            await asyncio.sleep(BACKOFF * attempt)
+        if failed < ATTEMPTS and invalid < INVALID_ATTEMPTS:
+            await asyncio.sleep(BACKOFF * (failed + invalid))
     return None, reason
 
 
