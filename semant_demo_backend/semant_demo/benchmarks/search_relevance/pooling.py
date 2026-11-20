@@ -19,7 +19,7 @@ from uuid import UUID
 
 from semant_demo.benchmarks.search_relevance.config import GeneratorConfig
 from semant_demo.benchmarks.search_relevance.contracts import SOURCE, Dataset, Intent, Query
-from semant_demo.benchmarks.search_relevance.llm import gather
+from semant_demo.benchmarks.search_relevance.llm import Refused, gather
 from semant_demo.benchmarks.search_relevance.store_api import BenchmarkStore
 
 
@@ -43,7 +43,8 @@ def order_methods(methods: set[str], configured: list[str]) -> tuple[str, ...]:
 def cap_pools(pools: dict[str, list[Candidate]], per_intent: int, budget: int | None
               ) -> tuple[dict[str, list[Candidate]], int]:
     """Pools cut to ``per_intent`` candidates (source chunks first and always), lowered until the
-    total is within ``budget``; and the cap used."""
+    total is within ``budget``; and the cap used. Raises ``Refused`` when the source chunks alone
+    exceed the budget: judging them all would spend more than the budget allows."""
     def cut(cap: int) -> dict[str, list[Candidate]]:
         found = {}
         for intent_id, candidates in pools.items():
@@ -54,9 +55,13 @@ def cap_pools(pools: dict[str, list[Candidate]], per_intent: int, budget: int | 
         return found
     cap = per_intent
     capped = cut(cap)
-    while budget is not None and cap > 1 and sum(map(len, capped.values())) > budget:
+    while budget is not None and cap > 0 and sum(map(len, capped.values())) > budget:
         cap -= 1
         capped = cut(cap)
+    total = sum(map(len, capped.values()))
+    if budget is not None and total > budget:
+        raise Refused(f"pooling.max_judgments {budget} is below the {total} source chunks of the intents, which "
+                      "are always judged: raise it or generate fewer intents")
     return capped, cap
 
 

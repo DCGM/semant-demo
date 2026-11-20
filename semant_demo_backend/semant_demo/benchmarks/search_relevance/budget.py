@@ -46,11 +46,17 @@ def estimate(config: GeneratorConfig, work: Path | None = None) -> dict[str, Any
         if config.pooling.max_judgments is not None:
             pairs = min(pairs, config.pooling.max_judgments)
     judge_calls = round(pairs * (1 + config.judge.per_language_fraction * others))
+    # A step whose output is in the work directory needs no more calls: only the rest is estimated.
+    done = [step for step, path in (("intents", existing("intents", "intents.jsonl")),
+                                    ("translate", existing("translate", "intents.jsonl")),
+                                    ("judge", existing("judge", "qrels.jsonl"))) if path]
+    to_generate = 0 if "intents" in done else config.intents.count
     calls = {
-        INTENTS_FEATURE: {"expected": config.intents.count,
-                          "at_most": round(2 * config.intents.count * (1 + config.intents.spare))},
-        TRANSLATION_FEATURE: {"expected": round(intents * others * (1 + config.translation.back_translate_fraction))},
-        JUDGE_FEATURE: {"expected": judge_calls},
+        INTENTS_FEATURE: {"expected": to_generate,
+                          "at_most": round(2 * to_generate * (1 + config.intents.spare))},
+        TRANSLATION_FEATURE: {"expected": 0 if "translate" in done else
+                              round(intents * others * (1 + config.translation.back_translate_fraction))},
+        JUDGE_FEATURE: {"expected": 0 if "judge" in done else judge_calls},
     }
     input_chars = {
         INTENTS_FEATURE: len(prompts.INTENT_SYSTEM) + len(prompts.INTENT_USER) + min(passage,
@@ -72,7 +78,7 @@ def estimate(config: GeneratorConfig, work: Path | None = None) -> dict[str, Any
         entry["model"] = model.model if model else None
         entry["cost_usd"] = round(cost, 4) if cost is not None else None
         total_cost = None if cost is None or total_cost is None else total_cost + cost
-    return {"intents": intents, "imported": imported, "corpus_chunks": len(chunks) or None,
+    return {"done_steps": done, "intents": intents, "imported": imported, "corpus_chunks": len(chunks) or None,
             "mean_passage_chars": round(passage), "judged_pairs": pairs, "calls": calls,
             "cost_usd": round(total_cost, 4) if total_cost is not None else None,
             "note": "Estimates before the cache (cached calls are free); retries not included."}

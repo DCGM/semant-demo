@@ -57,7 +57,7 @@ each file), `counts`, automated `checks` and `limitations`.
 
 ```sh
 cd semant_demo_backend
-python -m semant_demo.benchmarks.search_relevance.generate budget CONFIG [--work WORK]   # no model call
+python -m semant_demo.benchmarks.search_relevance.generate budget CONFIG [--work WORK]   # no model call; only the steps still to run
 python -m semant_demo.benchmarks.search_relevance.generate run CONFIG --work WORK [--out DATASET] \
     [--from STEP] [--until STEP] [--force] [--source-host H --source-port P --source-grpc-port G]
 python -m semant_demo.benchmarks.search_relevance.generate validate DATASET   # load_dataset + summary
@@ -78,7 +78,7 @@ by `source.description` and never names its host. The steps write to the work di
 | `sample` | Reads the source store **read only**: language inventory, random-cursor batches after random UUIDs, language-filtered windows for a short language; per language toward its target, round-robin over (period, document type) strata, at most `max_per_document` per document; neighbours of a share of the chunks as context (`attributes.context_of`); near-duplicates kept and marked; mixed/unknown/other languages, short and documentless chunks excluded and counted | `corpus.jsonl` |
 | `intents` | Spreads `count` intents evenly over the corpus languages and by style shares; the model writes the `need` (one English sentence) and a query in the source language; a query repeating more than `max_copied_words` consecutive passage words is regenerated once, then the intent moves to a spare chunk. Optional `import` of JSONL intents (`question`/`query`, `language`, optional `corpus_id`, `need`, `style`; e.g. #41), whose source chunks the sample adds | `intents.jsonl`, `queries.jsonl` |
 | `translate` | Each query into the other query languages; flags a translation equal to its source, a doubtful language (stopword/diacritic heuristic) and, for `back_translate_fraction`, a low back-translation word overlap; drops an intent missing a language (`require_all_languages`) | `intents.jsonl`, `queries.jsonl` |
-| `pool` | Loads the corpus into the benchmark store (`store_api`), ensures the methods' vectors, searches every query with every method; per intent the union with its source chunks, capped (sources kept, then by best rank and number of methods) and fitted to `max_judgments` | `pools.jsonl` |
+| `pool` | Loads the corpus into the benchmark store (`store_api`), ensures the methods' vectors, searches every query with every method; per intent the union with its source chunks, capped (sources kept, then by best rank and number of methods) and fitted to `max_judgments` (refused when the source chunks alone exceed it) | `pools.jsonl` |
 | `judge` | Grades every (intent, candidate) 0/1/2 against the need and the source-language query, with the document title and the text cut at `max_chars` (the prompt says so); `per_language_fraction` of intents per query language (`language_grades`, `consistent`; `grade` is their median, the lower one of an even count, or `min`/`source`); unjudged pairs are left out and counted; an intent whose source chunk stays unjudged is dropped; a source graded 0 is flagged | `qrels.jsonl` |
 | `write` | `write_dataset` with the manifest (config and SHA-256, git revision, seeds, source, models and prompt versions by role, pooling methods, judge, `store_schema`, checks, usage and limitations) and `summary.md` | `--out` |
 
