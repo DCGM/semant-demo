@@ -237,8 +237,9 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
 
         It reads the records lacking the name like a run, but since it writes nothing, each page read is
         left out of the next query, so beyond ``max_excluded`` records it reads the rest with the cursor
-        (the id and ``haveVector`` of every record). ``max_records`` is not applied: the counts cover the
-        whole selection.
+        (the id and ``haveVector`` of every record). The cursor reads no record twice, so the ids it
+        yields are not kept: the memory stays bounded by ``max_excluded`` and a page. ``max_records`` is
+        not applied: the counts cover the whole selection.
         """
         stats = PipelineStats()
         async with get_async_client(
@@ -267,8 +268,10 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             excluded: set = set()  # nothing is written, so every record read is left out of the next query
             async for objects in self._select(collection, excluded, stats, include_vector=exists):
                 stats.selected += len(objects)
+                from_cursor = stats.scanned > 0  # _scan counts its page before yielding it
                 for obj in objects:
-                    excluded.add(obj.uuid)
+                    if not from_cursor:
+                        excluded.add(obj.uuid)
                     if self._input_of(obj, stats) is not None:
                         stats.missing += 1
         print(f"Check finished. {stats.selected} records lack '{self.vector_name}' in {HAVE_VECTOR}: "

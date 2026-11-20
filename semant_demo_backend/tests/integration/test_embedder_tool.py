@@ -292,7 +292,8 @@ async def test_a_vector_name_graphql_cannot_use_is_refused_before_any_write(tool
 # Check mode #
 ##############
 
-async def test_a_check_counts_what_a_run_would_embed_and_changes_nothing(tool_store, make_pipeline, embed_calls):
+async def test_a_check_counts_what_a_run_would_embed_and_changes_nothing(tool_store, make_pipeline, embed_calls,
+                                                                         monkeypatch):
     await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
     collection = tool_store.collections.get(TEST_COLLECTION)
     await collection.data.insert({"title": "empty", "text": "", "language": "ces"})
@@ -301,9 +302,19 @@ async def test_a_check_counts_what_a_run_would_embed_and_changes_nothing(tool_st
     stats = await make_pipeline().check_async()
     assert (stats.selected, stats.missing, stats.already_stored, stats.empty, stats.scanned) == (11, 10, 0, 1, 0)
     assert set((await collection.config.get()).vector_config) == {"default"}
-    # Each page read is left out of the next query; beyond max_excluded the rest is read with the cursor.
+    # Each page read is left out of the next query; beyond max_excluded the rest is read with the cursor,
+    # whose records are not kept (it reads none twice): two pages of 3, not all 11 ids.
+    kept = []
+    scan = EmbeddingPipeline._scan
+
+    def spy(self, collection, excluded, *args):
+        kept.append(excluded)
+        return scan(self, collection, excluded, *args)
+    monkeypatch.setattr(EmbeddingPipeline, "_scan", spy)
     stats = await make_pipeline(max_excluded=4).check_async()
     assert (stats.selected, stats.missing, stats.already_stored, stats.empty, stats.scanned) == (11, 10, 0, 1, 11)
+    assert [len(e) for e in kept] == [6]
+    monkeypatch.undo()
 
     await make_pipeline(max_records=4).run_async()
     filled = await tool_vectors(tool_store)
