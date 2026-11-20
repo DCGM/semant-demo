@@ -8,8 +8,10 @@ all of them fail, the retrieved hits are still returned, with a warning. The sum
 one AI operation admitted against the caller's daily allowance; when it has no room, they
 are skipped and the hits are returned with a quota warning, never a 429.
 
-Access (ADR 0007): a ``user_collection_id`` needs read access to that collection. Without
-one, search covers the public corpus, also anonymously. There is no tag filter (ADR 0013).
+Access (ADR 0007, #279): a ``user_collection_id`` needs read access to that collection; then
+the chunks of its documents are eligible whatever their rights, and any other chunk only when
+its document is public. Without one, search covers only public documents, also for a
+signed-in user (``ChunkQuery.readable_collection_id``). There is no tag filter (ADR 0013).
 Restrictions are applied inside the retrieval query, never by dropping hits afterwards.
 
 Filters: the shared search criteria (``document_filters``, ``chunk_filters``;
@@ -124,6 +126,7 @@ async def _authorized_query(backends: SearchBackends, user: Principal | None, re
         conditions=() if criteria is not None else tuple(filter_conditions(request, filter_definitions)),
         document_conditions=tuple(criteria[0]) if criteria is not None else (),
         chunk_conditions=tuple(criteria[1]) if criteria is not None else (),
+        readable_collection_id=collection_id,
         vector=await _embed(vector, request),
         target_vector=None if request.type == SearchType.text else vector.target_vector,
     )
@@ -341,7 +344,7 @@ async def _rank_documents(documents: DocumentRepository, backends: SearchBackend
     text = criteria.text_query or ""
     chunk_query = ChunkQuery(
         text=text, mode=request.type, limit=limits.chunks + 1, alpha=request.hybrid_search_alpha,
-        document_collection_id=scope, document_conditions=tuple(conditions),
+        document_collection_id=scope, readable_collection_id=scope, document_conditions=tuple(conditions),
         vector=await _embed_text(vector, request.type, text),
         target_vector=None if request.type == SearchType.text else vector.target_vector)
     eligible, metadata_ids, chunk_hits = await asyncio.gather(
@@ -411,7 +414,7 @@ async def _read_ranked(documents: DocumentRepository, chunks: ChunkSearchReposit
     chunk_ids = [entry.chunk_id for entry in entries if entry.chunk_id is not None and entry.id in found]
     hits = await chunks.read_hits(chunk_ids, ChunkQuery(
         text="", mode=SearchType.text, limit=len(chunk_ids), document_collection_id=scope,
-        document_conditions=tuple(conditions)))
+        readable_collection_id=scope, document_conditions=tuple(conditions)))
     by_id = {hit.id: hit for hit in hits}
     items = []
     for entry in entries:

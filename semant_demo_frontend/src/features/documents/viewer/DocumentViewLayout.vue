@@ -65,7 +65,7 @@
     </RightSidebarPanel>
 
     <q-page-container>
-      <!-- No access to the collection (or it is gone): the corpus document is still public. -->
+      <!-- No access to the collection (or it is gone): a public document is still readable without it (#279). -->
       <q-banner v-if="collectionUnavailable" class="bg-amber-1 text-grey-9 q-ma-md" rounded role="alert" data-testid="collection-unavailable">
         <template #avatar><q-icon name="lock" color="amber-9" /></template>
         This collection cannot be opened: it does not exist or is not shared with you. Its
@@ -254,13 +254,14 @@ const updateLayoutHeight = () => {
 }
 
 watch(
-  () => props.documentId,
-  async (documentId) => {
+  () => [props.documentId, props.collectionId] as const,
+  async ([documentId, collectionId]) => {
     // Reset shared AI assistance state so stale "Processed N chunks" / pending
     // suggestions from the previous document don't leak into the new one.
     aiAssist.reset()
     tagSpans.clearAll()
-    await fetchDocument(documentId)
+    // Read through the collection: a restricted or unknown document is readable only so (#279).
+    await fetchDocument(documentId, collectionId)
   },
   { immediate: true }
 )

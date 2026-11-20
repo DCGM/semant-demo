@@ -14,6 +14,8 @@ import type { useChunkWindow } from './useChunkWindow'
 
 export interface ReaderScanSyncOptions {
   documentId: () => string
+  /** The collection the reader reads the document through (#279). */
+  collectionId?: () => string | null
   chunkWindow: ReturnType<typeof useChunkWindow>
   /** Reads the annotations of chunks newly shown. */
   loadSpans: (chunkIds: string[]) => Promise<void>
@@ -35,7 +37,7 @@ export function useReaderScanSync (o: ReaderScanSyncOptions) {
 
   async function readPage (order: number): Promise<{ chunks: CollectionChunk[], complete: boolean }> {
     const documentId = o.documentId()
-    const read = await readPageChunks(api, documentId, order)
+    const read = await readPageChunks(api, documentId, order, o.collectionId?.() ?? null)
     if (!read.chunks.length || documentId !== o.documentId()) return { chunks: [], complete: read.complete }
     const orders = read.chunks.map(c => c.order)
     const { shown, fresh } = await o.chunkWindow.showRange(Math.min(...orders), Math.max(...orders))

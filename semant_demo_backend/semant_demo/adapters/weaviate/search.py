@@ -17,8 +17,9 @@ from weaviate.classes.query import Filter, QueryReference
 
 from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.analytics import READ_BATCH
+from semant_demo.adapters.weaviate.chunk_visibility import PROPERTY as DOCUMENT_PUBLIC_FLAG
+from semant_demo.adapters.weaviate.documents import chunk_properties, public_documents
 from semant_demo.adapters.weaviate.names import CollectionNames
-from semant_demo.adapters.weaviate.documents import chunk_properties
 from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, SearchResultChunk
 from semant_demo.features.documents.schemas import Document
@@ -168,10 +169,11 @@ class ChunkSearchRepository:
         raise ValueError(f"Unknown search type: {query.mode}")
 
     async def document_filter_stats(self) -> tuple[int | None, int | None, list[str] | None]:
-        """(min yearIssued, max yearIssued, languages) over all documents; None where unknown."""
+        """(min yearIssued, max yearIssued, languages) over the public documents (#279); None where unknown."""
         documents = self.client.collections.get(self.collectionNames.document_collection_name)
         min_year = max_year = None
         res_year = await documents.aggregate.over_all(
+            filters=public_documents(),
             return_metrics=[Metrics("yearIssued").integer(minimum=True, maximum=True)]
         )
         if "yearIssued" in res_year.properties:
@@ -181,6 +183,7 @@ class ChunkSearchRepository:
                 max_year = int(res_year.properties["yearIssued"].maximum)
 
         res_lang = await documents.aggregate.over_all(
+            filters=public_documents(),
             return_metrics=[Metrics("language").text(top_occurrences_value=True, limit=1000)]
         )
         languages = []
@@ -189,7 +192,7 @@ class ChunkSearchRepository:
         return min_year, max_year, languages or None
 
     async def _filter(self, query: ChunkQuery):
-        filters = []
+        filters = [] if _within_readable_collection(query) else [_readable(query.readable_collection_id)]
         if query.collection_id is not None:
             filters.append(Filter.by_ref(link_on=self.collectionNames.user_collection_link_name)
                            .by_id().equal(query.collection_id))
@@ -215,6 +218,24 @@ class ChunkSearchRepository:
             *criteria.parts(copied, chunk_types, records="Documents"),
             *criteria.parts(query.chunk_conditions, chunk_types, chunk_tokenizations, records="Chunks"),
         ]
+
+
+def _within_readable_collection(query: ChunkQuery) -> bool:
+    """The query is limited to the documents of its readable collection, so every chunk is eligible."""
+    return query.readable_collection_id is not None and query.document_collection_id == query.readable_collection_id
+
+
+def _readable(collection_id: UUID | None):
+    """The document access rule on chunks (#279): the chunk's document is public or, given an
+    authorized collection, belongs to it. Applied inside every query, before ranking and limits.
+    Public is read from the chunk's own copy ``documentPublic`` (#793), which fails closed: a
+    chunk without the value never matches. Filtering through the ``document`` reference instead
+    cost 1.2-2.6 s per query on the production corpus (#789)."""
+    public = Filter.by_property(DOCUMENT_PUBLIC_FLAG).equal(True)
+    if collection_id is None:
+        return public
+    return Filter.any_of([public, Filter.by_ref(link_on="document").by_ref(link_on="collection")
+                         .by_id().equal(collection_id)])
 
 
 def _hit(obj) -> SearchResultChunk | None:

@@ -1,11 +1,19 @@
-"""Corpus document reads.
+"""Corpus document reads and the document access rule (#279, ADR 0007).
 
-Documents and their chunks are public corpus data: reading a document, browsing the
-whole corpus, counting a document's chunks and reading a bounded passage around a chunk
-(the search result context, #244) need no login. Reads limited to a
-collection, or marking chunk membership in one, need read access to that collection
-(``features/user_collections/access.py``), checked here before any other read. ``user`` is the
-authenticated user or ``None``; malformed ids are "not found".
+A document is readable in one of two ways, decided by ``readable_document`` before any
+other read:
+
+* **public**: ``Documents.public`` is true. Readable by anyone, also anonymously, without
+  a collection (the public document view, Search, Explore, RAG, MCP).
+* **through a collection**: the request names a collection the user can read (owner or
+  shared user, ``features/user_collections/access.py``) and the document is linked to it.
+  Then also a restricted (``public`` false) or unknown (no value) document is readable, with
+  all its chunks. Signing in alone never is enough, and neither is a document or chunk id.
+
+A document that is not readable is "not found", as one that does not exist, so restricted
+ids are not confirmed. Corpus-wide reads (browse, counts) without a collection cover only
+public documents (``DocumentRepository``). ``user`` is the authenticated user or ``None``;
+malformed ids are "not found".
 """
 from uuid import UUID
 
@@ -22,17 +30,41 @@ from semant_demo.features.documents.schemas import DocumentChunk, AdjacentChunks
 Id = str | UUID
 
 
-async def read_document(documents: DocumentRepository, document_id: Id) -> Document:
-    """A corpus document (public)."""
-    document = await documents.read(access.parse_id(document_id, "Document"))
+async def readable_document(documents: DocumentRepository, collections: UserCollectionRepository,
+                            user: Principal | None, document_id: Id, collection_id: Id | None = None) -> UUID:
+    """The id of a document the caller may read (the module's rule); "not found" otherwise.
+
+    With ``collection_id``: read access to the collection (its errors propagate: login needed,
+    "not found") and the document's link to it. Without: the document must be public."""
+    doc = access.parse_id(document_id, "Document")
+    if collection_id is not None:
+        grant = await access.require_collection_read(collections, user, collection_id)
+        return await access.require_document_in_collection(collections, doc, grant.collection_id)
+    if not await documents.is_public(doc):
+        raise NotFoundError(f"Document with id {document_id} not found")
+    return doc
+
+
+async def read_document(documents: DocumentRepository, collections: UserCollectionRepository,
+                        user: Principal | None, document_id: Id, collection_id: Id | None = None) -> Document:
+    """A readable corpus document (``readable_document``)."""
+    doc = await readable_document(documents, collections, user, document_id, collection_id)
+    document = await documents.read(doc)
     if document is None:
         raise NotFoundError(f"Document with id {document_id} not found")
     return document
 
 
-async def count_chunks(documents: DocumentRepository, document_id: Id) -> int:
-    """The number of chunks of a corpus document (public; 0 for an unknown document)."""
-    return await documents.count_chunks(access.parse_id(document_id, "Document"))
+async def count_chunks(documents: DocumentRepository, collections: UserCollectionRepository,
+                       user: Principal | None, document_id: Id, collection_id: Id | None = None) -> int:
+    """The number of chunks of a readable corpus document. 0 for an unknown document and, without
+    a collection, also for one that is not public (neither is confirmed); a malformed id is "not
+    found". With a collection, its access and membership errors propagate."""
+    doc = access.parse_id(document_id, "Document")
+    if collection_id is None:
+        return await documents.count_chunks(doc) if await documents.is_public(doc) else 0
+    doc = await readable_document(documents, collections, user, doc, collection_id)
+    return await documents.count_chunks(doc)
 
 
 MAX_WINDOW_SIDE = 50
@@ -44,9 +76,8 @@ def _check_window_side(*sides: int) -> None:
         raise InvalidRequestError(f"before, after and limit must be between 0 and {MAX_WINDOW_SIDE}")
 
 
-async def _read_anchor(documents: DocumentRepository, document_id: Id, chunk_id: Id) -> DocumentChunk:
-    """The chunk, which must belong to the document (otherwise "not found")."""
-    doc_id = access.parse_id(document_id, "Document")
+async def _read_anchor(documents: DocumentRepository, doc_id: UUID, document_id: Id, chunk_id: Id) -> DocumentChunk:
+    """The chunk, which must belong to the (readable) document ``doc_id`` (otherwise "not found")."""
     anchor = await documents.read_chunk(access.parse_id(chunk_id, "Chunk"))
     if anchor is None or anchor.document != doc_id:
         raise NotFoundError(f"Chunk with id {chunk_id} not found in document {document_id}")
@@ -65,16 +96,20 @@ async def _adjacent(documents: DocumentRepository, anchor: DocumentChunk, direct
     return chunks[:count], len(chunks) > count
 
 
-async def read_chunk_window(documents: DocumentRepository, document_id: Id, chunk_id: Id,
-                            before: int, after: int) -> DocumentChunkWindow:
+async def read_chunk_window(documents: DocumentRepository, collections: UserCollectionRepository,
+                            user: Principal | None, document_id: Id, chunk_id: Id, before: int, after: int,
+                            collection_id: Id | None = None) -> DocumentChunkWindow:
     """
-    A passage of a corpus document (public): the chunk and up to ``before``/``after``
-    (at most ``MAX_WINDOW_SIDE``) chunks around it, with the document metadata and chunk
-    count. The chunk must belong to the document.
+    A passage of a readable corpus document (``readable_document``): the chunk and up to
+    ``before``/``after`` (at most ``MAX_WINDOW_SIDE``) chunks around it, with the document
+    metadata and chunk count. The chunk must belong to the document.
     """
     _check_window_side(before, after)
-    anchor = await _read_anchor(documents, document_id, chunk_id)
-    document = await read_document(documents, anchor.document)
+    doc_id = await readable_document(documents, collections, user, document_id, collection_id)
+    anchor = await _read_anchor(documents, doc_id, document_id, chunk_id)
+    document = await documents.read(doc_id)
+    if document is None:
+        raise NotFoundError(f"Document with id {document_id} not found")
     preceding, has_before = await _adjacent(documents, anchor, "before", before)
     following, has_after = await _adjacent(documents, anchor, "after", after)
     return DocumentChunkWindow(
@@ -87,17 +122,20 @@ async def read_chunk_window(documents: DocumentRepository, document_id: Id, chun
     )
 
 
-async def read_adjacent_chunks(documents: DocumentRepository, document_id: Id, chunk_id: Id,
-                               direction: str, limit: int) -> AdjacentChunks:
+async def read_adjacent_chunks(documents: DocumentRepository, collections: UserCollectionRepository,
+                               user: Principal | None, document_id: Id, chunk_id: Id, direction: str, limit: int,
+                               collection_id: Id | None = None) -> AdjacentChunks:
     """
-    Up to ``limit`` (at most ``MAX_WINDOW_SIDE``) chunks before or after a chunk of a corpus
-    document (public), to extend a passage. Reads only the chunk and its neighbours: no
-    document metadata, no chunk count. The chunk must belong to the document.
+    Up to ``limit`` (at most ``MAX_WINDOW_SIDE``) chunks before or after a chunk of a readable
+    corpus document (``readable_document``), to extend a passage. Reads only the rights, the
+    chunk and its neighbours: no document metadata, no chunk count. The chunk must belong to
+    the document.
     """
     if direction not in ("before", "after"):
         raise InvalidRequestError("direction must be 'before' or 'after'")
     _check_window_side(limit)
-    anchor = await _read_anchor(documents, document_id, chunk_id)
+    doc_id = await readable_document(documents, collections, user, document_id, collection_id)
+    anchor = await _read_anchor(documents, doc_id, document_id, chunk_id)
     chunks, has_more = await _adjacent(documents, anchor, direction, limit)
     return AdjacentChunks(chunks=chunks, has_more=has_more)
 
@@ -107,8 +145,8 @@ async def browse(documents: DocumentRepository, collections: UserCollectionRepos
                  chunk_filters: ChunkFilters | None = None, vocabulary: ChunkVocabulary | None = None,
                  **options) -> DocumentBrowse:
     """
-    One page of corpus documents (public), or of one collection's documents, which needs
-    read access to it. ``filters`` and ``chunk_filters`` are the shared search criteria (the
+    One page of public corpus documents, or of one collection's documents (any rights), which
+    needs read access to it. ``filters`` and ``chunk_filters`` are the shared search criteria (the
     same documents as Analytics counts for them); chunk filters apply per dimension to the
     documents' chunk-value summaries and are checked against ``vocabulary`` before anything is
     read (``InvalidChunkFilterError``). ``options`` are the repository's paging, sorting and

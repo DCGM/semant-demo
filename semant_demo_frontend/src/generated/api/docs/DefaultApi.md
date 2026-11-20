@@ -1025,11 +1025,11 @@ example().catch(console.error);
 
 ## countDocumentChunksApiDocumentsDocumentIdChunksCountGet
 
-> number countDocumentChunksApiDocumentsDocumentIdChunksCountGet(documentId)
+> number countDocumentChunksApiDocumentsDocumentIdChunksCountGet(documentId, collectionId)
 
 Count Document Chunks
 
-Returns the total number of chunks in the given document (public corpus data).
+Returns the total number of chunks in the given document; 0 for an unknown document and, without &#x60;&#x60;collection_id&#x60;&#x60;, for one that is not public.
 
 ### Example
 
@@ -1042,11 +1042,17 @@ import type { CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest } f
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
     documentId: documentId_example,
+    // string | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). (optional)
+    collectionId: collectionId_example,
   } satisfies CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest;
 
   try {
@@ -1067,6 +1073,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **documentId** | `string` |  | [Defaults to `undefined`] |
+| **collectionId** | `string` | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -1074,7 +1081,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -2478,11 +2485,11 @@ This endpoint does not need any parameter.
 
 ## fetchDocumentApiDocumentDocumentIdGet
 
-> Document fetchDocumentApiDocumentDocumentIdGet(documentId)
+> Document fetchDocumentApiDocumentDocumentIdGet(documentId, collectionId)
 
 Fetch Document
 
-Retrieves document by its id
+Retrieves a readable document by its id (a public one, or one of &#x60;&#x60;collection_id&#x60;&#x60;).
 
 ### Example
 
@@ -2495,11 +2502,17 @@ import type { FetchDocumentApiDocumentDocumentIdGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
     documentId: documentId_example,
+    // string | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). (optional)
+    collectionId: collectionId_example,
   } satisfies FetchDocumentApiDocumentDocumentIdGetRequest;
 
   try {
@@ -2520,6 +2533,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **documentId** | `string` |  | [Defaults to `undefined`] |
+| **collectionId** | `string` | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -2527,7 +2541,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -4309,11 +4323,11 @@ example().catch(console.error);
 
 ## readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet
 
-> AdjacentChunks readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(documentId, chunkId, direction, limit)
+> AdjacentChunks readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(documentId, chunkId, direction, limit, collectionId)
 
 Read Document Adjacent Chunks
 
-Returns up to &#x60;&#x60;limit&#x60;&#x60; chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with &#x60;&#x60;/window&#x60;&#x60; without reading the document metadata or chunk count again.
+Returns up to &#x60;&#x60;limit&#x60;&#x60; chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with &#x60;&#x60;/window&#x60;&#x60; without reading the document metadata or chunk count again.
 
 ### Example
 
@@ -4326,7 +4340,11 @@ import type { ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjac
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -4337,6 +4355,8 @@ async function example() {
     direction: direction_example,
     // number (optional)
     limit: 56,
+    // string | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). (optional)
+    collectionId: collectionId_example,
   } satisfies ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest;
 
   try {
@@ -4360,6 +4380,7 @@ example().catch(console.error);
 | **chunkId** | `string` |  | [Defaults to `undefined`] |
 | **direction** | `before`, `after` |  | [Defaults to `undefined`] [Enum: before, after] |
 | **limit** | `number` |  | [Optional] [Defaults to `5`] |
+| **collectionId** | `string` | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -4367,7 +4388,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -4386,11 +4407,11 @@ No authorization required
 
 ## readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet
 
-> DocumentChunkWindow readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(documentId, chunkId, before, after)
+> DocumentChunkWindow readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(documentId, chunkId, before, after, collectionId)
 
 Read Document Chunk Window
 
-Returns the chunk and up to &#x60;&#x60;before&#x60;&#x60;/&#x60;&#x60;after&#x60;&#x60; neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+Returns the chunk and up to &#x60;&#x60;before&#x60;&#x60;/&#x60;&#x60;after&#x60;&#x60; neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
 
 ### Example
 
@@ -4403,7 +4424,11 @@ import type { ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGe
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -4414,6 +4439,8 @@ async function example() {
     before: 56,
     // number (optional)
     after: 56,
+    // string | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). (optional)
+    collectionId: collectionId_example,
   } satisfies ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest;
 
   try {
@@ -4437,6 +4464,7 @@ example().catch(console.error);
 | **chunkId** | `string` |  | [Defaults to `undefined`] |
 | **before** | `number` |  | [Optional] [Defaults to `3`] |
 | **after** | `number` |  | [Optional] [Defaults to `3`] |
+| **collectionId** | `string` | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -4444,7 +4472,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -4463,11 +4491,11 @@ No authorization required
 
 ## readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet
 
-> readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(documentId, pageId, kind)
+> readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(documentId, pageId, kind, access)
 
 Read Document Page Asset
 
-Returns one asset of a page (public corpus data): &#x60;&#x60;image&#x60;&#x60; (the scan) or &#x60;&#x60;thumbnail&#x60;&#x60; (&#x60;&#x60;image/jpeg&#x60;&#x60;), or &#x60;&#x60;layout&#x60;&#x60; (the page layout file, &#x60;&#x60;application/json&#x60;&#x60;, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers &#x60;&#x60;If-None-Match&#x60;&#x60; with 304.
+Returns one asset of a page: &#x60;&#x60;image&#x60;&#x60; (the scan) or &#x60;&#x60;thumbnail&#x60;&#x60; (&#x60;&#x60;image/jpeg&#x60;&#x60;), or &#x60;&#x60;layout&#x60;&#x60; (the page layout file, &#x60;&#x60;application/json&#x60;&#x60;, docs/PAGE_LAYOUT.md). A public document\&#39;s assets need nothing else; another document\&#39;s need the &#x60;&#x60;access&#x60;&#x60; of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers &#x60;&#x60;If-None-Match&#x60;&#x60; with 304, after the same checks.
 
 ### Example
 
@@ -4489,6 +4517,8 @@ async function example() {
     pageId: pageId_example,
     // 'image' | 'layout' | 'thumbnail'
     kind: kind_example,
+    // string | The signed access of a page manifest read through a collection; needed for a document that is not public. (optional)
+    access: access_example,
   } satisfies ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest;
 
   try {
@@ -4511,6 +4541,7 @@ example().catch(console.error);
 | **documentId** | `string` |  | [Defaults to `undefined`] |
 | **pageId** | `string` |  | [Defaults to `undefined`] |
 | **kind** | `image`, `layout`, `thumbnail` |  | [Defaults to `undefined`] [Enum: image, layout, thumbnail] |
+| **access** | `string` | The signed access of a page manifest read through a collection; needed for a document that is not public. | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -4539,11 +4570,11 @@ No authorization required
 
 ## readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet
 
-> PageChunks readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(documentId, page, limit)
+> PageChunks readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(documentId, page, limit, collectionId)
 
 Read Document Page Chunks
 
-Returns, in document order, up to &#x60;&#x60;limit&#x60;&#x60; chunks whose page range (&#x60;&#x60;from_page&#x60;&#x60;.. &#x60;&#x60;to_page&#x60;&#x60;) includes page &#x60;&#x60;page&#x60;&#x60; (the page\&#39;s &#x60;&#x60;order&#x60;&#x60; in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+Returns, in document order, up to &#x60;&#x60;limit&#x60;&#x60; chunks whose page range (&#x60;&#x60;from_page&#x60;&#x60;.. &#x60;&#x60;to_page&#x60;&#x60;) includes page &#x60;&#x60;page&#x60;&#x60; (the page\&#39;s &#x60;&#x60;order&#x60;&#x60; in the page manifest), and whether more do (readable documents only). Used to open a page directly.
 
 ### Example
 
@@ -4556,7 +4587,11 @@ import type { ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
@@ -4565,6 +4600,8 @@ async function example() {
     page: 56,
     // number (optional)
     limit: 56,
+    // string | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). (optional)
+    collectionId: collectionId_example,
   } satisfies ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest;
 
   try {
@@ -4587,6 +4624,7 @@ example().catch(console.error);
 | **documentId** | `string` |  | [Defaults to `undefined`] |
 | **page** | `number` |  | [Defaults to `undefined`] |
 | **limit** | `number` |  | [Optional] [Defaults to `20`] |
+| **collectionId** | `string` | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -4594,7 +4632,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 
@@ -4613,11 +4651,11 @@ No authorization required
 
 ## readDocumentPagesApiDocumentsDocumentIdPagesGet
 
-> DocumentPages readDocumentPagesApiDocumentsDocumentIdPagesGet(documentId)
+> DocumentPages readDocumentPagesApiDocumentsDocumentIdPagesGet(documentId, collectionId)
 
 Read Document Pages
 
-Returns the document\&#39;s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). &#x60;&#x60;available&#x60;&#x60; is false, with no pages, for a document without imported pages (a text-only document).
+Returns the (readable) document\&#39;s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through &#x60;&#x60;collection_id&#x60;&#x60;, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. &#x60;&#x60;available&#x60;&#x60; is false, with no pages, for a document without imported pages (a text-only document).
 
 ### Example
 
@@ -4630,11 +4668,17 @@ import type { ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest } from '';
 
 async function example() {
   console.log("🚀 Testing  SDK...");
-  const api = new DefaultApi();
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
 
   const body = {
     // string
     documentId: documentId_example,
+    // string | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). (optional)
+    collectionId: collectionId_example,
   } satisfies ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest;
 
   try {
@@ -4655,6 +4699,7 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **documentId** | `string` |  | [Defaults to `undefined`] |
+| **collectionId** | `string` | Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279). | [Optional] [Defaults to `undefined`] |
 
 ### Return type
 
@@ -4662,7 +4707,7 @@ example().catch(console.error);
 
 ### Authorization
 
-No authorization required
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
 
 ### HTTP request headers
 

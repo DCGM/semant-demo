@@ -330,6 +330,8 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             Property(name="end_paragraph", data_type=DataType.BOOL),
             # the document's year, for year filters (#153)
             Property(name="yearIssued", data_type=integer, index_range_filters=True),
+            # the document's public, for unscoped search eligibility (#793), as chunk_document_public declares it
+            Property(name="documentPublic", data_type=DataType.BOOL, index_filterable=True),
             # Absolute positions in the document (#463, features/documents/positions.py).
             Property(name="startChar", data_type=integer),
             Property(name="startWord", data_type=integer),

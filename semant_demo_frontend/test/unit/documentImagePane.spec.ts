@@ -268,4 +268,74 @@ describe('DocumentImagePane', () => {
     await flushPromises()
     expect(w.find('polygon.scan-line--active').attributes('data-line-id')).toBe('p1-l3')
   })
+
+  describe('signed URLs of a restricted document (#279, #789)', () => {
+    const MINUTE = 60 * 1000
+    const signed = (token: string, expiresIn: number) => ({
+      ...MANIFEST,
+      access_expires_at: new Date(Date.now() + expiresIn).toISOString(),
+      pages: MANIFEST.pages.map(p => ({
+        ...p,
+        image_url: p.image_url && `${p.image_url}?access=${token}`,
+        layout_url: p.layout_url && `${p.layout_url}?access=${token}`,
+        thumbnail_url: p.thumbnail_url && `${p.thumbnail_url}?access=${token}`
+      }))
+    })
+    const manifestReads = () => calls.filter(c => c.url.pathname === `/api/documents/${DOC}/pages`)
+
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }) })
+    afterEach(() => { vi.useRealTimers() })
+
+    async function openSigned () {
+      wrapper = mount(DocumentImagePane, {
+        props: { documentId: DOC, collectionId: 'col-1', pageId: 'p1' },
+        global: { plugins: [[Quasar, {}]] },
+        attachTo: document.body
+      })
+      await flushPromises()
+      manifestReads()[0].answer(signed('t1', 30 * MINUTE))
+      await flushPromises()
+      return wrapper
+    }
+
+    const imageSrc = (w: VueWrapper) => w.find('img.scan-view__image').attributes('src')
+
+    it('reads the manifest again before its URLs expire and keeps the page', async () => {
+      const w = await openSigned()
+      expect(manifestReads()[0].url.searchParams.get('collection_id')).toBe('col-1')
+      expect(imageSrc(w)).toContain('access=t1')
+
+      vi.advanceTimersByTime(27 * MINUTE)
+      await flushPromises()
+      expect(manifestReads()).toHaveLength(1)
+      vi.advanceTimersByTime(1 * MINUTE + 1)
+      await flushPromises()
+      expect(manifestReads()).toHaveLength(2)
+      expect(manifestReads()[1].url.searchParams.get('collection_id')).toBe('col-1')
+      manifestReads()[1].answer(signed('t2', 30 * MINUTE))
+      await flushPromises()
+
+      expect(imageSrc(w)).toContain('p1/image?access=t2')
+      expect(w.emitted('navigate')).toBeUndefined()
+    })
+
+    it('reads the URLs again when a signed scan fails near their expiry, not otherwise', async () => {
+      const w = await openSigned()
+      w.find('img.scan-view__image').element.dispatchEvent(new Event('error'))
+      await flushPromises()
+      expect(manifestReads()).toHaveLength(1) // a fresh URL that fails: no repeated reads
+
+      vi.setSystemTime(Date.now() + 31 * MINUTE) // the computer slept past the timer
+      w.find('img.scan-view__image').element.dispatchEvent(new Event('error'))
+      await flushPromises()
+      expect(manifestReads()).toHaveLength(2)
+    })
+
+    it('needs no refresh for a public document', async () => {
+      await open()
+      vi.advanceTimersByTime(60 * MINUTE)
+      await flushPromises()
+      expect(manifestReads()).toHaveLength(1)
+    })
+  })
 })
