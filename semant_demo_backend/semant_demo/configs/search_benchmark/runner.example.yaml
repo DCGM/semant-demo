@@ -1,0 +1,81 @@
+# Search benchmark runner (#727): an example experiment. Fields: benchmarks/search_relevance/runner_config.py;
+# workflow and safety rules: docs/SEARCH_BENCHMARK.md#runner.
+#
+#   python -m semant_demo.benchmarks.search_relevance.runner run --config runner.example.yaml --dry-run
+#
+# Relative paths are relative to this file. Keep datasets and runs outside Git: they hold
+# production-derived text. Keys are never written here, only the names of their environment variables.
+
+dataset: ~/semant-search-benchmark/datasets/v1
+runs_dir: ~/semant-search-benchmark/runs
+cache_dir: ~/.cache/semant-demo/search-benchmark/embeddings
+
+# The benchmark-owned Weaviate (store_api.StoreSpec). Without `host` the store starts or reuses
+# its own container on loopback; it never writes to an instance without its ownership marker.
+store:
+  name: semant-search-benchmark
+
+# Where each vector's model is served (OpenAI-compatible /embeddings), by vector id.
+endpoints:
+  qwen:
+    base_url: http://localhost:8000/v1
+    api_key_env: null          # e.g. SEARCH_BENCHMARK_QWEN_KEY: the variable's name, never the key
+    timeout: 60
+    batch_size: 32
+    concurrency: 4
+  bge:
+    base_url: http://localhost:8001/v1
+
+# One named vector each. A different document template needs another vector (other document
+# embeddings); query prefixes are variants of one vector and reuse its document embeddings.
+vectors:
+  qwen:
+    model: Qwen/Qwen3-Embedding-0.6B
+    target_vector: Qwen3_Embedding_0_6B
+    document_template: "{text}"
+    dimensions: 1024
+    query_prefixes:
+      instruct: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      none: ""
+  bge:
+    model: BAAI/bge-m3
+    target_vector: BGE_M3
+    dimensions: 1024
+    query_prefixes:
+      none: ""
+
+# Named BM25 property sets with boosts; `default` is the application's own properties.
+bm25_properties:
+  default: null
+  text-title: {text: 1.0, title: 2.0}
+
+depth: 100                     # ranked chunks kept per query
+
+# Every combination becomes a configuration with a stable id, e.g.
+# text, text.b-text-title, vector.qwen.p-instruct, hybrid.qwen.a0.5.ranked.p-instruct.
+grid:
+  modes: [text, vector, hybrid]
+  vectors: [qwen, bge]         # default: all vectors
+  alphas: [0.25, 0.5, 0.75]
+  fusions: [relativeScore, ranked]
+  query_prefixes:              # default: every variant of the vector
+    qwen: [instruct, none]
+  properties: [default, text-title]
+
+# Configurations named by hand, in addition to the grid.
+configurations:
+  - configuration_id: vector.qwen.depth-20
+    mode: vector
+    vector: qwen
+    query_prefix: instruct
+    depth: 20
+
+# Which queries run and how fast; subsets are deterministic for a seed.
+budget:
+  languages: null              # e.g. [ces, eng]
+  intents: null                # e.g. [intent-0001, intent-0002]
+  max_intents: null            # sample whole intents (all their translations)
+  max_queries: null
+  seed: 0
+  concurrency: 4               # searches in flight (latency is measured under this load)
+  max_qps: 20                  # searches started per second at most

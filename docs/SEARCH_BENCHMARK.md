@@ -88,3 +88,94 @@ instance), the application's collections, one dataset's corpus with its original
 vector per model with document embeddings cached on disk, and the application's own passage
 search per configuration (fusion type and BM25 properties included). The schema is the test
 schema's shape, not production's exact one (#128); `describe()` records it in the manifests.
+
+## Runner
+
+`runner.py` (#727) searches every selected query of a frozen dataset with every configuration of
+an experiment config in the benchmark store, and writes a run directory:
+
+```sh
+cd semant_demo_backend
+CONFIG=semant_demo/configs/search_benchmark/runner.example.yaml
+python -m semant_demo.benchmarks.search_relevance.runner list-configurations --config $CONFIG
+python -m semant_demo.benchmarks.search_relevance.runner run --config $CONFIG --dry-run   # touches no store
+python -m semant_demo.benchmarks.search_relevance.runner run --config $CONFIG [--run-id ID] [--out RUNS_DIR] \
+    [--configurations ID,...] [--retry-failed]
+```
+
+It opens the store, loads the dataset (a no-op when it is loaded), ensures one named vector per
+vector used (document embeddings are cached in `cache_dir`; the query prefix never changes them),
+then runs the searches with at most `budget.concurrency` in flight and at most `budget.max_qps`
+started per second. Each result keeps the hits (truncated to the depth, each chunk once), the
+query embedding and search times, or the failure's exception class (never its message or the
+query). The manifest's `environment` records the git revision, host, the config file's path and
+SHA-256, the store spec and `describe()` (Weaviate version, schema), the embedding endpoints
+(the key's variable name, never a key), load and vector reports, the budget, start and end
+times, and `sessions`: the environments of earlier sessions of the same run.
+
+### Experiment config
+
+`runner_config.py` defines the fields; `semant_demo/configs/search_benchmark/runner.example.yaml`
+is a complete example. Relative paths are relative to the config file; unknown fields are refused.
+
+```yaml
+dataset: ~/semant-search-benchmark/datasets/v1
+runs_dir: ~/semant-search-benchmark/runs
+cache_dir: ~/.cache/semant-demo/search-benchmark/embeddings
+store: {name: semant-search-benchmark}          # store_api.StoreSpec
+endpoints:                                      # by vector id; a key only by its variable's name
+  qwen: {base_url: "http://localhost:8000/v1", api_key_env: null, timeout: 60, batch_size: 32, concurrency: 4}
+vectors:                                        # one named vector each
+  qwen:
+    model: Qwen/Qwen3-Embedding-0.6B
+    target_vector: Qwen3_Embedding_0_6B
+    document_template: "{text}"                 # another template needs another vector
+    query_prefixes: {instruct: "Instruct: ...\nQuery:", none: ""}   # variants of one vector
+bm25_properties: {default: null, text-title: {text: 1.0, title: 2.0}}
+depth: 100
+grid:
+  modes: [text, vector, hybrid]
+  alphas: [0.25, 0.5, 0.75]
+  fusions: [relativeScore, ranked]
+  query_prefixes: {qwen: [instruct, none]}      # default: every variant
+  properties: [default, text-title]
+configurations:                                 # by hand, in addition to the grid
+  - {configuration_id: vector.qwen.depth-20, mode: vector, vector: qwen, query_prefix: instruct, depth: 20}
+budget: {languages: null, intents: null, max_intents: null, max_queries: null, seed: 0, concurrency: 4, max_qps: 20}
+```
+
+Grid configurations get ids from their settings, so adding a value to the grid never renames
+one: `text`, `text.b-text-title`, `vector.qwen.p-instruct`,
+`hybrid.qwen.a0.5.ranked.p-instruct`, `hybrid.qwen.a0.5.ranked.p-instruct.b-text-title`
+(`b-` only for a non-default BM25 property set). The same id with other settings, or the same
+settings under two ids, is refused. The budget's subsets are deterministic for a seed: whole
+intents first (`intents`, `max_intents`, so translations stay together), then `languages`, then
+`max_queries`. Metadata filters are not configurable: the benchmark measures relevance only.
+
+### Incremental runs
+
+A run is identified by its run id (default: the config file's name) under the runs directory.
+While it runs, each finished search is appended to `results.partial.jsonl`, and
+`run.partial.json` names the dataset and configurations. Running again with the same run id:
+
+- skips every (configuration, query) already in the run or the partial log, so an interrupted
+  run resumes where it stopped (a line cut short by the interruption is dropped);
+- adds configurations new to the config, or those named with `--configurations`, to the run;
+- searches failed queries again only with `--retry-failed`;
+- refuses a run (or partial log) of another dataset or dataset version, and a configuration id
+  whose settings changed: give a changed configuration a new id, or start a new run.
+
+The run is then written again with all its results through `write_run` (hashes and counts
+stay right) and the partial files are removed. Nothing to do opens no store.
+
+### Safety
+
+- The runner reaches Weaviate only through `BenchmarkStore` (`store.open_store`), which writes
+  only to an instance holding the benchmark's ownership marker; never point `store.host` at a
+  development, test or production instance.
+- Keys are given as environment variable names; a missing variable stops the run before the
+  store is opened. Neither keys nor query text are written to errors, logs or the manifest.
+- Datasets, runs and the embedding cache hold production-derived text: keep them outside Git.
+- `--dry-run` and `list-configurations` read only the config and the dataset.
+- The tests use a fake store (`tests/test_search_benchmark_runner.py`); they need no Weaviate,
+  model or network.
