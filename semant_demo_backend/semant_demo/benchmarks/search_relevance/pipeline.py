@@ -45,9 +45,22 @@ FEATURE_PROMPTS = {INTENTS_FEATURE: prompts.INTENT_PROMPT_VERSION,
                    TRANSLATION_FEATURE: prompts.TRANSLATION_PROMPT_VERSION,
                    JUDGE_FEATURE: prompts.JUDGE_PROMPT_VERSION}
 
+STEP_OPTIONS = ("--from", "--until")
+
+
+def recorded_command(argv: list[str]) -> str:
+    """The command as the manifest records it: the subcommand and the step options, without
+    paths, hosts or ports (``generate run --from judge --force``)."""
+    kept = ["generate", *argv[1:2]]
+    for i, token in enumerate(argv[2:], 2):
+        if token in STEP_OPTIONS and i + 1 < len(argv):
+            kept += [token, argv[i + 1]]
+        elif token == "--force":
+            kept.append(token)
+    return " ".join(kept)
+
 
 @dataclass
-
 class Resources:
     """What the steps use, opened only by the steps that need them."""
     llm: LlmGateway
@@ -342,7 +355,7 @@ class Generator:
         }
         return {
             "dataset_id": c.dataset_id, "version": c.version, "description": c.description,
-            "generator": {"tool": TOOL, "git_revision": git_revision(), "command": " ".join(sys.argv),
+            "generator": {"tool": TOOL, "git_revision": git_revision(), "command": recorded_command(sys.argv),
                           "usage": self.usage(),
                           "model_calls": {s: reports[s].get("model_calls") for s in ("intents", "translate", "judge")}},
             "config": {"name": self.config_name, "sha256": self.config_sha256, "data": self.config_data},

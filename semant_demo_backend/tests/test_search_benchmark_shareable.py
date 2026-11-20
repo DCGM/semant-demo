@@ -12,3 +12,8 @@ def test_private_values_are_left_out_at_any_depth_and_the_rest_is_kept():
         "models": {"judge": {"model": "qwen3.5:9b", "model_endpoint": NOT_RECORDED}},
         "methods": [{"id": "vector", "endpoint": NOT_RECORDED, "settings": {"base_url": NOT_RECORDED}}],
         "source": {"description": "test database", "host": None}}
+
+
+def test_local_paths_are_left_out_too():
+    assert shareable({"config": {"path": "/home/x/run.yaml", "sha256": "ab"}}) == {
+        "config": {"path": NOT_RECORDED, "sha256": "ab"}}

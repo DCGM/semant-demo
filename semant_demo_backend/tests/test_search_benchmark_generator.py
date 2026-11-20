@@ -653,3 +653,10 @@ def test_budget_counts_only_the_steps_still_to_run(tmp_path, capsys):
     assert estimate["done_steps"] == ["intents"] and estimate["intents"] == 1
     assert estimate["calls"][INTENTS_FEATURE]["expected"] == 0  # generated already
     assert estimate["calls"][TRANSLATION_FEATURE]["expected"] == 2  # one intent into two languages
+
+
+def test_the_recorded_command_names_no_paths_hosts_or_ports():
+    from semant_demo.benchmarks.search_relevance.pipeline import recorded_command
+    argv = ["/home/alice/semant/generate.py", "run", "/home/alice/v1.yaml", "--work", "/home/alice/work",
+            "--source-host", "prod.internal", "--source-port", "8080", "--from", "judge", "--force"]
+    assert recorded_command(argv) == "generate run --from judge --force"
