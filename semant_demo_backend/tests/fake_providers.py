@@ -26,6 +26,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from semant_demo.benchmarks.search_relevance import prompts as benchmark_prompts
 from semant_demo.maintenance.chunk_titles import EXCERPT_BLOCK, LANGUAGE_BLOCK
 from tests.corpus import Corpus
 from tests.fakes import SECOND_VECTOR, fake_embedding, second_embedding
@@ -89,15 +90,65 @@ def fake_title(excerpt: str) -> str:
     return " ".join(excerpt.split()[:4])
 
 
+# ---- search benchmark generator (semant_demo/benchmarks/search_relevance/prompts.py) ----
+# Markers in a passage or query steer the fake: FAKE-INVALID (an intent reply that is not JSON),
+# FAKE-COPY (a query copying the passage, also when regenerated), FAKE-UNTRANSLATABLE (no
+# translation), FAKE-IRRELEVANT (the judge grades the passage 0).
+FAKE_TRANSLATION_MARK = {"ces": "a", "eng": "the", "deu": "und"}
+"""A word appended to a fake translation into the language (the language heuristic sees it)."""
+
+
+def _between(prompt: str) -> str:
+    return prompt.split("<<<\n", 1)[1].rsplit("\n>>>", 1)[0]
+
+
+def fake_intent(prompt: str) -> str:
+    """Need and query of an intent request: the query is every other word of the passage's first
+    ten (so it shares words with the passage without copying a phrase); the need names its
+    first three words."""
+    passage = _between(prompt)
+    if "FAKE-INVALID" in passage:
+        return "I cannot write JSON today."
+    found = passage.split()
+    query = " ".join(found) if "FAKE-COPY" in passage else " ".join(found[:10:2])
+    return json.dumps({"need": f"Information about {' '.join(found[:3])}.", "query": query}, ensure_ascii=False)
+
+
+def fake_translation(prompt: str) -> str:
+    """The query with the target language's ``FAKE_TRANSLATION_MARK`` word appended."""
+    query = _between(prompt)
+    if "FAKE-UNTRANSLATABLE" in query:
+        return "{}"
+    code = re.findall(r"\((\w{3})\)\.\nReply", prompt)[-1]
+    return json.dumps({"translation": f"{query} {FAKE_TRANSLATION_MARK.get(code, code)}"}, ensure_ascii=False)
+
+
+def fake_judgement(prompt: str) -> str:
+    """2 when every query word is in the passage, 1 when some are, else 0 (FAKE-IRRELEVANT: 0)."""
+    passage = _between(prompt)
+    if "FAKE-IRRELEVANT" in passage:
+        return "0"
+    query = set(prompt.split("\nQuery: ", 1)[1].split("\n", 1)[0].lower().split())
+    words = set(passage.lower().split())
+    return "2" if query <= words else "1" if query & words else "0"
+
+
 def fake_chat_answer(messages: list[dict[str, Any]]) -> str:
     """Names how many ``[docN]`` passages the last user message holds and cites the last
     one, so a test can tell which subset of results was sent (citations are numbered per
     prompt). The system prompt is ignored: it shows example labels. A chunk title request
-    gets ``fake_title`` of its excerpt."""
+    gets ``fake_title`` of its excerpt; the search benchmark generator's requests get
+    ``fake_intent``, ``fake_translation`` and ``fake_judgement``."""
     user_messages = [m for m in messages if m.get("role") == "user"]
     prompt = str(user_messages[-1].get("content", "")) if user_messages else ""
     if TITLE_EXCERPT in prompt:
         return fake_title(prompt.split(TITLE_EXCERPT, 1)[1].rsplit(TITLE_INSTRUCTION, 1)[0])
+    if benchmark_prompts.INTENT_REQUEST in prompt:
+        return fake_intent(prompt)
+    if benchmark_prompts.TRANSLATION_REQUEST in prompt:
+        return fake_translation(prompt)
+    if prompt.endswith(benchmark_prompts.JUDGE_REQUEST):
+        return fake_judgement(prompt)
     labels = sorted({int(n) for n in re.findall(r"\[doc ?([1-9][0-9]*)]", prompt)})
     if not labels:
         return "Fake summary without passages."
