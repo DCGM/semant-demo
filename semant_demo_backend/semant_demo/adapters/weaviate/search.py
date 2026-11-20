@@ -43,12 +43,16 @@ DOCUMENT_PROPERTIES = [name for name in Document.model_fields if name != "id"]
 
 class ChunkSearchRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames,
-                 fusion: HybridFusion | None = None):
+                 fusion: HybridFusion | None = None, query_properties: Sequence[str] | None = None):
         self.client = client
         self.collectionNames = collectionNames
         self.fusion = fusion
         """Hybrid fusion; None: Weaviate's default (relative score). The application never sets
         it; the search relevance benchmark compares both (#712)."""
+        self.query_properties = list(query_properties) if query_properties is not None else None
+        """The properties BM25 (text and the keyword part of hybrid) searches, each optionally
+        boosted (``"title^2"``); None: every text property, Weaviate's default. The application
+        never sets it; the search relevance benchmark compares properties and boosts (#712)."""
         self._returned_document_properties: list[str] | None = None
         self._schema: tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]] | None = None
 
@@ -161,14 +165,15 @@ class ChunkSearchRepository:
         chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
         common = dict(limit=query.limit, filters=await self._filter(query), **returned)
         if query.mode == SearchType.text:
-            return await chunks.query.bm25(query=query.text, **common)
+            return await chunks.query.bm25(query=query.text, query_properties=self.query_properties, **common)
         if query.mode == SearchType.vector:
             vector, target = _vector(query)
             return await chunks.query.near_vector(near_vector=vector, target_vector=target, **common)
         if query.mode == SearchType.hybrid:
             vector, target = _vector(query)
             return await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
-                                             target_vector=target, fusion_type=self.fusion, **common)
+                                             target_vector=target, fusion_type=self.fusion,
+                                             query_properties=self.query_properties, **common)
         raise ValueError(f"Unknown search type: {query.mode}")
 
     async def document_filter_stats(self) -> tuple[int | None, int | None, list[str] | None]:
