@@ -58,7 +58,7 @@ each file), `counts`, automated `checks` and `limitations`.
 
 ```sh
 cd semant_demo_backend
-python -m semant_demo.benchmarks.search_relevance.generate budget CONFIG [--work WORK]   # no model call; only the steps run would redo
+python -m semant_demo.benchmarks.search_relevance.generate budget CONFIG [--work WORK] [--source-* as for run]   # no model call; only the steps run would redo
 python -m semant_demo.benchmarks.search_relevance.generate run CONFIG --work WORK [--out DATASET] \
     [--from STEP] [--until STEP] [--force] [--source-host H --source-port P --source-grpc-port G]
 python -m semant_demo.benchmarks.search_relevance.generate validate DATASET   # load_dataset + summary
