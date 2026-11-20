@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -117,10 +118,24 @@ class Qrel(_Record):
     pooled_by: tuple[str, ...] = Field(min_length=1)
     """Pooling method ids of the manifest that proposed the chunk; ``source`` for a source chunk."""
     language_grades: dict[str, Grade] | None = None
-    """Grades judged per query language when they were judged separately."""
+    """Grades judged per query language (ISO 639-3 keys) when they were judged separately."""
     consistent: bool = True
-    """False when the per-language grades disagree (``grade`` is then their documented
-    aggregate); reports can leave such intents out."""
+    """False exactly when the per-language grades disagree (``grade`` is then their documented
+    aggregate); reports can leave such intents out. Without per-language grades it is True."""
+
+    @model_validator(mode="after")
+    def _languages(self) -> "Qrel":
+        grades = self.language_grades
+        if grades is not None:
+            bad = [code for code in grades if not re.fullmatch(LANGUAGE_PATTERN, code)]
+            if bad or not grades:
+                raise ValueError(f"{self.intent_id}/{self.chunk_id}: language_grades needs ISO 639-3 keys "
+                                 f"({', '.join(bad) or 'none given'})")
+        agree = grades is None or len(set(grades.values())) == 1
+        if self.consistent != agree:
+            raise ValueError(f"{self.intent_id}/{self.chunk_id}: consistent is {self.consistent}, but the "
+                             f"per-language grades {'agree' if agree else 'disagree'}")
+        return self
 
 
 # ---- dataset manifest ---------------------------------------------------------------------
@@ -204,6 +219,14 @@ class RunConfiguration(_Record):
     def _consistent(self) -> "RunConfiguration":
         if self.mode != "text" and self.vector is None:
             raise ValueError(f"{self.configuration_id}: a {self.mode} configuration needs a vector")
+        if self.mode == "text" and self.vector is not None:
+            raise ValueError(f"{self.configuration_id}: a text (BM25) configuration searches no vector")
+        if self.properties is not None:
+            if self.mode == "vector":
+                raise ValueError(f"{self.configuration_id}: BM25 properties apply to text and hybrid only")
+            if not self.properties or any(boost <= 0 for boost in self.properties.values()):
+                raise ValueError(f"{self.configuration_id}: BM25 properties need at least one property and "
+                                 "positive boosts")
         if self.mode == "hybrid" and self.alpha is None:
             raise ValueError(f"{self.configuration_id}: a hybrid configuration needs alpha")
         if self.mode != "hybrid" and (self.alpha is not None or self.fusion is not None):
@@ -378,8 +401,13 @@ def check_dataset(corpus: dict[UUID, CorpusChunk], intents: dict[str, Intent], q
     for query in queries.values():
         if query.intent_id not in intents:
             raise ContractError(f"query {query.query_id}: unknown intent {query.intent_id}")
-        if query.translated_from is not None and query.translated_from not in queries:
-            raise ContractError(f"query {query.query_id}: translates unknown query {query.translated_from}")
+        if query.translated_from is not None:
+            original = queries.get(query.translated_from)
+            if original is None:
+                raise ContractError(f"query {query.query_id}: translates unknown query {query.translated_from}")
+            if original.query_id == query.query_id or original.intent_id != query.intent_id:
+                raise ContractError(f"query {query.query_id}: translates {query.translated_from}, which is "
+                                    "itself or a query of another intent")
     without = sorted(set(intents) - {q.intent_id for q in queries.values()})
     if without:
         raise ContractError(f"intents without a query: {', '.join(without[:5])}")
