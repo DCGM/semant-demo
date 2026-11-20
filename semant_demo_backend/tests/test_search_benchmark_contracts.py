@@ -134,3 +134,39 @@ def test_a_run_of_another_dataset_version_or_a_changed_dataset_is_refused(tmp_pa
                               fixture.INTENTS, fixture.queries(), fixture.qrels())
     with pytest.raises(ContractError, match="manifest changed since the run"):
         load_run(run.directory, rewritten)
+
+
+@pytest.mark.parametrize("configuration, message", [
+    ({"configuration_id": "t", "mode": "text", "vector": fixture.VECTOR}, "searches no vector"),
+    ({"configuration_id": "v", "mode": "vector", "vector": fixture.VECTOR, "properties": {"text": 1.0}},
+     "text and hybrid only"),
+    ({"configuration_id": "t", "mode": "text", "properties": {}}, "at least one property"),
+    ({"configuration_id": "t", "mode": "text", "properties": {"text": -1.0}}, "positive boosts"),
+])
+def test_a_configuration_with_settings_its_mode_cannot_use_is_refused(configuration, message):
+    with pytest.raises(ValueError, match=message):
+        RunConfiguration.model_validate(configuration)
+
+
+@pytest.mark.parametrize("fields, message", [
+    ({"language_grades": {"ces": 2, "eng": 0}, "consistent": True}, "consistent is True, but the per-language grades disagree"),
+    ({"language_grades": {"ces": 2, "eng": 2}, "consistent": False}, "consistent is False, but the per-language grades agree"),
+    ({"consistent": False}, "consistent is False"),
+    ({"language_grades": {"cs": 2}}, "ISO 639-3"),
+    ({"language_grades": {}}, "none given"),
+])
+def test_a_qrels_consistency_must_follow_its_per_language_grades(fields, message):
+    with pytest.raises(ValueError, match=message):
+        Qrel(intent_id="i", chunk_id=fixture.chunk_id(1), grade=2, judge="j", pooled_by=("bm25",), **fields)
+
+
+def test_a_query_translates_a_query_of_its_own_intent(tmp_path):
+    queries = fixture.queries()
+    wrong = [q.model_copy(update={"translated_from": "railway-vienna.eng"}) if q.query_id == "fire-lhota.ces" else q
+             for q in queries]
+    with pytest.raises(ContractError, match="another intent"):
+        write_dataset(tmp_path / "d", fixture.MANIFEST, fixture.corpus(), fixture.INTENTS, wrong, fixture.qrels())
+    itself = [q.model_copy(update={"translated_from": q.query_id}) if q.query_id == "fire-lhota.eng" else q
+              for q in queries]
+    with pytest.raises(ContractError, match="itself"):
+        write_dataset(tmp_path / "e", fixture.MANIFEST, fixture.corpus(), fixture.INTENTS, itself, fixture.qrels())
