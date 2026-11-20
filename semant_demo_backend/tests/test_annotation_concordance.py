@@ -72,8 +72,10 @@ class FakeDocuments:
         self.reads.append(list(ids))
         return {i: DOCUMENTS[i] for i in ids if i in DOCUMENTS}
 
-    async def read_eligible(self, ids, collection_id=None, conditions=()):
+    async def read_eligible(self, ids, collection_id=None, conditions=(), include_restricted=False):
         assert collection_id is None  # annotated documents of a collection need not be in it
+        # The collection is authorized: its annotated documents are not limited to public ones (#279).
+        assert include_restricted
         if self.unavailable is not None:
             raise self.unavailable
         self.eligible_reads.append((list(ids), list(conditions)))
@@ -129,13 +131,23 @@ class FakeSpans:
                 and (query.sort_key_version is None or r.sortKeyVersion == query.sort_key_version)
                 and (query.holds_value is None
                      or (r.type == SpanType.pos and query.holds_value in (r.attributeValues or [])))
-                and (r.type != SpanType.pos or not set(query.holds_none_of) & set(r.attributeValues or []))]
+                and (r.type != SpanType.pos or not set(query.holds_none_of) & set(r.attributeValues or []))
+                and (query.near_ids is None or r.id in query.near_ids)]
 
     async def count_by_document(self, cid, query, limit, document_ids=None):
         counts: dict[UUID, int] = {}
         for row in self._match(query, document_ids):
             if row.documentId is not None:
                 counts[row.documentId] = counts.get(row.documentId, 0) + 1
+        return dict(list(counts.items())[:limit])
+
+    async def count_by_property(self, cid, query, prop, limit, document_ids=None):
+        counts: dict[str, int] = {}
+        for row in self._match(query, document_ids):
+            value = getattr(row, prop)
+            if value is not None:
+                key = str(getattr(value, "value", value))
+                counts[key] = counts.get(key, 0) + 1
         return dict(list(counts.items())[:limit])
 
     async def count_rows(self, cid, query, document_ids=None):
@@ -156,6 +168,10 @@ class FakeSpans:
             ordered = sorted(rows, key=lambda r: (value(r) is not None, value(r) or "", str(r.id)))
         return ordered[offset:offset + limit]
 
+
+    async def query_positions(self, cid, query, *, document_ids=None, limit):
+        self.queries += 1
+        return sorted(self._match(query, document_ids), key=lambda r: str(r.id))[:limit]
 
     async def query_ids(self, cid, query, *, document_ids=None, limit):
         self.queries += 1

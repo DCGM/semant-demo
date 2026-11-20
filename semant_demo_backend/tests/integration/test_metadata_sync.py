@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import create_engine, insert
 
 from semant_demo.adapters.sql.kramerius_metadata import META_RECORDS
+from semant_demo.adapters.weaviate import chunk_visibility
 from semant_demo.adapters.weaviate.document_metadata import add_text_property, document_property_types
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
@@ -41,8 +42,15 @@ def row(document_id: str, library: str, **values) -> dict:
             "metadata_json": None, **values}
 
 
+async def set_public(seeded_store, collection_names, document_id: str, public: bool | None) -> None:
+    """The fixture documents are all public; these tests start from other source rights (#279)."""
+    await seeded_store.collections.get(collection_names.document_collection_name).data.update(
+        uuid=document_id, properties={"public": public})
+
+
 async def test_report_apply_and_read_back(seeded_store, collection_names, corpus, source, tmp_path):
     gazette, chronicle, letters = (corpus.documents[k]["id"] for k in ("gazette", "chronicle", "letters"))
+    await set_public(seeded_store, collection_names, gazette, None)  # rights not known before the sync
     source.execute(insert(META_RECORDS), [
         row(gazette, "mzk", date="12.5.1899", public=True,
             metadata_json={"Publisher": [["Pražský tisk"], ["Parent publisher"]], "SeriesNumber": [["IV"]]}),
@@ -73,6 +81,11 @@ async def test_report_apply_and_read_back(seeded_store, collection_names, corpus
     result = await apply_report(seeded_store, collection_names, report, accept_incomplete=True)
     assert (result["eligible"], result["applied"], result["verified"], result["unresolved"]) == (1, 1, 1, 2)
     assert apply_exit_code(result) == 0
+    # the gazette became public: its chunks follow after the document is verified (#793)
+    assert result["chunk_flag"] == collection_names.chunks_collection_name and result["chunks_pending"] == []
+    gazette_chunks = [UUID(c["id"]) for c in corpus.chunks.values() if c["document"] == "gazette"]
+    flags = await chunk_visibility.read_chunks(seeded_store, collection_names.chunks_collection_name, gazette_chunks)
+    assert {c.public for c in flags.values()} == {True} and len(flags) == 2
 
     document = await DocumentRepository(seeded_store, collection_names).read(UUID(gazette))
     assert document.library == "mzk"
@@ -107,6 +120,7 @@ def page_row(page_id: str, library: str, parent: str) -> dict:
 async def test_inferred_libraries_are_applied_with_their_access(seeded_store, collection_names, corpus, source,
                                                                 tmp_path):
     chronicle, gazette, letters = (corpus.documents[k]["id"] for k in ("chronicle", "gazette", "letters"))
+    await set_public(seeded_store, collection_names, letters, False)  # restricted before the sync
     start = {key: c["start_page_id"] for key, c in corpus.chunks.items()}
     source.execute(insert(META_RECORDS), [
         row(chronicle, "mzk", public=True, metadata_json={"Publisher": [["MZK tisk"]]}),
@@ -144,7 +158,6 @@ async def test_inferred_libraries_are_applied_with_their_access(seeded_store, co
     assert (chronicle_doc.library, chronicle_doc.publisher, chronicle_doc.public) == ("nkp", "NKP tisk", False)
     gazette_doc = await documents.read(UUID(gazette))
     assert (gazette_doc.library, gazette_doc.publisher) == ("mzk", "MZK noviny")
-    assert corpus.documents["letters"]["properties"]["public"] is False
     assert ((await documents.read(UUID(letters))).library, (await documents.read(UUID(letters))).public) == ("mzk", True)
 
     inferred = tmp_path / "inferred.csv"

@@ -13,8 +13,8 @@ export function useUserCollectionsRepository() {
       return api.fetchCollectionApiUserCollectionsCollectionIdGet({ collectionId })
     },
 
-    getStats: async (collectionId: string): Promise<CollectionStats> => {
-      return api.getCollectionStatsApiUserCollectionsCollectionIdStatsGet({ collectionId })
+    getStats: async (collectionId: string, init?: RequestInit): Promise<CollectionStats> => {
+      return api.getCollectionStatsApiUserCollectionsCollectionIdStatsGet({ collectionId }, init)
     },
 
     create: async (collectionData: PostCollection): Promise<Collection> => {

@@ -22,6 +22,11 @@ from semant_demo.adapters.weaviate.analytics import (
 pytestmark = pytest.mark.integration
 
 PATH = "/api/analytics/corpus/overview"
+
+
+def public(properties: dict) -> dict:
+    """An added document that corpus counts include: only public documents are counted (#279)."""
+    return {**properties, "public": True}
 DISTRIBUTIONS = "/api/analytics/corpus/distributions"
 EXTRA = [UUID(f"5e3a0000-0000-4000-8000-0000000da0{n:02}") for n in range(1, 9)]
 
@@ -57,7 +62,7 @@ async def test_overview_counts_fixture_documents_once(api_client, corpus):
 async def test_overview_of_a_legacy_store_reports_the_missing_library_and_fractional_years(
         legacy_documents, api_client, collection_names):
     documents = legacy_documents.collections.get(collection_names.document_collection_name)
-    inserted = await documents.data.insert_many([DataObject(uuid=uuid, properties={"yearIssued": year})
+    inserted = await documents.data.insert_many([DataObject(uuid=uuid, properties=public({"yearIssued": year}))
                                                  for uuid, year in zip(EXTRA, [1909.0, 1909.5])])
     assert not inserted.errors
 
@@ -73,7 +78,7 @@ async def test_overview_of_a_legacy_store_reports_the_missing_library_and_fracti
 
 async def test_overview_accounts_for_every_document(api_client, seeded_store, collection_names):
     documents = seeded_store.collections.get(collection_names.document_collection_name)
-    inserted = await documents.data.insert_many([DataObject(uuid=uuid, properties=properties) for uuid, properties in zip(EXTRA, [
+    inserted = await documents.data.insert_many([DataObject(uuid=uuid, properties=public(properties)) for uuid, properties in zip(EXTRA, [
         {"yearIssued": 1909, "library": "mzk", "language": "deu"},
         {"yearIssued": 1910, "library": "mzk", "language": "deu"},
         {"yearIssued": 1919, "library": "nkp", "language": "lat"},
@@ -126,7 +131,7 @@ async def test_repository_reads_through_an_alias_and_rejects_list_properties(see
 async def _add_filtered_documents(store, collection_names):
     documents = store.collections.get(collection_names.document_collection_name)
     inserted = await documents.data.insert_many([
-        DataObject(uuid=uuid, properties=properties) for uuid, properties in zip(EXTRA, FILTERED.values())])
+        DataObject(uuid=uuid, properties=public(properties)) for uuid, properties in zip(EXTRA, FILTERED.values())])
     assert not inserted.errors
 
 
@@ -237,7 +242,7 @@ async def test_library_years_count_fresh_totals_while_the_overview_is_cached(api
     assert (await api_client.get(PATH)).json()["total_documents"] == 8  # now cached
     documents = seeded_store.collections.get(collection_names.document_collection_name)
     inserted = await documents.data.insert_many([
-        DataObject(uuid=uuid, properties={"title": "Nové listy", "yearIssued": 1910, "library": "nkp", "language": "ces"})
+        DataObject(uuid=uuid, properties=public({"title": "Nové listy", "yearIssued": 1910, "library": "nkp", "language": "ces"}))
         for uuid in EXTRA[len(FILTERED):]])
     assert not inserted.errors
 

@@ -300,6 +300,32 @@ describe('concordance store', () => {
     expect(store.nextOffset).toBe(2)
   })
 
+  it('keeps the proximity explanation of reviewed rows, read again with the filter (#333)', async () => {
+    const store = await opened(['a', 'b'])
+    const near = { tagIds: ['tag-2'], relation: 'within' as const, distance: 50, unit: 'words' as const, direction: 'either' as const, absent: false }
+    const neighbor = (id: string, start: number) => ({ id, tagId: 'tag-2', start, end: start + 4 })
+    const setting = store.setFilters({ near })
+    await flush()
+    rowCalls().at(-1)!.answer({ rows: [{ ...row('a'), neighbors: [neighbor('n1', 10)] }, { ...row('b'), neighbors: [neighbor('n2', -8)] }], total: 2, offset: 0, limit: 50 })
+    await setting
+    expect(store.rows.map(r => r.neighbors?.map(n => n.id))).toEqual([['n1'], ['n2']])
+
+    const before = rowCalls().length
+    const refreshing = store.refreshRows(['a', 'b'])
+    await flush()
+    const [plain, withNear] = rowCalls().slice(before)
+    expect(plain!.url.searchParams.has('near_relation')).toBe(false)
+    expect(withNear!.url.searchParams.get('near_relation')).toBe('within')
+    expect(withNear!.url.searchParams.getAll('annotation_id')).toEqual(['a', 'b'])
+    plain!.answer({ rows: [{ ...row('a'), neighbors: [] }, { ...row('b'), neighbors: [] }], total: 2, offset: 0, limit: 2 })
+    // "a" is still near, its neighbor read where it is now; "b" no longer matches.
+    withNear!.answer({ rows: [{ ...row('a'), neighbors: [neighbor('n1', 12)] }], total: 1, offset: 0, limit: 2 })
+    idCalls().at(-1)!.answer({ ids: ['a'] })
+    await refreshing
+    expect(store.rows.map(r => [r.id, r.neighbors])).toEqual([['a', [neighbor('n1', 12)]], ['b', []]])
+    expect([...store.unmatched]).toEqual(['b'])
+  })
+
   it('drops reviewed rows read after the page changed (#690)', async () => {
     const store = await opened(['a', 'b'], 120)
     const refreshing = store.refreshRows(['a'])

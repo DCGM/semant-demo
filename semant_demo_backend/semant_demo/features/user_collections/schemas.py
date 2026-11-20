@@ -54,6 +54,9 @@ class CollectionStats(BaseModel):
     chunks_count: int
     annotations_count: int
     tags_count: int
+    suggestions_count: int = 0
+    """Unresolved AI suggestions (``auto`` spans) whose chunk belongs to the collection,
+    counted like ``annotations_count`` (#770)."""
 
 
 

@@ -28,6 +28,9 @@ services:
       # memory-pressure checks (batch admission, compaction, vector index growth) are inert.
       # CPUs stay unlimited (no CPU quota is set).
       LIMIT_RESOURCES: "true"
+      # Rewrite each replace-bucket segment (e.g. lsm/objects) without superseded objects,
+      # at most once per 24 h per segment; 0 (Weaviate default) disables it (#793 follow-up).
+      PERSISTENCE_LSM_SEGMENTS_CLEANUP_INTERVAL_HOURS: "24"
     mem_limit: 32g
     memswap_limit: 0g
     networks:

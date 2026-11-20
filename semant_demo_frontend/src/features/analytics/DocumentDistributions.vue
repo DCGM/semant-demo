@@ -31,7 +31,8 @@
           />
           <LibraryHeatmap
             v-else-if="distributions.publicationYear.years?.length && timelineView"
-            :filters="distributions.filters" :chunk-filters="distributions.chunkFilters" :view="timelineView"
+            :filters="distributions.filters" :chunk-filters="distributions.chunkFilters"
+            :user-collection-id="distributions.userCollectionId ?? null" :view="timelineView"
           />
           <p v-else class="dimension-card__note">No document of these has a valid publication year.</p>
         </template>
@@ -70,7 +71,8 @@
  * The document charts of one `CorpusDistributions` answer (#254, #361): the publication
  * timeline, the period × library heatmap (counted when asked for) and the library and language
  * bars, each with its data table (collapsed) and unknown/unavailable values. Shown by the Corpus
- * overview and by Explore Visualizations (#618). Zooming and panning stay in the charts; a
+ * overview and by Explore Visualizations (#618), also of a collection's documents (#768: the
+ * heatmap counts the same collection). Zooming and panning stay in the charts; a
  * clicked year bin, library or language (or "Apply … as filter") is emitted as `applyFilter`,
  * and the page decides what it changes (#620).
  */
@@ -82,11 +84,13 @@ import PublicationTimeline from './PublicationTimeline.vue'
 import { categoryRows, coverage, languageLabel, libraryLabel, type ChartFilter } from './corpusOverview'
 import type { YearWindow } from './timeline'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   distributions: CorpusDistributions
   /** Newer counts are being loaded: the shown ones are dimmed. */
   loading?: boolean
-}>()
+  /** What every count counts, as the coverage lines name it (e.g. "collection documents"). */
+  unitLabel?: string
+}>(), { loading: false, unitLabel: 'documents' })
 const emit = defineEmits<{ applyFilter: [filter: ChartFilter] }>()
 
 const numberFormat = new Intl.NumberFormat('en')
@@ -126,7 +130,7 @@ const categories = computed<CategoryDimension[]>(() => {
 
 function coverageText (unknown: number, subject: string): string {
   const c = coverage(unknown, total.value)
-  return `${formatCount(c.known)} of ${formatCount(total.value)} documents (${c.percent} %) have ${subject}; ` +
+  return `${formatCount(c.known)} of ${formatCount(total.value)} ${props.unitLabel} (${c.percent} %) have ${subject}; ` +
     `${formatCount(c.unknown)} unknown.`
 }
 

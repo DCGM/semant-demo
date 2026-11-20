@@ -1,7 +1,7 @@
 
 # DocumentPages
 
-A document\'s page manifest (public). ``available`` is false, with no pages, when the document has no imported pages: it is then a text-only document.
+A document\'s page manifest. ``available`` is false, with no pages, when the document has no imported pages: it is then a text-only document.
 
 ## Properties
 
@@ -10,6 +10,7 @@ Name | Type
 `documentId` | string
 `available` | boolean
 `pages` | [Array&lt;DocumentPage&gt;](DocumentPage.md)
+`accessExpiresAt` | Date
 
 ## Example
 
@@ -21,6 +22,7 @@ const example = {
   "documentId": null,
   "available": null,
   "pages": null,
+  "accessExpiresAt": null,
 } satisfies DocumentPages
 
 console.log(example)

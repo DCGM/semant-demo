@@ -77,6 +77,15 @@ class FakeWeaviate:
         return {"id": backup_id, "status": self.statuses[backup_id]}
 
 
+@pytest.fixture(autouse=True)
+def syslog_messages(monkeypatch):
+    """Collect syslog messages instead of writing them to the host's journal, where the
+    operator reads the production runs (``journalctl -t semant-weaviate-backup``)."""
+    messages: list[str] = []
+    monkeypatch.setattr(wb, "to_syslog", messages.append)
+    return messages
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     root, state = tmp_path / "backups", tmp_path / "state"
@@ -325,6 +334,13 @@ def test_backup_and_check_refuse_a_backup_mount_that_is_not_mounted(env, tmp_pat
     assert env.run("check", BACKUP_MOUNT=str(tmp_path)) == 1
 
 
+def test_a_run_logs_to_syslog_and_the_log_file(env, syslog_messages):
+    assert env.run("backup") == 0
+    assert [m.split()[0] for m in syslog_messages] == ["START", "OK"]
+    logged = (env.state / "backup.log").read_text().splitlines()
+    assert [line.split(" ", 1)[1] for line in logged] == syslog_messages
+
+
 # ── check ─────────────────────────────────────────────────────────────────
 
 def test_check_passes_after_a_successful_run_and_fails_when_stale(env, capsys):
@@ -357,7 +373,7 @@ def test_check_fails_when_the_last_run_did_not_record_ok_for_the_newest_backup(e
 @pytest.mark.parametrize("url", [
     "http://127.0.0.1:8080",      # production
     "http://10.0.0.5:8080",       # another address that may reach production
-    "http://semant.example:8091",  # any endpoint not listed
+    "http://semant.example:18091",  # any endpoint not listed
 ])
 def test_restore_accepts_only_listed_rehearsal_endpoints(url):
     endpoint = url.split("//")[1]
@@ -367,7 +383,7 @@ def test_restore_accepts_only_listed_rehearsal_endpoints(url):
 
 def test_restore_requires_the_confirmed_endpoint_and_a_listed_one_cannot_be_production():
     with pytest.raises(wb.BackupError, match="does not match"):
-        wb.run_restore("x", wb.Settings(), wb.Weaviate("http://127.0.0.1:8090"), "127.0.0.1:8091", None)
+        wb.run_restore("x", wb.Settings(), wb.Weaviate("http://127.0.0.1:18090"), "127.0.0.1:18091", None)
     listed = wb.Settings.from_env({"REHEARSAL_ENDPOINTS": "127.0.0.1:8080, 127.0.0.1:9000"})
     assert listed.rehearsal_endpoints == ("127.0.0.1:8080", "127.0.0.1:9000")
     with pytest.raises(wb.BackupError, match="not a rehearsal endpoint"):
@@ -390,8 +406,8 @@ class FakeRestoreApi:
 
 
 def test_restore_into_a_listed_rehearsal_endpoint_waits_for_the_restore():
-    api = FakeRestoreApi("http://127.0.0.1:8090")
-    result = wb.run_restore("auto-incr-x", wb.Settings(poll_seconds=0), api, "127.0.0.1:8090",
+    api = FakeRestoreApi("http://127.0.0.1:18090")
+    result = wb.run_restore("auto-incr-x", wb.Settings(poll_seconds=0), api, "127.0.0.1:18090",
                             ["Chunks"], sleep=lambda _: None)
     assert result["status"] == "SUCCESS"
     assert api.calls == [("auto-incr-x", ["Chunks"])]

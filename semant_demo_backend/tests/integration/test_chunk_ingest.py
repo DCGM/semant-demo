@@ -20,6 +20,7 @@ from weaviate.classes.data import DataObject
 from weaviate.classes.query import Filter, MetadataQuery, QueryReference
 
 from semant_demo.adapters.weaviate import chunk_ingest as store
+from semant_demo.adapters.weaviate import chunk_visibility as visibility
 from semant_demo.adapters.weaviate.classification_provenance import PROPERTY as PROVENANCE, UNPROCESSED
 from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
 from semant_demo.maintenance import chunk_ingest, chunk_positions as backfill, metadata_sync, page_order
@@ -645,3 +646,18 @@ async def test_an_input_file_changed_during_the_run_stops_it_before_its_document
     assert json.loads((tmp_path / "run.json").read_text())["after"] == str(NEW)
     with pytest.raises(LookupError, match=r"different inputs \(1 files added, removed or changed: \S*b\.jsonl\)"):
         await run(s, tmp_path, first + second)
+
+
+async def test_new_chunks_are_not_public_where_the_collection_declares_the_flag(ingest_store, tmp_path):
+    """#793: a new chunk is never public before its document's rights are copied to it."""
+    s = ingest_store
+    await visibility.add_property(s.client, CHUNKS)
+    inputs = jsonl(tmp_path, "new.jsonl", [line(NEW, i) for i in range(2)] + [line(EXISTING, i) for i in range(4)])
+
+    result, code = await run(s, tmp_path, inputs)
+
+    assert code == 0 and result["counts"]["chunks_inserted"] == 3
+    stored = await visibility.read_chunks(s.client, CHUNKS, [cid(NEW, 0), cid(NEW, 1), cid(EXISTING, 3),
+                                                             cid(EXISTING, 0)])
+    assert {i: c.public for i, c in stored.items()} == {cid(NEW, 0): False, cid(NEW, 1): False,
+                                                        cid(EXISTING, 3): False, cid(EXISTING, 0): None}

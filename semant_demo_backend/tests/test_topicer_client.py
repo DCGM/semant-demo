@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from semant_demo.adapters.topicer import client as topicer_client
-from semant_demo.adapters.topicer.client import TopicerClient, TopicerError, TopicerStreamSummary, TopicerTag
+from semant_demo.adapters.topicer.client import TopicerClient, TopicerError, TopicerTag
 
 SECRET = "SECRET-MARKER"
 TAG = TopicerTag(id="t1", name="Person", definition="A person", examples=[])
@@ -40,27 +40,7 @@ async def test_failed_text_call_hides_url_and_response(handler, expected, caplog
     assert "Novák" not in _logged(caplog)
 
 
-@pytest.mark.parametrize("handler, expected", [(_failing(500), "HTTP 500"), (_unreachable, "ConnectError")])
-async def test_failed_stream_call_hides_url_and_response(handler, expected, caplog):
-    with pytest.raises(TopicerError) as raised:
-        async for _ in _client(handler).propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc"):
-            pass
-
-    assert str(raised.value) == expected
-    assert _logged(caplog) == f"Topicer POST /v1/tags/propose/db/stream failed (tag=t1, doc=doc): {expected}"
-
-
-async def test_invalid_stream_line_is_logged_without_its_content(caplog):
-    def handler(request):
-        return httpx.Response(200, text=f'Jan Novák {SECRET}\n{{"id": "c1", "tag_span_proposals": []}}\n')
-
-    events = [e async for e in _client(handler).propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc")]
-
-    assert events == [{"id": "c1", "tag_span_proposals": []}]
-    assert _logged(caplog) == "Topicer stream produced a line that is not a JSON object (23 characters)"
-
-
-# ── Usage and per-tag chunk limit (DCGM/topicer#81, #408) ──────────────────
+# ── Usage (DCGM/topicer#81, #408) ──────────────────
 
 USAGE = {"attempted_calls": 2, "completed_calls": 1, "failed_calls": 1, "calls": [
     {"provider": "openrouter", "model": "m", "outcome": "success", "input_tokens": 1200, "output_tokens": 160,
@@ -104,73 +84,20 @@ async def test_unitemized_attempts_are_counted():
     assert (len(answer.usage.calls), answer.usage.attempted_calls) == (2, 5)
 
 
-async def test_every_stream_request_sends_the_configured_chunk_limit():
-    seen = []
-
-    def handler(request):
-        seen.append((dict(request.url.params), request.content))
-        return httpx.Response(200, text="")
-
-    client = TopicerClient("http://topicer", "llm-openrouter", 5.0, max_chunks_per_tag=20,
-                           transport=httpx.MockTransport(handler))
-    for _ in range(2):
-        [e async for e in client.propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc")]
-
-    assert [params for params, _ in seen] == [{"config_name": "llm-openrouter", "max_chunks": "20"}] * 2
-    assert all(b'"db_request":{"collection_id":"col","document_id":"doc"}' in body.replace(b" ", b"")
-               for _, body in seen)
-
-
-async def test_stream_summary_is_yielded_apart_from_chunks_and_other_events_are_skipped(caplog):
-    summary = {"event": "usage_summary", "status": "complete", "tag_id": "t1", "max_chunks": 40,
-               "max_chunks_source": "request", "processed_chunks": 40, "limit_reached": True,
-               "candidates_truncated": True, "usage": USAGE}
-    lines = [{"id": "c1", "tag_span_proposals": []}, {"event": "progress"}, summary]
-
-    events = [e async for e in _answer_stream(lines)]
-
-    chunk, parsed = events
-    assert chunk == {"id": "c1", "tag_span_proposals": []}
-    assert isinstance(parsed, TopicerStreamSummary)
-    assert (parsed.max_chunks, parsed.processed_chunks, parsed.limit_reached, parsed.candidates_truncated) == \
-        (40, 40, True, True)
-    assert len(parsed.usage.calls) == 2
-    assert "unknown or malformed event" in caplog.text
-
-
-@pytest.mark.parametrize("broken", [
-    {"status": "complete", "processed_chunks": 1},          # no usage
-    {"status": "done", "processed_chunks": 1, "usage": USAGE},
-    {"status": "complete", "processed_chunks": -1, "usage": USAGE},
-    {"status": "complete", "processed_chunks": 1, "usage": {"calls": [{"cost_usd": "x"}]}},
-])
-async def test_a_malformed_summary_is_not_yielded(broken):
-    events = [e async for e in _answer_stream([{"event": "usage_summary", **broken}])]
-
-    assert events == []
-
-
 @pytest.mark.parametrize("handler, no_work", [
     (_failing(422), True), (_failing(404), True), (_failing(409), True), (_unreachable, True),
     (_failing(500), False), (_failing(429), False)])
 async def test_only_certainly_unprocessed_requests_are_marked_as_no_work(handler, no_work):
     with pytest.raises(TopicerError) as raised:
-        async for _ in _client(handler).propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc"):
-            pass
+        await _client(handler).propose_for_text(chunk_id="c1", text="Jan", tags=[TAG])
 
     assert raised.value.no_work is no_work
 
 
-@pytest.mark.parametrize("limit", [0, -1, True, 2.5])
+@pytest.mark.parametrize("limit", [0, -1, True, 2.5, 201])
 def test_an_invalid_chunk_limit_is_refused(limit):
     with pytest.raises(ValueError, match="TOPICER_MAX_CHUNKS_PER_TAG"):
         TopicerClient("http://topicer", "c", 5.0, max_chunks_per_tag=limit)
-
-
-def _answer_stream(lines):
-    text = "".join(json.dumps(line) + "\n" for line in lines)
-    return _client(lambda request: httpx.Response(200, text=text)).propose_for_db_stream(
-        tag=TAG, collection_id="col", document_id="doc")
 
 
 # ── Configurations (#189) ──────────────────────────────────────────────────
@@ -240,14 +167,10 @@ async def test_a_call_may_name_another_config():
 
     def handler(request):
         seen.append(request.url.params["config_name"])
-        if request.url.path.endswith("/stream"):
-            return httpx.Response(200, text="")
         return httpx.Response(200, json={"tag_span_proposals": []})
     client = TopicerClient("http://topicer", "default", 5.0, transport=httpx.MockTransport(handler))
 
     await client.propose_for_text(chunk_id="c", text="x", tags=[TAG])
     await client.propose_for_text(chunk_id="c", text="x", tags=[TAG], config_name="other")
-    [_ async for _ in client.propose_for_db_stream(tag=TAG, collection_id="col", document_id="doc",
-                                                   config_name="other")]
 
-    assert seen == ["default", "other", "other"]
+    assert seen == ["default", "other"]

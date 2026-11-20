@@ -77,7 +77,12 @@ start-page ancestry in the mirror (`--infer-library-from-pages`), the stored `li
 (`--infer-library-from-mirror`). Among several candidate libraries, `--prefer-library-with-metadata`
 and then `--library-priority` decide. Documents without a decidable library are `unresolved`.
 `library` and `public` always follow the selected row; other values are filled when empty and
-replaced only with `--overwrite`; nothing is cleared.
+replaced only with `--overwrite`; nothing is cleared. `public` decides who can read the document
+(#279, [ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18)):
+a sync that changes it to `false` (or leaves it without a value) removes the document from
+unscoped Search, Explore, RAG, MCP and the corpus counts at once, while collections that hold it
+can still read it. Review a sync's `public` transitions before writing it; never set `public`
+to `true` to make documents searchable without checking the source library's rights.
 
 Modes:
 
@@ -90,6 +95,15 @@ Modes:
   documents at a time, resumable, with a manifest of unresolved and failed ids (#259).
 
 A changed `yearIssued` reaches the search only after `chunk_year --write` (below).
+
+**Chunk visibility (#793).** Where `Chunks.documentPublic` is declared, `--apply` and `--sync`
+keep it in step with a changed `public`, failing closed: before writing a document that stops
+being public they set its chunks to `false` and verify them (if that fails, the document is not
+written and is retried); after a document is verified `public=true` they set its chunks to
+`true`. A failure there leaves the chunks `false` (not searchable) and is listed in the manifest
+or result as `chunks_pending` (exit 1); repair it with `chunk_document_public --write
+--document-ids` ([below](#document-visibility-on-chunks-chunk_document_public-793)). Without the
+property, only documents are written and the run says so.
 
 Prerequisites: the PostgreSQL driver (`../.venv/bin/pip install "psycopg[binary]"`, not an
 application dependency) and `KRAMERIUS_METADATA_DSN`, a SQLAlchemy URL such as
@@ -312,6 +326,58 @@ Run it on every store before deploying the chunk-year search (a store without th
 answers year-filtered searches with an error), and again after ingesting chunks or changing
 document years (for example after `metadata_sync`) until ingestion keeps the copy itself
 ([#313](https://github.com/DCGM/semant-demo/issues/313)).
+
+## Document visibility on chunks (`chunk_document_public`, #793)
+
+Unscoped search, RAG and Explore select chunks with `Chunks.documentPublic == true` instead of
+filtering through the `document` reference to `Documents.public`, which cost about 1.4 s per
+query on 8.3 million chunks (#789). The flag is derived from the document's `public` and fails
+closed: `true` only for a chunk with exactly one existing document whose `public` is exactly
+`true`; `false` for a restricted or unknown document, a chunk without a document (also one whose
+document was deleted: Weaviate resolves no dangling reference), or with several documents
+([DATABASE](DATABASE.md#collection-chunks)). A chunk without the value is not public.
+
+```bash
+python -m semant_demo.maintenance.chunk_document_public --check check.json             # read-only
+python -m semant_demo.maintenance.chunk_document_public --write write.json --confirm-endpoint HOST:PORT \
+    [--concurrency 16] [--rate N]
+python -m semant_demo.maintenance.chunk_document_public --check check_after.json       # expect exit 0
+# one document list (chunk_ingest's CHECKPOINT.documents.txt, metadata_sync's chunks_pending ids)
+python -m semant_demo.maintenance.chunk_document_public --write docs.json --confirm-endpoint HOST:PORT \
+    --document-ids ids.txt
+```
+
+- **Schema.** `--write` first declares `Chunks.documentPublic` (`bool`, filterable) through the
+  alias's collection when missing: additive, no reindexing of vectors, no copy of other metadata.
+  A property of another type is refused before any write.
+- **Full pass.** Reads every document's `public`, then every chunk once in id order (ids, the flag
+  and the document reference only). It writes only differing chunks (a merge of the one
+  property), `false` before `true` within a page; the documents of chunks to become `true` are
+  read again just before, and a document no longer public leaves them for the retry. Each page's
+  writes are read back. Counts: `reasons` (`public`, `restricted`, `unknown`, `no_document`,
+  `missing_document`, `several_documents`), actions `consistent`, `set` (no flag), `change`,
+  and `stale_true` (chunks storing `true` that must not).
+- **Checkpoint.** Resumable and idempotent like `chunk_year`: the cursor, the counts and the ids
+  to retry; a rerun retries those first; a finished checkpoint is refused. `--rate` caps the
+  writes per second, `--concurrency` the parallel writes.
+- **Audit.** After a complete pass with nothing to retry it counts the chunks the search predicate
+  finds (`documentPublic == true`, `== false`, all chunks) and compares them with the pass's
+  expectations. **A check exits 0 only when nothing is left to write and `true + false == all`
+  with the expected numbers**, which proves that every chunk has the flag. This is a full scan,
+  not a sample; on production it reads 8.3 million chunks.
+- **Document mode** (`--document-ids`): brings each listed document's chunks to its value through
+  the `document` reference and verifies its counts (`sync_document`, also used by
+  `metadata_sync`). It does not find chunks without a document; the full pass does.
+
+Run the full `--write` while nothing else changes `Documents.public` or imports chunks (other
+chunk writers, such as tagging or titles, only touch other properties and are kept by the merge).
+Run it on every store before deploying a search that filters on the flag; a store without the
+property answers such a search with an error.
+
+**Rollout order** (#793, #789): declare and backfill (`--write`) → audit (`--check`, exit 0) →
+deploy the application whose eligibility filters use the flag → benchmark (`db_benchmark`) →
+enable the access policy. From the backfill on, `metadata_sync` and `chunk_ingest` maintain the
+flag; run the audit again after other bulk changes to `Documents.public`.
 
 ## Chunk titles (`chunk_titles`, #575)
 
@@ -582,6 +648,40 @@ python -m semant_demo.maintenance.classification_provenance_schema --apply --con
 - Run it once before the first chunk import into a store: `chunk_ingest` refuses a store without
   the property.
 
+## Stored named vectors on chunks (`chunk_have_vector`, #805)
+
+`Chunks.haveVector` (`text[]`, `field` tokenization, filterable, not searchable) lists the named
+vectors stored on a chunk, so an embedder can select the chunks lacking one with
+`haveVector contains_none([name])` (#560). `chunk_have_vector` declares the property if missing
+and adds the name (default `Qwen3_Embedding_0_6B`) to every chunk that actually stores that
+vector. It reads the vector of each chunk only to learn whether it is stored.
+
+```bash
+python -m semant_demo.maintenance.chunk_have_vector --check check.json [--limit N]   # read-only
+python -m semant_demo.maintenance.chunk_have_vector --write write.json --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.chunk_have_vector --check check_after.json         # expect exit 0
+```
+
+- A chunk without the vector is left without the name and reported (`no_vector`): the embedder
+  selects it. A chunk listing the name without the vector is reported (`listed_without_vector`)
+  and left as it is.
+- Other names already listed are kept. The write is a merge of the single property, read back
+  per page. The checkpoint resumes and retries failed ids, like `chunk_year`.
+- After a complete pass, the counts of `contains_any([name])`, `contains_none([name])` and all
+  chunks are compared with the pass; exit code 0 only when they match, nothing is
+  `listed_without_vector` and, for a check, nothing is left to set. 1 otherwise, 2 when refused.
+- Run it while no embedder or import writes chunks: an update replaces the whole list.
+- A property-only merge does not re-index the vectors: during the #793 and #805 runs (8.3 M
+  merges each), the HNSW commit log and the compressed-vector segments gained no data. Each merge
+  rewrites the whole object into `lsm/objects`, so that bucket grows by about its live size until
+  the segment cleanup (`PERSISTENCE_LSM_SEGMENTS_CLEANUP_INTERVAL_HOURS`) rewrites it.
+- Runs on 2026-11-19 (#805), without a separate backup (the nightly backup had run): the shared test
+  store (3 260 chunks) and production (8 280 272 chunks, 2 h 34 min at about 890 writes/s). Every
+  chunk stored the vector, so every chunk got the name; the checks afterwards exited 0. On
+  production, the count right after the last write found more `contains_none` chunks than the
+  collection held (8 759 358); a few minutes later it was 0, so the comparison counts again on a
+  mismatch, and a selection should use a filtered fetch, not a count taken right after a bulk write.
+
 ## Chunk classification (`data_tools/meta_data_enrichment`, #590)
 
 The offline classifier fills the classification fields of the chunks that await
@@ -746,6 +846,7 @@ embedder, the classifier or another chunk writer.
 flowchart LR
   ingest["chunk_ingest --write"] --> meta["metadata_sync<br/>--document-ids"]
   meta --> year["chunk_year"]
+  meta --> vis["chunk_document_public<br/>--document-ids"]
   meta --> titles["chunk_titles"]
   ingest --> emb["data_tools/embedder"]
   ingest --> cls["data_tools/<br/>meta_data_enrichment"]
@@ -762,6 +863,10 @@ flowchart LR
    unless `--accept-incomplete` is given
    ([`metadata_sync`](#kramerius-metadata-sync-metadata_sync-257)).
 2. `chunk_year --write` copies their year to the chunks (a full scan); it needs the metadata.
+   `chunk_document_public --write --document-ids CHECKPOINT.documents.txt` copies their access
+   (`public`) to the chunks, which the import created not public
+   ([visibility](#document-visibility-on-chunks-chunk_document_public-793)); it needs the
+   metadata too.
 3. `chunk_titles --write` generates the new chunks' titles (every untitled chunk; no document
    list); after `metadata_sync`, since it uses the document titles
    ([Chunk titles](#chunk-titles-chunk_titles-575)).

@@ -41,8 +41,9 @@
         <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
         <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
       </div>
-      <div class="search-result__source text-caption text-grey-8" v-if="chunk.documentObject.title || sourceUrl">
+      <div class="search-result__source text-caption text-grey-8" v-if="chunk.documentObject.title || sourceUrl || chunk.documentObject._public !== true">
         <span v-if="chunk.documentObject.title"><strong>Source:</strong> {{ chunk.documentObject.title }}</span>
+        <DocumentRightsBadge :value="chunk.documentObject._public" />
         <OriginalSourceLink :document="chunk.documentObject" :page-id="chunk.startPageId" />
       </div>
       <ResultClassifications :metadata="chunk.metadata" :filters="filters" />
@@ -99,6 +100,7 @@ import { QBadge, QBtn, QCard, QCardSection, QCheckbox, QIcon, QSeparator, QToolt
 import type { SearchFilter, SearchResultChunk } from 'src/generated/api'
 import ResultClassifications from './ResultClassifications.vue'
 import OriginalSourceLink from 'src/features/documents/OriginalSourceLink.vue'
+import DocumentRightsBadge from 'src/features/documents/DocumentRightsBadge.vue'
 import { originalSourceUrl } from 'src/features/documents/originalSource'
 import { isConstrainedResultWidth } from './resultLayout'
 
