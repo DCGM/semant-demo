@@ -17,6 +17,9 @@ export interface DocumentTarget {
   /** A page (manifest page id); used when no chunk is given. */
   pageId?: string | null
   from?: ReturnSource | null
+  /** The collection the document was found through (#279): a restricted or unknown document is
+   * readable only through it, so the link keeps it (`?collection=`). */
+  collectionId?: string | null
 }
 
 /** The public document view at a target. */
@@ -30,6 +33,7 @@ export function documentLink (documentId: string, target: DocumentTarget = {}): 
     query.page = target.pageId
   }
   if (target.from) query.from = target.from
+  if (target.collectionId) query.collection = target.collectionId
   return { name: 'document', params: { documentId }, query }
 }
 

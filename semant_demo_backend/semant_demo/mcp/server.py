@@ -375,10 +375,11 @@ def build_server(config: Config, corpus: Callable[[], Corpus | None]) -> FastMCP
         """Bibliographic metadata of a public corpus document, with its source identifiers and links,
         its number of passages and of pages (null without page scans). Unavailable fields are null."""
         async def work(c: Corpus) -> DocumentMetadata:
-            document = await document_service.read_document(c.documents, document_id)
+            collections = c.backends.collections
+            document = await document_service.read_document(c.documents, collections, None, document_id)
             chunk_count, pages = await asyncio.gather(
-                document_service.count_chunks(c.documents, document_id),
-                page_service.read_pages(c.documents, c.pages, document_id))
+                document_service.count_chunks(c.documents, collections, None, document_id),
+                page_service.read_pages(c.documents, collections, c.pages, None, document_id))
             return document_metadata(document, base, chunk_count, len(pages.pages) if pages.available else None)
         return await calls.run("get_document", work)
 
@@ -393,7 +394,8 @@ def build_server(config: Config, corpus: Callable[[], Corpus | None]) -> FastMCP
         canonical stored text, with the document's metadata. ``has_before``/``has_after`` tell whether
         the document continues; call again from the first or last passage to read further."""
         async def work(c: Corpus) -> PassageContext:
-            window = await document_service.read_chunk_window(c.documents, document_id, chunk_id, before, after)
+            window = await document_service.read_chunk_window(c.documents, c.backends.collections, None, document_id,
+                                                              chunk_id, before, after)
             return PassageContext(
                 document=document_ref(window.document, base), anchor_chunk_id=window.anchor_chunk_id,
                 passages=[passage(chunk, window.document, base, "canonical") for chunk in window.chunks],
@@ -411,15 +413,16 @@ def build_server(config: Config, corpus: Callable[[], Corpus | None]) -> FastMCP
         text), and whether more do (``has_more``). Not a verified page transcription: page ranges are
         coarse, so passages may begin before or continue after the page."""
         async def work(c: Corpus) -> PageText:
-            document = await document_service.read_document(c.documents, document_id)
-            pages = await page_service.read_pages(c.documents, c.pages, document_id)
+            collections = c.backends.collections
+            document = await document_service.read_document(c.documents, collections, None, document_id)
+            pages = await page_service.read_pages(c.documents, collections, c.pages, None, document_id)
             entry = None
             if pages.available:
                 if page >= len(pages.pages):
                     raise InvalidRequestError(
                         f"page must be below {len(pages.pages)}: the document has {len(pages.pages)} pages.")
                 entry = next((p for p in pages.pages if p.order == page), None)
-            chunks = await page_service.read_page_chunks(c.documents, document_id, page, limit)
+            chunks = await page_service.read_page_chunks(c.documents, collections, None, document_id, page, limit)
             return PageText(
                 document=document_ref(document, base), page=page, page_label=entry.label if entry else None,
                 page_scans_available=pages.available,

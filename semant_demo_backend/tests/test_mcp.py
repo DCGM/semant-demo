@@ -344,8 +344,9 @@ async def test_passage_context_is_canonical_text(call, monkeypatch):
     answer = structured(await call("get_passage_context", {
         "document_id": str(DOC_ID), "chunk_id": str(anchor.id), "before": 1, "after": 1}))
 
-    [(_, document_id, chunk_id, n_before, n_after)] = calls
-    assert (document_id, chunk_id, n_before, n_after) == (DOC_ID, anchor.id, 1, 1)
+    [(_, _, user, document_id, chunk_id, n_before, n_after)] = calls
+    # Anonymous and without a collection: only public documents are readable (#279).
+    assert (user, document_id, chunk_id, n_before, n_after) == (None, DOC_ID, anchor.id, 1, 1)
     assert [p["text"] for p in answer["passages"]] == ["Před-\nchozí", "Kotva", "Další"]
     assert {p["text_form"] for p in answer["passages"]} == {"canonical"}
     assert [p["order"] for p in answer["passages"]] == [0, 1, 2]
@@ -373,8 +374,8 @@ async def test_page_with_scans(call, monkeypatch):
     answer = structured(await call("get_document_page", {
         "document_id": str(DOC_ID), "page": 1, "limit": 1}))
 
-    [(_, document_id, page, limit)] = calls
-    assert (document_id, page, limit) == (DOC_ID, 1, 1)
+    [(_, _, user, document_id, page, limit)] = calls
+    assert (user, document_id, page, limit) == (None, DOC_ID, 1, 1)
     assert (answer["page"], answer["page_label"], answer["page_scans_available"], answer["has_more"]) == (
         1, "[2]", True, True)
     assert answer["source_url"] == f"https://www.digitalniknihovna.cz/mzk/view/uuid:{DOC_ID}?page=uuid:{PAGE_ID}"

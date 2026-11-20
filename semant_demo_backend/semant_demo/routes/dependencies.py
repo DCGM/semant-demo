@@ -15,6 +15,7 @@ from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.annotations.service import AnnotationStore
+from semant_demo.features.documents.asset_access import AssetSigner
 from semant_demo.features.attributes.service import AttributeStore
 from semant_demo.features.quota.service import QuotaPolicy
 from semant_demo.features.search.service import SearchBackends
@@ -57,6 +58,10 @@ def _weaviate(connection: HTTPConnection) -> WeaviateRepositories:
 def get_page_assets(connection: HTTPConnection) -> PageAssetStore:
     """The page asset store (``PAGE_ASSETS_DIR``; none configured: no document has pages)."""
     return PageAssetStore(get_config(connection).PAGE_ASSETS_DIR or None)
+
+def get_asset_signer(connection: HTTPConnection) -> AssetSigner:
+    """Signs the page-asset URLs of documents read through a collection (#279)."""
+    return AssetSigner(get_config(connection).JWT_SECRET)
 
 async def get_documents(connection: HTTPConnection) -> DocumentRepository:
     return _weaviate(connection).documents

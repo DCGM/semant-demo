@@ -4,7 +4,7 @@
 
 ## Scope and terminology
 
-**Explore** is the public-corpus discovery workspace, combining search, document browsing and linked visualizations. It is not a new backend service.
+**Explore** is the public-corpus discovery workspace, combining search, document browsing and linked visualizations. It is not a new backend service. Without a collection scope it covers only public documents (`Documents.public` true), for anonymous and signed-in users alike, in results, counts and charts; a selected collection scope also covers that collection's restricted and unknown documents, labelled **Restricted** or **Access unknown** on their results, and links from them keep the collection (#279, [ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18)). Other collections a user can read are never added to an unscoped search.
 
 | Concept | UI term | Code/route convention |
 | --- | --- | --- |

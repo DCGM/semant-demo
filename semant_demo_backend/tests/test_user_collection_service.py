@@ -43,6 +43,15 @@ class FakeCollections:
     async def document_in_collection(self, document_id, cid):
         return document_id == DOCUMENT and cid == COLLECTION
 
+    rights = {DOCUMENT: (True, {COLLECTION})}
+    """Each document's ``public`` value and linked collections (#279); others do not exist."""
+
+    async def read_document_rights(self, document_id):
+        return self.rights.get(document_id)
+
+    async def read_chunk_document(self, chunk_id):
+        return (True, DOCUMENT) if chunk_id == CHUNK else (False, None)
+
     def __getattr__(self, name):
         async def record(*args, **kwargs):
             self.calls.append((name, args, kwargs))
@@ -205,3 +214,45 @@ async def test_admin_changes_owner_to_an_existing_user():
     assert collections.calls == [("set_owner", (COLLECTION, OTHER.id, "Other"), {})]
     with pytest.raises(NotFoundError):
         await service.change_owner(FakeCollections(), FakeUsers(), ADMIN, COLLECTION, uuid4())
+
+
+#################################################
+# Adding restricted documents (#279)            #
+#################################################
+
+MINE, SOURCE, FOREIGN = uuid4(), uuid4(), uuid4()
+"""``OTHER``'s own collection, a collection shared with ``OTHER``, and one ``OTHER`` cannot read."""
+
+
+class AddingCollections(FakeCollections):
+    def __init__(self, public, linked):
+        super().__init__(collection())
+        self.rights = {DOCUMENT: (public, set(linked))}
+
+    async def read_access_record(self, cid):
+        return {MINE: (OTHER.id, set()), SOURCE: (OWNER.id, {OTHER.id}), FOREIGN: (OWNER.id, set())}.get(cid)
+
+
+ADDS = [lambda c: service.add_document(c, OTHER, MINE, str(DOCUMENT)),
+        lambda c: service.add_chunk(c, OTHER, MINE, str(CHUNK))]
+
+
+@pytest.mark.parametrize("add", ADDS, ids=["document", "chunk"])
+@pytest.mark.parametrize("public, linked", [(True, []), (False, [SOURCE]), (None, [FOREIGN, SOURCE])])
+async def test_a_document_readable_by_the_owner_can_be_added(add, public, linked):
+    collections = AddingCollections(public, linked)
+
+    await add(collections)
+
+    assert [name for name, *_ in collections.calls] in (["add_document"], ["add_chunk"])
+
+
+@pytest.mark.parametrize("add", ADDS, ids=["document", "chunk"])
+@pytest.mark.parametrize("public, linked", [(False, []), (None, []), (False, [FOREIGN]), (None, [FOREIGN])])
+async def test_a_restricted_document_the_owner_cannot_read_is_not_added(add, public, linked):
+    """Owning the target collection does not let a user unlock a restricted document by its id."""
+    collections = AddingCollections(public, linked)
+
+    with pytest.raises(NotFoundError):
+        await add(collections)
+    assert collections.calls == []

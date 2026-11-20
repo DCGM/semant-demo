@@ -26,6 +26,7 @@
       ref="workspacePane"
       v-model:narrow="workspace.narrow.value"
       :document-id="documentId"
+      :collection-id="collectionId"
       :mode="workspace.shown.value"
       :page-id="pageId"
       :document-title="documentData?.title ?? ''"
@@ -119,8 +120,9 @@ import WorkspaceControls from './WorkspaceControls.vue'
 
 // The public document view (#545, `/documents/:documentId`): the document's canonical text
 // and its page scans in the paired workspace, with the text/scan correspondence (#544) and the
-// document's metadata in the general right sidebar. Read-only and without a collection: no
-// annotation is read and no editing state exists. Deep links: `?page=<page id>` opens a page
+// document's metadata in the general right sidebar. Read-only: no annotation is read and no
+// editing state exists. A public document needs no collection; a restricted or unknown one is
+// read through the collection it was found in (`?collection=<id>`, #279). Deep links: `?page=<page id>` opens a page
 // and its text, `?chunk=<chunk id>&start=&end=` a passage (UTF-16 offsets in the chunk) and its
 // lines, `?view=split|text|scan` the view, `?from=search|chat` the back link. A change of these
 // on the same document (another link to it) is followed without reading the document again. The
@@ -156,7 +158,10 @@ let manifestReady: () => void = () => undefined
 let manifest: Promise<void> = Promise.resolve()
 
 const workspace = useWorkspaceMode(parseMode(route.query.view))
-const text = useDocumentText(() => props.documentId)
+/** The collection the document was opened through (`?collection=`, #279): a restricted or
+ * unknown document is readable only through it; a public one also without. */
+const collectionId = computed(() => typeof route.query.collection === 'string' ? route.query.collection : null)
+const text = useDocumentText(() => props.documentId, () => collectionId.value)
 const sync = useTextScanSync({
   pages,
   layouts: () => layouts.value,
@@ -297,20 +302,23 @@ async function loadDocument (id: string) {
   documentData.value = null
   documentError.value = ''
   try {
-    const doc = await useDocumentsRepository().getById(id)
+    const doc = await useDocumentsRepository().getById(id, collectionId.value)
     if (id === props.documentId) documentData.value = doc
   } catch (e) {
     if (id !== props.documentId) return
     documentError.value = errorStatus(e) === 404
-      ? 'This document is not in the corpus.'
+      // Unknown and restricted documents are not told apart (#279).
+      ? (collectionId.value
+          ? 'This document is not in this collection, or the collection is not available to you.'
+          : 'This document is not in the public corpus. A restricted document opens only from a collection that holds it.')
       : 'The document could not be loaded.'
   }
 }
 
 // Another document is read anew; another link to this one (a query-only navigation: Vue
 // Router reuses the page) shows its target with the document read so far.
-watch(() => [props.documentId, targetKey(route.query, TARGETS)] as const, ([id, key], before) => {
-  if (!before || id !== before[0]) {
+watch(() => [props.documentId, targetKey(route.query, TARGETS), collectionId.value] as const, ([id, key, collection], before) => {
+  if (!before || id !== before[0] || collection !== before[2]) {
     void loadDocument(id)
     void open(id)
     return
