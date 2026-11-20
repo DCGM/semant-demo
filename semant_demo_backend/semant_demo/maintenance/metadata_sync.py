@@ -111,6 +111,7 @@ from semant_demo.adapters.sql.kramerius_metadata import PageChain, read_ancestor
 from semant_demo.adapters.weaviate.document_metadata import (
     add_text_property, document_property_types, read_document_page, read_documents, read_start_pages,
     update_document)
+from semant_demo.maintenance.chunk_document_public import flag_target, sync_document
 from semant_demo.maintenance.kramerius_mapping import FIELDS, SourceRecord, map_record
 
 PAGE_SIZE = 100
@@ -537,6 +538,40 @@ def check_applicable(types: dict[str, str] | None, report: dict, *, accept_incom
                           "--accept-incomplete")
 
 
+def _public_change(changes: dict[str, Any]) -> bool | None:
+    """The new ``public`` when the changes include it: True when it becomes public, False when
+    it stops being (or is set not) public, None when ``public`` does not change."""
+    if "public" not in changes:
+        return None
+    return changes["public"]["new"] is True
+
+
+async def _lower_chunks(client: WeaviateAsyncClient, flag_chunks: str | None, document_id: UUID,
+                        changes: dict[str, Any]) -> str | None:
+    """Before a document stops being public: set its chunks' ``documentPublic`` to false
+    (#793). The reason the document must not be written yet, None when it may."""
+    if flag_chunks is None or _public_change(changes) is not False:
+        return None
+    outcome = await sync_document(client, flag_chunks, document_id, False)
+    return None if outcome.verified else f"chunk visibility not lowered first: {outcome.error}"
+
+
+async def _raise_chunks(client: WeaviateAsyncClient, flag_chunks: str | None, document_id: UUID,
+                        changes: dict[str, Any]) -> str | None:
+    """After a document is verified public: set its chunks' ``documentPublic`` to true. The
+    error when not every chunk was verified (they stay not public, failing closed)."""
+    if flag_chunks is None or _public_change(changes) is not True:
+        return None
+    outcome = await sync_document(client, flag_chunks, document_id, True)
+    return None if outcome.verified else outcome.error
+
+
+def _pending_line(document_id: str, error: str) -> dict[str, Any]:
+    return {"id": document_id, "status": "chunks_pending",
+            "reason": f"{error}; the chunks stay not public until "
+                      "`chunk_document_public --write --document-ids` succeeds for this document"}
+
+
 async def apply_report(client: WeaviateAsyncClient, names: CollectionNames, report: dict,
                        *, accept_incomplete: bool = False) -> dict:
     """Write the reviewed changes and read them back. Raises ``LookupError`` if the report
@@ -545,9 +580,11 @@ async def apply_report(client: WeaviateAsyncClient, names: CollectionNames, repo
     check_applicable(types, report, accept_incomplete=accept_incomplete)
 
     entries = [e for e in report["documents"] if e["status"] == "update"]
+    flag_chunks = await flag_target(client, names)
     applied = verified = already_applied = 0
     not_applied: list[dict[str, str]] = []
     failed: list[dict[str, str]] = []
+    chunks_pending: list[dict[str, Any]] = []
     for start in range(0, len(entries), PAGE_SIZE):
         page = entries[start:start + PAGE_SIZE]
         current = await read_documents(client, names, [UUID(e["id"]) for e in page])
@@ -578,6 +615,8 @@ async def apply_report(client: WeaviateAsyncClient, names: CollectionNames, repo
                 not_applied.append({"id": entry["id"], "reason": conflict})
             elif not pending:
                 already_applied += 1
+            elif lowered := await _lower_chunks(client, flag_chunks, document_id, entry["changes"]):
+                failed.append({"id": entry["id"], "error": lowered})
             else:
                 try:
                     await update_document(client, names, document_id, pending)
@@ -592,20 +631,25 @@ async def apply_report(client: WeaviateAsyncClient, names: CollectionNames, repo
             differing = sorted(p for p, value in expected.items() if jsonable(stored.get(p)) != value)
             if differing:
                 failed.append({"id": str(document_id), "error": f"read back differs: {', '.join(differing)}"})
-            else:
-                verified += 1
+                continue
+            verified += 1
+            changes = next(e["changes"] for e in page if e["id"] == str(document_id))
+            if error := await _raise_chunks(client, flag_chunks, document_id, changes):
+                chunks_pending.append(_pending_line(str(document_id), error))
     counts = report["counts"]
     return {"in_scope": counts["in_scope"], "unresolved": sum(counts["unresolved"].values()),
             "with_held_changes": counts["with_held_changes"],
             "with_skipped_values": counts["with_skipped_values"], "eligible": len(entries),
             "applied": applied, "verified": verified, "already_applied": already_applied,
-            "not_applied": not_applied, "failed": failed}
+            "not_applied": not_applied, "failed": failed, "chunk_flag": flag_chunks,
+            "chunks_pending": chunks_pending}
 
 
 def apply_exit_code(result: dict) -> int:
     """0 only if something was eligible and every eligible document is verified or was already applied."""
     complete = result["verified"] + result["already_applied"] == result["eligible"]
-    return 0 if result["eligible"] and complete and not result["failed"] and not result["not_applied"] else 1
+    ok = complete and not result["failed"] and not result["not_applied"] and not result.get("chunks_pending")
+    return 0 if result["eligible"] and ok else 1
 
 
 SYNC_ATTEMPTS = 3
@@ -624,7 +668,7 @@ def _sync_counts() -> dict[str, Any]:
     return {"examined": 0, "updated": 0, "unchanged": 0, "unresolved": {}, "failed": 0, "library_from": {},
             "public": {"false_to_true": 0, "true_to_false": 0, "unset_to_true": 0, "unset_to_false": 0},
             "without_source_metadata": 0, "with_held_changes": 0, "with_skipped_values": 0,
-            "changed_properties": {}}
+            "changed_properties": {}, "chunks_pending": 0}
 
 
 def _add(counter: dict[str, int], key: str, n: int = 1) -> None:
@@ -645,7 +689,8 @@ def _write_json(path: Path, data: Any) -> None:
 
 async def _sync_batch(client: WeaviateAsyncClient, names: CollectionNames, source: Connection,
                       page: list[tuple[UUID, dict[str, Any] | None]], targets: dict[str, tuple[str, str]],
-                      types: dict[str, str], cache: dict, plan_options: dict[str, Any]) -> dict[str, Any]:
+                      types: dict[str, str], cache: dict, plan_options: dict[str, Any],
+                      flag_chunks: str | None = None) -> dict[str, Any]:
     """Plan one page, write its changes and read the written documents back. Returns its counts,
     manifest lines and the ids not verified; changes nothing else, so a failed batch can be retried."""
     entries = await _plan_page(client, names, source, page, targets, cache, **plan_options)
@@ -669,6 +714,10 @@ async def _sync_batch(client: WeaviateAsyncClient, names: CollectionNames, sourc
         else:
             document_id = UUID(entry["id"])
             pending = {prop: _to_weaviate(change["new"], types[prop]) for prop, change in entry["changes"].items()}
+            if lowered := await _lower_chunks(client, flag_chunks, document_id, entry["changes"]):
+                failed.append(entry["id"])
+                manifest.append({"id": entry["id"], "status": "failed", "reason": lowered})
+                continue
             try:
                 await update_document(client, names, document_id, pending)
             except Exception as e:  # the write may or may not have happened; a retry plans it again
@@ -690,6 +739,9 @@ async def _sync_batch(client: WeaviateAsyncClient, names: CollectionNames, sourc
             _add(counts["changed_properties"], prop)
         if "public" in entry["changes"]:
             _add(counts["public"], _public_transition(entry["changes"]["public"]))
+        if error := await _raise_chunks(client, flag_chunks, document_id, entry["changes"]):
+            counts["chunks_pending"] += 1
+            manifest.append(_pending_line(entry["id"], error))
     counts["failed"] = len(failed)
     return {"counts": counts, "manifest": manifest, "failed": failed}
 
@@ -698,9 +750,9 @@ def _merge_counts(total: dict[str, Any], batch: dict[str, Any]) -> None:
     for key, value in batch.items():
         if isinstance(value, dict):
             for k, n in value.items():
-                _add(total[key], k, n)
+                _add(total.setdefault(key, {}), k, n)
         else:
-            total[key] += value
+            total[key] = total.get(key, 0) + value
 
 
 async def sync(client: WeaviateAsyncClient, names: CollectionNames, source: Connection, *,
@@ -757,6 +809,10 @@ async def sync(client: WeaviateAsyncClient, names: CollectionNames, source: Conn
                  "retry": [], "counts": _sync_counts()}
         _write_json(checkpoint, state)
 
+    flag_chunks = await flag_target(client, names)
+    state["chunk_flag"] = flag_chunks
+    if flag_chunks is None:
+        progress("Chunks.documentPublic is not declared: chunk visibility is not synchronized (#793)")
     cache: dict[tuple[str, str], SourceRecord | None] = {}
     started = datetime.now(timezone.utc)
     examined = 0
@@ -766,7 +822,7 @@ async def sync(client: WeaviateAsyncClient, names: CollectionNames, source: Conn
             try:
                 page = await read_page()
                 return {"page": page, **(await _sync_batch(client, names, source, page, targets, types, cache,
-                                                           plan_options) if page else {})}
+                                                           plan_options, flag_chunks) if page else {})}
             except Exception as e:
                 if attempt == SYNC_ATTEMPTS:
                     raise
@@ -823,13 +879,14 @@ async def sync(client: WeaviateAsyncClient, names: CollectionNames, source: Conn
     state["finished"] = datetime.now(timezone.utc).isoformat()
     _write_json(checkpoint, state)
     return {key: state[key] for key in ("endpoint", "collection", "source", "options", "undeclared_fields",
-                                        "after", "done", "counts")} | {
+                                        "after", "done", "counts", "chunk_flag")} | {
         "to_retry": len(state["retry"]), "checkpoint": str(checkpoint), "manifest": str(manifest)}
 
 
 def sync_exit_code(result: dict) -> int:
-    """0 unless documents remain whose write failed or did not read back."""
-    return 1 if result["to_retry"] else 0
+    """0 unless documents remain whose write failed or did not read back, or whose chunks could
+    not be made public after the document became public (``chunks_pending``)."""
+    return 1 if result["to_retry"] or result["counts"].get("chunks_pending") else 0
 
 
 def read_library_map(path: Path) -> dict[UUID, str]:

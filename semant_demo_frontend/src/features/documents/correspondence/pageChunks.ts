@@ -1,6 +1,7 @@
 import type { DefaultApi, DocumentChunk } from 'src/generated/api'
 
-// The chunks of one page of a public document (#544, #545): the stored page ranges
+// The chunks of one page of a readable document (#544, #545; through `collectionId` for one
+// that is not public, #279): the stored page ranges
 // (`from_page`..`to_page`) are coarse locators (one chunk too many, never too few), read with
 // the bounded `/chunks/by_page` and, for a page with more chunks than one read returns,
 // continued with `/adjacent`. Never the chunks of the earlier pages.
@@ -21,17 +22,17 @@ export const positioned = (chunks: DocumentChunk[]): PositionedChunk[] =>
  * `PAGE_FOLLOW_READS` further reads). Rejects when a read fails.
  */
 export async function readPageChunks (
-  api: DefaultApi, documentId: string, order: number
+  api: DefaultApi, documentId: string, order: number, collectionId: string | null = null
 ): Promise<{ chunks: PositionedChunk[], complete: boolean }> {
   const covers = (c: PositionedChunk) => c.fromPage <= order && order <= c.toPage
   const first = await api.readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet({
-    documentId, page: order, limit: PAGE_LIMIT
+    documentId, page: order, limit: PAGE_LIMIT, collectionId
   })
   const found = positioned(first.chunks)
   let complete = !first.hasMore
   for (let i = 0; !complete && i < PAGE_FOLLOW_READS && found.length; i++) {
     const more = await api.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet({
-      documentId, chunkId: found[found.length - 1].id, direction: 'after', limit: PAGE_LIMIT
+      documentId, chunkId: found[found.length - 1].id, direction: 'after', limit: PAGE_LIMIT, collectionId
     })
     const next = positioned(more.chunks)
     found.push(...next.filter(covers))

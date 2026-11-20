@@ -4,6 +4,7 @@ Membership is stored twice: chunk -> collection references (``userCollection``) 
 document -> collection references (``collection``). Sharing is the ``shared_with`` list of
 user ids on the collection. Users themselves live in SQL; callers look them up there.
 """
+import asyncio
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -18,7 +19,7 @@ from semant_demo.adapters.weaviate.writes import delete_collection_cascade, step
 from semant_demo.core.errors import NotFoundError
 from semant_demo.features.user_collections.schemas import CollectionChunk, Collection, CollectionStats, PatchCollection, PostCollection
 from semant_demo.features.documents.schemas import Document, DocumentStats
-from semant_demo.features.annotations.schemas import AnnotationChunk
+from semant_demo.features.annotations.schemas import AnnotationChunk, SpanType
 from semant_demo.core.outcomes import StepFailure, WriteResult, outcome_of
 
 logger = logging.getLogger(__name__)
@@ -207,13 +208,22 @@ class UserCollectionRepository:
             return (await collection.aggregate.over_all(total_count=True, filters=filters)).total_count or 0
 
         tags = self.client.collections.get(names.tag_collection_name)
-        # One annotation = one approved span of the collection whose chunk belongs to it.
+        # One annotation = one approved span of the collection whose chunk belongs to it; its
+        # unresolved AI suggestions are counted alike (#770). The counts are independent.
+        documents, chunks, tags_count, approved, suggestions = await asyncio.gather(
+            count(self._documents(), Filter.by_ref("collection").by_id().equal(collection_id)),
+            count(self._chunks(), Filter.by_ref(self.link).by_id().equal(collection_id)),
+            count(tags, Filter.by_ref("userCollection").by_id().equal(collection_id)),
+            self.spans.count_approved(collection_id),
+            self.spans.count_of_type(collection_id, SpanType.auto),
+        )
         return CollectionStats(
             collection_id=collection_id,
-            documents_count=await count(self._documents(), Filter.by_ref("collection").by_id().equal(collection_id)),
-            chunks_count=await count(self._chunks(), Filter.by_ref(self.link).by_id().equal(collection_id)),
-            tags_count=await count(tags, Filter.by_ref("userCollection").by_id().equal(collection_id)),
-            annotations_count=await self.spans.count_approved(collection_id),
+            documents_count=documents,
+            chunks_count=chunks,
+            tags_count=tags_count,
+            annotations_count=approved,
+            suggestions_count=suggestions,
         )
 
     async def read_all_documents(self, collection_id: UUID) -> list[Document]:
@@ -233,6 +243,24 @@ class UserCollectionRepository:
             return_properties=[],
         )
         return bool(response.objects)
+
+    async def read_document_rights(self, document_id: UUID) -> tuple[bool | None, set[UUID]] | None:
+        """The document's ``public`` value and the collections it is linked to (#279); None if
+        the document does not exist."""
+        doc = await self._documents().query.fetch_object_by_id(
+            document_id, return_properties=["public"], return_references=[QueryReference(link_on="collection")])
+        if doc is None:
+            return None
+        return doc.properties.get("public"), _ref_ids(doc, "collection")
+
+    async def read_chunk_document(self, chunk_id: UUID) -> tuple[bool, UUID | None]:
+        """Whether the chunk exists, and its document (None without one)."""
+        chunk = await self._chunks().query.fetch_object_by_id(
+            chunk_id, return_properties=[], return_references=[QueryReference(link_on="document")])
+        if chunk is None:
+            return False, None
+        documents = list(_ref_ids(chunk, "document"))
+        return True, documents[0] if documents else None
 
     async def chunk_ids_in_collection(
         self, chunk_ids: list[UUID], collection_id: UUID, document_id: UUID | None = None,
@@ -312,24 +340,31 @@ class UserCollectionRepository:
     async def read_document_stats(self, collection_id: UUID, document_id: UUID) -> DocumentStats:
         """
         Per-document statistics within the collection: chunks in the collection, all
-        chunks, approved annotations of the collection whose chunk belongs to it, and the
-        number of distinct tags they use.
+        chunks, approved annotations of the collection whose chunk belongs to it, the
+        number of distinct tags they use, and its unresolved AI suggestions counted alike.
         """
         async def count(collection, filters) -> int:
             return (await collection.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
 
         document_filter = Filter.by_ref("document").by_id().equal(document_id)
-        annotations_count = await self.spans.count_approved(collection_id, document_id)
+        # Independent counts, read together (#770); the distinct tags only when there are
+        # approved annotations to take them from.
+        in_collection, total, annotations_count, suggestions = await asyncio.gather(
+            count(self._chunks(), document_filter & Filter.by_ref(self.link).by_id().equal(collection_id)),
+            count(self._chunks(), document_filter),
+            self.spans.count_approved(collection_id, document_id),
+            self.spans.count_of_type(collection_id, SpanType.auto, document_id),
+        )
         distinct_tags = await self.spans.approved_tag_ids(collection_id, document_id) if annotations_count else set()
 
         return DocumentStats(
             document_id=str(document_id),
             collection_id=str(collection_id),
-            chunks_in_collection=await count(self._chunks(), document_filter
-                                             & Filter.by_ref(self.link).by_id().equal(collection_id)),
-            total_chunks=await count(self._chunks(), document_filter),
+            chunks_in_collection=in_collection,
+            total_chunks=total,
             annotations_count=annotations_count,
             distinct_tags_count=len(distinct_tags),
+            suggestions_count=suggestions,
         )
 
     ##############

@@ -26,7 +26,7 @@ function setActiveTagId(tagId: string | null) {
 const focusedTagId = ref<string | null>(null)
 
 function setFocusedTagId(tagId: string | null) {
-  if (tagId) hiddenTagIds.delete(tagId)
+  if (tagId) showTag(tagId)
   focusedTagId.value = tagId
 }
 
@@ -39,6 +39,10 @@ const hiddenTagIds = reactive(new Set<string>())
 
 function isTagVisible(tagId: string): boolean {
   return !hiddenTagIds.has(tagId)
+}
+
+function showTag(tagId: string) {
+  hiddenTagIds.delete(tagId)
 }
 
 function toggleTag(tagId: string) {
@@ -131,6 +135,7 @@ export function useTagNavigation() {
     onScroll,
     onHighlight,
     isTagVisible,
+    showTag,
     toggleTag,
     hideAllTags,
     showAllTags

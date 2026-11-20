@@ -38,15 +38,6 @@
       <q-btn outline no-caps color="primary" class="q-mt-md" label="Chart the documents" data-testid="charts-show-documents" @click="emit('showDocuments')" />
     </div>
 
-    <div v-else-if="availability === 'collection'" class="explore-visualizations__status" role="status" data-testid="charts-collection">
-      <q-icon name="folder_off" size="2.5em" />
-      <div class="q-mt-sm text-subtitle1">Charts of a whole collection are not available yet.</div>
-      <div class="text-caption">
-        Without a text query, charts count the documents of the public corpus. Remove the collection from the search to
-        chart them, or enter a text query to chart the collection's search results.
-      </div>
-    </div>
-
     <q-banner v-else-if="error" rounded class="bg-red-1 text-negative" role="alert" data-testid="charts-error">
       <template v-slot:avatar>
         <q-icon name="error_outline" color="negative" />
@@ -57,24 +48,36 @@
       </template>
     </q-banner>
 
-    <div v-else-if="!distributions" class="explore-visualizations__status" role="status" data-testid="charts-loading">
+    <div v-else-if="!shown" class="explore-visualizations__status" role="status" data-testid="charts-loading">
       <q-spinner color="primary" size="2.5em" />
       <div class="q-mt-sm">{{ slow ? 'Counting the matching documents takes longer than usual…' : 'Counting the matching documents…' }}</div>
     </div>
 
     <template v-else>
       <div class="explore-visualizations__scope" data-testid="charts-scope">
-        <div class="text-subtitle1">
-          <strong data-testid="charts-total">{{ formatCount(distributions.totalDocuments) }}</strong>
-          {{ distributions.totalDocuments === 1 ? 'document matches' : 'documents match' }}
+        <div v-if="collectionName !== null" class="text-subtitle1">
+          <strong data-testid="charts-total">{{ formatCount(shown.totalDocuments) }}</strong>
+          {{ shown.totalDocuments === 1 ? 'document' : 'documents' }} of collection
+          <strong data-testid="charts-collection-name">{{ collectionName }}</strong>{{ filtered ? (shown.totalDocuments === 1 ? ' matches' : ' match') + ' the applied filters' : '' }}.
+        </div>
+        <div v-else class="text-subtitle1">
+          <strong data-testid="charts-total">{{ formatCount(shown.totalDocuments) }}</strong>
+          {{ shown.totalDocuments === 1 ? 'document matches' : 'documents match' }}
           {{ filtered ? 'the applied filters' : '(the whole searchable corpus)' }}.
         </div>
         <p class="text-caption text-grey-8 q-mb-none">
-          Every chart counts distinct documents: all that match, counted in the corpus database, not the loaded results
-          or a sample.
+          <template v-if="collectionName !== null">
+            Every chart counts distinct documents of the collection: all documents added to it, also those without a
+            passage in it, counted in the corpus database, not the loaded results or a sample.
+          </template>
+          <template v-else>
+            Every chart counts distinct documents: all that match, counted in the corpus database, not the loaded results
+            or a sample.
+          </template>
           <template v-if="perDimension">
             A document matches the passage filters when, for each of them, at least one of its passages has a chosen value;
             different filters may be met by different passages.
+            <template v-if="collectionName !== null">All passages of each document count, not only those in the collection.</template>
           </template>
         </p>
       </div>
@@ -82,12 +85,23 @@
         <q-spinner size="20px" color="primary" />
         <span>{{ slow ? 'Counting the matching documents takes longer than usual…' : 'Counting the matching documents…' }}</span>
       </div>
-      <div v-if="distributions.totalDocuments === 0" class="explore-visualizations__status" role="status" data-testid="charts-empty">
-        <q-icon name="search_off" size="2.5em" />
-        <div class="q-mt-sm text-subtitle1">No documents match these filters.</div>
-        <div class="text-caption">Remove some of the filters above.</div>
+      <div v-if="shown.totalDocuments === 0" class="explore-visualizations__status" role="status" data-testid="charts-empty">
+        <template v-if="collectionName !== null && !filtered">
+          <q-icon name="folder_open" size="2.5em" />
+          <div class="q-mt-sm text-subtitle1">This collection has no documents.</div>
+          <div class="text-caption">Add documents or passages to it from the Results.</div>
+        </template>
+        <template v-else>
+          <q-icon name="search_off" size="2.5em" />
+          <div class="q-mt-sm text-subtitle1">{{ collectionName !== null ? 'No documents of this collection match these filters.' : 'No documents match these filters.' }}</div>
+          <div class="text-caption">Remove some of the filters above.</div>
+        </template>
       </div>
-      <DocumentDistributions v-else :distributions="distributions" :loading="loading" @apply-filter="(filter) => emit('applyFilter', filter)" />
+      <DocumentDistributions
+        v-else :distributions="shown" :loading="loading"
+        :unit-label="collectionName !== null ? 'collection documents' : 'documents'"
+        @apply-filter="(filter) => emit('applyFilter', filter)"
+      />
     </template>
   </section>
 </template>
@@ -95,8 +109,12 @@
 <script setup lang="ts">
 /**
  * The Visualizations view of Explore (#618, #620): the charts of the documents matching the
- * applied criteria, of a text query's ranked results (`RankedResultCharts`), or why there are
- * none for them (`chartsAvailability`). The page owns the counts (`useExploreCharts`,
+ * applied criteria (of the corpus, or of a collection's documents, #768), of a text query's
+ * ranked results (`RankedResultCharts`), or why there are none for them (`chartsAvailability`).
+ * What the document counts describe is taken from their answer (`scope`), never from the
+ * criteria being requested; counts of another population than the one the page charts
+ * (`userCollectionId`: after a change of collection or account, before they are counted again)
+ * are not shown at all, not even dimmed. The page owns the counts (`useExploreCharts`,
  * `useResultCharts`), the search and the criteria; a clicked chart category (or the shown
  * period) is emitted as a filter, which the page applies (a new search or count).
  */
@@ -109,7 +127,9 @@ import { hasChunkFilters, isUnfiltered } from 'src/features/analytics/corpusOver
 import type { ChartFilter } from 'src/features/analytics/corpusOverview'
 import type { ChartsAvailability } from './useExploreCharts'
 
-const props = defineProps<{
+type CollectionLabel = (id: string) => string
+
+const props = withDefaults(defineProps<{
   availability: ChartsAvailability
   distributions: CorpusDistributions | null
   loading: boolean
@@ -119,7 +139,11 @@ const props = defineProps<{
   invalid: boolean
   /** A text query's charts: its search and the counts of its ranking. */
   ranked?: RankedChartsState
-}>()
+  /** The name of a collection by id (the scope of collection counts). */
+  collectionLabel?: CollectionLabel
+  /** The collection the page charts now (null: the searchable corpus). */
+  userCollectionId?: string | null
+}>(), { userCollectionId: null })
 const emit = defineEmits<{
   retry: []
   retryRanked: []
@@ -134,9 +158,20 @@ const ranked = computed(() => props.ranked ?? NOTHING_RANKED)
 const numberFormat = new Intl.NumberFormat('en')
 const formatCount = (n: number) => numberFormat.format(n)
 
+/** The counts, when they are of the population the page charts; else none (yet). */
+const shown = computed(() => {
+  const d = props.distributions
+  return d && (d.userCollectionId ?? null) === props.userCollectionId ? d : null
+})
 // From the counts' own (echoed) filters, not the ones being requested.
-const perDimension = computed(() => hasChunkFilters(props.distributions?.chunkFilters))
-const filtered = computed(() => !!props.distributions && (!isUnfiltered(props.distributions.filters) || perDimension.value))
+const perDimension = computed(() => hasChunkFilters(shown.value?.chunkFilters))
+const filtered = computed(() => !!shown.value && (!isUnfiltered(shown.value.filters) || perDimension.value))
+/** The counted collection's name when the counts describe a collection, else null. */
+const collectionName = computed(() => {
+  const d = shown.value
+  if (d?.scope !== 'user_collection' || !d.userCollectionId) return null
+  return props.collectionLabel?.(d.userCollectionId) ?? `Collection ${d.userCollectionId}`
+})
 </script>
 
 <style scoped>

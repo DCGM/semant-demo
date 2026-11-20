@@ -30,6 +30,9 @@ services:
       # memory-pressure checks (batch admission, compaction, vector index growth) are inert.
       # CPUs stay unlimited (no CPU quota is set).
       LIMIT_RESOURCES: "true"
+      # Rewrite each replace-bucket segment (e.g. lsm/objects) without superseded objects,
+      # at most once per 24 h per segment; 0 (Weaviate default) disables it (#793 follow-up).
+      PERSISTENCE_LSM_SEGMENTS_CLEANUP_INTERVAL_HOURS: "24"
       # Paced deletion of tombstoned vectors (as deployed since the October 2026 audits)
       TOMBSTONE_DELETION_CONCURRENCY: "1"
       TOMBSTONE_DELETION_MIN_PER_CYCLE: "1000"

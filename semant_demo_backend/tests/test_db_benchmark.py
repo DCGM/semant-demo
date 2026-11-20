@@ -204,6 +204,26 @@ def test_scoped_filter_searches_query_from_a_chunk_inside_the_value():
     assert [c.id.int for c in workload._usable(unscoped)] == [1, 2]
 
 
+async def test_searches_read_a_collection_as_the_application_does():
+    # #279, review of #789: a collection search makes that collection's documents readable
+    # (``readable_collection_id``); without one, the search covers public documents only.
+    col = UUID(int=101)
+    inputs = Inputs(chunks=[_chunk(1)], scoped={"user_collection": [(col, _chunk(11))]}, vector_name="default")
+    workload = Workload.__new__(Workload)
+    workload.inputs, workload.profile = inputs, load_profile("smoke")
+    queries = []
+
+    async def search(query):
+        queries.append(query)
+        return []
+    workload.search = SimpleNamespace(search=search)
+
+    await workload._search(Scenario(name="c", kind="search", mode="text", filter="user_collection"))(0)
+    await workload._search(Scenario(name="y", kind="search", mode="text", filter="year_range"))(0)
+
+    assert [(q.collection_id, q.readable_collection_id) for q in queries] == [(col, col), (None, None)]
+
+
 def test_level_inputs_default_to_the_same_inputs():
     assert load_profile("baseline").level_inputs == "same"
     data = load_profile("smoke").model_dump()
