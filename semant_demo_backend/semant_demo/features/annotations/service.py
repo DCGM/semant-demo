@@ -312,13 +312,15 @@ async def save_span(store: AnnotationStore, collection_id: UUID, document_id: UU
     refresh = None
     if store.enrichment.derived:
         refresh = await derive_refresh(store, span.chunkId, span.start, span.end, 1, source)
+    created = _created(store, actor)
     span_id = await store.spans.insert(collection_id, span, document_id,
                                        refresh.properties(reset_vector=True) if refresh else None,
-                                       _created(store, actor))
+                                       created)
     failed: list[StepFailure] = []
     if refresh is not None:
         failed += refresh.failures + await refresh_vector(store, collection_id, span_id, refresh)
-    return _write_result(TagSpan(id=str(span_id), **span.model_dump()), failed)
+    return _write_result(TagSpan(id=str(span_id), **span.model_dump(),
+                                 createdAt=created["createdAt"] if created else None), failed)
 
 
 async def create_span(store: AnnotationStore, user: Principal | None, span: PostSpan) -> TagSpanWriteResult:

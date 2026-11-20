@@ -2,7 +2,7 @@ from typing import Optional
 
 import weaviate
 from weaviate.auth import AuthApiKey
-from weaviate.classes.config import Configure, Property, DataType, VectorDistances, Vectorizers
+from weaviate.classes.config import Configure, Property, DataType, Tokenization, VectorDistances, Vectorizers
 
 
 def get_async_client(
@@ -101,6 +101,32 @@ async def named_vector_exists(client: weaviate.WeaviateAsyncClient, collection_n
     return False
 
 
+HAVE_VECTOR = "haveVector"
+"""The list of the named vectors stored on a record (#805, #816): the embedder selects the records
+whose list lacks its vector and adds the name when it writes the vector."""
+HAVE_VECTOR_DECLARATION = {"data_type": "text[]", "tokenization": "field", "filterable": True, "searchable": False}
+"""How ``haveVector`` must be declared: as the backend's ``chunk_have_vector`` declares it
+(``semant_demo/adapters/weaviate/have_vector.py``, ``EXPECTED``)."""
+
+
+async def have_vector_problem(client: weaviate.WeaviateAsyncClient, collection_name: str) -> Optional[str]:
+    """Why the collection's ``haveVector`` cannot be used (missing or declared otherwise), None when it can;
+    read-only. A run never declares it: a write to an undeclared property would let Weaviate's auto-schema
+    create it with other settings."""
+    config = await client.collections.use(collection_name).config.get()
+    for prop in config.properties:
+        if prop.name == HAVE_VECTOR:
+            declared = {"data_type": prop.data_type.value,
+                        "tokenization": prop.tokenization.value if prop.tokenization else None,
+                        "filterable": bool(prop.index_filterable), "searchable": bool(prop.index_searchable)}
+            if declared == HAVE_VECTOR_DECLARATION:
+                return None
+            return (f"Collection '{collection_name}' declares '{HAVE_VECTOR}' as {declared}, "
+                    f"expected {HAVE_VECTOR_DECLARATION}.")
+    return (f"Collection '{collection_name}' has no '{HAVE_VECTOR}' property. Declare it and list the vectors "
+            f"the records already store with the backend's chunk_have_vector (docs/DATA_MAINTENANCE.md).")
+
+
 async def ensure_named_vector_exists(
     client: weaviate.WeaviateAsyncClient,
     collection_name: str,
@@ -162,6 +188,8 @@ async def create_test_collection(client: weaviate.WeaviateAsyncClient, replace: 
             Property(name="language", data_type=DataType.TEXT),
             Property(name="title", data_type=DataType.TEXT),
             Property(name="text", data_type=DataType.TEXT),
+            Property(name=HAVE_VECTOR, data_type=DataType.TEXT_ARRAY, tokenization=Tokenization.FIELD,
+                     index_filterable=True, index_searchable=False),
         ],
         vector_config=[Configure.Vectors.self_provided(name="default")]
     )

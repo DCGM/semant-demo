@@ -35,6 +35,22 @@ which tools (if any) it shows there.
 The document view (`/collections/:cid/documents/:did/v1`) adds its tags, AI Tagging and
 document tools as panels (#230); see section 6.
 
+The AI Tagging panel shows pending suggestions for the loaded document with a viewport-
+virtualized list. Its **Sort by** and **Filter by** controls apply only to pending
+proposals; the tag checkboxes above remain the input to **Run AI** / **Clear unresolved**.
+Confidence sorting starts highest-first, while document sorting uses numeric chunk `order`
+and then span offsets (not chunk UUIDs). Creation-time sorting uses the real nullable `createdAt` provenance field from #460;
+historical spans with no recorded timestamp remain undated. Select all only
+selects currently matching proposals; previously selected hidden IDs remain selected,
+are counted separately, and are still included in a bulk confirm/reject snapshot.
+Clicking a proposal in the text clears active proposal filters if necessary so its
+virtualized card can be reached. Proposal filters and sort reset on document changes.
+The AI Tagging panel scrolls with the right sidebar rather than squeezing the run
+options into a fixed-height panel. Pending suggestions can be collapsed independently;
+sorting stays visible while the optional filters are folded, with removable chips for
+active tag, minimum confidence and explanation filters. Folding does not clear filters
+or selected proposals, and text navigation can reopen the suggestions list.
+
 ## 1. Files
 
 All files are in `semant_demo_frontend/src`.

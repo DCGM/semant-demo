@@ -234,8 +234,10 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   selects the chunks lacking a vector with `haveVector contains_none([name])`. Declared and
   filled on the existing corpus by `chunk_have_vector`
   ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#stored-named-vectors-on-chunks-chunk_have_vector-805)),
-  only where the vector is stored. Text uploads ([TEXT_UPLOAD.md](TEXT_UPLOAD.md), #785) list the vectors they write;
-  chunk ingestion and the embedder do not maintain it yet (#560).
+  only where the vector is stored. `data_tools/embedder` selects by it and adds the name with each
+  vector it writes (#816), and text uploads ([TEXT_UPLOAD.md](TEXT_UPLOAD.md), #785) list the
+  vectors they write; chunk ingestion writes none, and a chunk without the list is selected
+  like one with `[]`.
 - `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
   `yearIssued`, absent when the document has none; the search's year filters use it, not the
   document reference (#153). It is not maintained by document writes or chunk ingestion:
