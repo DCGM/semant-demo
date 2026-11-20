@@ -45,9 +45,10 @@ from semant_demo.adapters.embeddings.openai_compatible import OpenAICompatibleEm
 from semant_demo.adapters.weaviate.chunk_visibility import PROPERTY as DOCUMENT_PUBLIC_FLAG
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.names import CollectionNames
-from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.benchmarks.search_relevance import container, schema
+from semant_demo.benchmarks.search_relevance.embeddings import BatchEmbeddings
+from semant_demo.benchmarks.search_relevance.search import BenchmarkChunkSearch
 from semant_demo.benchmarks.search_relevance.contracts import CorpusChunk, Dataset, RunConfiguration, VectorSpec
 from semant_demo.benchmarks.search_relevance.embedding_cache import (
     EmbeddingCache, check_template, input_hash, render, valid_embedding)
@@ -207,12 +208,23 @@ class _NoEmbedder:
     embed_document = embed_query
 
 
+def _api_key(endpoint: EmbeddingEndpoint) -> str:
+    return os.environ.get(endpoint.api_key_env, "") if endpoint.api_key_env else ""
+
+
 def _embedding_client(model: str, endpoint: EmbeddingEndpoint, dimensions: int | None, query_prefix: str,
                       transport: httpx.AsyncBaseTransport | None) -> OpenAICompatibleEmbeddings:
-    api_key = os.environ.get(endpoint.api_key_env, "") if endpoint.api_key_env else ""
-    return OpenAICompatibleEmbeddings(endpoint.base_url, model, api_key=api_key, query_prefix=query_prefix,
+    """The application's own client for a search's query embedding (embedded as the application does)."""
+    return OpenAICompatibleEmbeddings(endpoint.base_url, model, api_key=_api_key(endpoint), query_prefix=query_prefix,
                                       document_prefix="", dimensions=dimensions, timeout=endpoint.timeout,
                                       transport=transport)
+
+
+def _document_client(model: str, endpoint: EmbeddingEndpoint, dimensions: int | None,
+                     transport: httpx.AsyncBaseTransport | None) -> BatchEmbeddings:
+    """The benchmark's batched client for the corpus's document embeddings."""
+    return BatchEmbeddings(endpoint.base_url, model, api_key=_api_key(endpoint), dimensions=dimensions,
+                           timeout=endpoint.timeout, transport=transport)
 
 
 def _failure_class(error: BaseException) -> str:
@@ -356,7 +368,7 @@ class WeaviateBenchmarkStore:
             return report
 
         cache = EmbeddingCache(cache_dir, spec.model, spec.document_template, spec.dimensions)
-        embedder = _embedding_client(spec.model, endpoint, spec.dimensions, "", self.embedding_transport)
+        embedder = _document_client(spec.model, endpoint, spec.dimensions, self.embedding_transport)
         dimensions = [spec.dimensions]
         window = max(1, endpoint.batch_size) * max(1, endpoint.concurrency) * 4
         for start in range(0, len(pending), window):
@@ -391,7 +403,7 @@ class WeaviateBenchmarkStore:
             await self._write_record(record_id, "vector", spec.target_vector, "ready",
                                      {**identity, "vector_spec_id": spec.id, "index": index})
 
-    async def _embed_window(self, window: list[_Pending], cache: EmbeddingCache, embedder: OpenAICompatibleEmbeddings,
+    async def _embed_window(self, window: list[_Pending], cache: EmbeddingCache, embedder: BatchEmbeddings,
                             endpoint: EmbeddingEndpoint, dimensions: list[int | None], report: VectorReport) -> None:
         vectors: dict[str, list[float]] = {}
         cached_keys = set()
@@ -451,7 +463,7 @@ class WeaviateBenchmarkStore:
         await verify(self.client, self._token)
         await asyncio.gather(*(write(item) for item in window if item.key in vectors))
 
-    async def _embed_with_retries(self, embedder: OpenAICompatibleEmbeddings, texts: list[str]) -> list[list[float]]:
+    async def _embed_with_retries(self, embedder: BatchEmbeddings, texts: list[str]) -> list[list[float]]:
         for attempt in range(1, EMBED_ATTEMPTS + 1):
             try:
                 return await embedder.embed_documents(texts)
@@ -486,8 +498,7 @@ class WeaviateBenchmarkStore:
 
         async def search(query: str) -> SearchOutcome:
             embedder = _TimedEmbedder(client) if client is not None else _NoEmbedder()
-            chunks = ChunkSearchRepository(self.client, self.names, fusion=fusion, query_properties=properties,
-                                           record_scores=True)
+            chunks = BenchmarkChunkSearch(self.client, self.names, fusion=fusion, query_properties=properties)
             backends = SearchBackends(
                 chunks=chunks, collections=UserCollectionRepository(self.client, self.names, None),
                 vectors=SearchVectors([SearchVector(vector_id, vector_id, "", target, embedder)], vector_id))
