@@ -13,7 +13,7 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import Metrics
-from weaviate.classes.query import Filter, QueryReference
+from weaviate.classes.query import Filter, HybridFusion, QueryReference
 
 from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.analytics import READ_BATCH
@@ -42,9 +42,13 @@ CHUNK_COPIES = {"yearIssued"}
 DOCUMENT_PROPERTIES = [name for name in Document.model_fields if name != "id"]
 
 class ChunkSearchRepository:
-    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames):
+    def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames,
+                 fusion: HybridFusion | None = None):
         self.client = client
         self.collectionNames = collectionNames
+        self.fusion = fusion
+        """Hybrid fusion; None: Weaviate's default (relative score). The application never sets
+        it; the search relevance benchmark compares both (#712)."""
         self._returned_document_properties: list[str] | None = None
         self._schema: tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]] | None = None
 
@@ -164,7 +168,7 @@ class ChunkSearchRepository:
         if query.mode == SearchType.hybrid:
             vector, target = _vector(query)
             return await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
-                                             target_vector=target, **common)
+                                             target_vector=target, fusion_type=self.fusion, **common)
         raise ValueError(f"Unknown search type: {query.mode}")
 
     async def document_filter_stats(self) -> tuple[int | None, int | None, list[str] | None]:
