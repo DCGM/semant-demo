@@ -145,6 +145,7 @@
                 :label="`Example ${index + 1}`"
                 :disable="saving"
                 clearable
+                clear-value=""
                 @keydown.enter="onExampleEnter(index, $event)"
               />
             </div>
@@ -310,8 +311,9 @@ const addExampleField = () => {
 // Not reactive: filled by the inputs' function refs while rendering.
 const exampleInputs: (QInput | null)[] = []
 const onExampleEnter = async (index: number, event: KeyboardEvent) => {
-  // Enter that confirms an input method's composition belongs to the input method.
-  if (event.isComposing) return
+  // Enter that confirms an input method's composition belongs to the input method. Safari ends
+  // the composition before that keydown, which it marks only with keyCode 229.
+  if (event.isComposing || event.keyCode === 229) return
   event.preventDefault()
   if (saving.value) return
   if (index < tagExamples.value.length - 1) {
