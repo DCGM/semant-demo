@@ -194,6 +194,9 @@ class RunnerConfig(_Model):
                 raise ValueError(f"vectors {targets[vector.target_vector]} and {vector_id} share the target vector "
                                  f"{vector.target_vector}")
             targets[vector.target_vector] = vector_id
+        without = sorted(set(self.vectors) - set(self.endpoints))
+        if without:
+            raise ValueError(f"vectors without an endpoint: {', '.join(without)} (endpoints.<vector id>)")
         if self.grid is None and not self.configurations:
             raise ValueError("neither a grid nor configurations")
         return self

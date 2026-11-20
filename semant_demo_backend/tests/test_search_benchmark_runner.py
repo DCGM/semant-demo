@@ -162,7 +162,7 @@ def test_explicit_configurations_join_the_grid_once(tmp_path):
 @pytest.mark.parametrize(("change", "message"), [
     ({"endpoints": {"fake": {"base_url": "http://x", "api_key": "secret"}}}, "Extra inputs"),
     ({"endpoints": {"fake": {"base_url": "http://x", "api_key_env": "sk-123 secret"}}}, "pattern"),
-    ({"endpoints": {}}, "vector fake has no endpoint"),
+    ({"endpoints": {}}, "vectors without an endpoint: fake"),
     ({"grid": {"modes": ["vector"], "vectors": ["other"]}}, "unknown vector other"),
     ({"grid": {"modes": ["hybrid"], "alphas": [1.5]}}, "between 0 and 1"),
     ({"grid": {"modes": ["vector"], "query_prefixes": {"fake": ["missing"]}}}, "no query prefix missing"),
@@ -419,3 +419,26 @@ def test_the_partial_state_names_the_dataset(tmp_path, dataset):
     state = json.loads((tmp_path / "runs/r1" / runner.PARTIAL_STATE).read_text())
     assert state["dataset"]["manifest_sha256"] == dataset.manifest_sha256()
     assert [c["configuration_id"] for c in state["configurations"]][0] == "text"
+
+
+def test_an_interrupted_sessions_environment_is_kept_in_the_run(tmp_path, dataset):
+    plan = plan_for(tmp_path, dataset, base_config(budget={"concurrency": 1}))
+    with pytest.raises(Interrupted):
+        run(plan, tmp_path, FakeStore(interrupt_after=5))
+    loaded = run(plan, tmp_path, FakeStore())
+    [interrupted] = loaded.manifest.environment["sessions"]  # the finishing session is the environment itself
+    assert interrupted["interrupted"] is True and interrupted["git"] and interrupted["searches"] == 27
+    assert "vectors" in interrupted  # recorded once the store was ready, before the interruption
+
+
+def test_a_dry_run_reads_an_interrupted_run_without_writing(tmp_path, dataset):
+    plan = plan_for(tmp_path, dataset, base_config(budget={"concurrency": 1}))
+    with pytest.raises(Interrupted):
+        run(plan, tmp_path, FakeStore(interrupt_after=3))
+    log = tmp_path / "runs/r1" / runner.PARTIAL_RESULTS
+    with log.open("a") as f:
+        f.write('{"configuration_id": "text", "que')  # the process died mid-line
+    before = log.read_bytes()
+    lines = []
+    runner.dry_run(plan, tmp_path / "runs/r1", "r1", False, lines.append)
+    assert log.read_bytes() == before and "24 searches to do" in "\n".join(lines)

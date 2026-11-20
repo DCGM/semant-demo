@@ -102,9 +102,10 @@ class RunState:
             self.configurations.setdefault(configuration.configuration_id, configuration)
 
 
-def read_partial_results(path: Path) -> list[RunResult]:
-    """The partial log's results. A last line cut short by an interruption is dropped and the file
-    rewritten without it, so appending goes on cleanly; a bad line elsewhere is refused."""
+def read_partial_results(path: Path, repair: bool = True) -> list[RunResult]:
+    """The partial log's results. A last line cut short by an interruption is dropped and, with
+    ``repair``, the file rewritten without it, so appending goes on cleanly (a dry run reads
+    without repairing); a bad line elsewhere is refused."""
     if not path.exists():
         return []
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -119,13 +120,16 @@ def read_partial_results(path: Path) -> list[RunResult]:
         except (ValidationError, ValueError):
             if number != len(lines):
                 raise ContractError(f"{path.name}:{number}: not a result") from None
+            if not repair:
+                continue
             partial = path.with_name(path.name + ".tmp")
             partial.write_text("".join(r.model_dump_json() + "\n" for r in found), encoding="utf-8")
             partial.replace(path)
     return found
 
 
-def read_state(directory: Path, dataset: Dataset) -> RunState:
+def read_state(directory: Path, dataset: Dataset, repair: bool = True) -> RunState:
+    """The run's state from its manifest and partial files; ``repair=False`` (dry run) never writes."""
     state = RunState()
     if (directory / MANIFEST).exists():
         run = load_run(directory, dataset)  # refuses another dataset, or a changed one
@@ -145,7 +149,9 @@ def read_state(directory: Path, dataset: Dataset) -> RunState:
         state.adopt(RunConfiguration.model_validate(c) for c in data["configurations"])
         if not state.complete:
             state.sessions = data.get("sessions", [])
-        for result in read_partial_results(directory / PARTIAL_RESULTS):
+        if data.get("current_session"):  # a session that was interrupted: its results are in the log
+            state.sessions = [*state.sessions, {**data["current_session"], "interrupted": True}]
+        for result in read_partial_results(directory / PARTIAL_RESULTS, repair):
             if result.configuration_id not in state.configurations:
                 raise ContractError(f"{PARTIAL_RESULTS}: result of unknown configuration {result.configuration_id}")
             if state.results.get((result.configuration_id, result.query_id)) != result:
@@ -274,11 +280,14 @@ def _jsonable(value: Any) -> Any:
     return json.loads(to_json(value))
 
 
-def _write_partial_state(directory: Path, dataset: Dataset, state: RunState) -> None:
+def _write_partial_state(directory: Path, dataset: Dataset, state: RunState,
+                         current: dict[str, Any] | None = None) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     data = {"dataset": dataset.ref().model_dump(), "created": state.created,
             "configurations": [c.model_dump(mode="json") for c in state.configurations.values()],
-            "sessions": state.sessions}
+            "sessions": state.sessions,
+            # This session's environment, so that it is kept when the session is interrupted.
+            "current_session": shareable(current) if current is not None else None}
     path = directory / PARTIAL_STATE
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -317,6 +326,7 @@ async def execute(plan: Plan, directory: Path, run_id: str, open_store: OpenStor
         "queries_selected": len(plan.queries),
         "configurations_run": [c.configuration_id for c in plan.configurations],
         "searches": len(work), "resumed": len(state.results)}
+    _write_partial_state(directory, dataset, state, environment)
     log(f"{run_id}: {len(work)} searches ({len(plan.configurations)} configurations, {len(plan.queries)} queries)")
     if work:
         store: BenchmarkStore = await open_store(spec)
@@ -330,6 +340,7 @@ async def execute(plan: Plan, directory: Path, run_id: str, open_store: OpenStor
                 if report.failed:
                     log(f"warning: vector {vector_id}: chunks without a vector {report.failed}")
             environment["store"] = _jsonable(await store.describe())
+            _write_partial_state(directory, dataset, state, environment)
             to_search = {c.configuration_id for c, _ in work}
             searchers = {c.configuration_id: store.searcher(c, config.endpoint(c.vector.id) if c.vector else None)
                          for c in plan.configurations if c.configuration_id in to_search}
@@ -393,7 +404,7 @@ def dry_run(plan: Plan, directory: Path, run_id: str, retry_failed: bool, out: C
         f"{len(plan.queries)} queries selected of {len(plan.dataset.queries)} "
         f"({', '.join(f'{k} {v}' for k, v in sorted(languages.items()))}), "
         f"{len({q.intent_id for q in plan.queries})} intents")
-    state = read_state(directory, plan.dataset) if directory.exists() else RunState()
+    state = read_state(directory, plan.dataset, repair=False) if directory.exists() else RunState()
     state.adopt(plan.configurations)
     todo = Counter(c.configuration_id for c, _ in pending(plan, state, retry_failed))
     for c in plan.configurations:

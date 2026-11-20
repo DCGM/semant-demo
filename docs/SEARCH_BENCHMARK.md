@@ -152,7 +152,9 @@ query embedding and search times, or the failure's exception class (never its me
 query). The manifest's `environment` records the git revision (never the machine's name), the config file's path and
 SHA-256, the store spec and `describe()` (Weaviate version, schema), the embedding endpoints
 (the key's variable name, never a key), load and vector reports, the budget, start and end
-times, and `sessions`: the environments of earlier sessions of the same run.
+times, and `sessions`: the environments of earlier sessions of the same run, an interrupted one
+marked `interrupted: true` (each session's environment is saved when it starts). A dry run only
+reads the run directory.
 
 ### Experiment config
 
