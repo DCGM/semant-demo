@@ -114,14 +114,17 @@
  * first), each a `CategoryChart` of passages, not clickable. The languages and the
  * classification are separate reads (`useCollectionPassageCharts`): choosing another
  * classification asks for that one alone, and a failed classification leaves the language chart
- * in place. Only answers that say they are of this collection are shown; a failed load, or a
- * complete answer of another scope, shows its error with Try again, never zeros.
+ * in place. The reverse does not hold: when the total cannot be counted (also when counting it
+ * again on a later visit fails), the card shows that error alone, as the statistics do, since
+ * counts that could not be confirmed are not shown as current. Only answers that say they are of
+ * this collection are shown; a failed load, or a complete answer of another scope, shows its
+ * error with Try again, never zeros.
  */
 import { computed, ref, toRef, watch } from 'vue'
 import CategoryChart from 'src/features/analytics/CategoryChart.vue'
 import { useSearchFilters } from 'src/features/search/useSearchFilters'
 import type { CollectionPassages } from 'src/generated/api'
-import { classificationChart, dimensionOptions, languageRows, ofCollection } from './passageCharts'
+import { classificationChart, classificationFilters, dimensionOptions, languageRows, ofCollection } from './passageCharts'
 import { useCollectionPassageClassification, useCollectionPassageLanguages } from './useCollectionPassageCharts'
 import type { PassageDimension } from './useUserCollectionsRepository'
 
@@ -170,8 +173,9 @@ const filtersQuery = useSearchFilters()
 const filters = computed(() => filtersQuery.data.value?.filters ?? [])
 const options = computed(() => dimensionOptions(filters.value))
 const chosen = ref<PassageDimension | null>(null)
-// Another collection starts again with the first classification.
-watch(collectionId, () => { chosen.value = null })
+// Another collection starts again with the first classification (set here: when it was chosen
+// already, the fallback below would not change, and the selector would show nothing).
+watch(collectionId, () => { chosen.value = options.value[0]?.value ?? null })
 const dimension = computed<PassageDimension | null>(() =>
   options.value.some(o => o.value === chosen.value) ? chosen.value : options.value[0]?.value ?? null)
 watch(dimension, (value) => { if (chosen.value !== value) chosen.value = value }, { immediate: true })
@@ -186,7 +190,8 @@ const classificationFailed = computed(() => classificationEnabled.value && class
 const classificationShown = computed(() => {
   const p = classification.shown.value
   if (!classificationEnabled.value || !p?.classification) return null
-  return { chart: classificationChart(p.classification, filters.value.find(f => f.targetProperty === dimension.value)) }
+  const filter = dimension.value ? classificationFilters(filters.value).get(dimension.value) : undefined
+  return { chart: classificationChart(p.classification, filter) }
 })
 </script>
 

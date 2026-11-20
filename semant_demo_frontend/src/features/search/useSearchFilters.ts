@@ -11,7 +11,9 @@ export const SEARCH_FILTERS_KEY = ['search', 'filters'] as const
  *
  * Server configuration, which changes only with a deployment: one answer serves the tab until it
  * is reloaded, kept across sign-outs (as `useSearchVectors`). A failed load is not kept, so a
- * page that mounts the query anew asks again.
+ * page that mounts the query anew asks again. A deployment that changes the filters is seen after
+ * a reload, as on the Search page, which also reads them once per tab: until then a classification
+ * the server no longer configures is still offered, and counting it fails (400).
  */
 export function useSearchFilters () {
   return useQuery({

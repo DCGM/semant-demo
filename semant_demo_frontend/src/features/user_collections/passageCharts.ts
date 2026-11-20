@@ -19,18 +19,26 @@ export interface DimensionOption {
 }
 
 /**
- * The classifications the search filters configure (a nominal filter with values on a chunk
- * classification), as the backend takes its values from them: `subject_domain` first, then in
- * the filters' order, each named by its filter.
+ * The filter of each classification the search filters configure: a nominal filter with values
+ * on a chunk classification, the last one when several target it, as the backend's
+ * `chunk_vocabulary` takes the values from it. In the order the classifications first appear.
+ */
+export function classificationFilters (filters: readonly SearchFilter[]): Map<PassageDimension, SearchFilter> {
+  const byDimension = new Map<PassageDimension, SearchFilter>()
+  for (const filter of filters) {
+    if (filter.type !== 'nominal' || !filter.values?.length || !DIMENSIONS.has(filter.targetProperty)) continue
+    byDimension.set(filter.targetProperty as PassageDimension, filter)
+  }
+  return byDimension
+}
+
+/**
+ * The classifications offered (`classificationFilters`): `subject_domain` first, then in the
+ * filters' order, each named by its filter.
  */
 export function dimensionOptions (filters: readonly SearchFilter[]): DimensionOption[] {
-  const options: DimensionOption[] = []
-  for (const filter of filters) {
-    const dimension = filter.targetProperty
-    if (filter.type !== 'nominal' || !filter.values?.length || !DIMENSIONS.has(dimension)) continue
-    if (options.some(o => o.value === dimension)) continue
-    options.push({ value: dimension as PassageDimension, label: filter.name || humanizeName(dimension) })
-  }
+  const options: DimensionOption[] = [...classificationFilters(filters)].map(([dimension, filter]) =>
+    ({ value: dimension, label: filter.name || humanizeName(dimension) }))
   const preferred = options.findIndex(o => o.value === PREFERRED_DIMENSION)
   if (preferred > 0) options.unshift(...options.splice(preferred, 1))
   return options
@@ -57,9 +65,11 @@ export interface ClassificationChart {
 /**
  * The rows of one classification: the values some passage holds (configured values in
  * vocabulary order, named by the search filter as on result badges, then stored values outside
- * the vocabulary under their raw name), then "Without a value". Configured values no passage
- * holds are left out of the bars and counted in `occurring` / `configured` instead. Null when the
- * store does not record the classification.
+ * the vocabulary under their raw name, marked as not configured), then "Without a value".
+ * Configured values no passage holds are left out of the bars and counted in `occurring` /
+ * `configured` instead. Every label is distinct (a repeated one gets the stored value added):
+ * the bars are drawn per label, so two values with one label would merge into one bar. Null when
+ * the store does not record the classification.
  */
 export function classificationChart (classification: PassageClassification,
   filter: SearchFilter | undefined): ClassificationChart | null {
@@ -67,8 +77,11 @@ export function classificationChart (classification: PassageClassification,
   const values = classification.values ?? []
   const label = (value: string) => filter?.values?.find(v => v.backendForm === value)?.userForm || humanizeName(value)
   const rows: CategoryRow[] = values.filter(v => v.count > 0).map(v => ({
-    key: v.value, label: v.configured ? label(v.value) : v.value, count: v.count, kind: 'value'
+    key: v.value, label: v.configured ? label(v.value) : `${v.value} (not configured)`, count: v.count, kind: 'value'
   }))
+  const uses = new Map<string, number>()
+  for (const row of rows) uses.set(row.label, (uses.get(row.label) ?? 0) + 1)
+  for (const row of rows) if ((uses.get(row.label) ?? 0) > 1) row.label = `${row.label} (${row.key})`
   rows.push({ key: '\u0000unknown', label: WITHOUT_VALUE_LABEL, count: classification.withoutValueCount ?? 0, kind: 'unknown' })
   const configured = values.filter(v => v.configured)
   return {

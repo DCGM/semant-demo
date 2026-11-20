@@ -11,6 +11,7 @@ import ScopedDocumentCharts from 'src/features/analytics/ScopedDocumentCharts.vu
 import { exploreCollection } from 'src/features/explore/exploreHandoff'
 import { collectionDocumentChartsKey } from 'src/features/user_collections/useCollectionDocumentCharts'
 import CollectionOverviewPage from 'src/features/user_collections/CollectionOverviewPage.vue'
+import CollectionPassageCharts from 'src/features/user_collections/CollectionPassageCharts.vue'
 import { collectionStatsKey, forgetCollectionStats } from 'src/features/user_collections/useCollectionStats'
 import { collectionPassageClassificationKey, collectionPassageLanguagesKey } from 'src/features/user_collections/useCollectionPassageCharts'
 import { SEARCH_FILTERS_KEY } from 'src/features/search/useSearchFilters'
@@ -636,7 +637,7 @@ describe('collection passage charts on the Overview tab', () => {
       : passages(id, null))
     const page = mountPage()
     await flushPromises()
-    expect(bars(page, 'passage-classification')).toEqual([['Religion', '2'], ['odd_value', '1'], ['Without a value', '1']])
+    expect(bars(page, 'passage-classification')).toEqual([['Religion', '2'], ['odd_value (not configured)', '1'], ['Without a value', '1']])
     expect(page.get('[data-testid="passage-classification"]').text()).toContain('"Without a value" is approximate')
   })
 
@@ -655,6 +656,23 @@ describe('collection passage charts on the Overview tab', () => {
     later.answer(passages('B', null, 2))
     await flushPromises()
     expect(page.get('[data-testid="passage-charts-total"]').text()).toBe('2')
+    expect(getPassageCounts.mock.calls.at(-1)!.slice(0, 2)).toEqual(['B', 'subject_domain'])
+  })
+
+  it('starts another collection with the first classification, also in the selector, when the card stays mounted', async () => {
+    const card = mount(CollectionPassageCharts, {
+      props: { collectionId: 'A', collectionName: 'Collection A', enabled: true, emptyHint: '' },
+      global: { plugins: [[Quasar, {}] as never, [VueQueryPlugin, { queryClient }]] }
+    })
+    pages.add(card)
+    await flushPromises()
+    const select = () => card.findAllComponents(QSelect).find(s => s.props('label') === 'Classification')!
+    expect(select().props('modelValue')).toBe('subject_domain')
+
+    await card.setProps({ collectionId: 'B' })
+    await flushPromises()
+
+    expect(select().props('modelValue')).toBe('subject_domain')
     expect(getPassageCounts.mock.calls.at(-1)!.slice(0, 2)).toEqual(['B', 'subject_domain'])
   })
 
