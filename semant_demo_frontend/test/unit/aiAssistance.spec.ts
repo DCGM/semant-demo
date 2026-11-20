@@ -272,7 +272,7 @@ describe('useAiAssistance', () => {
 
     streams[0].push(end('partial', {
       saved: 3,
-      unit: 'tag',
+      unit: 'call',
       units_total: 3,
       units_processed: 2,
       stop_reason: 'quota_exhausted',
@@ -284,7 +284,7 @@ describe('useAiAssistance', () => {
     await running
 
     expect(ai.lastError.value).toMatch(
-      /^Today's remaining AI allowance is not enough for the next AI operation, so AI suggestions stopped early: 2 of 3 tags processed, 3 suggestion\(s\) saved. It resets /)
+      /^Today's remaining AI allowance is not enough for the next AI operation, so AI suggestions stopped early: 2 of 3 AI calls processed, 3 suggestion\(s\) saved. It resets /)
     expect(ai.lastNotices.value).toEqual(['Tag "Person" reached the limit of 40 chunks per tag; additional candidate chunks were excluded.'])
     ai.reset()
     expect(ai.lastNotices.value).toEqual([])

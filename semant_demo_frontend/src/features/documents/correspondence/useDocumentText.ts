@@ -6,8 +6,9 @@ export type { PositionedChunk } from './pageChunks'
 
 // The chunks of a public document that the paired text/scan view shows (#544): a bounded,
 // growing set read around what the reader opens (a chunk, a page) and extended on request,
-// never the whole document. Reads are public corpus data (#541, docs/PAGE_LAYOUT.md); none
-// depends on a collection. Gaps between the chunks read are left for the owner to show.
+// never the whole document. A public document is read without a collection; a restricted or
+// unknown one only through a collection that holds it (`collectionId`, #279), which every read
+// then names. Gaps between the chunks read are left for the owner to show.
 
 const WINDOW_BEFORE = 2
 const WINDOW_AFTER = 4
@@ -22,7 +23,7 @@ export interface PageRead {
   failed: boolean
 }
 
-export function useDocumentText (documentId: () => string) {
+export function useDocumentText (documentId: () => string, collectionId: () => string | null = () => null) {
   const api = useApi().default
   const chunks = shallowRef<PositionedChunk[]>([])
   /** More chunks follow the last one read (unknown counts as yes). */
@@ -70,7 +71,7 @@ export function useDocumentText (documentId: () => string) {
     if (known) return known
     const mine = generation
     const window = await read(() => api.readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet({
-      documentId: documentId(), chunkId, before: WINDOW_BEFORE, after: WINDOW_AFTER
+      documentId: documentId(), chunkId, before: WINDOW_BEFORE, after: WINDOW_AFTER, collectionId: collectionId()
     }), 'The passage could not be loaded.')
     if (!window || mine !== generation) return null
     const read_ = positioned(window.chunks)
@@ -86,7 +87,7 @@ export function useDocumentText (documentId: () => string) {
     if (!pending) {
       const mine = generation
       pending = (async (): Promise<PageRead> => {
-        const found = await read(() => readPageChunks(api, documentId(), order), 'The text of this page could not be loaded.')
+        const found = await read(() => readPageChunks(api, documentId(), order, collectionId()), 'The text of this page could not be loaded.')
         if (!found) return { chunks: [], complete: false, failed: true }
         if (mine === generation) merge(found.chunks)
         return { ...found, failed: false }
@@ -118,7 +119,7 @@ export function useDocumentText (documentId: () => string) {
     if (!edge) return
     const mine = generation
     const result = await read(() => api.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet({
-      documentId: documentId(), chunkId: edge.id, direction, limit: EXTEND
+      documentId: documentId(), chunkId: edge.id, direction, limit: EXTEND, collectionId: collectionId()
     }), 'More text could not be loaded.')
     if (!result || mine !== generation) return
     merge(positioned(result.chunks))
@@ -132,7 +133,11 @@ export function useDocumentText (documentId: () => string) {
     if (!edge || !next) return
     const mine = generation
     const result = await read(() => api.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet({
-      documentId: documentId(), chunkId: edge.id, direction: 'after', limit: Math.min(EXTEND * 2, next.order - afterOrder - 1)
+      documentId: documentId(),
+      chunkId: edge.id,
+      direction: 'after',
+      limit: Math.min(EXTEND * 2, next.order - afterOrder - 1),
+      collectionId: collectionId()
     }), 'More text could not be loaded.')
     if (result && mine === generation) merge(positioned(result.chunks))
   }

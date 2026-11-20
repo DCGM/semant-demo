@@ -72,6 +72,12 @@
         </div>
       </q-td>
     </template>
+    <template #body-cell-documentTitle="props">
+      <q-td :props="props">
+        {{ props.value }}
+        <DocumentRightsBadge :value="props.row._public" class="q-ml-xs" />
+      </q-td>
+    </template>
     <template #body-cell-docStats="props">
       <q-td :props="props" @click.stop>
         <div v-if="statsLoading" class="doc-stats-cell doc-stats-cell--loading">
@@ -105,6 +111,21 @@
               <div class="doc-stat-tooltip">
                 <strong>Distinct tags</strong><br />
                 {{ documentStatsMap[props.row.id].distinctTagsCount }} unique tag{{ documentStatsMap[props.row.id].distinctTagsCount === 1 ? '' : 's' }} used in annotations across this document.
+              </div>
+            </q-tooltip>
+          </span>
+          <!-- Only when there are some, as on the Collections page (#770). -->
+          <span
+            v-if="documentStatsMap[props.row.id].suggestionsCount"
+            class="doc-stat doc-stat--suggestions"
+            data-testid="document-pending-suggestions"
+          >
+            <q-icon name="auto_awesome" size="13px" />
+            {{ documentStatsMap[props.row.id].suggestionsCount }}
+            <q-tooltip>
+              <div class="doc-stat-tooltip">
+                <strong>Unresolved AI suggestions</strong><br />
+                {{ plural(documentStatsMap[props.row.id].suggestionsCount ?? 0, 'AI suggestion') }} in this document within this collection not yet confirmed or rejected.
               </div>
             </q-tooltip>
           </span>
@@ -144,9 +165,11 @@ import { storeToRefs } from 'pinia'
 import { Document, DocumentStats } from 'src/generated/api'
 import { useDocumentsStore } from './documentsStore'
 import useBrowseLibraryDialog from './useBrowseLibraryDialog'
+import { bulkRemovalConfirmation, singleRemovalConfirmation } from './removalConfirmation'
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
+import DocumentRightsBadge from './DocumentRightsBadge.vue'
 import { plural } from 'src/shared/plural'
 import { QTableColumn, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
@@ -225,16 +248,27 @@ const handleTagDocument = (documentId: string) => {
   })
 }
 
-const handleRemoveFromCollection = async (document: Document) => {
+// The confirmations name the document's annotations in the collection (#765). Stats are
+// used only when loaded for this collection and no reload is under way (the map keeps the
+// previous load until the next one finishes); otherwise the count is described as unknown,
+// never as none.
+const removalTarget = (document: Document) => {
+  const stats = documentStatsMap.value[document.id]
+  return {
+    title: document.title?.trim() || 'Untitled document',
+    stats: !statsLoading.value && stats?.collectionId === collectionId.value ? stats : null,
+    loading: statsLoading.value
+  }
+}
+
+const handleRemoveFromCollection = (document: Document) => {
+  // The title as text, not HTML (#479).
+  const { title, message, okLabel } = singleRemovalConfirmation(removalTarget(document))
   $q.dialog({
-    title: 'Remove Document',
-    // The title as text, not HTML (#479).
-    message: `Are you sure you want to remove the document "${document.title}" from the collection?`,
+    title,
+    message,
     cancel: true,
-    ok: {
-      label: 'Delete',
-      color: 'negative'
-    },
+    ok: { label: okLabel, color: 'negative' },
     persistent: true
   }).onOk(async () => {
     await removeFromCollection(document.id, collectionId.value)
@@ -247,16 +281,13 @@ const handleBulkRemoveFromCollection = () => {
   }
 
   const selectedIds = selected.value.map((doc) => doc.id)
-  const count = selectedIds.length
+  const { title, message, okLabel } = bulkRemovalConfirmation(selected.value.map(removalTarget))
 
   $q.dialog({
-    title: 'Remove Selected Documents',
-    message: `Are you sure you want to remove ${plural(count, 'selected document')} from the collection?`,
+    title,
+    message,
     cancel: true,
-    ok: {
-      label: 'Delete selected',
-      color: 'negative'
-    },
+    ok: { label: okLabel, color: 'negative' },
     persistent: true
   }).onOk(async () => {
     await removeManyFromCollection(selectedIds, collectionId.value)
@@ -418,6 +449,12 @@ const columns: QTableColumn<Document>[] = [
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   padding: 2px 7px;
+}
+
+.doc-stat--suggestions {
+  color: #4527a0;
+  background: #ede7f6;
+  border-color: rgba(94, 53, 177, 0.3);
 }
 
 .doc-stat-tooltip {

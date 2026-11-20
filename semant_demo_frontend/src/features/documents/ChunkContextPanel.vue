@@ -77,7 +77,11 @@
       </div>
 
       <!-- The passage: laid out with the header (display: contents), or scrolled by itself. -->
-      <div ref="bodyEl" class="chunk-context__body" data-testid="chunk-context-body" @scroll.passive="checkTargetInView">
+      <div ref="bodyEl" class="chunk-context__body" data-testid="chunk-context-body" @scroll.passive="onBodyScroll">
+        <!-- With `scrollText`: edge fades, shown only while there is more text in that direction. -->
+        <div v-if="scrollText" class="chunk-context__fade-anchor chunk-context__fade-anchor--top" aria-hidden="true">
+          <div class="chunk-context__fade" :class="{ 'chunk-context__fade--on': fadeTop }" data-testid="chunk-context-fade-top" :data-active="fadeTop" />
+        </div>
         <!-- With `scrollText` and `backLabel`: a way back to the target when it is scrolled
              out of view, on the side where it is. Always present, so showing it moves nothing. -->
         <div v-if="scrollText && backLabel" class="chunk-context__back-anchor chunk-context__back-anchor--top">
@@ -114,6 +118,7 @@
             color="primary"
             icon="expand_less"
             label="Show earlier text"
+            data-edge="before"
             :loading="extending === 'before'"
             :disable="!!extending || loading"
             @click="emit('extend', 'before')"
@@ -156,12 +161,16 @@
             color="primary"
             icon="expand_more"
             label="Show later text"
+            data-edge="after"
             :loading="extending === 'after'"
             :disable="!!extending || loading"
             @click="emit('extend', 'after')"
           />
           <div v-else class="chunk-context__edge text-caption text-grey-6">End of document</div>
         </template>
+        <div v-if="scrollText" class="chunk-context__fade-anchor chunk-context__fade-anchor--bottom" aria-hidden="true">
+          <div class="chunk-context__fade" :class="{ 'chunk-context__fade--on': fadeBottom }" data-testid="chunk-context-fade-bottom" :data-active="fadeBottom" />
+        </div>
         <div v-if="scrollText && backLabel" class="chunk-context__back-anchor chunk-context__back-anchor--bottom">
           <q-btn
             v-show="targetAway === 'below'"
@@ -183,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { QBtn, QIcon, QSpinner } from 'quasar'
 import type { RouteLocationRaw } from 'vue-router'
 import type { Document, DocumentChunk } from 'src/generated/api'
@@ -339,15 +348,180 @@ function checkTargetInView () {
     targetAway.value = rect.bottom < view.top + 4 ? 'above' : rect.top > view.bottom - 4 ? 'below' : null
   })
 }
-const bodyObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => checkTargetInView())
+
+// With `scrollText`: whether there is text beyond the top / bottom edge of the passage's view.
+const fadeTop = ref(false)
+const fadeBottom = ref(false)
+function updateFades () {
+  const body = bodyEl.value
+  if (!props.scrollText || !body) {
+    fadeTop.value = false
+    fadeBottom.value = false
+    return
+  }
+  fadeTop.value = body.scrollTop > 1
+  fadeBottom.value = body.scrollHeight - body.clientHeight - body.scrollTop > 1
+}
+function onBodyScroll () {
+  updateFades()
+  checkTargetInView()
+}
+const bodyObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { updateFades(); checkTargetInView() })
 watch(bodyEl, (el, old) => {
   if (old) bodyObserver?.unobserve(old)
   if (el) bodyObserver?.observe(el)
+  updateFades()
 })
-watch(() => [props.chunks, props.highlight, props.targetChunkId] as const, () => { void nextTick(checkTargetInView) })
+watch(() => [props.chunks, props.highlight, props.targetChunkId, props.scrollText, props.loading] as const, () => {
+  void nextTick(() => { updateFades(); checkTargetInView() })
+})
 onBeforeUnmount(() => {
   bodyObserver?.disconnect()
   if (checkFrame) cancelAnimationFrame(checkFrame)
+})
+
+// Reading on: the adjacent text is requested when the user scrolls the passage's own scroller
+// towards its start or end and that edge is within one viewport of the scroller (the buttons
+// stay as the fallback). Each request needs a new scroll in that direction: a scroll the user
+// did not make (scrolling to the target, scroll anchoring when text is added or dropped at
+// the other end) never asks for text, so one gesture cannot keep extending the passage, and
+// nothing is requested before the target is shown, while loading, or after a failure.
+const INTENT_MS = 800
+const SCROLL_KEYS: Record<string, ContextDirection> = {
+  ArrowUp: 'before', PageUp: 'before', Home: 'before', ArrowDown: 'after', PageDown: 'after', End: 'after', ' ': 'after'
+}
+const targetSettled = ref(false)
+let intent: { direction: ContextDirection | null, until: number } = { direction: null, until: 0 }
+let draggingScrollbar = false
+let touchY: number | null = null
+let lastTop = 0
+let scroller: HTMLElement | null = null
+
+/** The element that scrolls the passage: its own body, or the nearest scrolling ancestor. */
+function passageScroller (): HTMLElement | null {
+  const body = bodyEl.value
+  if (!body) return null
+  if (props.scrollText) return body
+  for (let node = body.parentElement; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY
+    if (overflow === 'auto' || overflow === 'scroll') return node
+  }
+  return (window.document.scrollingElement as HTMLElement | null) ?? window.document.documentElement
+}
+
+function intend (direction: ContextDirection | null) {
+  if (targetSettled.value) intent = { direction, until: Date.now() + INTENT_MS }
+}
+function onWheel (event: WheelEvent) { if (event.deltaY) intend(event.deltaY > 0 ? 'after' : 'before') }
+function onTouchStart (event: TouchEvent) { touchY = event.touches[0]?.clientY ?? null }
+function onTouchMove (event: TouchEvent) {
+  const y = event.touches[0]?.clientY
+  if (y === undefined || touchY === null || y === touchY) return
+  intend(y < touchY ? 'after' : 'before') // the finger moves up: the text scrolls down
+  touchY = y
+}
+function onKeyDown (event: KeyboardEvent) {
+  const direction = SCROLL_KEYS[event.key]
+  if (direction) intend(event.key === ' ' && event.shiftKey ? 'before' : direction)
+}
+function onPointerDown (event: PointerEvent) {
+  // On the scroller itself, not its text or buttons: its scrollbar.
+  if (event.target === scroller) draggingScrollbar = true
+}
+function onPointerUp () { draggingScrollbar = false }
+
+/** How far the `direction` edge's button is beyond the scroller's view (px), or null without it. */
+function edgeDistance (direction: ContextDirection): number | null {
+  const edge = bodyEl.value?.querySelector<HTMLElement>(`[data-edge="${direction}"]`)
+  if (!edge || !scroller) return null
+  const page = scroller === window.document.scrollingElement || scroller === window.document.documentElement
+  const top = page ? 0 : scroller.getBoundingClientRect().top
+  const bottom = top + (page ? window.innerHeight : scroller.clientHeight)
+  const rect = edge.getBoundingClientRect()
+  return direction === 'after' ? rect.top - bottom : top - rect.bottom
+}
+
+function onScrollerScroll () {
+  if (!scroller) return
+  const moved = scroller.scrollTop - lastTop
+  lastTop = scroller.scrollTop
+  // Only the user's scroll: a recent gesture or key, or a drag of the scrollbar.
+  const direction = Date.now() < intent.until
+    ? intent.direction
+    : draggingScrollbar && moved ? (moved > 0 ? 'after' : 'before') : null
+  // The text must move that way too: scroll anchoring moves it the other way when text is
+  // added above or dropped from the top.
+  if (!direction || !moved || (moved > 0) !== (direction === 'after')) return
+  if (!targetSettled.value || !props.visible || props.loading || props.extending || props.error) return
+  if (direction === 'after' ? !props.hasAfter : !props.hasBefore) return
+  const viewport = scroller === window.document.scrollingElement || scroller === window.document.documentElement
+    ? window.innerHeight
+    : scroller.clientHeight
+  const distance = edgeDistance(direction)
+  if (distance === null || viewport <= 0 || distance > viewport) return
+  intent = { direction: null, until: 0 } // a further request needs further scrolling
+  emit('extend', direction)
+}
+
+// Keeps the reading position when text is added above the passage or dropped from its top:
+// the first chunk in view (before the change) stays where it was in the view.
+let readingAnchor: { id: string, top: number } | null = null
+function viewTop (): number {
+  if (!scroller) return 0
+  const page = scroller === window.document.scrollingElement || scroller === window.document.documentElement
+  return page ? 0 : scroller.getBoundingClientRect().top
+}
+watch(() => props.chunks, (next, previous) => {
+  readingAnchor = null
+  if (!scroller || !previous?.length || !next.length || next[0].id === previous[0].id) return
+  const top = viewTop()
+  for (const c of previous) {
+    const el = chunkEls.get(c.id)
+    const rect = el?.getBoundingClientRect()
+    if (rect && rect.bottom > top) {
+      if (next.some(n => n.id === c.id)) readingAnchor = { id: c.id, top: rect.top }
+      return
+    }
+  }
+}, { flush: 'pre' })
+watch(() => props.chunks, () => {
+  const anchor = readingAnchor
+  readingAnchor = null
+  const el = anchor && chunkEls.get(anchor.id)
+  if (!anchor || !el || !scroller) return
+  const shift = el.getBoundingClientRect().top - anchor.top
+  if (Math.abs(shift) < 1) return
+  if (scroller === window.document.scrollingElement || scroller === window.document.documentElement) window.scrollBy(0, shift)
+  else scroller.scrollTop += shift
+  lastTop = scroller.scrollTop // not the user's scroll
+}, { flush: 'post' })
+
+const SCROLLER_EVENTS = [
+  ['wheel', onWheel], ['touchstart', onTouchStart], ['touchmove', onTouchMove], ['keydown', onKeyDown],
+  ['pointerdown', onPointerDown], ['scroll', onScrollerScroll]
+] as const
+function scrollTarget (el: HTMLElement): HTMLElement | Window {
+  return el === window.document.scrollingElement || el === window.document.documentElement ? window : el
+}
+function attachScroller () {
+  const next = passageScroller()
+  if (next === scroller) return
+  if (scroller) SCROLLER_EVENTS.forEach(([name, fn]) => scrollTarget(scroller!).removeEventListener(name, fn as EventListener))
+  scroller = next
+  lastTop = scroller?.scrollTop ?? 0
+  if (scroller) SCROLLER_EVENTS.forEach(([name, fn]) => scrollTarget(scroller!).addEventListener(name, fn as EventListener, { passive: true }))
+}
+watch(() => [bodyEl.value, props.scrollText, props.visible] as const, () => { void nextTick(attachScroller) }, { flush: 'post' })
+onMounted(() => {
+  attachScroller()
+  window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
+})
+onBeforeUnmount(() => {
+  if (scroller) SCROLLER_EVENTS.forEach(([name, fn]) => scrollTarget(scroller!).removeEventListener(name, fn as EventListener))
+  scroller = null
+  window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
 })
 
 /** The point of a DOM selection boundary in a chunk's text, or null outside the text. */
@@ -383,7 +557,7 @@ function setChunkEl (id: string, el: HTMLElement | null) {
 
 // Set by every request to show the target; cleared once it is in view.
 let scrollPending = true
-watch(() => props.focusRequest, () => { scrollPending = true })
+watch(() => props.focusRequest, () => { scrollPending = true; targetSettled.value = false; intent = { direction: null, until: 0 } })
 
 // The target last scrolled to: the next one in the same document is scrolled to from its
 // side, so the motion shows whether it is earlier or later in the text (#493).
@@ -397,7 +571,7 @@ function directionTo (documentId: string | undefined, order: number | null | und
 watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visible] as const, async ([request, loading, loaded, visible], previous) => {
   // A new request is noted here too: watchers of one change do not run in a fixed order, and
   // with the target already loaded nothing else would run this again.
-  if (previous && request !== previous[0]) scrollPending = true
+  if (previous && request !== previous[0]) { scrollPending = true; targetSettled.value = false; intent = { direction: null, until: 0 } }
   if (loading || !loaded || !visible || !scrollPending) return
   await nextTick()
   // A panel just made visible is laid out in the next frame.
@@ -422,6 +596,7 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   target.style.scrollMarginTop = `${inset}px`
   const tall = target.getBoundingClientRect().height > window.innerHeight / 2
   scrollToTarget(target, direction, tall, inset, replaced)
+  targetSettled.value = true
 }, { immediate: true })
 </script>
 
@@ -457,7 +632,54 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   flex: 1 1 0;
   min-height: 160px;
   overflow-y: auto;
-  overflow-anchor: auto;
+}
+
+/* Zero-height anchors at the passage's edges carry the fades (they take no room and
+   let every click, selection and touch through). */
+.chunk-context__fade-anchor {
+  position: sticky;
+  z-index: 1;
+  height: 0;
+  margin: -4px 0;
+  pointer-events: none;
+}
+
+.chunk-context__fade-anchor--top {
+  top: 0;
+}
+
+.chunk-context__fade-anchor--bottom {
+  bottom: 0;
+}
+
+.chunk-context__fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.chunk-context__fade--on {
+  opacity: 1;
+}
+
+.chunk-context__fade-anchor--top .chunk-context__fade {
+  top: 0;
+  background: linear-gradient(to bottom, #fff, rgba(255, 255, 255, 0));
+}
+
+.chunk-context__fade-anchor--bottom .chunk-context__fade {
+  bottom: 0;
+  background: linear-gradient(to top, #fff, rgba(255, 255, 255, 0));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chunk-context__fade {
+    transition: none;
+  }
 }
 
 .chunk-context__meta {
@@ -504,6 +726,8 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
 
 .chunk-context__back {
   position: absolute;
+  /* Room after the label: the last letter is not squeezed against the edge. */
+  padding-right: 14px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 
@@ -547,9 +771,12 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   overflow: hidden;
 }
 
-.chunk-context__text {
-  /* Lets the browser keep the reading position when earlier text is added above. */
-  overflow-anchor: auto;
+/* The panel keeps the reading position itself (keepReadingPosition): the browser's scroll
+   anchoring could pick the "Show earlier text" button above the added text, and is not
+   available in every browser. */
+.chunk-context,
+.chunk-context__body {
+  overflow-anchor: none;
 }
 
 .chunk-context__chunk {

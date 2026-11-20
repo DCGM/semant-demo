@@ -6,6 +6,7 @@
       :tags="tags"
       :documents="store.documents"
       :documents-error="store.documentsError"
+      :facets="store.facets"
       :attributes="attributesStore.attributes"
       :shown-attribute-ids="store.shownAttributeIds"
       class="q-mb-sm"
@@ -22,6 +23,14 @@
       @change="store.setFilters"
       @reset="store.resetFilters"
       @open="openContext"
+    />
+
+    <SimilarSourceBar
+      :filters="store.filters"
+      :has-previous="!!store.previousView"
+      @open="openContext"
+      @change="store.setFilters"
+      @back="store.returnFromSimilar"
     />
 
     <SelectionBar
@@ -62,6 +71,7 @@
       <span data-testid="concordance-range">{{ rangeLabel }}</span>
       <span v-if="rankedText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-ranked">{{ rankedText }}</span>
       <span v-if="unsortableText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-unsortable">{{ unsortableText }}</span>
+      <span v-if="proximityText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-proximity">{{ proximityText }}</span>
       <q-spinner v-if="store.loading" color="primary" size="1.2em" aria-label="Loading annotations" />
       <!-- Reviewed rows stay in place until the list is read again (#690). -->
       <span v-if="store.unmatched.size" class="collection-annotations__unmatched text-grey-8" data-testid="concordance-unmatched">
@@ -129,6 +139,7 @@
       similar
       :class="{ 'collection-annotations__stale': store.loading }"
       @open="openContext"
+      @open-neighbor="openNeighbor"
       @similar="findSimilar"
       @toggle="toggleRow"
       @select-page="selectPage"
@@ -443,6 +454,7 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
+import SimilarSourceBar from './SimilarSourceBar.vue'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
@@ -461,7 +473,7 @@ import {
 } from './boundaryEdit'
 import { useAnnotationReviewStore, type ReviewReport } from './annotationReviewStore'
 import { PAGE_SIZE, defaultFilters, useConcordanceStore } from './concordanceStore'
-import { concordanceChips, rankedLabel, unsortableLabel } from './filterChips'
+import { concordanceChips, proximityLabel, rankedLabel, unsortableLabel } from './filterChips'
 import { formatWhen, personName } from './provenance'
 import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
@@ -508,6 +520,9 @@ const rankedText = computed(() => rankedLabel(store.page?.result, store.total))
 
 /** Text and context sorts (#666): how many rows have no current sort key, and where they are. */
 const unsortableText = computed(() => unsortableLabel(store.page?.unsortable, store.filters.descending))
+
+/** Proximity (#333): what could not be compared for lack of current positions. */
+const proximityText = computed(() => proximityLabel(store.page?.proximity))
 
 const emptyText = computed(() => {
   if (ranked.value) return 'No annotation matching these filters has a current vector to rank by.'
@@ -636,6 +651,19 @@ async function openContext (row: AnnotationListRow) {
   await nextTick() // the panel registers when the first row is opened
   rightSidebar.activate(CONTEXT_PANEL_ID)
   await opening
+}
+
+/** Opens a neighbor that made a row match the proximity filter (#333), read as it is now; it need
+ * not be listed. */
+async function openNeighbor (id: string) {
+  try {
+    const row = await store.readRow(id)
+    if (row) await openContext(row)
+    else $q.notify({ type: 'warning', message: 'This annotation no longer exists.' })
+  } catch (e) {
+    console.error('Reading the neighbor annotation failed', e)
+    $q.notify({ type: 'negative', message: 'The annotation could not be read.' })
+  }
 }
 
 /** Lists the annotations most similar to `row` within the current filters (#664); the row stays
@@ -788,6 +816,9 @@ function afterReview (report: ReviewReport) {
   ])
   void store.loadShown()
   if (report.action !== ReviewAction.approve) void store.loadDocuments()
+  // The counts of the filter menus follow a review that changed (or may have changed) annotations,
+  // once per review, whether or not they are on this page (#667).
+  if (report.saved.length || report.missing.length || report.failed.length) void store.loadFacets()
   return loading
 }
 
@@ -1113,6 +1144,7 @@ async function saveBoundary () {
         values: { start: saved.start, end: saved.end, ...(result.chunkId !== saved.chunkId ? { chunkId: saved.chunkId } : {}) }
       }]
     })
+    void store.loadFacets() // the text, and so the words filter's counts, may have changed
     if (boundary.value === b) boundary.value = null
     await followFocused()
     if (applies() && !boundary.value) await cancelBoundary()
@@ -1168,6 +1200,8 @@ const answered = (attributeId: string) => (result: AttributeAssignResult) => sto
  * found every annotation already as asked changed nothing and keeps it (#569). */
 function noteAssigned (changed: number) {
   if (changed && (review.undoable || review.undoNote)) review.noteChange(null, 'Attribute assignments cannot be undone.')
+  // The attribute menu's counts follow an assignment that changed something, once per assignment (#667).
+  if (changed) void store.loadFacets()
 }
 
 /** Assigns values to one annotation (a row's column or the sidebar), at the attribute version
@@ -1276,6 +1310,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onReviewShortcut))
 // ── Workspace state across navigation ──
 onBeforeRouteLeave(() => {
   store.scrollY = window.scrollY
+})
+
+// The attribute facets follow the collection's attributes (#667); read again when they arrive.
+watch(() => attributesStore.attributes.map(a => a.id).join(','), () => {
+  store.facetAttributeIds = attributesStore.attributes.map(a => a.id)
+  if (store.collectionId) void store.loadFacets()
 })
 
 watch(collectionId, async (id) => {

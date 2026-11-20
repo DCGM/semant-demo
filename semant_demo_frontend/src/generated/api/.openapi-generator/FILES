@@ -7,6 +7,8 @@ docs/AnnotatedDocument.md
 docs/AnnotationCounts.md
 docs/AnnotationExportRequest.md
 docs/AnnotationExportScope.md
+docs/AnnotationFacets.md
+docs/AnnotationFacetsRequest.md
 docs/AnnotationFilters.md
 docs/AnnotationIds.md
 docs/AnnotationIdsRequest.md
@@ -59,6 +61,7 @@ docs/DeleteSpansForTagsRequest.md
 docs/DeleteSpansForTagsResponse.md
 docs/Detail.md
 docs/DiscussSpanRequest.md
+docs/DistanceUnit.md
 docs/Document.md
 docs/DocumentBrowse.md
 docs/DocumentChunk.md
@@ -79,6 +82,9 @@ docs/DocumentSummaryResponse.md
 docs/DocumentViewChunk.md
 docs/ErrorModel.md
 docs/ExplainRequest.md
+docs/Facet.md
+docs/FacetPopulation.md
+docs/FacetValue.md
 docs/FeedbackRequest.md
 docs/FilterType.md
 docs/HTTPValidationError.md
@@ -90,6 +96,10 @@ docs/MaxValue.md
 docs/MaxValue1.md
 docs/MinValue.md
 docs/MinValue1.md
+docs/NearDirection.md
+docs/NearFilter.md
+docs/NearNeighbor.md
+docs/NearRelation.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
 docs/Partnumber.md
@@ -108,6 +118,7 @@ docs/PostAttributeValue.md
 docs/PostCollection.md
 docs/PostSpan.md
 docs/PostTag.md
+docs/ProximityCoverage.md
 docs/PublicationYearCounts.md
 docs/PublicationYearDistribution.md
 docs/QuestionRequest.md
@@ -175,6 +186,8 @@ models/AnnotatedDocument.ts
 models/AnnotationCounts.ts
 models/AnnotationExportRequest.ts
 models/AnnotationExportScope.ts
+models/AnnotationFacets.ts
+models/AnnotationFacetsRequest.ts
 models/AnnotationFilters.ts
 models/AnnotationIds.ts
 models/AnnotationIdsRequest.ts
@@ -225,6 +238,7 @@ models/DeleteSpansForTagsRequest.ts
 models/DeleteSpansForTagsResponse.ts
 models/Detail.ts
 models/DiscussSpanRequest.ts
+models/DistanceUnit.ts
 models/Document.ts
 models/DocumentBrowse.ts
 models/DocumentChunk.ts
@@ -245,6 +259,9 @@ models/DocumentSummaryResponse.ts
 models/DocumentViewChunk.ts
 models/ErrorModel.ts
 models/ExplainRequest.ts
+models/Facet.ts
+models/FacetPopulation.ts
+models/FacetValue.ts
 models/FeedbackRequest.ts
 models/FilterType.ts
 models/HTTPValidationError.ts
@@ -256,6 +273,10 @@ models/MaxValue.ts
 models/MaxValue1.ts
 models/MinValue.ts
 models/MinValue1.ts
+models/NearDirection.ts
+models/NearFilter.ts
+models/NearNeighbor.ts
+models/NearRelation.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts
 models/Partnumber.ts
@@ -274,6 +295,7 @@ models/PostAttributeValue.ts
 models/PostCollection.ts
 models/PostSpan.ts
 models/PostTag.ts
+models/ProximityCoverage.ts
 models/PublicationYearCounts.ts
 models/PublicationYearDistribution.ts
 models/QuestionRequest.ts

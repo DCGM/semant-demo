@@ -1,4 +1,8 @@
-"""HTTP routes of the Documents feature (public corpus reads); the rules live in ``service.py`` and ``pages.py``."""
+"""HTTP routes of the Documents feature; the rules live in ``service.py`` and ``pages.py``.
+
+Every document read takes an optional ``collection_id`` (#279): without it, only public
+documents are readable, also anonymously; with it, the signed-in user's read access to that
+collection and the document's link to it make a restricted or unknown document readable."""
 import asyncio
 import hashlib
 from typing import Literal
@@ -14,7 +18,9 @@ from semant_demo.adapters.weaviate.criteria import UnavailableFilter
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.features.documents.criteria import ChunkFilters, ChunkVocabulary, DocumentFilters
 from semant_demo.features.documents import pages, service
-from semant_demo.routes.dependencies import get_chunk_vocabulary, get_page_assets, get_user_collections, get_documents
+from semant_demo.features.documents.asset_access import AssetSigner
+from semant_demo.routes.dependencies import (
+    get_asset_signer, get_chunk_vocabulary, get_page_assets, get_user_collections, get_documents)
 from semant_demo.features.documents.schemas import (
     AdjacentChunks, Document, DocumentBrowse, DocumentChunkWindow, DocumentDetail, DocumentPages, PageChunks)
 from semant_demo.users.auth import current_active_optional_user, current_active_user
@@ -23,12 +29,19 @@ from semant_demo.users.models import User
 
 exp_router = APIRouter()
 
+COLLECTION_SCOPE = ("Read the document through this collection: needs read access to it, and the document must "
+                    "belong to it. Without it, only public documents are readable (#279).")
+
 @exp_router.get("/api/document/{document_id}", response_model=Document, response_model_exclude_none=True)
-async def fetch_document(document_id: str, documents: DocumentRepository = Depends(get_documents)) -> Document:
+async def fetch_document(document_id: str,
+                         collection_id: str | None = Query(default=None, description=COLLECTION_SCOPE),
+                         documents: DocumentRepository = Depends(get_documents),
+                         collections: UserCollectionRepository = Depends(get_user_collections),
+                         current_user: User | None = Depends(current_active_optional_user)) -> Document:
     """
-    Retrieves document by its id
+    Retrieves a readable document by its id (a public one, or one of ``collection_id``).
     """
-    return await service.read_document(documents, document_id)
+    return await service.read_document(documents, collections, current_user, document_id, collection_id)
 
 @exp_router.get("/api/documents/browse", response_model=DocumentBrowse, response_model_exclude_none=True)
 async def browse_documents(collection_id: str | None = None,
@@ -115,10 +128,14 @@ async def fetch_collection_document(collection_id: str,
 )
 async def count_document_chunks(
     document_id: str,
+    collection_id: str | None = Query(default=None, description=COLLECTION_SCOPE),
     documents: DocumentRepository = Depends(get_documents),
+    collections: UserCollectionRepository = Depends(get_user_collections),
+    current_user: User | None = Depends(current_active_optional_user),
 ) -> int:
-    """Returns the total number of chunks in the given document (public corpus data)."""
-    return await service.count_chunks(documents, document_id)
+    """Returns the total number of chunks in the given document; 0 for an unknown document and,
+    without ``collection_id``, for one that is not public."""
+    return await service.count_chunks(documents, collections, current_user, document_id, collection_id)
 
 
 @exp_router.get(
@@ -131,13 +148,17 @@ async def read_document_chunk_window(
     chunk_id: str,
     before: int = Query(default=3, ge=0, le=service.MAX_WINDOW_SIDE),
     after: int = Query(default=3, ge=0, le=service.MAX_WINDOW_SIDE),
+    collection_id: str | None = Query(default=None, description=COLLECTION_SCOPE),
     documents: DocumentRepository = Depends(get_documents),
+    collections: UserCollectionRepository = Depends(get_user_collections),
+    current_user: User | None = Depends(current_active_optional_user),
 ) -> DocumentChunkWindow:
     """
-    Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document,
-    in document order (public corpus data). Used to show a search hit in its context.
+    Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable)
+    document, in document order. Used to show a search hit in its context.
     """
-    return await service.read_chunk_window(documents, document_id, chunk_id, before, after)
+    return await service.read_chunk_window(documents, collections, current_user, document_id, chunk_id, before, after,
+                                           collection_id)
 
 
 @exp_router.get(
@@ -150,14 +171,18 @@ async def read_document_adjacent_chunks(
     chunk_id: str,
     direction: Literal["before", "after"],
     limit: int = Query(default=5, ge=1, le=service.MAX_WINDOW_SIDE),
+    collection_id: str | None = Query(default=None, description=COLLECTION_SCOPE),
     documents: DocumentRepository = Depends(get_documents),
+    collections: UserCollectionRepository = Depends(get_user_collections),
+    current_user: User | None = Depends(current_active_optional_user),
 ) -> AdjacentChunks:
     """
     Returns up to ``limit`` chunks directly before or after the chunk, in document order,
-    without the chunk itself (public corpus data). Extends a passage read with ``/window``
+    without the chunk itself (readable documents only). Extends a passage read with ``/window``
     without reading the document metadata or chunk count again.
     """
-    return await service.read_adjacent_chunks(documents, document_id, chunk_id, direction, limit)
+    return await service.read_adjacent_chunks(documents, collections, current_user, document_id, chunk_id, direction,
+                                              limit, collection_id)
 
 
 @exp_router.get("/api/documents/{document_id}/chunks/by_page", response_model=PageChunks,
@@ -166,33 +191,47 @@ async def read_document_page_chunks(
     document_id: str,
     page: int = Query(ge=0),
     limit: int = Query(default=20, ge=1, le=pages.MAX_PAGE_CHUNKS),
+    collection_id: str | None = Query(default=None, description=COLLECTION_SCOPE),
     documents: DocumentRepository = Depends(get_documents),
+    collections: UserCollectionRepository = Depends(get_user_collections),
+    current_user: User | None = Depends(current_active_optional_user),
 ) -> PageChunks:
     """
     Returns, in document order, up to ``limit`` chunks whose page range (``from_page``..
     ``to_page``) includes page ``page`` (the page's ``order`` in the page manifest), and
-    whether more do (public corpus data). Used to open a page directly.
+    whether more do (readable documents only). Used to open a page directly.
     """
-    return await pages.read_page_chunks(documents, document_id, page, limit)
+    return await pages.read_page_chunks(documents, collections, current_user, document_id, page, limit, collection_id)
 
 
 @exp_router.get("/api/documents/{document_id}/pages", response_model=DocumentPages,
                 response_model_exclude_none=True)
 async def read_document_pages(document_id: str, response: Response,
+                              collection_id: str | None = Query(default=None, description=COLLECTION_SCOPE),
                               documents: DocumentRepository = Depends(get_documents),
-                              assets: PageAssetStore = Depends(get_page_assets)) -> DocumentPages:
+                              collections: UserCollectionRepository = Depends(get_user_collections),
+                              assets: PageAssetStore = Depends(get_page_assets),
+                              signer: AssetSigner = Depends(get_asset_signer),
+                              current_user: User | None = Depends(current_active_optional_user)) -> DocumentPages:
     """
-    Returns the document's pages in order, each with the URLs of its available image,
-    layout file and thumbnail (public corpus data). ``available`` is false, with no pages,
-    for a document without imported pages (a text-only document).
+    Returns the (readable) document's pages in order, each with the URLs of its available
+    image, layout file and thumbnail. Read through ``collection_id``, a document that is not
+    public gets signed asset URLs, valid while the user can read the collection and it holds
+    the document. ``available`` is false, with no pages, for a document without imported
+    pages (a text-only document).
     """
-    response.headers["Cache-Control"] = "no-cache"
-    return await pages.read_pages(documents, assets, document_id)
+    # A manifest read through a collection may hold signed URLs: never stored by a cache.
+    response.headers["Cache-Control"] = "no-cache" if collection_id is None else "private, no-store"
+    return await pages.read_pages(documents, collections, assets, current_user, document_id, collection_id, signer)
 
 
-ASSET_CACHE_CONTROL = {"image": "public, max-age=86400", "thumbnail": "public, max-age=86400", "layout": "no-cache"}
-"""Scans and thumbnails do not change; a layout file is replaced when a document is
-re-imported with other parameters, together with its chunks' anchors, so it is revalidated."""
+PUBLIC_ASSET_CACHE_CONTROL = "public, no-cache"
+"""A public document's assets may be stored by shared caches, but are revalidated (``ETag``,
+304) on every use, which checks the document's rights again: a document that stops being
+public (#279) is never served from a cache afterwards. A layout file is also replaced when a
+document is re-imported with other parameters."""
+RESTRICTED_ASSET_CACHE_CONTROL = "private, no-store"
+"""A restricted or unknown document's assets (signed URLs) are never stored by any cache."""
 
 
 @exp_router.get(
@@ -204,17 +243,26 @@ re-imported with other parameters, together with its chunks' anchors, so it is r
                404: {"description": "Unknown document, or the asset is not available."}},
 )
 async def read_document_page_asset(document_id: str, page_id: str, kind: AssetKind, request: Request,
+                                   access: str | None = Query(
+                                       default=None, description="The signed access of a page manifest read through "
+                                                                 "a collection; needed for a document that is not public."),
                                    documents: DocumentRepository = Depends(get_documents),
-                                   assets: PageAssetStore = Depends(get_page_assets)) -> Response:
+                                   collections: UserCollectionRepository = Depends(get_user_collections),
+                                   assets: PageAssetStore = Depends(get_page_assets),
+                                   signer: AssetSigner = Depends(get_asset_signer)) -> Response:
     """
-    Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail``
-    (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``,
-    docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+    Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or
+    ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public
+    document's assets need nothing else; another document's need the ``access`` of its URL in
+    a manifest read through a collection. 404 when it is not available or not readable.
+    Answers ``If-None-Match`` with 304, after the same checks.
     """
-    path = await pages.read_page_asset(documents, assets, document_id, page_id, kind)
+    path, public = await pages.read_page_asset(documents, collections, assets, document_id, page_id, kind, access,
+                                               signer)
     stat = await asyncio.to_thread(path.stat)
     etag = '"' + hashlib.sha256(f"{stat.st_mtime_ns}-{stat.st_size}".encode()).hexdigest()[:32] + '"'
-    headers = {"Cache-Control": ASSET_CACHE_CONTROL[kind], "ETag": etag}
+    headers = {"Cache-Control": PUBLIC_ASSET_CACHE_CONTROL if public else RESTRICTED_ASSET_CACHE_CONTROL,
+               "ETag": etag}
     if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
         return Response(status_code=304, headers=headers)
     return FileResponse(path, media_type=MEDIA_TYPES[kind], headers=headers, stat_result=stat)

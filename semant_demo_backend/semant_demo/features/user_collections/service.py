@@ -211,14 +211,18 @@ async def get_chunks_in_range(collections: UserCollectionRepository, user: Princ
 # Membership #
 ##############
 # Owner only: sharing grants annotation rights, never membership changes (ADR 0007).
-# Adding needs no prior membership of the document; best-effort outcomes come from the
+# Adding needs no prior membership of the document, but a document the user can already read
+# (public, or in a collection they can read, #279); best-effort outcomes come from the
 # repository (ADR 0002).
 
 async def add_chunk(collections: UserCollectionRepository, user: Principal | None,
                     collection_id: Id, chunk_id: Id) -> WriteResult:
-    """Links the chunk and its document to the collection; ``partial`` if the document link failed."""
+    """Links the chunk and its document to the collection; ``partial`` if the document link failed.
+    The document must be readable by the user already (``access.require_chunk_addable``)."""
     grant = await access.require_membership_edit(collections, user, collection_id)
-    return await collections.add_chunk(access.parse_id(chunk_id, "Chunk"), grant.collection_id)
+    chunk = access.parse_id(chunk_id, "Chunk")
+    await access.require_chunk_addable(collections, user, chunk)
+    return await collections.add_chunk(chunk, grant.collection_id)
 
 
 async def remove_chunk(collections: UserCollectionRepository, user: Principal | None,
@@ -230,10 +234,12 @@ async def remove_chunk(collections: UserCollectionRepository, user: Principal | 
 
 async def add_document(collections: UserCollectionRepository, user: Principal | None,
                        collection_id: Id, document_id: Id) -> WriteResult:
-    """Links the document and all its chunks to the collection."""
+    """Links the document and all its chunks to the collection. The document must be readable by
+    the user already (``access.require_document_addable``)."""
     grant = await access.require_membership_edit(collections, user, collection_id)
-    return await collections.add_document(document_id=access.parse_id(document_id, "Document"),
-                                          collection_id=grant.collection_id)
+    document = access.parse_id(document_id, "Document")
+    await access.require_document_addable(collections, user, document)
+    return await collections.add_document(document_id=document, collection_id=grant.collection_id)
 
 
 async def remove_document(collections: UserCollectionRepository, user: Principal | None,

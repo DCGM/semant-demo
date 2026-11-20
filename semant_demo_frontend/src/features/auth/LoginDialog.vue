@@ -1,10 +1,10 @@
 <template>
-  <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" persistent>
+  <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" no-backdrop-dismiss no-route-dismiss :persistent="loading" @escape-key="resetForm">
     <q-card style="min-width: 360px">
       <q-card-section class="row items-center q-pb-none">
         <div class="text-h6">Log In</div>
         <q-space />
-        <q-btn icon="close" flat round dense v-close-popup />
+        <q-btn icon="close" flat round dense v-close-popup @click="resetForm" />
       </q-card-section>
 
       <q-card-section>
@@ -67,14 +67,20 @@ const errorMsg = ref('')
 
 const userStore = useUserStore()
 
+function resetForm() {
+  email.value = ''
+  password.value = ''
+  showPassword.value = false
+  errorMsg.value = ''
+}
+
 async function submit() {
   errorMsg.value = ''
   loading.value = true
   try {
     await userStore.login(email.value, password.value)
     show.value = false
-    email.value = ''
-    password.value = ''
+    resetForm()
     $q.notify({
       type: 'positive',
       message: `Welcome, ${userStore.getDisplayName}!`,

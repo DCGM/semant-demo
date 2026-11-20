@@ -181,6 +181,41 @@ describe('Create Attribute', () => {
     expect(save).not.toHaveBeenCalled()
   })
 
+  it('Enter in a value moves to the next one or adds one after a valid last value, never submitting', async () => {
+    const save = vi.fn()
+    const wrapper = await open(AttributeDialog, { tags, save })
+    await type(wrapper, 'Name', 'Role')
+    const valueInputs = () => Array.from(document.querySelectorAll<HTMLInputElement>('[data-testid="attribute-dialog-value"] input'))
+    const enter = async (i: number, init: KeyboardEventInit = {}) => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...init })
+      valueInputs()[i]!.dispatchEvent(event)
+      await flushPromises()
+      return event
+    }
+
+    // An empty last value adds nothing, and the form is not submitted.
+    expect((await enter(0)).defaultPrevented).toBe(true)
+    expect(valueInputs()).toHaveLength(1)
+
+    await type(wrapper, 'Value 1', 'statesman')
+    await enter(0)
+    expect(valueInputs()).toHaveLength(2)
+    expect(document.activeElement).toBe(valueInputs()[1])
+
+    // A duplicate last value adds nothing; a value that is not last moves to the next.
+    await type(wrapper, 'Value 2', 'Statesman')
+    await enter(1)
+    expect(valueInputs()).toHaveLength(2)
+    await enter(0)
+    expect(document.activeElement).toBe(valueInputs()[1])
+
+    // An IME composition keeps its Enter.
+    await type(wrapper, 'Value 2', 'poet')
+    expect((await enter(1, { isComposing: true })).defaultPrevented).toBe(false)
+    expect(valueInputs()).toHaveLength(2)
+    expect(save).not.toHaveBeenCalled()
+  })
+
   it('refuses two values with one label, and a value labelled like an allowed special one', async () => {
     const save = vi.fn()
     const wrapper = await open(AttributeDialog, { tags, save })

@@ -68,8 +68,8 @@ READY, INITIALIZING = "ready", "initializing"
 # Development only: the stores are on loopback and hold synthetic data.
 DEV_JWT_SECRET = "local-development-only-secret-not-for-any-deployment"
 FRONTEND_ORIGIN = "http://localhost:9000"
-# Seconds between streamed Topicer chunks, so a suggestion run is visibly incremental.
-FAKE_TOPICER_STREAM_DELAY = 0.5
+# Seconds between two fake Topicer answers, so a suggestion run is visibly incremental.
+FAKE_TOPICER_STREAM_DELAY = 0.1
 
 
 class Refused(RuntimeError):

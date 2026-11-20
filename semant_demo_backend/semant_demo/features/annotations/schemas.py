@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.documents.criteria import DocumentFilters
@@ -269,6 +269,8 @@ class AnnotationQuery(BaseModel):
     holds_none_of: list[str] = []
     """Only annotations holding none of these elements, or not approved (whose values are not
     shown, as for ``attribute_unassigned``)."""
+    near_ids: list[UUID] | None = None
+    """Proximity (#333): only these annotations (those the proximity filter matched)."""
 
 
 class VectorRanking(BaseModel):
@@ -346,6 +348,24 @@ class AnnotationListRow(BaseModel):
     """Accepted attribute values (#331): attribute id -> value ids."""
     attributeVersion: int = 0
     """The version an attribute assignment of this annotation expects."""
+    neighbors: list["NearNeighbor"] = []
+    """Proximity filter (#333): the nearest neighbor annotations that made this row match (at most
+    ``MAX_NEAR_EXPLAINED``), nearest first; empty without the filter or with ``absent``."""
+
+
+MAX_NEAR_EXPLAINED = 3
+
+
+class NearNeighbor(BaseModel):
+    """A neighbor annotation that made a row match the proximity filter (#333), placed relative to
+    the row's annotation so it can be marked in the row's text: ``start``/``end`` are UTF-16
+    offsets from the annotation's first character (negative: before it, in or beyond the left
+    context; from the annotation's length on: in or beyond the right context). The stored contexts
+    are the exact document text next to the annotation, so these offsets index them directly."""
+    id: UUID
+    tagId: UUID | None = None
+    start: int
+    end: int
 
 
 class RetrievalMode(str, Enum):
@@ -428,6 +448,20 @@ class AnnotationResultSet(BaseModel):
     """Ranked modes."""
 
 
+class ProximityCoverage(BaseModel):
+    """What a proximity filter could evaluate (#333)."""
+    primary: int
+    """Annotations matching the other filters in documents holding a neighbor, whose positions
+    were compared."""
+    unknown: int
+    """Of them, those left out because their position, or (``absent``) a neighbor's in their
+    document, is not known for the current text: they neither match nor prove absence."""
+    neighbors: int
+    """Neighbor annotations found."""
+    neighbors_unpositioned: int
+    """Of them, those without current positions, which could not be compared."""
+
+
 class AnnotationPage(BaseModel):
     """One page of a collection's concordance rows and the number of all rows of the result:
     every match (``complete``) or the ranked top ``k`` (``top_k``), in relevance order then id."""
@@ -436,6 +470,8 @@ class AnnotationPage(BaseModel):
     offset: int
     limit: int
     result: AnnotationResultSet = Field(default_factory=AnnotationResultSet)
+    proximity: ProximityCoverage | None = None
+    """With a proximity filter (#333)."""
     unsortable: int | None = None
     """Text and context sorts (#666): rows of the result without current sort keys (not derived or
     not yet backfilled), placed as rows without a key; ``None`` for other orders."""
@@ -480,6 +516,75 @@ MAX_QUERY_TEXT_LENGTH = 500
 """Characters of a lexical annotation query (at most ``_MAX_WORDS`` words are searched)."""
 
 
+MAX_NEAR_DISTANCE = 100_000
+"""Largest distance (words or characters) a proximity filter may ask for (#333)."""
+
+
+class NearRelation(str, Enum):
+    """How a neighbor annotation must lie relative to the listed (primary) annotation (#333).
+    Both are half-open document intervals ``[start, end)`` (``documentStart*``/``documentEnd*``)."""
+    within = "within"
+    """The gap between the two spans is at most ``distance`` ``unit``s: ``max(0, sB - eA, sA - eB)``,
+    measured between span boundaries (never centers); adjacent and overlapping spans have gap 0."""
+    overlaps = "overlaps"
+    """The spans share at least one character."""
+    contains = "contains"
+    """The listed annotation's characters include all of the neighbor's."""
+    contained_by = "contained_by"
+    """The neighbor's characters include all of the listed annotation's."""
+    same_document = "same_document"
+    """Anywhere in the same document."""
+
+
+class NearDirection(str, Enum):
+    """Where a ``within`` neighbor lies, by characters (#333)."""
+    either = "either"
+    """Either side, overlapping too."""
+    before = "before"
+    """The neighbor ends at or before the listed annotation starts."""
+    after = "after"
+    """The neighbor starts at or after the listed annotation ends."""
+
+
+class DistanceUnit(str, Enum):
+    words = "words"
+    """Whole words between the spans (#463: a word partly covered by a span counts as covered)."""
+    chars = "chars"
+    """UTF-16 code units between the spans."""
+
+
+class NearFilter(BaseModel):
+    """Proximity (#333): only annotations with (or, ``absent``, without) a neighbor annotation of
+    the same document that matches ``tag_ids``/``types``/``attribute_values`` and lies in
+    ``relation`` to it. An annotation is never its own neighbor and is listed once however many
+    neighbors match. Positions are the stored document-relative intervals (#463), so chunks outside
+    the user collection count; annotations without current positions never match, with ``absent``
+    neither (even in a document without any neighbor), nor do annotations of a document holding a
+    neighbor without positions."""
+    model_config = ConfigDict(extra="forbid")
+
+    tag_ids: list[UUID] | None = None
+    """Neighbor tags; any tag when absent."""
+    types: list[SpanType] | None = None
+    """Neighbor types; default ``pos`` and ``auto``."""
+    attribute_values: list[str] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTER_VALUES)
+    """Neighbor attribute values, as ``AnnotationFilters.attribute_values`` (approved neighbors only)."""
+    relation: NearRelation = NearRelation.within
+    distance: int = Field(default=50, ge=0, le=MAX_NEAR_DISTANCE)
+    """``within``: the largest gap."""
+    unit: DistanceUnit = DistanceUnit.words
+    direction: NearDirection = NearDirection.either
+    """``within`` only."""
+    absent: bool = False
+    """Only annotations with no such neighbor."""
+
+    @model_validator(mode="after")
+    def _direction(self) -> "NearFilter":
+        if self.direction != NearDirection.either and self.relation != NearRelation.within:
+            raise ValueError("direction is only allowed with relation within")
+        return self
+
+
 class AnnotationFilters(BaseModel):
     """The annotation query (#663): which of a collection's annotations the concordance lists,
     a selection resolves (#459) and the source filter offers, one definition for all of them.
@@ -511,6 +616,8 @@ class AnnotationFilters(BaseModel):
     attributes all."""
     attribute_unassigned: list[UUID] = Field(default=[], max_length=MAX_ATTRIBUTE_FILTERS)
     """Only annotations without an accepted value of these attributes."""
+    near: NearFilter | None = None
+    """Only annotations with (or without) a neighbor annotation in a relation (#333)."""
 
 
 class AnnotationIdsRequest(AnnotationFilters):
@@ -531,6 +638,81 @@ class AnnotationIds(BaseModel):
     result: AnnotationResultSet = Field(default_factory=AnnotationResultSet)
     """Whether ``ids`` are every match or a ranked top ``k`` (#664)."""
     """Each one's ``attributeVersion`` then, which attribute assignments send back (#331)."""
+
+
+MAX_FACETS = 100
+"""Facets one request may ask for (#667)."""
+MAX_FACET_VALUES = 500
+"""Values of the document facet returned (most annotations first); the rest are reported as truncated.
+A ranked query has at most ``MAX_TOP_K`` annotations, so its facet is never truncated."""
+FACET_NAMES = ("tag", "type", "document", "year", "library", "language")
+"""The facets besides ``attribute:<attribute id>`` (#667)."""
+
+
+class AnnotationFacetsRequest(AnnotationFilters):
+    """The annotation query whose facet counts to compute (#667): the filters of #663, the retrieval
+    ``ranking`` of #664 and the ``facets`` wanted: ``tag``, ``type``, ``document``, ``year``,
+    ``library``, ``language`` and ``attribute:<attribute id>``."""
+    facets: list[str] = Field(min_length=1, max_length=MAX_FACETS)
+    ranking: AnnotationRanking = Field(default_factory=AnnotationRanking)
+
+    @field_validator("facets")
+    @classmethod
+    def _known(cls, facets: list[str]) -> list[str]:
+        for facet in facets:
+            name, _, attribute = facet.partition(":")
+            if name == "attribute":
+                try:
+                    UUID(attribute)
+                except ValueError:
+                    raise ValueError(f"Malformed attribute facet {facet!r}: use attribute:<attribute id>") from None
+            elif facet not in FACET_NAMES:
+                raise ValueError(f"Unknown facet {facet!r}")
+        return list(dict.fromkeys(facets))
+
+
+class FacetPopulation(str, Enum):
+    filtered = "filtered"
+    """Every annotation matching the filters (lexical queries): exact counts."""
+    top_k = "top_k"
+    """The retrieved top ``k`` of a ranked query: counts of exactly the returned annotations."""
+
+
+class FacetValue(BaseModel):
+    value: str
+    """The tag, document, attribute value id, type, year, library or language code."""
+    count: int
+    """Annotations of the facet's population with this value."""
+    inapplicable: int = 0
+    """Attribute facets: of ``count``, annotations whose current tag the attribute no longer applies to
+    (#500); their values are kept but are no current classification."""
+
+
+class Facet(BaseModel):
+    facet: str
+    values: list[FacetValue]
+    """Values with at least one annotation, most first, then by value; attribute facets list every
+    value of the attribute in its definition order (retired ones only with annotations), also with 0."""
+    missing: int
+    """Annotations of the population without a value (no year, no value of the attribute, ...)."""
+    total: int
+    """Annotations of the facet's population: the query with this facet's own filter removed."""
+    distinct: int | None = None
+    """Document facet: how many documents have annotations in the population (``values`` may be fewer)."""
+    truncated: bool = False
+    """Document facet: ``values`` leaves out documents (at most ``MAX_FACET_VALUES`` are returned)."""
+
+
+class AnnotationFacets(BaseModel):
+    """Facet counts of an annotation query (#667). ``population``: what is counted. With
+    ``filtered`` every facet is counted with the query's filter on that same facet removed
+    (``self_exclusion``), so the other choices of an active filter stay visible; with ``top_k`` the
+    fixed top ``k`` set is counted as it is. Multi-valued attributes count an annotation once per value
+    it holds, so value counts may add up to more than ``total``."""
+    population: FacetPopulation
+    self_exclusion: bool
+    k: int | None = None
+    facets: list[Facet]
 
 
 class ReviewAction(str, Enum):
@@ -765,7 +947,7 @@ class SuggestionRunOutcome(str, Enum):
 
 
 class SuggestTagLimit(BaseModel):
-    """An optimized-mode tag whose Topicer stream reached the per-tag chunk limit."""
+    """An optimized-mode tag whose candidate chunks reached the per-tag chunk limit."""
     tag_id: str
     tag_name: str
     max_chunks: int
@@ -801,9 +983,11 @@ class SuggestSpansRunEnd(BaseModel):
     """Provider calls that failed (their chunks or tags got no proposals)."""
     error: str | None = None
     """Why the run did not complete, if it did not."""
-    unit: Literal["chunk", "tag", "selection"] = "chunk"
+    unit: Literal["chunk", "call", "tag", "selection"] = "chunk"
     units_total: int = 0
-    """Units the run would process (document chunks, tags, or 1)."""
+    """Units the run would process: ``chunk`` (thorough: the document's chunks), ``call``
+    (optimized: one Topicer call per candidate chunk and tag, known once the candidates are
+    ranked, #792) or 1 ``selection``. ``tag`` is no longer used."""
     units_processed: int = 0
     """Units admitted and sent to Topicer."""
     stop_reason: Literal["quota_exhausted"] | None = None
@@ -811,7 +995,7 @@ class SuggestSpansRunEnd(BaseModel):
     quota_exhausted: QuotaExhaustedResponse | None = None
     """The refusal that stopped the run (its ``reset_at``), with ``stop_reason``."""
     max_chunks_per_tag: int | None = None
-    """Optimized mode: the per-tag chunk limit sent to Topicer."""
+    """Optimized mode: the most candidate chunks sent to Topicer per tag."""
     tag_limits: list[SuggestTagLimit] = Field(default_factory=list)
     """Optimized mode: the tags that reached ``max_chunks_per_tag``."""
 

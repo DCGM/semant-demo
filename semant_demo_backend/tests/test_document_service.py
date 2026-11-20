@@ -1,7 +1,9 @@
 """Documents service (features/documents/service.py) with in-memory fakes.
 
-Corpus reads are public; collection-scoped reads check collection read access (and, for
-chunk membership, that the document is in the collection) before any document read.
+A document is readable when it is public, or through a collection the user can read that
+holds it (#279); collection-scoped reads check collection read access (and that the document
+is in the collection) before any document read. Restricted (``public`` false) and unknown
+(no value) documents are "not found" without such a collection, also for signed-in users.
 """
 from types import SimpleNamespace
 from uuid import uuid4
@@ -28,8 +30,15 @@ class FakeCollections:
 
 
 class FakeDocuments:
-    def __init__(self):
+    def __init__(self, public=(DOCUMENT, OUTSIDE_DOCUMENT)):
         self.reads: list[tuple] = []
+        self.public = set(public)
+        self.rights: list = []
+        """Documents whose rights were looked up (not in ``reads``: no document data)."""
+
+    async def is_public(self, document_id):
+        self.rights.append(document_id)
+        return document_id in self.public
 
     async def read(self, document_id):
         self.reads.append(("read", document_id))
@@ -55,8 +64,8 @@ class FakeDocuments:
 async def test_corpus_reads_are_public():
     documents = FakeDocuments()
 
-    assert (await service.read_document(documents, str(DOCUMENT))).title == "Kronika"
-    assert await service.count_chunks(documents, DOCUMENT) == 3
+    assert (await service.read_document(documents, FakeCollections(), None, str(DOCUMENT))).title == "Kronika"
+    assert await service.count_chunks(documents, FakeCollections(), None, DOCUMENT) == 3
     await service.browse(documents, FakeCollections(), None, limit=5)
 
     assert documents.reads[-1] == ("browse", None, {"conditions": [], "limit": 5})
@@ -65,7 +74,7 @@ async def test_corpus_reads_are_public():
 @pytest.mark.parametrize("document_id", [str(uuid4()), "not-a-uuid"])
 async def test_unknown_or_malformed_document_is_not_found(document_id):
     with pytest.raises(NotFoundError):
-        await service.read_document(FakeDocuments(), document_id)
+        await service.read_document(FakeDocuments(), FakeCollections(), None, document_id)
 
 
 @pytest.mark.parametrize("user", [OWNER, SHARED])
@@ -137,7 +146,7 @@ async def test_chunk_window_is_bounded_and_in_document_order(anchor, before, aft
     documents = FakeChunks()
     chunk = next(c for c in documents.chunks if c.order == anchor)
 
-    window = await service.read_chunk_window(documents, str(DOCUMENT), str(chunk.id), before, after)
+    window = await service.read_chunk_window(documents, FakeCollections(), None, str(DOCUMENT), str(chunk.id), before, after)
 
     assert [c.order for c in window.chunks] == orders
     assert (window.has_before, window.has_after) == (has_before, has_after)
@@ -150,7 +159,7 @@ async def test_chunk_window_of_a_chunk_without_order_is_the_chunk_alone():
     chunk = documents.chunks[0].model_copy(update={"order": None})
     documents.chunks = [chunk]
 
-    window = await service.read_chunk_window(documents, DOCUMENT, chunk.id, 3, 3)
+    window = await service.read_chunk_window(documents, FakeCollections(), None, DOCUMENT, chunk.id, 3, 3)
 
     assert ([c.id for c in window.chunks], window.has_before, window.has_after) == ([chunk.id], False, False)
 
@@ -167,7 +176,7 @@ async def test_chunk_window_needs_a_chunk_of_the_document(case):
     }[case]
 
     with pytest.raises(NotFoundError):
-        await service.read_chunk_window(documents, document_id, chunk_id, 1, 1)
+        await service.read_chunk_window(documents, FakeCollections(), None, document_id, chunk_id, 1, 1)
 
     assert documents.reads == []
 
@@ -177,7 +186,7 @@ async def test_chunk_window_size_is_limited(before, after):
     documents = FakeChunks()
 
     with pytest.raises(InvalidRequestError):
-        await service.read_chunk_window(documents, DOCUMENT, documents.chunks[0].id, before, after)
+        await service.read_chunk_window(documents, FakeCollections(), None, DOCUMENT, documents.chunks[0].id, before, after)
 
     assert documents.reads == []
 
@@ -193,7 +202,7 @@ async def test_adjacent_chunks_extend_without_metadata_or_count(anchor, directio
     documents = FakeChunks()
     chunk = next(c for c in documents.chunks if c.order == anchor)
 
-    adjacent = await service.read_adjacent_chunks(documents, str(DOCUMENT), str(chunk.id), direction, limit)
+    adjacent = await service.read_adjacent_chunks(documents, FakeCollections(), None, str(DOCUMENT), str(chunk.id), direction, limit)
 
     assert ([c.order for c in adjacent.chunks], adjacent.has_more) == (orders, has_more)
     # Only the neighbours are read: no document metadata, no chunk count aggregation.
@@ -206,7 +215,7 @@ async def test_adjacent_chunks_need_a_chunk_of_the_document(case):
     chunk_id = uuid4() if case == "unknown chunk" else documents.foreign.id
 
     with pytest.raises(NotFoundError):
-        await service.read_adjacent_chunks(documents, DOCUMENT, chunk_id, "after", 5)
+        await service.read_adjacent_chunks(documents, FakeCollections(), None, DOCUMENT, chunk_id, "after", 5)
 
     assert documents.reads == []
 
@@ -216,7 +225,7 @@ async def test_adjacent_chunks_request_is_validated(direction, limit):
     documents = FakeChunks()
 
     with pytest.raises(InvalidRequestError):
-        await service.read_adjacent_chunks(documents, DOCUMENT, documents.chunks[0].id, direction, limit)
+        await service.read_adjacent_chunks(documents, FakeCollections(), None, DOCUMENT, documents.chunks[0].id, direction, limit)
 
     assert documents.reads == []
 
@@ -275,3 +284,126 @@ async def test_year_ordered_browse_rejects_unconfigured_chunk_filters_before_rea
         await service.browse_by_year(documents, FakeCollections(), None, chunk_filters=ChunkFilters(languages=["Czech"]),
                                      vocabulary=VOCABULARY)
     assert documents.reads == []
+
+
+#####################################
+# Document access rule (#279)       #
+#####################################
+
+OTHER_COLLECTION = uuid4()
+"""A collection of ``OTHER``'s that does not hold ``DOCUMENT``."""
+
+
+class RightsCollections:
+    """Collections whose sharing and documents can change during a test (revocation)."""
+
+    def __init__(self):
+        self.shared = {SHARED.id}
+        self.documents = {COLLECTION: {DOCUMENT}, OTHER_COLLECTION: set()}
+
+    async def read_access_record(self, cid):
+        if cid == COLLECTION:
+            return OWNER.id, set(self.shared)
+        if cid == OTHER_COLLECTION:
+            return OTHER.id, set()
+        return None
+
+    async def document_in_collection(self, document_id, cid):
+        return document_id in self.documents.get(cid, set())
+
+
+def _documents_with(public):
+    """``DOCUMENT`` with ``public`` = ``public`` (True, False or None, i.e. no value)."""
+    return FakeChunks() if public is True else _restricted_chunks()
+
+
+def _restricted_chunks():
+    documents = FakeChunks()
+    documents.public = set()
+    return documents
+
+
+async def _read_all(documents, collections, user, collection_id=None):
+    """Every document read surface of the service for ``DOCUMENT``."""
+    chunk = documents.chunks[2]
+    return [
+        await service.read_document(documents, collections, user, DOCUMENT, collection_id),
+        await service.read_chunk_window(documents, collections, user, DOCUMENT, chunk.id, 1, 1, collection_id),
+        await service.read_adjacent_chunks(documents, collections, user, DOCUMENT, chunk.id, "after", 1,
+                                           collection_id),
+    ]
+
+
+@pytest.mark.parametrize("user", [None, OWNER, SHARED, OTHER])
+async def test_a_public_document_is_readable_by_anyone_without_a_collection(user):
+    documents = _documents_with(True)
+
+    document, window, adjacent = await _read_all(documents, RightsCollections(), user)
+
+    assert (document.id, window.anchor_chunk_id, len(adjacent.chunks)) == (DOCUMENT, documents.chunks[2].id, 1)
+    assert await service.count_chunks(documents, RightsCollections(), user, DOCUMENT) == 3
+
+
+@pytest.mark.parametrize("public", [False, None])
+@pytest.mark.parametrize("user", [None, OWNER, SHARED, OTHER])
+async def test_a_restricted_or_unknown_document_is_not_found_without_a_collection(public, user):
+    """Signing in is not enough, even for the owner of a collection that holds the document."""
+    documents = _documents_with(public)
+    chunk = documents.chunks[2]
+
+    with pytest.raises(NotFoundError):
+        await service.read_document(documents, RightsCollections(), user, DOCUMENT)
+    with pytest.raises(NotFoundError):
+        await service.read_chunk_window(documents, RightsCollections(), user, DOCUMENT, chunk.id, 1, 1)
+    with pytest.raises(NotFoundError):
+        await service.read_adjacent_chunks(documents, RightsCollections(), user, DOCUMENT, chunk.id, "after", 1)
+    # Not confirmed: the same 0 as for an unknown document.
+    assert await service.count_chunks(documents, RightsCollections(), user, DOCUMENT) == 0
+    assert documents.reads == []
+
+
+@pytest.mark.parametrize("public", [True, False, None])
+@pytest.mark.parametrize("user", [OWNER, SHARED])
+async def test_any_document_is_readable_through_a_collection_that_holds_it(public, user):
+    documents = _documents_with(public)
+
+    document, window, _ = await _read_all(documents, RightsCollections(), user, str(COLLECTION))
+
+    assert document.id == DOCUMENT and [c.order for c in window.chunks] == [1, 2, 4]
+    assert await service.count_chunks(documents, RightsCollections(), user, DOCUMENT, COLLECTION) == 3
+
+
+@pytest.mark.parametrize("user, collection_id, error", [
+    (None, COLLECTION, AuthenticationRequired),
+    (OTHER, COLLECTION, NotFoundError),          # a collection the user cannot read
+    (OTHER, OTHER_COLLECTION, NotFoundError),    # their own collection, which does not hold the document
+    (OWNER, uuid4(), NotFoundError),             # an unknown collection
+])
+async def test_a_collection_grants_nothing_without_read_access_and_membership(user, collection_id, error):
+    documents = _restricted_chunks()
+
+    with pytest.raises(error):
+        await service.read_document(documents, RightsCollections(), user, DOCUMENT, collection_id)
+    with pytest.raises(error):
+        await service.count_chunks(documents, RightsCollections(), user, DOCUMENT, collection_id)
+    with pytest.raises(error):
+        await service.read_chunk_window(documents, RightsCollections(), user, DOCUMENT, documents.chunks[0].id, 1, 1,
+                                        collection_id)
+
+    assert documents.reads == []
+
+
+@pytest.mark.parametrize("change", ["unshare", "remove document"])
+async def test_revoking_the_collection_route_denies_the_next_read(change):
+    documents, collections = _restricted_chunks(), RightsCollections()
+    assert (await service.read_document(documents, collections, SHARED, DOCUMENT, COLLECTION)).id == DOCUMENT
+
+    if change == "unshare":
+        collections.shared.clear()
+    else:
+        collections.documents[COLLECTION].clear()
+
+    with pytest.raises(NotFoundError):
+        await service.read_document(documents, collections, SHARED, DOCUMENT, COLLECTION)
+    with pytest.raises(NotFoundError):
+        await service.read_document(documents, collections, SHARED, DOCUMENT)

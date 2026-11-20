@@ -27,8 +27,8 @@ const useChunks = () => {
     boundaryOrder: number
   ) => chunksRepository.getNeighbourChunk(collectionId, documentId, direction, boundaryOrder)
 
-  const countDocumentChunks = (documentId: string) =>
-    chunksRepository.countDocumentChunks(documentId)
+  const countDocumentChunks = (documentId: string, collectionId: string | null = null) =>
+    chunksRepository.countDocumentChunks(documentId, collectionId)
 
   const getChunksInRange = (
     collectionId: string,

@@ -584,7 +584,8 @@ async def test_chunk_and_adjacent_chunks_in_document_order(documents, big_docume
 async def insert_document(client, names, orders: list[int]) -> tuple[UUID, list[UUID]]:
     """A document in no collection with one chunk per entry of ``orders`` (text "Část <order>")."""
     document_id = uuid4()
-    await insert(client, names.document_collection_name, [DataObject(uuid=document_id, properties={"title": "Části"})])
+    await insert(client, names.document_collection_name,
+                 [DataObject(uuid=document_id, properties={"title": "Části", "public": True})])
     chunk_ids = [uuid4() for _ in orders]
     await insert(client, names.chunks_collection_name, [
         DataObject(uuid=chunk_id, properties={"text": f"Část {order}", "order": order, "start_page_id": str(UUID(int=1)),
@@ -608,15 +609,21 @@ async def test_adjacent_chunks_stop_at_both_ends_of_the_document(documents, big_
 
 
 async def test_chunk_window_flags_the_ends_of_a_document_not_starting_at_order_zero(
-        documents, seeded_store, collection_names):
+        documents, collections, seeded_store, collection_names):
     # #376: orders 7..16 (the first order may be any integer, ADR 0009).
     document_id, chunk_ids = await insert_document(seeded_store, collection_names, list(range(7, 17)))
 
-    middle = await document_service.read_chunk_window(documents, document_id, chunk_ids[5], 2, 2)
-    start = await document_service.read_chunk_window(documents, document_id, chunk_ids[1], 3, 1)
-    end = await document_service.read_chunk_window(documents, document_id, chunk_ids[8], 1, 1)
-    more = await document_service.read_adjacent_chunks(documents, document_id, chunk_ids[9], "before", 8)
-    all_before = await document_service.read_adjacent_chunks(documents, document_id, chunk_ids[9], "before", 10)
+    async def window(chunk, before, after):
+        return await document_service.read_chunk_window(documents, collections, None, document_id, chunk, before, after)
+
+    async def adjacent(chunk, limit):
+        return await document_service.read_adjacent_chunks(documents, collections, None, document_id, chunk, "before", limit)
+
+    middle = await window(chunk_ids[5], 2, 2)
+    start = await window(chunk_ids[1], 3, 1)
+    end = await window(chunk_ids[8], 1, 1)
+    more = await adjacent(chunk_ids[9], 8)
+    all_before = await adjacent(chunk_ids[9], 10)
 
     assert ([c.id for c in middle.chunks], middle.has_before, middle.has_after) == (chunk_ids[3:8], True, True)
     assert ([c.id for c in start.chunks], start.has_before, start.has_after) == (chunk_ids[:3], False, True)

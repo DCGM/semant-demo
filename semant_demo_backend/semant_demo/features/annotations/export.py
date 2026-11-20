@@ -268,6 +268,7 @@ async def _resolve(store: AnnotationStore, cid: UUID, query, filters: Annotation
         return [i for i in ids if i in found]
     document_ids = filters.document_ids or None
     conditions = document_conditions(filters.document_filters)
+    query, _ = await service._apply_near(store, cid, filters, query, conditions)
     if conditions:  # only annotations of the documents the document filters select
         documents = await service._annotated_documents(store, cid, query, AnnotationSort.document, document_ids,
                                                        conditions)

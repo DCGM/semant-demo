@@ -319,3 +319,34 @@ async def test_api_review_is_per_item_for_owner_and_shared_user_only(api_client,
     assert deleted.json()["succeeded"] == [str(created.karel)]
     assert [(f["item_id"], f["step"]) for f in again.json()["failed"]] == [(str(created.karel), "find_annotation")]
     assert again.json()["outcome"] == "failed"
+
+
+async def test_facet_counts_equal_the_totals_of_choosing_each_value(store, owner, ids, created):
+    """#667: against real Weaviate (``group_by`` of ``tagId``/``type``, per-document counts), every
+    value's count is what the query returns with that value chosen, with and without another filter."""
+    from semant_demo.features.annotations import facets
+    from semant_demo.features.annotations.schemas import AnnotationFacetsRequest
+
+    chosen = {
+        "tag": lambda v: AnnotationFilters(tag_ids=[UUID(v)]),
+        "type": lambda v: AnnotationFilters(types=[SpanType(v)]),
+        "document": lambda v: AnnotationFilters(document_ids=[UUID(v)]),
+        "year": lambda v: AnnotationFilters(document_filters=DocumentFilters(year_min=int(v), year_max=int(v))),
+        "library": lambda v: AnnotationFilters(document_filters=DocumentFilters(libraries=[v])),
+        "language": lambda v: AnnotationFilters(document_filters=DocumentFilters(languages=[v])),
+    }
+    for base in ({}, {"q": "Karel"}, {"tag_ids": [ids.tag["person"]]}):
+        request = AnnotationFacetsRequest(facets=list(chosen), **base)
+        result = await facets.annotation_facets(store, owner, ids.col["chronicles"], request)
+        assert result.population == "filtered"
+        for facet in result.facets:
+            # Single-valued facets: every annotation has one value or none (missing).
+            assert facet.total - sum(v.count for v in facet.values) == facet.missing >= 0, (base, facet.facet)
+            for value in facet.values:
+                # The facet ignores its own filter only: add the value to the others.
+                merged = request.model_dump(exclude={"facets", "ranking"}, exclude_unset=True)
+                own = chosen[facet.facet](value.value).model_dump(exclude_unset=True)
+                if facet.facet == "year" or facet.facet in ("library", "language"):
+                    own = {"document_filters": {**merged.get("document_filters", {}), **own["document_filters"]}}
+                page = await query(store, owner, ids, AnnotationFilters(**{**merged, **own}))
+                assert page.total == value.count, (base, facet.facet, value.value)

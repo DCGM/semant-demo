@@ -358,7 +358,7 @@ test.describe('the public document view', () => {
   test('an unknown document says so', async ({ page }) => {
     await useViewport(page, 'wide')
     await page.goto('/#/documents/5e3a0000-0000-4000-8000-00000000dead')
-    await expect(page.getByTestId('document-error')).toHaveText('This document is not in the corpus.')
+    await expect(page.getByTestId('document-error')).toHaveText('This document is not in the public corpus. A restricted document opens only from a collection that holds it.')
   })
 })
 
