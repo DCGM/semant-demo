@@ -30,7 +30,8 @@ from classconfig import ConfigurableMixin, CreatableMixin, ConfigurableValue, Co
 from tqdm import tqdm
 from weaviate.classes.query import Filter
 
-from .db import DOCUMENT_LINK, DOCUMENT_PUBLIC, PROVENANCE, UNPROCESSED, Refused, build_weaviate_filters, check_schema, get_client
+from .db import (DOCUMENT_LINK, DOCUMENT_PUBLIC, PROVENANCE, UNPROCESSED, Refused, build_weaviate_filters, check_grpc,
+                 check_schema, get_client)
 # Import models to register their subclasses for ConfigurableSubclassFactory
 from .models import Model, LocalHFClassifierModel
 
@@ -213,6 +214,7 @@ class EnrichmentPipeline(ConfigurableMixin, CreatableMixin):
         """Check the configuration and the schema; ``Refused`` before anything is written."""
         self._check_config()
         resolved = check_schema(client, self.collection, list(self.field_tasks))
+        check_grpc(client, resolved, self.weaviate_host, self.weaviate_grpc_port)
         result = RunResult(collection=resolved, provenance=self.provenance)
         collection = client.collections.get(resolved)
         include = self.include_restricted_documents
