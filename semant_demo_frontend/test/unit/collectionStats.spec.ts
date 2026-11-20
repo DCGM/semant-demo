@@ -385,16 +385,28 @@ describe('collection document charts on the Overview tab', () => {
     expect(queryClient.getQueryData(collectionDocumentChartsKey('u1', 'A'))).toEqual(distributions('A', 3))
   })
 
-  it('shows no counts that are not of this collection', async () => {
+  it('shows no counts that are not of this collection, but reports them as an error to retry', async () => {
+    // Review of #796: such an answer is complete, so the page does not keep loading for good.
     getDocumentDistributions.mockImplementation(async () => distributions('B', 7))
     const page = mountPage()
     await flushPromises()
-    expect(chartIds(page)).toEqual(['charts-loading'])
+    expect(chartIds(page)).toEqual(['charts-error', 'charts-retry'])
+    expect(page.find('[data-testid="charts-total"]').exists()).toBe(false)
 
-    getDocumentDistributions.mockImplementation(async () => distributions('A', 7, { scope: 'searchable_corpus', userCollectionId: null }))
-    await queryClient.refetchQueries()
+    const retried = held<CorpusDistributions>()
+    getDocumentDistributions.mockReturnValueOnce(retried.promise)
+    await page.get('[data-testid="charts-retry"]').trigger('click')
     await flushPromises()
     expect(chartIds(page)).toEqual(['charts-loading'])
+    retried.answer(distributions('A', 7, { scope: 'searchable_corpus', userCollectionId: null }))
+    await flushPromises()
+    expect(chartIds(page)).toEqual(['charts-error', 'charts-retry'])
+    expect(page.find('[data-testid="charts-total"]').exists()).toBe(false)
+
+    getDocumentDistributions.mockImplementation(async () => distributions('A', 7))
+    await page.get('[data-testid="charts-retry"]').trigger('click')
+    await flushPromises()
+    expect(page.get('[data-testid="charts-total"]').text()).toBe('7')
   })
 
   it('reports a failed count without zeros, and counts again on Try again', async () => {

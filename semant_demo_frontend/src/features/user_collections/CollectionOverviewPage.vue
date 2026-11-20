@@ -293,7 +293,7 @@ import ScopedDocumentCharts from 'src/features/analytics/ScopedDocumentCharts.vu
 import type { ChartFilter } from 'src/features/analytics/corpusOverview'
 import { collectionChartLocation, exploreCollection } from 'src/features/explore/exploreHandoff'
 import { useCollectionDocumentCharts } from './useCollectionDocumentCharts'
-import type { UserSearchResult } from 'src/generated/api'
+import type { CorpusDistributions, UserSearchResult } from 'src/generated/api'
 import { createContextGuard } from 'src/shared/api'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
@@ -356,14 +356,19 @@ const collectionStatsError = computed(() => collectionStatsFailed.value ? 'Faile
 // The document charts of the whole collection (#795), loaded as the statistics are. Shown only
 // while the collection is loaded, and only counts that say they are of this collection (`scope`,
 // `userCollectionId`): never another collection's, the corpus's or the previous account's. A
-// failed load shows its error, never zeros.
+// failed load shows its error, never zeros; so does a complete answer of another scope (a server
+// fault), rather than loading for good (review of #796).
 const chartsQuery = useCollectionDocumentCharts(collectionId, collectionLoaded)
+const ofThisCollection = (d: CorpusDistributions) => d.scope === 'user_collection' && d.userCollectionId === collectionId.value
 // A retry in progress shows the loading state, not the error it may clear.
-const chartsFailed = computed(() => collectionLoaded.value && chartsQuery.isError.value && !chartsQuery.isFetching.value)
+const chartsFailed = computed(() => {
+  const d = chartsQuery.data.value
+  return collectionLoaded.value && !chartsQuery.isFetching.value && (chartsQuery.isError.value || (!!d && !ofThisCollection(d)))
+})
 const chartsShown = computed(() => {
   const d = chartsQuery.data.value
   if (!collectionLoaded.value || chartsFailed.value || !d) return null
-  return d.scope === 'user_collection' && d.userCollectionId === collectionId.value ? d : null
+  return ofThisCollection(d) ? d : null
 })
 
 // A clicked year bin, library or language opens Explore with this collection and that filter
