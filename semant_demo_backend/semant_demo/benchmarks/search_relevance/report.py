@@ -23,7 +23,7 @@ from uuid import UUID
 
 from . import plots
 from .analysis import (CROSS, SAME, SCORED, UNKNOWN, Configuration, Row, aggregate, inconsistent_intents,
-                       intent_means, latency, paired, rows_by_configuration, score, slice_names)
+                       intent_means, latency, paired, query_grades, rows_by_configuration, score, slice_names)
 from .contracts import ContractError, Dataset, Run, load_dataset, load_run
 from .metrics import BOOTSTRAP_SAMPLES, COVERAGE_METRIC, METRICS, RELEVANCE_METRICS, SEED
 
@@ -178,8 +178,9 @@ def limitations(dataset: Dataset, configs: Sequence[Configuration], unjudged: di
                    [[c.label, with_ci(unjudged[c.label]), unjudged[c.label]["n"]] for c in configs]), "",
         "- Latency is measured on the benchmark's isolated, smaller store; it does not predict production-scale "
         "latency or memory (#374, #394).",
-        f"- Intents with qrels whose per-language grades disagree (`consistent: false`): {inconsistent}; their "
-        f"`grade` is the dataset's documented aggregate. Left out of this report: {excluded}.",
+        f"- Intents with qrels whose per-language grades disagree (`consistent: false`): {inconsistent}; a query "
+        f"is scored with its own language's grade where one was judged, otherwise with the intent's `grade`. "
+        f"Left out of this report: {excluded}.",
         "- Failed and missing searches are left out of the means and counted in the tables.",
     ]
     shallow = [c.label for c in configs if c.config.depth < 50]
@@ -264,19 +265,19 @@ def examples(dataset: Dataset, rows: Sequence[Row], config: str, count: int) -> 
     order = sorted(means, key=lambda i: (means[i], i))
     worst = order[:count]
     best = [i for i in reversed(order) if i not in worst][:count]
-    grades_all = dataset.grades()
+    grades_of = query_grades(dataset)
     lines: list[str] = []
     found = []
     for kind, intents in (("Best", best), ("Worst", worst)):
         for n, intent_id in enumerate(intents, 1):
             intent = dataset.intents[intent_id]
-            grades = grades_all.get(intent_id, {})
             sources = set(intent.source_chunk_ids)
             queries = [r for r in mine if r.intent_id == intent_id and r.status == SCORED
                        and r.metrics.get(PRIMARY) is not None]
             queries.sort(key=lambda r: (r.metrics[PRIMARY], r.query_id), reverse=kind == "Best")
             row = queries[0]
             query = dataset.queries[row.query_id]
+            grades = grades_of(intent_id, query.language)  # the grades the query's metrics used
             top = row.ranked[:TOP]
             relevant = sorted((c for c, g in grades.items() if g >= 1), key=lambda c: (-grades[c], str(c)))
             missed = [c for c in relevant if c not in top]

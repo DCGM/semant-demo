@@ -318,8 +318,10 @@ A query is scored against the qrels of its intent (its translations share them; 
 An intent without a relevant qrel has no nDCG, P or recall, and one without a source chunk no
 Hit@10; those values are left out of the means and counted. Failed searches
 (`RunResult.error`) and queries missing from a run are counted per configuration and left out
-of the means. `--exclude-inconsistent` leaves out intents with a `consistent: false` qrel;
-the report always says how many such intents there are and how many were left out.
+of the means. A query is scored with its own language's grade where a qrel was judged per query
+language, otherwise with the intent's `grade`; the examples show the same grades.
+`--exclude-inconsistent` leaves out intents with a `consistent: false` qrel; the report always
+says how many such intents there are and how many were left out.
 
 **Unjudged results.** Pooled, LLM-judged qrels are incomplete. The **standard** variant
 (primary) counts an unjudged chunk as not relevant, a lower bound; the **condensed** variant

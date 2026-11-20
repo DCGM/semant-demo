@@ -101,18 +101,27 @@ def source_slices(dataset: Dataset) -> dict[str, dict[str, str]]:
     return found
 
 
+def query_grades(dataset: Dataset) -> Callable[[str, str], dict[UUID, int]]:
+    """``(intent id, query language) -> chunk id -> grade``: the intent's grades, where a qrel was
+    judged per query language that language's own grade (a translation can shift what is
+    relevant). The one rule for the metrics and the report's examples."""
+    grades = dataset.grades()
+    by_language: dict[tuple[str, str], dict[UUID, int]] = {}
+    for qrel in dataset.qrels:
+        for language, grade in (qrel.language_grades or {}).items():
+            by_language.setdefault((qrel.intent_id, language), {})[qrel.chunk_id] = grade
+
+    def of(intent_id: str, language: str) -> dict[UUID, int]:
+        return {**grades.get(intent_id, {}), **by_language.get((intent_id, language), {})}
+    return of
+
+
 def score(dataset: Dataset, runs: Sequence[Run], exclude_inconsistent: bool = False
           ) -> tuple[list[Configuration], list[Row]]:
     """One row per (configuration, query) of the dataset, in the order of the configurations and
     query ids; the intents with inconsistent qrels are left out when asked."""
     configs = configurations(runs)
-    grades = dataset.grades()
-    # A qrel judged per query language grades that language's query by its own grade (a
-    # translation can shift what is relevant); other queries use the intent's grade.
-    by_language: dict[tuple[str, str], dict] = {}
-    for qrel in dataset.qrels:
-        for language, grade in (qrel.language_grades or {}).items():
-            by_language.setdefault((qrel.intent_id, language), {})[qrel.chunk_id] = grade
+    grades_of = query_grades(dataset)
     skipped = inconsistent_intents(dataset) if exclude_inconsistent else set()
     attributes = source_slices(dataset)
     results = {}
@@ -143,9 +152,8 @@ def score(dataset: Dataset, runs: Sequence[Run], exclude_inconsistent: bool = Fa
                 else:
                     row.status = SCORED
                     row.ranked = [h.chunk_id for h in result.hits]
-                    query_grades = {**grades.get(intent.intent_id, {}),
-                                    **by_language.get((intent.intent_id, query.language), {})}
-                    row.metrics = query_metrics(row.ranked, query_grades, intent.source_chunk_ids)
+                    row.metrics = query_metrics(row.ranked, grades_of(intent.intent_id, query.language),
+                                                intent.source_chunk_ids)
                     for k in RECALL_KS:  # a configuration keeping fewer than k chunks has no Recall@k
                         if config.config.depth < k:
                             row.metrics[f"recall@{k}"] = row.metrics[f"recall@{k}_condensed"] = None

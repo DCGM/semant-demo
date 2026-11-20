@@ -273,3 +273,20 @@ def test_recall_is_not_shown_for_configurations_that_keep_fewer_chunks(dataset, 
     scored = [r for r in rows if r.status == SCORED]
     assert scored and all(r.metrics["recall@20"] is None and r.metrics["recall@50"] is None for r in scored)
     assert all(r.metrics["ndcg@10"] is not None for r in scored if r.intent_id == "fire-lhota")
+
+
+def test_the_examples_show_the_grades_the_query_was_scored_with(dataset, run, tmp_path):
+    from semant_demo.benchmarks.search_relevance.analysis import query_grades
+    from semant_demo.benchmarks.search_relevance.report import examples
+    grades_of = query_grades(dataset)
+    assert grades_of("fire-lhota", "ces")[fixture.chunk_id(7)] == 2  # its own language's grade
+    assert grades_of("fire-lhota", "eng")[fixture.chunk_id(7)] == 1
+    assert grades_of("railway-vienna", "ces") == dataset.grades()["railway-vienna"]  # no per-language grades
+    _, rows = score(dataset, [run])
+    vector = [r for r in rows if r.configuration.endswith("vector")]
+    lines, found = examples(dataset, vector, vector[0].configuration, 3)
+    fire = next(f for f in found if f["intent_id"] == "fire-lhota")
+    assert fire["query_id"] == "fire-lhota.ces"
+    # Chunk 7 is shown with its Czech grade (2), the one the Czech query was scored with, not the
+    # intent's aggregate grade (1).
+    assert f"| `{fixture.chunk_id(7)}` | deu | 2 |" in "\n".join(lines)
