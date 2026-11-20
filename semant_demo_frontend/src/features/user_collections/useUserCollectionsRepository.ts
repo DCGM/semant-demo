@@ -1,5 +1,5 @@
 import { useApi } from 'src/shared/api'
-import { Collection, PostCollection, PatchCollection, CollectionStats, UserSearchResult } from 'src/generated/api'
+import { Collection, PostCollection, PatchCollection, CollectionStats, CorpusDistributions, UserSearchResult } from 'src/generated/api'
 
 export function useUserCollectionsRepository() {
   const api = useApi().default
@@ -15,6 +15,12 @@ export function useUserCollectionsRepository() {
 
     getStats: async (collectionId: string, init?: RequestInit): Promise<CollectionStats> => {
       return api.getCollectionStatsApiUserCollectionsCollectionIdStatsGet({ collectionId }, init)
+    },
+
+    /** The document charts of the whole collection: its linked documents, no filters (#795, #768). */
+    getDocumentDistributions: async (collectionId: string, init?: RequestInit): Promise<CorpusDistributions> => {
+      return api.corpusDistributionsApiAnalyticsCorpusDistributionsPost(
+        { corpusDistributionsRequest: { filters: {}, userCollectionId: collectionId } }, init)
     },
 
     create: async (collectionData: PostCollection): Promise<Collection> => {

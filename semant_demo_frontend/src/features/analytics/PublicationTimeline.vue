@@ -30,13 +30,14 @@
         <q-btn dense flat no-caps color="primary" label="Full range" :disable="isFull" data-testid="timeline-full" @click="showFull" />
       </div>
       <q-btn
-        dense outline no-caps color="primary" icon="filter_alt" :label="`Apply ${periodLabel} as filter`"
+        dense outline no-caps color="primary" icon="filter_alt" :label="opensExplore ? `Explore ${periodLabel}` : `Apply ${periodLabel} as filter`"
         data-testid="timeline-apply-period" @click="emit('applyPeriod', period)"
       />
     </div>
     <p class="timeline__hint">
       Click a bar to filter by its years; drag across the chart to zoom into a period. Zooming changes only this chart;
       <template v-if="searches">a filter starts a new search, whose results and counts may differ from these.</template>
+      <template v-else-if="opensExplore">a filter opens these documents in Explore.</template>
       <template v-else>a filter restricts every count on the page.</template>
     </p>
 
@@ -110,7 +111,9 @@ const props = withDefaults(defineProps<{
   unit?: CountUnit
   /** A filter starts a new search (a text query's charts), said in the hint. */
   searches?: boolean
-}>(), { unit: 'documents', searches: false })
+  /** A filter opens Explore with it (the collection page, #795), said in the hint. */
+  opensExplore?: boolean
+}>(), { unit: 'documents', searches: false, opensExplore: false })
 const emit = defineEmits<{
   /** These years (inclusive) as the publication-year filter: the shown period or a clicked bin. */
   applyPeriod: [period: YearWindow]

@@ -371,6 +371,24 @@ describe('ExploreVisualizations', () => {
     expect(refiltered.find('[data-testid="corpus-years"]').exists()).toBe(true)
   })
 
+  it('shows no counts while the page checks a handed-over collection, not even its own', async () => {
+    // Review of #796: the counts of earlier filters of the same collection are not shown under
+    // the handed-over filters, which are not counted until the check ends; nor a ranking's.
+    const ranked = { searching: false, searchError: null, counts: { total: 2 }, slow: false, error: null, invalid: false, vectorName: null }
+    const cases = [
+      { distributions: ofCollection(6), userCollectionId: 'c1' },
+      { availability: 'ranked', ranked, userCollectionId: 'c1' },
+      { error: 'failed', userCollectionId: 'c1' }
+    ]
+    for (const props of cases) {
+      const wrapper = view({ ...props, checking: true, collectionLabel: label })
+      await flushPromises()
+      expect(testIds(wrapper)).toEqual(['charts-loading'])
+      expect(wrapper.text()).toContain('Checking the collection…')
+      expect(wrapper.find('[data-testid="corpus-years"]').exists()).toBe(false)
+    }
+  })
+
   it('tells an empty collection apart from a collection without matching documents', async () => {
     const empty = view({ distributions: ofCollection(0, { filters: unfiltered }), collectionLabel: label, userCollectionId: 'c1' })
     expect(empty.get('[data-testid="charts-empty"]').text()).toContain('This collection has no documents.')

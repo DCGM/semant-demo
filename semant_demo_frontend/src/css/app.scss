@@ -11,6 +11,13 @@
   font-size: 2.5rem !important;
 }
 
+// A loading overlay (QInnerLoading) still covers its content while it fades out (300 ms) after
+// the loading ended; it must not take the clicks meant for what is already shown beneath it,
+// e.g. the first click on a document's text (#790).
+.q-inner-loading.q-transition--fade-leave-active {
+  pointer-events: none;
+}
+
 .color-swatch {
   width: 24px;
   height: 24px;
