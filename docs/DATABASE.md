@@ -235,7 +235,8 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   filled on the existing corpus by `chunk_have_vector`
   ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#stored-named-vectors-on-chunks-chunk_have_vector-805)),
   only where the vector is stored. `data_tools/embedder` selects by it and adds the name with each
-  vector it writes (#816); chunk ingestion writes none, and a chunk without the list is selected
+  vector it writes (#816), and text uploads ([TEXT_UPLOAD.md](TEXT_UPLOAD.md), #785) list the
+  vectors they write; chunk ingestion writes none, and a chunk without the list is selected
   like one with `[]`.
 - `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
   `yearIssued`, absent when the document has none; the search's year filters use it, not the
@@ -251,7 +252,7 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   existing document. A chunk without the value is **not public**: unscoped queries select
   `documentPublic == true`, never "not false". `Documents.public` stays the source of truth
   (the UI still tells *Restricted* from *Access unknown*); the flag never widens access.
-  Writers keep it fail-closed: `chunk_ingest` inserts new chunks with `false`;
+  Writers keep it fail-closed: `chunk_ingest` and text uploads (#785) insert new chunks with `false`;
   `metadata_sync` lowers a document's chunks to `false` **before** it writes a document that
   stops being public (and skips that write if the chunks could not all be verified), and
   raises them to `true` only **after** the document is verified `public=true` (a failure

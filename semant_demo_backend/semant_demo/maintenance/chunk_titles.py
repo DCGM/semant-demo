@@ -11,7 +11,8 @@ Write::
 
     python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:PORT \\
         --models-config MODELS.yaml [SELECTION] [--limit N] [--after ID] [--report FILE] \\
-        [--concurrency 8] [--tier TIER] [--allow-missing-document-title] [--regenerate]
+        [--concurrency 8] [--tier TIER] [--allow-missing-document-title] [--regenerate] \\
+        [--include-restricted-documents]
 
 The store is the state: a chunk with a non-empty ``title`` is done, an untitled one is
 selected again by the next run. Nothing else is kept between runs: an interrupted run or a
@@ -30,6 +31,10 @@ Each selected chunk is planned as:
 * ``has_title``: it has a non-empty title and is left as it is (unless ``--regenerate``,
   which needs an explicit selection);
 * ``generate``: its title is generated from its text, its language and its document's title;
+* ``deferred_restricted_document``: its document is not public (``public`` false or absent:
+  a restricted library document or a private uploaded text, #279, #785), so its text is not
+  sent to the model; ``--include-restricted-documents`` generates it, only with a model the
+  deployment may send that text to (a self-hosted one);
 * ``deferred_no_document_title``: its document has no title yet (``metadata_sync`` has not
   run, or Kramerius has none); ``--allow-missing-document-title`` generates it without one;
 * ``no_document``, ``missing_document``, ``several_documents``: reported, left as it is;
@@ -149,7 +154,7 @@ MAX_TITLE_CHARS = 200
 MIXED, UNKNOWN = "(mixed)", "(unknown)"
 
 PLANNED = ("has_title", "generate")
-REPORTED = ("deferred_no_document_title", "no_document", "missing_document", "several_documents", "absent",
+REPORTED = ("deferred_restricted_document", "deferred_no_document_title", "no_document", "missing_document", "several_documents", "absent",
             "empty_text", "too_large")
 """Left as they are and reported; a later run plans them again."""
 FAILED = ("model_failed", "invalid_output", "write_failed")
@@ -275,8 +280,9 @@ def _progress(line: str) -> None:
 # ---- planning ------------------------------------------------------------------------------
 
 def plan(chunk: store.ChunkState, document_titles: dict[UUID, Any], *, regenerate: bool = False,
-         allow_missing_document_title: bool = False) -> tuple[str, str | None]:
-    """The chunk's action and the document title to prompt with."""
+         allow_missing_document_title: bool = False, public: set[UUID] | None = None) -> tuple[str, str | None]:
+    """The chunk's action and the document title to prompt with. With ``public`` (the public
+    documents among ``document_titles``), a chunk of any other document is deferred."""
     if text_value(chunk.title) is not None and not regenerate:
         return "has_title", None
     if not chunk.document_ids:
@@ -286,6 +292,8 @@ def plan(chunk: store.ChunkState, document_titles: dict[UUID, Any], *, regenerat
     document = chunk.document_ids[0]
     if document not in document_titles:
         return "missing_document", None
+    if public is not None and document not in public:
+        return "deferred_restricted_document", None
     title = text_value(document_titles[document])
     if title is None and not allow_missing_document_title:
         return "deferred_no_document_title", None
@@ -394,7 +402,8 @@ class _Run:
     def __init__(self, client: WeaviateAsyncClient, llm: LlmGateway, *, chunks: str, documents: str,
                  with_language: bool, with_document_title: bool, write: bool, tier: str | None, concurrency: int,
                  regenerate: bool, allow_missing_document_title: bool, limit: int | None,
-                 reported: Callable[[dict[str, Any]], None]):
+                 reported: Callable[[dict[str, Any]], None], include_restricted: bool = False,
+                 with_public: bool = True):
         self.client, self.llm, self.chunks, self.documents = client, llm, chunks, documents
         self.with_language, self.with_document_title = with_language, with_document_title
         self.write, self.tier, self.concurrency, self.limit = write, tier, concurrency, limit
@@ -406,6 +415,9 @@ class _Run:
         self.last: UUID | None = None
         self.document_titles: dict[UUID, Any] = {}
         self.missing_documents: set[UUID] = set()
+        self.public: set[UUID] | None = None if include_restricted else set()
+        """The public documents among ``document_titles``; None with ``--include-restricted-documents``."""
+        self.with_public = with_public
         limits = llm.catalog.policy(FEATURE).limits
         self.context_size = limits.max_input_tokens + limits.max_output_tokens
 
@@ -425,6 +437,9 @@ class _Run:
                 self.client, self.documents, wanted, self.with_document_title))
             self.document_titles.update(found)
             self.missing_documents.update(set(wanted) - set(found))
+            if self.public is not None and self.with_public and found:
+                self.public.update(await _retrying(lambda: store.read_public_documents(
+                    self.client, self.documents, sorted(found))))
         return self.document_titles
 
     async def generate(self, chunks: list[tuple[store.ChunkState, str | None]]) -> dict[UUID, str]:
@@ -485,7 +500,8 @@ class _Run:
                 action, document_title = "absent", None
             else:
                 action, document_title = plan(chunk, titles, regenerate=self.regenerate,
-                                              allow_missing_document_title=self.allow_missing_document_title)
+                                              allow_missing_document_title=self.allow_missing_document_title,
+                                              public=self.public)
             if action == "generate":
                 if self.limit is not None and self.taken >= self.limit:
                     whole = False
@@ -511,7 +527,7 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGatew
               models_config: Path, selection: Selection = Selection(), tier: str | None = None,
               regenerate: bool = False, allow_missing_document_title: bool = False, limit: int | None = None,
               after: UUID | None = None, concurrency: int = CONCURRENCY, usage: UsageTotals | None = None,
-              progress: Callable[[str], None] = _progress,
+              include_restricted: bool = False, progress: Callable[[str], None] = _progress,
               reported: Callable[[dict[str, Any]], None] = lambda line: None) -> dict[str, Any]:
     """One pass over the selection (see the module docstring); returns the summary. Each reported
     or failed chunk is passed to ``reported`` when it occurs, and only counted here. Raises ``Refused`` before writing when a
@@ -535,13 +551,15 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, llm: LlmGatew
     summary: dict[str, Any] = {
         "endpoint": endpoint, "chunks": chunks, "documents": documents, "mode": "write" if write else "check",
         "selection": selection.identity(), "regenerate": regenerate,
-        "allow_missing_document_title": allow_missing_document_title, "limit": limit,
+        "allow_missing_document_title": allow_missing_document_title, "include_restricted": include_restricted,
+        "limit": limit,
         "after": str(after) if after else None, "provenance": origin, "started": _now()}
     work = _Run(client, llm, chunks=chunks, documents=documents,
                 with_language=chunk_types.get(store.LANGUAGE) in ("text", "text[]"),
                 with_document_title=document_types.get(store.TITLE) == "text", write=write, tier=tier,
                 concurrency=concurrency, regenerate=regenerate,
-                allow_missing_document_title=allow_missing_document_title, limit=limit, reported=reported)
+                allow_missing_document_title=allow_missing_document_title, limit=limit, reported=reported,
+                include_restricted=include_restricted, with_public=document_types.get(store.PUBLIC) == "boolean")
     selected = None
     if selection.explicit:
         selected = await _resolve(client, chunks, selection, concurrency)
@@ -622,6 +640,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--regenerate", action="store_true", help="also replace existing titles (explicit selection only)")
     p.add_argument("--allow-missing-document-title", action="store_true",
                    help="generate titles of chunks whose document has no title, without it")
+    p.add_argument("--include-restricted-documents", action="store_true",
+                   help="also title chunks of documents that are not public (restricted library documents, "
+                        "uploaded private texts): only with a model approved to receive their text")
     p.add_argument("--limit", type=_positive, help="at most this many chunks to title in this run")
     p.add_argument("--after", type=UUID, metavar="ID",
                    help="start after this chunk id (the next_after of an earlier run)")
@@ -682,6 +703,7 @@ async def _main(argv: list[str]) -> int:
                            models_config=args.models_config, selection=selection, tier=args.tier,
                            regenerate=args.regenerate, allow_missing_document_title=args.allow_missing_document_title,
                            limit=args.limit, after=args.after, concurrency=args.concurrency, usage=usage,
+                           include_restricted=args.include_restricted_documents,
                            reported=(lambda line: lines.write(json.dumps(line) + "\n")) if lines else lambda line: None)
     except Refused as e:
         print(e, file=sys.stderr)

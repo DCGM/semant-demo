@@ -390,6 +390,12 @@ it after `chunk_ingest` and `metadata_sync`:** the prompt uses the title of the 
 tell the two cases apart). It is independent of `chunk_year`, the embeddings (they use only
 `text`), the classification and `chunk_summaries`.
 
+**Documents that are not public** (`public` false or absent: restricted library documents and
+private uploaded texts, #279, [#785](TEXT_UPLOAD.md)) are deferred (`deferred_restricted_document`,
+exit 1) so that their text does not go to the model. `--include-restricted-documents` titles
+them; use it only with a model the deployment may send that text to (a self-hosted one, such
+as the shipped Ollama and vLLM configurations on the project's own servers).
+
 ```bash
 python -m semant_demo.maintenance.chunk_titles --check \
     --models-config semant_demo/configs/chunk_titles_ollama.yaml
@@ -698,6 +704,12 @@ python run.py config.yaml --confirm-endpoint HOST:PORT            # classify
 - **Selection:** only chunks whose `classification_provenance` is `UNPROCESSED` (optionally
   narrowed by the config's `filters`). Chunks without a value and chunks already classified are
   never selected.
+- **Documents that are not public** (`public` false or absent: restricted library documents and
+  private uploaded texts, [#785](TEXT_UPLOAD.md)): selected when `include_restricted_documents`
+  is true; unset, for a local model only, never for an API model (`APIModel`), whose provider
+  would receive their text. Set it to true for an API model only when that provider is approved
+  for this text (a self-hosted vLLM). The run summary's `restricted_documents` says which applied.
+  Needs the collection's `document` reference.
 - **Writes:** per chunk, only the mapped fields it is missing (absent, `null` or `[]`), and
   only when every one of them got a valid result (a non-empty list of the task's labels),
   together with `classification_provenance` = the config's `provenance` identifier, in one

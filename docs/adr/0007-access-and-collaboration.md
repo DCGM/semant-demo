@@ -114,6 +114,10 @@ related but distinct. A corpus document's rights come from its source library re
   (it survives revocation of the source share, and the target may itself be shared), not a
   copy or ownership of the document. Explore asks for confirmation before such an add, of a
   document or of a chunk (which also links its document); public documents need none.
+- **Uploaded documents (#785).** A text document uploaded into a collection by its owner
+  ([TEXT_UPLOAD.md](../TEXT_UPLOAD.md)) is created with `public` false, so this rule alone
+  governs it; nothing the client sends can make it public. It is linked to its collection only
+  after all its chunks and vectors are stored, so a failed upload is readable by nobody.
 - **Revocation and removal.** Unsharing a collection or removing the document from it denies
   that route at the next request, including signed asset URLs already handed out. Existing
   memberships, annotations and sharing are never changed by the rule.

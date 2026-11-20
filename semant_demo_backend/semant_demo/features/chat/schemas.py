@@ -56,8 +56,9 @@ class ChatSource(BaseModel):
     chunk_id: UUID
     document_id: UUID
     order: int | None
-    from_page: int
-    to_page: int
+    from_page: int | None
+    to_page: int | None
+    """Null for a text-only document (#785)."""
 
 
 class ChatDeltaEvent(BaseModel):
