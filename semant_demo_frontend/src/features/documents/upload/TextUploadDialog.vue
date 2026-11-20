@@ -49,7 +49,7 @@
           </q-file>
           <div class="text-caption text-grey-7 q-mt-xs">
             Columns: <code>filename</code> (required, as uploaded), <code>title</code>, <code>author</code>,
-            <code>yearIssued</code>, <code>language</code>, <code>description</code>.
+            <code>yearIssued</code>, <code>language</code>.
             <a :href="templateHref" download="semant-text-upload-template.csv" data-testid="upload-template">Download the CSV template</a>
           </div>
         </div>

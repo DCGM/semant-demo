@@ -38,8 +38,8 @@ Optional. UTF-8 (a byte order mark is allowed), comma separated, with a header r
 Copy this template (also offered for download in the dialog):
 
 ```csv
-filename,title,author,yearIssued,language,description
-example.txt,Example document,Jane Doe,1925,ces,Optional description
+filename,title,author,yearIssued,language
+example.txt,Example document,Jane Doe,1925,ces
 ```
 
 | Column | Required | Stored as |
@@ -49,10 +49,10 @@ example.txt,Example document,Jane Doe,1925,ces,Optional description
 | `author` | no | `Documents.author`, a one-element list. At most 300 characters. |
 | `yearIssued` | no | `Documents.yearIssued` (an integer, e.g. `1925` or `-50`) and the chunks' copy `Chunks.yearIssued` used by year filters (#153). |
 | `language` | no | `Documents.language` and `Chunks.language`, lowercased. Use the three-letter code of the Language search filter (`ces`, `deu`, `hun`, `lat`, `zxx`); the two-letter and bibliographic codes of these languages (`cs`, `cze`, `de`, `ger`, `hu`, `la`) are stored as that code. Other values are stored as given and no filter selects them. At most 32 characters. |
-| `description` | no | `Documents.description`. At most 5,000 characters. |
 
 Any other column (`public`, `library`, `id`, ...) refuses the upload: the CSV cannot set
-rights, the source library or ids. Files without a row get only their title. Kramerius
+rights, the source library or ids. There is no `description` column: no deployed `Documents`
+schema declares that property ([DATABASE](DATABASE.md#collection-documents)). Files without a row get only their title. Kramerius
 `metadata_sync` is never run for these documents.
 
 Every problem is reported before anything is written, and **any problem means nothing of the

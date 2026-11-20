@@ -54,17 +54,18 @@ from semant_demo.features.user_collections.schemas import TextUploadFileResult, 
 
 logger = logging.getLogger(__name__)
 
-CSV_COLUMNS = ("filename", "title", "author", "yearIssued", "language", "description")
-"""The columns of the metadata CSV; ``filename`` is required, the others optional."""
-CSV_TEMPLATE = "filename,title,author,yearIssued,language,description\r\n" \
-               "example.txt,Example document,Jane Doe,1925,ces,Optional description\r\n"
+CSV_COLUMNS = ("filename", "title", "author", "yearIssued", "language")
+"""The columns of the metadata CSV; ``filename`` is required, the others optional. Only
+properties every deployed ``Documents`` schema declares (docs/DATABASE.md): no ``description``."""
+CSV_TEMPLATE = "filename,title,author,yearIssued,language\r\n" \
+               "example.txt,Example document,Jane Doe,1925,ces\r\n"
 """The downloadable template (also in docs/TEXT_UPLOAD.md)."""
 LANGUAGE_ALIASES = {"cs": "ces", "cze": "ces", "de": "deu", "ger": "deu", "hu": "hun", "la": "lat"}
 """Two-letter (ISO 639-1) and bibliographic (ISO 639-2/B) codes of the language filter's
 languages (``configs/search_filters.yaml``, ISO 639-2/T), stored as the filter's code so the
 Language filter selects the chunks. Other values are stored as given, lowercased; the shared
 vocabulary is #562 / #812."""
-METADATA_LIMITS = {"title": 500, "author": 300, "language": 32, "description": 5000}
+METADATA_LIMITS = {"title": 500, "author": 300, "language": 32}
 """The longest accepted value of each text column, in characters."""
 YEAR = re.compile(r"-?\d{1,4}")
 
@@ -256,7 +257,6 @@ class Metadata:
     author: str | None = None
     yearIssued: int | None = None
     language: str | None = None
-    description: str | None = None
 
 
 @dataclass
@@ -356,8 +356,6 @@ def _document_properties(prepared: PreparedFile) -> dict[str, Any]:
         properties["yearIssued"] = m.yearIssued
     if m.language:
         properties["language"] = m.language
-    if m.description:
-        properties["description"] = m.description
     return properties
 
 
@@ -372,7 +370,7 @@ FLAG_CHUNK_PROPERTIES = {DOCUMENT_PUBLIC: "boolean", HAVE_VECTOR: "text[]"}
 ``haveVector`` listing the vectors written (#805), so no embedder selects the chunk again.
 Declared with another type, they refuse the upload."""
 DOCUMENT_PROPERTY_TYPES = {"title": ("text",), "public": ("boolean",), "author": ("text[]",),
-                           "yearIssued": ("int", "number"), "language": ("text",), "description": ("text",)}
+                           "yearIssued": ("int", "number"), "language": ("text",)}
 
 
 def _declared(found: str | None, needed: str) -> str:

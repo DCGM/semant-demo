@@ -40,7 +40,7 @@ class Collections:
 
 SCHEMA = UploadSchema(
     document_properties={"title": "text", "public": "boolean", "author": "text[]", "yearIssued": "int",
-                         "language": "text", "description": "text"},
+                         "language": "text"},
     document_references=frozenset({"collection"}),
     chunk_properties={"text": "text", "order": "int", "end_paragraph": "boolean", "classification_provenance": "text",
                       "startChar": "int", "startWord": "int", "wordOpenAtStart": "boolean", "yearIssued": "int",
@@ -174,8 +174,7 @@ def test_the_template_parses():
     parsed = parse_metadata_csv(CSV_TEMPLATE.encode())
     assert not parsed.errors and not parsed.file_errors
     m = parsed.rows["example.txt"]
-    assert (m.title, m.author, m.yearIssued, m.language, m.description) == (
-        "Example document", "Jane Doe", 1925, "ces", "Optional description")
+    assert (m.title, m.author, m.yearIssued, m.language) == ("Example document", "Jane Doe", 1925, "ces")
 
 
 def test_the_dialog_offers_the_same_template():
@@ -319,11 +318,18 @@ async def test_too_many_files_or_chunks_are_refused():
 
 
 async def test_metadata_the_store_cannot_hold_is_reported_not_dropped():
-    schema = UploadSchema({k: v for k, v in SCHEMA.document_properties.items() if k != "description"},
+    schema = UploadSchema({k: v for k, v in SCHEMA.document_properties.items() if k != "language"},
                           SCHEMA.document_references, SCHEMA.chunk_properties, SCHEMA.chunk_references,
                           SCHEMA.chunk_vectors)
-    result, store, _ = await upload([("a.txt", b"x")], b"filename,description\na.txt,About\n", Store(schema=schema))
-    assert "description" in result.files[0].error and not store.documents
+    result, store, _ = await upload([("a.txt", b"x")], b"filename,language\na.txt,ces\n", Store(schema=schema))
+    assert "language" in result.files[0].error and not store.documents
+
+
+async def test_a_description_column_is_refused():
+    """No deployed Documents schema declares description (docs/DATABASE.md), so the template
+    does not offer it and a CSV naming it is refused as a whole, not dropped."""
+    result, store, _ = await upload([("a.txt", b"x")], b"filename,description\na.txt,About\n")
+    assert any("description" in e for e in result.errors) and not store.documents
 
 
 # ── Completed upload ─────────────────────────────────────────────────────
@@ -370,14 +376,14 @@ async def test_declared_chunk_flags_mark_the_chunks_private_and_list_their_vecto
 
 
 async def test_csv_metadata_is_stored_and_the_year_copied_to_the_chunks():
-    csv = ("filename,title,author,yearIssued,language,description\n"
-           "a.txt,Dopisy z Prahy,Jana Nováková,1925,cs,Soukromé dopisy\nb.txt,,,,,\n").encode()
+    csv = ("filename,title,author,yearIssued,language\n"
+           "a.txt,Dopisy z Prahy,Jana Nováková,1925,cs\nb.txt,,,,\n").encode()
     result, store, _ = await upload([("a.txt", "Milá Anno,\n\nzdravím.".encode()), ("b.txt", b"Bez metadat.")], csv)
     a, b = result.files
     assert (a.status, b.status) == ("completed", "completed")
     assert store.documents[a.document_id]["properties"] == {
         "title": "Dopisy z Prahy", "public": False, "author": ["Jana Nováková"], "yearIssued": 1925,
-        "language": "ces", "description": "Soukromé dopisy"}
+        "language": "ces"}
     assert all(c["properties"]["yearIssued"] == 1925 and c["properties"]["language"] == "ces"
                for c in store.chunks_of(a.document_id))
     assert store.documents[b.document_id]["properties"] == {"title": "b", "public": False}

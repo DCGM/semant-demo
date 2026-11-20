@@ -52,7 +52,7 @@ describe('client checks', () => {
   })
 
   it('offers a template with the documented columns', () => {
-    expect(CSV_TEMPLATE.split('\r\n')[0]).toBe('filename,title,author,yearIssued,language,description')
+    expect(CSV_TEMPLATE.split('\r\n')[0]).toBe('filename,title,author,yearIssued,language')
   })
 })
 
