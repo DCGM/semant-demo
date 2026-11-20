@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { QBtn, QIcon, QSpinner } from 'quasar'
 import type { RouteLocationRaw } from 'vue-router'
 import type { Document, DocumentChunk } from 'src/generated/api'
@@ -380,47 +380,115 @@ onBeforeUnmount(() => {
   if (checkFrame) cancelAnimationFrame(checkFrame)
 })
 
-// Reading on: the adjacent text is requested when the passage is scrolled within about one
-// viewport of its start or end (the buttons stay as the fallback). It waits until the target
-// has been scrolled to and the user has scrolled (wheel, touch, keys, scrollbar), so opening
-// a short passage never extends it by itself, and stops after a failure.
-const nearEdge = reactive({ before: false, after: false })
-let edgeObserver: IntersectionObserver | null = null
-function observeEdges () {
-  edgeObserver?.disconnect()
-  edgeObserver = null
-  nearEdge.before = false
-  nearEdge.after = false
-  const body = bodyEl.value
-  if (!body || typeof IntersectionObserver === 'undefined') return
-  const edges = body.querySelectorAll<HTMLElement>('[data-edge]')
-  if (!edges.length) return
-  edgeObserver = new IntersectionObserver(entries => {
-    for (const entry of entries) nearEdge[(entry.target as HTMLElement).dataset.edge as ContextDirection] = entry.isIntersecting
-  }, { root: props.scrollText ? body : null, rootMargin: `${props.scrollText ? body.clientHeight : window.innerHeight}px 0px` })
-  edges.forEach(el => edgeObserver?.observe(el))
+// Reading on: the adjacent text is requested when the user scrolls the passage's own scroller
+// towards its start or end and that edge is within one viewport of the scroller (the buttons
+// stay as the fallback). Each request needs a new scroll in that direction: a scroll the user
+// did not make (scrolling to the target, scroll anchoring when text is added or dropped at
+// the other end) never asks for text, so one gesture cannot keep extending the passage, and
+// nothing is requested before the target is shown, while loading, or after a failure.
+const INTENT_MS = 800
+const SCROLL_KEYS: Record<string, ContextDirection> = {
+  ArrowUp: 'before', PageUp: 'before', Home: 'before', ArrowDown: 'after', PageDown: 'after', End: 'after', ' ': 'after'
 }
-watch(() => [bodyEl.value, props.scrollText, props.hasBefore, props.hasAfter, props.chunks.length > 0] as const,
-  () => { void nextTick(observeEdges) }, { flush: 'post' })
-onBeforeUnmount(() => edgeObserver?.disconnect())
-
-// Whether the requested target has been scrolled to (set at the end of the watcher below),
-// and whether the user has scrolled since.
 const targetSettled = ref(false)
-const userScrolled = ref(false)
-const USER_SCROLL_EVENTS = ['wheel', 'touchmove', 'keydown'] as const
-const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
-function onUserScroll (event: Event) {
-  // Not a click on a button: only gestures and keys that scroll.
-  if (targetSettled.value && (!(event instanceof KeyboardEvent) || SCROLL_KEYS.has(event.key))) userScrolled.value = true
+let intent: { direction: ContextDirection | null, until: number } = { direction: null, until: 0 }
+let draggingScrollbar = false
+let touchY: number | null = null
+let lastTop = 0
+let scroller: HTMLElement | null = null
+
+/** The element that scrolls the passage: its own body, or the nearest scrolling ancestor. */
+function passageScroller (): HTMLElement | null {
+  const body = bodyEl.value
+  if (!body) return null
+  if (props.scrollText) return body
+  for (let node = body.parentElement; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY
+    if (overflow === 'auto' || overflow === 'scroll') return node
+  }
+  return (window.document.scrollingElement as HTMLElement | null) ?? window.document.documentElement
 }
-onMounted(() => USER_SCROLL_EVENTS.forEach(e => window.document.addEventListener(e, onUserScroll, { passive: true })))
-onBeforeUnmount(() => USER_SCROLL_EVENTS.forEach(e => window.document.removeEventListener(e, onUserScroll)))
-watch(() => [nearEdge.before, nearEdge.after, props.hasBefore, props.hasAfter, props.extending, props.loading,
-  props.error, props.visible, targetSettled.value, userScrolled.value, props.chunks] as const, () => {
-  if (!targetSettled.value || !userScrolled.value || !props.visible || props.loading || props.extending || props.error) return
-  if (nearEdge.after && props.hasAfter) emit('extend', 'after')
-  else if (nearEdge.before && props.hasBefore) emit('extend', 'before')
+
+function intend (direction: ContextDirection | null) {
+  if (targetSettled.value) intent = { direction, until: Date.now() + INTENT_MS }
+}
+function onWheel (event: WheelEvent) { if (event.deltaY) intend(event.deltaY > 0 ? 'after' : 'before') }
+function onTouchStart (event: TouchEvent) { touchY = event.touches[0]?.clientY ?? null }
+function onTouchMove (event: TouchEvent) {
+  const y = event.touches[0]?.clientY
+  if (y === undefined || touchY === null || y === touchY) return
+  intend(y < touchY ? 'after' : 'before') // the finger moves up: the text scrolls down
+  touchY = y
+}
+function onKeyDown (event: KeyboardEvent) {
+  const direction = SCROLL_KEYS[event.key]
+  if (direction) intend(event.key === ' ' && event.shiftKey ? 'before' : direction)
+}
+function onPointerDown (event: PointerEvent) {
+  // On the scroller itself, not its text or buttons: its scrollbar.
+  if (event.target === scroller) draggingScrollbar = true
+}
+function onPointerUp () { draggingScrollbar = false }
+
+/** How far the `direction` edge's button is beyond the scroller's view (px), or null without it. */
+function edgeDistance (direction: ContextDirection): number | null {
+  const edge = bodyEl.value?.querySelector<HTMLElement>(`[data-edge="${direction}"]`)
+  if (!edge || !scroller) return null
+  const page = scroller === window.document.scrollingElement || scroller === window.document.documentElement
+  const top = page ? 0 : scroller.getBoundingClientRect().top
+  const bottom = top + (page ? window.innerHeight : scroller.clientHeight)
+  const rect = edge.getBoundingClientRect()
+  return direction === 'after' ? rect.top - bottom : top - rect.bottom
+}
+
+function onScrollerScroll () {
+  if (!scroller) return
+  const moved = scroller.scrollTop - lastTop
+  lastTop = scroller.scrollTop
+  // Only the user's scroll: a recent gesture or key, or a drag of the scrollbar.
+  const direction = Date.now() < intent.until
+    ? intent.direction
+    : draggingScrollbar && moved ? (moved > 0 ? 'after' : 'before') : null
+  // The text must move that way too: scroll anchoring moves it the other way when text is
+  // added above or dropped from the top.
+  if (!direction || !moved || (moved > 0) !== (direction === 'after')) return
+  if (!targetSettled.value || !props.visible || props.loading || props.extending || props.error) return
+  if (direction === 'after' ? !props.hasAfter : !props.hasBefore) return
+  const viewport = scroller === window.document.scrollingElement || scroller === window.document.documentElement
+    ? window.innerHeight
+    : scroller.clientHeight
+  const distance = edgeDistance(direction)
+  if (distance === null || viewport <= 0 || distance > viewport) return
+  intent = { direction: null, until: 0 } // a further request needs further scrolling
+  emit('extend', direction)
+}
+
+const SCROLLER_EVENTS = [
+  ['wheel', onWheel], ['touchstart', onTouchStart], ['touchmove', onTouchMove], ['keydown', onKeyDown],
+  ['pointerdown', onPointerDown], ['scroll', onScrollerScroll]
+] as const
+function scrollTarget (el: HTMLElement): HTMLElement | Window {
+  return el === window.document.scrollingElement || el === window.document.documentElement ? window : el
+}
+function attachScroller () {
+  const next = passageScroller()
+  if (next === scroller) return
+  if (scroller) SCROLLER_EVENTS.forEach(([name, fn]) => scrollTarget(scroller!).removeEventListener(name, fn as EventListener))
+  scroller = next
+  lastTop = scroller?.scrollTop ?? 0
+  if (scroller) SCROLLER_EVENTS.forEach(([name, fn]) => scrollTarget(scroller!).addEventListener(name, fn as EventListener, { passive: true }))
+}
+watch(() => [bodyEl.value, props.scrollText, props.visible] as const, () => { void nextTick(attachScroller) }, { flush: 'post' })
+onMounted(() => {
+  attachScroller()
+  window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
+})
+onBeforeUnmount(() => {
+  if (scroller) SCROLLER_EVENTS.forEach(([name, fn]) => scrollTarget(scroller!).removeEventListener(name, fn as EventListener))
+  scroller = null
+  window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
 })
 
 /** The point of a DOM selection boundary in a chunk's text, or null outside the text. */
@@ -456,7 +524,7 @@ function setChunkEl (id: string, el: HTMLElement | null) {
 
 // Set by every request to show the target; cleared once it is in view.
 let scrollPending = true
-watch(() => props.focusRequest, () => { scrollPending = true; targetSettled.value = false; userScrolled.value = false })
+watch(() => props.focusRequest, () => { scrollPending = true; targetSettled.value = false; intent = { direction: null, until: 0 } })
 
 // The target last scrolled to: the next one in the same document is scrolled to from its
 // side, so the motion shows whether it is earlier or later in the text (#493).
@@ -470,7 +538,7 @@ function directionTo (documentId: string | undefined, order: number | null | und
 watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visible] as const, async ([request, loading, loaded, visible], previous) => {
   // A new request is noted here too: watchers of one change do not run in a fixed order, and
   // with the target already loaded nothing else would run this again.
-  if (previous && request !== previous[0]) { scrollPending = true; targetSettled.value = false; userScrolled.value = false }
+  if (previous && request !== previous[0]) { scrollPending = true; targetSettled.value = false; intent = { direction: null, until: 0 } }
   if (loading || !loaded || !visible || !scrollPending) return
   await nextTick()
   // A panel just made visible is laid out in the next frame.

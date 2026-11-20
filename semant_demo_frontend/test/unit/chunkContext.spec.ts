@@ -525,78 +525,135 @@ describe('ChunkContextPanel', () => {
   })
 
   describe('reading on automatically', () => {
-    const observers: { callback: IntersectionObserverCallback, targets: Element[] }[] = []
-    const original = globalThis.IntersectionObserver
+    type Panel = ReturnType<typeof mountPanel>
+    const rect = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 300, width: 300, height: bottom - top, x: 0, y: top, toJSON: () => ({}) }) as DOMRect
 
-    beforeEach(() => {
-      observers.length = 0
-      globalThis.IntersectionObserver = class {
-        entry: { callback: IntersectionObserverCallback, targets: Element[] }
-        constructor (callback: IntersectionObserverCallback) {
-          this.entry = { callback, targets: [] }
-          observers.push(this.entry)
-        }
+    /** Lays out `scroller` as a 200px view at the top of the screen, with the edge buttons
+     * `before`/`after` px beyond its top/bottom (a short passage: both are near). */
+    function layout (wrapper: Panel, scroller: HTMLElement, { before = 50, after = 50 } = {}) {
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 })
+      scroller.getBoundingClientRect = () => rect(0, 200)
+      const edge = (name: string) => wrapper.find(`[data-edge="${name}"]`)
+      if (edge('before').exists()) edge('before').element.getBoundingClientRect = () => rect(-before - 30, -before)
+      if (edge('after').exists()) edge('after').element.getBoundingClientRect = () => rect(200 + after, 230 + after)
+    }
+    function scroll (scroller: HTMLElement, by: number) {
+      scroller.scrollTop += by
+      scroller.dispatchEvent(new Event('scroll'))
+    }
+    const wheel = (el: EventTarget, deltaY: number) => el.dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true }))
 
-        observe (el: Element) { this.entry.targets.push(el) }
-        disconnect () { this.entry.targets = [] }
-      } as unknown as typeof IntersectionObserver
-    })
-
-    afterEach(() => { globalThis.IntersectionObserver = original })
-
-    /** Reports the edge (`before`/`after`) as scrolled near or away. */
-    function reach (edge: string, intersecting: boolean) {
-      window.document.dispatchEvent(new Event('wheel')) // the user scrolls
-      const observer = observers.at(-1)!
-      const target = observer.targets.find(t => (t as HTMLElement).dataset.edge === edge)!
-      observer.callback([{ target, isIntersecting: intersecting } as IntersectionObserverEntry], {} as IntersectionObserver)
+    async function mountScrolling (props: Record<string, unknown> = {}) {
+      const wrapper = mountPanel({ scrollText: true, hasBefore: true, hasAfter: true, ...props })
+      await flushPromises()
+      const body = wrapper.get('[data-testid="chunk-context-body"]').element as HTMLElement
+      body.scrollTop = 500
+      layout(wrapper, body)
+      return { wrapper, body }
     }
 
-    it('extends towards the edge the passage is scrolled to, once the target is shown', async () => {
-      const wrapper = mountPanel({ hasBefore: true, hasAfter: true })
-      await flushPromises()
-      expect(observers.at(-1)!.targets).toHaveLength(2)
-
-      reach('after', true)
-      await flushPromises()
+    it('extends towards the edge the user scrolls to, once per scroll', async () => {
+      const { wrapper, body } = await mountScrolling()
+      wheel(body, 100)
+      scroll(body, 40)
       expect(wrapper.emitted('extend')).toEqual([['after']])
 
+      // The same gesture's later scroll events, or the load finishing, ask for nothing more.
+      scroll(body, 40)
       await wrapper.setProps({ extending: 'after' })
-      reach('before', true)
+      await wrapper.setProps({ extending: null, chunks: [...chunks, chunk(6)] })
       await flushPromises()
-      expect(wrapper.emitted('extend')).toHaveLength(1) // one load at a time
+      expect(wrapper.emitted('extend')).toHaveLength(1)
 
-      await wrapper.setProps({ extending: null, hasAfter: false }) // the end was reached
-      await flushPromises()
-      expect(wrapper.emitted('extend')).toEqual([['after'], ['before']])
+      wheel(body, 100) // scrolling on reads on
+      scroll(body, 40)
+      wheel(body, -100)
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toEqual([['after'], ['after'], ['before']])
     })
 
-    it('does not extend a passage nobody has scrolled, however short it is', async () => {
-      const wrapper = mountPanel({ hasBefore: true, hasAfter: true })
+    it('does not go back and forth with short chunks at the chunk limit', async () => {
+      const short = Array.from({ length: 60 }, (_, i) => chunk(i + 1))
+      const { wrapper, body } = await mountScrolling({ chunks: short, targetChunkId: 'doc-1-c30' })
+      wheel(body, 100)
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+
+      // The load drops chunks from the top: scroll anchoring moves the text up, within the
+      // gesture's time, and both edges stay near. Nothing more is asked for.
+      await wrapper.setProps({ extending: 'after' })
+      await wrapper.setProps({ extending: null, chunks: Array.from({ length: 60 }, (_, i) => chunk(i + 6)), hasBefore: true })
       await flushPromises()
-      const observer = observers.at(-1)!
-      observer.callback(observer.targets.map(target => ({ target, isIntersecting: true }) as IntersectionObserverEntry), {} as IntersectionObserver)
-      await flushPromises()
+      layout(wrapper, body)
+      wheel(body, 100) // the user is still scrolling down
+      scroll(body, -120)
+      scroll(body, 0)
+      expect(wrapper.emitted('extend')).toHaveLength(1)
+    })
+
+    it('reacts only to scrolling of its own passage, also by its scrollbar', async () => {
+      const { wrapper, body } = await mountScrolling()
+      wheel(window.document, 100) // elsewhere on the page
+      scroll(body, 40)
       expect(wrapper.emitted('extend')).toBeUndefined()
+
+      body.dispatchEvent(new Event('pointerdown', { bubbles: true })) // on the scrollbar
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toEqual([['before']])
+      window.dispatchEvent(new Event('pointerup'))
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toHaveLength(1)
     })
 
-    it('does not extend at the document boundary, after a failure or before the target is shown', async () => {
-      const wrapper = mountPanel({ hasBefore: true, visible: false })
+    it('waits until an edge is within one view of the scroller', async () => {
+      const { wrapper, body } = await mountScrolling()
+      layout(wrapper, body, { after: 250 }) // more than the 200px view away
+      wheel(body, 100)
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toBeUndefined()
+
+      layout(wrapper, body, { after: 150 })
+      wheel(body, 100)
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+    })
+
+    it('uses the sidebar scroller around a passage that does not scroll by itself', async () => {
+      const sidebar = window.document.createElement('div')
+      sidebar.style.overflowY = 'auto'
+      window.document.body.appendChild(sidebar)
+      const wrapper = mount(ChunkContextPanel, {
+        props: { targetChunkId: 'doc-1-c4', document, chunks, focusRequest: 1, hasAfter: true },
+        global: { plugins: [[Quasar, {}]] },
+        attachTo: sidebar
+      })
       await flushPromises()
-      reach('before', true)
-      await flushPromises()
+      layout(wrapper, sidebar)
+      wheel(wrapper.get('[data-testid="chunk-context-body"]').element, 100) // bubbles to the sidebar
+      scroll(sidebar, 40)
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+      wrapper.unmount()
+      sidebar.remove()
+    })
+
+    it('does not extend before the target is shown, at the document boundary or after a failure', async () => {
+      const { wrapper, body } = await mountScrolling({ visible: false })
+      wheel(body, -100)
+      scroll(body, -40)
       expect(wrapper.emitted('extend')).toBeUndefined() // target not scrolled to yet
 
       await wrapper.setProps({ visible: true })
       await flushPromises()
-      window.document.dispatchEvent(new Event('wheel'))
-      await flushPromises()
-      expect(wrapper.emitted('extend')).toEqual([['before']])
-
+      layout(wrapper, body)
       await wrapper.setProps({ error: 'Failed to load the document context.' })
-      await wrapper.setProps({ extending: null, hasBefore: false })
-      await flushPromises()
-      expect(wrapper.emitted('extend')).toHaveLength(1)
+      wheel(body, -100)
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toBeUndefined()
+
+      await wrapper.setProps({ error: null, hasBefore: false })
+      wheel(body, -100)
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toBeUndefined()
       expect(wrapper.text()).toContain('Start of document')
     })
   })
