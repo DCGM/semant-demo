@@ -243,7 +243,9 @@ def load_config(path: Path) -> tuple[RunnerConfig, str]:
         return p if p.is_absolute() else base / p
 
     config = config.model_copy(update={"dataset": resolve(config.dataset), "runs_dir": resolve(config.runs_dir),
-                                       "cache_dir": resolve(config.cache_dir)})
+                                       "cache_dir": resolve(config.cache_dir),
+                                       "store": config.store.model_copy(
+                                           update={"token_file": resolve(config.store.token_file)})})
     return config, hashlib.sha256(raw).hexdigest()
 
 

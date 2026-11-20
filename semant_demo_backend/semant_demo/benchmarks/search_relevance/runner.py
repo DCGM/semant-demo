@@ -147,8 +147,9 @@ def read_state(directory: Path, dataset: Dataset, repair: bool = True) -> RunSta
                               f"({data['dataset']['dataset_id']} {data['dataset']['version']})")
         state.created = state.created or data.get("created")
         state.adopt(RunConfiguration.model_validate(c) for c in data["configurations"])
-        if not state.complete:
-            state.sessions = data.get("sessions", [])
+        # The partial state's sessions were written from this run's sessions (the manifest's and
+        # any interrupted ones), so they are the complete list.
+        state.sessions = data.get("sessions", state.sessions)
         if data.get("current_session"):  # a session that was interrupted: its results are in the log
             state.sessions = [*state.sessions, {**data["current_session"], "interrupted": True}]
         for result in read_partial_results(directory / PARTIAL_RESULTS, repair):
@@ -315,7 +316,6 @@ async def execute(plan: Plan, directory: Path, run_id: str, open_store: OpenStor
     _check_keys(plan, vector_ids)
     started = _now()
     state.created = state.created or started
-    _write_partial_state(directory, dataset, state)
     spec = config.store.spec()
     environment: dict[str, Any] = {
         "git": git_revision(), "started": started,
@@ -326,7 +326,8 @@ async def execute(plan: Plan, directory: Path, run_id: str, open_store: OpenStor
         "queries_selected": len(plan.queries),
         "configurations_run": [c.configuration_id for c in plan.configurations],
         "searches": len(work), "resumed": len(state.results)}
-    _write_partial_state(directory, dataset, state, environment)
+    # Nothing is recorded before the store is ready: a session that fails to open the store or to
+    # ensure a vector leaves the run as it was (its configurations are not adopted on disk).
     log(f"{run_id}: {len(work)} searches ({len(plan.configurations)} configurations, {len(plan.queries)} queries)")
     if work:
         store: BenchmarkStore = await open_store(spec)

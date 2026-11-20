@@ -444,3 +444,42 @@ def test_a_dry_run_reads_an_interrupted_run_without_writing(tmp_path, dataset):
     lines = []
     runner.dry_run(plan, tmp_path / "runs/r1", "r1", False, lines.append)
     assert log.read_bytes() == before and "24 searches to do" in "\n".join(lines)
+
+
+def test_extending_a_finished_run_keeps_every_interrupted_session(tmp_path, dataset):
+    run(plan_for(tmp_path, dataset, base_config(grid={"modes": ["text"]})), tmp_path, FakeStore())
+    extended = plan_for(tmp_path, dataset, base_config(budget={"concurrency": 1}))
+    for after in (2, 2):  # two sessions interrupted while adding configurations
+        with pytest.raises(Interrupted):
+            run(extended, tmp_path, FakeStore(interrupt_after=after))
+    loaded = run(extended, tmp_path, FakeStore())
+    sessions = loaded.manifest.environment["sessions"]
+    assert [bool(s.get("interrupted")) for s in sessions] == [False, True, True]
+    assert loaded.manifest.counts["results"] == 27
+
+
+def test_a_session_that_cannot_open_the_store_leaves_the_run_as_it_was(tmp_path, dataset):
+    run(plan_for(tmp_path, dataset, base_config(grid={"modes": ["text"]})), tmp_path, FakeStore())
+    directory = tmp_path / "runs/r1"
+    before = sorted(p.name for p in directory.iterdir())
+
+    async def broken(spec):
+        raise RuntimeError("the store is not ours")
+    with pytest.raises(RuntimeError):
+        asyncio.run(runner.execute(plan_for(tmp_path, dataset, base_config()), directory, "r1", broken,
+                                   log=lambda line: None))
+    assert sorted(p.name for p in directory.iterdir()) == before  # no partial state adopting the new ones
+    # The corrected configuration (another query prefix of the configurations that never ran) is
+    # accepted for the same run id.
+    vectors = base_config()["vectors"]
+    vectors["fake"] = {**vectors["fake"], "query_prefixes": {"instruct": "Corrected: ", "none": ""}}
+    loaded = run(plan_for(tmp_path, dataset, base_config(vectors=vectors)), tmp_path, FakeStore())
+    [vector] = [c for c in loaded.manifest.configurations if c.configuration_id == "vector.fake.p-instruct"]
+    assert vector.vector.query_prefix == "Corrected: "
+
+
+def test_a_relative_token_file_is_resolved_against_the_config(tmp_path, monkeypatch):
+    path = write_config(tmp_path, base_config())
+    monkeypatch.chdir(tmp_path.parent)  # run from elsewhere
+    config, _ = load_config(path)
+    assert config.store.token_file == tmp_path / "token"
