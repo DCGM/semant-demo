@@ -30,7 +30,7 @@ PAGE = UUID("5e3a0000-0000-4000-8000-0000000d2f01")
 STORED = {
     "title": "Dopisy z Prahy", "author": ["Karel Pisatel", "Marie Pisatelová"], "yearIssued": 1902,
     "dateIssued": datetime(1902, 5, 1, tzinfo=timezone.utc), "url": PAGE, "partNumber": "2",
-    "public": False, "editors": [],
+    "public": True, "editors": [],
 }
 
 
@@ -81,6 +81,9 @@ def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
 
 
 class _Documents:
+    async def is_public(self, document_id):
+        return document_id == DOC  # the stored document is public; any other is not readable
+
     async def read(self, document_id):
         return Document(id=document_id, **STORED)
 
@@ -163,7 +166,7 @@ async def test_document_responses_serialize_stored_properties(tmp_path):
     expected = {
         "id": str(DOC), "title": "Dopisy z Prahy", "author": ["Karel Pisatel", "Marie Pisatelová"],
         "yearIssued": 1902, "dateIssued": "1902-05-01T00:00:00Z", "url": str(PAGE), "partNumber": "2",
-        "public": False, "editors": [],
+        "public": True, "editors": [],
     }
 
     async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -181,8 +184,9 @@ def test_chunk_count_keeps_its_public_contract(tmp_path):
 
     assert list(operation) == ["get"]
     assert operation["get"]["operationId"] == "count_document_chunks_api_documents__document_id__chunks_count_get"
-    assert "security" not in operation["get"]
-    assert [p["name"] for p in operation["get"]["parameters"]] == ["document_id"]
+    # An optional login and collection (#279): a document that is not public counts through its collection.
+    assert [(p["name"], p["required"]) for p in operation["get"]["parameters"]] == [
+        ("document_id", True), ("collection_id", False)]
     assert operation["get"]["responses"]["200"]["content"]["application/json"]["schema"] == \
         {"type": "integer", "title": "Response Count Document Chunks Api Documents  Document Id  Chunks Count Get"}
 
@@ -500,7 +504,7 @@ class _YearOrderedDocuments(_Documents):
         self.calls.append({"metadata": text, "limit": limit, "conditions": conditions})
         return [_doc(2), _doc(1)][:limit]
 
-    async def read_eligible(self, document_ids, collection_id=None, conditions=()):
+    async def read_eligible(self, document_ids, collection_id=None, conditions=(), include_restricted=False):
         self.calls.append({"read": list(document_ids), "conditions": conditions})
         return {d: Document(id=d, title=f"Document {d.int - 0xD0C0}") for d in document_ids if d != _doc(5)}
 

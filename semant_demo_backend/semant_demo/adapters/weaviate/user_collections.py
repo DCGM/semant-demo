@@ -244,6 +244,24 @@ class UserCollectionRepository:
         )
         return bool(response.objects)
 
+    async def read_document_rights(self, document_id: UUID) -> tuple[bool | None, set[UUID]] | None:
+        """The document's ``public`` value and the collections it is linked to (#279); None if
+        the document does not exist."""
+        doc = await self._documents().query.fetch_object_by_id(
+            document_id, return_properties=["public"], return_references=[QueryReference(link_on="collection")])
+        if doc is None:
+            return None
+        return doc.properties.get("public"), _ref_ids(doc, "collection")
+
+    async def read_chunk_document(self, chunk_id: UUID) -> tuple[bool, UUID | None]:
+        """Whether the chunk exists, and its document (None without one)."""
+        chunk = await self._chunks().query.fetch_object_by_id(
+            chunk_id, return_properties=[], return_references=[QueryReference(link_on="document")])
+        if chunk is None:
+            return False, None
+        documents = list(_ref_ids(chunk, "document"))
+        return True, documents[0] if documents else None
+
     async def chunk_ids_in_collection(
         self, chunk_ids: list[UUID], collection_id: UUID, document_id: UUID | None = None,
     ) -> set[UUID]:

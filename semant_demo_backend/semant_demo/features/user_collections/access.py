@@ -23,6 +23,11 @@ first, and the spans are then looked up only in its tenant, so a span id is neve
 credential and an id of another collection is "not found". Collection+document requests
 also need the document to be linked to that collection.
 
+Adding a document or chunk to a collection (``require_document_addable``, #279) also needs the
+document to be readable by the user already: public, or linked to another collection the
+user can read. Otherwise any signed-in user could unlock a restricted document by adding
+its id to a collection of their own.
+
 Each function takes the repository it reads (collections, tags, spans), so callers do
 not need the transitional ``WeaviateAbstraction`` facade.
 """
@@ -167,6 +172,38 @@ async def require_document_in_collection(collections: UserCollectionRepository, 
     if not await collections.document_in_collection(doc, collection_id):
         raise ResourceNotFound("Document not found in this collection")
     return doc
+
+
+async def require_document_addable(collections: UserCollectionRepository, user: Principal | None,
+                                   document_id: UUID) -> None:
+    """The user may add the document to a collection (#279): it is public (``public`` true) or
+    linked to a collection the user can read. "Not found" otherwise, as for a document that
+    does not exist, so restricted ids are not confirmed."""
+    rights = await collections.read_document_rights(document_id)
+    if rights is None:
+        raise ResourceNotFound("Document not found")
+    public, linked = rights
+    if public is True:
+        return
+    for collection_id in sorted(linked):
+        try:
+            await require_collection_read(collections, user, collection_id)
+            return
+        except ResourceNotFound:
+            continue
+    raise ResourceNotFound("Document not found")
+
+
+async def require_chunk_addable(collections: UserCollectionRepository, user: Principal | None,
+                                chunk_id: UUID) -> None:
+    """``require_document_addable`` for the chunk's document; "not found" for an unknown chunk.
+    A chunk without a document has no source rights to check (and is never eligible in
+    search, which requires its document to be readable)."""
+    exists, document_id = await collections.read_chunk_document(chunk_id)
+    if not exists:
+        raise ResourceNotFound("Chunk not found")
+    if document_id is not None:
+        await require_document_addable(collections, user, document_id)
 
 
 async def require_chunks_in_collection(collections: UserCollectionRepository, chunk_ids: Iterable[str | UUID],

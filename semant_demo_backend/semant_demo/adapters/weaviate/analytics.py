@@ -13,6 +13,11 @@ id: ``document_values`` reads the values of just those documents, in batches, fo
 to count; still no texts or vectors. Weaviate's ``is_none`` filter needs an indexed null state, which the deployed collections
 lack, so missing values are never counted directly.
 
+Access (#279): counts without a collection cover only public documents (``Documents.public``
+true), the population of unscoped Search and Explore; the filter is part of every aggregate, so
+no restricted or unknown document is ever counted. Counts and ``document_values`` with a
+collection cover that (authorized) collection's documents whatever their rights.
+
 The collection name is resolved through an alias for the schema read (the deployment serves
 ``Documents`` as an alias of ``Documents_test``). Never creates or alters a collection.
 """
@@ -26,6 +31,7 @@ from weaviate.classes.aggregate import GroupByAggregate
 from weaviate.classes.query import Filter, Metrics
 
 from semant_demo.adapters.weaviate.criteria import UnavailableFilter, declared, where
+from semant_demo.adapters.weaviate.documents import public_documents
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.features.documents.criteria import AnyOf, Condition, ContainsWords, NumberRange
 
@@ -122,7 +128,8 @@ class CorpusAnalyticsRepository:
     async def document_values(self, ids: Sequence[UUID], properties: Sequence[str], collection_id: UUID | None = None,
                               conditions: Sequence[Condition] = ()) -> dict[UUID, dict[str, Any]]:
         """The stored values of ``properties`` (each declared, see ``availability``) of the
-        documents among ``ids`` that belong to the collection, if given, and meet every condition;
+        documents among ``ids`` that belong to the collection, if given (otherwise that are
+        public), and meet every condition;
         the others, also ids of no document, are left out. Read in batches of ``READ_BATCH``.
         Raises ``UnavailableFilter`` when a condition's property cannot be filtered."""
         types, tokenizations = await self._declared()
@@ -132,7 +139,7 @@ class CorpusAnalyticsRepository:
         async def read(batch: Sequence[UUID]) -> list:
             by_ids = Filter.by_id().contains_any(list(batch))
             response = await documents.query.fetch_objects(
-                filters=by_ids & restriction if restriction is not None else by_ids, limit=len(batch),
+                filters=by_ids & restriction, limit=len(batch),
                 return_properties=list(properties))
             return response.objects
 
@@ -168,12 +175,11 @@ def _restriction(conditions: Sequence[Condition], collection_id: UUID | None, ty
                  tokenizations: dict[str, str]):
     """The one filter of the counted documents: every condition and, with a collection, a link
     to it (``Documents.collection``, as the collection's document list and ``CollectionStats``
-    read it); ``None`` without either."""
+    read it); without a collection, the public documents only (#279)."""
     criteria = where(conditions, types, tokenizations)
-    if collection_id is None:
-        return criteria
-    linked = Filter.by_ref("collection").by_id().equal(collection_id)
-    return linked if criteria is None else Filter.all_of([linked, criteria])
+    scope = (public_documents() if collection_id is None
+             else Filter.by_ref("collection").by_id().equal(collection_id))
+    return scope if criteria is None else Filter.all_of([scope, criteria])
 
 
 def _unavailable(data_type: str | None, kind: ValueKind) -> Literal["missing", "unsupported_type"] | None:

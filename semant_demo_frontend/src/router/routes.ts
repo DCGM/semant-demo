@@ -36,7 +36,8 @@ const routes: RouteRecordRaw[] = [
       },
       {
         // The public document view (#545): a corpus document's text and scans, read-only, no
-        // sign-in needed. `?page=`, `?chunk=&start=&end=`, `?view=`, `?from=search|chat`.
+        // sign-in needed for a public document. `?page=`, `?chunk=&start=&end=`, `?view=`,
+        // `?from=search|chat`, `?collection=` (#279: a restricted document is read through it).
         name: 'document',
         path: '/documents/:documentId',
         component: () => import('src/features/documents/workspace/PublicDocumentPage.vue'),

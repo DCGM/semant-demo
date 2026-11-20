@@ -382,6 +382,7 @@ export interface CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotat
 
 export interface CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest {
     documentId: string;
+    collectionId?: string | null;
 }
 
 export interface CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest {
@@ -468,6 +469,7 @@ export interface FetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsD
 
 export interface FetchDocumentApiDocumentDocumentIdGetRequest {
     documentId: string;
+    collectionId?: string | null;
 }
 
 export interface GetChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGetRequest {
@@ -604,6 +606,7 @@ export interface ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAd
     chunkId: string;
     direction: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum;
     limit?: number;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest {
@@ -611,22 +614,26 @@ export interface ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindo
     chunkId: string;
     before?: number;
     after?: number;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest {
     documentId: string;
     pageId: string;
     kind: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetKindEnum;
+    access?: string | null;
 }
 
 export interface ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest {
     documentId: string;
     page: number;
     limit?: number;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest {
     documentId: string;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentsApiSearchDocumentsReadPostRequest {
@@ -1110,15 +1117,17 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for countDocumentChunksApiDocumentsDocumentIdChunksCountGet without sending the request
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     countDocumentChunksApiDocumentsDocumentIdChunksCountGetRequestOpts(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * @summary Count Document Chunks
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1126,7 +1135,7 @@ export interface DefaultApiInterface {
     countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>>;
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * Count Document Chunks
      */
     countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number>;
@@ -1607,15 +1616,17 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for fetchDocumentApiDocumentDocumentIdGet without sending the request
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     fetchDocumentApiDocumentDocumentIdGetRequestOpts(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * @summary Fetch Document
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1623,7 +1634,7 @@ export interface DefaultApiInterface {
     fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Document>>;
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * Fetch Document
      */
     fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Document>;
@@ -2290,18 +2301,20 @@ export interface DefaultApiInterface {
      * @param {string} chunkId 
      * @param {'before' | 'after'} direction 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequestOpts(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * @summary Read Document Adjacent Chunks
      * @param {string} documentId 
      * @param {string} chunkId 
      * @param {'before' | 'after'} direction 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2309,7 +2322,7 @@ export interface DefaultApiInterface {
     readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRaw(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AdjacentChunks>>;
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * Read Document Adjacent Chunks
      */
     readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AdjacentChunks>;
@@ -2320,18 +2333,20 @@ export interface DefaultApiInterface {
      * @param {string} chunkId 
      * @param {number} [before] 
      * @param {number} [after] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequestOpts(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * @summary Read Document Chunk Window
      * @param {string} documentId 
      * @param {string} chunkId 
      * @param {number} [before] 
      * @param {number} [after] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2339,7 +2354,7 @@ export interface DefaultApiInterface {
     readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRaw(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentChunkWindow>>;
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * Read Document Chunk Window
      */
     readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentChunkWindow>;
@@ -2349,17 +2364,19 @@ export interface DefaultApiInterface {
      * @param {string} documentId 
      * @param {string} pageId 
      * @param {'image' | 'layout' | 'thumbnail'} kind 
+     * @param {string} [access] The signed access of a page manifest read through a collection; needed for a document that is not public.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequestOpts(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * @summary Read Document Page Asset
      * @param {string} documentId 
      * @param {string} pageId 
      * @param {'image' | 'layout' | 'thumbnail'} kind 
+     * @param {string} [access] The signed access of a page manifest read through a collection; needed for a document that is not public.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2367,7 +2384,7 @@ export interface DefaultApiInterface {
     readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRaw(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * Read Document Page Asset
      */
     readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -2377,17 +2394,19 @@ export interface DefaultApiInterface {
      * @param {string} documentId 
      * @param {number} page 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequestOpts(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * @summary Read Document Page Chunks
      * @param {string} documentId 
      * @param {number} page 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2395,7 +2414,7 @@ export interface DefaultApiInterface {
     readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRaw(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PageChunks>>;
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * Read Document Page Chunks
      */
     readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PageChunks>;
@@ -2403,15 +2422,17 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for readDocumentPagesApiDocumentsDocumentIdPagesGet without sending the request
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentPagesApiDocumentsDocumentIdPagesGetRequestOpts(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * @summary Read Document Pages
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2419,7 +2440,7 @@ export interface DefaultApiInterface {
     readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentPages>>;
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * Read Document Pages
      */
     readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages>;
@@ -3923,7 +3944,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/count`;
@@ -3938,7 +3968,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * Count Document Chunks
      */
     async countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>> {
@@ -3953,7 +3983,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * Count Document Chunks
      */
     async countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number> {
@@ -5052,7 +5082,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/document/{document_id}`;
@@ -5067,7 +5106,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * Fetch Document
      */
     async fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Document>> {
@@ -5078,7 +5117,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * Fetch Document
      */
     async fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Document> {
@@ -6530,7 +6569,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['limit'] = requestParameters['limit'];
         }
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/{chunk_id}/adjacent`;
@@ -6546,7 +6594,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * Read Document Adjacent Chunks
      */
     async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRaw(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AdjacentChunks>> {
@@ -6557,7 +6605,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * Read Document Adjacent Chunks
      */
     async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AdjacentChunks> {
@@ -6593,7 +6641,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['after'] = requestParameters['after'];
         }
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/{chunk_id}/window`;
@@ -6609,7 +6666,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * Read Document Chunk Window
      */
     async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRaw(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentChunkWindow>> {
@@ -6620,7 +6677,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * Read Document Chunk Window
      */
     async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentChunkWindow> {
@@ -6655,6 +6712,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['access'] != null) {
+            queryParameters['access'] = requestParameters['access'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
 
@@ -6672,7 +6733,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * Read Document Page Asset
      */
     async readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRaw(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -6683,7 +6744,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * Read Document Page Asset
      */
     async readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -6718,7 +6779,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['limit'] = requestParameters['limit'];
         }
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/by_page`;
@@ -6733,7 +6803,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * Read Document Page Chunks
      */
     async readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRaw(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PageChunks>> {
@@ -6744,7 +6814,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * Read Document Page Chunks
      */
     async readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PageChunks> {
@@ -6765,7 +6835,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/pages`;
@@ -6780,7 +6859,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * Read Document Pages
      */
     async readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentPages>> {
@@ -6791,7 +6870,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * Read Document Pages
      */
     async readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages> {

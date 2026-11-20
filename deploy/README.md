@@ -183,7 +183,7 @@ production size (startup and drop duration unknown).
 
 `Dockerfile.topicer` clones [DCGM/topicer](https://github.com/DCGM/topicer) at the release
 tag in the compose file's `TOPICER_VERSION` (`v0.1.0`, #392; built from `main` until then,
-from `semant-debug` until 2026-10-17). The service reserves a GPU (CrossBERT config).
+from `semant-debug` until 2026-10-17). The service reserves a GPU (CrossBERT configs).
 
 **One Topicer serves production, test-main and every PR preview (#792).** semANT sends it
 only text (`POST /v1/tags/propose/texts`); for optimized suggestions semANT ranks the
@@ -227,11 +227,43 @@ reservation, the provider must report cost (OpenRouter `usage.cost`) or the conf
 `TOPICER_MAX_CHUNKS_PER_TAG` (40) is semANT's own limit of candidate chunks per tag; it is no
 longer sent to Topicer.
 
-Production configs (#470), named after the method:
+Production configs (#470, #140), named after the method:
 
 - `llm-openrouter` — `LLMTopicer` on OpenRouter; used by semANT.
-- `crossbert` — `CrossBertTopicer` (GPU), model in `/app/data/topicer/models`; not used by
-  semANT by default. Since #792 it can serve optimized suggestions too (no stream needed).
+- `crossbert-<model type>-<training YYYY-MM>` — `CrossBertTopicer` cross-encoders (GPU), listed
+  below; offered in the AI Assist model picker, not used by semANT by default. Since #792 they
+  serve optimized suggestions too. The name carries the training date, which identifies the
+  weights; the deployment date is in the table.
+
+| Config | Model type | Provenance | Trained | Deployed | Threshold / max_length | CzechTopic test span-F1 | Model directory |
+|---|---|---|---|---|---|---|---|
+| `crossbert-czechtopic-2026-05` | BERT (WordPiece) | Best model from CzechTopic | before 2026-05 | 2026-05 (as `crossbert`; renamed 2026-11-19) | 0.77 / 350 | not measured with Topicer | `models/czechtopic-2026-05/` |
+| `crossbert-mmbert-2026-08` | mmBERT-base | Best of 9 variants of the 2026-08-05 training (`normalize_score`, `soft_max_score`, no `scale_positives`, max_length 512); threshold calibrated on validation | 2026-08-05 | 2026-11-19 | 0.32 / 512 | 0.440 [0.412, 0.467] (token-topicer inference) | `models/mmbert-2026-08/` |
+
+mmBERT needs `TORCH_DISABLE_NATIVE_JIT=1`, set in `docker-compose.topicer.yml`: the image installs
+the newest torch (2.14.1 on 2026-11-19), which sends mmBERT's rotary embeddings to a Triton kernel
+that needs a C compiler the image lacks, so every mmBERT request failed with HTTP 500. Changing
+it needs `topicer-down` and `topicer-up`, not a restart.
+
+Both use `stride: 32`, `normalize_score: true` and `soft_max_score: true`; mmBERT also sets
+`gap_tolerance: 5` and `confidence_mode: mean`. Topicer loads every config at startup and keeps
+its model on the GPU (about 2 GB for both, 2026-11-19); mmBERT is much slower per chunk than the
+BERT model.
+
+Server layout (`/opt/semant-demo/data/topicer/`, mounted at `/app/data/topicer`; a
+`README.md` there points here):
+
+```text
+configs/<config>.yaml           one Topicer config per file (only *.yaml loads; backups use .bak-<date>)
+models/<type>-<YYYY-MM>/        one traced model per directory, referenced by its config's `model:`
+  model_cuda.pt                 traced model (torch.jit) for device cuda
+  tokenizer.json, tokenizer_config.json, special_tokens_map.json   tokenizer (vocab.txt for BERT)
+```
+
+To add a cross-encoder: copy the traced model and its tokenizer files into a new
+`models/<type>-<YYYY-MM>/`, add `configs/crossbert-<type>-<YYYY-MM>.yaml` with the calibrated
+threshold and the training max_length, `docker restart semant-demo-topicer-1`, check the loaded
+configs and GPU memory (`nvidia-smi`), and add a row to the table above.
 
 `openai-xsucha` (`TagProposalV2`, mDeBERTa NLI) was removed: nothing has called it since
 `propose_tags_routes.py` was deleted.
@@ -515,8 +547,12 @@ schedule and deletes old ones. Before #469 they were made and deleted by hand.
   **full** backup when the newest full backup made by the script is 7 days old (`FULL_INTERVAL_DAYS`,
   less 12 h so that a daily run starts it on the 7th day), otherwise an **incremental** backup
   based on the newest successful backup of that chain. A full backup of the store (8.3 M chunks)
-  took 2 h 48 min and 261 GB before compression (`backup-2026-11-16`, by hand); measure the
-  incremental size after the first week and record it on #469.
+  took 2 h 48 min and 261 GB before compression (`backup-2026-11-16`, by hand). Measured on the
+  first chain (#469): the full backup took 2 h 35 min and 104.8 GiB on disk. An ordinary day's
+  incremental took 2.5 min and 1.3 GiB, and an incremental after two Chunk rewrites took
+  1 h 32 min and 68.5 GiB (about 65% of the full backup). With occasional rewrites, the two
+  kept chains fit in the pool's ~1.1 TiB free. If rewrites become routine, revisit the schedule,
+  for example a full backup after each rewrite.
 - **Chains.** Weaviate stores an incremental backup's unchanged files as references to its base
   and records the base in `<id>/backup_config.json` (`baseBackupId`). An incremental backup
   restores only while **every backup it depends on** still exists. The script reads the chains
@@ -546,7 +582,7 @@ schedule and deletes old ones. Before #469 they were made and deleted by hand.
 - **Settings** (environment): `WEAVIATE_URL` (`http://127.0.0.1:8080`), `FULL_INTERVAL_DAYS` (7),
   `KEEP_CHAINS` (2), `MAX_AGE_HOURS` (26), `MIN_FREE_GIB` (200), `FREE_FACTOR` (1.25),
   `TIMEOUT_HOURS` (20), `POLL_SECONDS` (30), `BACKUP_MOUNT` (set to `/mnt/zfs1` by the cron entry),
-  `REHEARSAL_ENDPOINTS` (`restore` targets; `127.0.0.1:8090,localhost:8090`).
+  `REHEARSAL_ENDPOINTS` (`restore` targets; `127.0.0.1:18090,localhost:18090`).
 
 Install or update (the aligned `docker-compose.database.yml` already matches the running
 container, so no restart is needed):
@@ -588,23 +624,25 @@ Weaviate. Use a ZFS clone, which costs no space until written and is destroyed a
 directories (its full backup and every incremental up to the one to restore):
 
 ```bash
+ss -ltn | grep ':18090 ' && echo 'port 18090 is taken: pick another and add it to REHEARSAL_ENDPOINTS'
+free -g    # the instance needs ~18 GiB (peak in the 2026-11-19 rehearsal); keep --memory below "available"
 sudo zfs snapshot zfs1@rehearsal-469
 sudo zfs clone -o mountpoint=/mnt/rehearsal-469 zfs1@rehearsal-469 zfs1/rehearsal-469
 sudo mkdir /mnt/ssd2/weaviate_rehearsal   # room for the restored store: ~170-260 GiB; the root RAID had 985 GiB free
-docker run -d --name weaviate-rehearsal -p 127.0.0.1:8090:8080 --memory 48g \
+docker run -d --name weaviate-rehearsal -p 127.0.0.1:18090:8080 --memory 32g \
   -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
   -e CLUSTER_HOSTNAME=node1 -e ENABLE_MODULES=backup-filesystem -e BACKUP_FILESYSTEM_PATH=/backups \
   -e LIMIT_RESOURCES=true -v /mnt/ssd2/weaviate_rehearsal:/var/lib/weaviate \
   -v /mnt/rehearsal-469/weaviate_semant/backups:/backups cr.weaviate.io/semitechnologies/weaviate:1.40.1
-WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py restore <newest auto-incr id> --confirm-endpoint 127.0.0.1:8090
+WEAVIATE_URL=http://127.0.0.1:18090 deploy/weaviate_backup.py restore <newest auto-incr id> --confirm-endpoint 127.0.0.1:18090
 # Compare with production. Read-only, but it aggregates every collection and tenant; the
 # production counts move with any write since the backup, so compare outside write windows.
 deploy/weaviate_backup.py counts > /tmp/counts-production.tsv
-WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py counts > /tmp/counts-restored.tsv
+WEAVIATE_URL=http://127.0.0.1:18090 deploy/weaviate_backup.py counts > /tmp/counts-restored.tsv
 diff /tmp/counts-production.tsv /tmp/counts-restored.tsv
 # Inactive tenants: count their restored objects too (activates each one in the rehearsal
 # instance, counts it and sets it back)
-WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py counts --activate-inactive --confirm-endpoint 127.0.0.1:8090 > /tmp/counts-restored-all.tsv
+WEAVIATE_URL=http://127.0.0.1:18090 deploy/weaviate_backup.py counts --activate-inactive --confirm-endpoint 127.0.0.1:18090 > /tmp/counts-restored-all.tsv
 # Clean up
 docker rm -f weaviate-rehearsal && sudo rm -r /mnt/ssd2/weaviate_rehearsal
 sudo zfs destroy zfs1/rehearsal-469 && sudo zfs destroy zfs1@rehearsal-469
@@ -619,11 +657,16 @@ counts with production needs an explicit authorization and a write pause (the ap
 a tenant on access). Without it, the rehearsal shows that every inactive tenant was restored,
 activates and holds objects, but not that its count equals production's.
 `restore` accepts only an endpoint listed in `REHEARSAL_ENDPOINTS` (default
-`127.0.0.1:8090,localhost:8090`, never `:8080`) and repeated in `--confirm-endpoint`. A deny list
+`127.0.0.1:18090,localhost:18090`, never `:8080`) and repeated in `--confirm-endpoint`. A deny list
 would let another name or address of production through. Record the date, backup ids, duration and the
 diff on #469. The vector index needs memory (8-bit RQ of the 1024-dimensional chunk vectors:
 about 8 GiB, [audit](../docs/WEAVIATE_AUDIT_2026-10.md)); the host has 188 GiB, of which
-production Weaviate may use 98 GiB.
+production Weaviate may use 98 GiB. The default rehearsal port is 18090 because ClearML and
+another service hold 8090 and 8091 on `semant`.
+
+The first rehearsal (2026-11-19, #469) restored `auto-incr-20261119-000001` (full + one
+incremental, 8.28 M chunks) in 15.5 min with a 32 GiB limit and a peak of 17.7 GiB. Every count
+matched, except for objects written or deleted in production after the backup.
 
 Restoring production itself (with explicit authorization, after the rehearsal): stop the app,
 empty the store as in [Recovering / Rebuilding the Weaviate database](#recovering--rebuilding-the-weaviate-database),

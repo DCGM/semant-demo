@@ -9,7 +9,8 @@ language, and the heatmap's per-library rows) has the same restriction.
 Fixture (tests/fixtures/corpus.json): "chronicles" links the chronicle (1851) and the letters
 (1902), owned by owner and shared with the annotator; "newspapers" links the chronicle and the
 gazette (no year), not shared. All three documents are "ces" without a library. The tests add
-metadata-only documents (no chunks) and links.
+public metadata-only documents (no chunks) and links; corpus counts without a collection cover
+only public documents (#279).
 """
 from uuid import UUID
 
@@ -25,13 +26,13 @@ LIBRARY_YEARS = "/api/analytics/corpus/library-years"
 OVERVIEW = "/api/analytics/corpus/overview"
 EXTRA = {f"extra{n}": UUID(f"5e3a0000-0000-4000-8000-0000000da1{n:02}") for n in range(1, 7)}
 EXTRA_PROPERTIES = {
-    "extra1": {"title": "Brněnské listy", "yearIssued": 1909, "library": "mzk", "language": "ces"},
-    "extra2": {"title": "Brněnský týdeník", "yearIssued": 1910, "library": "mzk", "language": "deu"},
-    "extra3": {"title": "Pražský kalendář", "yearIssued": 1910, "library": "nkp", "language": "ces"},
-    "extra4": {"title": "Olomoucké noviny", "yearIssued": 1920, "library": "vkol", "language": "lat"},
+    "extra1": {"title": "Brněnské listy", "yearIssued": 1909, "library": "mzk", "language": "ces", "public": True},
+    "extra2": {"title": "Brněnský týdeník", "yearIssued": 1910, "library": "mzk", "language": "deu", "public": True},
+    "extra3": {"title": "Pražský kalendář", "yearIssued": 1910, "library": "nkp", "language": "ces", "public": True},
+    "extra4": {"title": "Olomoucké noviny", "yearIssued": 1920, "library": "vkol", "language": "lat", "public": True},
     # Not linked to a collection: in the corpus only.
-    "extra5": {"title": "Vídeňské noviny", "yearIssued": 1909, "library": "mzk", "language": "deu"},
-    "extra6": {"title": "Jiný kalendář", "yearIssued": 1950, "library": "nkp", "language": "ces"},
+    "extra5": {"title": "Vídeňské noviny", "yearIssued": 1909, "library": "mzk", "language": "deu", "public": True},
+    "extra6": {"title": "Jiný kalendář", "yearIssued": 1950, "library": "nkp", "language": "ces", "public": True},
 }
 
 

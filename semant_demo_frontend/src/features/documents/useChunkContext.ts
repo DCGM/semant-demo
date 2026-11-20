@@ -6,6 +6,9 @@ import { createContextGuard, errorStatus, isAbortError, useApi } from 'src/share
 export interface ChunkContextTarget {
   documentId: string
   chunkId: string
+  /** The collection the result was found through (#279): a document that is not public is
+   * readable only through it. */
+  collectionId?: string | null
 }
 
 /** Chunks read on each side of the target when it is opened. */
@@ -100,7 +103,8 @@ export function useChunkContext () {
    */
   async function open (next: ChunkContextTarget) {
     const sameDocument = !!document.value && !error.value && !!chunks.value.length &&
-      target.value?.documentId === next.documentId && document.value.id === next.documentId
+      target.value?.documentId === next.documentId && document.value.id === next.documentId &&
+      (target.value?.collectionId ?? null) === (next.collectionId ?? null)
     if (!sameDocument) clear()
     target.value = next
     focusRequest.value++
@@ -123,7 +127,13 @@ export function useChunkContext () {
     loading.value = true
     try {
       const window = await api.readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(
-        { documentId: current.documentId, chunkId: current.chunkId, before: CONTEXT_SIDE, after: CONTEXT_SIDE },
+        {
+          documentId: current.documentId,
+          chunkId: current.chunkId,
+          before: CONTEXT_SIDE,
+          after: CONTEXT_SIDE,
+          collectionId: current.collectionId ?? null
+        },
         { signal: controller.signal })
       if (!isCurrent()) return
       document.value = window.document
@@ -161,7 +171,7 @@ export function useChunkContext () {
   async function extend (direction: ContextDirection) {
     if (!target.value || loading.value || extending.value || !chunks.value.length) return
     if (direction === 'before' ? !hasBefore.value : !hasAfter.value) return
-    const documentId = target.value.documentId
+    const { documentId, collectionId = null } = target.value
     const edge = direction === 'before' ? chunks.value[0] : chunks.value[chunks.value.length - 1]
     const isCurrent = guard.capture()
     const controller = new AbortController()
@@ -170,7 +180,7 @@ export function useChunkContext () {
     error.value = null
     try {
       const adjacent = await api.readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(
-        { documentId, chunkId: edge.id, direction, limit: CONTEXT_STEP }, { signal: controller.signal })
+        { documentId, chunkId: edge.id, direction, limit: CONTEXT_STEP, collectionId }, { signal: controller.signal })
       if (!isCurrent()) return
       const { chunks: merged, trimmed } = mergeChunks(chunks.value, adjacent.chunks, direction)
       chunks.value = merged

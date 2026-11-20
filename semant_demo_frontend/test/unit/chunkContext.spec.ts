@@ -524,6 +524,156 @@ describe('ChunkContextPanel', () => {
     expect(scrolled.at(-1)).toBe(wrapper.get('[aria-current="true"]').element)
   })
 
+  describe('reading on automatically', () => {
+    type Panel = ReturnType<typeof mountPanel>
+    const rect = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 300, width: 300, height: bottom - top, x: 0, y: top, toJSON: () => ({}) }) as DOMRect
+
+    /** Lays out `scroller` as a 200px view at the top of the screen, with the edge buttons
+     * `before`/`after` px beyond its top/bottom (a short passage: both are near). */
+    function layout (wrapper: Panel, scroller: HTMLElement, { before = 50, after = 50 } = {}) {
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 200 })
+      scroller.getBoundingClientRect = () => rect(0, 200)
+      const edge = (name: string) => wrapper.find(`[data-edge="${name}"]`)
+      if (edge('before').exists()) edge('before').element.getBoundingClientRect = () => rect(-before - 30, -before)
+      if (edge('after').exists()) edge('after').element.getBoundingClientRect = () => rect(200 + after, 230 + after)
+    }
+    function scroll (scroller: HTMLElement, by: number) {
+      scroller.scrollTop += by
+      scroller.dispatchEvent(new Event('scroll'))
+    }
+    const wheel = (el: EventTarget, deltaY: number) => el.dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true }))
+
+    async function mountScrolling (props: Record<string, unknown> = {}) {
+      const wrapper = mountPanel({ scrollText: true, hasBefore: true, hasAfter: true, ...props })
+      await flushPromises()
+      const body = wrapper.get('[data-testid="chunk-context-body"]').element as HTMLElement
+      body.scrollTop = 500
+      layout(wrapper, body)
+      return { wrapper, body }
+    }
+
+    it('extends towards the edge the user scrolls to, once per scroll', async () => {
+      const { wrapper, body } = await mountScrolling()
+      wheel(body, 100)
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+
+      // The same gesture's later scroll events, or the load finishing, ask for nothing more.
+      scroll(body, 40)
+      await wrapper.setProps({ extending: 'after' })
+      await wrapper.setProps({ extending: null, chunks: [...chunks, chunk(6)] })
+      await flushPromises()
+      expect(wrapper.emitted('extend')).toHaveLength(1)
+
+      wheel(body, 100) // scrolling on reads on
+      scroll(body, 40)
+      wheel(body, -100)
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toEqual([['after'], ['after'], ['before']])
+    })
+
+    it('does not go back and forth with short chunks at the chunk limit', async () => {
+      const short = Array.from({ length: 60 }, (_, i) => chunk(i + 1))
+      const { wrapper, body } = await mountScrolling({ chunks: short, targetChunkId: 'doc-1-c30' })
+      wheel(body, 100)
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+
+      // The load drops chunks from the top: scroll anchoring moves the text up, within the
+      // gesture's time, and both edges stay near. Nothing more is asked for.
+      await wrapper.setProps({ extending: 'after' })
+      await wrapper.setProps({ extending: null, chunks: Array.from({ length: 60 }, (_, i) => chunk(i + 6)), hasBefore: true })
+      await flushPromises()
+      layout(wrapper, body)
+      wheel(body, 100) // the user is still scrolling down
+      scroll(body, -120)
+      scroll(body, 0)
+      expect(wrapper.emitted('extend')).toHaveLength(1)
+    })
+
+    it('reacts only to scrolling of its own passage, also by its scrollbar', async () => {
+      const { wrapper, body } = await mountScrolling()
+      wheel(window.document, 100) // elsewhere on the page
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toBeUndefined()
+
+      body.dispatchEvent(new Event('pointerdown', { bubbles: true })) // on the scrollbar
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toEqual([['before']])
+      window.dispatchEvent(new Event('pointerup'))
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toHaveLength(1)
+    })
+
+    it('waits until an edge is within one view of the scroller', async () => {
+      const { wrapper, body } = await mountScrolling()
+      layout(wrapper, body, { after: 250 }) // more than the 200px view away
+      wheel(body, 100)
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toBeUndefined()
+
+      layout(wrapper, body, { after: 150 })
+      wheel(body, 100)
+      scroll(body, 40)
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+    })
+
+    it('uses the sidebar scroller around a passage that does not scroll by itself', async () => {
+      const sidebar = window.document.createElement('div')
+      sidebar.style.overflowY = 'auto'
+      window.document.body.appendChild(sidebar)
+      const wrapper = mount(ChunkContextPanel, {
+        props: { targetChunkId: 'doc-1-c4', document, chunks, focusRequest: 1, hasAfter: true },
+        global: { plugins: [[Quasar, {}]] },
+        attachTo: sidebar
+      })
+      await flushPromises()
+      layout(wrapper, sidebar)
+      wheel(wrapper.get('[data-testid="chunk-context-body"]').element, 100) // bubbles to the sidebar
+      scroll(sidebar, 40)
+      expect(wrapper.emitted('extend')).toEqual([['after']])
+      wrapper.unmount()
+      sidebar.remove()
+    })
+
+    it('keeps the reading position when earlier text is added above', async () => {
+      const { wrapper, body } = await mountScrolling()
+      // The first chunk in view is pushed down by whatever is added above it.
+      const target = wrapper.get('[data-chunk-id="doc-1-c3"]').element
+      target.getBoundingClientRect = () => {
+        const added = body.querySelectorAll('.chunk-context__chunk').length - 3
+        return rect(10 + added * 400, 110 + added * 400)
+      }
+      await wrapper.setProps({ chunks: [chunk(1), chunk(2), ...chunks] })
+      expect(body.scrollTop).toBe(500 + 800)
+
+      // Appending below moves nothing.
+      await wrapper.setProps({ chunks: [chunk(1), chunk(2), ...chunks, chunk(6)] })
+      expect(body.scrollTop).toBe(1300)
+    })
+
+    it('does not extend before the target is shown, at the document boundary or after a failure', async () => {
+      const { wrapper, body } = await mountScrolling({ visible: false })
+      wheel(body, -100)
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toBeUndefined() // target not scrolled to yet
+
+      await wrapper.setProps({ visible: true })
+      await flushPromises()
+      layout(wrapper, body)
+      await wrapper.setProps({ error: 'Failed to load the document context.' })
+      wheel(body, -100)
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toBeUndefined()
+
+      await wrapper.setProps({ error: null, hasBefore: false })
+      wheel(body, -100)
+      scroll(body, -40)
+      expect(wrapper.emitted('extend')).toBeUndefined()
+      expect(wrapper.text()).toContain('Start of document')
+    })
+  })
+
   it('fades the scrolled passage only towards text that is out of view', async () => {
     const wrapper = mountPanel({ scrollText: true })
     await flushPromises()
@@ -601,5 +751,53 @@ describe('SearchResultCard context action', () => {
     await wrapper.get('[role="checkbox"]').trigger('dblclick')
     await flushPromises()
     expect(wrapper.emitted('view-context')).toBeUndefined()
+  })
+})
+
+describe('useChunkContext through a collection (#279)', () => {
+  const originalFetch = globalThis.fetch
+  let calls: ReturnType<typeof controlledFetch>['calls']
+
+  beforeEach(() => {
+    const controlled = controlledFetch()
+    calls = controlled.calls
+    globalThis.fetch = controlled.fetchMock as typeof fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('names the results\' collection in every read, so a restricted document can be read', async () => {
+    const context = useChunkContext()
+
+    const opening = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10', collectionId: 'col-1' })
+    await flush()
+    expect(calls[0].url.searchParams.get('collection_id')).toBe('col-1')
+    calls[0].answer(windowBody(10, [9, 10, 11], { after: true }))
+    await opening
+
+    const extending = context.extend('after')
+    await flush()
+    expect(calls[1].url.pathname).toBe('/api/documents/doc-1/chunks/doc-1-c11/adjacent')
+    expect(calls[1].url.searchParams.get('collection_id')).toBe('col-1')
+    calls[1].answer(adjacentBody([12], false))
+    await extending
+  })
+
+  it('reads the passage again when the same chunk is opened through another collection', async () => {
+    const context = useChunkContext()
+    const first = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10', collectionId: 'col-1' })
+    await flush()
+    calls[0].answer(windowBody(10, [9, 10, 11]))
+    await first
+
+    const second = context.open({ documentId: 'doc-1', chunkId: 'doc-1-c10' })
+    await flush()
+
+    expect(calls).toHaveLength(2)
+    expect(calls[1].url.searchParams.has('collection_id')).toBe(false)
+    calls[1].answer(windowBody(10, [9, 10, 11]))
+    await second
   })
 })
