@@ -116,10 +116,12 @@ def score(dataset: Dataset, runs: Sequence[Run], exclude_inconsistent: bool = Fa
     skipped = inconsistent_intents(dataset) if exclude_inconsistent else set()
     attributes = source_slices(dataset)
     results = {}
-    for run, config in ((r, c) for r in runs for c in configs if c.run_id == r.manifest.run_id):
+    labels = {(c.run_id, c.config.configuration_id): c.label for c in configs}
+    for run in runs:  # one pass over each run's results
         for result in run.results:
-            if result.configuration_id == config.config.configuration_id:
-                results[config.label, result.query_id] = result
+            label = labels.get((run.manifest.run_id, result.configuration_id))
+            if label is not None:
+                results[label, result.query_id] = result
     rows = []
     for config in configs:
         for query in sorted(dataset.queries.values(), key=lambda q: q.query_id):
@@ -177,12 +179,21 @@ def slice_names(rows: Iterable[Row]) -> list[str]:
     return list(seen)
 
 
+def rows_by_configuration(rows: Iterable[Row]) -> dict[str, list[Row]]:
+    """Configuration label -> its rows, in order (one pass instead of one per configuration)."""
+    found: dict[str, list[Row]] = {}
+    for row in rows:
+        found.setdefault(row.configuration, []).append(row)
+    return found
+
+
 def aggregate(configs: Sequence[Configuration], rows: Sequence[Row], *, seed: int = SEED,
               samples: int = BOOTSTRAP_SAMPLES) -> list[dict[str, Any]]:
     """Summaries per configuration: overall and each group of each slice."""
     found = []
+    by_configuration = rows_by_configuration(rows)
     for config in configs:
-        mine = [r for r in rows if r.configuration == config.label]
+        mine = by_configuration.get(config.label, [])
         found.append({"configuration": config.label, "slice": "overall", "group": "all",
                       **summarize(mine, key=(config.label, "overall"), seed=seed, samples=samples)})
         for name in slice_names(mine):
@@ -199,8 +210,9 @@ def aggregate(configs: Sequence[Configuration], rows: Sequence[Row], *, seed: in
 def latency(configs: Sequence[Configuration], rows: Sequence[Row]) -> list[dict[str, Any]]:
     """p50 and p95 of the query embedding, the search and their sum over the successful searches."""
     found = []
+    by_configuration = rows_by_configuration(rows)
     for config in configs:
-        mine = [r for r in rows if r.configuration == config.label and r.status == SCORED]
+        mine = [r for r in by_configuration.get(config.label, []) if r.status == SCORED]
         total = [None if r.search_ms is None else (r.embed_ms or 0.0) + r.search_ms for r in mine]
         entry: dict[str, Any] = {"configuration": config.label, "searches": len(mine)}
         for name, values in (("embed_ms", [r.embed_ms for r in mine]), ("search_ms", [r.search_ms for r in mine]),
