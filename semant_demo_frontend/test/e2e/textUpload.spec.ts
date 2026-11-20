@@ -116,6 +116,43 @@ test('a language that is no ISO 639 code is refused; a CSV corrected after it wa
   }
 })
 
+test('an annotation in an uploaded document opens its passage in the annotation workspace', async ({ page, request }) => {
+  // Regression: the workspace read the passage without the collection, and a private document
+  // is readable only through it (#279), so the Document panel answered 404.
+  const collection = await createCollection(request, 'Upload test annotations')
+  const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+  try {
+    const uploaded = await request.post(`/api/user_collections/${collection.id}/text_documents`, {
+      headers, multipart: { files: { name: 'Kronika.txt', mimeType: 'text/plain', buffer: Buffer.from(TEXT) } }
+    })
+    expect(uploaded.ok()).toBe(true)
+    const documentId = (await uploaded.json() as { files: { document_id: string }[] }).files[0].document_id
+    const chunks = await request.get(`/api/user_collections/${collection.id}/documents/${documentId}/chunks`, { headers })
+    const chunkId = (await chunks.json() as { id: string }[])[0].id
+    const tag = await request.post('/api/tags', {
+      headers,
+      params: { collection_id: collection.id },
+      data: { name: 'Family', shorthand: 'FAM', color: '#888888', pictogram: 'group', definition: 'A family.' }
+    })
+    expect(tag.ok()).toBe(true)
+    const tagId = (await tag.json() as { id: string }).id
+    // "Kronika rodu Zahrádků." – the span covers "rodu Zahrádků".
+    const span = await request.post('/api/tag_spans', { headers, data: { chunkId, tagId, start: 8, end: 21, type: 'pos' } })
+    expect(span.ok()).toBe(true)
+
+    await useViewport(page, 'wide')
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${collection.id}/annotations`)
+    const row = page.getByTestId('kwic-row').filter({ hasText: 'rodu Zahrádků' })
+    await row.click()
+    const panel = page.getByTestId('chunk-context')
+    await expect(panel.getByTestId('chunk-context-mark')).toHaveText('rodu Zahrádků')
+    await expect(panel).toContainText('Roku 1925 se v obci konala pouť.')
+  } finally {
+    await collection.remove()
+  }
+})
+
 test('a shared user is not offered the upload', async ({ page }) => {
   await useViewport(page, 'wide')
   await ensureLoggedIn(page, 'annotator')
