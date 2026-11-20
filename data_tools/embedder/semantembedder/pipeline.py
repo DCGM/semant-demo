@@ -7,7 +7,8 @@ from classconfig import ConfigurableMixin, CreatableMixin, ConfigurableValue, Co
 from tqdm import tqdm
 from weaviate.classes.query import Filter
 
-from .db import HAVE_VECTOR, get_async_client, ensure_named_vector_exists, have_vector_problem, named_vector_exists
+from .db import (HAVE_VECTOR, check_grpc, ensure_named_vector_exists, get_async_client, have_vector_problem,
+                 named_vector_exists)
 # Import embedders to register their subclasses for ConfigurableSubclassFactory
 from .embedders import Embedder, VLLMEmbedder
 
@@ -184,6 +185,7 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 problem = await have_vector_problem(client, self.collection)
                 if problem:
                     raise ValueError(problem)
+                await check_grpc(client, self.collection, self.weaviate_host, self.weaviate_grpc_port)
                 if not exists and self.create_vector:
                     await ensure_named_vector_exists(
                         client=client,
@@ -251,6 +253,7 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         ) as client:
             exists = await named_vector_exists(client, self.collection, self.vector_name)
             problem = await have_vector_problem(client, self.collection)
+            await check_grpc(client, self.collection, self.weaviate_host, self.weaviate_grpc_port)
             if problem:
                 stats.refused = problem
                 print(f"{problem} A run would be refused.")
