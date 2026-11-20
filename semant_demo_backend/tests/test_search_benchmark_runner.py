@@ -401,6 +401,8 @@ def test_the_command_line_runs_and_lists(tmp_path, dataset):
     loaded = load_run(tmp_path / "elsewhere" / "first", dataset)
     assert [c.configuration_id for c in loaded.manifest.configurations] == ["text"]
     assert "host" not in loaded.manifest.environment
+    assert loaded.manifest.environment["config"]["path"] == "<not recorded>"  # a local path; the SHA-256 stays
+    assert loaded.manifest.environment["config"]["sha256"]
     lines.clear()
     assert runner.main(["run", "--config", str(path), "--run-id", "first", "--out", str(tmp_path / "elsewhere"),
                         "--configurations", "text"], open_store=opener(store), out=lines.append) == 0
