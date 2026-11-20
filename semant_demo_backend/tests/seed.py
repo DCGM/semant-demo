@@ -127,6 +127,8 @@ async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, cor
                 # derived from the document's public, failing closed (#793)
                 "documentPublic": corpus.documents[chunk["document"]]["properties"].get("public") is True,
                 **corpus.chunk_classifications.get(key, {}),
+                # the vectors inserted below, listed as on the deployed stores since #805
+                "haveVector": ["default", SECOND_VECTOR],
             },
             references=references,
             vector={"default": fake_embedding(chunk["text"]), SECOND_VECTOR: second_embedding(chunk["text"])},

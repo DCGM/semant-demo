@@ -90,6 +90,25 @@
             {{ activeCollectionLabel }}
             <q-tooltip v-if="activeCollectionLabel">{{ activeCollectionLabel }}</q-tooltip>
           </h1>
+          <!-- Its place is kept while the collection loads (hidden, not removed): appearing must
+               not move the page below, whose rows may already be measured or scrolled. -->
+          <q-btn
+            :class="{ 'collection-explore-button--pending': !collectionLoaded }"
+            :disable="!collectionLoaded"
+            :aria-hidden="!collectionLoaded"
+            outline
+            dense
+            no-caps
+            color="primary"
+            icon="travel_explore"
+            label="Explore"
+            aria-label="Explore this collection"
+            class="collection-explore-button"
+            data-testid="explore-collection"
+            @click="exploreThisCollection"
+          >
+            <q-tooltip>Search, filter and chart the documents of this collection in Explore</q-tooltip>
+          </q-btn>
         </div>
       </div>
 
@@ -148,7 +167,9 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from 'src/features/auth/userStore'
+import { collectionExploreLocation, exploreCollection } from 'src/features/explore/exploreHandoff'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
 import { collectionRights } from './permissions'
@@ -157,7 +178,7 @@ import { overlayOpen } from 'src/shared/overlays'
 
 const $route = useRoute()
 const collectionsStore = useUserCollectionsStore()
-const { activeCollection } = storeToRefs(collectionsStore)
+const { activeCollection, loadedCollectionId } = storeToRefs(collectionsStore)
 const { fetchCollection, updateCollection } = collectionsStore
 
 const isEditingName = ref(false)
@@ -190,6 +211,22 @@ const activeCollectionColor = computed(() =>
     ? activeCollection.value.color
     : null
 )
+
+// Loaded means its latest load succeeded, as on the Overview tab: no Explore button for a
+// collection that is gone or no longer shared.
+const collectionLoaded = computed(() =>
+  loadedCollectionId.value === collectionId.value && activeCollection.value?.id === collectionId.value
+)
+
+// "Explore this collection" (#795): Explore's Documents results with this collection as the
+// scope and no other criteria; the collection is handed over, never put in the URL.
+const $router = useRouter()
+const userStore = useUserStore()
+function exploreThisCollection () {
+  const userId = userStore.getUserId
+  if (!userId) return
+  void exploreCollection($router, { userId: String(userId), collectionId: collectionId.value, location: collectionExploreLocation() })
+}
 
 // Name and color are owner-only metadata (ADR 0007).
 const rights = computed(() =>
@@ -295,6 +332,8 @@ onMounted(async () => {
 .collection-title-row {
   display: flex;
   align-items: center;
+  // One line whatever the width: a long name shrinks and ends in an ellipsis. Wrapping would
+  // make the header taller once the name arrives and move the page below it.
   gap: 8px;
 }
 
@@ -305,6 +344,15 @@ onMounted(async () => {
   background: transparent;
   cursor: text;
   text-align: left;
+}
+
+.collection-explore-button {
+  flex: 0 0 auto;
+  margin-left: 4px;
+}
+
+.collection-explore-button--pending {
+  visibility: hidden;
 }
 
 .collection-title-input {
@@ -330,6 +378,7 @@ onMounted(async () => {
 }
 
 .collection-page-title {
+  min-width: 0;
   margin: 0;
   font-size: clamp(1.18rem, 1.08rem + 0.7vw, 1.6rem);
   font-weight: 700;

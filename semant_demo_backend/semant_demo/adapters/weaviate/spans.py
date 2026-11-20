@@ -300,6 +300,7 @@ def to_span(obj) -> TagSpan:
         type=SpanType(span_type) if isinstance(span_type, str) else None,
         reason=props.get("reason"),
         confidence=float(confidence) if confidence is not None else None,
+        createdAt=props.get("createdAt"),
         editVersion=props.get("editVersion") or 0,
         attributeVersion=props.get("attributeVersion") or 0,
     )
@@ -402,6 +403,7 @@ class SpanRepository:
     def _span_properties(self) -> list[str]:
         # The values themselves are read only by ``read_assignments``: ``TagSpan`` does not carry them.
         return [*_PROPERTIES, *(["editVersion"] if self.provenance else []),
+                *(["createdAt"] if self.provenance else []),
                 *(["attributeVersion"] if self.attributes else [])]
 
     def _row_properties(self, base: list[str] = _ROW, sort_keys: bool = True) -> list[str]:
