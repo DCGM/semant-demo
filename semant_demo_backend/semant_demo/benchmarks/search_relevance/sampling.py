@@ -23,7 +23,8 @@ import hashlib
 import math
 import random
 import re
-from collections import Counter, defaultdict
+from itertools import combinations
+from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
@@ -121,7 +122,7 @@ class Sampler:
                     break
                 take(chunk)
             return chosen
-        groups: dict[str, list[SourceChunk]] = defaultdict(list)
+        groups: dict[str, deque[SourceChunk]] = defaultdict(deque)
         for chunk in pool:
             groups[stratum(chunk, self.s.period_years)].append(chunk)
         order = sorted(groups)
@@ -130,7 +131,7 @@ class Sampler:
             for key in order:
                 group = groups[key]
                 while group:
-                    if take(group.pop(0)):
+                    if take(group.popleft()):
                         break
                 if len(chosen) >= target:
                     break
@@ -273,8 +274,8 @@ def mark_near_duplicates(corpus: list[CorpusChunk]) -> list[CorpusChunk]:
             i = parent[i]
         return i
     for members in buckets.values():
-        for i in members[1:]:
-            j = members[0]
+        # Every pair of a bucket: two near-duplicates may both differ from the bucket's first member.
+        for i, j in combinations(members, 2):
             if root(i) != root(j):
                 a, b = shingles[i], shingles[j]
                 if len(a & b) / len(a | b) >= NEAR_DUPLICATE:

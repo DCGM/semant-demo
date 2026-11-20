@@ -33,10 +33,21 @@ class CachedModel:
         self.path = cache_dir / f"{feature}.jsonl"
         self.replies: dict[str, str] = {}
         if self.path.exists():
+            broken = False
             for line in self.path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
+                if not line.strip():
+                    continue
+                try:
                     entry = json.loads(line)
-                    self.replies[entry["key"]] = entry["reply"]
+                except json.JSONDecodeError:  # a line cut short by an interrupted run: called again
+                    broken = True
+                    continue
+                self.replies[entry["key"]] = entry["reply"]
+            if broken:  # rewritten without it, so the next reply is not appended to the cut line
+                partial = self.path.with_name(self.path.name + ".tmp")
+                partial.write_text("".join(json.dumps({"key": k, "reply": r}, ensure_ascii=False) + "\n"
+                                           for k, r in self.replies.items()), encoding="utf-8")
+                partial.replace(self.path)
         self.stats: Counter[str] = Counter()
         self.failures: Counter[str] = Counter()
         self._lock = asyncio.Lock()

@@ -28,7 +28,7 @@ from semant_demo.benchmarks.search_relevance.contracts import SOURCE, CorpusChun
 from semant_demo.benchmarks.search_relevance.generate import main
 from semant_demo.benchmarks.search_relevance.generation import generate_intents, style_counts, translate
 from semant_demo.benchmarks.search_relevance.judging import aggregate, judge_pools
-from semant_demo.benchmarks.search_relevance.llm import InvalidReply, UsageTotals
+from semant_demo.benchmarks.search_relevance.llm import InvalidReply, Refused, UsageTotals
 from semant_demo.benchmarks.search_relevance.pipeline import Generator, Resources
 from semant_demo.benchmarks.search_relevance.pooling import Candidate, cap_pools, pool_candidates
 from semant_demo.benchmarks.search_relevance.sampling import mark_near_duplicates, sample_corpus
@@ -379,8 +379,10 @@ def test_caps_keep_source_chunks_and_fit_the_budget():
     assert [c.chunk_id for c in capped["b"]] == [ids[6], ids[9], ids[7]]  # rank, then more methods
     capped, cap = cap_pools(pools, 3, budget=4)
     assert cap == 2 and sum(map(len, capped.values())) == 4
-    capped, cap = cap_pools(pools, 3, budget=1)  # sources are never cut
-    assert all(SOURCE in capped[k][0].methods for k in capped) and cap == 1
+    capped, cap = cap_pools(pools, 3, budget=2)  # down to the sources alone, which are never cut
+    assert [len(c) for c in capped.values()] == [1, 1] and cap == 1
+    with pytest.raises(Refused, match="max_judgments 1 is below the 2 source chunks"):
+        cap_pools(pools, 3, budget=1)  # never more judgments than the budget
 
 
 async def test_pooling_unions_methods_and_queries_with_the_source(tmp_path):
@@ -618,3 +620,36 @@ def test_the_command_line_source_is_part_of_the_sample_steps_inputs(tmp_path, ga
     def sample_inputs(c):
         return generator(tmp_path, gateway, usage, c, FakeSource(source_chunks()), FakeStore()).inputs("sample")
     assert sample_inputs(cfg) != sample_inputs(moved)  # another store reruns the sampling
+
+
+def test_near_duplicates_are_found_although_the_buckets_first_member_differs():
+    base = " ".join(f"word{i}" for i in range(60))
+    other = " ".join(f"other{i}" for i in range(60))
+    # B and C are near-duplicates; A, sorted first, shares no shingle with them.
+    chunks = corpus_records([SourceChunk(cid("ces", 0, i), did("ces", 0), i, "ces", t) for i, t in enumerate(
+        [other, base, base + " extra"])])
+    marked = mark_near_duplicates(chunks)
+    first = min((chunks[1].chunk_id, chunks[2].chunk_id), key=str)
+    assert sorted(c.attributes.get("near_duplicate_of") or "" for c in marked) == ["", "", str(first)]
+
+
+async def test_a_cache_line_cut_by_an_interruption_is_dropped_and_rewritten(tmp_path, gateway):
+    model = CachedModel(gateway, INTENTS_FEATURE, prompts.INTENT_PROMPT_VERSION, tmp_path)
+    good = json.dumps({"key": "k1", "reply": "r1"})
+    model.path.write_text(good + "\n" + '{"key": "k2", "re', encoding="utf-8")  # the process died mid-line
+    reopened = CachedModel(gateway, INTENTS_FEATURE, prompts.INTENT_PROMPT_VERSION, tmp_path)
+    assert reopened.replies == {"k1": "r1"}
+    assert model.path.read_text(encoding="utf-8") == good + "\n"  # the next reply starts on a new line
+
+
+def test_budget_counts_only_the_steps_still_to_run(tmp_path, capsys):
+    write_config(tmp_path / "config.yaml", config(judge={"per_language_fraction": 0.5}))
+    work = tmp_path / "work"
+    (work / "intents").mkdir(parents=True)
+    intent = Intent(intent_id="i0", style="keywords", need="A need.", source_language="ces")
+    (work / "intents" / "intents.jsonl").write_text(intent.model_dump_json() + "\n", encoding="utf-8")
+    assert main(["budget", str(tmp_path / "config.yaml"), "--work", str(work)]) == 0
+    estimate = json.loads(capsys.readouterr().out)
+    assert estimate["done_steps"] == ["intents"] and estimate["intents"] == 1
+    assert estimate["calls"][INTENTS_FEATURE]["expected"] == 0  # generated already
+    assert estimate["calls"][TRANSLATION_FEATURE]["expected"] == 2  # one intent into two languages
