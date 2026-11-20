@@ -120,7 +120,9 @@ def main(argv: list[str] | None = None) -> int:
             from semant_demo.benchmarks.search_relevance.config import load_config
 
             config, _, _ = load_config(args.config)
-            print(json.dumps(estimate(config, args.work), indent=1))
+            # The gateway ``run`` would use (no call is made): a step counts as done only when fresh.
+            llm = _resources(config, args, []).llm if args.work is not None else None
+            print(json.dumps(estimate(config, args.work, llm), indent=1))
             return 0
         return asyncio.run(_run(args))
     except (Refused, ContractError, ValidationError, FileNotFoundError) as e:

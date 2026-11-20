@@ -67,8 +67,11 @@ def summarize(dataset: Dataset) -> str:
                       f"{sum(1 for i in intents if not relevant[i])}."]
     several = [q for q in qrels if q.language_grades is not None]
     if several:
+        asked = Counter(q.intent_id for q in queries.values())
+        incomplete = sum(1 for q in several if len(q.language_grades) < asked[q.intent_id])
         lines += [f"Judged per query language: {len(several)} pairs, "
-                  f"{sum(1 for q in several if not q.consistent)} inconsistent."]
+                  f"{sum(1 for q in several if not q.consistent)} inconsistent, "
+                  f"{incomplete} incomplete (some languages' judgements failed; consistent covers the judged)."]
     pooled = Counter(method for q in qrels for method in q.pooled_by)
     lines += ["", "Candidates by pooling method (a candidate can have several): "
               + ", ".join(f"{k} {v}" for k, v in pooled.most_common()) + "."]

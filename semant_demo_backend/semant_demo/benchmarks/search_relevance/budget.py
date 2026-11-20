@@ -8,11 +8,14 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from semant_demo.adapters.llm.gateway import LlmGateway
 from semant_demo.adapters.llm.models import LlmConfigurationError
 from semant_demo.benchmarks.search_relevance import prompts
 from semant_demo.benchmarks.search_relevance.config import (
     INTENTS_FEATURE, JUDGE_FEATURE, TRANSLATION_FEATURE, GeneratorConfig)
 from semant_demo.benchmarks.search_relevance.contracts import CorpusChunk, Intent, iter_jsonl
+from semant_demo.benchmarks.search_relevance.llm import Refused, UsageTotals
+from semant_demo.benchmarks.search_relevance.pipeline import STEPS, Generator, Resources
 
 CHARS_PER_TOKEN = 4
 OUTPUT_TOKENS = {INTENTS_FEATURE: 80, TRANSLATION_FEATURE: 40, JUDGE_FEATURE: 2}
@@ -22,7 +25,32 @@ def _count_lines(path: Path) -> int | None:
     return sum(1 for line in path.open(encoding="utf-8") if line.strip()) if path.is_file() else None
 
 
-def estimate(config: GeneratorConfig, work: Path | None = None) -> dict[str, Any]:
+def fresh_steps(config: GeneratorConfig, work: Path | None, llm: LlmGateway | None) -> list[str]:
+    """The leading steps that ``run`` would skip: fresh by the pipeline's own state check (their
+    recorded input hash matches the current configuration and models, outputs unchanged) and
+    after only fresh steps. Opens no source or store and makes no call; without a work directory
+    or a gateway, or when a model setting is missing, no step counts as done."""
+    if work is None or llm is None:
+        return []
+
+    async def closed(*args):
+        raise RuntimeError("budget opens no source or store")
+    generator = Generator(config, {}, "", work, work / "dataset",
+                          Resources(llm=llm, usage=UsageTotals(), source=closed, open_store=closed))
+    found = []
+    for step in STEPS[:-1]:
+        try:
+            if not generator.fresh(step):
+                break
+        except Refused:
+            break
+        found.append(step)
+    return found
+
+
+def estimate(config: GeneratorConfig, work: Path | None = None, llm: LlmGateway | None = None) -> dict[str, Any]:
+    """``llm`` (the gateway ``run`` would use) decides which steps are up to date; without it every
+    step is estimated."""
     def existing(*parts: str) -> Path | None:
         path = work.joinpath(*parts) if work is not None else None
         return path if path is not None and path.is_file() else None
@@ -46,10 +74,8 @@ def estimate(config: GeneratorConfig, work: Path | None = None) -> dict[str, Any
         if config.pooling.max_judgments is not None:
             pairs = min(pairs, config.pooling.max_judgments)
     judge_calls = round(pairs * (1 + config.judge.per_language_fraction * others))
-    # A step whose output is in the work directory needs no more calls: only the rest is estimated.
-    done = [step for step, path in (("intents", existing("intents", "intents.jsonl")),
-                                    ("translate", existing("translate", "intents.jsonl")),
-                                    ("judge", existing("judge", "qrels.jsonl"))) if path]
+    # A step that ``run`` would skip needs no more calls: only the rest is estimated.
+    done = [step for step in ("intents", "translate", "judge") if step in fresh_steps(config, work, llm)]
     to_generate = 0 if "intents" in done else config.intents.count
     calls = {
         INTENTS_FEATURE: {"expected": to_generate,

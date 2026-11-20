@@ -195,7 +195,8 @@ class Sampler:
             found = {c.id: c for c in await self.source.read(extra)}
             for chunk_id in extra:
                 chunk = found.get(chunk_id)
-                if chunk is None or not chunk.text or not re.fullmatch(LANGUAGE_PATTERN, chunk.language):
+                if (chunk is None or not chunk.text or chunk.document_id is None
+                        or not re.fullmatch(LANGUAGE_PATTERN, chunk.language)):
                     imported_missing.append(str(chunk_id))
                 else:
                     records[chunk_id] = self._record(chunk, "imported")

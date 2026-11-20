@@ -642,7 +642,7 @@ async def test_a_cache_line_cut_by_an_interruption_is_dropped_and_rewritten(tmp_
     assert model.path.read_text(encoding="utf-8") == good + "\n"  # the next reply starts on a new line
 
 
-def test_budget_counts_only_the_steps_still_to_run(tmp_path, capsys):
+def test_budget_counts_an_output_without_fresh_state_as_still_to_run(tmp_path, capsys):
     write_config(tmp_path / "config.yaml", config(judge={"per_language_fraction": 0.5}))
     work = tmp_path / "work"
     (work / "intents").mkdir(parents=True)
@@ -650,9 +650,36 @@ def test_budget_counts_only_the_steps_still_to_run(tmp_path, capsys):
     (work / "intents" / "intents.jsonl").write_text(intent.model_dump_json() + "\n", encoding="utf-8")
     assert main(["budget", str(tmp_path / "config.yaml"), "--work", str(work)]) == 0
     estimate = json.loads(capsys.readouterr().out)
-    assert estimate["done_steps"] == ["intents"] and estimate["intents"] == 1
-    assert estimate["calls"][INTENTS_FEATURE]["expected"] == 0  # generated already
+    assert estimate["done_steps"] == [] and estimate["intents"] == 1  # the file sizes the estimate only
+    assert estimate["calls"][INTENTS_FEATURE]["expected"] == 6  # run would generate again
     assert estimate["calls"][TRANSLATION_FEATURE]["expected"] == 2  # one intent into two languages
+
+
+def other_judge_gateway(usage) -> tuple[GeneratorConfig, LlmGateway]:
+    """The pipeline's configuration with another judge model, and its gateway."""
+    models = catalog()
+    models["tiers"]["small"] = {**models["tiers"]["tiny"], "model": "fake-other-judge"}
+    models["features"][JUDGE_FEATURE] = {**models["features"][JUDGE_FEATURE], "default": "small"}
+    cfg = config(**PIPELINE, models=models)
+    return cfg, LlmGateway(cfg.catalog(), ProviderSettings(ollama_base_url="http://fake/ollama", max_retries=0),
+                           usage, http_transport=ASGITransport(app=create_fake_provider_app(load_corpus())))
+
+
+async def test_budget_counts_only_the_steps_run_would_redo(tmp_path, gateway, usage):
+    from semant_demo.benchmarks.search_relevance.budget import estimate
+    cfg = config(**PIPELINE)
+    await generator(tmp_path, gateway, usage, cfg, FakeSource(source_chunks()), FakeStore()).run()
+    work = tmp_path / "work"
+    fresh = estimate(cfg, work, gateway)
+    assert fresh["done_steps"] == ["intents", "translate", "judge"]
+    assert all(entry["expected"] == 0 for entry in fresh["calls"].values())
+
+    changed, other = other_judge_gateway(usage)  # another judge model: run would judge again
+    redo = estimate(changed, work, other)
+    assert redo["done_steps"] == ["intents", "translate"]
+    assert redo["calls"][JUDGE_FEATURE]["expected"] == fresh["judged_pairs"] * 2 > 0  # per-language bound
+    assert redo["calls"][JUDGE_FEATURE]["model"] == "fake-other-judge"
+    assert estimate(cfg, work)["done_steps"] == []  # without the gateway nothing is known to be fresh
 
 
 def test_the_recorded_command_names_no_paths_hosts_or_ports():
@@ -660,3 +687,150 @@ def test_the_recorded_command_names_no_paths_hosts_or_ports():
     argv = ["/home/alice/semant/generate.py", "run", "/home/alice/v1.yaml", "--work", "/home/alice/work",
             "--source-host", "prod.internal", "--source-port", "8080", "--from", "judge", "--force"]
     assert recorded_command(argv) == "generate run --from judge --force"
+
+
+# ---- review fixes -------------------------------------------------------------------------
+
+VECTOR = {"id": "fake-small", "model": "fake-small", "target_vector": "fake_small"}
+
+
+def methods(*extra: dict) -> dict:
+    return {"methods": [{"id": "bm25", "mode": "text", "depth": 5}, *extra]}
+
+
+def test_api_key_env_must_name_a_variable_not_hold_a_key():
+    with pytest.raises(ValueError, match="api_key_env"):
+        config(pooling=methods({"id": "vec", "mode": "vector", "vector": VECTOR,
+                                "endpoint": {"base_url": "http://fake/v1", "api_key_env": "sk-pasted-secret-key"}}))
+    named = config(pooling=methods({"id": "vec", "mode": "vector", "vector": VECTOR,
+                                    "endpoint": {"base_url": "http://fake/v1", "api_key_env": "EMBEDDING_KEY"}}))
+    assert named.pooling.methods[1].endpoint.api_key_env == "EMBEDDING_KEY"
+
+
+async def test_pooling_is_refused_when_the_named_key_is_not_set(tmp_path, gateway, usage, monkeypatch):
+    monkeypatch.delenv("SEMANT_TEST_EMBEDDING_KEY", raising=False)
+    cfg = config(**PIPELINE, pooling=methods({
+        "id": "vec", "mode": "vector", "vector": VECTOR,
+        "endpoint": {"base_url": "http://fake/v1", "api_key_env": "SEMANT_TEST_EMBEDDING_KEY"}}))
+    store = FakeStore()
+    with pytest.raises(Refused, match="SEMANT_TEST_EMBEDDING_KEY is not set"):
+        await generator(tmp_path, gateway, usage, cfg, FakeSource(source_chunks()), store).run()
+    assert store.loaded == []  # refused before the store is touched
+    monkeypatch.setenv("SEMANT_TEST_EMBEDDING_KEY", "x")
+    assert await generator(tmp_path, gateway, usage, cfg, FakeSource(source_chunks()), store).run() == [
+        "pool", "judge", "write"]
+
+
+async def test_identical_asks_in_flight_make_one_call(tmp_path, gateway, usage):
+    import asyncio
+    model = CachedModel(gateway, JUDGE_FEATURE, prompts.JUDGE_PROMPT_VERSION, tmp_path)
+    messages = prompts.judge_messages("need", "Lhota", "Lhota stodola", None, 1000)
+    results = await asyncio.gather(*(model.ask(messages, prompts.parse_grade) for _ in range(3)))
+    assert len(set(results)) == 1 and results[0][1] is None
+    assert usage.totals["calls"] == 1
+    assert model.report()["asked"] == 1 and model.report()["cached"] == 2
+    assert len(model.path.read_text(encoding="utf-8").splitlines()) == 1
+    assert await model.ask(messages, prompts.parse_grade) == results[0] and usage.totals["calls"] == 1
+
+
+async def test_a_failed_call_in_flight_is_shared_but_not_cached(tmp_path, gateway, monkeypatch):
+    import asyncio
+    model = CachedModel(gateway, JUDGE_FEATURE, prompts.JUDGE_PROMPT_VERSION, tmp_path)
+    calls = []
+
+    async def failing(llm, feature, messages, parse):
+        calls.append(1)
+        await asyncio.sleep(0)
+        return None, "model_failed: ConnectError"
+    monkeypatch.setattr("semant_demo.benchmarks.search_relevance.calls.ask", failing)
+    messages = prompts.judge_messages("need", "q", "text", None, 1000)
+    assert await asyncio.gather(model.ask(messages, prompts.parse_grade), model.ask(messages, prompts.parse_grade)
+                                ) == [(None, "model_failed: ConnectError")] * 2
+    assert len(calls) == 1 and model.report()["failed"] == 1
+    await model.ask(messages, prompts.parse_grade)
+    assert len(calls) == 2  # a failure is asked again later
+
+
+def test_a_last_cache_line_without_its_newline_gets_one(tmp_path, gateway):
+    model = CachedModel(gateway, INTENTS_FEATURE, prompts.INTENT_PROMPT_VERSION, tmp_path)
+    good = json.dumps({"key": "k1", "reply": "r1"})
+    model.path.write_text(good, encoding="utf-8")  # killed between the JSON and its newline
+    reopened = CachedModel(gateway, INTENTS_FEATURE, prompts.INTENT_PROMPT_VERSION, tmp_path)
+    assert reopened.replies == {"k1": "r1"}
+    assert model.path.read_text(encoding="utf-8") == good + "\n"  # the next reply starts on a new line
+
+
+def test_the_import_selection_is_part_of_the_sample_steps_inputs(tmp_path, gateway, usage):
+    chunks = source_chunks()
+    imports = tmp_path / "imports.jsonl"
+    imports.write_text("".join(json.dumps({"question": f"Q{n}?", "corpus_id": str(chunks[n].id), "language": "cs"})
+                               + "\n" for n in range(4)))
+
+    def sample_inputs(top=None, **imported):
+        cfg = config(intents={"import": {"path": str(imports), **imported}}, **(top or {}))
+        return generator(tmp_path, gateway, usage, cfg, FakeSource(chunks), FakeStore()).inputs("sample")
+    everything = sample_inputs()
+    assert len(everything["imports"]) == 4
+    assert sample_inputs(limit=2) != everything  # fewer imports: fewer source chunks sampled
+    assert sample_inputs(limit=2) != sample_inputs(limit=2, top={"seeds": {"intents": 5}})
+    assert sample_inputs(top={"query_languages": ("eng", "deu")})["imports"] == []  # Czech not queried
+
+
+async def test_an_imported_source_chunk_without_a_document_is_reported_missing():
+    orphan = SourceChunk(uuid.uuid4(), None, 0, "ces", "y" * 50)
+    corpus, report = await sample_corpus(FakeSource(source_chunks() + [orphan]), config(), [orphan.id])
+    assert orphan.id not in {c.chunk_id for c in corpus}
+    assert report["imported_sources_missing"] == [str(orphan.id)]
+
+
+def test_methods_sharing_a_vector_id_must_share_its_spec():
+    endpoint = {"base_url": "http://fake/v1"}
+    same = {"id": "vec", "mode": "vector", "vector": VECTOR, "endpoint": endpoint}
+    hybrid = {"id": "hyb", "mode": "hybrid", "alpha": 0.5, "vector": VECTOR, "endpoint": endpoint}
+    assert len(config(pooling=methods(same, hybrid)).pooling.methods) == 3
+    with pytest.raises(ValueError, match="sharing a vector id must share its whole spec"):
+        config(pooling=methods(same, {**hybrid, "vector": {**VECTOR, "document_template": "{title} {text}"}}))
+
+
+@pytest.mark.parametrize("extra", [{"vector": VECTOR}, {"endpoint": {"base_url": "http://fake/v1"}}])
+def test_a_text_method_takes_no_vector_or_endpoint(extra):
+    with pytest.raises(ValueError, match="a text method takes no vector or endpoint"):
+        config(pooling=methods({"id": "bm25-plus", "mode": "text", **extra}))
+
+
+@pytest.mark.parametrize("aggregation", ["median", "source"])
+async def test_a_language_whose_judgement_failed_is_counted_and_not_graded(tmp_path, gateway, monkeypatch,
+                                                                             aggregation):
+    chunks = corpus_records(source_chunks(documents=1, per_document=2, languages=("ces",)))
+    intents = [Intent(intent_id="i0", style="keywords", need="N", source_chunk_ids=(chunks[0].chunk_id,),
+                      source_language="ces")]
+    queries = [Query(query_id="i0.ces", intent_id="i0", language="ces", text="dotaz"),
+               *(Query(query_id=f"i0.{lang}", intent_id="i0", language=lang, text=f"query {lang}",
+                       origin="translated", translated_from="i0.ces") for lang in ("eng", "deu"))]
+    pools = {"i0": [{"chunk_id": str(chunks[0].chunk_id), "pooled_by": ["source"]},
+                    {"chunk_id": str(chunks[1].chunk_id), "pooled_by": ["bm25"]}]}
+    model = CachedModel(gateway, JUDGE_FEATURE, prompts.JUDGE_PROMPT_VERSION, tmp_path)
+
+    async def ask(messages, parse):  # English always fails; Czech fails for the second chunk
+        content = messages[-1]["content"]
+        if "query eng" in content or ("dotaz" in content and chunks[1].text in content):
+            return None, "model_failed: ConnectError"
+        return (1 if "query deu" in content else 2), None
+    monkeypatch.setattr(model, "ask", ask)
+    qrels, dropped, report = await judge_pools(intents, queries, pools, {c.chunk_id: c for c in chunks},
+                                               config(judge={"per_language_fraction": 1.0,
+                                                             "aggregation": aggregation}), model)
+    assert report["failed_judgements"] == {"model_failed: ConnectError": 3}  # every failed language
+    by_chunk = {q.chunk_id: q for q in qrels}
+    source = by_chunk[chunks[0].chunk_id]
+    assert source.language_grades == {"ces": 2, "deu": 1} and not source.consistent  # the judged ones only
+    assert source.grade == (2 if aggregation == "source" else 1)
+    if aggregation == "source":  # no Czech grade: unjudged, German does not stand in
+        assert chunks[1].chunk_id not in by_chunk
+        assert report["unjudged"] == {"model_failed: ConnectError": 1}
+        assert report["per_language"]["incomplete"] == 1
+    else:
+        assert by_chunk[chunks[1].chunk_id].language_grades == {"deu": 1}
+        assert by_chunk[chunks[1].chunk_id].consistent
+        assert report["unjudged"] == {} and report["per_language"]["incomplete"] == 2
+    assert dropped == []

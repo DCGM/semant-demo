@@ -31,7 +31,7 @@ from semant_demo.benchmarks.search_relevance.shareable import shareable
 from semant_demo.benchmarks.search_relevance.generation import (
     generate_intents, import_source_ids, imported_intents, translate)
 from semant_demo.benchmarks.search_relevance.judging import judge_pools
-from semant_demo.benchmarks.search_relevance.llm import USAGE_KEYS, UsageTotals, model_provenance
+from semant_demo.benchmarks.search_relevance.llm import USAGE_KEYS, Refused, UsageTotals, model_provenance
 from semant_demo.benchmarks.search_relevance.pooling import pool_candidates
 from semant_demo.benchmarks.search_relevance.sampling import sample_corpus
 from semant_demo.benchmarks.search_relevance.source import SourceReader
@@ -129,10 +129,13 @@ class Generator:
         c = self.config
         prompt = prompts.prompt_provenance(c.intents.descriptions())
         if step == "sample":
+            # The imported source chunks the sample adds: they depend on the import file and on its
+            # selection (``limit``, the intents seed, the query languages), so the ids themselves.
             imports = c.intents.imports
+            readable = imports is not None and imports.path.expanduser().is_file()
             return {"languages": c.languages, "sample": c.sample.model_dump(mode="json"), "seed": c.seeds.sample,
                     "source": c.source.model_dump(mode="json"),
-                    "imports": _file_sha(imports.path) if imports and c.sample.include_import_sources else None}
+                    "imports": [str(i) for i in import_source_ids(c)] if readable else None}
         if step == "intents":
             imports = c.intents.imports
             return {"intents": c.intents.model_dump(mode="json", by_alias=True), "seed": c.seeds.intents,
@@ -243,6 +246,9 @@ class Generator:
             "generator": {"tool": TOOL}, "languages": self.config.languages}, self.corpus(), [], [], [])
 
     async def _pool(self) -> tuple[list[str], dict[str, Any]]:
+        missing = self.config.pooling.missing_key_envs()
+        if missing:
+            raise Refused(f"{', '.join(missing)} is not set; a pooling endpoint's api_key_env names it")
         intents = self._records("translate", "intents.jsonl", Intent)
         queries = self._records("translate", "queries.jsonl", Query)
         dataset = self.corpus_dataset()
@@ -332,6 +338,10 @@ class Generator:
         ]
         if unjudged:
             limitations.append(f"{unjudged} pooled pairs could not be judged and are not in the qrels.")
+        incomplete = (judge.get("per_language") or {}).get("incomplete")
+        if incomplete:
+            limitations.append(f"{incomplete} per-language qrels lack some languages' grades (their judgement "
+                               "failed): language_grades, grade and consistent cover the judged languages only.")
         if sample.get("short"):
             limitations.append(f"Languages below their sample target: {sample['short']}.")
         if pool.get("store_schema") is not None:
@@ -348,7 +358,7 @@ class Generator:
                                                   "cap_per_intent", "per_intent", "failed_searches",
                                                   "hits_outside_corpus", "proposed_by", "proposed_only_by",
                                                   "sources_found_by")},
-            "judging": {k: judge.get(k) for k in ("pairs", "judged", "unjudged", "dropped_intents",
+            "judging": {k: judge.get(k) for k in ("pairs", "judged", "unjudged", "failed_judgements", "dropped_intents",
                                                    "source_graded_0", "per_language", "passages_cut")},
             "coverage": {"judged_share_of_pool": round(len(qrels) / pool["candidates"], 4)
                          if pool.get("candidates") else None},
