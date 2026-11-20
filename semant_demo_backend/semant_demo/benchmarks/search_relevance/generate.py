@@ -43,12 +43,13 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--from", dest="start", choices=STEPS, help="rerun this step and every later one")
     run.add_argument("--until", choices=STEPS, help="stop after this step")
     run.add_argument("--force", action="store_true", help="rerun every step (cached model calls are reused)")
-    run.add_argument("--source-host")
-    run.add_argument("--source-port", type=int)
-    run.add_argument("--source-grpc-port", type=int)
     budget = sub.add_parser("budget", help="estimate model calls and cost (no call is made)")
     budget.add_argument("config", type=Path)
     budget.add_argument("--work", type=Path, help="use the outputs of an earlier run")
+    for command in (run, budget):  # budget takes run's source, so that it judges the same steps fresh
+        command.add_argument("--source-host")
+        command.add_argument("--source-port", type=int)
+        command.add_argument("--source-grpc-port", type=int)
     validate = sub.add_parser("validate", help="load a dataset and print its summary")
     validate.add_argument("dataset", type=Path)
     return p
@@ -95,6 +96,9 @@ async def _run(args) -> int:
 
     config, data, sha = load_config(args.config)
     config = with_source_overrides(config, args)
+    missing = config.pooling.missing_key_envs()  # before any step, so no model call precedes the refusal
+    if missing:
+        raise Refused(f"{', '.join(missing)} is not set; a pooling endpoint's api_key_env names it")
     work = args.work
     work.mkdir(parents=True, exist_ok=True)
     opened: list = []
@@ -120,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
             from semant_demo.benchmarks.search_relevance.config import load_config
 
             config, _, _ = load_config(args.config)
+            config = with_source_overrides(config, args)
             # The gateway ``run`` would use (no call is made): a step counts as done only when fresh.
             llm = _resources(config, args, []).llm if args.work is not None else None
             print(json.dumps(estimate(config, args.work, llm), indent=1))

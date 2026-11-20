@@ -834,3 +834,20 @@ async def test_a_language_whose_judgement_failed_is_counted_and_not_graded(tmp_p
         assert by_chunk[chunks[1].chunk_id].consistent
         assert report["unjudged"] == {} and report["per_language"]["incomplete"] == 2
     assert dropped == []
+
+
+def test_the_command_refuses_a_missing_key_before_any_step(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("SEMANT_TEST_EMBEDDING_KEY", raising=False)
+    cfg = config(pooling=methods({"id": "vec", "mode": "vector", "vector": VECTOR,
+                                  "endpoint": {"base_url": "http://fake/v1", "api_key_env": "SEMANT_TEST_EMBEDDING_KEY"}}))
+    write_config(tmp_path / "config.yaml", cfg)
+    assert main(["run", str(tmp_path / "config.yaml"), "--work", str(tmp_path / "work")]) == 2
+    assert "SEMANT_TEST_EMBEDDING_KEY is not set" in capsys.readouterr().err
+    assert not (tmp_path / "work").exists()  # no step ran, no model was called
+
+
+def test_budget_takes_the_same_source_options_as_run(tmp_path, capsys):
+    write_config(tmp_path / "config.yaml", config())
+    assert main(["budget", str(tmp_path / "config.yaml"), "--source-host", "127.0.0.1", "--source-port", "18080",
+                 "--source-grpc-port", "15051"]) == 0
+    assert "calls" in json.loads(capsys.readouterr().out)
