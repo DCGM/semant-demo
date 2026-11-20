@@ -168,6 +168,9 @@ docs/TagSpanBatchRequest.md
 docs/TagSpanWriteResult.md
 docs/TextScope.md
 docs/TextStatus.md
+docs/TextUploadAvailability.md
+docs/TextUploadFileResult.md
+docs/TextUploadResponse.md
 docs/TopicerConfigsResponse.md
 docs/Url.md
 docs/UserCreate.md
@@ -349,6 +352,9 @@ models/TagSpanBatchRequest.ts
 models/TagSpanWriteResult.ts
 models/TextScope.ts
 models/TextStatus.ts
+models/TextUploadAvailability.ts
+models/TextUploadFileResult.ts
+models/TextUploadResponse.ts
 models/TopicerConfigsResponse.ts
 models/Url.ts
 models/UserCreate.ts

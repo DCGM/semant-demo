@@ -70,9 +70,11 @@ class DocumentChunk(BaseModel):
     offsets refer to; the search hit (``SearchResultChunk``) extends it with display text."""
     id: UUID
     text: str
-    start_page_id: UUID
-    from_page: int
-    to_page: int
+    start_page_id: UUID | None = None
+    from_page: int | None = None
+    to_page: int | None = None
+    """The first page's id and the page range; absent for a text-only document (an uploaded
+    text, #785), whose chunks have no pages."""
     document: UUID
     title: str | None = None
     end_paragraph: bool = True

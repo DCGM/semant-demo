@@ -11,6 +11,7 @@ from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
+from semant_demo.adapters.weaviate.text_upload import TextUploadRepository
 from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
@@ -71,6 +72,10 @@ async def get_tags(connection: HTTPConnection) -> TagRepository:
 
 async def get_user_collections(connection: HTTPConnection) -> UserCollectionRepository:
     return _weaviate(connection).user_collections
+
+async def get_text_upload_store(connection: HTTPConnection) -> TextUploadRepository:
+    """The writes of the text document upload (#785)."""
+    return TextUploadRepository(_weaviate(connection).client, get_config(connection).collectionNames)
 
 async def get_corpus_analytics(connection: HTTPConnection) -> CorpusAnalyticsRepository:
     return _weaviate(connection).analytics

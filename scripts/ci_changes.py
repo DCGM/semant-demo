@@ -93,6 +93,7 @@ FRONTEND_ONLY = DOCS_ONLY + (
 FRONTEND_FORCE_FULL = (
     "semant_demo_frontend/src/generated/**",  # the API client: "Generated API client drift"
     "semant_demo_frontend/src/features/documents/originalSource.ts",  # test_mcp.py
+    "semant_demo_frontend/src/features/documents/upload/textUpload.ts",  # test_text_upload.py
     "semant_demo_frontend/test/e2e/shard_durations.json",  # test_browser_shards.py
 )
 # Backend tests check that browser specs exist (test_browser_shards.py: those named in
