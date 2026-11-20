@@ -57,7 +57,11 @@ async function open (page: Page, documentId: string, query = '') {
   await expect(workspace(page)).toBeAttached()
 }
 
-/** Clicks the text of a chunk at a UTF-16 offset, as a reader placing the caret there. */
+/**
+ * Clicks the text of a chunk at a UTF-16 offset, as a reader placing the caret there. The point
+ * must reach the text: a click there taken by something covering it (e.g. a loading overlay,
+ * #790) fails here, not later as a pane that did not follow.
+ */
 async function clickText (page: Page, key: string, offset: number) {
   const point = await chunk(page, key).evaluate((el, at) => {
     for (const seg of Array.from(el.querySelectorAll<HTMLElement>('.text-segment'))) {
@@ -68,7 +72,11 @@ async function clickText (page: Page, key: string, offset: number) {
       range.setStart(node, at - start)
       range.setEnd(node, at - start + 1)
       const r = range.getClientRects()[0]
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+      const x = r.left + r.width / 2
+      const y = r.top + r.height / 2
+      const hit = document.elementFromPoint(x, y)
+      if (!hit || !seg.contains(hit)) throw new Error(`the text at ${at} is covered by ${hit?.outerHTML.slice(0, 120) ?? 'nothing'}`)
+      return { x, y }
     }
     throw new Error('offset not in the chunk')
   }, offset)
@@ -557,6 +565,22 @@ test.describe('the collection document view', () => {
     await modes(page).getByRole('button', { name: 'Text', exact: true }).click()
     await expect(page.getByTestId('workspace-scan')).toBeHidden()
     await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+  })
+
+  test('the text takes a click while its loading overlay still fades out (#790)', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await ensureLoggedIn(page, 'owner')
+    // The overlay fades out for 300 ms once the text is loaded; slowed down here, so that the
+    // click surely falls into the fade. (The reader opens in the same document: a hash change.)
+    await page.addStyleTag({ content: '.q-inner-loading.q-transition--fade-leave-active { transition-duration: 5s !important }' })
+    await page.goto(collectionUrl(`?page=${PAGE_2}`))
+    await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+    await expect(page.locator('.q-inner-loading')).toHaveClass(/q-transition--fade-leave-active/)
+
+    await clickText(page, 'chronicle_1', 3)
+    await expect(overlay(page)).toHaveAttribute('data-layout-page-id', PAGE_1)
+    await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l001')
+    await expect(page.locator('.q-inner-loading')).toHaveClass(/q-transition--fade-leave-active/)
   })
 
   test('the reader\'s page change replaces the linked annotation in the URL; a reload opens that page', async ({ page }) => {

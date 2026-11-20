@@ -7,7 +7,7 @@
           <p class="dimension-card__coverage">{{ coverageText(distributions.publicationYear.unknownCount ?? 0, 'a publication year') }}</p>
           <PublicationTimeline
             v-if="distributions.publicationYear.years?.length"
-            :distribution="distributions.publicationYear"
+            :distribution="distributions.publicationYear" :opens-explore="opensExplore"
             @apply-period="(period) => emit('applyFilter', { dimension: 'years', start: period.start, end: period.end })"
             @view="(view) => (timelineView = view)"
           />
@@ -56,7 +56,7 @@
           <p class="dimension-card__coverage">{{ coverageText(dimension.distribution.unknownCount ?? 0, dimension.subject) }}</p>
           <p v-if="dimension.note" class="dimension-card__note">{{ dimension.note }}</p>
           <CategoryChart
-            :rows="dimension.rows" :axis="dimension.axis" :test-id="`corpus-${dimension.key}`" filterable
+            :rows="dimension.rows" :axis="dimension.axis" :test-id="`corpus-${dimension.key}`" filterable :opens-explore="opensExplore"
             @apply-filter="(value) => emit('applyFilter', { dimension: dimension.key, value })"
           />
         </template>
@@ -90,7 +90,9 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   /** What every count counts, as the coverage lines name it (e.g. "collection documents"). */
   unitLabel?: string
-}>(), { loading: false, unitLabel: 'documents' })
+  /** A clicked category opens Explore with it instead of filtering this page (#795). */
+  opensExplore?: boolean
+}>(), { loading: false, unitLabel: 'documents', opensExplore: false })
 const emit = defineEmits<{ applyFilter: [filter: ChartFilter] }>()
 
 const numberFormat = new Intl.NumberFormat('en')

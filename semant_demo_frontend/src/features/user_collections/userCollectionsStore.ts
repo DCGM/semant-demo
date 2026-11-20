@@ -41,18 +41,26 @@ export const useUserCollectionsStore = defineStore('userCollections', () => {
     collections.value.filter((c) => !pendingDeleteIds.value.has(c.id))
   )
 
-  const fetchCollections = async () => {
+  /**
+   * Loads the user's collections. Resolves to whether they were loaded, or to undefined when a
+   * newer load replaced this one (its answer is not used); the store's `error` is shared with
+   * the other requests, so a caller that needs this load's outcome uses the result.
+   */
+  const fetchCollections = async (): Promise<boolean | undefined> => {
     listRequests.enter()
     const isCurrent = listRequests.capture()
     loading.value = true
     error.value = null
     try {
       const data = await collectionRepository.getAll()
-      if (isCurrent()) collections.value = data.filter((c) => !deletedIds.has(c.id))
+      if (!isCurrent()) return undefined
+      collections.value = data.filter((c) => !deletedIds.has(c.id))
+      return true
     } catch (err) {
-      if (!isCurrent()) return
+      if (!isCurrent()) return undefined
       error.value = 'Failed to fetch collections'
       console.error('Error fetching collections:', err)
+      return false
     } finally {
       if (isCurrent()) loading.value = false
     }
