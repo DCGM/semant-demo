@@ -66,7 +66,10 @@ example: `semant_demo/configs/search_benchmark_generator.yaml`, the shape of v1)
 seeds, sizes, languages, styles and their shares, pooling methods, judge settings and a
 `models` catalog in the `ModelCatalog` format declaring `search_benchmark_intents`,
 `search_benchmark_translation` and `search_benchmark_judge`. Provider endpoints and keys come
-from the environment, as for the backend. The steps write to the work directory:
+from the environment, as for the backend. The source store is the config's `source`, the
+`--source-*` options or the environment (`WEAVIATE_HOST`, …); the options are part of the
+`sample` step's inputs, so another store reruns the sampling. The manifest describes the source
+by `source.description` and never names its host. The steps write to the work directory:
 
 | Step | Does | Output (`WORK/<step>/`) |
 |---|---|---|

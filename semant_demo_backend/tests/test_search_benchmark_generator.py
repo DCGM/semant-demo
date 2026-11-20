@@ -603,3 +603,18 @@ def test_the_example_configuration_is_valid():
     path = Path(__file__).parents[1] / "semant_demo" / "configs" / "search_benchmark_generator.yaml"
     cfg, _, _ = load_config(path)
     assert cfg.languages == LANGUAGES and cfg.intents.count == 210
+
+
+def test_the_command_line_source_is_part_of_the_sample_steps_inputs(tmp_path, gateway, usage):
+    from argparse import Namespace
+
+    from semant_demo.benchmarks.search_relevance.generate import with_source_overrides
+    cfg = config()
+    none = Namespace(source_host=None, source_port=None, source_grpc_port=None)
+    assert with_source_overrides(cfg, none) is cfg
+    moved = with_source_overrides(cfg, Namespace(source_host="127.0.0.1", source_port=18080, source_grpc_port=15051))
+    assert (moved.source.host, moved.source.rest_port, moved.source.grpc_port) == ("127.0.0.1", 18080, 15051)
+
+    def sample_inputs(c):
+        return generator(tmp_path, gateway, usage, c, FakeSource(source_chunks()), FakeStore()).inputs("sample")
+    assert sample_inputs(cfg) != sample_inputs(moved)  # another store reruns the sampling

@@ -54,6 +54,14 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def with_source_overrides(config, args):
+    """The config with the command line's source (``--source-*``) instead of its own: the
+    sample step's inputs include the source, so pointing at another store reruns the sampling."""
+    source = {key: value for key, value in (("host", args.source_host), ("rest_port", args.source_port),
+                                            ("grpc_port", args.source_grpc_port)) if value is not None}
+    return config.model_copy(update={"source": config.source.model_copy(update=source)}) if source else config
+
+
 def _resources(config, args, opened: list) -> Resources:
     from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
     from semant_demo.config import Config
@@ -66,16 +74,14 @@ def _resources(config, args, opened: list) -> Resources:
         from semant_demo.adapters.weaviate.client import connect_weaviate
         from semant_demo.benchmarks.search_relevance.source import WeaviateSource
 
-        overrides = {"WEAVIATE_HOST": args.source_host or config.source.host,
-                     "WEAVIATE_REST_PORT": args.source_port or config.source.rest_port,
-                     "WEAVIATE_GRPC_PORT": args.source_grpc_port or config.source.grpc_port}
+        overrides = {"WEAVIATE_HOST": config.source.host, "WEAVIATE_REST_PORT": config.source.rest_port,
+                     "WEAVIATE_GRPC_PORT": config.source.grpc_port}
         environ = {**os.environ, **{k: str(v) for k, v in overrides.items() if v}}
         source_config = Config(environ=environ)
         client = await connect_weaviate(source_config, query_timeout=config.source.query_timeout)
         opened.append(client)
-        return WeaviateSource(client, source_config.collectionNames, {
-            "weaviate": f"{source_config.WEAVIATE_HOST}:{source_config.WEAVIATE_REST_PORT}",
-            "description": config.source.description})
+        # The manifest describes the source without naming its host (datasets may be shared).
+        return WeaviateSource(client, source_config.collectionNames, {"description": config.source.description})
 
     async def open_store(spec):
         from semant_demo.benchmarks.search_relevance.store import open_store as real_open_store
@@ -88,6 +94,7 @@ async def _run(args) -> int:
     from semant_demo.benchmarks.search_relevance.config import load_config
 
     config, data, sha = load_config(args.config)
+    config = with_source_overrides(config, args)
     work = args.work
     work.mkdir(parents=True, exist_ok=True)
     opened: list = []
