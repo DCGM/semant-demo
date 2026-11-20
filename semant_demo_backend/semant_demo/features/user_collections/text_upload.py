@@ -48,7 +48,7 @@ from semant_demo.adapters.weaviate.user_collections import UserCollectionReposit
 from semant_demo.core.errors import ServiceUnavailableError
 from semant_demo.features.documents.positions import chunk_positions
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
-from semant_demo.features.user_collections import access
+from semant_demo.features.user_collections import access, language_codes
 from semant_demo.features.user_collections.access import Principal
 from semant_demo.features.user_collections.schemas import TextUploadFileResult, TextUploadResponse
 
@@ -60,13 +60,10 @@ properties every deployed ``Documents`` schema declares (docs/DATABASE.md): no `
 CSV_TEMPLATE = "filename,title,author,yearIssued,language\r\n" \
                "example.txt,Example document,Jane Doe,1925,ces\r\n"
 """The downloadable template (also in docs/TEXT_UPLOAD.md)."""
-LANGUAGES = ("ces", "deu", "hun", "lat", "zxx")
-"""The codes of the Language search filter (``configs/search_filters.yaml``, ISO 639-2/T), the
-only languages an upload accepts, so the filter always selects the uploaded chunks; the shared
-vocabulary is #562 / #812."""
-LANGUAGE_ALIASES = {"cs": "ces", "cze": "ces", "de": "deu", "ger": "deu", "hu": "hun", "la": "lat"}
-"""Two-letter (ISO 639-1) and bibliographic (ISO 639-2/B) codes of these languages, stored as
-the filter's code."""
+LANGUAGE_HINT = "use a two- or three-letter ISO 639 code (e.g. cs or ces for Czech, de or deu for German) or leave it blank"
+"""How a refused CSV ``language`` should look. Any ISO 639-1, 639-2/T or 639-2/B code is
+accepted and stored as the three-letter ISO 639-2/T code, the form the Language search filter
+uses (``configs/search_filters.yaml``); the shared vocabulary is #562 / #812."""
 METADATA_LIMITS = {"title": 500, "author": 300}
 """The longest accepted value of each text column, in characters."""
 YEAR = re.compile(r"-?\d{1,4}")
@@ -324,9 +321,9 @@ def parse_metadata_csv(content: bytes) -> ParsedCsv:
                     continue
                 metadata.yearIssued = int(value)
             elif name == "language":
-                code = LANGUAGE_ALIASES.get(value.lower(), value.lower())
-                if code not in LANGUAGES:
-                    problems.append(f"language {value[:40]!r} is not supported: use {', '.join(LANGUAGES)} or leave it blank")
+                code = language_codes.canonical(value)
+                if code is None:
+                    problems.append(f"language {value[:40]!r} is not a language code: {LANGUAGE_HINT}")
                     continue
                 metadata.language = code
             elif len(value) > METADATA_LIMITS[name]:

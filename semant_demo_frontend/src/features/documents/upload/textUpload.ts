@@ -8,9 +8,6 @@ export const CSV_TEMPLATE =
   'filename,title,author,yearIssued,language\r\n' +
   'example.txt,Example document,Jane Doe,1925,ces\r\n'
 
-/** The CSV's `language` codes: the Language search filter's (blank is allowed too). */
-export const LANGUAGES = ['ces', 'deu', 'hun', 'lat', 'zxx'] as const
-
 export const MAX_FILES = 20
 export const MAX_FILE_BYTES = 2_000_000
 

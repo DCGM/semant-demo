@@ -48,7 +48,7 @@ example.txt,Example document,Jane Doe,1925,ces
 | `title` | no | `Documents.title`; blank: the file name without `.txt`. At most 500 characters. |
 | `author` | no | `Documents.author`, a one-element list. At most 300 characters. |
 | `yearIssued` | no | `Documents.yearIssued` (an integer, e.g. `1925` or `-50`) and the chunks' copy `Chunks.yearIssued` used by year filters (#153). |
-| `language` | no | `Documents.language` and `Chunks.language`, lowercased. Blank, or a code of the Language search filter (`ces`, `deu`, `hun`, `lat`, `zxx`), in any case; the two-letter and bibliographic codes of these languages (`cs`, `cze`, `de`, `ger`, `hu`, `la`) are stored as that code. Any other value is refused for that file (`invalid`), so every stored language is one the filter selects. |
+| `language` | no | `Documents.language` and `Chunks.language`, lowercased. Blank, or an ISO 639 code in any case: two-letter (ISO 639-1, `cs`), three-letter terminologic (ISO 639-2/T, `ces`) or bibliographic (ISO 639-2/B, `cze`). Stored as the three-letter ISO 639-2/T code (`ces`), the form the Language search filter uses; the filter offers only some languages (`ces`, `deu`, `hun`, `lat`, `zxx`), and other stored languages are kept but not selectable there. Anything else is refused for that file (`invalid`) with a hint. The code list is `features/user_collections/language_codes.py`, generated from the Library of Congress ISO 639-2 list. |
 
 Any other column (`public`, `library`, `id`, ...) refuses the upload: the CSV cannot set
 rights, the source library or ids. There is no `description` column: no deployed `Documents`

@@ -82,7 +82,7 @@ test('an invalid file is reported and nothing is uploaded', async ({ page, reque
   }
 })
 
-test('an unsupported language is refused; a CSV corrected after it was chosen is asked for again', async ({ page, request }) => {
+test('a language that is no ISO 639 code is refused; a CSV corrected after it was chosen is asked for again', async ({ page, request }) => {
   const collection = await createCollection(request, 'Upload test language')
   try {
     await useViewport(page, 'wide')
@@ -97,7 +97,7 @@ test('an unsupported language is refused; a CSV corrected after it was chosen is
     await dialog.getByTestId('upload-metadata').setInputFiles(csv)
     await dialog.getByTestId('upload-submit').click()
     await expect(dialog.getByTestId('upload-result')).toContainText(
-      "language 'polish' is not supported: use ces, deu, hun, lat, zxx or leave it blank")
+      "language 'polish' is not a language code: use a two- or three-letter ISO 639 code (e.g. cs or ces for Czech")
 
     // The user corrects the CSV in an editor and uploads again without choosing it again.
     writeFileSync(csv, 'filename,language\na.txt,ces\n')

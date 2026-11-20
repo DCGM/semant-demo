@@ -49,7 +49,7 @@
           </q-file>
           <div class="text-caption text-grey-7 q-mt-xs">
             Columns: <code>filename</code> (required, as uploaded), <code>title</code>, <code>author</code>,
-            <code>yearIssued</code>, <code>language</code> ({{ LANGUAGES.join(', ') }} or blank).
+            <code>yearIssued</code>, <code>language</code> (a two- or three-letter ISO 639 code, e.g. <code>cs</code> or <code>ces</code>).
             <a :href="templateHref" download="semant-text-upload-template.csv" data-testid="upload-template">Download the CSV template</a>
           </div>
         </div>
@@ -129,7 +129,7 @@ import { apiErrorMessage } from 'src/shared/api'
 import { plural } from 'src/shared/plural'
 import { useDocumentsRepository } from '../useDocumentsRepository'
 import {
-  CSV_TEMPLATE, LANGUAGES, MAX_FILES, STATUS, allCompleted, checkFiles, filesNotSaved, readSelection, summary, unreadableMessage
+  CSV_TEMPLATE, MAX_FILES, STATUS, allCompleted, checkFiles, filesNotSaved, readSelection, summary, unreadableMessage
 } from './textUpload'
 
 const props = defineProps<{ collectionId: string }>()
