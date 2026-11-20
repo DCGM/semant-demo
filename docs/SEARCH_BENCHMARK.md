@@ -43,7 +43,8 @@ dataset/
 
 Grades belong to an **intent**: its translations share them. When the generator judges
 per query language, `language_grades` keeps those grades, `grade` is their documented aggregate
-and `consistent: false` marks a disagreement.
+and `consistent: false` marks a disagreement (exactly then: the contract refuses a `consistent` that
+contradicts the per-language grades).
 
 The manifest (`DatasetManifest`) holds `schema_version` (`search-benchmark-dataset/1`),
 `dataset_id`, `version`, `created`, the generator and its configuration with its SHA-256,
