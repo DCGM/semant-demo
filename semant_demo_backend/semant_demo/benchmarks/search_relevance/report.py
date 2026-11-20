@@ -23,7 +23,7 @@ from uuid import UUID
 
 from . import plots
 from .analysis import (CROSS, SAME, SCORED, UNKNOWN, Configuration, Row, aggregate, inconsistent_intents,
-                       intent_means, latency, paired, score, slice_names)
+                       intent_means, latency, paired, rows_by_configuration, score, slice_names)
 from .contracts import ContractError, Dataset, Run, load_dataset, load_run
 from .metrics import BOOTSTRAP_SAMPLES, COVERAGE_METRIC, METRICS, RELEVANCE_METRICS, SEED
 
@@ -257,7 +257,8 @@ def chunk_line(dataset: Dataset, chunk_id: UUID, grades: dict[UUID, int], source
 
 def examples(dataset: Dataset, rows: Sequence[Row], config: str, count: int) -> tuple[list[str], list[dict[str, Any]]]:
     """The ``count`` best and worst intents of a configuration by mean nDCG@10, each with its
-    best (or worst) query: top hits with grades and the relevant chunks it missed."""
+    best (or worst) query: top hits with grades and the relevant chunks it missed. ``rows`` may be
+    the configuration's own (``rows_by_configuration``) or all."""
     mine = [r for r in rows if r.configuration == config]
     means = intent_means(mine)
     order = sorted(means, key=lambda i: (means[i], i))
@@ -423,8 +424,9 @@ def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_in
            f"Per configuration, the {example_count} best and worst intents by mean nDCG@10, each with its best or "
            "worst query. Grades: 2 relevant, 1 partly, 0 not relevant, \"unjudged\" without a qrel.", ""]
     example_docs = []
+    by_configuration = rows_by_configuration(rows)
     for c in labels:
-        lines, found = examples(dataset, rows, c, example_count)
+        lines, found = examples(dataset, by_configuration.get(c, []), c, example_count)
         md += [f"### {c}", "", *(lines or ["No scored query with a relevant qrel."]), ""]
         example_docs += found
     unjudged = {c: overall[c]["metrics"][COVERAGE_METRIC] for c in labels}
