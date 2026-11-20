@@ -53,7 +53,10 @@ To see what a run would do first, add `--check`: it reads the records a run woul
 prints how many it would embed, how many already store the vector (a run only adds the name)
 and how many have an empty input, without changing the schema, sending embedding requests or
 writing. It reads the selected records like a run, but since it writes nothing, beyond
-`max_excluded` of them it reads the rest with the cursor (see *How it works*). Exit code 0 when a run
+`max_excluded` of them it reads the rest with the cursor (see *How it works*). The client keeps
+at most `max_excluded` ids and a page in memory. On an older copy of production (8.28 M chunks,
+Weaviate 1.34) a check of a new vector, which selects every chunk, took about 47 minutes and
+118 MB of client memory (#816); when nothing is selected, it makes one query. Exit code 0 when a run
 would write nothing, 1 when it would, 2 when the check fails (e.g. a missing collection) or a
 run would be refused (`haveVector` missing or declared otherwise, or the vector missing and
 `create_vector` disabled, even in an empty collection). A check that a run would refuse says
@@ -104,8 +107,8 @@ first; `create_vector: true` adds the vector to the configured collection on the
 ## How it works
 
 1. The collection must declare `haveVector`; otherwise the run is refused before any change. The named vector is created in the schema if it's missing (`create_vector`).
-2. The run reads again and again the first `scan_batch_size` records with `haveVector contains_none([name])`, with their properties and the target vector. A record written leaves the selection; the records read and not yet written (being embedded or written, or with an empty input) are left out of the next query by id (`by_id().contains_none`). A record that already stores the vector gets only the name before the next query. Weaviate's cursor (`after`) cannot be combined with a filter, and keyset paging (sorted by `_id`) costs minutes a page when most records are selected (measured in #816). On an older copy of production (8.3 M chunks, Weaviate 1.34) a query took about 0.06 s with nothing left out and 0.15 s with 5000 ids left out.
-   When more than `max_excluded` ids would be left out (many empty inputs, or `--check`, which writes nothing), the rest is read with the cursor: `scan_batch_size` ids and `haveVector` lists per request, and the records of each page lacking the name again by id (`by_id().contains_any`) with their properties and the vector. On the copy that reads the whole collection in about 18 minutes, against about 31 for reading every record with the vector.
+2. The run reads again and again the first `scan_batch_size` records with `haveVector contains_none([name])`, with their properties and the target vector. A record written leaves the selection; the records read and not yet written (being embedded or written, or with an empty input) are left out of the next query by id (`by_id().contains_none`). A record that already stores the vector gets only the name before the next query. Weaviate's cursor (`after`) cannot be combined with a filter, and keyset paging (sorted by `_id`) costs minutes a page when most records are selected (measured in #816). On an older copy of production (8.3 M chunks, Weaviate 1.34) a query took about 0.03 s when 1000 chunks were selected, 0.07 s when all were, and 0.15 s with all selected and 5000 ids left out.
+   When more than `max_excluded` ids would be left out (many empty inputs, or `--check`, which writes nothing), the rest is read with the cursor: `scan_batch_size` ids and `haveVector` lists per request, and the records of each page lacking the name again by id (`by_id().contains_any`) with their properties and the vector. On the copy the cursor alone reads the whole collection in about 19–21 minutes, against 34–38 for reading every record with the vector; when every record is selected, the reads by id come on top.
 3. The texts are rendered with `input_template` and sent in requests of `embed_batch_size` texts to the embedder, with up to `max_concurrent_requests` requests in flight. Records whose rendered text is empty are skipped; they stay selected and every run reports them.
 4. Each embedding is written with the extended `haveVector` list in one PATCH update, with up to `max_concurrent_writes` updates at once. A list read as absent or `null` counts as empty.
 
