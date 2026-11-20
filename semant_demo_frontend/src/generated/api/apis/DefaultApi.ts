@@ -19,6 +19,8 @@ import type {
   AnnotatedDocument,
   AnnotationCounts,
   AnnotationExportRequest,
+  AnnotationFacets,
+  AnnotationFacetsRequest,
   AnnotationIds,
   AnnotationIdsRequest,
   AnnotationPage,
@@ -49,6 +51,7 @@ import type {
   DeleteSpansForTagsRequest,
   DeleteSpansForTagsResponse,
   DiscussSpanRequest,
+  DistanceUnit,
   Document,
   DocumentBrowse,
   DocumentChunkWindow,
@@ -64,6 +67,8 @@ import type {
   FeedbackRequest,
   HTTPValidationError,
   LibraryYearDistribution,
+  NearDirection,
+  NearRelation,
   PageChunks,
   PassageReadRequest,
   PassageReadResponse,
@@ -118,6 +123,10 @@ import {
     AnnotationCountsToJSON,
     AnnotationExportRequestFromJSON,
     AnnotationExportRequestToJSON,
+    AnnotationFacetsFromJSON,
+    AnnotationFacetsToJSON,
+    AnnotationFacetsRequestFromJSON,
+    AnnotationFacetsRequestToJSON,
     AnnotationIdsFromJSON,
     AnnotationIdsToJSON,
     AnnotationIdsRequestFromJSON,
@@ -178,6 +187,8 @@ import {
     DeleteSpansForTagsResponseToJSON,
     DiscussSpanRequestFromJSON,
     DiscussSpanRequestToJSON,
+    DistanceUnitFromJSON,
+    DistanceUnitToJSON,
     DocumentFromJSON,
     DocumentToJSON,
     DocumentBrowseFromJSON,
@@ -208,6 +219,10 @@ import {
     HTTPValidationErrorToJSON,
     LibraryYearDistributionFromJSON,
     LibraryYearDistributionToJSON,
+    NearDirectionFromJSON,
+    NearDirectionToJSON,
+    NearRelationFromJSON,
+    NearRelationToJSON,
     PageChunksFromJSON,
     PageChunksToJSON,
     PassageReadRequestFromJSON,
@@ -367,6 +382,7 @@ export interface CountCollectionAnnotationsApiUserCollectionsCollectionIdAnnotat
 
 export interface CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest {
     documentId: string;
+    collectionId?: string | null;
 }
 
 export interface CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest {
@@ -437,6 +453,11 @@ export interface ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnota
     annotationExportRequest: AnnotationExportRequest;
 }
 
+export interface FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest {
+    collectionId: string;
+    annotationFacetsRequest: AnnotationFacetsRequest;
+}
+
 export interface FetchCollectionApiUserCollectionsCollectionIdGetRequest {
     collectionId: string;
 }
@@ -448,6 +469,7 @@ export interface FetchCollectionDocumentApiUserCollectionsCollectionIdDocumentsD
 
 export interface FetchDocumentApiDocumentDocumentIdGetRequest {
     documentId: string;
+    collectionId?: string | null;
 }
 
 export interface GetChunksInRangeApiUserCollectionsCollectionIdDocumentsDocumentIdChunksRangeGetRequest {
@@ -513,6 +535,14 @@ export interface ListAnnotatedDocumentsApiUserCollectionsCollectionIdAnnotations
     languages?: Array<string>;
     attribute?: Array<string> | null;
     unassigned?: Array<string> | null;
+    nearRelation?: NearRelation | null;
+    nearTagId?: Array<string> | null;
+    nearType?: Array<SpanType> | null;
+    nearAttribute?: Array<string> | null;
+    nearDistance?: number;
+    nearUnit?: DistanceUnit;
+    nearDirection?: NearDirection;
+    nearAbsent?: boolean;
 }
 
 export interface ListAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGetRequest {
@@ -545,6 +575,14 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     languages?: Array<string>;
     attribute?: Array<string> | null;
     unassigned?: Array<string> | null;
+    nearRelation?: NearRelation | null;
+    nearTagId?: Array<string> | null;
+    nearType?: Array<SpanType> | null;
+    nearAttribute?: Array<string> | null;
+    nearDistance?: number;
+    nearUnit?: DistanceUnit;
+    nearDirection?: NearDirection;
+    nearAbsent?: boolean;
     mode?: RetrievalMode;
     k?: number;
     similarTo?: string | null;
@@ -568,6 +606,7 @@ export interface ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAd
     chunkId: string;
     direction: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetDirectionEnum;
     limit?: number;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest {
@@ -575,22 +614,26 @@ export interface ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindo
     chunkId: string;
     before?: number;
     after?: number;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest {
     documentId: string;
     pageId: string;
     kind: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetKindEnum;
+    access?: string | null;
 }
 
 export interface ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest {
     documentId: string;
     page: number;
     limit?: number;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest {
     documentId: string;
+    collectionId?: string | null;
 }
 
 export interface ReadDocumentsApiSearchDocumentsReadPostRequest {
@@ -984,7 +1027,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * @summary Corpus Distributions
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -994,7 +1037,7 @@ export interface DefaultApiInterface {
     corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions>;
@@ -1008,7 +1051,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequestOpts(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * @summary Corpus Library Years
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @param {*} [options] Override http request option.
@@ -1018,7 +1061,7 @@ export interface DefaultApiInterface {
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>>;
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution>;
@@ -1074,15 +1117,17 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for countDocumentChunksApiDocumentsDocumentIdChunksCountGet without sending the request
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     countDocumentChunksApiDocumentsDocumentIdChunksCountGetRequestOpts(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * @summary Count Document Chunks
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1090,7 +1135,7 @@ export interface DefaultApiInterface {
     countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>>;
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * Count Document Chunks
      */
     countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number>;
@@ -1471,6 +1516,32 @@ export interface DefaultApiInterface {
     exportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPost(requestParameters: ExportCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsExportPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<string>;
 
     /**
+     * Creates request options for facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost without sending the request
+     * @param {string} collectionId 
+     * @param {AnnotationFacetsRequest} annotationFacetsRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequestOpts(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * @summary Facet Collection Annotations
+     * @param {string} collectionId 
+     * @param {AnnotationFacetsRequest} annotationFacetsRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRaw(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationFacets>>;
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * Facet Collection Annotations
+     */
+    facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationFacets>;
+
+    /**
      * Creates request options for fetchCollectionApiUserCollectionsCollectionIdGet without sending the request
      * @param {string} collectionId 
      * @throws {RequiredError}
@@ -1545,15 +1616,17 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for fetchDocumentApiDocumentDocumentIdGet without sending the request
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     fetchDocumentApiDocumentDocumentIdGetRequestOpts(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * @summary Fetch Document
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -1561,7 +1634,7 @@ export interface DefaultApiInterface {
     fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Document>>;
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * Fetch Document
      */
     fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Document>;
@@ -1966,6 +2039,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
@@ -1988,6 +2069,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2072,6 +2161,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
@@ -2104,6 +2201,14 @@ export interface DefaultApiInterface {
      * @param {Array<string>} [languages] Only documents in these languages
      * @param {Array<string>} [attribute] Only annotations with this accepted attribute value, as &lt;attribute id&gt;:&lt;value id&gt; (repeat; values of one attribute match any, different attributes all)
      * @param {Array<string>} [unassigned] Only annotations without an accepted value of this attribute id (repeat)
+     * @param {NearRelation} [nearRelation] Proximity (#333): only annotations with a neighbor annotation of the same document in this relation (within: at most near_distance near_unit between the spans; overlaps; contains; contained_by; same_document); the other near_ parameters apply only with it
+     * @param {Array<string>} [nearTagId] Proximity: neighbor tags (repeat; default any)
+     * @param {Array<SpanType>} [nearType] Proximity: neighbor types (default pos and auto)
+     * @param {Array<string>} [nearAttribute] Proximity: neighbor attribute values, as &lt;attribute id&gt;:&lt;value id&gt; (repeat)
+     * @param {number} [nearDistance] Proximity within: the largest gap
+     * @param {DistanceUnit} [nearUnit] Proximity within: words or chars
+     * @param {NearDirection} [nearDirection] Proximity within: where the neighbor lies (before or after the annotation, or either)
+     * @param {boolean} [nearAbsent] Proximity: only annotations without such a neighbor
      * @param {RetrievalMode} [mode] lexical: every match of the filters; semantic: the k nearest in meaning to ranking_query; hybrid: the k best by meaning and BM25 of ranking_query; similar: the k nearest to the annotation similar_to (filters apply first)
      * @param {number} [k] Ranked modes: at most this many
      * @param {string} [similarTo] Mode similar: the source annotation id
@@ -2196,18 +2301,20 @@ export interface DefaultApiInterface {
      * @param {string} chunkId 
      * @param {'before' | 'after'} direction 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequestOpts(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * @summary Read Document Adjacent Chunks
      * @param {string} documentId 
      * @param {string} chunkId 
      * @param {'before' | 'after'} direction 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2215,7 +2322,7 @@ export interface DefaultApiInterface {
     readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRaw(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AdjacentChunks>>;
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * Read Document Adjacent Chunks
      */
     readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AdjacentChunks>;
@@ -2226,18 +2333,20 @@ export interface DefaultApiInterface {
      * @param {string} chunkId 
      * @param {number} [before] 
      * @param {number} [after] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequestOpts(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * @summary Read Document Chunk Window
      * @param {string} documentId 
      * @param {string} chunkId 
      * @param {number} [before] 
      * @param {number} [after] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2245,7 +2354,7 @@ export interface DefaultApiInterface {
     readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRaw(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentChunkWindow>>;
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * Read Document Chunk Window
      */
     readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentChunkWindow>;
@@ -2255,17 +2364,19 @@ export interface DefaultApiInterface {
      * @param {string} documentId 
      * @param {string} pageId 
      * @param {'image' | 'layout' | 'thumbnail'} kind 
+     * @param {string} [access] The signed access of a page manifest read through a collection; needed for a document that is not public.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequestOpts(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * @summary Read Document Page Asset
      * @param {string} documentId 
      * @param {string} pageId 
      * @param {'image' | 'layout' | 'thumbnail'} kind 
+     * @param {string} [access] The signed access of a page manifest read through a collection; needed for a document that is not public.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2273,7 +2384,7 @@ export interface DefaultApiInterface {
     readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRaw(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * Read Document Page Asset
      */
     readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -2283,17 +2394,19 @@ export interface DefaultApiInterface {
      * @param {string} documentId 
      * @param {number} page 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequestOpts(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * @summary Read Document Page Chunks
      * @param {string} documentId 
      * @param {number} page 
      * @param {number} [limit] 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2301,7 +2414,7 @@ export interface DefaultApiInterface {
     readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRaw(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PageChunks>>;
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * Read Document Page Chunks
      */
     readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PageChunks>;
@@ -2309,15 +2422,17 @@ export interface DefaultApiInterface {
     /**
      * Creates request options for readDocumentPagesApiDocumentsDocumentIdPagesGet without sending the request
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
      */
     readDocumentPagesApiDocumentsDocumentIdPagesGetRequestOpts(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * @summary Read Document Pages
      * @param {string} documentId 
+     * @param {string} [collectionId] Read the document through this collection: needs read access to it, and the document must belong to it. Without it, only public documents are readable (#279).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApiInterface
@@ -2325,7 +2440,7 @@ export interface DefaultApiInterface {
     readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentPages>>;
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * Read Document Pages
      */
     readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages>;
@@ -2759,7 +2874,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequestOpts(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * @summary Suggest Spans Optimized
      * @param {SuggestSpansRequest} suggestSpansRequest 
      * @param {*} [options] Override http request option.
@@ -2769,7 +2884,7 @@ export interface DefaultApiInterface {
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
@@ -3630,6 +3745,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/analytics/corpus/distributions`;
 
@@ -3643,7 +3763,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPostRaw(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CorpusDistributions>> {
@@ -3654,7 +3774,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result may be served again. A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``, #622), restricted by metadata filters and chunk filters: the matching total and the matching documents per publication year, source library and document language. Chunk filters apply per dimension (some chunk of the document has one of the values), as in document browsing. Without filters, a recent result of the searchable corpus may be served again; a collection\'s documents are always counted now, for readers of the collection only (401 without a user, 404 otherwise). A filter on a property this corpus database does not record (including chunk filters without the documents\' chunk-value summaries) is rejected (422), never answered with 0.
      * Corpus Distributions
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPost(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CorpusDistributions> {
@@ -3679,6 +3799,11 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         headerParameters['Content-Type'] = 'application/json';
 
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
 
         let urlPath = `/api/analytics/corpus/library-years`;
 
@@ -3692,7 +3817,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRaw(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<LibraryYearDistribution>> {
@@ -3703,7 +3828,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Document counts of the searchable corpus (public) restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. Filters are applied and rejected as for the distributions.
+     * Document counts of the searchable corpus (public), or of one user collection\'s documents (``user_collection_id``), restricted by metadata filters, per source library and publication year: one row per library (most documents first) and one for the remaining documents. Computed on request; takes about as long again as the distributions. The collection, its access and the filters are applied and rejected as for the distributions.
      * Corpus Library Years
      */
     async corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(requestParameters: CorpusLibraryYearsApiAnalyticsCorpusLibraryYearsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<LibraryYearDistribution> {
@@ -3819,7 +3944,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/count`;
@@ -3834,7 +3968,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * Count Document Chunks
      */
     async countDocumentChunksApiDocumentsDocumentIdChunksCountGetRaw(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<number>> {
@@ -3849,7 +3983,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the total number of chunks in the given document (public corpus data).
+     * Returns the total number of chunks in the given document; 0 for an unknown document and, without ``collection_id``, for one that is not public.
      * Count Document Chunks
      */
     async countDocumentChunksApiDocumentsDocumentIdChunksCountGet(requestParameters: CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<number> {
@@ -4718,6 +4852,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost without sending the request
+     */
+    async facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequestOpts(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost().'
+            );
+        }
+
+        if (requestParameters['annotationFacetsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'annotationFacetsRequest',
+                'Required parameter "annotationFacetsRequest" was null or undefined when calling facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/annotations/facets`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: AnnotationFacetsRequestToJSON(requestParameters['annotationFacetsRequest']),
+        };
+    }
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * Facet Collection Annotations
+     */
+    async facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRaw(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AnnotationFacets>> {
+        const requestOptions = await this.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AnnotationFacetsFromJSON(jsonValue));
+    }
+
+    /**
+     * How many annotations each choice of the facets ``tag``, ``type``, ``document``, ``year``, ``library``, ``language`` and ``attribute:<id>`` would give for the annotation query (#667), with the annotations without a value (``missing``). Lexical queries are counted over every match, each facet with its own filter removed (``population`` ``filtered``); a ranked ``ranking`` over exactly its top ``k`` (``top_k``). Attribute facets on a store without attribute properties answer 503.
+     * Facet Collection Annotations
+     */
+    async facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost(requestParameters: FacetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationFacets> {
+        const response = await this.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for fetchCollectionApiUserCollectionsCollectionIdGet without sending the request
      */
     async fetchCollectionApiUserCollectionsCollectionIdGetRequestOpts(requestParameters: FetchCollectionApiUserCollectionsCollectionIdGetRequest): Promise<runtime.RequestOpts> {
@@ -4886,7 +5082,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/document/{document_id}`;
@@ -4901,7 +5106,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * Fetch Document
      */
     async fetchDocumentApiDocumentDocumentIdGetRaw(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Document>> {
@@ -4912,7 +5117,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Retrieves document by its id
+     * Retrieves a readable document by its id (a public one, or one of ``collection_id``).
      * Fetch Document
      */
     async fetchDocumentApiDocumentDocumentIdGet(requestParameters: FetchDocumentApiDocumentDocumentIdGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Document> {
@@ -5812,6 +6017,38 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['unassigned'] = requestParameters['unassigned'];
         }
 
+        if (requestParameters['nearRelation'] != null) {
+            queryParameters['near_relation'] = requestParameters['nearRelation'];
+        }
+
+        if (requestParameters['nearTagId'] != null) {
+            queryParameters['near_tag_id'] = requestParameters['nearTagId'];
+        }
+
+        if (requestParameters['nearType'] != null) {
+            queryParameters['near_type'] = requestParameters['nearType'];
+        }
+
+        if (requestParameters['nearAttribute'] != null) {
+            queryParameters['near_attribute'] = requestParameters['nearAttribute'];
+        }
+
+        if (requestParameters['nearDistance'] != null) {
+            queryParameters['near_distance'] = requestParameters['nearDistance'];
+        }
+
+        if (requestParameters['nearUnit'] != null) {
+            queryParameters['near_unit'] = requestParameters['nearUnit'];
+        }
+
+        if (requestParameters['nearDirection'] != null) {
+            queryParameters['near_direction'] = requestParameters['nearDirection'];
+        }
+
+        if (requestParameters['nearAbsent'] != null) {
+            queryParameters['near_absent'] = requestParameters['nearAbsent'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && this.configuration.accessToken) {
@@ -6050,6 +6287,38 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         if (requestParameters['unassigned'] != null) {
             queryParameters['unassigned'] = requestParameters['unassigned'];
+        }
+
+        if (requestParameters['nearRelation'] != null) {
+            queryParameters['near_relation'] = requestParameters['nearRelation'];
+        }
+
+        if (requestParameters['nearTagId'] != null) {
+            queryParameters['near_tag_id'] = requestParameters['nearTagId'];
+        }
+
+        if (requestParameters['nearType'] != null) {
+            queryParameters['near_type'] = requestParameters['nearType'];
+        }
+
+        if (requestParameters['nearAttribute'] != null) {
+            queryParameters['near_attribute'] = requestParameters['nearAttribute'];
+        }
+
+        if (requestParameters['nearDistance'] != null) {
+            queryParameters['near_distance'] = requestParameters['nearDistance'];
+        }
+
+        if (requestParameters['nearUnit'] != null) {
+            queryParameters['near_unit'] = requestParameters['nearUnit'];
+        }
+
+        if (requestParameters['nearDirection'] != null) {
+            queryParameters['near_direction'] = requestParameters['nearDirection'];
+        }
+
+        if (requestParameters['nearAbsent'] != null) {
+            queryParameters['near_absent'] = requestParameters['nearAbsent'];
         }
 
         if (requestParameters['mode'] != null) {
@@ -6300,7 +6569,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['limit'] = requestParameters['limit'];
         }
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/{chunk_id}/adjacent`;
@@ -6316,7 +6594,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * Read Document Adjacent Chunks
      */
     async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRaw(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AdjacentChunks>> {
@@ -6327,7 +6605,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (public corpus data). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
+     * Returns up to ``limit`` chunks directly before or after the chunk, in document order, without the chunk itself (readable documents only). Extends a passage read with ``/window`` without reading the document metadata or chunk count again.
      * Read Document Adjacent Chunks
      */
     async readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet(requestParameters: ReadDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AdjacentChunks> {
@@ -6363,7 +6641,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['after'] = requestParameters['after'];
         }
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/{chunk_id}/window`;
@@ -6379,7 +6666,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * Read Document Chunk Window
      */
     async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRaw(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentChunkWindow>> {
@@ -6390,7 +6677,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its document, in document order (public corpus data). Used to show a search hit in its context.
+     * Returns the chunk and up to ``before``/``after`` neighbouring chunks of its (readable) document, in document order. Used to show a search hit in its context.
      * Read Document Chunk Window
      */
     async readDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGet(requestParameters: ReadDocumentChunkWindowApiDocumentsDocumentIdChunksChunkIdWindowGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentChunkWindow> {
@@ -6425,6 +6712,10 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['access'] != null) {
+            queryParameters['access'] = requestParameters['access'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
 
@@ -6442,7 +6733,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * Read Document Page Asset
      */
     async readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRaw(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -6453,7 +6744,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns one asset of a page (public corpus data): ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). 404 when it is not available. Answers ``If-None-Match`` with 304.
+     * Returns one asset of a page: ``image`` (the scan) or ``thumbnail`` (``image/jpeg``), or ``layout`` (the page layout file, ``application/json``, docs/PAGE_LAYOUT.md). A public document\'s assets need nothing else; another document\'s need the ``access`` of its URL in a manifest read through a collection. 404 when it is not available or not readable. Answers ``If-None-Match`` with 304, after the same checks.
      * Read Document Page Asset
      */
     async readDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGet(requestParameters: ReadDocumentPageAssetApiDocumentsDocumentIdPagesPageIdKindGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
@@ -6488,7 +6779,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
             queryParameters['limit'] = requestParameters['limit'];
         }
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/chunks/by_page`;
@@ -6503,7 +6803,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * Read Document Page Chunks
      */
     async readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRaw(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PageChunks>> {
@@ -6514,7 +6814,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (public corpus data). Used to open a page directly.
+     * Returns, in document order, up to ``limit`` chunks whose page range (``from_page``.. ``to_page``) includes page ``page`` (the page\'s ``order`` in the page manifest), and whether more do (readable documents only). Used to open a page directly.
      * Read Document Page Chunks
      */
     async readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet(requestParameters: ReadDocumentPageChunksApiDocumentsDocumentIdChunksByPageGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PageChunks> {
@@ -6535,7 +6835,16 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
 
         const queryParameters: any = {};
 
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
 
 
         let urlPath = `/api/documents/{document_id}/pages`;
@@ -6550,7 +6859,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * Read Document Pages
      */
     async readDocumentPagesApiDocumentsDocumentIdPagesGetRaw(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DocumentPages>> {
@@ -6561,7 +6870,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Returns the document\'s pages in order, each with the URLs of its available image, layout file and thumbnail (public corpus data). ``available`` is false, with no pages, for a document without imported pages (a text-only document).
+     * Returns the (readable) document\'s pages in order, each with the URLs of its available image, layout file and thumbnail. Read through ``collection_id``, a document that is not public gets signed asset URLs, valid while the user can read the collection and it holds the document. ``available`` is false, with no pages, for a document without imported pages (a text-only document).
      * Read Document Pages
      */
     async readDocumentPagesApiDocumentsDocumentIdPagesGet(requestParameters: ReadDocumentPagesApiDocumentsDocumentIdPagesGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentPages> {
@@ -7571,7 +7880,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPostRaw(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -7582,7 +7891,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Optimized AI span suggestion: per tag, the Topicer service uses vector similarity to pre-filter only the most relevant chunks before invoking the LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+     * Optimized AI span suggestion: per tag, a hybrid search picks the document\'s chunks most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the caller), and only those are sent to the LLM with that tag. Results are streamed as they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
      * Suggest Spans Optimized
      */
     async suggestSpansOptimizedApiAiSuggestSpansOptimizedPost(requestParameters: SuggestSpansOptimizedApiAiSuggestSpansOptimizedPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {

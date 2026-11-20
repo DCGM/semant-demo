@@ -8,6 +8,7 @@ The documents matching ``filters``, counted by year, library and language. All c
 Name | Type
 ------------ | -------------
 `scope` | string
+`userCollectionId` | string
 `unit` | string
 `filters` | [DocumentFilters](DocumentFilters.md)
 `chunkFilters` | [ChunkFilters](ChunkFilters.md)
@@ -26,6 +27,7 @@ import type { CorpusDistributions } from ''
 // TODO: Update the object below with actual values
 const example = {
   "scope": null,
+  "userCollectionId": null,
   "unit": null,
   "filters": null,
   "chunkFilters": null,

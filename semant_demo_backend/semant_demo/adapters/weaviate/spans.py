@@ -311,6 +311,13 @@ def to_row(obj) -> AnnotationRow:
     return AnnotationRow(id=obj.uuid, distance=distance, **{k: props.get(k) for k in props if k in _ROW_FIELDS})
 
 
+_NO_ID = UUID(int=0)
+"""No annotation has this id."""
+_POSITIONS = ["tagId", "documentId", "documentStartChar", "documentEndChar", "documentStartWord", "documentEndWord",
+              "revision", "enrichmentStatus", "enrichedRevision", "derivationVersion"]
+"""What proximity (#333) compares: positions and whether they are current."""
+
+
 def _word_filter(word: str, scope: TextScope):
     """``word`` inside a word of one of the scope's fields."""
     found = [Filter.by_property(name).like(f"*{word}*") for name in SCOPE_FIELDS[scope]]
@@ -350,6 +357,9 @@ def _query_filter(query: AnnotationQuery, document_ids: list[UUID] | None = None
     if query.holds_none_of:
         conditions.append(Filter.not_(Filter.by_property("attributeValues").contains_any(list(query.holds_none_of)))
                           | Filter.by_property("type").not_equal(SpanType.pos.value))
+    if query.near_ids is not None:
+        # An empty list matches nothing (Weaviate refuses an empty contains_any).
+        conditions.append(Filter.by_id().contains_any(list(query.near_ids) or [_NO_ID]))
     for attribute in query.attribute_unassigned:
         # Explicit: no stored element carries the attribute's fixed-length id prefix. Values kept on a
         # non-approved annotation are not shown, so it counts as unassigned too.
@@ -624,6 +634,22 @@ class SpanRepository:
             return {UUID(str(g.grouped_by.value)): g.total_count or 0 for g in result.groups}
         return await self._read(collection_id, count, {})
 
+    async def count_by_property(self, collection_id: UUID, query: AnnotationQuery, prop: str, limit: int,
+                                document_ids: list[UUID] | None = None) -> dict[str, int]:
+        """Matching spans per value of the single-valued property ``prop`` (``tagId`` or ``type``,
+        the facets of #667; spans without a value are not grouped), for at most ``limit`` values
+        (one aggregation)."""
+        assert prop in ("tagId", "type")
+        if document_ids is not None and not document_ids:
+            return {}
+
+        async def count():
+            result = await self._tenant(collection_id).aggregate.over_all(
+                filters=_query_filter(query, document_ids), group_by=GroupByAggregate(prop=prop, limit=limit),
+                total_count=True)
+            return {str(g.grouped_by.value): g.total_count or 0 for g in result.groups}
+        return await self._read(collection_id, count, {})
+
     async def count_rows(self, collection_id: UUID, query: AnnotationQuery,
                          document_ids: list[UUID] | None = None) -> int:
         """Matching spans, of the given documents when ``document_ids`` is not None."""
@@ -672,6 +698,20 @@ class SpanRepository:
             return {UUID(str(o.uuid)): (o.properties.get("editVersion") or 0, o.properties.get("attributeVersion") or 0)
                     for o in response.objects}
         return await self._read(collection_id, read, {})
+
+    async def query_positions(self, collection_id: UUID, query: AnnotationQuery, *,
+                              document_ids: list[UUID] | None = None, limit: int) -> list[AnnotationRow]:
+        """At most ``limit`` matching spans (of the given documents when ``document_ids`` is not
+        None) by id, with only their document positions and whether those are current (#333)."""
+        if document_ids is not None and not document_ids:
+            return []
+
+        async def read():
+            response = await self._tenant(collection_id).query.fetch_objects(
+                filters=_query_filter(query, document_ids), sort=Sort.by_property("_id"), limit=limit,
+                return_properties=_POSITIONS)
+            return [AnnotationRow(id=o.uuid, **{k: o.properties.get(k) for k in _POSITIONS}) for o in response.objects]
+        return await self._read(collection_id, read, [])
 
     async def rank(self, collection_id: UUID, query: AnnotationQuery, ranking: VectorRanking, *,
                    document_ids: list[UUID] | None = None, limit: int) -> list[AnnotationRow]:
@@ -810,8 +850,13 @@ class SpanRepository:
     async def count_approved(self, collection_id: UUID, document_id: UUID | None = None) -> int:
         """Approved (``pos``) spans anchored on a chunk that belongs to the collection
         (and to the document, when given)."""
+        return await self.count_of_type(collection_id, SpanType.pos, document_id)
+
+    async def count_of_type(self, collection_id: UUID, span_type: SpanType, document_id: UUID | None = None) -> int:
+        """Spans of ``span_type`` anchored on a chunk that belongs to the collection (and to
+        the document, when given); with ``SpanType.auto``, its unresolved AI suggestions."""
         link = self.collectionNames.user_collection_link_name
-        filters = (Filter.by_property("type").equal(SpanType.pos.value)
+        filters = (Filter.by_property("type").equal(span_type.value)
                    & Filter.by_ref("text_chunk").by_ref(link).by_id().equal(collection_id))
         if document_id is not None:
             filters = filters & Filter.by_property("documentId").equal(document_id)

@@ -61,7 +61,7 @@ export interface AiRunEnd {
   enrichment_failures?: number
   provider_failures: number
   error?: string | null
-  unit?: 'chunk' | 'tag' | 'selection'
+  unit?: 'chunk' | 'call' | 'tag' | 'selection'
   units_total?: number
   units_processed?: number
   stop_reason?: 'quota_exhausted' | null
@@ -100,7 +100,7 @@ export const UNKNOWN_RUN_SIZE_WARNING = 'The size of this AI run could not be de
 export const resolveAutoSpanFailure = (type: SpanType): string =>
   type === SpanType.pos ? 'The suggestion could not be confirmed.' : 'The suggestion could not be rejected.'
 
-const UNIT_NAMES = { chunk: 'chunks', tag: 'tags', selection: 'selections' } as const
+const UNIT_NAMES = { chunk: 'chunks', call: 'AI calls', tag: 'tags', selection: 'selections' } as const
 
 /** One notice per tag that reached the per-tag chunk limit. */
 export function describeTagLimits (end: AiRunEnd | null): string[] {

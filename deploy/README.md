@@ -10,7 +10,7 @@ This folder holds the Docker Compose files, Dockerfiles and environment template
 | `docker-compose.app-test.yml` | Test app for `test-main` and PR previews (CI/CD managed) |
 | `docker-compose.database.yml` / `docker-compose.database-test.yml` | Weaviate for production / for all test instances |
 | `docker-compose.embedder.yml` | GPU embedding service: Qwen3-Embedding-0.6B on vLLM (#385) |
-| `docker-compose.topicer.yml` / `docker-compose.topicer-test.yml` | Topicer service, started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks); see [Topicer](#topicer) |
+| `docker-compose.topicer.yml` | Topicer service of all instances (#792), started manually with `update.sh` (CI/CD does not deploy it, but the app compose files require its external networks); see [Topicer](#topicer) |
 | `Dockerfile.topicer` | Build of the Topicer API from a branch of [DCGM/topicer](https://github.com/DCGM/topicer) |
 | `Dockerfile` | Multi-stage build of backend + frontend (`npm ci` and the committed generated API client, not regenerated) |
 | `Dockerfile.embedder` | Build of the former Gemma embedding service (`embedding_service/`); no longer used by `docker-compose.embedder.yml` |
@@ -29,9 +29,8 @@ The stack is split across several compose files that are started independently a
 | `docker-compose.database-test.yml` | `weaviate` | `semant_demo_test_database` | Shared Weaviate for **all** test instances (REST :8082, gRPC :50053) |
 | `docker-compose.embedder.yml` | `qwen-embedder` | `semant_demo_embedder` | Single GPU embedder (vLLM) shared by **production, all test instances and the vector backfill** (`http://qwen-embedder:8000/v1`; host loopback port 8002) |
 | `docker-compose.app.yaml` | `app` | `web`, `semant_demo_database`, `semant_demo_embedder`, `semant_demo_topicer` | Production app instance; own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
-| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_test_topicer` | One container per test instance (CI/CD managed); each has its own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
-| `docker-compose.topicer.yml` | `topicer` | `semant_demo_topicer`, `semant_demo_database`, `semant_demo_embedder` | Production Topicer (`http://topicer:8089`; host loopback port 8089; GPU) |
-| `docker-compose.topicer-test.yml` | `topicer-test` | `semant_demo_test_topicer`, `semant_demo_test_database`, `semant_demo_embedder` | Topicer shared by **all** test instances (`http://topicer-test:8089`; no host port, reach it from a container on `semant_demo_test_topicer`; no GPU; project `semant-demo-test`) |
+| `docker-compose.app-test.yml` | `app` | `web`, `semant_demo_test_database`, `semant_demo_embedder`, `semant_demo_topicer` | One container per test instance (CI/CD managed); each has its own `$SQL_DB_PATH` directory (with `tasks.db` and `feedback/`) mounted at `/app/sql_data` |
+| `docker-compose.topicer.yml` | `topicer` | `semant_demo_topicer` | Topicer shared by production and **all** test instances (`http://topicer:8089`; host loopback port 8089; GPU; reads no database, #792) |
 
 **`SQL_DB_PATH`** (set by `.github/workflows/ci-cd.yml`; the directory, its `tasks.db` file and the `feedback/` directory must exist, see [SQLite database directory](#sqlite-database-directory-406) and [In-app feedback storage](#in-app-feedback-storage)):
 - **Production:** `$SQL_DB_DIR` from the GitHub variables
@@ -89,8 +88,7 @@ them when called without one:
 | `./update.sh database-up` / `database-down` | production Weaviate (`docker-compose.database.yml`) |
 | `./update.sh test-database-up` / `test-database-down` | test Weaviate (`docker-compose.database-test.yml`, project `semant-demo-test`) |
 | `./update.sh embedder-up` / `embedder-down` / `embedder-pull` | Qwen embedding service (pulls the pinned vLLM image) |
-| `./update.sh topicer-up` / `topicer-down` / `topicer-build` | production Topicer ([below](#topicer)); `build` runs with `--no-cache` |
-| `./update.sh test-topicer-up` / `test-topicer-down` / `test-topicer-build` | Topicer of the test instances (`docker-compose.topicer-test.yml`, project `semant-demo-test`) |
+| `./update.sh topicer-up` / `topicer-down` / `topicer-build` | Topicer of all instances ([below](#topicer)); `build` runs with `--no-cache` |
 
 Other operations use `docker compose` with the same project and file, for example:
 
@@ -184,77 +182,111 @@ production size (startup and drop duration unknown).
 ### Topicer
 
 `Dockerfile.topicer` clones [DCGM/topicer](https://github.com/DCGM/topicer) at the release
-tag in the compose file's `TOPICER_VERSION` (both files: `v0.1.0`, #392; built from `main`
-until then, from `semant-debug` until 2026-10-17). The production service reserves a GPU
-(CrossBERT config); the test one does not.
+tag in the compose file's `TOPICER_VERSION` (`v0.1.0`, #392; built from `main` until then,
+from `semant-debug` until 2026-10-17). The service reserves a GPU (CrossBERT configs).
 
-Each Weaviate needs its own Topicer: optimized suggestions make Topicer search semANT's
-`Chunks` in the Weaviate its config names (`host: weaviate`, which resolves to the Weaviate
-on the Topicer's database network). Production's Topicer serves the production app; the test
-Topicer (`topicer-test`, #473) serves test-main and all PR previews (`TOPICER_URL` in
-`.env.test.example`). Both share the image `semant-demo-topicer:<tag>` and the `./data` mount.
-The test service has its own service name, project and config directory, and publishes no host port: both
-Topicers are on `semant_demo_embedder`, where the service name is a DNS alias, so with one
-name for both an app could reach the other instance's Topicer, and with one project
-`test-topicer-up` would replace production's container.
+**One Topicer serves production, test-main and every PR preview (#792).** semANT sends it
+only text (`POST /v1/tags/propose/texts`); for optimized suggestions semANT ranks the
+candidate chunks itself (`features/annotations/candidates.py`). Topicer therefore reads no
+database and needs no embedder: it is only on `semant_demo_topicer`, which every app joins
+(`TOPICER_URL=http://topicer:8089` in both `.env` templates). Test traffic uses the same
+configs and provider keys as production. Topicer's own database endpoints
+(`/v1/tags/propose/db*`, topic discovery) are not used by semANT. Until #792, each Weaviate had
+its own Topicer (`topicer-test`, #473).
 
-The `semant_demo_topicer` and `semant_demo_test_topicer` networks are `external` in all
-Compose files; create them once with `docker network create <name>`.
+The `semant_demo_topicer` network is `external` in all Compose files; create it once with
+`docker network create semant_demo_topicer`.
 
 To change the Topicer version: read the release notes on
 [DCGM/topicer releases](https://github.com/DCGM/topicer/releases) for config changes, set
-`TOPICER_VERSION` in `docker-compose.topicer-test.yml`, then `./update.sh test-topicer-build`
-and `./update.sh test-topicer-up`. Check its image tag and loaded configs (below) and AI suggestions on
-test-main, then do the same with `docker-compose.topicer.yml` and `topicer-build` / `topicer-up`. Both files are changed by a PR,
-so the repository records what runs. Change the tag in `image` (`semant-demo-topicer:<tag>`)
-together with `TOPICER_VERSION`: `docker ps --filter name=topicer` then shows the running release.
-To roll back, build the previous tag the same way.
-Releases are made in the Topicer repository (its README, "Versions and releases").
+`TOPICER_VERSION` and the tag in `image` (`semant-demo-topicer:<tag>`) in
+`docker-compose.topicer.yml` by a PR, so the repository records what runs, then
+`./update.sh topicer-build` and `./update.sh topicer-up`. Check its image tag
+(`docker ps --filter name=topicer`), its loaded configs (below) and AI suggestions on test-main
+and production. To roll back, build the previous tag the same way. Releases are made in the
+Topicer repository (its README, "Versions and releases").
 
 The server's `deploy/data/` is mounted at `/app/data`. At startup the API loads every
-`*.yaml` in `TOPICER_API_CONFIGS_DIR` (top level only) as a config named after the file:
-production reads `/app/data/topicer/configs` (from `.env`), the test Topicer
-`/app/data/topicer-test/configs` (set in its Compose file, which overrides `.env`). The test
-directory holds only `llm-openrouter.yaml`, a copy of production's: it needs no change, because
-`weaviate` and `qwen-embedder` resolve to the test Weaviate and the shared embedder from the
-test service's networks. The apps choose a config with `TOPICER_CONFIG_NAME` (`llm-openrouter`). **A config that fails to load
-is only logged as a warning** (`Failed to load topicer config ...`) and is then missing; after
-a rebuild or a config change, check that the log line `Loaded topicer configurations: [...]`
-lists all of them (`docker logs --since 2m semant-demo-topicer-1`, test:
-`semant-demo-test-topicer-test-1`). `docker restart` does not re-read `.env`; after changing it,
-run `topicer-down` and `topicer-up`. Config files hold provider keys and are not in this repository.
+`*.yaml` in `TOPICER_API_CONFIGS_DIR` (`/app/data/topicer/configs`, from `.env`; top level
+only) as a config named after the file. The apps choose a config with `TOPICER_CONFIG_NAME`
+(`llm-openrouter`). Configs need no `db_connection` and no `embedding_service`: with the
+database networks gone, a `db_connection` would fail to connect at startup. **A config that
+fails to load is only logged as a warning** (`Failed to load topicer config ...`) and is then
+missing; after a rebuild or a config change, check that the log line
+`Loaded topicer configurations: [...]` lists all of them
+(`docker logs --since 2m semant-demo-topicer-1`). `docker restart` does not re-read `.env`;
+after changing it, run `topicer-down` and `topicer-up`. Config files hold provider keys and
+are not in this repository. Topicer `v0.1.0` requires `stride` (e.g. `32`) in
+`CrossBertTopicer` configs.
 
-Configs that use embeddings (vector pre-filtering of `POST /v1/tags/propose/db/stream`, topic
-discovery) must embed queries with the model of the Weaviate vector they search (#385):
+semANT charges AI suggestions to the daily allowance call by call from the usage Topicer
+reports (#408). This needs Topicer with DCGM/topicer#81 (`v0.1.0` and later); an older one
+reports no usage, so every call is charged its full reservation. For costs below the
+reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set
+`prices` per model; without either, cost is `unknown` and charged at least the reservation.
+`TOPICER_MAX_CHUNKS_PER_TAG` (40) is semANT's own limit of candidate chunks per tag; it is no
+longer sent to Topicer.
 
-```yaml
-embedding_service:
-  cls: OpenAIEmbeddingService            # Topicer main since DCGM/topicer#80
-  config:
-    base_url: "http://qwen-embedder:8000/v1"
-    model: "Qwen/Qwen3-Embedding-0.6B"   # Qwen query instruction and truncation are defaults
-    timeout: 30
-db_connection:
-  cls: WeaviateService
-  config:
-    # host, ports, chunks_limit as before
-    vector_name: "Qwen3_Embedding_0_6B"  # default "default", which no longer exists
+Production configs (#470, #140), named after the method:
+
+- `llm-openrouter` — `LLMTopicer` on OpenRouter; used by semANT.
+- `crossbert-<model type>-<training YYYY-MM>` — `CrossBertTopicer` cross-encoders (GPU), listed
+  below; offered in the AI Assist model picker, not used by semANT by default. Since #792 they
+  serve optimized suggestions too. The name carries the training date, which identifies the
+  weights; the deployment date is in the table.
+
+| Config | Model type | Provenance | Trained | Deployed | Threshold / max_length | CzechTopic test span-F1 | Model directory |
+|---|---|---|---|---|---|---|---|
+| `crossbert-czechtopic-2026-05` | BERT (WordPiece) | Best model from CzechTopic | before 2026-05 | 2026-05 (as `crossbert`; renamed 2026-11-19) | 0.77 / 350 | not measured with Topicer | `models/czechtopic-2026-05/` |
+| `crossbert-mmbert-2026-08` | mmBERT-base | Best of 9 variants of the 2026-08-05 training (`normalize_score`, `soft_max_score`, no `scale_positives`, max_length 512); threshold calibrated on validation | 2026-08-05 | 2026-11-19 | 0.32 / 512 | 0.440 [0.412, 0.467] (token-topicer inference) | `models/mmbert-2026-08/` |
+
+mmBERT needs `TORCH_DISABLE_NATIVE_JIT=1`, set in `docker-compose.topicer.yml`: the image installs
+the newest torch (2.14.1 on 2026-11-19), which sends mmBERT's rotary embeddings to a Triton kernel
+that needs a C compiler the image lacks, so every mmBERT request failed with HTTP 500. Changing
+it needs `topicer-down` and `topicer-up`, not a restart.
+
+Both use `stride: 32`, `normalize_score: true` and `soft_max_score: true`; mmBERT also sets
+`gap_tolerance: 5` and `confidence_mode: mean`. Topicer loads every config at startup and keeps
+its model on the GPU (about 2 GB for both, 2026-11-19); mmBERT is much slower per chunk than the
+BERT model.
+
+Server layout (`/opt/semant-demo/data/topicer/`, mounted at `/app/data/topicer`; a
+`README.md` there points here):
+
+```text
+configs/<config>.yaml           one Topicer config per file (only *.yaml loads; backups use .bak-<date>)
+models/<type>-<YYYY-MM>/        one traced model per directory, referenced by its config's `model:`
+  model_cuda.pt                 traced model (torch.jit) for device cuda
+  tokenizer.json, tokenizer_config.json, special_tokens_map.json   tokenizer (vocab.txt for BERT)
 ```
 
-`DefaultEmbeddingService` (the former Gemma service, 3,584 dimensions) cannot query the Qwen
-vector. Topicer `v0.1.0` requires `stride` (e.g. `32`) in `CrossBertTopicer` configs.
-
-semANT charges AI suggestions to the daily allowance from the usage Topicer reports and sends `max_chunks` (`TOPICER_MAX_CHUNKS_PER_TAG`, 40) with every optimized stream (#408). This needs Topicer with DCGM/topicer#81 (`v0.1.0` and later); an older one ignores `max_chunks` and reports no usage, so every chunk or tag is charged its full reservation. A config's `max_chunks_ceiling` (default 200) must be at least `TOPICER_MAX_CHUNKS_PER_TAG`. For costs below the reservation, the provider must report cost (OpenRouter `usage.cost`) or the config must set `prices` per model; without either, cost is `unknown` and charged at least the reservation.
-Production configs (#470), named after the method:
-
-- `llm-openrouter` — `LLMTopicer` on OpenRouter with Qwen embeddings, as above; used by semANT.
-  It replaces `openai-xjuric` (the same file under its old name), which stays until production
-  runs a release with `TOPICER_CONFIG_NAME=llm-openrouter`; change both files together until then.
-- `crossbert` — `CrossBertTopicer` (GPU), model in `/app/data/topicer/models`; not used by semANT.
-  It has no streaming endpoint, so it can't serve optimized suggestions.
+To add a cross-encoder: copy the traced model and its tokenizer files into a new
+`models/<type>-<YYYY-MM>/`, add `configs/crossbert-<type>-<YYYY-MM>.yaml` with the calibrated
+threshold and the training max_length, `docker restart semant-demo-topicer-1`, check the loaded
+configs and GPU memory (`nvidia-smi`), and add a row to the table above.
 
 `openai-xsucha` (`TagProposalV2`, mDeBERTa NLI) was removed: nothing has called it since
 `propose_tags_routes.py` was deleted.
+
+#### Rollout of one Topicer (#792, operator steps)
+
+1. **Merge** (CI deploys test-main): test-main and new previews join `semant_demo_topicer` and
+   call the production Topicer's `/texts`, which it already serves. Previews built from older
+   branches keep calling `topicer-test` (all their AI suggestions depend on it).
+2. **Release** to production: production no longer calls Topicer's database stream.
+3. **Remove the test Topicer** once no preview built from an older branch is needed. Such
+   previews still use `TOPICER_URL=http://topicer-test:8089` and the `semant_demo_test_topicer`
+   network: without the test Topicer they lose **all** AI suggestions (thorough and selection
+   too), and without the network they can no longer be redeployed, until rebased. Tear those
+   previews down (or rebase them) first, then on the server: `docker compose -p semant-demo-test
+   -f ./docker-compose.topicer-test.yml down`, delete that file, its `test-topicer-*` lines in
+   the server's `update.sh` and `data/topicer-test/`, and finally
+   `docker network rm semant_demo_test_topicer` (it fails while a container is still attached;
+   `docker network inspect semant_demo_test_topicer` lists them).
+4. **Take Topicer off the database**: remove `db_connection` and `embedding_service` from the
+   configs in `data/topicer/configs/` (`llm-openrouter.yaml`, `crossbert.yaml`), copy this
+   repository's `docker-compose.topicer.yml` over the server's (keeping its local differences),
+   then `./update.sh topicer-down && ./update.sh topicer-up` and check the loaded configs.
 
 ### In-app feedback storage
 
@@ -515,8 +547,12 @@ schedule and deletes old ones. Before #469 they were made and deleted by hand.
   **full** backup when the newest full backup made by the script is 7 days old (`FULL_INTERVAL_DAYS`,
   less 12 h so that a daily run starts it on the 7th day), otherwise an **incremental** backup
   based on the newest successful backup of that chain. A full backup of the store (8.3 M chunks)
-  took 2 h 48 min and 261 GB before compression (`backup-2026-11-16`, by hand); measure the
-  incremental size after the first week and record it on #469.
+  took 2 h 48 min and 261 GB before compression (`backup-2026-11-16`, by hand). Measured on the
+  first chain (#469): the full backup took 2 h 35 min and 104.8 GiB on disk. An ordinary day's
+  incremental took 2.5 min and 1.3 GiB, and an incremental after two Chunk rewrites took
+  1 h 32 min and 68.5 GiB (about 65% of the full backup). With occasional rewrites, the two
+  kept chains fit in the pool's ~1.1 TiB free. If rewrites become routine, revisit the schedule,
+  for example a full backup after each rewrite.
 - **Chains.** Weaviate stores an incremental backup's unchanged files as references to its base
   and records the base in `<id>/backup_config.json` (`baseBackupId`). An incremental backup
   restores only while **every backup it depends on** still exists. The script reads the chains
@@ -546,7 +582,7 @@ schedule and deletes old ones. Before #469 they were made and deleted by hand.
 - **Settings** (environment): `WEAVIATE_URL` (`http://127.0.0.1:8080`), `FULL_INTERVAL_DAYS` (7),
   `KEEP_CHAINS` (2), `MAX_AGE_HOURS` (26), `MIN_FREE_GIB` (200), `FREE_FACTOR` (1.25),
   `TIMEOUT_HOURS` (20), `POLL_SECONDS` (30), `BACKUP_MOUNT` (set to `/mnt/zfs1` by the cron entry),
-  `REHEARSAL_ENDPOINTS` (`restore` targets; `127.0.0.1:8090,localhost:8090`).
+  `REHEARSAL_ENDPOINTS` (`restore` targets; `127.0.0.1:18090,localhost:18090`).
 
 Install or update (the aligned `docker-compose.database.yml` already matches the running
 container, so no restart is needed):
@@ -588,23 +624,25 @@ Weaviate. Use a ZFS clone, which costs no space until written and is destroyed a
 directories (its full backup and every incremental up to the one to restore):
 
 ```bash
+ss -ltn | grep ':18090 ' && echo 'port 18090 is taken: pick another and add it to REHEARSAL_ENDPOINTS'
+free -g    # the instance needs ~18 GiB (peak in the 2026-11-19 rehearsal); keep --memory below "available"
 sudo zfs snapshot zfs1@rehearsal-469
 sudo zfs clone -o mountpoint=/mnt/rehearsal-469 zfs1@rehearsal-469 zfs1/rehearsal-469
 sudo mkdir /mnt/ssd2/weaviate_rehearsal   # room for the restored store: ~170-260 GiB; the root RAID had 985 GiB free
-docker run -d --name weaviate-rehearsal -p 127.0.0.1:8090:8080 --memory 48g \
+docker run -d --name weaviate-rehearsal -p 127.0.0.1:18090:8080 --memory 32g \
   -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
   -e CLUSTER_HOSTNAME=node1 -e ENABLE_MODULES=backup-filesystem -e BACKUP_FILESYSTEM_PATH=/backups \
   -e LIMIT_RESOURCES=true -v /mnt/ssd2/weaviate_rehearsal:/var/lib/weaviate \
   -v /mnt/rehearsal-469/weaviate_semant/backups:/backups cr.weaviate.io/semitechnologies/weaviate:1.40.1
-WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py restore <newest auto-incr id> --confirm-endpoint 127.0.0.1:8090
+WEAVIATE_URL=http://127.0.0.1:18090 deploy/weaviate_backup.py restore <newest auto-incr id> --confirm-endpoint 127.0.0.1:18090
 # Compare with production. Read-only, but it aggregates every collection and tenant; the
 # production counts move with any write since the backup, so compare outside write windows.
 deploy/weaviate_backup.py counts > /tmp/counts-production.tsv
-WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py counts > /tmp/counts-restored.tsv
+WEAVIATE_URL=http://127.0.0.1:18090 deploy/weaviate_backup.py counts > /tmp/counts-restored.tsv
 diff /tmp/counts-production.tsv /tmp/counts-restored.tsv
 # Inactive tenants: count their restored objects too (activates each one in the rehearsal
 # instance, counts it and sets it back)
-WEAVIATE_URL=http://127.0.0.1:8090 deploy/weaviate_backup.py counts --activate-inactive --confirm-endpoint 127.0.0.1:8090 > /tmp/counts-restored-all.tsv
+WEAVIATE_URL=http://127.0.0.1:18090 deploy/weaviate_backup.py counts --activate-inactive --confirm-endpoint 127.0.0.1:18090 > /tmp/counts-restored-all.tsv
 # Clean up
 docker rm -f weaviate-rehearsal && sudo rm -r /mnt/ssd2/weaviate_rehearsal
 sudo zfs destroy zfs1/rehearsal-469 && sudo zfs destroy zfs1@rehearsal-469
@@ -619,11 +657,16 @@ counts with production needs an explicit authorization and a write pause (the ap
 a tenant on access). Without it, the rehearsal shows that every inactive tenant was restored,
 activates and holds objects, but not that its count equals production's.
 `restore` accepts only an endpoint listed in `REHEARSAL_ENDPOINTS` (default
-`127.0.0.1:8090,localhost:8090`, never `:8080`) and repeated in `--confirm-endpoint`. A deny list
+`127.0.0.1:18090,localhost:18090`, never `:8080`) and repeated in `--confirm-endpoint`. A deny list
 would let another name or address of production through. Record the date, backup ids, duration and the
 diff on #469. The vector index needs memory (8-bit RQ of the 1024-dimensional chunk vectors:
 about 8 GiB, [audit](../docs/WEAVIATE_AUDIT_2026-10.md)); the host has 188 GiB, of which
-production Weaviate may use 98 GiB.
+production Weaviate may use 98 GiB. The default rehearsal port is 18090 because ClearML and
+another service hold 8090 and 8091 on `semant`.
+
+The first rehearsal (2026-11-19, #469) restored `auto-incr-20261119-000001` (full + one
+incremental, 8.28 M chunks) in 15.5 min with a 32 GiB limit and a peak of 17.7 GiB. Every count
+matched, except for objects written or deleted in production after the backup.
 
 Restoring production itself (with explicit authorization, after the rehearsal): stop the app,
 empty the store as in [Recovering / Rebuilding the Weaviate database](#recovering--rebuilding-the-weaviate-database),

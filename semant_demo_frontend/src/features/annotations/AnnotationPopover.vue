@@ -133,6 +133,13 @@
 
       <!-- Default action mode -->
       <template v-else>
+        <!-- The edited annotation's tag, in the strip next to the close button (#770) -->
+        <div v-if="isEditing && selectedTag" class="popover-current-tag" data-testid="popover-current-tag">
+          <span class="tag-dot" :style="{ backgroundColor: selectedTag.color }"></span>
+          <span class="current-tag-name">{{ selectedTag.name }}</span>
+          <span v-if="selectedTag.shorthand" class="tag-shorthand">{{ selectedTag.shorthand }}</span>
+          <q-tooltip>{{ selectedTag.name }}</q-tooltip>
+        </div>
         <div class="popover-actions">
           <!-- Save position (position changed) — shown first when applicable -->
           <q-btn
@@ -214,6 +221,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { Tag } from 'src/generated/api'
 import { buildTagSuggestions } from './tagSuggestion'
 import { byName } from './tagSortMode'
+import { tagMatches } from './useTagSearch'
 
 // The popover for a text selection or an edited span: tag picker, AI tag picker
 // ("Suggest tags") and the span actions. The page decides what each action does.
@@ -268,11 +276,7 @@ const matchPercent = (score: number) => Math.round(score * 100)
 
 const filteredTags = computed(() => {
   const q = (tagSearch.value ?? '').toLowerCase().trim()
-  const base = q
-    ? sortedTags.value.filter((t) =>
-      t.name.toLowerCase().includes(q) || (t.shorthand && t.shorthand.toLowerCase().includes(q))
-    )
-    : sortedTags.value
+  const base = q ? sortedTags.value.filter((t) => tagMatches(t, q)) : sortedTags.value
 
   const suggestedIds = suggestions.value.map((s) => s.id)
   const suggested = suggestedIds
@@ -289,8 +293,13 @@ const popoverEl = ref<HTMLElement | null>(null)
 const popoverPos = ref({ x: 0, y: 0 })
 // Anchor point (mouse coordinates at the time the popover opened) — we keep
 // it so we can re-clamp the position when the popover changes size (e.g. the
-// user switches into the tag picker or the AI tag picker).
-const popoverAnchor = ref<{ x: number; y: number } | null>(null)
+// user switches into the tag picker or the AI tag picker). `label` is the gutter
+// label the popover was opened from (moveBeside), whose span the popover keeps clear of.
+const popoverAnchor = ref<{ x: number; y: number; label?: DOMRect } | null>(null)
+// The side of the gutter label chosen when the popover opened; kept while it changes size
+// (e.g. the wider tag picker), so it doesn't jump between sides.
+type LabelSide = 'left' | 'above' | 'below' | 'cursor'
+let labelSide: LabelSide | null = null
 
 const popoverStyle = computed(() => ({
   position: 'fixed' as const,
@@ -303,6 +312,8 @@ const popoverStyle = computed(() => ({
 }))
 
 const POPOVER_VIEWPORT_MARGIN = 8
+/** Space between a gutter label and the popover opened from it. */
+const POPOVER_LABEL_GAP = 8
 
 /**
  * Position the popover relative to the anchor (mouse position) but keep it
@@ -310,6 +321,10 @@ const POPOVER_VIEWPORT_MARGIN = 8
  * cursor; flip to the left if it would overflow the right edge and flip
  * above the cursor if it would overflow the bottom edge. A final clamp
  * guards against the popover being larger than the remaining space.
+ *
+ * Opened from a gutter label (#770), it goes left of the label so it doesn't cover the
+ * annotated text right of the gutter; without room there, above or below the label's
+ * lines (the label is as tall as its span); with no room for either, the default.
  */
 function clampPopover() {
   const anchor = popoverAnchor.value
@@ -320,6 +335,38 @@ function clampPopover() {
   const vw = window.innerWidth
   const vh = window.innerHeight
   const m = POPOVER_VIEWPORT_MARGIN
+  const clampX = (x: number) => Math.max(m, Math.min(x, vw - rect.width - m))
+  const clampY = (y: number) => Math.max(m, Math.min(y, vh - rect.height - m))
+
+  const label = anchor.label
+  if (label) {
+    const left = label.left - rect.width - POPOVER_LABEL_GAP
+    const above = label.top - rect.height - POPOVER_LABEL_GAP
+    const below = label.bottom + POPOVER_LABEL_GAP
+    const fits: Record<LabelSide, boolean> = {
+      left: left >= m,
+      above: above >= m,
+      below: below + rect.height + m <= vh,
+      cursor: true
+    }
+    // The side chosen first is kept while the popover still fits there (no jumping as it
+    // grows); once it doesn't (the wider tag picker), the first side that does.
+    if (!labelSide || !fits[labelSide]) {
+      labelSide = (['left', 'above', 'below', 'cursor'] as const).find((side) => fits[side])!
+    }
+    if (labelSide === 'left') {
+      popoverPos.value = { x: left, y: clampY(anchor.y - 8) }
+      return
+    }
+    if (labelSide === 'above') {
+      popoverPos.value = { x: clampX(anchor.x + 12), y: above }
+      return
+    }
+    if (labelSide === 'below') {
+      popoverPos.value = { x: clampX(anchor.x + 12), y: below }
+      return
+    }
+  }
 
   let x = anchor.x + 12
   let y = anchor.y - 8
@@ -327,12 +374,12 @@ function clampPopover() {
   if (x + rect.width + m > vw) {
     x = anchor.x - rect.width - 12
   }
-  x = Math.max(m, Math.min(x, vw - rect.width - m))
+  x = clampX(x)
 
   if (y + rect.height + m > vh) {
     y = anchor.y - rect.height - 8
   }
-  y = Math.max(m, Math.min(y, vh - rect.height - m))
+  y = clampY(y)
 
   popoverPos.value = { x, y }
 }
@@ -340,8 +387,20 @@ function clampPopover() {
 /** Anchors the popover at the mouse position of `e`. */
 function moveTo(e: MouseEvent) {
   popoverAnchor.value = { x: e.clientX, y: e.clientY }
+  labelSide = null
   // Provisional position; corrected once the popover is rendered/measured.
   popoverPos.value = { x: e.clientX + 12, y: e.clientY - 8 }
+  void nextTick(() => clampPopover())
+}
+
+/**
+ * Anchors the popover at the gutter label `label` clicked by `e`: left of the label, or
+ * above or below its span's lines, so the annotated text stays visible (#770).
+ */
+function moveBeside(e: MouseEvent, label: DOMRect) {
+  popoverAnchor.value = { x: e.clientX, y: e.clientY, label }
+  labelSide = null
+  popoverPos.value = { x: label.left - POPOVER_LABEL_GAP, y: e.clientY - 8 }
   void nextTick(() => clampPopover())
 }
 
@@ -402,7 +461,7 @@ watch(
   }
 )
 
-defineExpose({ moveTo, showMode })
+defineExpose({ moveTo, moveBeside, showMode })
 </script>
 
 <style scoped>
@@ -497,6 +556,28 @@ defineExpose({ moveTo, showMode })
   min-width: 22px;
   width: 22px;
   padding: 0;
+}
+
+.popover-current-tag {
+  position: absolute;
+  top: 4px;
+  left: 10px;
+  right: 34px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.current-tag-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .popover-title {

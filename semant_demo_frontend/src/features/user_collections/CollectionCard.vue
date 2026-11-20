@@ -71,6 +71,8 @@
           </q-btn>
         </q-card-actions>
       </q-card-section>
+      <!-- On the corner, so the fixed-height tile loses no row to it (#770). -->
+      <PendingSuggestions badge :collection-id="props.collection.id" />
     </q-card>
   </div>
 </template>
@@ -78,6 +80,7 @@
 <script setup lang="ts">
 import { Collection } from 'src/generated/api'
 import { collectionRights } from './permissions'
+import PendingSuggestions from './PendingSuggestions.vue'
 import { useCollectionExport } from './useCollectionExport'
 import { computed } from 'vue'
 

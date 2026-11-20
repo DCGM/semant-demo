@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { routeLocationKey, routerKey } from 'vue-router'
 
@@ -63,8 +64,9 @@ const collection = (isSharedWithMe: boolean): Collection => ({
 })
 
 // The page reads its collection id from the route (useRoute injects it).
+// The query client: a collection tile counts its pending AI suggestions (#770).
 const quasar = {
-  plugins: [[Quasar, {}]] as never,
+  plugins: [[Quasar, {}], [VueQueryPlugin, { queryClient: new QueryClient() }]] as never,
   provide: {
     [routeLocationKey as symbol]: { params: { collectionId: 'col-1' }, query: {} },
     [routerKey as symbol]: { push: () => undefined }

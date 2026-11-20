@@ -1,4 +1,6 @@
 """HTTP client of an OpenAI-compatible ``/embeddings`` endpoint (e.g. vLLM)."""
+from collections.abc import Sequence
+
 import httpx
 
 
@@ -30,13 +32,29 @@ class OpenAICompatibleEmbeddings:
         """Embeds ``text`` as a document (HyDE: a query phrased as a document)."""
         return await self._embed(self.document_prefix + text)
 
+    async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        """Embeds ``texts`` as documents in one request, in their order (batch indexing, e.g.
+        the search relevance benchmark's store, #712). Raises ``ValueError`` when the answer
+        does not hold one embedding per text."""
+        if not texts:
+            return []
+        return await self._request([self.document_prefix + text for text in texts])
+
     async def _embed(self, text: str) -> list[float]:
-        body: dict = {"model": self.model, "input": [text], "encoding_format": "float"}
+        [embedding] = await self._request([text])
+        return embedding
+
+    async def _request(self, texts: list[str]) -> list[list[float]]:
+        body: dict = {"model": self.model, "input": texts, "encoding_format": "float"}
         if self.dimensions is not None:
             body["dimensions"] = self.dimensions
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         async with httpx.AsyncClient(transport=self.transport) as client:
             resp = await client.post(f"{self.base_url}/embeddings", json=body, headers=headers, timeout=self.timeout)
             resp.raise_for_status()
-            [item] = resp.json()["data"]
-            return item["embedding"]
+            data = resp.json()["data"]
+        if len(data) != len(texts):
+            raise ValueError(f"expected {len(texts)} embeddings, got {len(data)}")
+        # OpenAI-compatible servers report each item's input position.
+        ordered = sorted(data, key=lambda item: item.get("index", 0)) if len(data) > 1 else data
+        return [item["embedding"] for item in ordered]

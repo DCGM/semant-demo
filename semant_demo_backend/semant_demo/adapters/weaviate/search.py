@@ -13,12 +13,13 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import Metrics
-from weaviate.classes.query import Filter, HybridFusion, QueryReference
+from weaviate.classes.query import Filter, HybridFusion, MetadataQuery, QueryReference
 
 from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.analytics import READ_BATCH
+from semant_demo.adapters.weaviate.chunk_visibility import PROPERTY as DOCUMENT_PUBLIC_FLAG
+from semant_demo.adapters.weaviate.documents import chunk_properties, public_documents
 from semant_demo.adapters.weaviate.names import CollectionNames
-from semant_demo.adapters.weaviate.documents import chunk_properties
 from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.features.search.schemas import ChunkQuery, FieldCondition, Op, SearchType, SearchResultChunk
 from semant_demo.features.documents.schemas import Document
@@ -43,12 +44,22 @@ DOCUMENT_PROPERTIES = [name for name in Document.model_fields if name != "id"]
 
 class ChunkSearchRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames,
-                 fusion: HybridFusion | None = None):
+                 fusion: HybridFusion | None = None, query_properties: Sequence[str] | None = None,
+                 record_scores: bool = False):
         self.client = client
         self.collectionNames = collectionNames
         self.fusion = fusion
         """Hybrid fusion; None: Weaviate's default (relative score). The application never sets
         it; the search relevance benchmark compares both (#712)."""
+        self.query_properties = list(query_properties) if query_properties is not None else None
+        """The properties BM25 (text and the keyword part of hybrid) searches, each optionally
+        boosted (``"title^2"``); None: every text property, Weaviate's default. The application
+        never sets it; the search relevance benchmark compares properties and boosts (#712)."""
+        self.scores: dict[UUID, tuple[float | None, float | None]] | None = {} if record_scores else None
+        """With ``record_scores``: chunk id -> (Weaviate's score, vector distance) of every ranked
+        chunk, as Weaviate returned them (BM25 and hybrid give a score, vector search a distance).
+        The application never records them; the search relevance benchmark does, one repository
+        per search (#712)."""
         self._returned_document_properties: list[str] | None = None
         self._schema: tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]] | None = None
 
@@ -158,24 +169,35 @@ class ChunkSearchRepository:
         return [(i, *found[i]) for i in ids if i in found]
 
     async def _ranked(self, query: ChunkQuery, **returned):
+        if self.scores is None:
+            return await self._query(query, **returned)
+        result = await self._query(query, return_metadata=MetadataQuery(score=True, distance=True), **returned)
+        for obj in result.objects:
+            metadata = obj.metadata
+            self.scores.setdefault(UUID(str(obj.uuid)), (metadata.score, metadata.distance) if metadata else (None, None))
+        return result
+
+    async def _query(self, query: ChunkQuery, **returned):
         chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
         common = dict(limit=query.limit, filters=await self._filter(query), **returned)
         if query.mode == SearchType.text:
-            return await chunks.query.bm25(query=query.text, **common)
+            return await chunks.query.bm25(query=query.text, query_properties=self.query_properties, **common)
         if query.mode == SearchType.vector:
             vector, target = _vector(query)
             return await chunks.query.near_vector(near_vector=vector, target_vector=target, **common)
         if query.mode == SearchType.hybrid:
             vector, target = _vector(query)
             return await chunks.query.hybrid(query=query.text, alpha=query.alpha, vector=vector,
-                                             target_vector=target, fusion_type=self.fusion, **common)
+                                             target_vector=target, fusion_type=self.fusion,
+                                             query_properties=self.query_properties, **common)
         raise ValueError(f"Unknown search type: {query.mode}")
 
     async def document_filter_stats(self) -> tuple[int | None, int | None, list[str] | None]:
-        """(min yearIssued, max yearIssued, languages) over all documents; None where unknown."""
+        """(min yearIssued, max yearIssued, languages) over the public documents (#279); None where unknown."""
         documents = self.client.collections.get(self.collectionNames.document_collection_name)
         min_year = max_year = None
         res_year = await documents.aggregate.over_all(
+            filters=public_documents(),
             return_metrics=[Metrics("yearIssued").integer(minimum=True, maximum=True)]
         )
         if "yearIssued" in res_year.properties:
@@ -185,6 +207,7 @@ class ChunkSearchRepository:
                 max_year = int(res_year.properties["yearIssued"].maximum)
 
         res_lang = await documents.aggregate.over_all(
+            filters=public_documents(),
             return_metrics=[Metrics("language").text(top_occurrences_value=True, limit=1000)]
         )
         languages = []
@@ -193,10 +216,12 @@ class ChunkSearchRepository:
         return min_year, max_year, languages or None
 
     async def _filter(self, query: ChunkQuery):
-        filters = []
+        filters = [] if _within_readable_collection(query) else [_readable(query.readable_collection_id)]
         if query.collection_id is not None:
             filters.append(Filter.by_ref(link_on=self.collectionNames.user_collection_link_name)
                            .by_id().equal(query.collection_id))
+        if query.document_id is not None:
+            filters.append(Filter.by_ref(link_on="document").by_id().equal(query.document_id))
         if query.document_collection_id is not None:
             filters.append(Filter.by_ref(link_on="document").by_ref(link_on="collection")
                            .by_id().equal(query.document_collection_id))
@@ -217,6 +242,24 @@ class ChunkSearchRepository:
             *criteria.parts(copied, chunk_types, records="Documents"),
             *criteria.parts(query.chunk_conditions, chunk_types, chunk_tokenizations, records="Chunks"),
         ]
+
+
+def _within_readable_collection(query: ChunkQuery) -> bool:
+    """The query is limited to the documents of its readable collection, so every chunk is eligible."""
+    return query.readable_collection_id is not None and query.document_collection_id == query.readable_collection_id
+
+
+def _readable(collection_id: UUID | None):
+    """The document access rule on chunks (#279): the chunk's document is public or, given an
+    authorized collection, belongs to it. Applied inside every query, before ranking and limits.
+    Public is read from the chunk's own copy ``documentPublic`` (#793), which fails closed: a
+    chunk without the value never matches. Filtering through the ``document`` reference instead
+    cost 1.2-2.6 s per query on the production corpus (#789)."""
+    public = Filter.by_property(DOCUMENT_PUBLIC_FLAG).equal(True)
+    if collection_id is None:
+        return public
+    return Filter.any_of([public, Filter.by_ref(link_on="document").by_ref(link_on="collection")
+                         .by_id().equal(collection_id)])
 
 
 def _hit(obj) -> SearchResultChunk | None:

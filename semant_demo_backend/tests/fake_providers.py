@@ -170,7 +170,6 @@ def propose_spans(text: str, tags: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 FAKE_TOPICER_CALL_COST_USD = 0.0001
 """Reported cost of each fake Topicer model call."""
-FAKE_TOPICER_MAX_CHUNKS_CEILING = 200
 FAKE_TOPICER_CONFIGS = ("llm-openrouter", "fake-local")
 """Configurations the fake Topicer lists; the first is the backend's default ``TOPICER_CONFIG_NAME``."""
 
@@ -190,9 +189,28 @@ def fake_topicer_usage(calls: int) -> dict[str, Any]:
 
 
 def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastAPI:
-    """``stream_delay``: seconds the Topicer stream waits after each chunk event, so a
-    browser test can act (cancel, navigate) while a suggestion run is still under way."""
+    """``stream_delay``: seconds between two Topicer ``/texts`` answers (the first after a
+    pause is immediate, concurrent calls answer one by one), so a browser test can act
+    (cancel, navigate) while a suggestion run is still under way."""
     app = FastAPI(title="Fake AI providers")
+    answer_lock = asyncio.Lock()
+    last_answer = [float("-inf")]
+
+    async def paced(request: Request) -> bool:
+        """Wait for this call's turn; False when the caller left meanwhile (a cancelled run),
+        so its calls hold up no later run."""
+        if not stream_delay:
+            return True
+        async with answer_lock:
+            loop = asyncio.get_running_loop()
+            while (wait := last_answer[0] + stream_delay - loop.time()) > 0:
+                if await request.is_disconnected():
+                    return False
+                await asyncio.sleep(min(wait, 0.1))
+            if await request.is_disconnected():
+                return False
+            last_answer[0] = loop.time()
+            return True
 
     @app.post("/embed_query")
     async def embed_query(body: dict):
@@ -214,47 +232,13 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
         return list(FAKE_TOPICER_CONFIGS)
 
     @app.post("/v1/tags/propose/texts")
-    async def propose_texts(body: dict, config_name: str | None = None):
+    async def propose_texts(body: dict, request: Request, config_name: str | None = None):
         _require_config(config_name)
+        if not await paced(request):
+            return JSONResponse({"detail": "client left"}, status_code=499)
         chunk = body["text_chunk"]
         return {"text_chunk": chunk, "tag_span_proposals": propose_spans(chunk["text"], body["tags"]),
                 "usage": fake_topicer_usage(1)}
-
-    @app.post("/v1/tags/propose/db/stream")
-    async def propose_db_stream(body: dict, max_chunks: int | None = None, config_name: str | None = None):
-        _require_config(config_name)
-        if max_chunks is not None and not 0 < max_chunks <= FAKE_TOPICER_MAX_CHUNKS_CEILING:
-            raise HTTPException(422, "max_chunks out of range")
-        # The real Topicer reads chunks from the database; the fake reads the corpus.
-        request = body["db_request"]
-        collection_key = next(
-            (k for k, c in corpus.collections.items() if c["id"] == request["collection_id"]), None)
-        chunks = sorted(
-            (c for c in corpus.chunks.values()
-             if corpus.documents[c["document"]]["id"] == request["document_id"]
-             and collection_key in c["collections"]),
-            key=lambda c: c["order"],
-        )
-
-        # As Topicer: at most max_chunks chunks, then the terminal usage summary.
-        limit = max_chunks if max_chunks is not None else len(chunks)
-        processed = chunks[:limit]
-
-        async def lines():
-            for index, chunk in enumerate(processed):
-                if index and stream_delay:
-                    await asyncio.sleep(stream_delay)
-                event = {"id": chunk["id"], "text": chunk["text"],
-                         "tag_span_proposals": propose_spans(chunk["text"], [body["tag"]])}
-                yield json.dumps(event, ensure_ascii=False) + "\n"
-            summary = {"event": "usage_summary", "status": "complete", "tag_id": body["tag"]["id"],
-                       "max_chunks": max_chunks, "max_chunks_source": "request" if max_chunks is not None else None,
-                       "processed_chunks": len(processed),
-                       "limit_reached": max_chunks is not None and len(processed) >= max_chunks,
-                       "candidates_truncated": len(chunks) > limit, "usage": fake_topicer_usage(len(processed))}
-            yield json.dumps(summary) + "\n"
-
-        return StreamingResponse(lines(), media_type="application/x-ndjson")
 
     @app.post("/ollama/api/chat")
     async def ollama_chat(body: dict):

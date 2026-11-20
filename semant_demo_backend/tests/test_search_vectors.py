@@ -170,6 +170,31 @@ async def test_openai_compatible_embeddings_send_the_model_prefixes_and_key(api_
     assert [r.headers.get("authorization") for r in requests] == [auth, auth]
 
 
+async def test_openai_compatible_document_batches_keep_the_input_order():
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        texts = json.loads(request.content)["input"]
+        # Answered out of order: the client orders them by ``index``.
+        return httpx.Response(200, json={"data": [{"index": i, "embedding": [float(len(t))]}
+                                                  for i, t in reversed(list(enumerate(texts)))]})
+
+    embedder = OpenAICompatibleEmbeddings("http://embedder.invalid/v1", "m", document_prefix="D: ",
+                                          transport=httpx.MockTransport(handle))
+
+    assert await embedder.embed_documents(["a", "bbb"]) == [[4.0], [6.0]]
+    assert await embedder.embed_documents([]) == []
+    assert [json.loads(r.content)["input"] for r in requests] == [["D: a", "D: bbb"]]
+
+
+async def test_openai_compatible_document_batches_refuse_a_wrong_number_of_embeddings():
+    embedder = OpenAICompatibleEmbeddings("http://embedder.invalid/v1", "m", transport=recording_transport([]))
+
+    with pytest.raises(ValueError, match="expected 2 embeddings, got 1"):
+        await embedder.embed_documents(["a", "b"])
+
+
 async def test_openai_compatible_embedding_errors_propagate():
     embedder = OpenAICompatibleEmbeddings("http://embedder.invalid/v1", "m",
                                           transport=httpx.MockTransport(lambda r: httpx.Response(503)))

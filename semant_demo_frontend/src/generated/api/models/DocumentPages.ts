@@ -22,7 +22,7 @@ import {
 } from './DocumentPage';
 
 /**
- * A document's page manifest (public). ``available`` is false, with no pages, when the
+ * A document's page manifest. ``available`` is false, with no pages, when the
  * document has no imported pages: it is then a text-only document.
  * @export
  * @interface DocumentPages
@@ -46,6 +46,12 @@ export interface DocumentPages {
      * @memberof DocumentPages
      */
     pages: Array<DocumentPage>;
+    /**
+     * 
+     * @type {Date}
+     * @memberof DocumentPages
+     */
+    accessExpiresAt?: Date | null;
 }
 
 /**
@@ -71,6 +77,7 @@ export function DocumentPagesFromJSONTyped(json: any, ignoreDiscriminator: boole
         'documentId': json['document_id'],
         'available': json['available'],
         'pages': ((json['pages'] as Array<any>).map(DocumentPageFromJSON)),
+        'accessExpiresAt': json['access_expires_at'] == null ? undefined : (new Date(json['access_expires_at'])),
     };
 }
 
@@ -88,6 +95,7 @@ export function DocumentPagesToJSONTyped(value?: DocumentPages | null, ignoreDis
         'document_id': value['documentId'],
         'available': value['available'],
         'pages': ((value['pages'] as Array<any>).map(DocumentPageToJSON)),
+        'access_expires_at': value['accessExpiresAt'] == null ? value['accessExpiresAt'] : value['accessExpiresAt'].toISOString(),
     };
 }
 
