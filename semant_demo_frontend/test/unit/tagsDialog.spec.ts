@@ -323,6 +323,18 @@ describe('TagsDialog applicable attributes', () => {
     expect(wrapper.emitted('ok')).toBeUndefined()
   })
 
+  it('saves the tag after an example is cleared with its clear button', async () => {
+    const save = vi.fn().mockImplementation((payload: object) => Promise.resolve({ ...person, ...payload }))
+    const tag = { ...person, examples: ['first', 'second'] }
+    const wrapper = await open({ tag, save })
+    // QInput's clear button sets the example to null.
+    await input(wrapper, 'Example 1').find('.q-field__focusable-action').trigger('click')
+    await flushPromises()
+    expect(input(wrapper, 'Example 1').props('modelValue')).toBeNull()
+    await confirm(wrapper, 'Save')
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ examples: ['second'] }), tag)
+  })
+
   it('still saves the tag when the attributes cannot be loaded', async () => {
     listed.mockRejectedValue(refused(503, 'Service unavailable'))
     const save = vi.fn().mockResolvedValue(created)
