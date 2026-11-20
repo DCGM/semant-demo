@@ -16,6 +16,7 @@ from pydantic_core import PydanticCustomError
 
 from semant_demo.config import MAX_PASSAGES_LIMIT
 from semant_demo.features.documents.criteria import ChunkFilters, DocumentFilters, SearchCriteria
+from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.features.search.schemas import SearchType
 
 UnavailableReason = Literal["missing_property", "unsupported_type"]
@@ -270,3 +271,66 @@ class RankedResultsDistributions(BaseModel):
                     "passage text.")
     members: list[ResultMember] | None = None
     """The counted results in ranking order, when asked for."""
+
+
+#################################################
+# Included passages of a user collection (#807) #
+#################################################
+
+ClassificationName = Literal[tuple(TASK_CLASSES)]  # type: ignore[valid-type]
+"""A stored chunk classification (``features/search/filters.TASK_CLASSES``), by property name."""
+
+
+class CollectionPassagesRequest(BaseModel):
+    """The included passages of one user collection: without ``dimension`` their total and
+    detected languages, with it their values of that classification (and the total) only, so
+    choosing another dimension never counts the rest again."""
+    model_config = ConfigDict(extra="forbid")
+    user_collection_id: str
+    """Read access is checked on every request (401 without a user, 404 for a collection the user
+    cannot read); the counts are never served again."""
+    dimension: ClassificationName | None = None
+
+
+class ClassificationValueCount(BaseModel):
+    value: str
+    """The stored value, unchanged; labels are the client's concern."""
+    count: int
+    """Included passages holding the value (0 for a configured value no passage holds)."""
+    configured: bool
+    """False for a stored value outside the configured vocabulary."""
+
+
+class PassageClassification(BaseModel):
+    """Included passages per value of one classification. A passage can hold several values, so
+    the counts can add up to more than ``total_passages``."""
+    dimension: ClassificationName
+    available: bool
+    unavailable_reason: UnavailableReason | None = None
+    values: list[ClassificationValueCount] | None = None
+    """Every configured value in vocabulary order, then the stored values outside it, most
+    passages first."""
+    without_value_count: int | None = None
+    """Included passages holding no configured value."""
+    without_value_approximate: bool = False
+    """True when a value outside the vocabulary is stored: the property's words are matched
+    (``word`` tokenization, #533), so a passage holding only such a value may be counted either
+    way."""
+
+
+class CollectionPassages(BaseModel):
+    """Counts of the passages included in a user collection (``Chunks.userCollection``, as
+    ``CollectionStats.chunks_count`` counts them), not of the passages of its documents."""
+    scope: Literal["user_collection"]
+    user_collection_id: str
+    unit: Literal["passages"]
+    total_passages: int
+    computed_at: datetime
+    data_source: Literal["live_aggregation"]
+    languages: CategoryDistribution | None = Field(
+        default=None,
+        description="Language detected in the passage text (``Chunks.language``), not the document's bibliographic "
+                    "language; only without ``dimension``. Stored codes such as ``und`` are values; "
+                    "``unknown_count`` is passages without a language.")
+    classification: PassageClassification | None = None
+    """Only with ``dimension``."""

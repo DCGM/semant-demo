@@ -189,7 +189,7 @@ A `Config` class that reads settings once, at construction, from the process env
 | `get_user_lookup()` | SQL user lookups (`adapters/sql/users.UserLookup`) on a request session | Per-request |
 | `get_documents()`, `get_tags()`, `get_user_collections()` | Weaviate repositories (`adapters/weaviate/`) | Startup → shutdown |
 | `get_annotation_store()` | The repositories the Annotations service uses (collections, tags, spans, documents), the tenant activity record (`adapters/sql/tenant_activity.TenantActivity`) and the annotation enrichment decided at startup (`AppResources.annotation_enrichment`, #328) | Startup → shutdown |
-| `get_corpus_analytics()`, `get_corpus_overview_cache()` | Document aggregates (`adapters/weaviate/analytics.py`); the app's last corpus overview | Startup → shutdown |
+| `get_corpus_analytics()`, `get_corpus_overview_cache()` | Document and included-passage aggregates (`adapters/weaviate/analytics.py`); the app's last corpus overview | Startup → shutdown |
 | `get_search_backends()` | Search adapter, collection/tag repositories and the configured search vectors (each with its query embedder) for the search service and RAG retrieval | Startup → shutdown |
 | `get_search_vectors()` | The configured search vectors (`features/search/vectors.SearchVectors`) | Startup → shutdown |
 | `get_topicer()`, `get_span_chat()` | Topicer client; the span chat's `FeatureChat` | Startup → shutdown |
@@ -408,6 +408,26 @@ throwaway Weaviate 1.40.1 with 300,002 synthetic documents from `make dev-add-do
 libraries; median of 5 warm runs): unfiltered 1.25 s (the distributions alone 1.0 s), filtered
 0.15–0.85 s, 5 concurrent unfiltered requests 3.7 s. With more libraries the per-library counts
 take longer, in rounds of 4. These figures come from a one-off script; no benchmark was committed (#494), as the production measurements below cover the real corpus. The distributions with chunk filters (Explore Visualizations, #618), measured read-only on the production store on 2026-11-08 (59,008 documents with chunk-value summaries; median of 3 warm runs): unfiltered 0.48 s, a year range 0.28 s, chunk language `ces` 0.37 s, `ces` and narration 0.32 s, a year range with three chunk filters 0.13 s; 5 concurrent `ces` and narration requests 1.4 s.
+
+`POST /api/analytics/collection/passages` (#807, 622c of #622; readers of the collection only)
+counts the *passages included* in one user collection: the chunks linked to it
+(`Chunks.userCollection`), as `CollectionStats.chunks_count` counts them, not every chunk of its
+documents, and also a chunk whose document is not linked. Read access is checked on every request
+(`access.require_collection_read`: 401 without a user, 404 otherwise), and the counts are always
+computed now (no cache). Without `dimension` it returns their total and their detected language
+(`Chunks.language`, not the documents' bibliographic language) as a `CategoryDistribution`:
+stored codes such as `und` are values, `unknown_count` is the passages without a language. With
+`dimension` (one of the 16 `TASK_CLASSES`, 422 otherwise) it returns the total and the passages per
+value of that classification only, so choosing another dimension never counts the language again:
+every configured value in vocabulary order (also those no passage holds), then stored values
+outside the vocabulary (`configured: false`). A passage counts once per value it holds, so the
+values can add up to more than the total. `without_value_count` is the total minus the passages
+matching any configured value (`contains_any`); the classifications have `word` tokenization
+(#533), which makes that exact only while every stored value is configured, so a stored value
+outside the vocabulary sets `without_value_approximate`. Grouped aggregates group whole stored
+values, not words. One request sends at most three aggregates over `Chunks`; measured read-only on
+the production store on 2026-11-19 for #807 (the largest collection, 17,004 included chunks): the
+total 47 ms, one grouping 53–84 ms.
 
 `POST /api/analytics/results/distributions` (#619; public, a collection needs read access)
 counts a *ranked search result* instead of the corpus: exactly the ids a text query's Documents

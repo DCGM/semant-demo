@@ -6,8 +6,8 @@ from semant_demo.adapters.weaviate.user_collections import UserCollectionReposit
 from semant_demo.config import Config
 from semant_demo.features.analytics import service
 from semant_demo.features.analytics.schemas import (
-    CorpusDistributions, CorpusDistributionsRequest, CorpusOverview, LibraryYearDistribution, RankedResultsDistributions,
-    RankedResultsDistributionsRequest)
+    CollectionPassages, CollectionPassagesRequest, CorpusDistributions, CorpusDistributionsRequest, CorpusOverview,
+    LibraryYearDistribution, RankedResultsDistributions, RankedResultsDistributionsRequest)
 from semant_demo.features.documents.criteria import ChunkVocabulary
 from semant_demo.features.search.schemas import SearchFiltersResponse
 from semant_demo.features.search.service import SearchBackends
@@ -85,6 +85,22 @@ async def corpus_library_years(request: CorpusDistributionsRequest,
         return await service.library_years(analytics, request.filters, request.chunk_filters, vocabulary, collection)
     except UnavailableFilter as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+@exp_router.post("/api/analytics/collection/passages", response_model=CollectionPassages)
+async def collection_passages(request: CollectionPassagesRequest,
+                              analytics: CorpusAnalyticsRepository = Depends(get_corpus_analytics),
+                              collections: UserCollectionRepository = Depends(get_user_collections),
+                              current_user: User | None = Depends(current_active_optional_user)) -> CollectionPassages:
+    """
+    Counts of the passages included in one user collection (#807; the chunks linked to it, not
+    every passage of its documents), for readers of the collection only (401 without a user, 404
+    otherwise), always counted now. Without ``dimension``: the total and the passages per detected
+    language. With ``dimension`` (a chunk classification): the total and the passages per value
+    of that classification only, every configured value included; a passage can hold several.
+    """
+    collection = await service.readable_collection(collections, current_user, request.user_collection_id)
+    return await service.collection_passages(analytics, collection, request.dimension)
 
 
 @exp_router.post("/api/analytics/results/distributions", response_model=RankedResultsDistributions)

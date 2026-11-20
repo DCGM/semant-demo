@@ -1,4 +1,6 @@
-"""Document counts for the corpus overview (#254): native aggregates over ``Documents``.
+"""Document counts for the corpus overview (#254): native aggregates over ``Documents``; and
+the counts of the passages included in a user collection (#807): native aggregates over
+``Chunks``.
 
 Only aggregates are run: no objects, texts or vectors are read, and documents are counted
 directly (never through their chunks). A single-valued property is described by the number
@@ -12,6 +14,10 @@ The documents of a ranked search result (#619) are few (at most a configured cap
 id: ``document_values`` reads the values of just those documents, in batches, for the service
 to count; still no texts or vectors. Weaviate's ``is_none`` filter needs an indexed null state, which the deployed collections
 lack, so missing values are never counted directly.
+
+The included passages of a user collection (#807) are the chunks linked to it
+(``Chunks.userCollection``), counted directly: their total, their detected language and their
+values of one classification (``text[]``: a passage counts once per distinct value it holds).
 
 The collection name is resolved through an alias for the schema read (the deployment serves
 ``Documents`` as an alias of ``Documents_test``). Never creates or alters a collection.
@@ -30,7 +36,7 @@ from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.features.documents.criteria import AnyOf, Condition, ContainsWords, NumberRange
 
 __all__ = ["AnyOf", "Condition", "ContainsWords", "CorpusAnalyticsRepository", "DocumentCounts", "NumberRange",
-           "READ_BATCH", "Unavailable", "UnavailableFilter", "ValueCounts", "where"]
+           "PassageCounts", "READ_BATCH", "Unavailable", "UnavailableFilter", "ValueCounts", "where"]
 
 ValueKind = Literal["text", "number"]
 
@@ -58,6 +64,14 @@ class ValueCounts:
 class DocumentCounts:
     total: int
     properties: dict[str, ValueCounts | Unavailable]
+
+
+@dataclass(frozen=True)
+class PassageCounts:
+    """The included passages of a user collection (#807) and their values of one property; in
+    ``counts`` every number is of passages, not documents."""
+    total: int
+    counts: ValueCounts | Unavailable
 
 
 READ_BATCH = 1000
@@ -140,6 +154,56 @@ class CorpusAnalyticsRepository:
         return {UUID(str(o.uuid)): {prop: o.properties.get(prop) for prop in properties}
                 for objects in batches for o in objects}
 
+    # Included passages of a user collection (#807): aggregates over ``Chunks``, never over the
+    # chunks of the collection's documents. No semaphore: only readers of the collection ask, and
+    # one request sends at most three aggregates.
+
+    def _chunks(self):
+        return self.client.collections.get(self.collection_names.chunks_collection_name)
+
+    def _included(self, collection_id: UUID):
+        """The passages included in the collection (``Chunks.userCollection``), as
+        ``CollectionStats.chunks_count`` counts them."""
+        return Filter.by_ref(self.collection_names.user_collection_link_name).by_id().equal(collection_id)
+
+    async def count_passage_languages(self, collection_id: UUID, prop: str, group_limit: int) -> PassageCounts:
+        """The collection's included passages and their values of the single-valued text
+        property ``prop`` (``known``: passages with a value, empty strings included)."""
+        types, _ = await declared(self.client, self.collection_names.chunks_collection_name)
+        chunks, included = self._chunks(), self._included(collection_id)
+        reason = _unavailable(types.get(prop), "text")
+        if reason:
+            return PassageCounts(await _total(chunks, included), Unavailable(reason))
+        overall, grouped = await asyncio.gather(
+            chunks.aggregate.over_all(filters=included, total_count=True, return_metrics=[_count_metric(prop, "text")]),
+            chunks.aggregate.over_all(filters=included, group_by=GroupByAggregate(prop=prop, limit=group_limit),
+                                      total_count=True))
+        groups = _groups(grouped)
+        return PassageCounts(overall.total_count or 0, ValueCounts(known=overall.properties[prop].count or 0,
+                                                                   groups=groups, complete=len(groups) < group_limit))
+
+    async def count_passage_values(self, collection_id: UUID, prop: str, vocabulary: Sequence[str],
+                                   group_limit: int) -> PassageCounts:
+        """The collection's included passages and their values of the multi-valued ``text[]``
+        property ``prop``: a passage counts once per distinct value it holds (groups are whole
+        stored values), and ``known`` is the passages matching any value of ``vocabulary``. That
+        filter matches words (``word`` tokenization, #533), so ``known`` is exact as long as every
+        stored value is in the vocabulary: a passage then matches exactly when it holds a value."""
+        types, _ = await declared(self.client, self.collection_names.chunks_collection_name)
+        chunks, included = self._chunks(), self._included(collection_id)
+        data_type = types.get(prop)
+        if data_type != "text[]":
+            return PassageCounts(await _total(chunks, included),
+                                 Unavailable("missing" if data_type is None else "unsupported_type"))
+        configured = Filter.all_of([included, Filter.by_property(prop).contains_any(list(vocabulary))])
+        total, known, grouped = await asyncio.gather(
+            _total(chunks, included),
+            _total(chunks, configured) if vocabulary else _zero(),
+            chunks.aggregate.over_all(filters=included, group_by=GroupByAggregate(prop=prop, limit=group_limit),
+                                      total_count=True))
+        groups = _groups(grouped)
+        return PassageCounts(total, ValueCounts(known=known, groups=groups, complete=len(groups) < group_limit))
+
     async def _count(self, filters, properties: dict[str, ValueKind], types: dict[str, str],
                      group_limit: int) -> DocumentCounts:
         result: dict[str, ValueCounts | Unavailable] = {}
@@ -158,7 +222,7 @@ class CorpusAnalyticsRepository:
             *(documents.aggregate.over_all(filters=filters, group_by=GroupByAggregate(prop=prop, limit=group_limit),
                                            total_count=True) for prop in countable))
         for prop, grouped in zip(countable, grouped_all):
-            groups = [(group.grouped_by.value, group.total_count or 0) for group in grouped.groups]
+            groups = _groups(grouped)
             result[prop] = ValueCounts(known=overall.properties[prop].count or 0, groups=groups,
                                        complete=len(groups) < group_limit)
         return DocumentCounts(total=overall.total_count or 0, properties=result)
@@ -174,6 +238,18 @@ def _restriction(conditions: Sequence[Condition], collection_id: UUID | None, ty
         return criteria
     linked = Filter.by_ref("collection").by_id().equal(collection_id)
     return linked if criteria is None else Filter.all_of([linked, criteria])
+
+
+async def _total(collection, filters) -> int:
+    return (await collection.aggregate.over_all(filters=filters, total_count=True)).total_count or 0
+
+
+async def _zero() -> int:
+    return 0
+
+
+def _groups(grouped) -> list[tuple[str | float, int]]:
+    return [(group.grouped_by.value, group.total_count or 0) for group in grouped.groups]
 
 
 def _unavailable(data_type: str | None, kind: ValueKind) -> Literal["missing", "unsupported_type"] | None:

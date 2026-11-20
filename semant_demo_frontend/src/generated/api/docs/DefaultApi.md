@@ -12,6 +12,7 @@ All URIs are relative to *http://localhost*
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost**](DefaultApi.md#chataboutdocumentapiusercollectionscollectioniddocumentsdocumentidchatpost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/chat | Chat About Document |
 | [**chatAboutSearchResultsApiSearchChatPost**](DefaultApi.md#chataboutsearchresultsapisearchchatpost) | **POST** /api/search/chat | Chat About Search Results |
+| [**collectionPassagesApiAnalyticsCollectionPassagesPost**](DefaultApi.md#collectionpassagesapianalyticscollectionpassagespost) | **POST** /api/analytics/collection/passages | Collection Passages |
 | [**corpusDistributionsApiAnalyticsCorpusDistributionsPost**](DefaultApi.md#corpusdistributionsapianalyticscorpusdistributionspost) | **POST** /api/analytics/corpus/distributions | Corpus Distributions |
 | [**corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost**](DefaultApi.md#corpuslibraryyearsapianalyticscorpuslibraryyearspost) | **POST** /api/analytics/corpus/library-years | Corpus Library Years |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
@@ -741,6 +742,78 @@ example().catch(console.error);
 | **404** | None of the search results can be read any more, or the collection is not readable. |  -  |
 | **422** | A filter of the criteria is not available in this corpus database. |  -  |
 | **413** | The question and the first search result do not fit the input limit. |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## collectionPassagesApiAnalyticsCollectionPassagesPost
+
+> CollectionPassages collectionPassagesApiAnalyticsCollectionPassagesPost(collectionPassagesRequest)
+
+Collection Passages
+
+Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without &#x60;&#x60;dimension&#x60;&#x60;: the total and the passages per detected language. With &#x60;&#x60;dimension&#x60;&#x60; (a chunk classification): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CollectionPassagesApiAnalyticsCollectionPassagesPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // CollectionPassagesRequest
+    collectionPassagesRequest: ...,
+  } satisfies CollectionPassagesApiAnalyticsCollectionPassagesPostRequest;
+
+  try {
+    const data = await api.collectionPassagesApiAnalyticsCollectionPassagesPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionPassagesRequest** | [CollectionPassagesRequest](CollectionPassagesRequest.md) |  | |
+
+### Return type
+
+[**CollectionPassages**](CollectionPassages.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 

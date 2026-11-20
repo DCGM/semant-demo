@@ -42,10 +42,13 @@ docs/CategoryCount.md
 docs/CategoryDistribution.md
 docs/ChatTurn.md
 docs/ChunkFilters.md
+docs/ClassificationValueCount.md
 docs/Collection.md
 docs/CollectionChunk.md
 docs/CollectionExportRequest.md
 docs/CollectionExportTicket.md
+docs/CollectionPassages.md
+docs/CollectionPassagesRequest.md
 docs/CollectionPerson.md
 docs/CollectionStats.md
 docs/ContextChatRequest.md
@@ -103,6 +106,7 @@ docs/NearRelation.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
 docs/Partnumber.md
+docs/PassageClassification.md
 docs/PassageReadRequest.md
 docs/PassageReadResponse.md
 docs/PassageSearchRequest.md
@@ -220,10 +224,13 @@ models/CategoryCount.ts
 models/CategoryDistribution.ts
 models/ChatTurn.ts
 models/ChunkFilters.ts
+models/ClassificationValueCount.ts
 models/Collection.ts
 models/CollectionChunk.ts
 models/CollectionExportRequest.ts
 models/CollectionExportTicket.ts
+models/CollectionPassages.ts
+models/CollectionPassagesRequest.ts
 models/CollectionPerson.ts
 models/CollectionStats.ts
 models/ContextChatRequest.ts
@@ -280,6 +287,7 @@ models/NearRelation.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts
 models/Partnumber.ts
+models/PassageClassification.ts
 models/PassageReadRequest.ts
 models/PassageReadResponse.ts
 models/PassageSearchRequest.ts

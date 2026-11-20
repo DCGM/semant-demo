@@ -22,6 +22,11 @@ those without an included passage), for readers of the collection only (checked 
 request). They are always counted live: they never read or fill the ``OverviewCache``, which
 holds the public corpus only, so a collection's counts are never the corpus's and the reverse.
 
+Included passages of a user collection (#807, ``collection_passages``): the chunks linked to it
+(``Chunks.userCollection``, as ``CollectionStats.chunks_count`` counts them), counted by detected
+language or by the values of one classification, for readers of the collection only and always
+live, like the collection's document counts.
+
 Ranked results (#619, ``ranked_results_distributions``): the same counts over exactly the ids
 a text-query search ranked (Documents or Passages Results), read by id under that search's
 access and eligibility again; see the function.
@@ -34,22 +39,25 @@ import asyncio
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Sequence
 from uuid import UUID
 
 from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository, Unavailable, ValueCounts
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.core.errors import InvalidRequestError
 from semant_demo.features.analytics.schemas import (
-    CategoryCount, CategoryDistribution, CorpusDistributions, CorpusOverview, DocumentFilters, LibraryYearDistribution,
-    LibraryYears, PublicationYearCounts, PublicationYearDistribution, RankedResultsDistributions,
-    RankedResultsDistributionsRequest, RankingScope, ResultMember, UnavailableReason, YearBin, YearCount)
+    CategoryCount, CategoryDistribution, ClassificationValueCount, CollectionPassages, CorpusDistributions,
+    CorpusOverview, DocumentFilters, LibraryYearDistribution, LibraryYears, PassageClassification,
+    PublicationYearCounts, PublicationYearDistribution, RankedResultsDistributions, RankedResultsDistributionsRequest,
+    RankingScope, ResultMember, UnavailableReason, YearBin, YearCount)
 from semant_demo.features.documents import service as document_service
 from semant_demo.features.documents.criteria import (
     LANGUAGE_PROPERTY, LIBRARY_PROPERTY, YEAR_PROPERTY, ChunkFilters, ChunkVocabulary, Condition,
     document_level_conditions)
 from semant_demo.features.search import service as search_service
+from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.features.search.schemas import SearchFiltersResponse, SearchType
+from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
 
 GROUP_LIMIT = 10_000
@@ -143,6 +151,57 @@ async def collection_distributions(analytics: CorpusAnalyticsRepository, collect
     ``corpus_distributions``), computed from the store now; never cached."""
     chunks, conditions = document_level_conditions(filters, chunk_filters, vocabulary)
     return await _distributions(analytics, filters, chunks, conditions, collection)
+
+
+PASSAGE_LANGUAGE_PROPERTY = "language"
+"""The language detected in a chunk's text (``Chunks.language``), not its document's."""
+
+
+async def readable_collection(collections: UserCollectionRepository, user: Principal | None,
+                              collection_id: str) -> CollectionScope:
+    """The collection whose included passages are counted, read access checked
+    (``AuthenticationRequired`` without a user, ``ResourceNotFound`` for a collection the user
+    cannot read)."""
+    return CollectionScope((await access.require_collection_read(collections, user, collection_id)).collection_id)
+
+
+async def collection_passages(analytics: CorpusAnalyticsRepository, collection: CollectionScope,
+                              dimension: str | None = None) -> CollectionPassages:
+    """New counts of the passages included in the collection (#807), computed from the store now;
+    never cached. Without ``dimension``: their total and detected languages; with it: their values
+    of that classification (``TASK_CLASSES``) and the total only."""
+    computed_at = datetime.now(UTC)
+    common = {"scope": "user_collection", "user_collection_id": str(collection.collection_id), "unit": "passages",
+              "computed_at": computed_at, "data_source": "live_aggregation"}
+    if dimension is None:
+        counted = await analytics.count_passage_languages(collection.collection_id, PASSAGE_LANGUAGE_PROPERTY,
+                                                          group_limit=GROUP_LIMIT)
+        return CollectionPassages(**common, total_passages=counted.total,
+                                  languages=_categories(counted.counts, counted.total, PASSAGE_LANGUAGE_PROPERTY))
+    vocabulary = TASK_CLASSES[dimension]
+    counted = await analytics.count_passage_values(collection.collection_id, dimension, vocabulary,
+                                                   group_limit=GROUP_LIMIT)
+    return CollectionPassages(**common, total_passages=counted.total,
+                              classification=_classification(dimension, vocabulary, counted.counts, counted.total))
+
+
+def _classification(dimension: str, vocabulary: Sequence[str], counts: ValueCounts | Unavailable,
+                    total: int) -> PassageClassification:
+    """Every configured value in vocabulary order (also those no passage holds), then the stored
+    values outside the vocabulary, most passages first; blank values are no value."""
+    if isinstance(counts, Unavailable):
+        return PassageClassification(dimension=dimension, available=False, unavailable_reason=_REASONS[counts.reason])
+    if not counts.complete:
+        raise IncompleteCounts(f"More than {GROUP_LIMIT} distinct values of {dimension}.")
+    if not 0 <= counts.known <= total:
+        raise IncompleteCounts(f"Passage counts of {dimension} do not add up (the collection may have changed).")
+    stored = {str(value): n for value, n in counts.groups if str(value).strip()}
+    configured = set(vocabulary)
+    outside = sorted(((v, n) for v, n in stored.items() if v not in configured), key=lambda item: (-item[1], item[0]))
+    values = [ClassificationValueCount(value=v, count=stored.get(v, 0), configured=True) for v in vocabulary]
+    values += [ClassificationValueCount(value=v, count=n, configured=False) for v, n in outside]
+    return PassageClassification(dimension=dimension, available=True, values=values,
+                                 without_value_count=total - counts.known, without_value_approximate=bool(outside))
 
 
 def _scope(collection: CollectionScope | None) -> dict[str, Any]:
