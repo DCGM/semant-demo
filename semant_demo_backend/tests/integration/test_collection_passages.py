@@ -15,6 +15,9 @@ have classifications (chronicle_1: complexity ["moderate"], style ["formal"]; le
 """
 import pytest
 
+from semant_demo.features.documents.criteria import ChunkVocabulary
+from semant_demo.routes.dependencies import get_chunk_vocabulary
+
 pytestmark = pytest.mark.integration
 
 PASSAGES = "/api/analytics/collection/passages"
@@ -113,6 +116,22 @@ async def test_a_value_outside_the_vocabulary_is_its_own_bar_and_without_value_i
     assert counted(classification) == {"formal": 1, "informal": 1, "unheard_of": 1}
     assert classification["values"][-1] == {"value": "unheard_of", "count": 1, "configured": False}
     assert classification["without_value_approximate"] is True
+
+
+async def test_the_configured_values_come_from_the_search_filters(post, ids, api_app):
+    # A deployment's filters configure "formal" and a value no passage holds, not "informal".
+    api_app.dependency_overrides[get_chunk_vocabulary] = \
+        lambda: ChunkVocabulary(classifications={"style": ("formal", "folksy")})
+
+    classification = (await post({"user_collection_id": ids.col["chronicles"], "dimension": "style"}))[
+        "classification"]
+    unconfigured = await post({"user_collection_id": ids.col["chronicles"], "dimension": "complexity"}, status=400)
+
+    assert [(v["value"], v["count"], v["configured"]) for v in classification["values"]] == \
+        [("formal", 1, True), ("folksy", 0, True), ("informal", 1, False)]
+    # letters_1 holds only "informal": not a configured value, so it may count as without one.
+    assert (classification["without_value_count"], classification["without_value_approximate"]) == (3, True)
+    assert "not a configured classification" in unconfigured["detail"]
 
 
 async def test_another_collection_counts_only_its_own_passages(post, ids):

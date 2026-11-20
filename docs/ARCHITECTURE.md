@@ -425,15 +425,24 @@ documents, and also a chunk whose document is not linked. Read access is checked
 computed now (no cache). Without `dimension` it returns their total and their detected language
 (`Chunks.language`, not the documents' bibliographic language) as a `CategoryDistribution`:
 stored codes such as `und` are values, `unknown_count` is the passages without a language. With
-`dimension` (one of the 16 `TASK_CLASSES`, 422 otherwise) it returns the total and the passages per
-value of that classification only, so choosing another dimension never counts the language again:
-every configured value in vocabulary order (also those no passage holds), then stored values
-outside the vocabulary (`configured: false`). A passage counts once per value it holds, so the
+`dimension` (one of the 16 `TASK_CLASSES`, 422 otherwise; 400 when the configured search filters
+leave it out) it returns the total and the passages per value of that classification only, so
+choosing another dimension never counts the language again: every configured value in vocabulary
+order (also those no passage holds), then stored values outside the vocabulary (`configured:
+false`). The configured values are those of the search filters (`get_chunk_vocabulary`), as for
+the chunk filters, not `TASK_CLASSES` itself. A value differing from a configured one only in
+case or whitespace is listed as stored, not merged, as merging would count a passage holding both
+spellings twice. A passage counts once per value it holds, so the
 values can add up to more than the total. `without_value_count` is the total minus the passages
 matching any configured value (`contains_any`); the classifications have `word` tokenization
 (#533), which makes that exact only while every stored value is configured, so a stored value
 outside the vocabulary sets `without_value_approximate`. Grouped aggregates group whole stored
-values, not words. One request sends at most three aggregates over `Chunks`; measured read-only on
+values, not words. The total, the passages with a value and the groups are separate aggregates:
+counts that contradict each other (the collection changed between them) are counted once more,
+then answered with an error, never as numbers that do not fit together. One request sends at most
+three aggregates over `Chunks`, and they are not limited across requests (unlike the public
+per-value counts of `library-years`): only signed-in readers of the collection ask, as for the
+collection statistics, which are not limited either. Measured read-only on
 the production store on 2026-11-19 for #807 (the largest collection, 17,004 included chunks): the
 total 47 ms, one grouping 53–84 ms.
 

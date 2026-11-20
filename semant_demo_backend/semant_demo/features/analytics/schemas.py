@@ -290,6 +290,8 @@ class CollectionPassagesRequest(BaseModel):
     """Read access is checked on every request (401 without a user, 404 for a collection the user
     cannot read); the counts are never served again."""
     dimension: ClassificationName | None = None
+    """Its configured values come from the search filters, as the chunk filters' do; a
+    classification they do not configure is rejected (400)."""
 
 
 class ClassificationValueCount(BaseModel):
@@ -298,7 +300,8 @@ class ClassificationValueCount(BaseModel):
     count: int
     """Included passages holding the value (0 for a configured value no passage holds)."""
     configured: bool
-    """False for a stored value outside the configured vocabulary."""
+    """False for a stored value outside the configured vocabulary (also one differing from a
+    configured value only in case or whitespace: it is listed as stored, not merged)."""
 
 
 class PassageClassification(BaseModel):

@@ -55,7 +55,6 @@ from semant_demo.features.documents.criteria import (
     LANGUAGE_PROPERTY, LIBRARY_PROPERTY, YEAR_PROPERTY, ChunkFilters, ChunkVocabulary, Condition,
     document_level_conditions)
 from semant_demo.features.search import service as search_service
-from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.features.search.schemas import SearchFiltersResponse, SearchType
 from semant_demo.features.user_collections import access
 from semant_demo.features.user_collections.access import Principal
@@ -166,11 +165,31 @@ async def readable_collection(collections: UserCollectionRepository, user: Princ
     return CollectionScope((await access.require_collection_read(collections, user, collection_id)).collection_id)
 
 
+class UnconfiguredClassification(InvalidRequestError):
+    """A classification the search filters do not configure (400), as for a chunk filter."""
+
+
 async def collection_passages(analytics: CorpusAnalyticsRepository, collection: CollectionScope,
-                              dimension: str | None = None) -> CollectionPassages:
+                              dimension: str | None = None,
+                              vocabulary: ChunkVocabulary | None = None) -> CollectionPassages:
     """New counts of the passages included in the collection (#807), computed from the store now;
     never cached. Without ``dimension``: their total and detected languages; with it: their values
-    of that classification (``TASK_CLASSES``) and the total only."""
+    of that classification and the total only, its configured values taken from ``vocabulary``
+    (the configured search filters, as the chunk filters take them). When the collection changes
+    between the readings, everything is counted once more before ``IncompleteCounts`` is raised."""
+    values = None
+    if dimension is not None:
+        values = (vocabulary or ChunkVocabulary()).classifications.get(dimension)
+        if values is None:
+            raise UnconfiguredClassification(f"'{dimension}' is not a configured classification.")
+    try:
+        return await _collection_passages(analytics, collection, dimension, values)
+    except IncompleteCounts:
+        return await _collection_passages(analytics, collection, dimension, values)
+
+
+async def _collection_passages(analytics: CorpusAnalyticsRepository, collection: CollectionScope,
+                               dimension: str | None, vocabulary: Sequence[str] | None) -> CollectionPassages:
     computed_at = datetime.now(UTC)
     common = {"scope": "user_collection", "user_collection_id": str(collection.collection_id), "unit": "passages",
               "computed_at": computed_at, "data_source": "live_aggregation"}
@@ -179,7 +198,7 @@ async def collection_passages(analytics: CorpusAnalyticsRepository, collection: 
                                                           group_limit=GROUP_LIMIT)
         return CollectionPassages(**common, total_passages=counted.total,
                                   languages=_categories(counted.counts, counted.total, PASSAGE_LANGUAGE_PROPERTY))
-    vocabulary = TASK_CLASSES[dimension]
+    assert vocabulary is not None
     counted = await analytics.count_passage_values(collection.collection_id, dimension, vocabulary,
                                                    group_limit=GROUP_LIMIT)
     return CollectionPassages(**common, total_passages=counted.total,
@@ -189,17 +208,27 @@ async def collection_passages(analytics: CorpusAnalyticsRepository, collection: 
 def _classification(dimension: str, vocabulary: Sequence[str], counts: ValueCounts | Unavailable,
                     total: int) -> PassageClassification:
     """Every configured value in vocabulary order (also those no passage holds), then the stored
-    values outside the vocabulary, most passages first; blank values are no value."""
+    values outside the vocabulary, most passages first; blank values are no value. A value differing
+    from a configured one only in case or whitespace is listed as stored, not merged: merging would
+    count a passage holding both spellings twice.
+
+    The total, ``known`` and the groups are separate aggregates, so a change of the collection
+    between them could make them contradict each other; then ``IncompleteCounts`` is raised rather
+    than answering numbers that do not fit together."""
     if isinstance(counts, Unavailable):
         return PassageClassification(dimension=dimension, available=False, unavailable_reason=_REASONS[counts.reason])
     if not counts.complete:
         raise IncompleteCounts(f"More than {GROUP_LIMIT} distinct values of {dimension}.")
-    if not 0 <= counts.known <= total:
-        raise IncompleteCounts(f"Passage counts of {dimension} do not add up (the collection may have changed).")
     stored = {str(value): n for value, n in counts.groups if str(value).strip()}
     configured = set(vocabulary)
     outside = sorted(((v, n) for v, n in stored.items() if v not in configured), key=lambda item: (-item[1], item[0]))
-    values = [ClassificationValueCount(value=v, count=stored.get(v, 0), configured=True) for v in vocabulary]
+    held = [stored.get(v, 0) for v in vocabulary]
+    # A passage holding a configured value matches the vocabulary filter (``known``); while every
+    # stored value is configured, a passage matching it holds a configured value.
+    if (not 0 <= counts.known <= total or any(n > total for n in stored.values())
+            or any(n > counts.known for n in held) or (not outside and counts.known > sum(held))):
+        raise IncompleteCounts(f"Passage counts of {dimension} do not add up (the collection may have changed).")
+    values = [ClassificationValueCount(value=v, count=n, configured=True) for v, n in zip(vocabulary, held)]
     values += [ClassificationValueCount(value=v, count=n, configured=False) for v, n in outside]
     return PassageClassification(dimension=dimension, available=True, values=values,
                                  without_value_count=total - counts.known, without_value_approximate=bool(outside))

@@ -752,7 +752,7 @@ example().catch(console.error);
 
 Collection Passages
 
-Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without &#x60;&#x60;dimension&#x60;&#x60;: the total and the passages per detected language. With &#x60;&#x60;dimension&#x60;&#x60; (a chunk classification): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without &#x60;&#x60;dimension&#x60;&#x60;: the total and the passages per detected language. With &#x60;&#x60;dimension&#x60;&#x60; (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
 
 ### Example
 

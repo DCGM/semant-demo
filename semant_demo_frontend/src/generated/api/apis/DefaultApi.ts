@@ -1037,7 +1037,7 @@ export interface DefaultApiInterface {
     collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
      * @summary Collection Passages
      * @param {CollectionPassagesRequest} collectionPassagesRequest 
      * @param {*} [options] Override http request option.
@@ -1047,7 +1047,7 @@ export interface DefaultApiInterface {
     collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>>;
 
     /**
-     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
      * Collection Passages
      */
     collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages>;
@@ -3797,7 +3797,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
      * Collection Passages
      */
     async collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>> {
@@ -3808,7 +3808,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
      * Collection Passages
      */
     async collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages> {
