@@ -758,7 +758,8 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   broken symlink too) or a directory without `*.jsonl` files is refused (exit 2).
 - Required: `id` (chunk UUID), `document` (document UUID), `order` (int) and `text` (may be empty).
 - Optional source fields, each only if `Chunks` declares it with that type: `start_page_id`, `language`
-  (str), `from_page`, `to_page` (int), `end_paragraph` (bool).
+  (str), `from_page`, `to_page` (int), `end_paragraph` (bool). A chunk stored without
+  `end_paragraph` reads as ending a paragraph (#798).
 - Ignored and counted (`ignored_fields`), never written:
   - the document description of the old `db_insert_jsonl.py` format (`title`, `year`, `author`, `date`,
     `source`, ...);
@@ -862,7 +863,7 @@ flowchart LR
   meta --> vis["chunk_document_public<br/>--document-ids"]
   meta --> titles["chunk_titles"]
   ingest --> emb["data_tools/embedder"]
-  ingest --> cls["data_tools/<br/>meta_data_enrichment"]
+  vis --> cls["data_tools/<br/>meta_data_enrichment"]
   cls --> sum["chunk_summaries"]
 ```
 
@@ -882,7 +883,8 @@ flowchart LR
    metadata too.
 3. `chunk_titles --write` generates the new chunks' titles (every untitled chunk; no document
    list); after `metadata_sync`, since it uses the document titles
-   ([Chunk titles](#chunk-titles-chunk_titles-575)).
+   ([Chunk titles](#chunk-titles-chunk_titles-575)). It defers the chunks of documents that are
+   not public (e.g. an `unresolved` one) unless `--include-restricted-documents` is given.
 4. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
    vectors; until then the new chunks are missing from vector and hybrid search. It reads only
    the chunks whose `haveVector` lacks the name (#816), which the import leaves without a list,
@@ -897,11 +899,21 @@ flowchart LR
    ([Chunk classification](#chunk-classification-data_toolsmeta_data_enrichment-590)). Until
    then the new chunks have no classification. `--check` counts the chunks still `UNPROCESSED`,
    read-only. As with the embedder, the flag confirms the host and port, not the collection:
-   check `collection` in the config too.
+   check `collection` in the config too. Run it after step 2: with an API model and
+   `include_restricted_documents` unset it selects only chunks with `documentPublic == true`,
+   and the import creates every new chunk not public, so a run straight after the import selects
+   none of them (they stay `UNPROCESSED` for a later run). A local model, or
+   `include_restricted_documents: true`, also selects the chunks of documents that are not public.
 6. `chunk_summaries --write` is the final pass, after the classification, since it summarizes
    the chunks' classifications. Until it runs, the new documents have no summaries and match no
    chunk filter. A run before the classification (e.g. for the language filter) is only interim:
    the import is not complete while the classification is pending. It is a full-corpus pass.
+
+`semant_demo_backend/tests/integration/test_append_pipeline.py` (#798) runs this order on the
+disposable test store with fake models: the import of new and appended documents, the metadata
+with the library flags of the production sync (#259), and every step above, then the search,
+filters and document reads of the new data, the unchanged existing corpus, a rerun of a failed
+title and classification, and a replay of every step that writes nothing.
 
 `page_order --document-ids CHECKPOINT.documents.txt` exports the new documents' page lists.
 Scans and anchors for newly imported documents are not covered yet: `page_import` was built for
