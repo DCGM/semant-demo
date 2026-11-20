@@ -199,13 +199,14 @@ query). The manifest's `environment` records the git revision (never the machine
 SHA-256, the store spec and `describe()` (Weaviate version, schema), the embedding endpoints
 (the key's variable name, never a key), load and vector reports, the budget, start and end
 times, and `sessions`: the environments of earlier sessions of the same run, an interrupted one
-marked `interrupted: true` (each session's environment is saved when it starts). A dry run only
+marked `interrupted: true` (each session's environment is saved once the store is ready, before
+its first search; a session that cannot open the store or ensure a vector leaves the run as it was). A dry run only
 reads the run directory.
 
 ### Experiment config
 
 `runner_config.py` defines the fields; `semant_demo/configs/search_benchmark/runner.example.yaml`
-is a complete example. Relative paths are relative to the config file; unknown fields are refused.
+is a complete example. Relative paths (also `store.token_file`) are relative to the config file; unknown fields are refused.
 
 ```yaml
 dataset: ~/semant-search-benchmark/datasets/v1
