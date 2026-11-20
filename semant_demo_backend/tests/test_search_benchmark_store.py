@@ -5,11 +5,14 @@ import json
 from types import SimpleNamespace
 from uuid import UUID
 
+import httpx
 import pytest
 from weaviate.classes.query import HybridFusion
 
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
 from semant_demo.benchmarks.search_relevance import container, schema
+from semant_demo.benchmarks.search_relevance.embeddings import BatchEmbeddings
+from semant_demo.benchmarks.search_relevance.search import BenchmarkChunkSearch
 from semant_demo.benchmarks.search_relevance.embedding_cache import (
     EmbeddingCache, TemplateError, check_template, input_hash, render, valid_embedding)
 from semant_demo.benchmarks.search_relevance.store import (
@@ -170,16 +173,22 @@ def test_scores_are_weaviate_scores_or_the_cosine_similarity():
 
 
 class RecordingQuery:
-    def __init__(self):
+    def __init__(self, objects=()):
         self.calls = []
+        self.objects = list(objects)
+
+    async def _record(self, kind, kwargs):
+        self.calls.append((kind, kwargs))
+        return SimpleNamespace(objects=self.objects)
 
     async def bm25(self, **kwargs):
-        self.calls.append(("bm25", kwargs))
-        return SimpleNamespace(objects=[])
+        return await self._record("bm25", kwargs)
+
+    async def near_vector(self, **kwargs):
+        return await self._record("near_vector", kwargs)
 
     async def hybrid(self, **kwargs):
-        self.calls.append(("hybrid", kwargs))
-        return SimpleNamespace(objects=[])
+        return await self._record("hybrid", kwargs)
 
 
 def recording_client(query: RecordingQuery):
@@ -187,39 +196,72 @@ def recording_client(query: RecordingQuery):
     return SimpleNamespace(collections=SimpleNamespace(get=lambda name: collection))
 
 
-@pytest.mark.parametrize("options, properties, fusion", [
-    ({}, None, None),
-    ({"query_properties": ["title^2"], "fusion": HybridFusion.RANKED}, ["title^2"], HybridFusion.RANKED),
-])
-async def test_chunk_search_passes_its_bm25_properties_and_fusion(options, properties, fusion):
-    query = RecordingQuery()
-    repository = ChunkSearchRepository(recording_client(query), Config(environ={}).collectionNames, **options)
-
-    await repository.ranked_ids(ChunkQuery(text="q", mode=SearchType.text, limit=3))
-    await repository.ranked_ids(ChunkQuery(text="q", mode=SearchType.hybrid, limit=3, alpha=0.5, vector=[1.0],
-                                           target_vector="v"))
-
-    [(_, bm25), (_, hybrid)] = query.calls
-    assert bm25["query_properties"] == properties and hybrid["query_properties"] == properties
-    assert hybrid["fusion_type"] == fusion
+QUERIES = [ChunkQuery(text="q", mode=SearchType.text, limit=3),
+           ChunkQuery(text="q", mode=SearchType.vector, limit=3, vector=[1.0], target_vector="v"),
+           ChunkQuery(text="q", mode=SearchType.hybrid, limit=3, alpha=0.5, vector=[1.0], target_vector="v")]
+BENCHMARK_ONLY = {"return_metadata", "fusion_type", "query_properties"}
 
 
-async def test_chunk_search_records_scores_only_when_asked():
+async def test_with_default_settings_the_benchmark_search_queries_as_the_application():
+    # The guard of the subclass's dependency on ChunkSearchRepository._ranked: when the application
+    # changes how it ranks (another argument, filter or call), this fails.
+    names = Config(environ={}).collectionNames
+    application, benchmark = RecordingQuery(), RecordingQuery()
+    for query in QUERIES:
+        await ChunkSearchRepository(recording_client(application), names).ranked_ids(query)
+        await BenchmarkChunkSearch(recording_client(benchmark), names).ranked_ids(query)
+    assert [kind for kind, _ in application.calls] == [kind for kind, _ in benchmark.calls]
+    for (_, app_kwargs), (_, bench_kwargs) in zip(application.calls, benchmark.calls):
+        assert set(bench_kwargs) - set(app_kwargs) <= BENCHMARK_ONLY
+        assert {k: v for k, v in bench_kwargs.items() if k not in BENCHMARK_ONLY} == app_kwargs
+        assert bench_kwargs.get("fusion_type") is None and bench_kwargs.get("query_properties") is None
+
+
+async def test_the_benchmark_search_sets_fusion_and_bm25_properties_and_records_scores():
     hit = SimpleNamespace(uuid=UUID("5e3b0000-0000-4000-8000-000000000001"),
                           metadata=SimpleNamespace(score=1.5, distance=None))
+    query = RecordingQuery([hit])
+    search = BenchmarkChunkSearch(recording_client(query), Config(environ={}).collectionNames,
+                                  fusion=HybridFusion.RANKED, query_properties=["text", "title^2"])
+    assert await search.ranked_ids(QUERIES[0]) == [hit.uuid]
+    await search.ranked_ids(QUERIES[2])
+    [(_, bm25), (_, hybrid)] = query.calls
+    assert bm25["query_properties"] == hybrid["query_properties"] == ["text", "title^2"]
+    assert hybrid["fusion_type"] == HybridFusion.RANKED and bm25["return_metadata"] is not None
+    assert search.scores == {hit.uuid: (1.5, None)}
 
-    class Scored(RecordingQuery):
-        async def bm25(self, **kwargs):
-            self.calls.append(("bm25", kwargs))
-            return SimpleNamespace(objects=[hit])
-    names = Config(environ={}).collectionNames
-    plain, scored = Scored(), Scored()
 
-    default = ChunkSearchRepository(recording_client(plain), names)
-    assert await default.ranked_ids(ChunkQuery(text="q", mode=SearchType.text, limit=3)) == [hit.uuid]
-    assert default.scores is None and "return_metadata" not in plain.calls[0][1]
+def test_the_applications_search_has_no_benchmark_options():
+    # The application's class stays as on main: the benchmark sets its options in its subclass.
+    repository = ChunkSearchRepository(None, Config(environ={}).collectionNames)
+    assert not hasattr(repository, "scores") and not hasattr(repository, "fusion")
 
-    recording = ChunkSearchRepository(recording_client(scored), names, record_scores=True)
-    assert await recording.ranked_ids(ChunkQuery(text="q", mode=SearchType.text, limit=3)) == [hit.uuid]
-    assert recording.scores == {hit.uuid: (1.5, None)}
-    assert scored.calls[0][1]["return_metadata"] is not None
+
+class EmbeddingServer(httpx.AsyncBaseTransport):
+    """An OpenAI-compatible ``/embeddings`` answering in reverse input order (with indexes)."""
+
+    def __init__(self, count_offset: int = 0):
+        self.bodies, self.headers, self.count_offset = [], [], count_offset
+
+    async def handle_async_request(self, request):
+        body = json.loads(request.content)
+        self.bodies.append(body)
+        self.headers.append(dict(request.headers))
+        data = [{"index": i, "embedding": [float(len(text))]} for i, text in enumerate(body["input"])]
+        data = list(reversed(data))[:len(data) + self.count_offset]
+        return httpx.Response(200, json={"data": data}, request=request)
+
+
+async def test_batch_embeddings_keep_the_input_order_and_send_the_model_settings():
+    server = EmbeddingServer()
+    client = BatchEmbeddings("http://e/v1/", "m", api_key="k", dimensions=8, transport=server)
+    assert await client.embed_documents(["a", "bbb", "cc"]) == [[1.0], [3.0], [2.0]]
+    assert server.bodies == [{"model": "m", "input": ["a", "bbb", "cc"], "encoding_format": "float", "dimensions": 8}]
+    assert server.headers[0]["authorization"] == "Bearer k"
+    assert await client.embed_documents([]) == [] and len(server.bodies) == 1
+
+
+async def test_batch_embeddings_refuse_a_wrong_number_of_embeddings():
+    client = BatchEmbeddings("http://e/v1", "m", transport=EmbeddingServer(count_offset=-1))
+    with pytest.raises(ValueError, match="expected 2 embeddings, got 1"):
+        await client.embed_documents(["a", "b"])
