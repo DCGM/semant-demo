@@ -12,6 +12,7 @@ import logging
 from uuid import UUID
 
 from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.adapters.sql.saved_selections import SavedSelectionRepository
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
@@ -82,10 +83,11 @@ async def change_owner(collections: UserCollectionRepository, users: UserLookup,
 
 
 async def delete_collection(collections: UserCollectionRepository, user: Principal | None,
-                            collection_id: Id, attributes: AttributeRepository) -> None:
+                            collection_id: Id, attributes: AttributeRepository,
+                            selections: SavedSelectionRepository | None = None) -> None:
     """
     Deletes the collection with its tags and annotations, then its attribute definitions and
-    change records (#331). Owner only. A failed step raises ``IncompleteWriteError`` naming it
+    change records (#331) and its saved selections (#824). Owner only. A failed step raises ``IncompleteWriteError`` naming it
     and the completed steps; after a failed collection deletion deleting again continues. The definitions go last so that a failed
     collection deletion never costs a surviving collection its definitions and history; rows a
     failed last step leaves behind belong to a collection that no longer exists (ids are never
@@ -103,6 +105,19 @@ async def delete_collection(collections: UserCollectionRepository, user: Princip
             f"delete_attribute_definitions ({type(exc).__name__}). The leftover rows are unreachable "
             "and can be removed later (see docs/TODO.md).",
             step="delete_attribute_definitions", completed={"delete_collection": 1}) from exc
+    if selections is None:
+        return
+    try:
+        await selections.delete_collection(grant.collection_id)
+    except Exception as exc:
+        logger.warning("Deleting the saved selections of collection %s failed: %s",
+                       grant.collection_id, type(exc).__name__)
+        raise IncompleteWriteError(
+            "The collection was deleted, but deleting its saved selections stopped at step "
+            f"delete_saved_selections ({type(exc).__name__}). The leftover rows are unreachable "
+            "and can be removed later (see docs/TODO.md).",
+            step="delete_saved_selections",
+            completed={"delete_collection": 1, "delete_attribute_definitions": 1}) from exc
 
 
 ###########
