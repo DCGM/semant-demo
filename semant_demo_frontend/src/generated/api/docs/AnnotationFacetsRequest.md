@@ -19,6 +19,7 @@ Name | Type
 `near` | [NearFilter](NearFilter.md)
 `facets` | Array&lt;string&gt;
 `ranking` | [AnnotationRanking](AnnotationRanking.md)
+`selfExclusion` | boolean
 
 ## Example
 
@@ -39,6 +40,7 @@ const example = {
   "near": null,
   "facets": null,
   "ranking": null,
+  "selfExclusion": null,
 } satisfies AnnotationFacetsRequest
 
 console.log(example)

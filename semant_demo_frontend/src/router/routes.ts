@@ -74,6 +74,12 @@ const routes: RouteRecordRaw[] = [
             component: () => import('src/features/annotations/concordance/CollectionAnnotationsPage.vue')
           },
           {
+            // Statistics of the annotation workspace query (#818).
+            name: 'collectionStatistics',
+            path: 'statistics',
+            component: () => import('src/features/annotations/statistics/AnnotationStatisticsPage.vue')
+          },
+          {
             name: 'collectionTags',
             path: 'tags',
             component: () => import('src/features/user_collections/CollectionTagsAttributesPage.vue')
