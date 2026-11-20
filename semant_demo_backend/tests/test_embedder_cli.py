@@ -131,7 +131,7 @@ def test_the_read_only_check_needs_no_endpoint_and_ignores_one(monkeypatch, conf
 
     def check(self):
         checked.append((self.weaviate_host, self.weaviate_port))
-        return SimpleNamespace(refused=None, missing=0)
+        return SimpleNamespace(refused=None, missing=0, already_stored=0)
 
     monkeypatch.setattr(EmbeddingPipeline, "check", check)
 

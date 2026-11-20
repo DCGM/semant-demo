@@ -75,6 +75,8 @@ class TagSpan(BaseModel):
     # service. Stored alongside the span itself in the database.
     reason: str | None = None
     confidence: float | None = None
+    # Actual #460 provenance only; None for legacy annotations/collections without it.
+    createdAt: datetime | None = None
     editVersion: int = 0
     """Span writes (type, tag, offsets) since creation (#460); 0 for spans never written
     since. Sent back as ``expected_version`` so a collaborator's intervening write is
