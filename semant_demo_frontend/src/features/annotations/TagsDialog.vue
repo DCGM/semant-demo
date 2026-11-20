@@ -145,8 +145,7 @@
                 :label="`Example ${index + 1}`"
                 :disable="saving"
                 clearable
-                clear-value=""
-                @keydown.enter="onExampleEnter(index, $event)"
+                @keydown.enter.exact="onExampleEnter(index, $event)"
               />
             </div>
             <div class="col-auto self-center">
@@ -241,7 +240,7 @@ const tagPictogram = ref<string>(
   props.tag?.pictogram?.trim() || defaultTagPictogram
 )
 const tagDefinition = ref<string | null>(props.tag?.definition ?? null)
-const tagExamples = ref<string[]>(
+const tagExamples = ref<(string | null)[]>(
   props.tag?.examples?.length
     ? [...props.tag.examples]
     : ['']
@@ -296,9 +295,10 @@ const tagPictogramOptions = [
   { label: 'Info', value: 'info' }
 ]
 
+// An example cleared with its clear button is null (QInput's clearable).
 const normalizedExamples = computed<string[]>(() => {
   return tagExamples.value
-    .map((item: string) => item.trim())
+    .map((item: string | null) => (item ?? '').trim())
     .filter((item: string) => item.length > 0)
 })
 
