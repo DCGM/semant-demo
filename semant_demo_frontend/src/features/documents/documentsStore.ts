@@ -44,14 +44,15 @@ export const useDocumentsStore = defineStore('documents', () => {
     }
   }
 
-  const fetchDocument = async (documentId: string) => {
+  /** Reads the document; through `collectionId` for one that is not public (#279). */
+  const fetchDocument = async (documentId: string, collectionId: string | null = null) => {
     activeRequests.enter()
     const isCurrent = activeRequests.capture()
     if (activeDocument.value?.id !== documentId) activeDocument.value = null
     loading.value = true
     error.value = null
     try {
-      const data = await documentsRepository.getById(documentId)
+      const data = await documentsRepository.getById(documentId, collectionId)
       if (isCurrent()) activeDocument.value = data
     } catch (err) {
       if (!isCurrent()) return

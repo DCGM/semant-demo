@@ -105,6 +105,8 @@ class DocumentStats(BaseModel):
     total_chunks: int
     annotations_count: int
     distinct_tags_count: int
+    suggestions_count: int = 0
+    """Unresolved AI suggestions (``auto`` spans) on the document's chunks in the collection (#770)."""
     ai_max_chunks_per_tag: int | None = None
     """The most chunks one tag of optimized AI suggestions evaluates (``TOPICER_MAX_CHUNKS_PER_TAG``),
     for workload warnings; thorough suggestions evaluate ``chunks_in_collection``."""
@@ -166,11 +168,14 @@ class DocumentPage(BaseModel):
 
 
 class DocumentPages(BaseModel):
-    """A document's page manifest (public). ``available`` is false, with no pages, when the
+    """A document's page manifest. ``available`` is false, with no pages, when the
     document has no imported pages: it is then a text-only document."""
     document_id: UUID
     available: bool
     pages: list[DocumentPage]
+    access_expires_at: datetime | None = None
+    """When the signed asset URLs of a document that is not public, read through a collection,
+    stop working (#279); read the manifest again before then. None: the URLs need no signature."""
 
 
 class PageChunks(BaseModel):

@@ -58,7 +58,7 @@ test('results without a library keep their source title but offer no link', asyn
 })
 
 test('the document view links the original document', async ({ page }) => {
-  await withLibrary(page, `**/api/document/${chronicle.id}`, 'nkp')
+  await withLibrary(page, `**/api/document/${chronicle.id}?*`, 'nkp') // read through the collection (#279)
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
 

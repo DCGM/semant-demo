@@ -30,6 +30,16 @@ METADATA_PROPERTIES = {"title": 2, "subtitle": 1, "author": 1, "publisher": 1}
 BM25 weights: a word in the title counts double. Only those the store declares as searchable
 text are queried (stores differ, #312)."""
 
+PUBLIC = "public"
+"""The ``Documents`` property of the source-library rights (#279): only ``true`` is readable
+outside an authorized collection; ``false`` and a missing value are restricted."""
+
+
+def public_documents():
+    """The filter on ``Documents`` that only a public document (``public`` is true) satisfies."""
+    return Filter.by_property(PUBLIC).equal(True)
+
+
 LAYOUT_START = "layoutStart"
 """The ``Chunks`` object property of a chunk's start on the page scans (#541)."""
 
@@ -132,10 +142,12 @@ class DocumentRepository:
             ))
         return DocumentDetail(document=document, chunks=chunks)
 
-    async def exists(self, document_id: UUID) -> bool:
-        """Whether the document exists (reads no properties)."""
+    async def is_public(self, document_id: UUID) -> bool:
+        """Whether the document exists and is public (``public`` is true, #279); false for a
+        restricted (``false``), unknown (missing) or absent document."""
         documents = self.client.collections.get(self.collectionNames.document_collection_name)
-        return await documents.query.fetch_object_by_id(document_id, return_properties=[]) is not None
+        response = await documents.query.fetch_object_by_id(document_id, return_properties=[PUBLIC])
+        return response is not None and response.properties.get(PUBLIC) is True
 
     async def read_chunks_covering_page(self, document_id: UUID, page: int, limit: int) -> list[DocumentChunk]:
         """Up to ``limit`` chunks of the document whose ``from_page``..``to_page`` includes
@@ -354,14 +366,17 @@ class DocumentRepository:
         return [obj.uuid for obj in response.objects]
 
     async def read_eligible(self, document_ids: Sequence[UUID], collection_id: UUID | None = None,
-                            conditions: Sequence[Condition] = ()) -> dict[UUID, Document]:
+                            conditions: Sequence[Condition] = (), include_restricted: bool = False,
+                            ) -> dict[UUID, Document]:
         """The documents among ``document_ids`` that ``count`` counts (of the collection, matching
-        ``conditions``); the others, also those that do not exist, are left out."""
+        ``conditions``); the others, also those that do not exist, are left out.
+        ``include_restricted`` drops the public-only rule of a read without a collection: for a
+        caller whose ids already come from an authorized collection (its annotations)."""
         if not document_ids:
             return {}
         documents = self.client.collections.get(self.collectionNames.document_collection_name)
         by_ids = Filter.by_id().contains_any(list(document_ids))
-        scope = await self._browse_filter(collection_id, conditions)
+        scope = await self._browse_filter(collection_id, conditions, include_restricted=include_restricted)
         response = await documents.query.fetch_objects(
             filters=by_ids if scope is None else Filter.all_of([by_ids, scope]), limit=len(document_ids))
         return {UUID(str(o.uuid)): Document(id=o.uuid, **o.properties) for o in response.objects}
@@ -401,13 +416,16 @@ class DocumentRepository:
         return self._metadata_properties
 
     async def _browse_filter(self, collection_id: UUID | None, conditions: Sequence[Condition] = (),
-                             **substrings: str | None):
-        """The filter of a browse: the collection, the substring filters (stored property ->
+                             include_restricted: bool = False, **substrings: str | None):
+        """The filter of a browse: the collection or, without one, only public documents (#279;
+        the caller has authorized the collection), the substring filters (stored property ->
         text) and the search criteria ``conditions``; None without any."""
         name = self.collectionNames.document_collection_name
         parts = []
         if collection_id is not None:
             parts.append(Filter.by_ref("collection").by_id().equal(collection_id))
+        elif not include_restricted:
+            parts.append(public_documents())
         for prop, value in substrings.items():
             if value:
                 parts.append(Filter.by_property(prop).like(f"*{value}*"))

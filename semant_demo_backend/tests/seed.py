@@ -124,6 +124,8 @@ async def insert_corpus(client: WeaviateAsyncClient, names: CollectionNames, cor
                 "end_paragraph": True,
                 **position_properties(positions[key]),
                 **({"yearIssued": year} if year is not None else {}),
+                # derived from the document's public, failing closed (#793)
+                "documentPublic": corpus.documents[chunk["document"]]["properties"].get("public") is True,
                 **corpus.chunk_classifications.get(key, {}),
             },
             references=references,

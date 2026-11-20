@@ -9,18 +9,17 @@ stored, then a final ``SuggestSpansRunEnd`` with the outcome.
 
 - Concurrency: at most ``PROVIDER_CONCURRENCY`` Topicer calls of one run at a time;
   further chunks are started as earlier calls finish.
-- Daily AI allowance (#408): each unit of Topicer work — a thorough chunk, an optimized
-  tag stream, the selection — is one operation of the caller's allowance, admitted right
-  before it is sent (the first one by ``prepare_*``, so a refusal is an HTTP 429) and
-  settled with the usage Topicer reports when it ends. A refused admission starts no
-  further unit; running units finish and the end event says ``quota_exhausted``. Usage
-  that is missing (an error, a cancellation, an older Topicer's text answer) is unknown
-  and charges at least the reservation; only a request Topicer certainly did not process
-  (connection refused, 422) is free. A tag stream that ends normally without a usable
-  usage summary is charged ``FALLBACK_SHARE`` of its reservation as a fallback estimate
-  (cost source ``fallback``) and logged as a warning. The reservation is
-  ``TOPICER_RESERVE_USD_PER_CHUNK`` per chunk the unit may evaluate (an optimized tag:
-  ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks).
+- Topicer is only sent text (``/v1/tags/propose/texts``); it reads no database. Optimized
+  mode ranks the candidate chunks of each tag itself (``candidates.py``, #792).
+- Daily AI allowance (#408): each Topicer call — a chunk with all tags (thorough), a
+  candidate chunk with one tag (optimized), the selection — is one operation of the
+  caller's allowance, admitted right before it is sent (the first one by ``prepare_*``,
+  so a refusal is an HTTP 429) and settled with the usage Topicer reports when it ends.
+  A refused admission starts no further call; running calls finish and the end event
+  says ``quota_exhausted``. Usage that is missing (an error, a cancellation, an older
+  Topicer's text answer) is unknown and charges at least the reservation; only a request
+  Topicer certainly did not process (connection refused, 422) is free. The reservation
+  is ``TOPICER_RESERVE_USD_PER_CHUNK`` per chunk.
 - Validation (provider output is not trusted): the proposal's tag must be one of the
   request's tags, its chunk one of the document's chunks in the collection, and its
   offsets integers with ``0 <= start < end <= len(text sent)``. Topicer offsets are
@@ -54,11 +53,12 @@ import anyio
 from semant_demo.features.annotations.schemas import SpanType, TagSpan, AnnotationChunk
 from semant_demo.adapters.sql.quota import CallRecord
 from semant_demo.adapters.topicer.client import (
-    TopicerClient, TopicerError, TopicerStreamSummary, TopicerTag, TopicerUsage,
+    TopicerClient, TopicerError, TopicerTag, TopicerUsage,
 )
 from semant_demo.adapters.weaviate.writes import step_failure
 from semant_demo.core.errors import InvalidRequestError, NotFoundError, ServiceUnavailableError
 from semant_demo.features.annotations import service
+from semant_demo.features.annotations.candidates import Candidates
 from semant_demo.features.annotations.source import ChunkSource
 from semant_demo.features.annotations.offsets import code_point_offset, text_length, utf16_offset
 from semant_demo.features.annotations.schemas import (
@@ -77,14 +77,15 @@ logger = logging.getLogger(__name__)
 # Topicer's internal OpenAI semaphore is set to 10, so we match that to
 # saturate it without overshooting.
 PROVIDER_CONCURRENCY = 10
+CANDIDATE_SEARCH_CONCURRENCY = 4
+"""Candidate searches (an embedding and a hybrid query each) of one optimized run at a time."""
 
-FALLBACK_SHARE = 0.25
-"""Share of its reservation charged for a tag stream that ended without usable usage."""
-UNSUPPORTED_OPTIMIZED = "The chosen AI model does not support optimized mode; use thorough mode."
-"""The run's ``error`` when Topicer refuses optimized mode for the configuration (HTTP 409, #189)."""
 
 SuggestionEvent = SuggestSpansChunkResult | SuggestSpansRunEnd
-Unit = Literal["chunk", "tag", "selection"]
+Unit = Literal["chunk", "call", "tag", "selection"]
+Ranker = Callable[[TopicerTag, UUID, UUID, int], Awaitable[Candidates]]
+"""``(tag, collection, document, limit)`` -> the tag's candidate chunks in optimized mode
+(``candidates.rank_candidates`` bound to the search backends)."""
 T = TypeVar("T")
 R = TypeVar("R")
 
@@ -346,22 +347,11 @@ class _Allowance:
 
         return admit, release
 
-    async def settle(self, admission: str | None, usage: TopicerUsage | None, *, no_work: bool = False,
-                     fallback: bool = False) -> None:
-        """Charge the unit's usage; finishes even when the caller is cancelled meanwhile.
-
-        ``fallback``: the unit ended without usage information; charge ``FALLBACK_SHARE``
-        of its reservation, recorded as an estimate rather than consumption.
-        """
+    async def settle(self, admission: str | None, usage: TopicerUsage | None, *, no_work: bool = False) -> None:
+        """Charge the unit's usage; finishes even when the caller is cancelled meanwhile."""
         if self.budget is not None and admission is not None:
-            calls = [] if no_work else [self._fallback_call()] if fallback else _call_records(self.feature, usage)
+            calls = [] if no_work else _call_records(self.feature, usage)
             await _uninterrupted(self._settle(admission, calls))
-
-    def _fallback_call(self) -> CallRecord:
-        # No provider, model or tokens: nothing was reported.
-        return CallRecord(feature=self.feature, tier="topicer", provider="", model="", outcome="usage_missing",
-                          usage_source="unavailable", cost_source="fallback",
-                          cost_usd=self.reserve_usd * FALLBACK_SHARE)
 
     async def _settle(self, admission: str, calls: list[CallRecord]) -> None:
         try:
@@ -498,61 +488,67 @@ async def config_for(provider: TopicerClient, config_name: str | None) -> str:
 
 async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, user: Principal | None,
                                request: SuggestSpansRequest, mode: Literal["thorough", "optimized"],
-                               budget: AllowanceBudget | None = None) -> SuggestionRun:
+                               budget: AllowanceBudget | None = None, rank: Ranker | None = None) -> SuggestionRun:
     """
     Suggestions for the document's chunks in the collection.
 
     ``thorough``: every such chunk is sent to Topicer with all requested tags, one call
-    per chunk; one event per chunk, in completion order. ``optimized``: one Topicer
-    database stream per tag (Topicer pre-filters chunks by vector similarity, at most
-    ``provider.max_chunks_per_tag``), tags one after another; one event per chunk Topicer
-    returns, and one event with an empty ``chunk_id`` when a tag's stream fails. Needs
-    annotation-edit access; the tags and the document must belong to the collection.
+    per chunk. ``optimized``: per tag, ``rank`` picks the chunks most similar to it, at most
+    ``provider.max_chunks_per_tag`` (``candidates.rank_candidates``, #792), and each of them
+    is sent to Topicer with that tag alone, tags one after another (all tags are ranked
+    first, concurrently). One event per call, in
+    completion order; in optimized mode also one event with an empty ``chunk_id`` for a tag
+    whose candidate search failed. Needs annotation-edit access; the tags and the document
+    must belong to the collection.
 
-    Each chunk (thorough) or tag (optimized) is admitted against ``budget`` before it is
-    sent; the first admission happens here, after the access checks, so a refusal raises
-    ``QuotaExhausted`` (HTTP 429) before anything is streamed.
+    Each call is admitted against ``budget`` before it is sent; the first admission happens
+    here, after the access checks, so a refusal raises ``QuotaExhausted`` (HTTP 429) before
+    anything is streamed.
     """
+    if mode == "optimized" and rank is None:
+        raise ValueError("optimized suggestions need a candidate ranker")
     collection_id, document_id, tags = await _authorized_tags(
         store, user, request.collection_id, request.document_id, request.tag_ids)
     config = await config_for(provider, request.config_name)
     chunks = await store.collections.read_all_chunks_by_document(document_id, collection_id)
-    allowed = {t.id for t in tags}
     description = f"{mode}, collection {collection_id}, document {document_id}"
     chunk_reserve = budget.policy.topicer_reserve_usd_per_chunk if budget is not None else 0.0
-    if mode == "thorough":
-        allowance = _Allowance(budget, "topicer_thorough", chunk_reserve)
-        tally = _Tally(unit="chunk", units_total=len(chunks), actor=_run_actor(user))
-    else:
-        allowance = _Allowance(budget, "topicer_optimized", chunk_reserve * provider.max_chunks_per_tag)
-        tally = _Tally(unit="tag", units_total=len(tags), max_chunks_per_tag=provider.max_chunks_per_tag,
-                       actor=_run_actor(user))
+    allowance = _Allowance(budget, f"topicer_{mode}", chunk_reserve)
+    # Optimized: one unit per Topicer call (a candidate chunk with one tag); their number is known
+    # once the candidates are ranked, until then it is the document's chunks.
+    tally = _Tally(unit="chunk" if mode == "thorough" else "call", units_total=len(chunks), actor=_run_actor(user),
+                   max_chunks_per_tag=provider.max_chunks_per_tag if mode == "optimized" else None)
     first = await allowance.admit() if tally.units_total else None
     admit, release = allowance.admitter(tally, first)
 
-    async def thorough(tally: _Tally) -> AsyncGenerator[SuggestSpansChunkResult, None]:
-        async def call(chunk: CollectionChunk, admission: str | None) -> list | TopicerError:
-            usage, no_work = None, False
-            try:
-                answer = await provider.propose_for_text(chunk_id=str(chunk.id), text=chunk.text or "", tags=tags,
-                                                         config_name=config)
-                usage = answer.usage
-                return answer.proposals
-            except TopicerError as e:
-                no_work = e.no_work
-                return e
-            finally:
-                await allowance.settle(admission, usage, no_work=no_work)
+    async def call(item: tuple[CollectionChunk, list[TopicerTag]], admission: str | None) -> list | TopicerError:
+        chunk, item_tags = item
+        usage, no_work = None, False
+        try:
+            answer = await provider.propose_for_text(chunk_id=str(chunk.id), text=chunk.text or "", tags=item_tags,
+                                                     config_name=config)
+            usage = answer.usage
+            return answer.proposals
+        except TopicerError as e:
+            no_work = e.no_work
+            return e
+        finally:
+            await allowance.settle(admission, usage, no_work=no_work)
 
-        async with aclosing(_as_completed(chunks, call, PROVIDER_CONCURRENCY, admit)) as completed:
-            async for chunk, proposals in completed:
+    async def results_of(items: Iterable[tuple[CollectionChunk, list[TopicerTag]]], tally: _Tally,
+                         single_tag: bool = False) -> AsyncGenerator[SuggestSpansChunkResult, None]:
+        # single_tag: each call sent one tag, which a proposal without a tag belongs to.
+        async with aclosing(_as_completed(items, call, PROVIDER_CONCURRENCY, admit)) as completed:
+            async for (chunk, item_tags), proposals in completed:
                 text = chunk.text or ""
+                allowed = {t.id for t in item_tags}
+                default_tag_id = item_tags[0].id if single_tag else None
                 event = _ChunkEvent(tally, str(chunk.id))
                 if isinstance(proposals, TopicerError):
                     event.provider_failed(f"topicer: {proposals}")
                     proposals = []
                 for raw in proposals:
-                    proposal = _validated(raw, allowed, len(text))
+                    proposal = _validated(raw, allowed, len(text), default_tag_id=default_tag_id)
                     if isinstance(proposal, str):
                         event.reject(proposal)
                         continue
@@ -562,97 +558,54 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                     tally.completed_calls += 1
                 yield event.result()
 
+    async def thorough(tally: _Tally) -> AsyncGenerator[SuggestSpansChunkResult, None]:
+        async with aclosing(results_of(((c, tags) for c in chunks), tally)) as results:
+            async for result in results:
+                yield result
+
     async def optimized(tally: _Tally) -> AsyncGenerator[SuggestSpansChunkResult, None]:
-        # The only chunks proposals may be saved on (Topicer returns chunk ids itself),
-        # and the text their offsets are checked against.
-        text_by_id = {str(c.id): c.text or "" for c in chunks}
-        for tag in tags:
-            admission = await admit()
-            if admission is _STOP:
-                return
-            save_failed = False
-            summary: TopicerStreamSummary | None = None
-            failure: TopicerError | None = None
-            ended = False  # the stream ended normally (not failed, cancelled or closed)
-            try:
-                stream = provider.propose_for_db_stream(tag=tag, collection_id=str(collection_id),
-                                                        document_id=str(document_id), config_name=config)
-                async with aclosing(stream) as provider_events:
-                    async for provider_event in provider_events:
-                        if isinstance(provider_event, TopicerStreamSummary):
-                            summary = provider_event
-                            continue
-                        chunk_id = _uuid(provider_event.get("id"))
-                        proposals = provider_event.get("tag_span_proposals") or []
-                        if not isinstance(proposals, list):
-                            proposals = [proposals]
-                        if chunk_id is None:
-                            if proposals:
-                                tally.rejected += len(proposals)
-                                logger.warning("Topicer returned %d proposals without a valid chunk id",
-                                               len(proposals))
-                            continue
-                        event = _ChunkEvent(tally, chunk_id)
-                        if chunk_id not in text_by_id:
-                            # Not a chunk of this document in this collection: save nothing.
-                            event.reject("chunk outside the collection", len(proposals))
-                            proposals = []
-                        text = text_by_id.get(chunk_id, "")
-                        for raw in proposals:
-                            proposal = _validated(raw, allowed, len(text), default_tag_id=tag.id)
-                            if isinstance(proposal, str):
-                                event.reject(proposal)
-                                continue
-                            await _save(store, collection_id, document_id, event, chunk_id, proposal,
-                                        utf16_offset(text, proposal.start), utf16_offset(text, proposal.end))
-                        save_failed = save_failed or event.save_failed
-                        yield event.result()
-                ended = True
-            except TopicerError as e:
-                failure = e
-            finally:
-                await allowance.settle(admission, summary.usage if summary else None,
-                                       no_work=failure is not None and failure.no_work and summary is None,
-                                       fallback=ended and summary is None)
-            if summary is not None and summary.limit_reached:
-                tally.tag_limits.append(SuggestTagLimit(
-                    tag_id=tag.id, tag_name=tag.name, max_chunks=summary.max_chunks or provider.max_chunks_per_tag,
-                    processed_chunks=summary.processed_chunks, candidates_truncated=summary.candidates_truncated))
-            if failure is not None and str(failure) == "HTTP 409":
-                # The configuration has no optimized mode: every other tag would be refused too.
-                tally.error = UNSUPPORTED_OPTIMIZED
-                return
-            problem = _stream_problem(failure, summary, provider.max_chunks_per_tag)
-            if problem:
+        if not chunks:
+            return
+        # Only chunks of this document in the collection are ever sent.
+        by_id = {str(c.id): c for c in chunks}
+        # Several tags at once: a slow or unavailable embedder costs about one timeout per
+        # CANDIDATE_SEARCH_CONCURRENCY tags, not one per tag, without flooding the shared embedder.
+        searches = asyncio.Semaphore(CANDIDATE_SEARCH_CONCURRENCY)
+
+        async def search(tag: TopicerTag) -> Candidates:
+            async with searches:
+                return await rank(tag, collection_id, document_id, provider.max_chunks_per_tag)
+
+        found = await service._gather(*(search(tag) for tag in tags))
+        ranked: list[tuple[TopicerTag, Candidates, list[str]]] = []
+        for tag, candidates in zip(tags, found):
+            if isinstance(candidates, Exception):
+                logger.warning("Candidate search of tag %s (document %s) failed: %s", tag.id, document_id,
+                               type(candidates).__name__)
                 event = _ChunkEvent(tally, "")
-                event.provider_failed(f"topicer (tag={tag.name}): {problem}")
+                event.provider_failed(f"candidate search (tag={tag.name}): {type(candidates).__name__}")
                 yield event.result()
                 continue
-            if summary is None:
-                logger.warning("Topicer stream of tag %s (document %s, config %s) ended without a usable usage "
-                               "summary (missing or malformed); charged %d%% of its reservation as a fallback "
-                               "estimate", tag.id, document_id, config, FALLBACK_SHARE * 100)
-            if not save_failed:
-                tally.completed_calls += 1
+            ranked.append((tag, candidates, [i for i in candidates.ids if i in by_id]))
+        pairs = [(by_id[i], [tag]) for tag, _, ids in ranked for i in ids]
+        tally.units_total = len(pairs)
+        async with aclosing(results_of(pairs, tally, single_tag=True)) as results:
+            async for result in results:
+                yield result
+        # A tag reached the limit when it had that many candidates and all of them were sent
+        # (calls are admitted in order, so a stop by the allowance cuts the last tags).
+        # The limit counts the ranked candidates, also any left out above (a chunk that left the
+        # collection meanwhile).
+        admitted, sent = tally.units_processed, 0
+        for tag, candidates, ids in ranked:
+            sent += len(ids)
+            if len(candidates.ids) >= provider.max_chunks_per_tag and sent <= admitted:
+                tally.tag_limits.append(SuggestTagLimit(
+                    tag_id=tag.id, tag_name=tag.name, max_chunks=provider.max_chunks_per_tag,
+                    processed_chunks=len(ids), candidates_truncated=candidates.truncated))
 
     return SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
                          hold=lambda: store.activity.in_use(collection_id), release=release)
-
-
-def _stream_problem(failure: TopicerError | None, summary: TopicerStreamSummary | None,
-                    max_chunks: int) -> str | None:
-    """Why a tag's database stream did not complete, or None."""
-    if failure is not None and str(failure) == "HTTP 422":
-        logger.warning("Topicer refused a database stream with max_chunks=%d; check TOPICER_MAX_CHUNKS_PER_TAG "
-                       "against Topicer's max_chunks_ceiling", max_chunks)
-        return f"HTTP 422 (Topicer refused the request; the per-tag limit of {max_chunks} chunks may exceed its own)"
-    if failure is not None:
-        return str(failure)
-    if summary is not None and summary.status == "partial":
-        return "some chunks failed"
-    if summary is not None and summary.status == "failed":
-        return "failed"
-    return None
 
 
 # ── Selection ──────────────────────────────────────────────────────────────

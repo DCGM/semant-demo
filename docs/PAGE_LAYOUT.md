@@ -148,18 +148,28 @@ anchors. `image`/`layout`/`thumbnail` say which assets are stored. A manifest th
 parse, has duplicate pages, orders other than 0, 1, ... or another document's id is
 treated as absent (and logged).
 
-**Reads** (public, like the document text; each first checks that the document exists, the
-one place where a future access rule, #279, applies):
+**Reads** follow the document access rule ([ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18), #279):
+a public document's pages are readable by anyone; a restricted or unknown one's only with
+`collection_id` naming a collection the user can read that holds it. An unreadable document
+is "not found" before any file is touched.
 
-- `GET /api/documents/{document_id}/pages`: `DocumentPages`, the pages with the URL of each
-  available asset (`image_url`, `layout_url`, `thumbnail_url`). Without a manifest,
-  `available` is false and `pages` empty: a text-only document. `Cache-Control: no-cache`.
-- `GET /api/documents/{document_id}/pages/{page_id}/{image|layout|thumbnail}`: the file
-  (`image/jpeg` or `application/json`), 404 when absent. Scans and thumbnails are cached for
-  a day; layout files are revalidated (`no-cache`), since a re-import with other parameters
-  replaces them together with the anchors. All carry an `ETag` and answer `If-None-Match`
-  with 304.
-- `GET /api/documents/{document_id}/chunks/by_page?page=N&limit=20` (at most 50):
+- `GET /api/documents/{document_id}/pages[?collection_id=]`: `DocumentPages`, the pages with
+  the URL of each available asset (`image_url`, `layout_url`, `thumbnail_url`). Without a
+  manifest, `available` is false and `pages` empty: a text-only document. Read through a
+  collection, a document that is not public gets signed asset URLs (`?access=<token>`, valid
+  30 minutes and only while the user can read the collection and it holds the document; the
+  manifest gives their expiry, `access_expires_at`, and the scan viewer reads it again before
+  then). Such a URL is a bearer credential: anyone holding it can use it while it is valid and
+  the user still has the collection route; signing out or account deactivation does not end it.
+  `Cache-Control: no-cache`; through a collection `private, no-store`.
+- `GET /api/documents/{document_id}/pages/{page_id}/{image|layout|thumbnail}[?access=]`: the
+  file (`image/jpeg` or `application/json`), 404 when absent or not readable. A public
+  document's assets are `public, no-cache`: shared caches may keep them but revalidate them
+  on every use, so the document's rights are checked again (and a re-import that replaces a
+  layout file with its anchors is seen). A restricted document's assets are
+  `private, no-store`. All carry an `ETag` and answer `If-None-Match` with 304, after the
+  same checks.
+- `GET /api/documents/{document_id}/chunks/by_page?page=N&limit=20[&collection_id=]` (at most 50):
   `PageChunks`, the chunks whose `from_page`..`to_page` includes page `N`, in document
   order, with `has_more`. It opens a page directly without reading earlier pages. The page
   ranges are the stored, coarse ones: in a sample of the corpus a chunk starting at the top

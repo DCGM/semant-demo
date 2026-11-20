@@ -11,6 +11,7 @@ Name | Type
 `chunksCount` | number
 `annotationsCount` | number
 `tagsCount` | number
+`suggestionsCount` | number
 
 ## Example
 
@@ -24,6 +25,7 @@ const example = {
   "chunksCount": null,
   "annotationsCount": null,
   "tagsCount": null,
+  "suggestionsCount": null,
 } satisfies CollectionStats
 
 console.log(example)

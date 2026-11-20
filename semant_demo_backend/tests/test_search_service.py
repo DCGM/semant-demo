@@ -368,17 +368,20 @@ def test_former_no_op_tag_fields_are_tolerated_and_dropped():
 # Authorization #
 #################
 
-async def test_public_search_needs_no_login():
-    query = await run(request(), user=None)
+@pytest.mark.parametrize("user", [None, OWNER])
+async def test_unscoped_search_covers_public_documents_only(user):
+    """Also for a signed-in user: no collection is made readable without being named (#279)."""
+    query = await run(request(), user=user)
 
-    assert query.collection_id is None
+    assert (query.collection_id, query.readable_collection_id) == (None, None)
 
 
 @pytest.mark.parametrize("user", [OWNER, SHARED])
 async def test_collection_scope_is_passed_to_retrieval(user):
     query = await run(request(user_collection_id=str(COLLECTION)), user=user)
 
-    assert query.collection_id == COLLECTION
+    # The authorized collection's documents are eligible whatever their rights (#279).
+    assert (query.collection_id, query.readable_collection_id) == (COLLECTION, COLLECTION)
 
 
 @pytest.mark.parametrize("user, collection, error", [

@@ -123,3 +123,35 @@ instance), the application's collections, one dataset's corpus with its original
 vector per model with document embeddings cached on disk, and the application's own passage
 search per configuration (fusion type and BM25 properties included). The schema is the test
 schema's shape, not production's exact one (#128); `describe()` records it in the manifests.
+
+`store.py` implements it (`open_store(spec)`):
+
+- **Instance.** With `StoreSpec.host`, that instance; otherwise the container `spec.name` with the
+  volume `<name>-data`, both labelled `org.semant.purpose=search-benchmark`, on loopback ports
+  (the spec's, or free ones), reused when it exists (`container.py`). A container or volume of
+  that name without the label, or with another image, is refused. Nothing deletes it: recreate a
+  store with `docker rm -f <name> && docker volume rm <name>-data`.
+- **Ownership.** The token is in `spec.token_file` (created with mode 0600); the marker collection
+  `SemantSearchBenchmarkStore` holds its SHA-256 and the store's records (dataset, vectors). Only
+  an instance without any collection is claimed, and every write checks the marker first.
+- **Corpus.** `Chunks` keep the chunk's text, title, order, language and document year, and
+  `documentPublic: true` (anonymous search selects it, #793); the page properties a search hit
+  requires are made up (a UUID page id, page 1), searchable as in the application's schema so
+  BM25 searches the same properties. `Documents` keep title, year and type, `public: true`. The
+  store's dataset identity is the dataset id, version and the SHA-256 of `corpus.jsonl`, so the
+  generator's corpus-only dataset and the final dataset with the same corpus are one load.
+- **Vectors.** `ensure_vector` adds the named vector (self-provided, HNSW, cosine) and embeds
+  `VectorSpec.document_template` rendered with `{text}` and `{title}` (the chunk's own title,
+  empty without one) through the OpenAI-compatible endpoint, in batches with bounded concurrency
+  and retries (transport errors, 429, 5xx). Embeddings are cached in `cache_dir` by (model,
+  dimensions, template) and the SHA-256 of the rendered text; only chunks without the vector are
+  embedded or written, a failed chunk gets none and is counted by failure class.
+- **Search.** `searcher` runs `search_passages` anonymously without filters, with the
+  configuration's mode, alpha, fusion, BM25 `properties` (`name^boost`), query prefix and depth
+  (the retrieval limit), and reads the first 20 passages in full, as the application's first page.
+  Scores are Weaviate's (BM25, hybrid) or the cosine similarity (vector), recorded by the search
+  repository's `record_scores` option; `embed_ms` is the query embedding, `search_ms` the rest.
+
+Its integration tests (`tests/integration/test_search_benchmark_store.py`) run against the test
+run's throwaway Weaviate, telling `open_store` to tolerate the tests' own marker
+(`tolerated_collections`); one test starts its own container when Docker already has the image.

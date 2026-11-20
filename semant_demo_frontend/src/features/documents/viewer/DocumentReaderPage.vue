@@ -28,6 +28,7 @@
       ref="workspacePane"
       v-model:narrow="workspace.narrow.value"
       :document-id="documentId"
+      :collection-id="collectionId"
       :mode="workspace.shown.value"
       :page-id="scanPageId"
       :highlights="scanSync.sync.scanHighlights.value"
@@ -487,7 +488,7 @@ async function linkedChunkOrder(chunk: string, order: unknown): Promise<number |
   const given = typeof order === 'string' ? Number(order) : Number.NaN
   if (Number.isInteger(given)) return given
   try {
-    return await chunksRepository.getChunkOrder(props.documentId, chunk)
+    return await chunksRepository.getChunkOrder(props.documentId, chunk, props.collectionId)
   } catch (e) {
     console.error('Resolving the linked annotation\'s chunk failed', e)
     return null
@@ -521,6 +522,7 @@ const workspacePane = ref<InstanceType<typeof DocumentWorkspace> | null>(null)
 const workspace = useWorkspaceMode(parseMode(route.query.view))
 const scanSync = useReaderScanSync({
   documentId: () => props.documentId,
+  collectionId: () => props.collectionId,
   chunkWindow,
   loadSpans: (chunkIds) => tagSpans.loadSpansForChunksInCollection(chunkIds, props.collectionId),
   focusScan: (request) => workspacePane.value?.focus(request) ?? Promise.resolve(false),
@@ -657,6 +659,12 @@ const recordTagUsage = (tagId: string) => {
   setLastUsedTagId(props.collectionId, tagId)
 }
 
+// A saved annotation must be visible even when its tag was hidden in the panel (#589).
+const onTagApplied = (tagId: string) => {
+  tagNav.showTag(tagId)
+  recordTagUsage(tagId)
+}
+
 // The span being edited when it is an AI suggestion: the popover offers approve/reject, also
 // after its start was dragged into another chunk (it is stored on its own chunk until saved).
 const editingAutoSpan = computed(() => {
@@ -711,7 +719,9 @@ watch(editingAutoSpan, (span) => {
   if (span?.id) highlightAutoSpan(span.id)
 })
 
-const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
+// `label`: the gutter label clicked, to open the popover beside it, clear of the text (#770);
+// a click on the text opens it at the cursor.
+const onMarkerClick = (item: SpanMarker, e: MouseEvent, label?: DOMRect) => {
   annotations.editSpan({
     id: item.spanId,
     chunkId: item.chunkId,
@@ -719,7 +729,8 @@ const onMarkerClick = (item: SpanMarker, e: MouseEvent) => {
     start: item.start,
     end: item.end
   })
-  popoverRef.value?.moveTo(e)
+  if (label) popoverRef.value?.moveBeside(e, label)
+  else popoverRef.value?.moveTo(e)
   popoverRef.value?.showMode('actions')
 
   // Sync nav index
@@ -868,7 +879,7 @@ async function saveWithFocusedTag(tagId: string, sel: Selection) {
     : null
   // Failed and still open: the popover shows it in the picker.
   if (focusTaggedSelection.value === sel) focusTaggedSelection.value = null
-  if (applied) recordTagUsage(tagId)
+  if (applied) onTagApplied(tagId)
 }
 
 // A double-clicked word waiting for its tag is not saved with a tag the user has left.
@@ -886,7 +897,7 @@ const onTagClick = async (tagId: string) => {
     ? await runSpanRequest(() => annotations.updateSpanTag(tagId), 'The tag could not be changed.')
     : await runSpanRequest(() => annotations.createSpan(tagId), 'The tag could not be saved.')
   // Only a tag that really went onto a span becomes the last-used suggestion.
-  if (applied) recordTagUsage(tagId)
+  if (applied) onTagApplied(tagId)
 }
 
 const onSavePosition = () =>
@@ -1068,7 +1079,7 @@ onMounted(async () => {
     loadChunksInCollectionDocument(props.collectionId, props.documentId)
   ])
 
-  void countDocumentChunks(props.documentId).then(n => { totalDocumentChunks.value = n })
+  void countDocumentChunks(props.documentId, props.collectionId).then(n => { totalDocumentChunks.value = n })
 
   await nextTick()
   if (documentTextRef.value) {

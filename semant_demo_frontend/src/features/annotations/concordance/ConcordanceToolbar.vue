@@ -36,7 +36,8 @@
           label="Tags"
           :display-value="tagsLabel"
           class="concordance-toolbar__tags"
-          data-testid="concordance-tags"
+          :popup-content-style="popupStyle"
+            data-testid="concordance-tags"
           @update:model-value="value => emit('change', { tagIds: value ?? [] })"
         >
           <template #option="{ itemProps, opt, selected, toggleOption }">
@@ -49,6 +50,9 @@
                   <span class="concordance-toolbar__dot" :style="{ backgroundColor: opt.color }" aria-hidden="true" />
                   {{ opt.label }}
                 </q-item-label>
+              </q-item-section>
+              <q-item-section v-if="opt.count != null" side>
+                <span class="concordance-toolbar__count" :class="{ 'concordance-toolbar__count--ranked': ranked }" data-testid="concordance-tag-count">{{ countText(opt.count) }}</span>
               </q-item-section>
             </q-item>
           </template>
@@ -71,6 +75,8 @@
             :data-testid="`concordance-status-${option.value}`"
             @click="toggleType(option.value, !statusActive(option.value))"
           >
+<!-- A small number in the corner of the button takes no width, so late counts or a narrowed list never wrap the row. -->
+            <span v-if="statusCount(option.value) != null" class="concordance-toolbar__count" :class="ranked ? 'concordance-toolbar__count--ranked' : 'concordance-toolbar__count--badge'" :data-testid="`concordance-status-count-${option.value}`">{{ countText(statusCount(option.value)!) }}</span>
             <q-tooltip v-if="option.hint">{{ option.hint }}</q-tooltip>
           </q-btn>
         </q-btn-group>
@@ -149,14 +155,6 @@
               </q-btn>
             </template>
           </q-input>
-          <q-checkbox
-            v-if="filters.mode === RetrievalMode.similar"
-            dense
-            :model-value="filters.includeSource"
-            label="Include source"
-            data-testid="concordance-include-source"
-            @update:model-value="value => emit('change', { includeSource: !!value })"
-          />
         </div>
 
         <q-btn
@@ -253,11 +251,12 @@
             hide-bottom-space
             :error="!!documentsError"
             :error-message="documentsError ?? undefined"
+            :popup-content-style="popupStyle"
             data-testid="concordance-sources"
             @filter="filterDocuments"
             @update:model-value="value => emit('change', { documentIds: value ?? [] })"
           />
-          <div class="concordance-toolbar__years" role="group" aria-label="Publication years">
+          <div class="concordance-toolbar__years" role="group" aria-label="Publication years" :title="yearHint ?? undefined">
             <q-input
               ref="yearInput"
               :model-value="filters.documentFilters.yearMin ?? ''"
@@ -282,6 +281,7 @@
               @update:model-value="value => setDocumentFilters({ yearMax: toYear(value) })"
             />
           </div>
+          <p v-if="yearHint" class="concordance-toolbar__rule" data-testid="concordance-year-hint">{{ yearHint }}</p>
           <q-input
             v-model="titleDraft"
             dense
@@ -322,6 +322,7 @@
             hide-bottom-space
             :label="libraryOptions.length ? 'Source library' : 'Source library (none recorded)'"
             :disable="!libraryOptions.length"
+            :popup-content-style="popupStyle"
             data-testid="concordance-libraries"
             @update:model-value="value => setDocumentFilters({ libraries: value ?? [] })"
           />
@@ -339,6 +340,7 @@
             hide-bottom-space
             :label="languageOptions.length ? 'Document language' : 'Document language (none recorded)'"
             :disable="!languageOptions.length"
+            :popup-content-style="popupStyle"
             data-testid="concordance-languages"
             @update:model-value="value => setDocumentFilters({ languages: value ?? [] })"
           />
@@ -364,6 +366,7 @@
             class="concordance-toolbar__attributes"
             aria-describedby="concordance-attribute-rule"
             :display-value="attributesLabel"
+            :popup-content-style="popupStyle"
             data-testid="concordance-attributes"
             @filter="filterAttributes"
             @update:model-value="setAttributeFilter"
@@ -375,6 +378,10 @@
                 </q-item-section>
                 <q-item-section>
                   <q-item-label :class="{ 'text-italic': opt.unassigned }">{{ opt.label }}</q-item-label>
+                  <q-item-label v-if="opt.inapplicable" caption>{{ opt.inapplicable }} on annotations it no longer applies to</q-item-label>
+                </q-item-section>
+                <q-item-section v-if="opt.count != null" side>
+                  <span class="concordance-toolbar__count" :class="{ 'concordance-toolbar__count--ranked': ranked }" data-testid="concordance-attribute-count">{{ countText(opt.count) }}</span>
                 </q-item-section>
               </q-item>
             </template>
@@ -384,6 +391,127 @@
           </p>
         </div>
       </div>
+      <div class="concordance-toolbar__more-section" data-testid="concordance-near-form">
+        <p class="concordance-toolbar__more-title">Proximity</p>
+        <!-- One sentence (#333): [With | Without] a neighbor tagged [tags] (at most [N unit]) [where].
+             Every control is an inline field of one height, so the sentence reads as a unit. -->
+        <div class="concordance-toolbar__near" role="group" aria-label="Proximity filter" aria-describedby="concordance-near-summary">
+          <q-btn-toggle
+            v-if="filters.near"
+            :model-value="filters.near.absent ? 'without' : 'with'"
+            :options="presenceOptions"
+            dense
+            no-caps
+            unelevated
+            toggle-color="primary"
+            color="white"
+            text-color="grey-9"
+            class="concordance-toolbar__near-presence"
+            aria-label="Keep annotations with or without such a neighbor"
+            data-testid="concordance-near-presence"
+            @update:model-value="value => setNear({ absent: value === 'without' })"
+          />
+          <span class="concordance-toolbar__near-word">{{ filters.near ? 'a neighbor tagged' : 'Near annotations tagged' }}</span>
+          <q-select
+            :model-value="filters.near?.tagIds ?? []"
+            :options="tagOptions"
+            multiple
+            emit-value
+            map-options
+            dense
+            outlined
+            options-dense
+            hide-bottom-space
+            hide-dropdown-icon
+            :display-value="nearTagsLabel"
+            aria-label="Neighbor tags"
+            class="concordance-toolbar__near-field concordance-toolbar__near-tags"
+            :class="{ 'concordance-toolbar__near-field--empty': !filters.near }"
+            data-testid="concordance-near-tags"
+            @update:model-value="setNearTags"
+          >
+            <template #option="{ itemProps, opt, selected, toggleOption }">
+              <q-item v-bind="itemProps">
+                <q-item-section side>
+                  <q-checkbox dense :model-value="selected" @update:model-value="toggleOption(opt)" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>
+                    <span class="concordance-toolbar__dot" :style="{ backgroundColor: opt.color }" aria-hidden="true" />
+                    {{ opt.label }}
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+            <template v-if="filters.near" #append>
+              <q-icon name="close" size="16px" class="cursor-pointer" role="button" aria-label="Remove the proximity filter"
+                      tabindex="0" @click.stop="setNearTags(null)" @keydown.enter.stop="setNearTags(null)" />
+            </template>
+          </q-select>
+          <template v-if="filters.near">
+            <template v-if="filters.near.relation === NearRelation.within">
+              <span class="concordance-toolbar__near-word">at most</span>
+              <!-- The distance and its unit as one field: "50 words". -->
+              <span class="concordance-toolbar__near-distance-group">
+                <q-input
+                  :model-value="filters.near.distance"
+                  dense
+                  borderless
+                  type="number"
+                  min="0"
+                  debounce="500"
+                  hide-bottom-space
+                  aria-label="Largest distance"
+                  class="concordance-toolbar__near-distance"
+                  data-testid="concordance-near-distance"
+                  @update:model-value="value => setNear({ distance: toDistance(value) })"
+                />
+                <q-select
+                  :model-value="filters.near.unit"
+                  :options="unitOptions"
+                  emit-value
+                  map-options
+                  dense
+                  borderless
+                  options-dense
+                  hide-bottom-space
+                  aria-label="Distance unit"
+                  class="concordance-toolbar__near-unit"
+                  data-testid="concordance-near-unit"
+                  @update:model-value="value => setNear({ unit: value })"
+                />
+              </span>
+            </template>
+            <q-select
+              :model-value="placement"
+              :options="placementOptions"
+              emit-value
+              map-options
+              dense
+              outlined
+              options-dense
+              hide-bottom-space
+              aria-label="Where the neighbor is"
+              class="concordance-toolbar__near-field concordance-toolbar__near-placement"
+              data-testid="concordance-near-placement"
+              @update:model-value="setPlacement"
+            />
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="primary"
+              icon="swap_horiz"
+              label="Swap with listed tags"
+              class="concordance-toolbar__near-swap"
+              :disable="!swapChange"
+              data-testid="concordance-near-swap"
+              @click="swapChange && emit('change', swapChange)"
+            />
+          </template>
+        </div>
+        <p id="concordance-near-summary" class="concordance-toolbar__rule" data-testid="concordance-near-summary">{{ nearSummaryText }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -391,22 +519,28 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import {
-  QBtn, QBtnGroup, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
+  QBtn, QBtnGroup, QBtnToggle, QCheckbox, QIcon, QInput, QItem, QItemLabel, QItemSection, QPopupProxy, QSelect, QTooltip, useQuasar
 } from 'quasar'
 import {
-  RetrievalMode, SpanType, TextScope, type AnnotatedDocument, type Attribute, type DocumentFilters, type Tag
+  DistanceUnit, NearRelation, SpanType, TextScope, type AnnotatedDocument, type AnnotationFacets, type Attribute,
+  type DocumentFilters, type NearFilter, type Tag
 } from 'src/generated/api'
 import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
 import { type ConcordanceFilters } from './concordanceStore'
 import type { FilterField } from './ConcordanceTable.vue'
-import { SCOPE_LABELS, concordanceChips, scopeHintText, similarityHintText, titleProblem } from './filterChips'
+import {
+  PLACEMENTS, SCOPE_LABELS, UNIT_LABELS, concordanceChips, defaultNear, nearSummary, placementOf, scopeHintText, similarityHintText,
+  swapNear, titleProblem
+} from './filterChips'
 
 const props = defineProps<{
   filters: ConcordanceFilters
   tags: Tag[]
   documents: AnnotatedDocument[]
   documentsError?: string | null
+  /** How many annotations each choice gives (#667); none until read or when reading failed. */
+  facets?: AnnotationFacets | null
   /** The collection's attribute definitions (#331), retired ones included. */
   attributes?: Attribute[]
   /** The attributes shown in columns of their own. */
@@ -471,7 +605,35 @@ function openFilter (field: FilterField) {
 
 defineExpose({ openFilter })
 
-const tagOptions = computed(() => props.tags.map(t => ({ label: t.name, value: t.id, color: t.color })))
+/** The counted values of a facet by value, with the facet's missing count; null while not read. */
+function facetOf (name: string) {
+  const facet = props.facets?.facets.find(f => f.facet === name)
+  return facet ? { ...facet, byValue: new Map(facet.values.map(v => [v.value, v])) } : null
+}
+/** Annotations the choice gives; 0 when the facet counted none with it. Null when not counted. */
+function countOf (name: string, value: string): number | null {
+  const facet = facetOf(name)
+  return facet ? facet.byValue.get(value)?.count ?? 0 : null
+}
+
+/** A ranked query counts its top k results, not every match: the counts then say so, in bold. */
+const ranked = computed(() => props.facets?.population === 'top_k')
+const countText = (n: number) => ranked.value ? `${n} in top ${props.facets?.k}` : String(n)
+/** Menus of counts are wider when each count carries its "in top k". */
+const popupStyle = computed(() => ranked.value ? 'min-width: 320px' : undefined)
+
+const tagFacet = computed(() => facetOf('tag'))
+const tagOptions = computed(() => props.tags.map(t => ({
+  label: t.name, value: t.id, color: t.color, count: tagFacet.value ? tagFacet.value.byValue.get(t.id)?.count ?? 0 : null
+})))
+const statusCount = (type: SpanType) => countOf('type', type)
+const yearHint = computed(() => {
+  const facet = facetOf('year')
+  if (!facet) return null
+  const years = facet.values.map(v => Number(v.value)).sort((a, b) => a - b)
+  const range = years.length ? `${years[0]}\u2013${years[years.length - 1]}` : 'no year recorded'
+  return `Annotations from ${range}${facet.missing ? `; ${facet.missing} without a year` : ''}`
+})
 /** The chosen tags in a line of their own, however many: the first name and how many more. */
 const tagsLabel = computed(() => {
   const names = props.filters.tagIds.map(id => props.tags.find(t => t.id === id)?.name ?? 'Unknown tag')
@@ -493,6 +655,44 @@ const scopeOptions = Object.values(TextScope).map(value => ({ value, label: SCOP
 const textHint = computed(() => scopeHintText(props.filters.textScope))
 const similarityHint = computed(() => similarityHintText())
 
+const presenceOptions = [{ label: 'With', value: 'with' }, { label: 'Without', value: 'without' }]
+const unitOptions = Object.values(DistanceUnit).map(value => ({ value, label: UNIT_LABELS[value] }))
+const placementOptions = PLACEMENTS.map(p => ({ value: p.key, label: p.label }))
+const placement = computed(() => props.filters.near ? placementOf(props.filters.near) : null)
+/** The neighbor tags in one line, as the main tag filter shows its tags. */
+const nearTagsLabel = computed(() => {
+  const names = tagNames(props.filters.near?.tagIds ?? [])
+  if (!names.length) return 'choose tags'
+  return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`
+})
+const swapChange = computed(() => swapNear(props.filters))
+const nearSummaryText = computed(() => nearSummary(props.filters.near, tagNames(props.filters.tagIds), tagNames(props.filters.near?.tagIds ?? [])))
+
+function tagNames (ids: string[]): string[] {
+  return ids.map(id => props.tags.find(t => t.id === id)?.name ?? 'Unknown tag')
+}
+
+function setPlacement (key: string) {
+  const chosen = PLACEMENTS.find(p => p.key === key)
+  if (chosen) setNear({ relation: chosen.relation, direction: chosen.direction })
+}
+
+/** Choosing neighbor tags starts a proximity filter (`defaultNear`); clearing them ends it. */
+function setNearTags (value: string[] | null) {
+  const tagIds = value ?? []
+  if (!tagIds.length) emit('change', { near: null })
+  else emit('change', { near: props.filters.near ? { ...props.filters.near, tagIds } : defaultNear(tagIds) })
+}
+
+function setNear (change: Partial<NearFilter>) {
+  if (props.filters.near) emit('change', { near: { ...props.filters.near, ...change } })
+}
+
+function toDistance (value: string | number | null): number {
+  const number = Math.round(Number(value))
+  return Number.isFinite(number) ? Math.min(Math.max(number, 0), 100000) : 50
+}
+
 function setDocumentFilters (change: Partial<DocumentFilters>) {
   emit('change', { documentFilters: { ...props.filters.documentFilters, ...change } })
 }
@@ -501,7 +701,7 @@ function setDocumentFilters (change: Partial<DocumentFilters>) {
 const moreFilterCount = computed(() => {
   const f = props.filters
   const d = f.documentFilters
-  return f.documentIds.length + f.attributeValues.length + f.attributeUnassigned.length +
+  return f.documentIds.length + f.attributeValues.length + f.attributeUnassigned.length + (f.near ? 1 : 0) +
     (d.yearMin != null ? 1 : 0) + (d.yearMax != null ? 1 : 0) +
     (d.titleContains?.length ?? 0) + (d.libraries?.length ?? 0) + (d.languages?.length ?? 0)
 })
@@ -525,8 +725,12 @@ function valueOptions (key: 'library' | 'language', label: (value: string) => st
     const value = d[key]
     if (value) counts.set(value, (counts.get(value) ?? 0) + d.count)
   }
+  // The choices are those of the documents; their counts, when read, are those of the whole query
+  // without this filter (#667), 0 for a choice nothing matches now.
+  const facet = facetOf(key)
+  if (facet) for (const value of counts.keys()) counts.set(value, facet.byValue.get(value)?.count ?? 0)
   return [...counts].sort(([a], [b]) => label(a).localeCompare(label(b)))
-    .map(([value, count]) => ({ value, label: `${label(value)} (${count})` }))
+    .map(([value, count]) => ({ value, label: `${label(value)} (${props.facets ? countText(count) : count})` }))
 }
 const libraryOptions = computed(() => valueOptions('library', libraryLabel))
 const languageOptions = computed(() => valueOptions('language', languageLabel))
@@ -541,9 +745,20 @@ function toYear (value: string | number | null): number | null {
   return value === null || value === '' || !Number.isInteger(year) ? null : year
 }
 
+/** The annotations of the document under the whole query without the source filter (#667) when
+ * read: 0 when none. Null (unknown, not shown) for a document the facet left out because it lists
+ * the 500 documents with most annotations only: the older count of the choices would overstate it. */
+function documentCount (d: AnnotatedDocument): number | null {
+  const facet = facetOf('document')
+  if (!facet) return d.count
+  return facet.byValue.get(d.id)?.count ?? (facet.truncated ? null : 0)
+}
+
 function documentLabel (d: AnnotatedDocument): string {
-  if (!d.available) return `Unavailable source (${d.count})`
-  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''} (${d.count})`
+  const count = documentCount(d)
+  const shown = count === null ? '' : ` (${props.facets ? countText(count) : count})`
+  if (!d.available) return `Unavailable source${shown}`
+  return `${d.title || 'Untitled document'}${d.year ? `, ${d.year}` : ''}${shown}`
 }
 
 const documentOptions = computed(() => props.documents.map(d => ({ label: documentLabel(d), value: d.id })))
@@ -566,11 +781,19 @@ const sourcesLabel = computed(() => {
 // "not assigned"; one select edits both filter lists.
 const attributeOptions = computed(() => attributes.value.flatMap(a => {
   const name = a.retired ? `${a.name} (retired)` : a.name
+  const facet = facetOf(`attribute:${a.id}`)
   return [
-    ...orderedValues(a).map(v => ({
-      label: `${name}: ${valueName(v)}${v.retired ? ' (retired)' : ''}`, value: `v:${a.id}:${v.id}`, unassigned: false
-    })),
-    { label: `${name}: not assigned`, value: `u:${a.id}`, unassigned: true }
+    ...orderedValues(a).map(v => {
+      const found = facet?.byValue.get(v.id)
+      return {
+        label: `${name}: ${valueName(v)}${v.retired ? ' (retired)' : ''}`,
+        value: `v:${a.id}:${v.id}`,
+        unassigned: false,
+        count: facet ? found?.count ?? 0 : null,
+        inapplicable: found?.inapplicable ?? 0
+      }
+    }),
+    { label: `${name}: not assigned`, value: `u:${a.id}`, unassigned: true, count: facet ? facet.missing : null, inapplicable: 0 }
   ]
 }))
 const attributeNeedle = ref('')
@@ -632,6 +855,29 @@ const shownLabel = computed(() => {
 /* The controls take part in the row directly; the wrapper only shows and hides them. */
 .concordance-toolbar__primary {
   display: contents;
+}
+
+.concordance-toolbar__count {
+  margin-left: 6px;
+  font-size: 0.85em;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.concordance-toolbar__count--badge {
+  position: absolute;
+  right: 4px;
+  bottom: 1px;
+  margin: 0;
+  font-size: 0.68em;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.concordance-toolbar__count--ranked {
+  font-weight: 600;
+  opacity: 1;
+  white-space: nowrap;
 }
 
 .concordance-toolbar__tags {
@@ -771,6 +1017,114 @@ const shownLabel = computed(() => {
 .concordance-toolbar__more-fields > .q-field {
   flex: 1 1 220px;
   max-width: 340px;
+}
+
+.concordance-toolbar__near {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  line-height: 32px;
+}
+
+.concordance-toolbar__near-word {
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+/* One height (32px) and a light, rounded look for every control of the sentence. */
+.concordance-toolbar__near-field :deep(.q-field__control),
+.concordance-toolbar__near-field :deep(.q-field__marginal),
+.concordance-toolbar__near-field :deep(.q-field__native) {
+  min-height: 32px;
+  height: 32px;
+}
+
+.concordance-toolbar__near-field :deep(.q-field__control) {
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.concordance-toolbar__near-field :deep(.q-field__native) {
+  padding: 0;
+  font-weight: 500;
+}
+
+.concordance-toolbar__near-field--empty :deep(.q-field__native) {
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.concordance-toolbar__near-tags {
+  min-width: 120px;
+  max-width: 220px;
+}
+
+.concordance-toolbar__near-presence {
+  height: 32px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.concordance-toolbar__near-presence :deep(.q-btn) {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.concordance-toolbar__near-distance-group {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 2px 0 10px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.concordance-toolbar__near-distance-group:focus-within {
+  border-color: var(--q-primary);
+}
+
+.concordance-toolbar__near-distance-group :deep(.q-field__control),
+.concordance-toolbar__near-distance-group :deep(.q-field__marginal),
+.concordance-toolbar__near-distance-group :deep(.q-field__native) {
+  min-height: 30px;
+  height: 30px;
+}
+
+.concordance-toolbar__near-distance {
+  flex: 0 0 auto;
+  width: 4.5ch;
+  min-width: 0;
+}
+
+.concordance-toolbar__near-distance :deep(.q-field__control) {
+  padding: 0;
+}
+
+.concordance-toolbar__near-distance :deep(input) {
+  font-weight: 500;
+  padding-right: 2px;
+  -moz-appearance: textfield;
+}
+
+.concordance-toolbar__near-distance :deep(input::-webkit-inner-spin-button),
+.concordance-toolbar__near-distance :deep(input::-webkit-outer-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.concordance-toolbar__near-unit :deep(.q-field__native) {
+  padding: 0;
+}
+
+.concordance-toolbar__near-swap {
+  height: 32px;
 }
 
 .concordance-toolbar__rule {

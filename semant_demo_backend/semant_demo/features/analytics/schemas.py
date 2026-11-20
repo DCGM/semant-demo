@@ -80,6 +80,15 @@ class CorpusDistributionsRequest(BaseModel):
     """Per dimension: a document counts when, for each filter, some chunk of it has one of the
     values, as its chunk-value summaries were last recomputed (#529). A corpus database without
     the summaries rejects them (422)."""
+    user_collection_id: str | None = None
+    """Count only the documents of this user collection (linked to it, also those with no
+    included passage; #622): read access is checked on every request (401 without a user, 404 for
+    a collection the user cannot read), and such counts are never served again."""
+
+
+CorpusScope = Literal["searchable_corpus", "user_collection"]
+"""``searchable_corpus``: the whole public corpus that Search covers; ``user_collection``: the
+documents of one user collection (``user_collection_id``)."""
 
 
 class YearCount(BaseModel):
@@ -100,7 +109,9 @@ class PublicationYearCounts(BaseModel):
 class CorpusDistributions(BaseModel):
     """The documents matching ``filters``, counted by year, library and language. All counts
     describe the same documents; ``total_documents`` is their number."""
-    scope: Literal["searchable_corpus"]
+    scope: CorpusScope
+    user_collection_id: str | None = None
+    """The counted collection when ``scope`` is ``user_collection``, else null."""
     unit: Literal["documents"]
     filters: DocumentFilters
     """The filters applied, normalized."""
@@ -109,7 +120,8 @@ class CorpusDistributions(BaseModel):
     total_documents: int
     computed_at: datetime
     data_source: Literal["live_aggregation", "cached_aggregation"]
-    """Only the unfiltered distributions are served again (``cached_aggregation``)."""
+    """Only the unfiltered distributions of the searchable corpus are served again
+    (``cached_aggregation``); a collection's are always counted live."""
     publication_year: PublicationYearCounts
     libraries: CategoryDistribution = Field(description="Source digital library (``Documents.library``).")
     languages: CategoryDistribution = Field(
@@ -134,7 +146,9 @@ class LibraryYearDistribution(BaseModel):
     """The documents matching ``filters`` per source library and publication year: a document is
     counted in exactly one row and, with a valid year, in one year of it. The rows add up to
     ``total_documents``, and each year's counts add up to that year in the distributions."""
-    scope: Literal["searchable_corpus"]
+    scope: CorpusScope
+    user_collection_id: str | None = None
+    """The counted collection when ``scope`` is ``user_collection``, else null."""
     unit: Literal["documents"]
     filters: DocumentFilters
     chunk_filters: ChunkFilters = Field(default_factory=ChunkFilters)

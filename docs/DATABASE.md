@@ -53,6 +53,7 @@ erDiagram
         bool end_paragraph
         text language
         int yearIssued "copy of the document's"
+        bool documentPublic "derived from the document's public (#793)"
         int startChar "UTF-16 units before it in the document (#463)"
         int startWord "words started before it (#463)"
         bool wordOpenAtStart "preceding text ends inside a word (#463)"
@@ -156,7 +157,12 @@ Key fields:
 - `documentType`, `genre`, `keywords` — categorical metadata
 - `url` — in the local snapshot (`uuid`) the Kramerius record UUID, equal to the document
   id, not a link; source links are built from `library` and the id (above)
-- `public` — whether the document is publicly accessible
+- `public` — the source library's rights (#279): `true` is readable by anyone; `false`
+  (restricted) and no value (unknown) are readable only through a user collection that holds
+  the document ([ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18)).
+  Every unscoped read filters on it (`public == true`); on `Chunks` the reads filter on its copy
+  `Chunks.documentPublic` (#793, below), not through the `document` reference. The flag is
+  copied from the selected source row and not verified otherwise
 - `chunk_language`, `chunk_<classification>` (one per `TASK_CLASSES` entry; `text[]`, `field`
   tokenization) and `chunk_summaries_computed_at` (`date`) — the distinct chunk values of the
   document and when they were last recomputed, for document-level chunk filters (#529).
@@ -223,6 +229,12 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   declared (never selected for classification). Declared by `classification_provenance_schema`
   ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#chunk-classification-status-classification_provenance_schema-590));
   `chunk_ingest` refuses a store without it.
+- `haveVector` (`text[]`, `field` tokenization, filterable, not searchable) — the names of the
+  named vectors stored on the chunk, e.g. `["Qwen3_Embedding_0_6B"]` (#805, #590); an embedder
+  selects the chunks lacking a vector with `haveVector contains_none([name])`. Declared and
+  filled on the existing corpus by `chunk_have_vector`
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#stored-named-vectors-on-chunks-chunk_have_vector-805)),
+  only where the vector is stored. Chunk ingestion and the embedder do not maintain it yet (#560).
 - `yearIssued` (`int`, filterable with a range index) — a copy of the referenced document's
   `yearIssued`, absent when the document has none; the search's year filters use it, not the
   document reference (#153). It is not maintained by document writes or chunk ingestion:
@@ -230,6 +242,21 @@ The core searchable collection. Each chunk is a contiguous text block (typically
   ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#document-year-on-chunks-chunk_year-153)); keeping it
   current at ingestion is [#313](https://github.com/DCGM/semant-demo/issues/313). The shared
   test store's earlier copy `documentYearIssued` was removed by recreating `Chunks` (#496).
+- `documentPublic` (`bool`, filterable) — the search eligibility index derived from the
+  referenced document's `public` (#793, the policy of #279): `true` only when the chunk
+  references exactly one existing document with `public` exactly `true`; `false` for a
+  restricted (`false`) or unknown (absent) document and for a chunk without exactly one
+  existing document. A chunk without the value is **not public**: unscoped queries select
+  `documentPublic == true`, never "not false". `Documents.public` stays the source of truth
+  (the UI still tells *Restricted* from *Access unknown*); the flag never widens access.
+  Writers keep it fail-closed: `chunk_ingest` inserts new chunks with `false`;
+  `metadata_sync` lowers a document's chunks to `false` **before** it writes a document that
+  stops being public (and skips that write if the chunks could not all be verified), and
+  raises them to `true` only **after** the document is verified `public=true` (a failure
+  leaves them `false` and is reported as `chunks_pending`).
+  `python -m semant_demo.maintenance.chunk_document_public` declares the property, backfills
+  and audits it
+  ([DATA_MAINTENANCE](DATA_MAINTENANCE.md#document-visibility-on-chunks-chunk_document_public-793)).
 - `order` (`int`) — the chunk's place in its document; a document's orders are consecutive
   (each the previous + 1, the first any integer) and its text is the chunks' `text` concatenated
   in `order` without separators (whatever their collections). A document with a gap or a
@@ -575,10 +602,12 @@ New chunks are added by the append-only import
 - **What it writes.** It inserts absent chunks: text, `order`, the `document` reference, the source
   fields `start_page_id`, `language`, `from_page`, `to_page`, `end_paragraph`, and the positions
   `startChar`, `startWord`, `wordOpenAtStart` computed from the stored tail. Before a new document's
-  first chunk it inserts an empty `Documents` object.
+  first chunk it inserts an empty `Documents` object. Where `Chunks` declares `documentPublic`, new
+  chunks get `false` (not public until derived from their document, #793).
 - **What it never does.** It never changes the schema or an existing object, and writes no document
   metadata, `yearIssued`, vectors or annotations.
 - **Afterwards.** `metadata_sync` fills the documents, `chunk_year` the chunk years,
+  `chunk_document_public --document-ids` the chunk visibility (after `metadata_sync`),
   `chunk_titles` (after `metadata_sync`) the chunk titles and `data_tools/embedder` the
   `Qwen3_Embedding_0_6B` vectors.
 

@@ -972,6 +972,37 @@ test('explore visualizations', async ({ page }, testInfo) => {
   await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-visualizations-full-${testInfo.project.name}.png`, fullPage: true })
 })
 
+test('explore visualizations of a collection, with its heatmap and when empty (#768)', async ({ page }, testInfo) => {
+  await ensureLoggedIn(page, 'owner')
+  await page.reload() // without the sign-in notification
+  await page.goto('/#/search?chunk_languages=ces')
+  await expect(page.getByTestId('document-result-open')).toHaveCount(3)
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  await page.getByLabel('Select a Collection').click()
+  await page.getByRole('option', { name: 'Kroniky a dopisy' }).click()
+  await page.getByRole('button', { name: 'Search filters' }).click()
+  await page.getByRole('combobox', { name: 'Search query' }).press('Enter')
+  await expect(page.getByTestId('document-result-open')).toHaveCount(2)
+  await page.getByTestId('view-visualizations').click()
+  await expect(page.getByTestId('charts-total')).toHaveText('2')
+  await expect(page.getByTestId('corpus-years').locator('svg').first()).toBeVisible()
+  await expect(page.getByTestId('corpus-languages').locator('svg').first()).toBeVisible()
+  await save(page, testInfo, 'explore-collection')
+  await page.getByTestId('heatmap-show').click()
+  await expect(page.getByTestId('heatmap').locator('svg').first()).toBeVisible()
+  await page.screenshot({ path: `${testInfo.project.outputDir}/ui-capture/explore-collection-full-${testInfo.project.name}.png`, fullPage: true })
+
+  // An empty collection (answered here, with the server's own answer emptied).
+  await page.route('**/api/analytics/corpus/distributions', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json()
+    await route.fulfill({ response, json: { ...body, total_documents: 0 } })
+  })
+  await page.locator('.active-filter-chip', { hasText: 'Czech' }).locator('.q-chip__icon--remove').click()
+  await expect(page.getByTestId('charts-empty')).toContainText('This collection has no documents.')
+  await save(page, testInfo, 'explore-collection-empty')
+})
+
 test('explore visualizations of a text query, a chart filter and a data table (#620)', async ({ page }, testInfo) => {
   await page.goto('/#/search?q=Lhota&view=visualizations')
   await expect(page.getByTestId('charts-total')).toHaveText('7')

@@ -439,6 +439,8 @@ class ChunkQuery:
     target_vector: str | None = None
     """Stored named vector that ``vector`` is compared with; required with ``vector``."""
     collection_id: UUID | None = None
+    document_id: UUID | None = None
+    """Only chunks of this document (AI suggestion candidates, #792)."""
     conditions: tuple[FieldCondition, ...] = ()
     """Older filters (``SearchRequest.filters`` and the legacy fields)."""
     document_conditions: tuple[Condition, ...] = ()
@@ -449,3 +451,7 @@ class ChunkQuery:
     ``collection_id``, which selects the chunks linked to a collection themselves."""
     chunk_conditions: tuple[Condition, ...] = ()
     """Search criteria predicates that the returned chunk itself must satisfy (same-chunk)."""
+    readable_collection_id: UUID | None = None
+    """The collection the caller was authorized to read (#279): chunks of its documents are
+    eligible whatever their rights. Every other chunk must belong to a public document
+    (``Documents.public`` true); without it, only those are."""
