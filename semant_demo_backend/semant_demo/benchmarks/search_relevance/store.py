@@ -39,9 +39,10 @@ import httpx
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import Configure, VectorDistances
 from weaviate.classes.data import DataObject
-from weaviate.classes.query import HybridFusion, MetadataQuery
+from weaviate.classes.query import HybridFusion
 
 from semant_demo.adapters.embeddings.openai_compatible import OpenAICompatibleEmbeddings
+from semant_demo.adapters.weaviate.chunk_visibility import PROPERTY as DOCUMENT_PUBLIC_FLAG
 from semant_demo.adapters.weaviate.client import connect_weaviate
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
@@ -54,7 +55,7 @@ from semant_demo.benchmarks.search_relevance.store_api import (
     EmbeddingEndpoint, LoadReport, SearchOutcome, Searcher, StoreSpec, VectorReport)
 from semant_demo.config import Config
 from semant_demo.features.documents.criteria import SearchCriteria
-from semant_demo.features.search.schemas import MAX_PASSAGE_PAGE, PassageSearchRequest, SearchType
+from semant_demo.features.search.schemas import PassageSearchRequest, SearchType
 from semant_demo.features.search.service import SearchBackends, search_passages
 from semant_demo.features.search.vectors import SearchVector, SearchVectors
 
@@ -67,6 +68,8 @@ DATASET = uuid5(_RECORDS, "dataset")
 PAGE = uuid5(_RECORDS, "page")
 """The namespace of the made-up page id of a document's chunks (a hit requires one)."""
 INSERT_BATCH = 500
+FIRST_PAGE = 20
+"""Passages a search reads in full after ranking, as the application's first page of results."""
 WRITE_CONCURRENCY = 16
 EMBED_ATTEMPTS = 4
 """Tries of one embedding batch; transport errors, 429 and 5xx are retried."""
@@ -169,28 +172,14 @@ def bm25_properties(properties: dict[str, float] | None) -> list[str] | None:
     return [name if boost == 1 else f"{name}^{boost:g}" for name, boost in properties.items()]
 
 
-def hit_score(mode: SearchType, metadata: Any) -> float | None:
+def hit_score(mode: SearchType, recorded: tuple[float | None, float | None] | None) -> float | None:
     """BM25 and hybrid: Weaviate's score; vector: the cosine similarity (1 - distance)."""
-    if metadata is None:
+    if recorded is None:
         return None
+    score, distance = recorded
     if mode == SearchType.vector:
-        return None if metadata.distance is None else 1.0 - metadata.distance
-    return metadata.score
-
-
-class _ScoredChunkSearch(ChunkSearchRepository):
-    """The application's chunk search, also reading each ranked chunk's score: the same query
-    (``_ranked``) with Weaviate's score metadata requested. One per search."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.scores: dict[UUID, float | None] = {}
-
-    async def _ranked(self, query, **returned):
-        result = await super()._ranked(query, return_metadata=MetadataQuery(score=True, distance=True), **returned)
-        for obj in result.objects:
-            self.scores.setdefault(UUID(str(obj.uuid)), hit_score(query.mode, obj.metadata))
-        return result
+        return None if distance is None else 1.0 - distance
+    return score
 
 
 class _TimedEmbedder:
@@ -284,11 +273,14 @@ class WeaviateBenchmarkStore:
 
     async def load(self, dataset: Dataset) -> LoadReport:
         """Write the dataset's documents and chunks with their original ids; nothing when this
-        dataset is loaded already. Refuses another dataset (``StoreDatasetMismatch``). An
-        interrupted load is completed by loading the same dataset again."""
+        dataset's corpus is loaded already. The identity is the dataset id, version and the
+        SHA-256 of ``corpus.jsonl``: the generator loads a corpus-only dataset to pool in, and
+        the final dataset with the same corpus is then already loaded. Refuses another dataset
+        or corpus (``StoreDatasetMismatch``). An interrupted load is completed by loading the
+        same dataset again."""
         await verify(self.client, self._token)
         identity = {"dataset_id": dataset.manifest.dataset_id, "version": dataset.manifest.version,
-                    "manifest_sha256": dataset.manifest_sha256()}
+                    "corpus_sha256": dataset.manifest.files["corpus.jsonl"].sha256}
         report = LoadReport(dataset_id=identity["dataset_id"], version=identity["version"])
         record = await self._record(DATASET)
         if record is not None:
@@ -296,9 +288,9 @@ class WeaviateBenchmarkStore:
             held = {k: loaded.get(k) for k in identity}
             if held != identity:
                 raise StoreDatasetMismatch(
-                    f"The store holds dataset {held['dataset_id']} {held['version']} (manifest "
-                    f"{str(held['manifest_sha256'])[:12]}…), not {identity['dataset_id']} {identity['version']} "
-                    f"(manifest {identity['manifest_sha256'][:12]}…). A store holds one dataset: use another "
+                    f"The store holds dataset {held['dataset_id']} {held['version']} (corpus "
+                    f"{str(held['corpus_sha256'])[:12]}…), not {identity['dataset_id']} {identity['version']} "
+                    f"(corpus {identity['corpus_sha256'][:12]}…). A store holds one dataset: use another "
                     "store (StoreSpec.name) or recreate this one.")
             if record.get("state") == "loaded":
                 count = (await self._collection(self.names.chunks_collection_name).aggregate.over_all(
@@ -474,8 +466,8 @@ class WeaviateBenchmarkStore:
     def searcher(self, configuration: RunConfiguration, endpoint: EmbeddingEndpoint | None) -> Searcher:
         """The application's passage search (``search_passages``, anonymous, no filters) over
         this store in ``configuration``: its mode, alpha, fusion, BM25 properties and boosts,
-        query prefix and depth (the ranking's ``retrieval_limit``; the first
-        ``min(depth, MAX_PASSAGE_PAGE)`` passages are read in full, as for a first page). Query
+        query prefix and depth (the ranking's ``retrieval_limit``; the first ``FIRST_PAGE``
+        passages are read in full, as the application's first page). Query
         embeddings come from ``endpoint``. ``embed_ms`` is the query embedding's time (None for
         BM25), ``search_ms`` the rest of the search."""
         mode = SearchType(configuration.mode)
@@ -494,19 +486,20 @@ class WeaviateBenchmarkStore:
 
         async def search(query: str) -> SearchOutcome:
             embedder = _TimedEmbedder(client) if client is not None else _NoEmbedder()
-            chunks = _ScoredChunkSearch(self.client, self.names, fusion=fusion, query_properties=properties)
+            chunks = ChunkSearchRepository(self.client, self.names, fusion=fusion, query_properties=properties,
+                                           record_scores=True)
             backends = SearchBackends(
                 chunks=chunks, collections=UserCollectionRepository(self.client, self.names, None),
                 vectors=SearchVectors([SearchVector(vector_id, vector_id, "", target, embedder)], vector_id))
             request = PassageSearchRequest(
-                criteria=SearchCriteria(text_query=query), limit=min(depth, MAX_PASSAGE_PAGE), type=mode,
+                criteria=SearchCriteria(text_query=query), limit=min(depth, FIRST_PAGE), type=mode,
                 hybrid_search_alpha=configuration.alpha if configuration.alpha is not None else 0.5, vector=vector_id)
             start = perf_counter()
             response = await search_passages(backends, None, request, None, retrieval_limit=depth)
             total = (perf_counter() - start) * 1000
             embed_ms = embedder.ms if isinstance(embedder, _TimedEmbedder) else None
             ranked = [UUID(str(i)) for i in response.ranked_ids]
-            return SearchOutcome(hits=[(i, chunks.scores.get(i)) for i in ranked], embed_ms=embed_ms,
+            return SearchOutcome(hits=[(i, hit_score(mode, chunks.scores.get(i))) for i in ranked], embed_ms=embed_ms,
                                  search_ms=max(0.0, total - (embed_ms or 0.0)))
 
         return search
@@ -523,7 +516,7 @@ class WeaviateBenchmarkStore:
                 vectors[obj.properties["name"]] = json.loads(obj.properties["info"])
         return {
             "weaviate_version": meta.get("version"),
-            "endpoint": self.endpoint,
+            "instance": self.endpoint,
             "schema_version": schema.SCHEMA_VERSION,
             "collections": await schema.describe_collections(self.client, self.names),
             "vectors": vectors,
@@ -547,9 +540,11 @@ def _document_properties(chunk: CorpusChunk) -> dict[str, Any]:
 
 
 def _chunk_properties(chunk: CorpusChunk) -> dict[str, Any]:
-    """The stored chunk: its text, title, order, language and document year, and the page
-    properties a search hit requires, which the dataset does not have (``PAGE``, page 1)."""
+    """The stored chunk: its text, title, order, language and document year, public (anonymous
+    search selects ``documentPublic``, #793; the documents are public), and the page properties
+    a search hit requires, which the dataset does not have (``PAGE``, page 1)."""
     found: dict[str, Any] = {"text": chunk.text, "order": chunk.order, "language": chunk.language,
+                             DOCUMENT_PUBLIC_FLAG: True,
                              "start_page_id": str(uuid5(PAGE, str(chunk.document_id))), "from_page": 1,
                              "to_page": 1, "end_paragraph": True}
     if chunk.title is not None:
@@ -585,4 +580,4 @@ async def open_store(spec: StoreSpec, *, embedding_transport: httpx.AsyncBaseTra
         await client.close()
         raise
     return WeaviateBenchmarkStore(client, token, config.collectionNames, embedding_transport=embedding_transport,
-                                  endpoint=f"{endpoint.host}:{endpoint.rest_port}")
+                                  endpoint="given instance" if spec.host is not None else f"container {spec.name}")

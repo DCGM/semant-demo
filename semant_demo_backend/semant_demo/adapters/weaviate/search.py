@@ -13,7 +13,7 @@ from uuid import UUID
 
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.aggregate import Metrics
-from weaviate.classes.query import Filter, HybridFusion, QueryReference
+from weaviate.classes.query import Filter, HybridFusion, MetadataQuery, QueryReference
 
 from semant_demo.adapters.weaviate import criteria
 from semant_demo.adapters.weaviate.analytics import READ_BATCH
@@ -44,7 +44,8 @@ DOCUMENT_PROPERTIES = [name for name in Document.model_fields if name != "id"]
 
 class ChunkSearchRepository:
     def __init__(self, client: WeaviateAsyncClient, collectionNames: CollectionNames,
-                 fusion: HybridFusion | None = None, query_properties: Sequence[str] | None = None):
+                 fusion: HybridFusion | None = None, query_properties: Sequence[str] | None = None,
+                 record_scores: bool = False):
         self.client = client
         self.collectionNames = collectionNames
         self.fusion = fusion
@@ -54,6 +55,11 @@ class ChunkSearchRepository:
         """The properties BM25 (text and the keyword part of hybrid) searches, each optionally
         boosted (``"title^2"``); None: every text property, Weaviate's default. The application
         never sets it; the search relevance benchmark compares properties and boosts (#712)."""
+        self.scores: dict[UUID, tuple[float | None, float | None]] | None = {} if record_scores else None
+        """With ``record_scores``: chunk id -> (Weaviate's score, vector distance) of every ranked
+        chunk, as Weaviate returned them (BM25 and hybrid give a score, vector search a distance).
+        The application never records them; the search relevance benchmark does, one repository
+        per search (#712)."""
         self._returned_document_properties: list[str] | None = None
         self._schema: tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]] | None = None
 
@@ -163,6 +169,15 @@ class ChunkSearchRepository:
         return [(i, *found[i]) for i in ids if i in found]
 
     async def _ranked(self, query: ChunkQuery, **returned):
+        if self.scores is None:
+            return await self._query(query, **returned)
+        result = await self._query(query, return_metadata=MetadataQuery(score=True, distance=True), **returned)
+        for obj in result.objects:
+            metadata = obj.metadata
+            self.scores.setdefault(UUID(str(obj.uuid)), (metadata.score, metadata.distance) if metadata else (None, None))
+        return result
+
+    async def _query(self, query: ChunkQuery, **returned):
         chunks = self.client.collections.get(self.collectionNames.chunks_collection_name)
         common = dict(limit=query.limit, filters=await self._filter(query), **returned)
         if query.mode == SearchType.text:

@@ -135,12 +135,25 @@ async def test_a_dataset_is_loaded_once_with_its_ids_and_another_one_is_refused(
             QueryReference(link_on="document", return_properties=["title"])])
         assert stored.properties["text"] == dataset.corpus[fixture.chunk_id(4)].text
         assert stored.properties["language"] == "eng" and stored.properties["yearIssued"] == 1901
+        assert stored.properties["documentPublic"] is True  # anonymous search selects it (#793)
         assert stored.references["document"].objects[0].uuid == fixture.document_id(2)
 
+        # The same corpus under another manifest (the generator's corpus-only dataset, then the
+        # final one) is the same load; another version or another corpus is refused.
+        same_corpus = write_dataset(tmp_path / "final", {**fixture.MANIFEST, "description": "final"},
+                                    fixture.corpus(), fixture.INTENTS, fixture.queries(), fixture.qrels())
+        assert same_corpus.manifest_sha256() != dataset.manifest_sha256()
+        assert (await store.load(same_corpus)).already_loaded
         other = write_dataset(tmp_path / "other", {**fixture.MANIFEST, "version": "v1"}, fixture.corpus(),
                               fixture.INTENTS, fixture.queries(), fixture.qrels())
         with pytest.raises(StoreDatasetMismatch, match="holds dataset fixture v0"):
             await store.load(other)
+        changed = fixture.corpus()
+        changed[0] = changed[0].model_copy(update={"text": "Changed text."})
+        recorpused = write_dataset(tmp_path / "changed", fixture.MANIFEST, changed, fixture.INTENTS,
+                                   fixture.queries(), fixture.qrels())
+        with pytest.raises(StoreDatasetMismatch, match="corpus"):
+            await store.load(recorpused)
     finally:
         await store.close()
 
@@ -278,10 +291,15 @@ async def test_describe_reports_the_schema_vectors_and_dataset(searchable, datas
     chunks = described["collections"]["Chunks"]
     text = next(p for p in chunks["properties"] if p["name"] == "text")
     assert (text["data_type"], text["tokenization"], text["index_searchable"]) == ("text", "word", True)
+    page = next(p for p in chunks["properties"] if p["name"] == "start_page_id")
+    assert page["index_searchable"] is True  # BM25 searches the same properties as the application's schema
     assert chunks["vectors"]["fake_small"]["distance"] == "cosine"
     assert chunks["bm25"]["k1"] > 0
     assert described["vectors"]["fake_small"]["model"] == "fake-small"
-    assert described["dataset"] == {**dataset.ref().model_dump(), "chunks": 9, "documents": 3, "state": "loaded"}
+    assert described["dataset"] == {"dataset_id": "fixture", "version": "v0",
+                                    "corpus_sha256": dataset.manifest.files["corpus.jsonl"].sha256,
+                                    "chunks": 9, "documents": 3, "state": "loaded"}
+    assert "instance" in described and "127.0.0.1" not in json.dumps(described)
 
 
 def _docker_image_available(image: str) -> bool:

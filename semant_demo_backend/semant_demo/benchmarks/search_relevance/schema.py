@@ -22,10 +22,12 @@ from typing import Any
 from weaviate import WeaviateAsyncClient
 from weaviate.classes.config import Configure, DataType, Property, ReferenceProperty, Tokenization
 
+from semant_demo.adapters.weaviate.chunk_visibility import PROPERTY as DOCUMENT_PUBLIC_FLAG
 from semant_demo.adapters.weaviate.names import CollectionNames
 from semant_demo.features.search.filters import TASK_CLASSES
 
-SCHEMA_VERSION = "search-benchmark-store/1"
+SCHEMA_VERSION = "search-benchmark-store/2"
+"""2: ``start_page_id`` searchable, ``documentPublic`` (#793)."""
 """Changes when the collections below change; recorded in ``describe``."""
 MARKER = "SemantSearchBenchmarkStore"
 """The benchmark's ownership marker and records (not the tests' ``SemantTestStoreMarker``)."""
@@ -121,12 +123,14 @@ async def _chunks(client: WeaviateAsyncClient, names: CollectionNames) -> None:
             Property(name="title", data_type=text),
             Property(name="order", data_type=integer),
             Property(name="language", data_type=text),
-            # A page id the dataset does not have (``store.PAGE``); not searchable, unlike in the
-            # application's schema, so a made-up id never matches a query's numbers.
-            Property(name="start_page_id", data_type=text, index_searchable=False),
+            # A page id the dataset does not have (``store.PAGE``, a UUID like the real ones);
+            # searchable as in the application's schema, so BM25 searches the same properties.
+            Property(name="start_page_id", data_type=text),
             Property(name="from_page", data_type=integer),
             Property(name="to_page", data_type=integer),
             Property(name="end_paragraph", data_type=DataType.BOOL),
+            # Anonymous search selects documentPublic == true (#793); declared as the application's.
+            Property(name=DOCUMENT_PUBLIC_FLAG, data_type=DataType.BOOL, index_filterable=True),
             # The document's year, as the application's year filters read it (#153).
             Property(name="yearIssued", data_type=integer, index_range_filters=True),
             Property(name="startChar", data_type=integer),

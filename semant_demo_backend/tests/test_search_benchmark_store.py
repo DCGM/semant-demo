@@ -3,6 +3,7 @@ container's arguments, document templates and the embedding cache, search option
 real Weaviate: ``integration/test_search_benchmark_store.py``."""
 import json
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from weaviate.classes.query import HybridFusion
@@ -161,11 +162,11 @@ def test_bm25_properties_carry_their_boosts():
 
 
 def test_scores_are_weaviate_scores_or_the_cosine_similarity():
-    metadata = SimpleNamespace(score=0.75, distance=0.25)
-    assert hit_score(SearchType.text, metadata) == 0.75
-    assert hit_score(SearchType.hybrid, metadata) == 0.75
-    assert hit_score(SearchType.vector, SimpleNamespace(score=0.0, distance=0.1)) == pytest.approx(0.9)
-    assert hit_score(SearchType.vector, SimpleNamespace(score=None, distance=None)) is None
+    assert hit_score(SearchType.text, (0.75, 0.25)) == 0.75
+    assert hit_score(SearchType.hybrid, (0.75, 0.25)) == 0.75
+    assert hit_score(SearchType.vector, (0.0, 0.1)) == pytest.approx(0.9)
+    assert hit_score(SearchType.vector, (None, None)) is None
+    assert hit_score(SearchType.text, None) is None  # not recorded
 
 
 class RecordingQuery:
@@ -201,3 +202,24 @@ async def test_chunk_search_passes_its_bm25_properties_and_fusion(options, prope
     [(_, bm25), (_, hybrid)] = query.calls
     assert bm25["query_properties"] == properties and hybrid["query_properties"] == properties
     assert hybrid["fusion_type"] == fusion
+
+
+async def test_chunk_search_records_scores_only_when_asked():
+    hit = SimpleNamespace(uuid=UUID("5e3b0000-0000-4000-8000-000000000001"),
+                          metadata=SimpleNamespace(score=1.5, distance=None))
+
+    class Scored(RecordingQuery):
+        async def bm25(self, **kwargs):
+            self.calls.append(("bm25", kwargs))
+            return SimpleNamespace(objects=[hit])
+    names = Config(environ={}).collectionNames
+    plain, scored = Scored(), Scored()
+
+    default = ChunkSearchRepository(recording_client(plain), names)
+    assert await default.ranked_ids(ChunkQuery(text="q", mode=SearchType.text, limit=3)) == [hit.uuid]
+    assert default.scores is None and "return_metadata" not in plain.calls[0][1]
+
+    recording = ChunkSearchRepository(recording_client(scored), names, record_scores=True)
+    assert await recording.ranked_ids(ChunkQuery(text="q", mode=SearchType.text, limit=3)) == [hit.uuid]
+    assert recording.scores == {hit.uuid: (1.5, None)}
+    assert scored.calls[0][1]["return_metadata"] is not None

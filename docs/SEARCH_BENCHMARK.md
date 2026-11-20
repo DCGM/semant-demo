@@ -99,9 +99,12 @@ schema's shape, not production's exact one (#128); `describe()` records it in th
 - **Ownership.** The token is in `spec.token_file` (created with mode 0600); the marker collection
   `SemantSearchBenchmarkStore` holds its SHA-256 and the store's records (dataset, vectors). Only
   an instance without any collection is claimed, and every write checks the marker first.
-- **Corpus.** `Chunks` keep the chunk's text, title, order, language and document year; the
-  page properties a search hit requires are made up (page 1, not searchable). `Documents` keep
-  title, year and type, `public: true`.
+- **Corpus.** `Chunks` keep the chunk's text, title, order, language and document year, and
+  `documentPublic: true` (anonymous search selects it, #793); the page properties a search hit
+  requires are made up (a UUID page id, page 1), searchable as in the application's schema so
+  BM25 searches the same properties. `Documents` keep title, year and type, `public: true`. The
+  store's dataset identity is the dataset id, version and the SHA-256 of `corpus.jsonl`, so the
+  generator's corpus-only dataset and the final dataset with the same corpus are one load.
 - **Vectors.** `ensure_vector` adds the named vector (self-provided, HNSW, cosine) and embeds
   `VectorSpec.document_template` rendered with `{text}` and `{title}` (the chunk's own title,
   empty without one) through the OpenAI-compatible endpoint, in batches with bounded concurrency
@@ -110,8 +113,9 @@ schema's shape, not production's exact one (#128); `describe()` records it in th
   embedded or written, a failed chunk gets none and is counted by failure class.
 - **Search.** `searcher` runs `search_passages` anonymously without filters, with the
   configuration's mode, alpha, fusion, BM25 `properties` (`name^boost`), query prefix and depth
-  (the retrieval limit). Scores are Weaviate's (BM25, hybrid) or the cosine similarity (vector);
-  `embed_ms` is the query embedding, `search_ms` the rest.
+  (the retrieval limit), and reads the first 20 passages in full, as the application's first page.
+  Scores are Weaviate's (BM25, hybrid) or the cosine similarity (vector), recorded by the search
+  repository's `record_scores` option; `embed_ms` is the query embedding, `search_ms` the rest.
 
 Its integration tests (`tests/integration/test_search_benchmark_store.py`) run against the test
 run's throwaway Weaviate, telling `open_store` to tolerate the tests' own marker
