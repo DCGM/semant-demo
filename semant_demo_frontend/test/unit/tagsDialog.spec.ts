@@ -288,6 +288,32 @@ describe('TagsDialog applicable attributes', () => {
     expect(wrapper.emitted('ok')).toHaveLength(1)
   })
 
+  it('moves through and adds examples with Enter, never saving the tag', async () => {
+    const save = vi.fn()
+    const wrapper = await open({ tag: { ...person, examples: ['first'] }, save })
+    const enter = async (label: string) => {
+      await input(wrapper, label).find('input').trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+    }
+    const focused = () => (document.activeElement as HTMLInputElement | null)?.getAttribute('aria-label')
+
+    // In the last example with text, Enter adds one and focuses it.
+    await enter('Example 1')
+    expect(wrapper.findAllComponents(QInput).map(i => i.props('label')).filter(l => l?.startsWith('Example')))
+      .toEqual(['Example 1', 'Example 2'])
+    expect(focused()).toBe('Example 2')
+    // A blank last example adds nothing.
+    await enter('Example 2')
+    expect(input(wrapper, 'Example 3')).toBeUndefined()
+    // In an earlier example, Enter moves to the next one.
+    await enter('Example 1')
+    expect(focused()).toBe('Example 2')
+
+    expect(input(wrapper, 'Example 1').props('modelValue')).toBe('first')
+    expect(save).not.toHaveBeenCalled()
+    expect(wrapper.emitted('ok')).toBeUndefined()
+  })
+
   it('still saves the tag when the attributes cannot be loaded', async () => {
     listed.mockRejectedValue(refused(503, 'Service unavailable'))
     const save = vi.fn().mockResolvedValue(created)

@@ -139,11 +139,13 @@
           >
             <div class="col">
               <q-input
+                :ref="(el: unknown) => { exampleInputs[index] = el as QInput | null }"
                 v-model="tagExamples[index]"
                 outlined
                 :label="`Example ${index + 1}`"
                 :disable="saving"
                 clearable
+                @keydown.enter="onExampleEnter(index, $event)"
               />
             </div>
             <div class="col-auto self-center">
@@ -194,7 +196,7 @@
 
 <script setup lang="ts">
 import FormDialog from 'src/shared/ui/FormDialog.vue'
-import { QForm, useDialogPluginComponent } from 'quasar'
+import { QForm, QInput, useDialogPluginComponent } from 'quasar'
 import { storeToRefs } from 'pinia'
 import useColorPicker from 'src/shared/useColorPicker'
 import { plural } from 'src/shared/plural'
@@ -301,6 +303,25 @@ const normalizedExamples = computed<string[]>(() => {
 
 const addExampleField = () => {
   tagExamples.value.push('')
+}
+
+// Enter in an example moves to the next one; in the last one with text it adds an example (#763).
+// It never submits the form, and a blank last example adds nothing.
+// Not reactive: filled by the inputs' function refs while rendering.
+const exampleInputs: (QInput | null)[] = []
+const onExampleEnter = async (index: number, event: KeyboardEvent) => {
+  // Enter that confirms an input method's composition belongs to the input method.
+  if (event.isComposing) return
+  event.preventDefault()
+  if (saving.value) return
+  if (index < tagExamples.value.length - 1) {
+    exampleInputs[index + 1]?.focus()
+    return
+  }
+  if (!tagExamples.value[index]?.trim()) return
+  addExampleField()
+  await nextTick()
+  exampleInputs[index + 1]?.focus()
 }
 
 const removeExampleField = (index: number) => {
