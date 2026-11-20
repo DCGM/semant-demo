@@ -256,11 +256,14 @@ test.describe('switching annotations of one long document', () => {
       // The passage is scrolled to Brně within itself; the sidebar does not scroll.
       expect(await body.evaluate(el => el.scrollTop), `${width}: the passage scrolled`).toBeGreaterThan(0)
       expect(await panel(page).evaluate(el => el.closest('.scroll')?.scrollTop ?? 0), `${width}: the sidebar did not`).toBe(0)
-      // Scrolling the passage by hand moves only the passage.
-      const before = await body.evaluate(el => el.scrollTop)
+      // Scrolling the passage by hand moves only the passage. Measured by where the annotation
+      // is on the screen, not by scrollTop: scrolling up near the start loads earlier text
+      // (#780), and keeping the reading position then raises scrollTop while the text stays.
+      const before = (await mark(page).boundingBox())!.y
       await body.hover()
       await page.mouse.wheel(0, -600)
-      await expect.poll(() => body.evaluate(el => el.scrollTop), `${width}: the passage scrolls by the wheel`).toBeLessThan(before)
+      await expect.poll(async () => (await mark(page).boundingBox())?.y ?? before,
+        `${width}: the passage scrolls by the wheel`).toBeGreaterThan(before)
       expect((await actions.boundingBox())?.y, `${width}: the actions stay in place`).toBe(top)
       await expect(actions.getByRole('button', { name: 'Confirm' })).toBeInViewport()
       // Scrolled away from the annotation, the passage offers the way back to it.
@@ -271,6 +274,37 @@ test.describe('switching annotations of one long document', () => {
       await expect(mark(page)).toBeInViewport()
       await expect(back).toHaveCount(0)
     }
+  })
+
+  test('scrolling near the start loads earlier text once, keeping the reading position (#780)', async ({ page }) => {
+    const reads = await longDocument(page, { length: 40, placed: { [novak]: 2, [brno]: 20 } })
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    await row(page, 'Brně').click()
+    await expect(mark(page)).toHaveText('Brně')
+    const body = panel(page).getByTestId('chunk-context-body')
+    const sections = panel(page).locator('.chunk-context__chunk')
+    const count = await sections.count()
+    // Near the start without the user scrolling: nothing is loaded.
+    await body.evaluate(el => { el.scrollTop = 120 })
+    await page.waitForTimeout(300)
+    expect(reads.adjacent).toBe(0)
+
+    // The paragraph at the top of the view, and where it is in the view.
+    const first = await sections.first().getAttribute('data-chunk-id')
+    const topOf = (id: string) => body.evaluate((el, id) =>
+      el.querySelector(`[data-chunk-id="${id}"]`)!.getBoundingClientRect().top - el.getBoundingClientRect().top, id)
+    const before = await topOf(first!)
+    await body.hover()
+    await page.mouse.wheel(0, -40)
+    await expect(sections).toHaveCount(count + 5)
+    await expect(sections.first()).not.toHaveAttribute('data-chunk-id', first!)
+    // The text above was added without moving what is read: only the wheel's own step.
+    await expect.poll(() => topOf(first!)).toBeGreaterThan(before)
+    expect(await topOf(first!) - before, 'no jump by the added paragraphs').toBeLessThan(120)
+    // One gesture, one read: finishing the load asks for nothing more.
+    await page.waitForTimeout(500)
+    expect(reads.adjacent).toBe(1)
   })
 
   test('closing the sidebar on a phone returns to the open row (#669)', async ({ page }) => {

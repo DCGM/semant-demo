@@ -172,6 +172,14 @@ let activeSelectionToken = 0
 // suggestion card in the panel and the corresponding span in the text.
 const aiPanelActive = ref(false)
 const highlightedAutoSpanId = ref<string | null>(null)
+// A new click may target the already highlighted span. Keep a separate revision
+// so text/gutter navigation is repeatable without clearing the highlight.
+const highlightedAutoSpanNavigationRequest = ref(0)
+
+function requestAutoSpanNavigation (spanId: string) {
+  highlightedAutoSpanId.value = spanId
+  highlightedAutoSpanNavigationRequest.value += 1
+}
 
 const isSelectionRunning = ref(false)
 const lastSelectionError = ref<string | null>(null)
@@ -514,6 +522,8 @@ export function useAiAssistance() {
     totalUnsaved: computed(() => totalUnsaved.value),
     aiPanelActive,
     highlightedAutoSpanId,
+    highlightedAutoSpanNavigationRequest,
+    requestAutoSpanNavigation,
     pendingAutoSpans,
     nextPendingSuggestionAfter,
     resolveAutoSpan
