@@ -3,8 +3,10 @@
 One definition of the query (``AnnotationFilters``, #663; ``AnnotationRanking``, #664) selects the
 population. Lexical queries are counted over every annotation they match, each facet with the
 query's filter on that same facet removed (self-exclusion, as faceted search does), so the other
-choices of an active filter stay visible. Ranked queries are counted over exactly the returned top
-``k`` annotations, as they are (re-ranking per facet would change which annotations are counted).
+choices of an active filter stay visible; with ``self_exclusion`` false every facet counts the query's
+own population instead (the statistics of a query, #818). Ranked queries are counted over exactly the
+returned top ``k`` annotations, as they are (re-ranking per facet would change which annotations are
+counted).
 
 Counting uses Weaviate aggregations only (no rows are read): ``group_by`` for the single-valued
 ``tagId`` and ``type``, the per-document counts of ``service._annotated_documents`` plus one read of
@@ -165,7 +167,8 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
         if attribute is None:
             raise NotFoundError("Attribute not found")
         definitions[attribute_id] = attribute
-    if not ranking.ranked:
+    excluding = request.self_exclusion and not ranking.ranked
+    if excluding:
         for facet in request.facets:  # every self-excluded query is valid before any read
             service._filters_query(_without(request, facet))
     cid = await service.use_tenant(store, grant)
@@ -180,9 +183,18 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
 
         async def scope_of(_: str) -> _Scope:
             return top
-    else:
+    elif excluding:
         async def scope_of(facet: str) -> _Scope:
             return await _lexical_scope(store, cid, _without(request, facet))
+    else:
+        # One population for every facet (#818): read once, shared by all facets.
+        shared: asyncio.Task[_Scope] | None = None
+
+        async def scope_of(_: str) -> _Scope:
+            nonlocal shared
+            if shared is None:
+                shared = asyncio.ensure_future(_lexical_scope(store, cid, request))
+            return await shared
 
     async def one(facet: str) -> Facet | None:
         try:
@@ -205,5 +217,5 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
 
     facets = await asyncio.gather(*(one(f) for f in request.facets))
     return AnnotationFacets(population=FacetPopulation.top_k if ranking.ranked else FacetPopulation.filtered,
-                            self_exclusion=not ranking.ranked, k=ranking.k if ranking.ranked else None,
+                            self_exclusion=excluding, k=ranking.k if ranking.ranked else None,
                             facets=[f for f in facets if f is not None])

@@ -101,6 +101,39 @@ async def test_a_facet_ignores_its_own_filter_only(populated):
     assert counts(found["year"]) == {"1912": 2}
 
 
+async def test_without_self_exclusion_every_facet_counts_the_query_itself(populated, monkeypatch):
+    """The statistics of a query (#818): one population, which every facet's values add up to."""
+    calls = []
+    original = facets._lexical_scope
+
+    async def scope(*args):
+        calls.append(args)
+        return await original(*args)
+
+    monkeypatch.setattr(facets, "_lexical_scope", scope)
+    result = await facets.annotation_facets(
+        populated, OWNER, COLLECTION,
+        request("tag", "type", "year", "document", tag_ids=[TAG], document_ids=[DOC_A, DOC_B], self_exclusion=False))
+    assert (result.population, result.self_exclusion) == (FacetPopulation.filtered, False)
+    found = {f.facet: f for f in result.facets}
+    page = await service.query_annotations(populated, OWNER, COLLECTION,
+                                           AnnotationFilters(tag_ids=[TAG], document_ids=[DOC_A, DOC_B]))
+    assert all(f.total == page.total == 3 for f in found.values())
+    assert counts(found["tag"]) == {str(TAG): 3}  # the tag filter is kept
+    assert counts(found["type"]) == {"pos": 2, "auto": 1}  # the default types: not the rejected one
+    assert counts(found["document"]) == {str(DOC_A): 2, str(DOC_B): 1} and found["document"].distinct == 2
+    assert counts(found["year"]) == {"1912": 2, "1850": 1} and found["year"].missing == 0
+    assert len(calls) == 1  # the population is read once for every facet
+
+
+async def test_without_self_exclusion_missing_values_are_of_the_same_population(populated):
+    found = await facet_counts(populated, "year", "library", "type", types=list(SpanType), self_exclusion=False)
+    assert all(f.total == 7 for f in found.values())
+    assert counts(found["type"]) == {"pos": 5, "auto": 1, "neg": 1}
+    for facet in found.values():
+        assert sum(counts(facet).values()) + facet.missing == facet.total
+
+
 async def test_year_range_is_removed_from_the_year_facet_but_narrows_the_others(populated):
     found = await facet_counts(populated, "year", "library", document_filters=DocumentFilters(year_min=1900))
     assert counts(found["year"]) == {"1912": 3, "1850": 1}  # the whole range, so another year can be chosen
@@ -192,6 +225,11 @@ async def test_ranked_queries_count_exactly_their_top_k(populated, monkeypatch):
         request("tag", "type", "year", tag_ids=[OTHER_TAG], ranking_query="slovo",
                 ranking=AnnotationRanking(mode=RetrievalMode.semantic, k=3)))
     assert (result.population, result.self_exclusion, result.k) == (FacetPopulation.top_k, False, 3)
+    statistics = await facets.annotation_facets(
+        populated, OWNER, COLLECTION,
+        request("tag", tag_ids=[OTHER_TAG], ranking_query="slovo", self_exclusion=False,
+                ranking=AnnotationRanking(mode=RetrievalMode.semantic, k=3)))
+    assert statistics.facets[0].total == 3  # the same top k, whether or not facets exclude their own filter
     by_name = {f.facet: f for f in result.facets}
     assert all(f.total == 3 for f in result.facets)  # the filters do not widen or narrow the retrieved set
     assert counts(by_name["tag"]) == {str(TAG): 3} and counts(by_name["type"]) == {"pos": 2, "auto": 1}
@@ -223,6 +261,11 @@ async def test_denied_and_invalid_requests_read_nothing(populated):
         await facets.annotation_facets(populated, OWNER, COLLECTION, request("tag", ranking_query="text"))
     with pytest.raises(InvalidRequestError):
         await facets.annotation_facets(populated, OWNER, COLLECTION, request("tag", attribute_values=["x"]))
+    with pytest.raises(ResourceNotFound):
+        await facets.annotation_facets(populated, OTHER, COLLECTION, request("tag", self_exclusion=False))
+    with pytest.raises(InvalidRequestError):
+        await facets.annotation_facets(populated, OWNER, COLLECTION,
+                                       request("tag", attribute_values=["x"], self_exclusion=False))
     assert populated.spans.queries == 0 and populated.documents.reads == []
 
 
@@ -240,6 +283,8 @@ async def test_a_count_that_needs_more_documents_than_allowed_is_left_out_not_th
     found = await facet_counts(populated, "tag", "type", "year")
     assert set(found) == {"tag", "type"}  # the annotations are in 4 documents: only the per-document facet fails
     assert found["tag"].total == 6
+    found = await facet_counts(populated, "tag", "year", self_exclusion=False)
+    assert set(found) == {"tag"}  # also over the query's own population: left out, never counted as 0
 
 
 async def test_the_proximity_filter_restricts_every_facet_before_counting(populated, monkeypatch):
