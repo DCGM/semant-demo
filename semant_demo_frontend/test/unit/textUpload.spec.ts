@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { ResponseError, type TextUploadAvailability, type TextUploadResponse } from 'src/generated/api'
 import TextUploadDialog from 'src/features/documents/upload/TextUploadDialog.vue'
-import { CSV_TEMPLATE, checkFiles, filesNotSaved, summary } from 'src/features/documents/upload/textUpload'
+import { CSV_TEMPLATE, checkFiles, filesNotSaved, readSelection, summary } from 'src/features/documents/upload/textUpload'
 
 // Upload of private text documents into a collection (#785): the client spares obviously
 // invalid requests, shows every file's result with a link to each added document, offers to
@@ -22,6 +22,13 @@ vi.mock('src/features/documents/useDocumentsRepository', () => ({
 }))
 
 const txt = (name: string, content = 'Text.') => new File([content], name, { type: 'text/plain' })
+/** A selected file whose content changed on disk afterwards: the browser refuses to read it. */
+const changed = (name: string) => {
+  const file = txt(name)
+  file.arrayBuffer = () => Promise.reject(new DOMException('The file changed.', 'NotReadableError'))
+  return file
+}
+const sent = async (files: File[]) => Promise.all(files.map(async f => [f.name, await f.text()]))
 
 describe('client checks', () => {
   it('refuses what the server would refuse anyway', () => {
@@ -49,6 +56,12 @@ describe('client checks', () => {
     }
     expect(filesNotSaved(files, response).map(f => f.name)).toEqual(['failed.txt', 'invalid.txt', 'unsent.txt'])
     expect(summary(response)).toBe('1 of 5 documents were added.')
+  })
+
+  it('reads the selection now and names the files that cannot be read', async () => {
+    const { copies, unreadable } = await readSelection([txt('a.txt', 'Alfa'), changed('b.txt'), txt('meta.csv', 'filename')])
+    expect(await sent(copies)).toEqual([['a.txt', 'Alfa'], ['meta.csv', 'filename']])
+    expect(unreadable.map(f => f.name)).toEqual(['b.txt'])
   })
 
   it('offers a template with the documented columns', () => {
@@ -111,7 +124,10 @@ describe('TextUploadDialog', () => {
     await choose(wrapper, files, csv)
     await click(wrapper, /^Upload$/)
 
-    expect(uploaded).toHaveBeenCalledWith('c1', files, csv)
+    const [collectionId, sentFiles, sentCsv] = uploaded.mock.calls[0]
+    expect(collectionId).toBe('c1')
+    expect(await sent(sentFiles)).toEqual([['Kronika.txt', 'Text.'], ['b.txt', 'Text.']])
+    expect(await sent([sentCsv!])).toEqual([['meta.csv', 'filename,title\nKronika.txt,Kronika obce\n']])
     expect(document.querySelector('[data-testid="upload-results"]')?.textContent).toContain('All 2 documents were added.')
     expect(results()[0]).toContain('Kronika obce')
     expect(results()[0]).toContain('3 passages')
@@ -160,6 +176,25 @@ describe('TextUploadDialog', () => {
     expect(document.querySelector('[data-testid="upload-error"]')?.textContent).toContain('not enabled')
     expect(document.querySelector('[data-testid="upload-results"]')).toBeNull()
     expect(button(wrapper, /^Upload$/)!.props('disable')).toBe(false)
+  })
+
+  it('names a file changed since it was selected, sends nothing and asks for it again', async () => {
+    const wrapper = await open()
+    await choose(wrapper, [txt('a.txt'), changed('b.txt')], changed('meta.csv'))
+    await click(wrapper, /^Upload$/)
+
+    expect(uploaded).not.toHaveBeenCalled()
+    expect(document.querySelector('[data-testid="upload-error"]')?.textContent).toContain(
+      'b.txt, meta.csv have changed or can no longer be read since they were selected, so nothing was uploaded. Select them again')
+    // Only the readable file stays selected; choosing the others again appends their current content.
+    const [filesInput, csvInput] = wrapper.findAllComponents(QFile)
+    expect((filesInput.props('modelValue') as File[]).map(f => f.name)).toEqual(['a.txt'])
+    expect(csvInput.props('modelValue')).toBeNull()
+
+    await choose(wrapper, [txt('a.txt'), txt('b.txt', 'Opraveno.')], txt('meta.csv', 'filename,language\nb.txt,ces\n'))
+    uploaded.mockResolvedValue({ errors: [], files: [] })
+    await click(wrapper, /^Upload$/)
+    expect(await sent(uploaded.mock.calls[0][1])).toEqual([['a.txt', 'Text.'], ['b.txt', 'Opraveno.']])
   })
 
   it('says before any upload that the server cannot take one, and does not send', async () => {

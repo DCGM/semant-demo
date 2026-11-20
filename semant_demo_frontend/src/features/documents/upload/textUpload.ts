@@ -8,6 +8,9 @@ export const CSV_TEMPLATE =
   'filename,title,author,yearIssued,language\r\n' +
   'example.txt,Example document,Jane Doe,1925,ces\r\n'
 
+/** The CSV's `language` codes: the Language search filter's (blank is allowed too). */
+export const LANGUAGES = ['ces', 'deu', 'hun', 'lat', 'zxx'] as const
+
 export const MAX_FILES = 20
 export const MAX_FILE_BYTES = 2_000_000
 
@@ -35,6 +38,32 @@ export function checkFiles (files: readonly File[]): Map<string, string> {
     seen.add(file.name)
   }
   return problems
+}
+
+/**
+ * Copies of the selected files, read now, and the files that could not be read. A browser
+ * refuses to send a file that changed on disk after it was selected (Chrome fails the whole
+ * request with net::ERR_UPLOAD_FILE_CHANGED, which reaches the page as a bare network error);
+ * reading each file first names it instead, and the copies are what is sent.
+ */
+export async function readSelection (files: readonly File[]): Promise<{ copies: File[], unreadable: File[] }> {
+  const copies: File[] = []
+  const unreadable: File[] = []
+  for (const file of files) {
+    try {
+      copies.push(new File([await file.arrayBuffer()], file.name, { type: file.type, lastModified: file.lastModified }))
+    } catch {
+      unreadable.push(file)
+    }
+  }
+  return { copies, unreadable }
+}
+
+/** Why nothing was sent when `names` could not be read. */
+export function unreadableMessage (names: readonly string[]): string {
+  const one = names.length === 1
+  return `${names.join(', ')} ${one ? 'has' : 'have'} changed or can no longer be read since ${one ? 'it was' : 'they were'} ` +
+    `selected, so nothing was uploaded. Select ${one ? 'it' : 'them'} again, then upload.`
 }
 
 /** Whether the server saved every file of the response. */

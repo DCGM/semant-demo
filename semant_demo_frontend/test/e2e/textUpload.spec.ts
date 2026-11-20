@@ -1,3 +1,4 @@
+import { utimesSync, writeFileSync } from 'fs'
 import { expect, test, type APIRequestContext } from '@playwright/test'
 import { apiToken, ensureLoggedIn, fixture, useViewport } from './support'
 
@@ -76,6 +77,40 @@ test('an invalid file is reported and nothing is uploaded', async ({ page, reque
     await page.screenshot({ path: test.info().outputPath('upload-invalid.png') })
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await expect(page.getByText('Documents (0 items)')).toBeVisible()
+  } finally {
+    await collection.remove()
+  }
+})
+
+test('an unsupported language is refused; a CSV corrected after it was chosen is asked for again', async ({ page, request }) => {
+  const collection = await createCollection(request, 'Upload test language')
+  try {
+    await useViewport(page, 'wide')
+    await ensureLoggedIn(page, 'owner')
+    await page.goto(`/#/collections/${collection.id}/documents`)
+    await page.getByTestId('upload-text-documents').click()
+    const dialog = page.locator('.text-upload-dialog')
+    // A real file on disk, so the browser knows when it changes after it was chosen.
+    const csv = test.info().outputPath('metadata.csv')
+    writeFileSync(csv, 'filename,language\na.txt,polish\n')
+    await dialog.getByTestId('upload-files').setInputFiles({ name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from(TEXT) })
+    await dialog.getByTestId('upload-metadata').setInputFiles(csv)
+    await dialog.getByTestId('upload-submit').click()
+    await expect(dialog.getByTestId('upload-result')).toContainText(
+      "language 'polish' is not supported: use ces, deu, hun, lat, zxx or leave it blank")
+
+    // The user corrects the CSV in an editor and uploads again without choosing it again.
+    writeFileSync(csv, 'filename,language\na.txt,ces\n')
+    utimesSync(csv, new Date(), new Date(Date.now() + 5000))
+    await dialog.getByTestId('upload-submit').click()
+    await expect(dialog.getByTestId('upload-error')).toContainText(
+      'metadata.csv has changed or can no longer be read since it was selected, so nothing was uploaded. Select it again')
+    await page.screenshot({ path: test.info().outputPath('upload-changed-csv.png') })
+
+    await dialog.getByTestId('upload-metadata').setInputFiles(csv)
+    await dialog.getByTestId('upload-submit').click()
+    await expect(dialog.getByTestId('upload-results')).toContainText('The document was added.')
+    await expect(dialog.getByTestId('upload-error')).toHaveCount(0)
   } finally {
     await collection.remove()
   }

@@ -16,7 +16,7 @@ from semant_demo.features.search.vectors import SearchVector, SearchVectors
 from semant_demo.features.user_collections import text_upload
 from semant_demo.features.user_collections.access import AccessDenied, AuthenticationRequired, ResourceNotFound
 from semant_demo.features.user_collections.text_upload import (
-    CSV_TEMPLATE, UploadedFile, UploadLimits, chunk_text, parse_metadata_csv,
+    CSV_TEMPLATE, LANGUAGE_ALIASES, LANGUAGES, UploadedFile, UploadLimits, chunk_text, parse_metadata_csv,
 )
 
 OWNER, SHARED, OTHER = (SimpleNamespace(id=uuid4(), name=n) for n in ("Owner", "Shared", "Other"))
@@ -187,10 +187,31 @@ def test_the_dialog_offers_the_same_template():
 
 @pytest.mark.parametrize("given, stored", [("ces", "ces"), ("cs", "ces"), ("CS", "ces"), ("cze", "ces"),
                                            ("de", "deu"), ("ger", "deu"), ("hu", "hun"), ("la", "lat"),
-                                           ("zxx", "zxx"), ("Pol", "pol")])
+                                           ("zxx", "zxx"), ("LAT", "lat"), ("", None)])
 def test_the_language_is_stored_as_the_language_filter_code(given, stored):
     parsed = parse_metadata_csv(f"filename,language\na.txt,{given}\n".encode())
-    assert parsed.rows["a.txt"].language == stored
+    assert not parsed.file_errors and parsed.rows["a.txt"].language == stored
+
+
+@pytest.mark.parametrize("given", ["pol", "Czech", "cs-CZ", "eng", "x" * 100])
+def test_a_language_the_filter_does_not_offer_is_refused(given):
+    parsed = parse_metadata_csv(f"filename,language\na.txt,{given}\n".encode())
+    assert "a.txt" not in parsed.rows
+    assert "is not supported: use ces, deu, hun, lat, zxx or leave it blank" in parsed.file_errors["a.txt"]
+
+
+async def test_an_unsupported_language_writes_nothing():
+    result, store, _ = await upload([("a.txt", b"x")], b"filename,language\na.txt,pol\n")
+    assert result.files[0].status == "invalid" and "not supported" in result.files[0].error and not store.documents
+
+
+def test_the_languages_are_the_language_filter_codes():
+    from semant_demo.features.search.filters import load_search_filters_config
+    from semant_demo.config import SCRIPT_PATH
+    filters = load_search_filters_config(str(SCRIPT_PATH / "configs" / "search_filters.yaml"))
+    language = next(f for f in filters.filters if f.id == "language")
+    assert sorted(v.backend_form for v in language.values) == sorted(LANGUAGES)
+    assert set(LANGUAGE_ALIASES.values()) <= set(LANGUAGES)
 
 
 @pytest.mark.parametrize("content,error", [

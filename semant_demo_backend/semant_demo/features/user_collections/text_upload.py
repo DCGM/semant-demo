@@ -60,12 +60,14 @@ properties every deployed ``Documents`` schema declares (docs/DATABASE.md): no `
 CSV_TEMPLATE = "filename,title,author,yearIssued,language\r\n" \
                "example.txt,Example document,Jane Doe,1925,ces\r\n"
 """The downloadable template (also in docs/TEXT_UPLOAD.md)."""
-LANGUAGE_ALIASES = {"cs": "ces", "cze": "ces", "de": "deu", "ger": "deu", "hu": "hun", "la": "lat"}
-"""Two-letter (ISO 639-1) and bibliographic (ISO 639-2/B) codes of the language filter's
-languages (``configs/search_filters.yaml``, ISO 639-2/T), stored as the filter's code so the
-Language filter selects the chunks. Other values are stored as given, lowercased; the shared
+LANGUAGES = ("ces", "deu", "hun", "lat", "zxx")
+"""The codes of the Language search filter (``configs/search_filters.yaml``, ISO 639-2/T), the
+only languages an upload accepts, so the filter always selects the uploaded chunks; the shared
 vocabulary is #562 / #812."""
-METADATA_LIMITS = {"title": 500, "author": 300, "language": 32}
+LANGUAGE_ALIASES = {"cs": "ces", "cze": "ces", "de": "deu", "ger": "deu", "hu": "hun", "la": "lat"}
+"""Two-letter (ISO 639-1) and bibliographic (ISO 639-2/B) codes of these languages, stored as
+the filter's code."""
+METADATA_LIMITS = {"title": 500, "author": 300}
 """The longest accepted value of each text column, in characters."""
 YEAR = re.compile(r"-?\d{1,4}")
 
@@ -321,10 +323,14 @@ def parse_metadata_csv(content: bytes) -> ParsedCsv:
                     problems.append(f"yearIssued {value!r} is not a year (a whole number)")
                     continue
                 metadata.yearIssued = int(value)
+            elif name == "language":
+                code = LANGUAGE_ALIASES.get(value.lower(), value.lower())
+                if code not in LANGUAGES:
+                    problems.append(f"language {value[:40]!r} is not supported: use {', '.join(LANGUAGES)} or leave it blank")
+                    continue
+                metadata.language = code
             elif len(value) > METADATA_LIMITS[name]:
                 problems.append(f"{name} is longer than {METADATA_LIMITS[name]} characters")
-            elif name == "language":
-                metadata.language = LANGUAGE_ALIASES.get(value.lower(), value.lower())
             else:
                 setattr(metadata, name, value)
         if problems:

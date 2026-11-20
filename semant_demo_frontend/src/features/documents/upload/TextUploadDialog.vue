@@ -49,7 +49,7 @@
           </q-file>
           <div class="text-caption text-grey-7 q-mt-xs">
             Columns: <code>filename</code> (required, as uploaded), <code>title</code>, <code>author</code>,
-            <code>yearIssued</code>, <code>language</code>.
+            <code>yearIssued</code>, <code>language</code> ({{ LANGUAGES.join(', ') }} or blank).
             <a :href="templateHref" download="semant-text-upload-template.csv" data-testid="upload-template">Download the CSV template</a>
           </div>
         </div>
@@ -128,7 +128,9 @@ import type { TextUploadResponse } from 'src/generated/api'
 import { apiErrorMessage } from 'src/shared/api'
 import { plural } from 'src/shared/plural'
 import { useDocumentsRepository } from '../useDocumentsRepository'
-import { CSV_TEMPLATE, MAX_FILES, STATUS, allCompleted, checkFiles, filesNotSaved, summary } from './textUpload'
+import {
+  CSV_TEMPLATE, LANGUAGES, MAX_FILES, STATUS, allCompleted, checkFiles, filesNotSaved, readSelection, summary, unreadableMessage
+} from './textUpload'
 
 const props = defineProps<{ collectionId: string }>()
 defineEmits([...useDialogPluginComponent.emits])
@@ -177,7 +179,19 @@ async function upload () {
   rejected.value = null
   metadataCleared.value = false
   try {
-    const result = await repository.uploadTextDocuments(props.collectionId, files.value, metadata.value)
+    // A file changed since it was selected cannot be sent: name it and drop it from the
+    // selection, so choosing it again (the picker appends) takes its current content.
+    const selected = metadata.value ? [...files.value, metadata.value] : files.value
+    const { copies, unreadable } = await readSelection(selected)
+    if (unreadable.length) {
+      requestError.value = unreadableMessage(unreadable.map(f => f.name))
+      files.value = files.value.filter(f => !unreadable.includes(f))
+      if (metadata.value && unreadable.includes(metadata.value)) metadata.value = null
+      return
+    }
+    const sent = copies.slice(0, files.value.length)
+    const sentMetadata = metadata.value ? copies[files.value.length] : null
+    const result = await repository.uploadTextDocuments(props.collectionId, sent, sentMetadata)
     response.value = result
     const remaining = filesNotSaved(files.value, result)
     // The CSV names the saved files too, which the server would refuse as not uploaded.

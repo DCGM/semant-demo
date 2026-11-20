@@ -48,7 +48,7 @@ example.txt,Example document,Jane Doe,1925,ces
 | `title` | no | `Documents.title`; blank: the file name without `.txt`. At most 500 characters. |
 | `author` | no | `Documents.author`, a one-element list. At most 300 characters. |
 | `yearIssued` | no | `Documents.yearIssued` (an integer, e.g. `1925` or `-50`) and the chunks' copy `Chunks.yearIssued` used by year filters (#153). |
-| `language` | no | `Documents.language` and `Chunks.language`, lowercased. Use the three-letter code of the Language search filter (`ces`, `deu`, `hun`, `lat`, `zxx`); the two-letter and bibliographic codes of these languages (`cs`, `cze`, `de`, `ger`, `hu`, `la`) are stored as that code. Other values are stored as given and no filter selects them. At most 32 characters. |
+| `language` | no | `Documents.language` and `Chunks.language`, lowercased. Blank, or a code of the Language search filter (`ces`, `deu`, `hun`, `lat`, `zxx`), in any case; the two-letter and bibliographic codes of these languages (`cs`, `cze`, `de`, `ger`, `hu`, `la`) are stored as that code. Any other value is refused for that file (`invalid`), so every stored language is one the filter selects. |
 
 Any other column (`public`, `library`, `id`, ...) refuses the upload: the CSV cannot set
 rights, the source library or ids. There is no `description` column: no deployed `Documents`
@@ -135,6 +135,12 @@ Each file's result (`TextUploadFileResult`):
 The dialog keeps the files that were not saved selected and removes saved ones, so uploading
 again never creates a second copy; after a partial success it also clears the CSV (it names
 saved files too, which a new upload would refuse) and asks for one with the remaining rows.
+
+A browser refuses to send a file that changed on disk after it was chosen (Chrome:
+`net::ERR_UPLOAD_FILE_CHANGED`), for example a CSV corrected in an editor after a refused
+upload. The dialog therefore reads every chosen file before sending. If one cannot be read, it
+sends nothing, names the file, and drops it from the selection so that choosing it again
+takes its current content.
 
 Nothing is rolled back or deleted (ADR 0002). A failed or interrupted upload leaves a private
 document, possibly with some chunks, that belongs to no collection. No reader shows it:
