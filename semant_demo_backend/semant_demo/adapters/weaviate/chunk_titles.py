@@ -20,6 +20,7 @@ TITLE = "title"
 LANGUAGE = "language"
 TEXT = "text"
 DOCUMENT_LINK = "document"
+PUBLIC = "public"
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,17 @@ async def read_document_titles(client: WeaviateAsyncClient, collection: str, ids
     response = await client.collections.get(collection).query.fetch_objects(
         filters=Filter.by_id().contains_any(ids), limit=len(ids), return_properties=[TITLE] if with_title else [])
     return {obj.uuid: obj.properties.get(TITLE) if with_title else None for obj in response.objects}
+
+
+async def read_public_documents(client: WeaviateAsyncClient, collection: str, ids: list[UUID]) -> set[UUID]:
+    """The documents with these ids whose ``public`` is true (#279): only their text may go to
+    a model by default (#785)."""
+    if not ids:
+        return set()
+    response = await client.collections.get(collection).query.fetch_objects(
+        filters=Filter.by_id().contains_any(ids) & Filter.by_property(PUBLIC).equal(True), limit=len(ids),
+        return_properties=[])
+    return {obj.uuid for obj in response.objects}
 
 
 async def set_chunk_title(client: WeaviateAsyncClient, collection: str, chunk_id: UUID, title: str) -> None:

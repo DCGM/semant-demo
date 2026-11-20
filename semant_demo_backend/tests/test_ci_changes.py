@@ -126,6 +126,7 @@ def test_frontend_only_change_runs_everything_until_the_mode_is_enabled():
     FE + "scripts/api-client.sh",
     FE + "src/generated/api/apis/DefaultApi.ts",
     FE + "src/features/documents/originalSource.ts",
+    FE + "src/features/documents/upload/textUpload.ts",
     FE + "test/e2e/shard_durations.json",
     FE + "new-config.json",
     "semant_demo_backend/semant_demo/main.py",

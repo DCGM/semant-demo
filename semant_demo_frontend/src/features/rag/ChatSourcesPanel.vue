@@ -96,8 +96,10 @@ const emit = defineEmits<{
 function details (source: SearchResultChunk): string {
   if (!hasDocument(source)) return 'Web search'
   const year = source.documentObject?.yearIssued
-  const pages = source.fromPage === source.toPage ? `page ${source.fromPage}` : `pages ${source.fromPage}–${source.toPage}`
-  return [year ? String(year) : 'Year N/A', pages].join(' · ')
+  const pages = source.fromPage == null || source.toPage == null
+    ? null // a text-only document (#785)
+    : source.fromPage === source.toPage ? `page ${source.fromPage}` : `pages ${source.fromPage}–${source.toPage}`
+  return [year ? String(year) : 'Year N/A', pages].filter(Boolean).join(' · ')
 }
 
 const itemEls = new Map<string, HTMLElement>()

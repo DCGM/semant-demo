@@ -637,7 +637,8 @@ const documentRoute = computed(() => {
 
 function showContext (row: AnnotationListRow) {
   if (!row.documentId || !row.chunkId) return null
-  return chunkContext.open({ documentId: row.documentId, chunkId: row.chunkId })
+  // Through the collection: a private document (an uploaded text, #785) is readable only there (#279).
+  return chunkContext.open({ documentId: row.documentId, chunkId: row.chunkId, collectionId: collectionId.value || null })
 }
 
 /** Opens the row in the sidebar; viewing context never changes the selection. */

@@ -38,7 +38,8 @@ const isString = (value: unknown): value is string => typeof value === 'string'
 function isSource (value: unknown): value is ChatSource {
   const s = value as Partial<ChatSource> | null
   return !!s && typeof s === 'object' && isNumber(s.citation) && isString(s.chunkId) && isString(s.documentId) &&
-    (s.order === null || isNumber(s.order)) && isNumber(s.fromPage) && isNumber(s.toPage) && isNumber(s.label)
+    (s.order === null || isNumber(s.order)) && (s.fromPage === null || isNumber(s.fromPage)) &&
+    (s.toPage === null || isNumber(s.toPage)) && isNumber(s.label)
 }
 
 function isCoverage (value: unknown): value is ChatCoverage {
