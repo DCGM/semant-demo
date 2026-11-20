@@ -1,17 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { Quasar } from 'quasar'
+import { QSelect, Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent, h, reactive } from 'vue'
+import { defineComponent, h, nextTick, reactive } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 
-import type { Collection, CollectionStats, CorpusDistributions } from 'src/generated/api'
+import type { Collection, CollectionPassages, CollectionStats, CorpusDistributions, SearchFilter } from 'src/generated/api'
 import ScopedDocumentCharts from 'src/features/analytics/ScopedDocumentCharts.vue'
 import { exploreCollection } from 'src/features/explore/exploreHandoff'
 import { collectionDocumentChartsKey } from 'src/features/user_collections/useCollectionDocumentCharts'
 import CollectionOverviewPage from 'src/features/user_collections/CollectionOverviewPage.vue'
-import { collectionStatsKey } from 'src/features/user_collections/useCollectionStats'
+import { collectionStatsKey, forgetCollectionStats } from 'src/features/user_collections/useCollectionStats'
+import { collectionPassageClassificationKey, collectionPassageLanguagesKey } from 'src/features/user_collections/useCollectionPassageCharts'
+import { SEARCH_FILTERS_KEY } from 'src/features/search/useSearchFilters'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useSessionScope } from 'src/app/session'
@@ -23,10 +25,11 @@ import { queryClient } from 'src/shared/query'
 const getById = vi.fn()
 const getStats = vi.fn()
 const getDocumentDistributions = vi.fn()
+const getPassageCounts = vi.fn()
 const remove = vi.fn()
 
 vi.mock('src/features/user_collections/useUserCollectionsRepository', () => ({
-  useUserCollectionsRepository: () => ({ getById, getStats, getDocumentDistributions, remove, getMembers: async () => [] })
+  useUserCollectionsRepository: () => ({ getById, getStats, getDocumentDistributions, getPassageCounts, remove, getMembers: async () => [] })
 }))
 // The charts are drawn by a stand-in, not Vega (no canvas in jsdom).
 vi.mock('src/shared/visualization/loadEmbed', () => ({
@@ -73,6 +76,55 @@ const distributions = (collectionId: string, total: number, changes: Partial<Cor
   languages: { available: true, values: total ? [{ value: 'ces', count: total }] : [], otherCount: 0, unknownCount: 0 },
   ...changes
 })
+
+/** The included-passage counts of a collection (#807): languages without a dimension, else that classification. */
+function passages (collectionId: string, dimension: string | null, total = 4, changes: Partial<CollectionPassages> = {}): CollectionPassages {
+  const common = {
+    scope: 'user_collection' as const,
+    userCollectionId: collectionId,
+    unit: 'passages' as const,
+    totalPassages: total,
+    computedAt: new Date('2026-11-20T12:00:00Z'),
+    dataSource: 'live_aggregation' as const
+  }
+  if (dimension === null) {
+    return { ...common, languages: { available: true, values: total ? [{ value: 'ces', count: total - 1 }] : [], otherCount: 0, unknownCount: total ? 1 : 0 }, ...changes }
+  }
+  const held: Record<string, number> = dimension === 'style' ? { formal: 2, informal: 1 } : { religion: 3 }
+  const vocabulary = dimension === 'style' ? ['formal', 'informal', 'literary'] : ['religion', 'law']
+  return {
+    ...common,
+    classification: {
+      dimension: dimension as never,
+      available: true,
+      values: vocabulary.map(value => ({ value, count: held[value] ?? 0, configured: true })),
+      withoutValueCount: 1,
+      withoutValueApproximate: false
+    },
+    ...changes
+  }
+}
+
+/** The configured search filters: style before subject_domain, and a filter that is no classification. */
+const searchFilters: SearchFilter[] = [
+  { id: 'year', name: 'Year', type: 'interval', description: '', targetProperty: 'yearIssued', minValue: 1800, maxValue: 2000 },
+  {
+    id: 'style',
+    name: 'Style',
+    type: 'nominal',
+    description: '',
+    targetProperty: 'style',
+    values: [{ backendForm: 'formal', userForm: 'Formal style' }, { backendForm: 'informal', userForm: 'Informal' }, { backendForm: 'literary', userForm: 'Literary' }]
+  },
+  {
+    id: 'subject',
+    name: 'Subject',
+    type: 'nominal',
+    description: '',
+    targetProperty: 'subject_domain',
+    values: [{ backendForm: 'religion', userForm: 'Religion' }, { backendForm: 'law', userForm: 'Law' }]
+  }
+]
 
 const stats = (collectionId: string, documentsCount: number): CollectionStats =>
   ({ collectionId, documentsCount, chunksCount: documentsCount * 10, tagsCount: 2, annotationsCount: 5 })
@@ -131,6 +183,9 @@ beforeEach(async () => {
   getById.mockReset().mockImplementation(async (id: string) => collection(id))
   getStats.mockReset()
   getDocumentDistributions.mockReset().mockImplementation(async (id: string) => distributions(id, 3))
+  getPassageCounts.mockReset().mockImplementation(async (id: string, dimension: string | null) => passages(id, dimension))
+  // Server configuration, kept for the tab: no request in these tests.
+  queryClient.setQueryData(SEARCH_FILTERS_KEY, { filters: searchFilters })
   vi.mocked(exploreCollection).mockClear()
   remove.mockReset().mockResolvedValue(undefined)
   route.params.collectionId = 'A'
@@ -459,5 +514,158 @@ describe('collection document charts on the Overview tab', () => {
 
     expect(queryClient.getQueryData(collectionDocumentChartsKey('u1', 'A'))).toBeUndefined()
     expect(queryClient.getQueryData(collectionDocumentChartsKey('u1', 'B'))).toEqual(distributions('B', 7))
+  })
+})
+
+describe('collection passage charts on the Overview tab', () => {
+  const ids = (page: ReturnType<typeof mountPage>) =>
+    page.findAll('[data-testid]').map(e => e.attributes('data-testid')).filter(id => id?.startsWith('passage-'))
+  const selector = (page: ReturnType<typeof mountPage>) =>
+    page.findAllComponents(QSelect).find(s => s.props('label') === 'Classification')!
+  const select = async (page: ReturnType<typeof mountPage>, dimension: string) => {
+    selector(page).vm.$emit('update:modelValue', dimension)
+    await flushPromises()
+  }
+  const bars = (page: ReturnType<typeof mountPage>, testId: string) =>
+    page.get(`[data-testid="${testId}-table"]`).findAll('tbody tr').map(r => [r.get('th').text(), r.findAll('td').at(-1)!.text()])
+
+  beforeEach(() => getStats.mockResolvedValue(stats('A', 3)))
+
+  it('counts the passages once the collection has loaded: the languages, then the first classification', async () => {
+    const loaded = held<Collection>()
+    getById.mockReturnValue(loaded.promise)
+    const page = mountPage()
+    await flushPromises()
+    expect(getPassageCounts).not.toHaveBeenCalled()
+
+    loaded.answer(collection('A'))
+    await flushPromises()
+
+    expect(getPassageCounts.mock.calls.map(c => [c[0], c[1]])).toEqual([['A', null], ['A', 'subject_domain']])
+    expect(page.get('[data-testid="passage-charts-scope"]').text()).toMatch(/^4\s+passages included in collection\s+Collection A\./)
+    expect(bars(page, 'passage-languages')).toEqual([['Czech (ces)', '3'], ['Unknown', '1']])
+    expect(page.get('[data-testid="passage-languages"]').text()).toContain('1 of 4 passages have no detected language')
+    // subject_domain first though configured after style; values named by the filter, zeros left out.
+    expect(page.get('[data-testid="passage-dimension"]').text()).toContain('Subject')
+    expect(bars(page, 'passage-classification')).toEqual([['Religion', '3'], ['Without a value', '1']])
+    expect(page.get('[data-testid="passage-classification-occurring"]').text()).toBe('1 of 2 values occur in this collection.')
+    expect(queryClient.getQueryData(collectionPassageLanguagesKey('u1', 'A'))).toEqual(passages('A', null))
+  })
+
+  it('offers only the configured classifications, and asks for a chosen one alone', async () => {
+    const page = mountPage()
+    await flushPromises()
+    const offered = selector(page).props('options')
+    expect(offered).toEqual([{ value: 'subject_domain', label: 'Subject' }, { value: 'style', label: 'Style' }])
+    getPassageCounts.mockClear()
+
+    await select(page, 'style')
+
+    // One request, for that classification: the total and the languages are not counted again.
+    expect(getPassageCounts.mock.calls.map(c => [c[0], c[1]])).toEqual([['A', 'style']])
+    expect(bars(page, 'passage-classification')).toEqual([['Formal style', '2'], ['Informal', '1'], ['Without a value', '1']])
+    expect(bars(page, 'passage-languages')).toEqual([['Czech (ces)', '3'], ['Unknown', '1']])
+
+    // Back within the visit: the answer already read is shown at once, and asked for again behind it.
+    selector(page).vm.$emit('update:modelValue', 'subject_domain')
+    await nextTick()
+    expect(bars(page, 'passage-classification')).toEqual([['Religion', '3'], ['Without a value', '1']])
+    await flushPromises()
+    expect(getPassageCounts.mock.calls.map(c => c[1])).toEqual(['style', 'subject_domain'])
+  })
+
+  it('keeps the language chart when a classification fails, and counts it again on Try again', async () => {
+    getPassageCounts.mockImplementation(async (id: string, dimension: string | null) => {
+      if (dimension) throw new Error('500')
+      return passages(id, null)
+    })
+    const page = mountPage()
+    await flushPromises()
+    expect(ids(page)).toContain('passage-classification-error')
+    expect(page.find('[data-testid="passage-classification-table"]').exists()).toBe(false)
+    expect(bars(page, 'passage-languages')).toEqual([['Czech (ces)', '3'], ['Unknown', '1']])
+
+    getPassageCounts.mockImplementation(async (id: string, dimension: string | null) => passages(id, dimension))
+    await page.get('[data-testid="passage-classification-retry"]').trigger('click')
+    await flushPromises()
+    expect(bars(page, 'passage-classification')).toEqual([['Religion', '3'], ['Without a value', '1']])
+  })
+
+  it('reports failed or foreign counts as an error to retry, never as numbers', async () => {
+    getPassageCounts.mockImplementation(async (_id: string, dimension: string | null) => passages('B', dimension, 9))
+    const page = mountPage()
+    await flushPromises()
+    expect(ids(page)).toEqual(['passage-charts-error', 'passage-charts-retry'])
+    expect(getPassageCounts).toHaveBeenCalledTimes(1) // no classification without the collection's passages
+
+    const retried = held<CollectionPassages>()
+    getPassageCounts.mockReturnValueOnce(retried.promise)
+    await page.get('[data-testid="passage-charts-retry"]').trigger('click')
+    await flushPromises()
+    expect(ids(page)).toEqual(['passage-charts-loading'])
+    retried.fail(new Error('503'))
+    await flushPromises()
+    expect(ids(page)).toEqual(['passage-charts-error', 'passage-charts-retry'])
+
+    getPassageCounts.mockImplementation(async (id: string, dimension: string | null) => passages(id, dimension))
+    await page.get('[data-testid="passage-charts-retry"]').trigger('click')
+    await flushPromises()
+    expect(page.get('[data-testid="passage-charts-total"]').text()).toBe('4')
+  })
+
+  it('says that an empty collection has no passages, and counts no classification', async () => {
+    getPassageCounts.mockImplementation(async (id: string, dimension: string | null) => passages(id, dimension, 0))
+    const page = mountPage()
+    await flushPromises()
+    expect(page.get('[data-testid="passage-charts-empty"]').text()).toContain('This collection has no passages.')
+    expect(getPassageCounts.mock.calls.map(c => c[1])).toEqual([null])
+  })
+
+  it('names a value outside the vocabulary as stored and says when "Without a value" is approximate', async () => {
+    getPassageCounts.mockImplementation(async (id: string, dimension: string | null) => dimension
+      ? passages(id, dimension, 4, {
+        classification: {
+          dimension: 'subject_domain',
+          available: true,
+          values: [{ value: 'religion', count: 2, configured: true }, { value: 'law', count: 0, configured: true },
+            { value: 'odd_value', count: 1, configured: false }],
+          withoutValueCount: 1,
+          withoutValueApproximate: true
+        }
+      })
+      : passages(id, null))
+    const page = mountPage()
+    await flushPromises()
+    expect(bars(page, 'passage-classification')).toEqual([['Religion', '2'], ['odd_value', '1'], ['Without a value', '1']])
+    expect(page.get('[data-testid="passage-classification"]').text()).toContain('"Without a value" is approximate')
+  })
+
+  it('never shows another collection\'s passage counts, and starts it with the first classification again', async () => {
+    const page = mountPage()
+    await flushPromises()
+    await select(page, 'style')
+    const later = held<CollectionPassages>()
+    getPassageCounts.mockImplementation(async (id: string, dimension: string | null) => id === 'B' && !dimension ? later.promise : passages(id, dimension))
+
+    route.params.collectionId = 'B'
+    await flushPromises()
+
+    expect(page.find('[data-testid="passage-charts-total"]').exists()).toBe(false)
+    expect(page.find('[data-testid="passage-languages-table"]').exists()).toBe(false)
+    later.answer(passages('B', null, 2))
+    await flushPromises()
+    expect(page.get('[data-testid="passage-charts-total"]').text()).toBe('2')
+    expect(getPassageCounts.mock.calls.at(-1)!.slice(0, 2)).toEqual(['B', 'subject_domain'])
+  })
+
+  it('forgets the passage counts of a deleted collection with its statistics', async () => {
+    mountPage()
+    await flushPromises()
+    expect(queryClient.getQueryData(collectionPassageClassificationKey('u1', 'A', 'subject_domain'))).toBeDefined()
+
+    forgetCollectionStats(['A'])
+
+    expect(queryClient.getQueryData(collectionPassageLanguagesKey('u1', 'A'))).toBeUndefined()
+    expect(queryClient.getQueryData(collectionPassageClassificationKey('u1', 'A', 'subject_domain'))).toBeUndefined()
   })
 })
