@@ -8,8 +8,8 @@ render suggestions progressively: ``SuggestSpansChunkResult`` lines (``"event":
 
 - ``POST /api/ai/suggest_spans/thorough`` — every collection chunk of the document is
   sent to Topicer's ``/v1/tags/propose/texts`` with all selected tags.
-- ``POST /api/ai/suggest_spans/optimized`` — per tag, Topicer's
-  ``/v1/tags/propose/db/stream`` pre-filters chunks by vector similarity.
+- ``POST /api/ai/suggest_spans/optimized`` — per tag, only the chunks most similar to
+  it (ranked by semANT's hybrid search, #792) are sent to ``/v1/tags/propose/texts``.
 - ``POST /api/ai/suggest_spans/selection`` — one user-selected passage.
 - ``GET /api/ai/topicer_configs`` — the Topicer configurations a request may name in
   ``config_name`` (#189); without one, the server default is used.
@@ -25,12 +25,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
+from functools import partial
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from semant_demo.adapters.topicer.client import TopicerClient
 from semant_demo.features.annotations import service, suggestions
+from semant_demo.features.annotations.candidates import rank_candidates
 from semant_demo.features.annotations.schemas import (
     DeleteAutoSpansRequest, DeleteAutoSpansResponse, SuggestSpansRequest, SuggestSpansSelectionRequest,
     TopicerConfigsResponse,
@@ -39,7 +41,8 @@ from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.quota.principal import get_allowance_budget
 from semant_demo.features.quota.schemas import QUOTA_EXHAUSTED_RESPONSES
 from semant_demo.features.quota.service import AllowanceBudget
-from semant_demo.routes.dependencies import get_annotation_store, get_topicer
+from semant_demo.features.search.service import SearchBackends
+from semant_demo.routes.dependencies import get_annotation_store, get_search_backends, get_topicer
 from semant_demo.routes.streaming import OperationStreamingResponse
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
@@ -119,17 +122,19 @@ async def suggest_spans_optimized(
     body: SuggestSpansRequest,
     store: AnnotationStore = Depends(get_annotation_store),
     provider: TopicerClient = Depends(get_topicer),
+    backends: SearchBackends = Depends(get_search_backends),
     current_user: User = Depends(current_active_user),
     budget: AllowanceBudget = Depends(get_allowance_budget),
 ):
     """
-    Optimized AI span suggestion: per tag, the Topicer service uses vector
-    similarity to pre-filter only the most relevant chunks before invoking the
-    LLM, evaluating at most ``TOPICER_MAX_CHUNKS_PER_TAG`` chunks per tag (sent as
-    ``max_chunks``; never set by the caller). Results are streamed as they arrive, then a
-    :class:`SuggestSpansRunEnd` that lists the tags that reached the limit.
+    Optimized AI span suggestion: per tag, a hybrid search picks the document's chunks
+    most similar to the tag, at most ``TOPICER_MAX_CHUNKS_PER_TAG`` (never set by the
+    caller), and only those are sent to the LLM with that tag. Results are streamed as
+    they arrive, then a :class:`SuggestSpansRunEnd` that lists the tags that reached the
+    limit.
     """
-    run = await suggestions.prepare_document_run(store, provider, current_user, body, "optimized", budget)
+    run = await suggestions.prepare_document_run(store, provider, current_user, body, "optimized", budget,
+                                                 partial(rank_candidates, backends))
     return _run_response(run)
 
 

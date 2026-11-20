@@ -8,6 +8,7 @@ The documents matching ``filters`` per source library and publication year: a do
 Name | Type
 ------------ | -------------
 `scope` | string
+`userCollectionId` | string
 `unit` | string
 `filters` | [DocumentFilters](DocumentFilters.md)
 `chunkFilters` | [ChunkFilters](ChunkFilters.md)
@@ -26,6 +27,7 @@ import type { LibraryYearDistribution } from ''
 // TODO: Update the object below with actual values
 const example = {
   "scope": null,
+  "userCollectionId": null,
   "unit": null,
   "filters": null,
   "chunkFilters": null,

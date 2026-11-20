@@ -22,8 +22,9 @@ export function useDocumentsRepository() {
       return api.getCollectionDocumentsApiUserCollectionsCollectionIdDocumentsGet({ collectionId })
     },
 
-    getById: async (documentId: string): Promise<Document> => {
-      return api.fetchDocumentApiDocumentDocumentIdGet({ documentId })
+    /** A public document, or one of `collectionId` whatever its rights (#279). */
+    getById: async (documentId: string, collectionId: string | null = null): Promise<Document> => {
+      return api.fetchDocumentApiDocumentDocumentIdGet({ documentId, collectionId })
     },
 
     browse: async (params: DocumentBrowseParams): Promise<DocumentBrowse> => {

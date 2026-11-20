@@ -8,6 +8,7 @@ Name | Type
 ------------ | -------------
 `filters` | [DocumentFilters](DocumentFilters.md)
 `chunkFilters` | [ChunkFilters](ChunkFilters.md)
+`userCollectionId` | string
 
 ## Example
 
@@ -18,6 +19,7 @@ import type { CorpusDistributionsRequest } from ''
 const example = {
   "filters": null,
   "chunkFilters": null,
+  "userCollectionId": null,
 } satisfies CorpusDistributionsRequest
 
 console.log(example)

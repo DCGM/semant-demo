@@ -7,9 +7,12 @@ summarizing or reasoning; semANT returns retrieval results and source text and m
 calls** for it. First stage of [#138](https://github.com/DCGM/semant-demo/issues/138),
 implemented in [#635](https://github.com/DCGM/semant-demo/issues/635).
 
-Only the **public corpus** is available: the scope that semANT already serves without login
-([ADR 0007](adr/0007-access-and-collaboration.md)). It includes no user collections (shared or
-not), tags, annotations, AI generation or writes, and needs no account.
+Only the **public corpus** is available: the documents whose source library makes them public
+(`Documents.public` true), the scope that semANT already serves without login
+([ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18), #279).
+Restricted and unknown documents are never searched, counted or read, also by their ids. It
+includes no user collections (shared or not), tags, annotations, AI generation or writes, and
+needs no account.
 
 ## Endpoint and configuration
 

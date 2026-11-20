@@ -10,6 +10,8 @@ store is asked; the Weaviate filter they become is checked here, its matching se
 """
 import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from asgi_lifespan import LifespanManager
@@ -21,7 +23,8 @@ from semant_demo.adapters.weaviate.analytics import (
 from semant_demo.features.analytics import service
 from semant_demo.features.analytics.schemas import DocumentFilters
 from semant_demo.main import create_app
-from semant_demo.routes.dependencies import get_corpus_analytics
+from semant_demo.routes.dependencies import get_corpus_analytics, get_user_collections
+from semant_demo.users.auth import current_active_optional_user
 from tests.app_support import make_test_config, offline_weaviate
 
 PATH = "/api/analytics/corpus/overview"
@@ -37,9 +40,12 @@ class FakeAnalytics:
         self.total = total
         self.properties = properties
         self.calls: list[tuple[dict, int, list]] = []
+        self.collections: list = []
+        """The collection restriction of each call, in call order (None: the whole corpus)."""
 
-    async def count_documents(self, properties, group_limit, conditions=()):
+    async def count_documents(self, properties, group_limit, conditions=(), collection_id=None):
         self.calls.append((properties, group_limit, list(conditions)))
+        self.collections.append(collection_id)
         for condition in conditions:
             declared = self.properties.get(condition.prop, Unavailable("missing"))
             if isinstance(declared, Unavailable):
@@ -48,10 +54,11 @@ class FakeAnalytics:
         return DocumentCounts(total=self.total, properties={
             prop: self.properties.get(prop, Unavailable("missing")) for prop in properties})
 
-    async def count_documents_per_value(self, prop, values, properties, group_limit, conditions=()):
-        """The counts of ``per_value[value]`` (a FakeAnalytics) for each value; the conditions are
-        only recorded here."""
+    async def count_documents_per_value(self, prop, values, properties, group_limit, conditions=(), collection_id=None):
+        """The counts of ``per_value[value]`` (a FakeAnalytics) for each value; the conditions and
+        the collection are only recorded here."""
         self.calls.append((prop, list(values), properties, group_limit, list(conditions)))
+        self.collections.append(collection_id)
         return {value: await self.per_value[value].count_documents(properties, group_limit) for value in values}
 
 
@@ -197,11 +204,11 @@ async def test_concurrent_requests_share_one_computation():
 
 async def test_a_failure_is_not_cached():
     class FailingOnce(FakeAnalytics):
-        async def count_documents(self, properties, group_limit, conditions=()):
+        async def count_documents(self, properties, group_limit, conditions=(), collection_id=None):
             if not self.calls:
                 self.calls.append("failed")
                 raise RuntimeError("store unavailable")
-            return await super().count_documents(properties, group_limit, conditions)
+            return await super().count_documents(properties, group_limit, conditions, collection_id)
 
     analytics, cache = FailingOnce(4), service.OverviewCache(600)
     with pytest.raises(RuntimeError):
@@ -450,7 +457,8 @@ def test_distributions_are_a_public_typed_operation(tmp_path):
 
     assert list(operation) == ["post"]
     assert operation["post"]["operationId"] == "corpus_distributions_api_analytics_corpus_distributions_post"
-    assert "security" not in operation["post"]
+    # Public; a user is read only for a collection scope (#622), optionally, as Search does.
+    assert operation["post"]["security"] == [{"OAuth2PasswordBearer": []}]
     assert operation["post"]["requestBody"]["content"]["application/json"]["schema"] == \
         {"$ref": "#/components/schemas/CorpusDistributionsRequest"}
     assert operation["post"]["responses"]["200"]["content"]["application/json"]["schema"] == \
@@ -667,6 +675,106 @@ async def test_library_years_are_answered_anonymously_and_refuse_unavailable_fil
     assert refused.status_code == 422
     schema = create_app(make_test_config(tmp_path)).openapi()
     operation = schema["paths"][LIBRARY_YEARS]["post"]
-    assert "security" not in operation
+    assert operation["security"] == [{"OAuth2PasswordBearer": []}]  # optional, for a collection scope
     assert operation["responses"]["200"]["content"]["application/json"]["schema"] == \
         {"$ref": "#/components/schemas/LibraryYearDistribution"}
+
+
+# A user collection's documents (#622): counted live, for readers of the collection only.
+
+OWNER = UUID("5e3a0000-0000-4000-8000-00000000a001")
+OUTSIDER = UUID("5e3a0000-0000-4000-8000-00000000a002")
+COLLECTION = UUID("5e3a0000-0000-4000-8000-00000000c001")
+
+
+class FakeCollections:
+    """Only the collection ``COLLECTION``, owned by ``OWNER``, not shared."""
+
+    async def read_access_record(self, collection_id):
+        return (OWNER, set()) if collection_id == COLLECTION else None
+
+
+async def _request_as(tmp_path, analytics, user_id, *requests: tuple[str, dict]):
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_corpus_analytics] = lambda: analytics
+    app.dependency_overrides[get_user_collections] = FakeCollections
+    app.dependency_overrides[current_active_optional_user] = \
+        lambda: SimpleNamespace(id=user_id) if user_id is not None else None
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return [await client.post(path, json=body) for path, body in requests]
+
+
+async def test_collection_counts_restrict_every_count_and_name_their_scope():
+    analytics = heatmap_analytics()
+    collection = service.CollectionScope(COLLECTION)
+
+    distributions = await service.collection_distributions(analytics, collection, DocumentFilters())
+    heatmap = await service.library_years(analytics, DocumentFilters(), collection=collection)
+
+    assert (distributions.scope, distributions.user_collection_id, distributions.data_source) == \
+        ("user_collection", str(COLLECTION), "live_aggregation")
+    assert (heatmap.scope, heatmap.user_collection_id) == ("user_collection", str(COLLECTION))
+    # The total, the grouped counts and the per-library counts of the heatmap: the same restriction.
+    assert analytics.collections == [COLLECTION] * 3
+    assert sum(r.total_documents for r in heatmap.rows) == heatmap.total_documents == 10
+
+    corpus = await service.corpus_distributions(analytics, DocumentFilters())
+    assert (corpus.scope, corpus.user_collection_id, analytics.collections[-1]) == ("searchable_corpus", None, None)
+
+
+async def test_a_collection_is_never_answered_from_the_warm_corpus_cache(tmp_path):
+    analytics = FakeAnalytics(4, language=counts([("ces", 4)]))
+    scoped = {"user_collection_id": str(COLLECTION)}
+
+    warm, cached, collection, again = await _request_as(
+        tmp_path, analytics, OWNER, (DISTRIBUTIONS, {}), (DISTRIBUTIONS, {}), (DISTRIBUTIONS, scoped),
+        (DISTRIBUTIONS, scoped))
+
+    assert [r.status_code for r in (warm, cached, collection, again)] == [200] * 4
+    assert cached.json()["data_source"] == "cached_aggregation"
+    for response in (collection, again):
+        body = response.json()
+        assert (body["scope"], body["user_collection_id"], body["data_source"]) == \
+            ("user_collection", str(COLLECTION), "live_aggregation")
+    assert analytics.collections == [None, COLLECTION, COLLECTION]
+    # The corpus cache still holds the corpus.
+    after, = await _request_as(tmp_path, analytics, OWNER, (DISTRIBUTIONS, {}))
+    assert (after.json()["scope"], after.json()["user_collection_id"]) == ("searchable_corpus", None)
+
+
+@pytest.mark.parametrize("path", [DISTRIBUTIONS, LIBRARY_YEARS])
+@pytest.mark.parametrize("user_id, collection_id, status", [
+    (None, COLLECTION, 401),  # anonymous: no collection, as in Search
+    (OUTSIDER, COLLECTION, 404),  # not confirmed to exist
+    (OWNER, UUID("5e3a0000-0000-4000-8000-00000000c999"), 404),
+    (OWNER, "not-an-id", 404),
+])
+async def test_a_collection_the_caller_cannot_read_is_refused_before_counting(tmp_path, path, user_id, collection_id,
+                                                                            status):
+    analytics = heatmap_analytics()
+
+    response, = await _request_as(tmp_path, analytics, user_id, (path, {"user_collection_id": str(collection_id)}))
+
+    assert response.status_code == status
+    assert analytics.calls == []  # no public fallback
+
+
+async def test_chunk_filters_of_a_collection_request_are_checked_before_its_access(tmp_path):
+    analytics = heatmap_analytics()
+
+    response, = await _request_as(tmp_path, analytics, OUTSIDER, (
+        DISTRIBUTIONS, {"user_collection_id": str(COLLECTION), "chunk_filters": {"languages": ["xx"]}}))
+
+    assert response.status_code == 400
+    assert analytics.calls == []
+
+
+async def test_library_years_of_a_collection_are_answered_for_its_owner(tmp_path):
+    analytics = heatmap_analytics()
+
+    response, = await _request_as(tmp_path, analytics, OWNER, (LIBRARY_YEARS, {"user_collection_id": str(COLLECTION)}))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["scope"], body["user_collection_id"]) == ("user_collection", str(COLLECTION))
+    assert analytics.collections == [COLLECTION, COLLECTION]

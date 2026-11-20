@@ -82,7 +82,9 @@
  * Publication period × source library (#361): loaded on request (it costs about as much as the
  * other counts again) and again whenever the counted documents change; the periods follow the
  * timeline's view (`view`), which needs no request. A newer request replaces an older one,
- * whose late answer is ignored; leaving aborts the request in flight.
+ * whose late answer is ignored; leaving aborts the request in flight. Rows of another collection
+ * (or of the corpus) are dropped at once when the collection changes (#768); for other filters
+ * they stay, dimmed, until answered.
  */
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import type { ChunkFilters, DocumentFilters, LibraryYearDistribution } from 'src/generated/api'
@@ -97,6 +99,8 @@ const props = defineProps<{
   filters: DocumentFilters
   /** The chunk filters of those counts (per dimension, #529), if any. */
   chunkFilters?: ChunkFilters
+  /** The collection those counts describe (#768); none: the searchable corpus. */
+  userCollectionId?: string | null
   /** The timeline's shown window and bin width. */
   view: { window: YearWindow, width: number }
 }>()
@@ -119,7 +123,13 @@ async function load () {
   error.value = null
   try {
     const result = await api.corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost(
-      { corpusDistributionsRequest: { filters: props.filters, ...(hasChunkFilters(props.chunkFilters) ? { chunkFilters: props.chunkFilters } : {}) } },
+      {
+        corpusDistributionsRequest: {
+          filters: props.filters,
+          ...(hasChunkFilters(props.chunkFilters) ? { chunkFilters: props.chunkFilters } : {}),
+          ...(props.userCollectionId ? { userCollectionId: props.userCollectionId } : {})
+        }
+      },
       { signal: current.signal })
     if (controller !== current) return
     data.value = result
@@ -138,7 +148,10 @@ async function load () {
   }
 }
 
-watch(() => [props.filters, props.chunkFilters], load, { immediate: true })
+watch(() => [props.filters, props.chunkFilters, props.userCollectionId] as const, (now, before) => {
+  if (before && (now[2] ?? null) !== (before[2] ?? null)) data.value = null
+  void load()
+}, { immediate: true })
 onBeforeUnmount(() => {
   controller?.abort()
   controller = null

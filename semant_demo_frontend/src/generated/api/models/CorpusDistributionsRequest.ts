@@ -46,6 +46,12 @@ export interface CorpusDistributionsRequest {
      * @memberof CorpusDistributionsRequest
      */
     chunkFilters?: ChunkFilters;
+    /**
+     * 
+     * @type {string}
+     * @memberof CorpusDistributionsRequest
+     */
+    userCollectionId?: string | null;
 }
 
 /**
@@ -67,6 +73,7 @@ export function CorpusDistributionsRequestFromJSONTyped(json: any, ignoreDiscrim
         
         'filters': json['filters'] == null ? undefined : DocumentFiltersFromJSON(json['filters']),
         'chunkFilters': json['chunk_filters'] == null ? undefined : ChunkFiltersFromJSON(json['chunk_filters']),
+        'userCollectionId': json['user_collection_id'] == null ? undefined : json['user_collection_id'],
     };
 }
 
@@ -83,6 +90,7 @@ export function CorpusDistributionsRequestToJSONTyped(value?: CorpusDistribution
         
         'filters': DocumentFiltersToJSON(value['filters']),
         'chunk_filters': ChunkFiltersToJSON(value['chunkFilters']),
+        'user_collection_id': value['userCollectionId'],
     };
 }
 
