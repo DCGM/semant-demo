@@ -54,8 +54,9 @@ def main():
         action="store_true",
         help="Read-only: count what a run would do with the records whose haveVector lacks the vector's name "
              "(embed them, only add the name where the vector is already stored, skip an empty input). "
-             "No schema change, no embedding requests, no writes. Like a run, it reads the id and haveVector "
-             "of every record and only the selected ones in full. "
+             "No schema change, no embedding requests, no writes. Like a run, it reads only the selected "
+             "records, but beyond max_excluded of them it reads the rest with the cursor (the id and "
+             "haveVector of every record). "
              "Exit code 0 when a run would write nothing, 1 when it would, 2 when the check fails or a run "
              "would be refused (then it reads no records)."
     )
