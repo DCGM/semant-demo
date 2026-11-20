@@ -192,6 +192,25 @@ async def test_an_interrupted_run_is_continued_by_the_next(tool_store, make_pipe
     assert len(embed_calls) == calls_before_last_run  # a complete collection makes no requests
 
 
+async def test_records_with_an_empty_input_beyond_max_excluded_are_read_with_the_cursor(
+        tool_store, make_pipeline, embed_calls):
+    # Empty inputs stay selected and are left out by id; past max_excluded the run reads the rest with
+    # the cursor and still embeds every other record exactly once.
+    await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
+    collection = tool_store.collections.get(TEST_COLLECTION)
+    for i in range(4):
+        await collection.data.insert({"title": f"empty {i}", "text": "", "language": "ces"})
+
+    stats = await make_pipeline(max_excluded=2).run_async()
+
+    assert (stats.selected, stats.embedded, stats.empty) == (14, 10, 4) and stats.scanned == 14
+    assert sum(len(c) for c in embed_calls) == 10   # every record embedded once
+    vectors = await tool_vectors(tool_store)
+    assert sum(v is not None for v in vectors.values()) == 10
+    again = await make_pipeline().run_async()       # within max_excluded: no cursor
+    assert (again.selected, again.embedded, again.empty, again.scanned) == (4, 0, 4, 0)
+
+
 async def test_a_failed_write_stops_the_run_and_keeps_the_written_vectors(tool_store, make_pipeline, fail_writes,
                                                                         monkeypatch):
     await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
@@ -240,7 +259,7 @@ async def test_a_collection_without_the_expected_have_vector_is_refused_before_a
     with pytest.raises(ValueError, match=HAVE_VECTOR):
         await make_pipeline(collection=name).run_async()
     stats = await make_pipeline(collection=name).check_async()
-    assert HAVE_VECTOR in stats.refused and stats.scanned == 0
+    assert HAVE_VECTOR in stats.refused and (stats.selected, stats.scanned) == (0, 0)
     config = await tool_store.collections.get(name).config.get()
     assert set(config.vector_config) == {"default"} and embed_calls == []
     assert [p.name for p in config.properties] == ["text", *([HAVE_VECTOR] if declared else [])]
@@ -280,17 +299,19 @@ async def test_a_check_counts_what_a_run_would_embed_and_changes_nothing(tool_st
 
     # Before the first run the vector does not exist: the check neither creates it nor reads vectors.
     stats = await make_pipeline().check_async()
-    assert (stats.scanned, stats.selected, stats.missing, stats.already_stored, stats.empty) == (11, 11, 10, 0, 1)
+    assert (stats.selected, stats.missing, stats.already_stored, stats.empty, stats.scanned) == (11, 10, 0, 1, 0)
     assert set((await collection.config.get()).vector_config) == {"default"}
+    # Each page read is left out of the next query; beyond max_excluded the rest is read with the cursor.
+    stats = await make_pipeline(max_excluded=4).check_async()
+    assert (stats.selected, stats.missing, stats.already_stored, stats.empty, stats.scanned) == (11, 10, 0, 1, 11)
 
     await make_pipeline(max_records=4).run_async()
     filled = await tool_vectors(tool_store)
     calls = len(embed_calls)
 
-    # The four embedded records list the name now: only their ids and lists are read. The empty one
-    # stays selected.
+    # The four embedded records list the name now and are not read. The empty one stays selected.
     stats = await make_pipeline().check_async()
-    assert (stats.scanned, stats.selected, stats.missing, stats.already_stored, stats.empty) == (11, 7, 6, 0, 1)
+    assert (stats.selected, stats.missing, stats.already_stored, stats.empty, stats.scanned) == (7, 6, 0, 1, 0)
     assert stats.embedded == 0 and len(embed_calls) == calls     # no embedding requests
     assert await tool_vectors(tool_store) == filled               # no writes
 
@@ -328,9 +349,9 @@ async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_
                                         vector_config=Configure.Vectors.self_provided(name="default"))
     await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
 
-    def no_scan(*args, **kwargs):
+    def no_select(*args, **kwargs):
         raise AssertionError("a refused check must not read the records")
-    monkeypatch.setattr(EmbeddingPipeline, "_scan", no_scan)
+    monkeypatch.setattr(EmbeddingPipeline, "_select", no_select)
 
     def check_cli(**settings) -> int:
         make_pipeline(create_vector=False, **settings)
@@ -342,7 +363,7 @@ async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_
 
     for collection in (f"{TEST_COLLECTION}Empty", TEST_COLLECTION):
         stats = await make_pipeline(create_vector=False, collection=collection).check_async()
-        assert (stats.scanned, stats.missing) == (0, 0) and "create_vector is disabled" in stats.refused
+        assert (stats.selected, stats.missing) == (0, 0) and "create_vector is disabled" in stats.refused
     for collection in (f"{TEST_COLLECTION}Empty", TEST_COLLECTION):
         assert await asyncio.to_thread(check_cli, collection=collection) == 2
         assert "A run would be refused" in capsys.readouterr().err
@@ -367,10 +388,9 @@ async def test_a_run_reads_only_the_records_lacking_the_name_and_lists_a_stored_
     before = await snapshot_chunks(tool_store, collection_names)
 
     # The fake provider's embeddings have SECOND_VECTOR's dimension, so that is the vector filled here.
-    # Every seeded chunk lists it: only the ids and lists are read, nothing is selected or written.
+    # Every seeded chunk lists it: nothing is selected, read or written.
     stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
-    seeded = len(corpus.chunks)
-    assert (stats.scanned, stats.selected, stats.embedded, stats.already_stored) == (seeded, 0, 0, 0)
+    assert (stats.selected, stats.embedded, stats.already_stored, stats.scanned) == (0, 0, 0, 0)
     assert await snapshot_chunks(tool_store, collection_names) == before
 
     # Chunks storing the vector without listing it (empty, null and another name) get only the name.
@@ -378,9 +398,9 @@ async def test_a_run_reads_only_the_records_lacking_the_name_and_lists_a_stored_
     for chunk_id, value in zip(ids, ([], None, ["default"])):
         await chunks.data.update(uuid=chunk_id, properties={HAVE_VECTOR: value})
     check = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).check_async()
-    assert (check.scanned, check.selected, check.missing, check.already_stored) == (seeded, 3, 0, 3)
+    assert (check.selected, check.missing, check.already_stored, check.scanned) == (3, 0, 3, 0)
     stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
-    assert (stats.scanned, stats.selected, stats.embedded, stats.already_stored) == (seeded, 3, 0, 3)
+    assert (stats.selected, stats.embedded, stats.already_stored, stats.scanned) == (3, 0, 3, 0)
     assert embed_calls == []
     lists = await listed(tool_store, chunks_name)
     assert [lists[str(i)] for i in ids] == [[SECOND_VECTOR], [SECOND_VECTOR], ["default", SECOND_VECTOR]]
@@ -410,7 +430,7 @@ async def test_a_chunk_inserted_by_chunk_ingest_is_selected_and_embedded(tool_st
 
     stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
 
-    assert (stats.scanned, stats.selected, stats.embedded, stats.already_stored) == (len(corpus.chunks) + 2, 2, 2, 0)
+    assert (stats.selected, stats.embedded, stats.already_stored, stats.scanned) == (2, 2, 0, 0)
     assert sorted(t for call in embed_calls for t in call) == sorted(texts)
     lists = await listed(tool_store, chunks_name)
     assert all(lists[i] == [SECOND_VECTOR] for i in new_ids)

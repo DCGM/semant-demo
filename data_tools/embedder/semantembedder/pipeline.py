@@ -14,8 +14,8 @@ from .embedders import Embedder, VLLMEmbedder
 
 @dataclass
 class PipelineStats:
-    scanned: int = 0  # records whose id and haveVector were read (the whole collection)
-    selected: int = 0  # of them, records whose haveVector lacks the vector's name (read in full)
+    selected: int = 0  # records read whose haveVector lacks the vector's name
+    scanned: int = 0  # records whose id and haveVector were read by the cursor (0 unless it fell back to it)
     already_stored: int = 0  # selected records that store the vector: a run only adds its name to haveVector
     empty: int = 0  # selected records whose rendered input text is empty (not embedded, stay selected)
     embedded: int = 0  # records whose vector (and name in haveVector) was written in this run
@@ -44,14 +44,19 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
     writes each embedding back as that named vector, together with the vector's name in the record's
     ``haveVector`` list (#816).
 
-    A run reads the whole collection with a cursor, but only the ids and ``haveVector``; the records whose
-    list lacks the name are then read with their properties and the vector by id. A filter on the list
-    with keyset paging or the first page of what is left costs far more when most records are selected
-    (measured in #816). A record written leaves the selection, so the pipeline can be interrupted at any
-    time and the next run continues with what is left. A selected record that already stores the
-    vector only gets the name; a record with an empty input is skipped and stays selected. The collection
-    must declare ``haveVector`` (``db.HAVE_VECTOR_DECLARATION``); a run never declares it. One run per
-    collection at a time: a write replaces the whole list.
+    A run reads again and again the first page of the records whose list lacks the name
+    (``contains_none``), leaving out by id those it has already read and not written: the records being
+    embedded or written, and those with an empty input. A record written leaves the selection, so the
+    pipeline can be interrupted at any time and the next run continues with what is left. Weaviate's
+    cursor cannot be combined with a filter, and keyset paging (sorted by ``_id``) costs minutes a page
+    when most records are selected (measured in #816). When more than ``max_excluded`` ids would be left
+    out (many empty inputs, or a check, which writes nothing), the run reads the rest of the collection
+    with the cursor instead, only the ids and ``haveVector``, and the records lacking the name by id.
+
+    A selected record that already stores the vector only gets the name; a record with an empty input is
+    skipped and stays selected. The collection must declare ``haveVector``
+    (``db.HAVE_VECTOR_DECLARATION``); a run never declares it. One run per collection at a time: a write
+    replaces the whole list.
     """
 
     # Weaviate connection settings
@@ -121,6 +126,14 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         desc="Number of records read from the database per batch",
         user_default=512
     )
+    max_excluded: int = ConfigurableValue(
+        desc="Maximum number of ids left out of the selection query (records read and not yet written, "
+             "or with an empty input); above it the rest is read with the cursor (ids and haveVector of "
+             "every record)",
+        user_default=5000,
+        validator=lambda x: isinstance(x, int) and x >= 0,
+        voluntary=True
+    )
     embed_batch_size: int = ConfigurableValue(
         desc="Number of texts sent to the embedder in a single request",
         user_default=32
@@ -185,17 +198,17 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 collection = client.collections.use(self.collection)
 
                 print(f"Starting embedding pipeline on collection '{self.collection}' (vector '{self.vector_name}')...")
-                total_count = (await collection.aggregate.over_all(total_count=True)).total_count
-                pbar = tqdm(total=total_count, desc="Embedding records")
+                pbar = tqdm(desc="Embedding records")
 
                 queue: asyncio.Queue = asyncio.Queue(maxsize=self.max_concurrent_requests * 2)
                 write_semaphore = asyncio.Semaphore(self.max_concurrent_writes)
+                excluded: set = set()  # read and not written: being embedded or written, or an empty input
 
                 try:
                     async with asyncio.TaskGroup() as tg:
-                        tg.create_task(self._produce(collection, queue, write_semaphore, pbar, stats))
+                        tg.create_task(self._produce(collection, queue, write_semaphore, pbar, stats, excluded))
                         for _ in range(self.max_concurrent_requests):
-                            tg.create_task(self._consume(collection, queue, write_semaphore, pbar, stats))
+                            tg.create_task(self._consume(collection, queue, write_semaphore, pbar, stats, excluded))
                 except ExceptionGroup as eg:
                     # the first failure cancels the other tasks, so it is the one worth reporting
                     raise eg.exceptions[0]
@@ -222,8 +235,10 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         ``create_vector`` disabled), it returns at once with ``refused`` saying why, without reading any
         record: the counts stay 0.
 
-        It reads like a run: the id and ``haveVector`` of every record, and the records lacking the name in
-        full. ``max_records`` is not applied: the counts cover the whole selection.
+        It reads the records lacking the name like a run, but since it writes nothing, each page read is
+        left out of the next query, so beyond ``max_excluded`` records it reads the rest with the cursor
+        (the id and ``haveVector`` of every record). ``max_records`` is not applied: the counts cover the
+        whole selection.
         """
         stats = PipelineStats()
         async with get_async_client(
@@ -249,13 +264,14 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                     return stats
             collection = client.collections.use(self.collection)
             print(f"Checking collection '{self.collection}' (vector '{self.vector_name}'), nothing is written...")
-            async for scanned, objects in self._scan(collection, include_vector=exists):
-                stats.scanned += scanned
+            excluded: set = set()  # nothing is written, so every record read is left out of the next query
+            async for objects in self._select(collection, excluded, stats, include_vector=exists):
                 stats.selected += len(objects)
                 for obj in objects:
+                    excluded.add(obj.uuid)
                     if self._input_of(obj, stats) is not None:
                         stats.missing += 1
-        print(f"Check finished. {stats.scanned} records, {stats.selected} lack '{self.vector_name}' in {HAVE_VECTOR}: "
+        print(f"Check finished. {stats.selected} records lack '{self.vector_name}' in {HAVE_VECTOR}: "
               f"{stats.missing} a run would embed, {stats.already_stored} already store the vector "
               f"(a run only adds the name), {stats.empty} with empty input.")
         if self.max_records and stats.missing > self.max_records:
@@ -273,14 +289,46 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             return None
         return [*self.return_properties, *([] if HAVE_VECTOR in self.return_properties else [HAVE_VECTOR])]
 
-    async def _scan(self, collection, include_vector: bool = True,
-                    done: Callable[[], bool] = lambda: False) -> AsyncIterator[tuple[int, list]]:
-        """Read the collection with a cursor, ``scan_batch_size`` ids and ``haveVector`` lists per request,
-        until ``done()``; yield the number read and the records of the page lacking the name, read again
-        by id with their properties (and the target vector with ``include_vector``).
+    def _include_vector(self, include_vector: bool):
+        return [self.vector_name] if include_vector else False
 
-        The cursor reads no text and no vectors of the records already listing the name. The second read
-        takes the current list, so a record listed meanwhile is left out."""
+    async def _select(self, collection, excluded: set, stats: PipelineStats, include_vector: bool = True,
+                      done: Callable[[], bool] = lambda: False) -> AsyncIterator[list]:
+        """Yield pages of the records lacking the name, with their properties (and the target vector with
+        ``include_vector``), until ``done()`` or none is left.
+
+        Each page is the first ``scan_batch_size`` records of ``contains_none([name])`` without the ids in
+        ``excluded``, which the caller keeps: a record read and not yet written must be in it before the
+        next page is requested, or it is read again. When ``excluded`` grows beyond ``max_excluded``, the
+        rest is read by ``_scan`` (the cursor)."""
+        lacking = Filter.by_property(HAVE_VECTOR).contains_none([self.vector_name])
+        while not done():
+            if len(excluded) > self.max_excluded:
+                tqdm.write(f"More than max_excluded={self.max_excluded} records read and not written "
+                           f"(empty inputs, or a check); reading the rest with the cursor.")
+                async for objects in self._scan(collection, excluded, stats, include_vector, done):
+                    yield objects
+                return
+            filters = lacking & Filter.by_id().contains_none(list(excluded)) if excluded else lacking
+            response = await self._with_retries(
+                lambda: collection.query.fetch_objects(
+                    filters=filters, limit=self.scan_batch_size,
+                    include_vector=self._include_vector(include_vector),
+                    return_properties=self._returned_properties()),
+                f"Reading the records lacking '{self.vector_name}'"
+            )
+            if not response.objects:
+                return
+            yield response.objects
+
+    async def _scan(self, collection, excluded: set, stats: PipelineStats, include_vector: bool,
+                    done: Callable[[], bool]) -> AsyncIterator[list]:
+        """Read the collection with a cursor, ``scan_batch_size`` ids and ``haveVector`` lists per request,
+        until ``done()``; yield the records of each page lacking the name and not in ``excluded``, read
+        again by id with their properties (and the target vector with ``include_vector``).
+
+        The cursor reads no text and no vectors of the records listing the name. The second read takes
+        the current list, so a record listed meanwhile is left out."""
         last_uuid = None
         while not done():
             response = await self._with_retries(
@@ -290,19 +338,22 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             )
             if not response.objects:
                 return
+            stats.scanned += len(response.objects)
             last_uuid = response.objects[-1].uuid
-            ids = [obj.uuid for obj in response.objects if self._lacks_name(obj.properties.get(HAVE_VECTOR))]
-            selected = []
-            if ids:
-                selected = (await self._with_retries(
-                    lambda: collection.query.fetch_objects(
-                        filters=Filter.by_id().contains_any(ids), limit=len(ids),
-                        include_vector=[self.vector_name] if include_vector else False,
-                        return_properties=self._returned_properties()),
-                    f"Reading the {len(ids)} selected records after {last_uuid}"
-                )).objects
-            yield len(response.objects), [obj for obj in selected
-                                          if self._lacks_name(obj.properties.get(HAVE_VECTOR))]
+            ids = [obj.uuid for obj in response.objects
+                   if obj.uuid not in excluded and self._lacks_name(obj.properties.get(HAVE_VECTOR))]
+            if not ids:
+                continue
+            selected = (await self._with_retries(
+                lambda: collection.query.fetch_objects(
+                    filters=Filter.by_id().contains_any(ids), limit=len(ids),
+                    include_vector=self._include_vector(include_vector),
+                    return_properties=self._returned_properties()),
+                f"Reading the {len(ids)} selected records after {last_uuid}"
+            )).objects
+            objects = [obj for obj in selected if self._lacks_name(obj.properties.get(HAVE_VECTOR))]
+            if objects:
+                yield objects
 
     def _input_of(self, obj, stats: PipelineStats) -> Optional[str]:
         """The text to embed for a selected record, or None (counted) when it already stores the vector
@@ -340,17 +391,19 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 await asyncio.sleep(self.retry_delay)
 
     async def _produce(self, collection, queue: asyncio.Queue, write_semaphore: asyncio.Semaphore, pbar: tqdm,
-                       stats: PipelineStats) -> None:
+                       stats: PipelineStats, excluded: set) -> None:
         """Read the selected records and enqueue batches of those to embed; records that already store
-        the vector get only its name in ``haveVector``."""
+        the vector get only its name in ``haveVector`` before the next page is read. The records enqueued
+        and those with an empty input are added to ``excluded``; ``_consume`` removes a record once
+        written."""
         max_rec = self.max_records or 0
         enqueued = 0
         pending_uuids, pending_texts, pending_listed = [], [], []
 
-        async for scanned, objects in self._scan(collection, done=lambda: max_rec > 0 and enqueued >= max_rec):
-            stats.scanned += scanned
+        async for objects in self._select(collection, excluded, stats,
+                                          done=lambda: max_rec > 0 and enqueued >= max_rec):
             stats.selected += len(objects)
-            done_without_embedding = scanned - len(objects)
+            done_without_embedding = 0
             name_only = []
 
             for obj in objects:
@@ -363,9 +416,12 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 if text is None:
                     if stats.already_stored > stored_before:
                         name_only.append((obj.uuid, listed))
+                    else:  # an empty input stays selected
+                        excluded.add(obj.uuid)
                     done_without_embedding += 1
                     continue
 
+                excluded.add(obj.uuid)
                 pending_uuids.append(obj.uuid)
                 pending_texts.append(text)
                 pending_listed.append(listed)
@@ -394,7 +450,8 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         stats.queued += len(uuids)
         pbar.set_postfix(stats.postfix(), refresh=False)
 
-    async def _consume(self, collection, queue: asyncio.Queue, write_semaphore: asyncio.Semaphore, pbar: tqdm, stats: PipelineStats) -> None:
+    async def _consume(self, collection, queue: asyncio.Queue, write_semaphore: asyncio.Semaphore, pbar: tqdm,
+                       stats: PipelineStats, excluded: set) -> None:
         """Embed enqueued batches and write the embeddings to the database."""
         while True:
             item = await queue.get()
@@ -421,6 +478,7 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 for uuid, names, embedding in zip(uuids, listed, embeddings)
             ))
 
+            excluded.difference_update(uuids)  # written: they left the selection
             stats.writing -= len(uuids)
             stats.embedded += len(uuids)
             pbar.update(len(uuids))

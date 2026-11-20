@@ -12,7 +12,7 @@ pip install -e .
 
 ## Features
 
-- **Selection by `haveVector`** (#816): the collection is scanned with a cursor that reads only the ids and `haveVector`; the records whose list lacks the vector's name are then read in full by id. No text or vector of a record listing the name is read. A selected record that already stores the vector only gets the name, without an embedding request.
+- **Selection by `haveVector`** (#816): a run reads only the records whose list lacks the vector's name (`contains_none`), so embedding a few new records does not read the whole collection. A selected record that already stores the vector only gets the name, without an embedding request.
 - **Asynchronous**: Several embedding requests run concurrently (`max_concurrent_requests`). Database reading, embedding and writing overlap.
 - **Safe writes**: Each vector is written with its name added to `haveVector` in one PATCH update, several at once. Other properties, references, vectors and listed names of the record are kept.
 - **On-the-fly vector creation**: If the named vector doesn't exist, it is added to the collection schema as a self-provided vector (vectorizer `none`) with the configured index type and distance metric.
@@ -52,7 +52,8 @@ too: the production backfill reaches its Weaviate as `localhost` on the server.
 To see what a run would do first, add `--check`: it reads the records a run would select and
 prints how many it would embed, how many already store the vector (a run only adds the name)
 and how many have an empty input, without changing the schema, sending embedding requests or
-writing. Like a run, it reads only the id and `haveVector` of the records that list the name. Exit code 0 when a run
+writing. It reads the selected records like a run, but since it writes nothing, beyond
+`max_excluded` of them it reads the rest with the cursor (see *How it works*). Exit code 0 when a run
 would write nothing, 1 when it would, 2 when the check fails (e.g. a missing collection) or a
 run would be refused (`haveVector` missing or declared otherwise, or the vector missing and
 `create_vector` disabled, even in an empty collection). A check that a run would refuse says
@@ -103,11 +104,12 @@ first; `create_vector: true` adds the vector to the configured collection on the
 ## How it works
 
 1. The collection must declare `haveVector`; otherwise the run is refused before any change. The named vector is created in the schema if it's missing (`create_vector`).
-2. The collection is scanned with a cursor, `scan_batch_size` records per request, reading only the ids and `haveVector`. The records of each page whose list lacks the name are read again by id (`by_id().contains_any`) with their properties and the target vector. A record that already stores the vector gets only the name. A filter on the list would read less, but Weaviate cannot combine it with the cursor, and keyset paging or reading the first page of what is left costs far more when most records are selected, e.g. for a new vector (measured in #816). On an older copy of production (8.3 M chunks) the scan took about 18 minutes, against about 31 for reading every record with the vector.
+2. The run reads again and again the first `scan_batch_size` records with `haveVector contains_none([name])`, with their properties and the target vector. A record written leaves the selection; the records read and not yet written (being embedded or written, or with an empty input) are left out of the next query by id (`by_id().contains_none`). A record that already stores the vector gets only the name before the next query. Weaviate's cursor (`after`) cannot be combined with a filter, and keyset paging (sorted by `_id`) costs minutes a page when most records are selected (measured in #816). On an older copy of production (8.3 M chunks, Weaviate 1.34) a query took about 0.06 s with nothing left out and 0.15 s with 5000 ids left out.
+   When more than `max_excluded` ids would be left out (many empty inputs, or `--check`, which writes nothing), the rest is read with the cursor: `scan_batch_size` ids and `haveVector` lists per request, and the records of each page lacking the name again by id (`by_id().contains_any`) with their properties and the vector. On the copy that reads the whole collection in about 18 minutes, against about 31 for reading every record with the vector.
 3. The texts are rendered with `input_template` and sent in requests of `embed_batch_size` texts to the embedder, with up to `max_concurrent_requests` requests in flight. Records whose rendered text is empty are skipped; they stay selected and every run reports them.
 4. Each embedding is written with the extended `haveVector` list in one PATCH update, with up to `max_concurrent_writes` updates at once. A list read as absent or `null` counts as empty.
 
-The progress bar counts all records in the collection. The counters show how many records were embedded in this run, already stored the vector, or had empty input.
+The progress bar counts the records done; it has no total, since counting the selection costs minutes on a large collection (measured in #816). The counters show how many records were embedded in this run, already stored the vector, or had empty input.
 
 The remaining counters show where records are waiting right now, which helps to find the bottleneck:
 
@@ -121,7 +123,7 @@ The remaining counters show where records are waiting right now, which helps to 
 - Database collection target: `collection`
 - Target vector: `vector_name`, `create_vector`, `vector_index_type` (`hnsw`, `flat`, `dynamic`), `distance_metric` (`cosine`, `dot`, `l2-squared`, ...). The index type and metric are used only when the vector is created.
 - Record selection: `return_properties` (fields available in the template; default is all), `max_records` (limit per run)
-- Execution: `scan_batch_size`, `embed_batch_size`, `max_concurrent_requests`, `max_concurrent_writes`, `max_retries`, `retry_delay`
+- Execution: `scan_batch_size`, `max_excluded` (default 5000; ids left out of the selection query before the run reads the rest with the cursor), `embed_batch_size`, `max_concurrent_requests`, `max_concurrent_writes`, `max_retries`, `retry_delay`
 - Embedder: `embedder` (select `VLLMEmbedder` via the `cls` field)
   - `base_url`, `api_key`, `model_name`
   - `input_template`: Jinja2 template of the embedded text
@@ -148,7 +150,8 @@ test-owned Weaviate (`make test-integration`, and in CI) with a fake OpenAI-comp
 endpoint: vector creation, preservation of properties, references and other vectors,
 resuming, write failures, refused collections (also without `haveVector`), the guarded test
 collection, Search over the filled vector, the read-only `--check` and the selection by
-`haveVector` (only records lacking the name are read, a stored vector gets only the name, a
-chunk inserted by `chunk_ingest` is embedded). `semant_demo_backend/tests/test_embedder_cli.py`
+`haveVector` (only records lacking the name are read, empty inputs beyond `max_excluded` are
+read with the cursor, a stored vector gets only the name, a chunk inserted by `chunk_ingest` is
+embedded). `semant_demo_backend/tests/test_embedder_cli.py`
 (fast, no Weaviate) covers the endpoint confirmation of the CLI. The tool's dependencies are part of the
 backend's development lock.
