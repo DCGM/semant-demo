@@ -27,6 +27,7 @@ from semant_demo.benchmarks.search_relevance.config import (
 from semant_demo.benchmarks.search_relevance.contracts import (
     CorpusChunk, Dataset, Intent, PoolingMethod, Qrel, Query, iter_jsonl, sha256_file, to_json, write_dataset,
     write_jsonl)
+from semant_demo.benchmarks.search_relevance.shareable import shareable
 from semant_demo.benchmarks.search_relevance.generation import (
     generate_intents, import_source_ids, imported_intents, translate)
 from semant_demo.benchmarks.search_relevance.judging import judge_pools
@@ -46,6 +47,7 @@ FEATURE_PROMPTS = {INTENTS_FEATURE: prompts.INTENT_PROMPT_VERSION,
 
 
 @dataclass
+
 class Resources:
     """What the steps use, opened only by the steps that need them."""
     llm: LlmGateway
@@ -270,7 +272,7 @@ class Generator:
         return ["qrels.jsonl", "report.json"], report
 
     async def _write(self) -> tuple[list[str], dict[str, Any]]:
-        dataset = write_dataset(self.out, self.manifest(), *self.records())
+        dataset = write_dataset(self.out, shareable(self.manifest()), *self.records())
         (self.out / "summary.md").write_text(summarize(dataset), encoding="utf-8")
         self.progress(f"write: {self.out}")
         return ["manifest.json", "summary.md"], {"counts": dataset.manifest.counts}
