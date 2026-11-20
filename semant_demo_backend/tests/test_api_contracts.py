@@ -146,6 +146,16 @@ USER_COLLECTION_ROUTES = {
 }
 
 
+def test_a_chunk_stored_without_end_paragraph_reads_as_ending_a_paragraph():
+    """#798: ``chunk_ingest`` takes ``end_paragraph`` as optional, so the store returns None for
+    a chunk imported without it; every corpus chunk read (search, window, page) must still answer."""
+    stored = {"id": CHUNK, "text": "Text", "document": DOC, "order": 0, "end_paragraph": None}
+
+    assert DocumentChunk(**stored).end_paragraph is True
+    assert SearchResultChunk(**stored, document_object=Document(id=DOC)).end_paragraph is True
+    assert DocumentChunk(**{**stored, "end_paragraph": False}).end_paragraph is False
+
+
 def test_collection_routes_are_one_route_family(tmp_path):
     """#287: collection-scoped routes live under /api/user_collections only; old aliases are gone."""
     paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
