@@ -256,11 +256,14 @@ test.describe('switching annotations of one long document', () => {
       // The passage is scrolled to Brně within itself; the sidebar does not scroll.
       expect(await body.evaluate(el => el.scrollTop), `${width}: the passage scrolled`).toBeGreaterThan(0)
       expect(await panel(page).evaluate(el => el.closest('.scroll')?.scrollTop ?? 0), `${width}: the sidebar did not`).toBe(0)
-      // Scrolling the passage by hand moves only the passage.
-      const before = await body.evaluate(el => el.scrollTop)
+      // Scrolling the passage by hand moves only the passage. Measured by where the annotation
+      // is on the screen, not by scrollTop: scrolling up near the start loads earlier text
+      // (#780), and keeping the reading position then raises scrollTop while the text stays.
+      const before = (await mark(page).boundingBox())!.y
       await body.hover()
       await page.mouse.wheel(0, -600)
-      await expect.poll(() => body.evaluate(el => el.scrollTop), `${width}: the passage scrolls by the wheel`).toBeLessThan(before)
+      await expect.poll(async () => (await mark(page).boundingBox())?.y ?? before,
+        `${width}: the passage scrolls by the wheel`).toBeGreaterThan(before)
       expect((await actions.boundingBox())?.y, `${width}: the actions stay in place`).toBe(top)
       await expect(actions.getByRole('button', { name: 'Confirm' })).toBeInViewport()
       // Scrolled away from the annotation, the passage offers the way back to it.
