@@ -463,6 +463,39 @@ function onScrollerScroll () {
   emit('extend', direction)
 }
 
+// Keeps the reading position when text is added above the passage or dropped from its top:
+// the first chunk in view (before the change) stays where it was in the view.
+let readingAnchor: { id: string, top: number } | null = null
+function viewTop (): number {
+  if (!scroller) return 0
+  const page = scroller === window.document.scrollingElement || scroller === window.document.documentElement
+  return page ? 0 : scroller.getBoundingClientRect().top
+}
+watch(() => props.chunks, (next, previous) => {
+  readingAnchor = null
+  if (!scroller || !previous?.length || !next.length || next[0].id === previous[0].id) return
+  const top = viewTop()
+  for (const c of previous) {
+    const el = chunkEls.get(c.id)
+    const rect = el?.getBoundingClientRect()
+    if (rect && rect.bottom > top) {
+      if (next.some(n => n.id === c.id)) readingAnchor = { id: c.id, top: rect.top }
+      return
+    }
+  }
+}, { flush: 'pre' })
+watch(() => props.chunks, () => {
+  const anchor = readingAnchor
+  readingAnchor = null
+  const el = anchor && chunkEls.get(anchor.id)
+  if (!anchor || !el || !scroller) return
+  const shift = el.getBoundingClientRect().top - anchor.top
+  if (Math.abs(shift) < 1) return
+  if (scroller === window.document.scrollingElement || scroller === window.document.documentElement) window.scrollBy(0, shift)
+  else scroller.scrollTop += shift
+  lastTop = scroller.scrollTop // not the user's scroll
+}, { flush: 'post' })
+
 const SCROLLER_EVENTS = [
   ['wheel', onWheel], ['touchstart', onTouchStart], ['touchmove', onTouchMove], ['keydown', onKeyDown],
   ['pointerdown', onPointerDown], ['scroll', onScrollerScroll]
@@ -599,7 +632,6 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   flex: 1 1 0;
   min-height: 160px;
   overflow-y: auto;
-  overflow-anchor: auto;
 }
 
 /* Zero-height anchors at the passage's edges carry the fades (they take no room and
@@ -739,9 +771,12 @@ watch(() => [props.focusRequest, props.loading, targetLoaded.value, props.visibl
   overflow: hidden;
 }
 
-.chunk-context__text {
-  /* Lets the browser keep the reading position when earlier text is added above. */
-  overflow-anchor: auto;
+/* The panel keeps the reading position itself (keepReadingPosition): the browser's scroll
+   anchoring could pick the "Show earlier text" button above the added text, and is not
+   available in every browser. */
+.chunk-context,
+.chunk-context__body {
+  overflow-anchor: none;
 }
 
 .chunk-context__chunk {

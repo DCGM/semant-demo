@@ -636,6 +636,22 @@ describe('ChunkContextPanel', () => {
       sidebar.remove()
     })
 
+    it('keeps the reading position when earlier text is added above', async () => {
+      const { wrapper, body } = await mountScrolling()
+      // The first chunk in view is pushed down by whatever is added above it.
+      const target = wrapper.get('[data-chunk-id="doc-1-c3"]').element
+      target.getBoundingClientRect = () => {
+        const added = body.querySelectorAll('.chunk-context__chunk').length - 3
+        return rect(10 + added * 400, 110 + added * 400)
+      }
+      await wrapper.setProps({ chunks: [chunk(1), chunk(2), ...chunks] })
+      expect(body.scrollTop).toBe(500 + 800)
+
+      // Appending below moves nothing.
+      await wrapper.setProps({ chunks: [chunk(1), chunk(2), ...chunks, chunk(6)] })
+      expect(body.scrollTop).toBe(1300)
+    })
+
     it('does not extend before the target is shown, at the document boundary or after a failure', async () => {
       const { wrapper, body } = await mountScrolling({ visible: false })
       wheel(body, -100)
