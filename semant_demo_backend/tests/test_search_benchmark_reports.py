@@ -256,3 +256,20 @@ def test_runs_of_another_dataset_are_refused(tmp_path, dataset):
         load(dataset.directory, [foreign.directory])
     assert main(["compare", "--dataset", str(dataset.directory), "--run", str(foreign.directory), "--a", "bm25",
                  "--b", "vector", "--out", str(tmp_path / "c")]) == 2
+
+
+def test_a_query_uses_its_own_languages_grade_where_one_was_judged(dataset, run):
+    # The fixture grades chunk 7 for "fire-lhota" 2 for Czech, 1 for English and German (grade 1);
+    # the vector configuration ranks it among the intent's relevant chunks for every query.
+    _, rows = score(dataset, [run])
+    vector = {r.query_id: r for r in rows if r.configuration.endswith("vector") and r.status == SCORED}
+    ces, eng = vector["fire-lhota.ces"], vector["fire-lhota.eng"]
+    assert fixture.chunk_id(7) in ces.ranked and fixture.chunk_id(7) in eng.ranked
+    assert ces.metrics["p2@10"] > eng.metrics["p2@10"]  # graded 2 only for the Czech query
+
+
+def test_recall_is_not_shown_for_configurations_that_keep_fewer_chunks(dataset, run):
+    _, rows = score(dataset, [run])  # the fixture's configurations keep 5 chunks
+    scored = [r for r in rows if r.status == SCORED]
+    assert scored and all(r.metrics["recall@20"] is None and r.metrics["recall@50"] is None for r in scored)
+    assert all(r.metrics["ndcg@10"] is not None for r in scored if r.intent_id == "fire-lhota")

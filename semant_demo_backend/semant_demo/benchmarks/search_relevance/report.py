@@ -184,8 +184,8 @@ def limitations(dataset: Dataset, configs: Sequence[Configuration], unjudged: di
     ]
     shallow = [c.label for c in configs if c.config.depth < 50]
     if shallow:
-        lines.append(f"- Depth below 50 ({', '.join(shallow)}): Recall@50 is then at most what the kept "
-                     "ranking holds.")
+        lines.append(f"- Depth below 50 ({', '.join(shallow)}): these configurations keep too few chunks for "
+                     "Recall@50, which is not shown for them (likewise Recall@20 below depth 20).")
     lines += [f"- Dataset: {text}" for text in dataset.manifest.limitations]
     return lines
 
@@ -476,7 +476,8 @@ def write_summary_csv(path: Path, aggregates: Sequence[dict[str, Any]]) -> None:
 
 
 METRIC_TEXT = [
-    "Every query is scored against the graded qrels of its **intent** (its translations share them). "
+    "Every query is scored against the graded qrels of its **intent** (its translations share them; where a "
+    "qrel was judged per query language, a query uses its own language's grade). "
     "Grades: 2 relevant, 1 partly relevant, 0 not relevant.",
     "",
     "- **nDCG@10**: DCG of the top 10 with gain 2^grade − 1 and discount log2(rank + 1), divided by the DCG of the "
@@ -484,7 +485,8 @@ METRIC_TEXT = [
     "- **P@10**: share of the 10 slots holding a chunk graded ≥ 1; **P@10 (grade 2)** counts grade 2 only. "
     "Fewer than 10 hits leave empty slots that count as misses.",
     "- **Hit@10 (source)**: 1 when a chunk the intent was written from is in the top 10.",
-    "- **Recall@20, Recall@50**: share of the intent's judged relevant chunks (grade ≥ 1) in the top 20 / 50.",
+    "- **Recall@20, Recall@50**: share of the intent's judged relevant chunks (grade ≥ 1) in the top 20 / 50; "
+    "not shown for a configuration that keeps fewer chunks (its depth).",
     "- **unjudged@10**: share of the returned top-10 chunks without a qrel for the intent.",
     "- Queries whose intent has no relevant qrel have no nDCG, P or recall; intents without a source chunk have "
     "no Hit@10. Means leave them out, and the tables count them.",
