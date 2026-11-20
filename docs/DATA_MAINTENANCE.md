@@ -872,10 +872,10 @@ flowchart LR
    list); after `metadata_sync`, since it uses the document titles
    ([Chunk titles](#chunk-titles-chunk_titles-575)).
 4. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
-   vectors; until then the new chunks are missing from vector and hybrid search. It reads only
-   the chunks whose `haveVector` lacks the name (#816), which the import leaves without a list,
-   and adds the name with each vector; the store needs the property
-   ([`chunk_have_vector`](#stored-named-vectors-on-chunks-chunk_have_vector-805)). `--check`
+   vectors; until then the new chunks are missing from vector and hybrid search. It embeds only
+   the chunks whose `haveVector` lacks the name (#816), which the import leaves without a list
+   (of the others it reads only the id and the list), and adds the name with each vector; the
+   store needs the property ([`chunk_have_vector`](#stored-named-vectors-on-chunks-chunk_have_vector-805)). `--check`
    counts the chunks still without the vector, read-only. The flag confirms the host and port,
    not the collection: check `collection` in the config too.
 5. `data_tools/meta_data_enrichment` (with `--confirm-endpoint`) classifies the new chunks. The

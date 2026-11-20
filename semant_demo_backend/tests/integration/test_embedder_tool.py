@@ -5,8 +5,8 @@ provider (``/openai/v1/embeddings``: ``second_embedding`` of each input). Covers
 vector creation, preservation of what objects already hold, resumability, write
 failures, refused collections, the guarded test collection and querying a filled vector
 through Search (#217), and the selection by ``haveVector`` (#816): only the records whose
-list lacks the vector's name are read, the name is added with the vector, and a record
-already storing the vector gets only the name. The seeded chunks list both of their
+list lacks the vector's name are read in full, the name is added with the vector, and a
+record already storing the vector gets only the name. The seeded chunks list both of their
 vectors, as the deployed chunks do since #805. Collections other than the application's
 are named ``EmbedderToolTest*`` and deleted after each test.
 """
@@ -280,16 +280,17 @@ async def test_a_check_counts_what_a_run_would_embed_and_changes_nothing(tool_st
 
     # Before the first run the vector does not exist: the check neither creates it nor reads vectors.
     stats = await make_pipeline().check_async()
-    assert (stats.scanned, stats.missing, stats.already_stored, stats.empty) == (11, 10, 0, 1)
+    assert (stats.scanned, stats.selected, stats.missing, stats.already_stored, stats.empty) == (11, 11, 10, 0, 1)
     assert set((await collection.config.get()).vector_config) == {"default"}
 
     await make_pipeline(max_records=4).run_async()
     filled = await tool_vectors(tool_store)
     calls = len(embed_calls)
 
-    # The four embedded records list the name now and are not read; the empty one stays selected.
+    # The four embedded records list the name now: only their ids and lists are read. The empty one
+    # stays selected.
     stats = await make_pipeline().check_async()
-    assert (stats.scanned, stats.missing, stats.already_stored, stats.empty) == (7, 6, 0, 1)
+    assert (stats.scanned, stats.selected, stats.missing, stats.already_stored, stats.empty) == (11, 7, 6, 0, 1)
     assert stats.embedded == 0 and len(embed_calls) == calls     # no embedding requests
     assert await tool_vectors(tool_store) == filled               # no writes
 
@@ -366,9 +367,10 @@ async def test_a_run_reads_only_the_records_lacking_the_name_and_lists_a_stored_
     before = await snapshot_chunks(tool_store, collection_names)
 
     # The fake provider's embeddings have SECOND_VECTOR's dimension, so that is the vector filled here.
-    # Every seeded chunk lists it: nothing is selected, read or written.
+    # Every seeded chunk lists it: only the ids and lists are read, nothing is selected or written.
     stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
-    assert (stats.scanned, stats.embedded, stats.already_stored) == (0, 0, 0)
+    seeded = len(corpus.chunks)
+    assert (stats.scanned, stats.selected, stats.embedded, stats.already_stored) == (seeded, 0, 0, 0)
     assert await snapshot_chunks(tool_store, collection_names) == before
 
     # Chunks storing the vector without listing it (empty, null and another name) get only the name.
@@ -376,9 +378,10 @@ async def test_a_run_reads_only_the_records_lacking_the_name_and_lists_a_stored_
     for chunk_id, value in zip(ids, ([], None, ["default"])):
         await chunks.data.update(uuid=chunk_id, properties={HAVE_VECTOR: value})
     check = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).check_async()
-    assert (check.scanned, check.missing, check.already_stored) == (3, 0, 3)
+    assert (check.scanned, check.selected, check.missing, check.already_stored) == (seeded, 3, 0, 3)
     stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
-    assert (stats.scanned, stats.embedded, stats.already_stored) == (3, 0, 3) and embed_calls == []
+    assert (stats.scanned, stats.selected, stats.embedded, stats.already_stored) == (seeded, 3, 0, 3)
+    assert embed_calls == []
     lists = await listed(tool_store, chunks_name)
     assert [lists[str(i)] for i in ids] == [[SECOND_VECTOR], [SECOND_VECTOR], ["default", SECOND_VECTOR]]
     after = await snapshot_chunks(tool_store, collection_names)
@@ -407,7 +410,7 @@ async def test_a_chunk_inserted_by_chunk_ingest_is_selected_and_embedded(tool_st
 
     stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
 
-    assert (stats.scanned, stats.embedded, stats.already_stored) == (2, 2, 0)
+    assert (stats.scanned, stats.selected, stats.embedded, stats.already_stored) == (len(corpus.chunks) + 2, 2, 2, 0)
     assert sorted(t for call in embed_calls for t in call) == sorted(texts)
     lists = await listed(tool_store, chunks_name)
     assert all(lists[i] == [SECOND_VECTOR] for i in new_ids)
