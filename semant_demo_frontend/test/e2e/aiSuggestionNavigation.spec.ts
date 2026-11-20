@@ -42,7 +42,7 @@ test('gutter navigation scrolls the outer sidebar to a deep virtualized suggesti
   await page.getByTestId('proposal-filters-toggle').click()
   await expect(page.getByTestId('proposal-tag-filter')).toBeVisible()
   const sidebar = page.locator('.q-drawer .scroll.q-px-md.q-pb-md')
-  .filter({ has: page.locator('.ai-assist-panel') })
+    .filter({ has: page.locator('.ai-assist-panel') })
   await sidebar.evaluate((el) => { el.scrollTop = 0 })
 
   // The real place marker is distinct from the synthetic person suggestions.
