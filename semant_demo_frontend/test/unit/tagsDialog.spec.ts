@@ -290,21 +290,30 @@ describe('TagsDialog applicable attributes', () => {
 
   it('moves through and adds examples with Enter, never saving the tag', async () => {
     const save = vi.fn()
+    // Quasar defers focusing until the dialog's show transition has ended.
+    controlTransitions()
     const wrapper = await open({ tag: { ...person, examples: ['first'] }, save })
+    await transition()
+    const field = (label: string) => input(wrapper, label).find('input').element as HTMLInputElement
+    // Enter in the example, as the browser sends it: it must not reach the form as a submit.
     const enter = async (label: string) => {
-      await input(wrapper, label).find('input').trigger('keydown', { key: 'Enter' })
+      field(label).focus()
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      field(label).dispatchEvent(event)
       await flushPromises()
+      expect(event.defaultPrevented).toBe(true)
     }
-    const focused = () => (document.activeElement as HTMLInputElement | null)?.getAttribute('aria-label')
+    const focused = () => document.activeElement?.getAttribute('aria-label')
+    const examples = () => wrapper.findAllComponents(QInput).map(i => i.props('label')).filter(l => l?.startsWith('Example'))
 
     // In the last example with text, Enter adds one and focuses it.
     await enter('Example 1')
-    expect(wrapper.findAllComponents(QInput).map(i => i.props('label')).filter(l => l?.startsWith('Example')))
-      .toEqual(['Example 1', 'Example 2'])
+    expect(examples()).toEqual(['Example 1', 'Example 2'])
     expect(focused()).toBe('Example 2')
-    // A blank last example adds nothing.
+    // A blank last example adds nothing and keeps the focus.
     await enter('Example 2')
-    expect(input(wrapper, 'Example 3')).toBeUndefined()
+    expect(examples()).toEqual(['Example 1', 'Example 2'])
+    expect(focused()).toBe('Example 2')
     // In an earlier example, Enter moves to the next one.
     await enter('Example 1')
     expect(focused()).toBe('Example 2')
