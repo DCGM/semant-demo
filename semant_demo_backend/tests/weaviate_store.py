@@ -340,6 +340,9 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             # the classification status (#590), as classification_provenance_schema declares it
             Property(name="classification_provenance", data_type=text, tokenization=Tokenization.FIELD,
                      index_filterable=True, index_searchable=False),
+            # the stored named vectors (#805, #816), as chunk_have_vector declares it (have_vector.EXPECTED)
+            Property(name="haveVector", data_type=text_array, tokenization=Tokenization.FIELD,
+                     index_filterable=True, index_searchable=False),
         ],
         references=[
             ReferenceProperty(name="document", target_collection=names.document_collection_name),

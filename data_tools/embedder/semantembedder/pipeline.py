@@ -5,19 +5,20 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from classconfig import ConfigurableMixin, CreatableMixin, ConfigurableValue, ConfigurableSubclassFactory
 from tqdm import tqdm
+from weaviate.classes.query import Filter, Sort
 
-from .db import get_async_client, ensure_named_vector_exists, named_vector_exists
+from .db import HAVE_VECTOR, get_async_client, ensure_named_vector_exists, have_vector_problem, named_vector_exists
 # Import embedders to register their subclasses for ConfigurableSubclassFactory
 from .embedders import Embedder, VLLMEmbedder
 
 
 @dataclass
 class PipelineStats:
-    scanned: int = 0  # records read from the collection
-    already_filled: int = 0  # records that already have the vector
-    empty: int = 0  # records whose rendered input text is empty
-    embedded: int = 0  # records whose vector was written in this run
-    missing: int = 0  # check only: records without the vector that a run would embed
+    scanned: int = 0  # selected records read (their haveVector lacks the vector's name)
+    already_stored: int = 0  # selected records that store the vector: a run only adds its name to haveVector
+    empty: int = 0  # selected records whose rendered input text is empty (not embedded, stay selected)
+    embedded: int = 0  # records whose vector (and name in haveVector) was written in this run
+    missing: int = 0  # check only: selected records a run would embed
     refused: Optional[str] = None  # check only: why a run would be refused before embedding anything
     dimension: Optional[int] = None
 
@@ -29,7 +30,7 @@ class PipelineStats:
     def postfix(self) -> dict:
         return {
             "embedded": self.embedded,
-            "filled": self.already_filled,
+            "stored": self.already_stored,
             "empty": self.empty,
             "queued": self.queued,
             "embedding": self.embedding,
@@ -38,11 +39,17 @@ class PipelineStats:
 
 
 class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
-    """A fully configurable pipeline that scans Weaviate database records, embeds those that do not have
-    the given named vector yet, and writes the embeddings back as that named vector.
+    """A fully configurable pipeline that embeds the Weaviate records lacking the given named vector and
+    writes each embedding back as that named vector, together with the vector's name in the record's
+    ``haveVector`` list (#816).
 
-    Records that already have the vector are skipped, thus the pipeline can be interrupted at any time
-    and it continues where it stopped when started again.
+    A run reads only the records whose ``haveVector`` lacks the name (``contains_none``), in id order
+    (keyset paging: Weaviate's cursor cannot be combined with a filter, and offset paging stops at
+    ``QUERY_MAXIMUM_RESULTS``). A record written leaves the selection, so the pipeline can be interrupted
+    at any time and the next run continues with what is left. A selected record that already stores the
+    vector only gets the name; a record with an empty input is skipped and stays selected. The collection
+    must declare ``haveVector`` (``db.HAVE_VECTOR_DECLARATION``); a run never declares it. One run per
+    collection at a time: a write replaces the whole list.
     """
 
     # Weaviate connection settings
@@ -144,8 +151,8 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         """Run the embedding pipeline."""
         asyncio.run(self.run_async())
 
-    async def run_async(self) -> None:
-        """Run the embedding pipeline in the current event loop."""
+    async def run_async(self) -> PipelineStats:
+        """Run the embedding pipeline in the current event loop; returns its counts."""
         client = get_async_client(
             host=self.weaviate_host,
             port=self.weaviate_port,
@@ -158,7 +165,11 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         pbar = None
         try:
             async with client:
-                if self.create_vector:
+                exists = await named_vector_exists(client, self.collection, self.vector_name)
+                problem = await have_vector_problem(client, self.collection)
+                if problem:
+                    raise ValueError(problem)
+                if not exists and self.create_vector:
                     await ensure_named_vector_exists(
                         client=client,
                         collection_name=self.collection,
@@ -166,15 +177,15 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                         index_type=self.vector_index_type,
                         distance_metric=self.distance_metric
                     )
-                else:
-                    schema_config = await client.collections.use(self.collection).config.get()
-                    if self.vector_name not in (schema_config.vector_config or {}):
-                        raise ValueError(f"Named vector '{self.vector_name}' does not exist in collection '{self.collection}' and create_vector is disabled.")
+                elif not exists:
+                    raise ValueError(f"Named vector '{self.vector_name}' does not exist in collection '{self.collection}' and create_vector is disabled.")
 
                 collection = client.collections.use(self.collection)
 
                 print(f"Starting embedding pipeline on collection '{self.collection}' (vector '{self.vector_name}')...")
-                total_count = (await collection.aggregate.over_all(total_count=True)).total_count
+                # Only the progress bar's total: a count taken right after a bulk write can be off (#805).
+                total_count = (await collection.aggregate.over_all(filters=self._selection(),
+                                                                   total_count=True)).total_count
                 pbar = tqdm(total=total_count, desc="Embedding records")
 
                 queue: asyncio.Queue = asyncio.Queue(maxsize=self.max_concurrent_requests * 2)
@@ -182,7 +193,7 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
 
                 try:
                     async with asyncio.TaskGroup() as tg:
-                        tg.create_task(self._produce(collection, queue, pbar, stats))
+                        tg.create_task(self._produce(collection, queue, write_semaphore, pbar, stats))
                         for _ in range(self.max_concurrent_requests):
                             tg.create_task(self._consume(collection, queue, write_semaphore, pbar, stats))
                 except ExceptionGroup as eg:
@@ -191,8 +202,9 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
 
                 pbar.close()
                 print(f"Pipeline finished. Embedded {stats.embedded} records in this run "
-                      f"({stats.already_filled} already had the vector, "
+                      f"({stats.already_stored} already stored the vector and got only its name in {HAVE_VECTOR}, "
                       f"{stats.empty} with empty input).")
+                return stats
         finally:
             if pbar is not None:
                 pbar.close()
@@ -204,13 +216,14 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
         return asyncio.run(self.check_async())
 
     async def check_async(self) -> PipelineStats:
-        """Count the records a run would embed; read-only (no schema change, no embedding requests).
+        """Count what a run would do; read-only (no schema change, no embedding requests, no writes).
 
-        When a run would be refused (the vector is missing and ``create_vector`` is disabled), it returns at
-        once with ``refused`` saying why, without reading any record: the counts stay 0.
+        When a run would be refused (``haveVector`` missing or declared otherwise, or the vector missing and
+        ``create_vector`` disabled), it returns at once with ``refused`` saying why, without reading any
+        record: the counts stay 0.
 
-        It reads every record with the target vector, like a run, so it costs the same scan. ``max_records``
-        is not applied: the counts cover the whole collection.
+        It reads the records a run would select (``haveVector`` lacking the name), like a run, and none of
+        the others. ``max_records`` is not applied: the counts cover the whole selection.
         """
         stats = PipelineStats()
         async with get_async_client(
@@ -221,6 +234,11 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             api_key=self.weaviate_api_key
         ) as client:
             exists = await named_vector_exists(client, self.collection, self.vector_name)
+            problem = await have_vector_problem(client, self.collection)
+            if problem:
+                stats.refused = problem
+                print(f"{problem} A run would be refused.")
+                return stats
             if not exists:
                 missing_vector = f"Named vector '{self.vector_name}' does not exist in collection '{self.collection}'"
                 if self.create_vector:
@@ -236,25 +254,44 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 for obj in objects:
                     if self._input_of(obj, stats) is not None:
                         stats.missing += 1
-        print(f"Check finished. {stats.scanned} records: {stats.missing} without the vector (a run would embed them), "
-              f"{stats.already_filled} already had the vector, {stats.empty} with empty input.")
+        print(f"Check finished. {stats.scanned} records lack '{self.vector_name}' in {HAVE_VECTOR}: "
+              f"{stats.missing} a run would embed, {stats.already_stored} already store the vector "
+              f"(a run only adds the name), {stats.empty} with empty input.")
         if self.max_records and stats.missing > self.max_records:
             print(f"A run embeds at most max_records={self.max_records} of them.")
         return stats
 
+    def _selection(self) -> Filter:
+        """The records whose ``haveVector`` lacks the vector's name (also those without a list)."""
+        return Filter.by_property(HAVE_VECTOR).contains_none([self.vector_name])
+
+    def _returned_properties(self) -> Optional[list]:
+        """``return_properties`` with ``haveVector``, whose list a write extends (None: all properties)."""
+        if self.return_properties is None:
+            return None
+        return [*self.return_properties, *([] if HAVE_VECTOR in self.return_properties else [HAVE_VECTOR])]
+
     async def _scan(self, collection, include_vector: bool = True,
                     done: Callable[[], bool] = lambda: False) -> AsyncIterator[list]:
-        """Read the collection with a cursor, ``scan_batch_size`` records per request, until ``done()``."""
+        """Read the selected records in id order, ``scan_batch_size`` per request, until ``done()``.
+
+        Keyset paging: each page is the selection after the last id read, sorted by id (without the sort
+        the pages would skip and repeat records). Records written meanwhile have smaller ids, so reading
+        ahead of the writes reads nothing twice, and records left selected (empty input) are passed."""
         last_uuid = None
         while not done():
+            filters = self._selection()
+            if last_uuid is not None:
+                filters = filters & Filter.by_property("_id").greater_than(str(last_uuid))
             response = await self._with_retries(
                 lambda: collection.query.fetch_objects(
                     limit=self.scan_batch_size,
-                    after=last_uuid,
+                    filters=filters,
+                    sort=Sort.by_property("_id"),
                     include_vector=[self.vector_name] if include_vector else False,
-                    return_properties=self.return_properties
+                    return_properties=self._returned_properties()
                 ),
-                f"Scanning records after {last_uuid}"
+                f"Reading the selected records after {last_uuid}"
             )
             if not response.objects:
                 return
@@ -262,11 +299,12 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             yield response.objects
 
     def _input_of(self, obj, stats: PipelineStats) -> Optional[str]:
-        """The text to embed for a record, or None (counted) when it has the vector or an empty input."""
+        """The text to embed for a selected record, or None (counted) when it already stores the vector
+        or has an empty input."""
         if (obj.vector or {}).get(self.vector_name):
-            stats.already_filled += 1
+            stats.already_stored += 1
             return None
-        database_record = {k: (v if v is not None else "") for k, v in obj.properties.items()}
+        database_record = {k: (v if v is not None else "") for k, v in obj.properties.items() if k != HAVE_VECTOR}
         text = self.embedder.render(database_record)
         if not text.strip():
             stats.empty += 1
@@ -295,45 +333,57 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 print(f"\n[Warning] {description} failed: {e}. Retrying in {self.retry_delay}s... (Attempt {retries}/{self.max_retries})")
                 await asyncio.sleep(self.retry_delay)
 
-    async def _produce(self, collection, queue: asyncio.Queue, pbar: tqdm, stats: PipelineStats) -> None:
-        """Scan the whole collection with a cursor and enqueue batches of records without the vector."""
+    async def _produce(self, collection, queue: asyncio.Queue, write_semaphore: asyncio.Semaphore, pbar: tqdm,
+                       stats: PipelineStats) -> None:
+        """Read the selected records and enqueue batches of those to embed; records that already store
+        the vector get only its name in ``haveVector``."""
         max_rec = self.max_records or 0
         enqueued = 0
-        pending_uuids, pending_texts = [], []
+        pending_uuids, pending_texts, pending_listed = [], [], []
 
         async for objects in self._scan(collection, done=lambda: max_rec > 0 and enqueued >= max_rec):
             stats.scanned += len(objects)
             done_without_embedding = 0
+            name_only = []
 
             for obj in objects:
                 if max_rec > 0 and enqueued >= max_rec:
                     break
 
+                listed = obj.properties.get(HAVE_VECTOR)
+                stored_before = stats.already_stored
                 text = self._input_of(obj, stats)
                 if text is None:
+                    if stats.already_stored > stored_before:
+                        name_only.append((obj.uuid, listed))
                     done_without_embedding += 1
                     continue
 
                 pending_uuids.append(obj.uuid)
                 pending_texts.append(text)
+                pending_listed.append(listed)
                 enqueued += 1
 
                 if len(pending_uuids) >= self.embed_batch_size:
-                    await self._enqueue(queue, pending_uuids, pending_texts, pbar, stats)
-                    pending_uuids, pending_texts = [], []
+                    await self._enqueue(queue, pending_uuids, pending_texts, pending_listed, pbar, stats)
+                    pending_uuids, pending_texts, pending_listed = [], [], []
 
+            await asyncio.gather(*(self._write(collection, uuid, listed, None, write_semaphore)
+                                   for uuid, listed in name_only))
             pbar.update(done_without_embedding)
             pbar.set_postfix(stats.postfix())
 
         if pending_uuids:
-            await self._enqueue(queue, pending_uuids, pending_texts, pbar, stats)
+            await self._enqueue(queue, pending_uuids, pending_texts, pending_listed, pbar, stats)
 
         for _ in range(self.max_concurrent_requests):
             await queue.put(None)
 
-    async def _enqueue(self, queue: asyncio.Queue, uuids: list, texts: list[str], pbar: tqdm, stats: PipelineStats) -> None:
-        """Put a batch of records to the queue for embedding (waits when the queue is full)."""
-        await queue.put((uuids, texts))
+    async def _enqueue(self, queue: asyncio.Queue, uuids: list, texts: list[str], listed: list, pbar: tqdm,
+                       stats: PipelineStats) -> None:
+        """Put a batch of records (with their ``haveVector`` lists) to the queue for embedding (waits when
+        the queue is full)."""
+        await queue.put((uuids, texts, listed))
         stats.queued += len(uuids)
         pbar.set_postfix(stats.postfix(), refresh=False)
 
@@ -344,7 +394,7 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             if item is None:
                 break
 
-            uuids, texts = item
+            uuids, texts, listed = item
             stats.queued -= len(uuids)
             stats.embedding += len(uuids)
             pbar.set_postfix(stats.postfix(), refresh=False)
@@ -360,8 +410,8 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 tqdm.write(f"Embedding dimension: {stats.dimension}")
 
             await asyncio.gather(*(
-                self._write_vector(collection, uuid, embedding, write_semaphore)
-                for uuid, embedding in zip(uuids, embeddings)
+                self._write(collection, uuid, names, embedding, write_semaphore)
+                for uuid, names, embedding in zip(uuids, listed, embeddings)
             ))
 
             stats.writing -= len(uuids)
@@ -369,10 +419,17 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
             pbar.update(len(uuids))
             pbar.set_postfix(stats.postfix())
 
-    async def _write_vector(self, collection, uuid, embedding: list[float], write_semaphore: asyncio.Semaphore) -> None:
-        """Write the named vector of a single record (PATCH, other properties and vectors are kept)."""
+    async def _write(self, collection, uuid, listed: Optional[list], embedding: Optional[list[float]],
+                     write_semaphore: asyncio.Semaphore) -> None:
+        """Add the vector's name to a record's ``haveVector`` and write the vector with it, or only the
+        name when ``embedding`` is None: one PATCH, other properties, vectors and listed names are kept.
+
+        ``listed`` is the list as read: ``None`` (absent or null) counts as ``[]``, which Weaviate reads
+        back as ``[]`` but treats alike in the selection."""
+        names = [*(listed or []), self.vector_name]
+        vector = None if embedding is None else {self.vector_name: embedding}
         async with write_semaphore:
             await self._with_retries(
-                lambda: collection.data.update(uuid=uuid, vector={self.vector_name: embedding}),
+                lambda: collection.data.update(uuid=uuid, properties={HAVE_VECTOR: names}, vector=vector),
                 f"Database update for record {uuid}"
             )

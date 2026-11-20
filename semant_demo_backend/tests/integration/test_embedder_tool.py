@@ -4,8 +4,11 @@ The real pipeline and ``VLLMEmbedder`` run; the OpenAI-compatible endpoint is th
 provider (``/openai/v1/embeddings``: ``second_embedding`` of each input). Covers named
 vector creation, preservation of what objects already hold, resumability, write
 failures, refused collections, the guarded test collection and querying a filled vector
-through Search (#217). Collections other than the application's are named
-``EmbedderToolTest*`` and deleted after each test.
+through Search (#217), and the selection by ``haveVector`` (#816): only the records whose
+list lacks the vector's name are read, the name is added with the vector, and a record
+already storing the vector gets only the name. The seeded chunks list both of their
+vectors, as the deployed chunks do since #805. Collections other than the application's
+are named ``EmbedderToolTest*`` and deleted after each test.
 """
 import asyncio
 import json
@@ -17,7 +20,7 @@ import pytest
 import yaml
 from httpx import ASGITransport
 from openai import AsyncOpenAI
-from weaviate.classes.config import Configure, DataType, Property
+from weaviate.classes.config import Configure, DataType, Property, Tokenization
 from weaviate.classes.query import QueryReference
 
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
@@ -28,11 +31,12 @@ from semant_demo.config import Config
 from semant_demo.features.search import service
 from semant_demo.features.search.schemas import SearchRequest
 from semant_demo.features.search.service import SearchBackends
+from semant_demo.maintenance import chunk_ingest
 from tests.fake_providers import create_fake_provider_app
 from tests.fakes import SECOND_VECTOR, second_embedding
 
 sys.path.insert(0, str(Path(__file__).parents[3] / "data_tools" / "embedder"))
-from semantembedder.db import create_test_collection  # noqa: E402
+from semantembedder.db import HAVE_VECTOR, create_test_collection  # noqa: E402
 from semantembedder.pipeline import EmbeddingPipeline  # noqa: E402
 
 pytestmark = pytest.mark.integration
@@ -40,6 +44,9 @@ pytestmark = pytest.mark.integration
 TEST_COLLECTION = "EmbedderToolTest"
 TOOL_VECTOR = "tool_vector"
 CHUNK_REFS = ["document", "userCollection"]
+SEEDED_VECTORS = ["default", SECOND_VECTOR]
+HAVE_VECTOR_PROPERTY = Property(name=HAVE_VECTOR, data_type=DataType.TEXT_ARRAY, tokenization=Tokenization.FIELD,
+                                index_filterable=True, index_searchable=False)
 
 
 @pytest.fixture
@@ -131,7 +138,11 @@ async def test_a_filled_vector_keeps_the_chunk_data_and_is_searchable(tool_store
     assert after.keys() == before.keys()
     for chunk_id, old in before.items():
         new = after[chunk_id]
-        # A PATCH of one named vector: properties, references and the other vectors are unchanged.
+        # One PATCH of the named vector and haveVector: the other properties, references and vectors are
+        # unchanged, and the name is added to the listed ones.
+        assert old["properties"][HAVE_VECTOR] == SEEDED_VECTORS
+        assert new["properties"].pop(HAVE_VECTOR) == [*SEEDED_VECTORS, TOOL_VECTOR]
+        old["properties"].pop(HAVE_VECTOR)
         assert new["properties"] == old["properties"] and new["refs"] == old["refs"]
         assert {k: v for k, v in new["vectors"].items() if k != TOOL_VECTOR} == old["vectors"]
         # A missing property renders as an empty string (letters_2 has no title).
@@ -215,6 +226,26 @@ async def test_collections_the_tool_cannot_fill_are_refused(tool_store, make_pip
     assert set(config.vector_config) == {"default"}
 
 
+@pytest.mark.parametrize("declared", [None, Property(name=HAVE_VECTOR, data_type=DataType.TEXT_ARRAY)],
+                         ids=["missing", "word-tokenized"])
+async def test_a_collection_without_the_expected_have_vector_is_refused_before_any_change(
+        tool_store, make_pipeline, embed_calls, declared):
+    # Without the declared list a write would let Weaviate's auto-schema create it otherwise (#816).
+    name = f"{TEST_COLLECTION}NoList"
+    await tool_store.collections.create(name, properties=[Property(name="text", data_type=DataType.TEXT),
+                                                          *([declared] if declared else [])],
+                                        vector_config=Configure.Vectors.self_provided(name="default"))
+    await tool_store.collections.get(name).data.insert({"text": "nečíst"})
+
+    with pytest.raises(ValueError, match=HAVE_VECTOR):
+        await make_pipeline(collection=name).run_async()
+    stats = await make_pipeline(collection=name).check_async()
+    assert HAVE_VECTOR in stats.refused and stats.scanned == 0
+    config = await tool_store.collections.get(name).config.get()
+    assert set(config.vector_config) == {"default"} and embed_calls == []
+    assert [p.name for p in config.properties] == ["text", *([HAVE_VECTOR] if declared else [])]
+
+
 async def test_the_test_collection_is_replaced_only_when_forced(tool_store):
     await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
     collection = tool_store.collections.get(TEST_COLLECTION)
@@ -249,15 +280,16 @@ async def test_a_check_counts_what_a_run_would_embed_and_changes_nothing(tool_st
 
     # Before the first run the vector does not exist: the check neither creates it nor reads vectors.
     stats = await make_pipeline().check_async()
-    assert (stats.scanned, stats.missing, stats.already_filled, stats.empty) == (11, 10, 0, 1)
+    assert (stats.scanned, stats.missing, stats.already_stored, stats.empty) == (11, 10, 0, 1)
     assert set((await collection.config.get()).vector_config) == {"default"}
 
     await make_pipeline(max_records=4).run_async()
     filled = await tool_vectors(tool_store)
     calls = len(embed_calls)
 
+    # The four embedded records list the name now and are not read; the empty one stays selected.
     stats = await make_pipeline().check_async()
-    assert (stats.scanned, stats.missing, stats.already_filled, stats.empty) == (11, 6, 4, 1)
+    assert (stats.scanned, stats.missing, stats.already_stored, stats.empty) == (7, 6, 0, 1)
     assert stats.embedded == 0 and len(embed_calls) == calls     # no embedding requests
     assert await tool_vectors(tool_store) == filled               # no writes
 
@@ -276,7 +308,7 @@ async def test_the_check_exit_code_says_whether_records_are_left(tool_store, mak
         return exit_.value.code
 
     assert await asyncio.to_thread(check_cli) == 1
-    assert "10 without the vector" in capsys.readouterr().out
+    assert "10 a run would embed" in capsys.readouterr().out
     await make_pipeline().run_async()
     assert await asyncio.to_thread(check_cli) == 0
     assert await asyncio.to_thread(check_cli, collection=f"{TEST_COLLECTION}Missing") == 2
@@ -290,7 +322,8 @@ async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_
     # must not report "nothing left" (exit 0) for an empty collection or 1 for a populated one, and it
     # returns at once (#642): the answer is known before the scan.
     await tool_store.collections.create(f"{TEST_COLLECTION}Empty",
-                                        properties=[Property(name="text", data_type=DataType.TEXT)],
+                                        properties=[Property(name="text", data_type=DataType.TEXT),
+                                                    HAVE_VECTOR_PROPERTY],
                                         vector_config=Configure.Vectors.self_provided(name="default"))
     await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
 
@@ -315,3 +348,72 @@ async def test_a_check_fails_when_the_run_would_be_refused_even_with_nothing_to_
     with pytest.raises(ValueError, match="create_vector is disabled"):
         await make_pipeline(create_vector=False, collection=f"{TEST_COLLECTION}Empty").run_async()
     assert set((await tool_store.collections.get(TEST_COLLECTION).config.get()).vector_config) == {"default"}
+
+
+##########################
+# Selection by haveVector #
+##########################
+
+async def listed(client, collection) -> dict[str, list[str] | None]:
+    res = await client.collections.get(collection).query.fetch_objects(limit=200, return_properties=[HAVE_VECTOR])
+    return {str(o.uuid): o.properties.get(HAVE_VECTOR) for o in res.objects}
+
+
+async def test_a_run_reads_only_the_records_lacking_the_name_and_lists_a_stored_vector_without_embedding(
+        tool_store, collection_names, corpus, make_pipeline, embed_calls):
+    chunks_name = collection_names.chunks_collection_name
+    chunks = tool_store.collections.get(chunks_name)
+    before = await snapshot_chunks(tool_store, collection_names)
+
+    # The fake provider's embeddings have SECOND_VECTOR's dimension, so that is the vector filled here.
+    # Every seeded chunk lists it: nothing is selected, read or written.
+    stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
+    assert (stats.scanned, stats.embedded, stats.already_stored) == (0, 0, 0)
+    assert await snapshot_chunks(tool_store, collection_names) == before
+
+    # Chunks storing the vector without listing it (empty, null and another name) get only the name.
+    ids = [corpus.chunks[key]["id"] for key in ("letters_1", "letters_2", "gazette_1")]
+    for chunk_id, value in zip(ids, ([], None, ["default"])):
+        await chunks.data.update(uuid=chunk_id, properties={HAVE_VECTOR: value})
+    check = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).check_async()
+    assert (check.scanned, check.missing, check.already_stored) == (3, 0, 3)
+    stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
+    assert (stats.scanned, stats.embedded, stats.already_stored) == (3, 0, 3) and embed_calls == []
+    lists = await listed(tool_store, chunks_name)
+    assert [lists[str(i)] for i in ids] == [[SECOND_VECTOR], [SECOND_VECTOR], ["default", SECOND_VECTOR]]
+    after = await snapshot_chunks(tool_store, collection_names)
+    for chunk_id, old in before.items():
+        new = after[chunk_id]
+        new["properties"].pop(HAVE_VECTOR), old["properties"].pop(HAVE_VECTOR)
+        assert new == old       # the vectors, other properties and references are kept
+
+
+async def test_a_chunk_inserted_by_chunk_ingest_is_selected_and_embedded(tool_store, collection_names, corpus,
+                                                                       make_pipeline, embed_calls, tmp_path):
+    # chunk_ingest writes no haveVector (#816): an absent list is selected like an empty one.
+    document = "5e3a0000-0000-4000-8000-0000000d8161"
+    texts = ["Nový dokument, první úsek.", "Druhý úsek nového dokumentu."]
+    path = tmp_path / "new.jsonl"
+    path.write_text("".join(json.dumps({"id": f"5e3a0000-0000-4000-8000-0000000c816{i}", "document": document,
+                                        "order": i, "text": text, "language": "ces"}, ensure_ascii=False) + "\n"
+                            for i, text in enumerate(texts)), encoding="utf-8")
+    result = await chunk_ingest.run(tool_store, collection_names, [path], checkpoint=tmp_path / "ingest.json",
+                                    endpoint="test", write_=True, backup={"offline_backup": "test"},
+                                    progress=lambda *_: None)
+    assert chunk_ingest.exit_code(result) == 0 and result["counts"]["chunks_inserted"] == 2
+    chunks_name = collection_names.chunks_collection_name
+    new_ids = {f"5e3a0000-0000-4000-8000-0000000c816{i}" for i in range(2)}
+    assert {i: v for i, v in (await listed(tool_store, chunks_name)).items() if i in new_ids} == dict.fromkeys(new_ids)
+
+    stats = await make_pipeline(collection=chunks_name, vector_name=SECOND_VECTOR, create_vector=False).run_async()
+
+    assert (stats.scanned, stats.embedded, stats.already_stored) == (2, 2, 0)
+    assert sorted(t for call in embed_calls for t in call) == sorted(texts)
+    lists = await listed(tool_store, chunks_name)
+    assert all(lists[i] == [SECOND_VECTOR] for i in new_ids)
+    assert all(lists[c["id"]] == SEEDED_VECTORS for c in corpus.chunks.values())
+    vectors = await tool_store.collections.get(chunks_name).query.fetch_objects(
+        limit=200, include_vector=[SECOND_VECTOR], return_properties=[])
+    stored = {str(o.uuid): o.vector[SECOND_VECTOR] for o in vectors.objects if str(o.uuid) in new_ids}
+    for i, text in enumerate(texts):
+        assert stored[f"5e3a0000-0000-4000-8000-0000000c816{i}"] == pytest.approx(second_embedding(text))

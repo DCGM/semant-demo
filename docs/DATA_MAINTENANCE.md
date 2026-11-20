@@ -652,7 +652,8 @@ python -m semant_demo.maintenance.classification_provenance_schema --apply --con
 
 `Chunks.haveVector` (`text[]`, `field` tokenization, filterable, not searchable) lists the named
 vectors stored on a chunk, so an embedder can select the chunks lacking one with
-`haveVector contains_none([name])` (#560). `chunk_have_vector` declares the property if missing
+`haveVector contains_none([name])` (#560); `data_tools/embedder` does since #816 and refuses a
+store without the property. `chunk_have_vector` declares the property if missing
 and adds the name (default `Qwen3_Embedding_0_6B`) to every chunk that actually stores that
 vector. It reads the vector of each chunk only to learn whether it is stored.
 
@@ -871,7 +872,10 @@ flowchart LR
    list); after `metadata_sync`, since it uses the document titles
    ([Chunk titles](#chunk-titles-chunk_titles-575)).
 4. `data_tools/embedder` (with `--confirm-endpoint`) computes the `Qwen3_Embedding_0_6B`
-   vectors; until then the new chunks are missing from vector and hybrid search. `--check`
+   vectors; until then the new chunks are missing from vector and hybrid search. It reads only
+   the chunks whose `haveVector` lacks the name (#816), which the import leaves without a list,
+   and adds the name with each vector; the store needs the property
+   ([`chunk_have_vector`](#stored-named-vectors-on-chunks-chunk_have_vector-805)). `--check`
    counts the chunks still without the vector, read-only. The flag confirms the host and port,
    not the collection: check `collection` in the config too.
 5. `data_tools/meta_data_enrichment` (with `--confirm-endpoint`) classifies the new chunks. The
