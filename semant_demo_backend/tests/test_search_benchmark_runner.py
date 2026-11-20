@@ -241,7 +241,8 @@ def test_a_run_on_the_fixture_is_a_valid_run(tmp_path, dataset):
     assert environment["config"]["sha256"] == hashlib.sha256((tmp_path / "experiment.yaml").read_bytes()).hexdigest()
     assert environment["store"] == {"weaviate": "fake-1.40", "dataset": "fixture"}
     assert environment["embedding_endpoints"]["fake"]["api_key_env"] == "FAKE_EMBEDDING_KEY"
-    assert "revision" in environment["git"] and environment["host"] and environment["finished"] >= environment["started"]
+    assert "revision" in environment["git"] and environment["finished"] >= environment["started"]
+    assert "host" not in environment  # run files may be shared; machines are not named
     assert environment["budget"]["concurrency"] == 2 and environment["sessions"] == []
     assert "not-a-real-key" not in (tmp_path / "runs/r1/manifest.json").read_text()
     assert not (tmp_path / "runs/r1" / runner.PARTIAL_RESULTS).exists()
@@ -379,8 +380,10 @@ def never_open(spec):
 def test_a_dry_run_prints_the_plan_and_touches_nothing(tmp_path, dataset):
     path = write_config(tmp_path, base_config(budget={"languages": ["ces", "eng"]}))
     lines = []
-    assert runner.main(["run", "--config", str(path), "--dry-run"], open_store=never_open, out=lines.append) == 0
+    assert runner.main(["run", "--config", str(path), "--run-id", "r1", "--dry-run"], open_store=never_open,
+                       out=lines.append) == 0
     text = "\n".join(lines)
+    assert "new run r1" in text
     assert "6 queries selected of 9 (ces 3, eng 3), 3 intents" in text
     assert "hybrid.fake.a0.5.ranked.p-instruct: hybrid vector=fake alpha=0.5 fusion=ranked" in text
     assert "18 searches to do" in text and not (tmp_path / "runs").exists()
@@ -393,12 +396,19 @@ def test_the_command_line_runs_and_lists(tmp_path, dataset):
     assert [line.split("\t")[0] for line in lines] == ["text", "vector.fake.p-instruct",
                                                         "hybrid.fake.a0.5.ranked.p-instruct"]
     store = FakeStore()
-    assert runner.main(["run", "--config", str(path), "--out", str(tmp_path / "elsewhere"), "--configurations",
-                        "text"], open_store=opener(store), out=lines.append) == 0
-    loaded = load_run(tmp_path / "elsewhere" / "experiment", dataset)  # the run id defaults to the config's name
+    assert runner.main(["run", "--config", str(path), "--run-id", "first", "--out", str(tmp_path / "elsewhere"),
+                        "--configurations", "text"], open_store=opener(store), out=lines.append) == 0
+    loaded = load_run(tmp_path / "elsewhere" / "first", dataset)
     assert [c.configuration_id for c in loaded.manifest.configurations] == ["text"]
+    assert "host" not in loaded.manifest.environment
+    lines.clear()
+    assert runner.main(["run", "--config", str(path), "--run-id", "first", "--out", str(tmp_path / "elsewhere"),
+                        "--configurations", "text"], open_store=opener(store), out=lines.append) == 0
+    assert "continuing run first" in lines[0]
+    with pytest.raises(SystemExit):  # a run id is required: running the same config again never resumes by accident
+        runner.main(["run", "--config", str(path)], open_store=never_open)
     assert runner.main(["run", "--config", str(path), "--run-id", "bad id"], open_store=never_open) == runner.REFUSED
-    assert runner.main(["run", "--config", str(path), "--configurations", "nope"],
+    assert runner.main(["run", "--config", str(path), "--run-id", "r1", "--configurations", "nope"],
                        open_store=never_open) == runner.REFUSED
 
 

@@ -2,7 +2,7 @@
 Weaviate (``store_api``) with every configuration of an experiment config (``runner_config``)
 and writes a run directory (``contracts.write_run``) for the reports (#728)::
 
-    python -m semant_demo.benchmarks.search_relevance.runner run --config FILE [--run-id ID]
+    python -m semant_demo.benchmarks.search_relevance.runner run --config FILE --run-id ID
         [--out RUNS_DIR] [--configurations ID,...] [--retry-failed] [--dry-run]
     python -m semant_demo.benchmarks.search_relevance.runner list-configurations --config FILE
 
@@ -26,7 +26,6 @@ import asyncio
 import json
 import os
 import re
-import socket
 import subprocess
 import sys
 import time
@@ -309,7 +308,7 @@ async def execute(plan: Plan, directory: Path, run_id: str, open_store: OpenStor
     _write_partial_state(directory, dataset, state)
     spec = config.store.spec()
     environment: dict[str, Any] = {
-        "git": git_revision(), "host": socket.gethostname(), "started": started,
+        "git": git_revision(), "started": started,
         "config": {"path": str(plan.config_path) if plan.config_path else None, "sha256": plan.config_sha256},
         "store_spec": _jsonable(asdict(spec)),
         "embedding_endpoints": {v: _jsonable(asdict(config.endpoint(v))) for v in vector_ids},
@@ -407,7 +406,8 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     run = commands.add_parser("run", help="run (or resume, or extend) a run")
     run.add_argument("--config", required=True, type=Path)
-    run.add_argument("--run-id", help="default: the config file's name; the same id resumes and extends a run")
+    run.add_argument("--run-id", required=True,
+                     help="the run's name: a new id starts a run, an existing one resumes and extends it")
     run.add_argument("--out", type=Path, help="the runs directory (default: runs_dir of the config)")
     run.add_argument("--configurations", help="comma-separated configuration ids (default: all)")
     run.add_argument("--retry-failed", action="store_true", help="search again the queries that failed")
@@ -426,12 +426,14 @@ def main(argv: list[str] | None = None, open_store: OpenStore | None = None,
             for c in expand(config):
                 out(f"{c.configuration_id}\t{describe_configuration(c)}")
             return 0
-        run_id = args.run_id or args.config.stem
+        run_id = args.run_id
         if not re.match(ID_PATTERN, run_id):
             raise ConfigError(f"run id {run_id!r}: letters, digits, '_', '.', ':' and '-'")
         only = [i.strip() for i in args.configurations.split(",") if i.strip()] if args.configurations else None
         plan = make_plan(config, config_path=args.config.resolve(), config_sha256=sha, only=only)
         directory = (args.out.expanduser() if args.out else config.runs_dir) / run_id
+        existing = directory.is_dir() and any(directory.iterdir())
+        out(f"{'continuing' if existing else 'new'} run {run_id} in {directory}")
         if args.dry_run:
             dry_run(plan, directory, run_id, args.retry_failed, out)
             return 0

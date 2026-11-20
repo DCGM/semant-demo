@@ -131,16 +131,17 @@ cd semant_demo_backend
 CONFIG=semant_demo/configs/search_benchmark/runner.example.yaml
 python -m semant_demo.benchmarks.search_relevance.runner list-configurations --config $CONFIG
 python -m semant_demo.benchmarks.search_relevance.runner run --config $CONFIG --dry-run   # touches no store
-python -m semant_demo.benchmarks.search_relevance.runner run --config $CONFIG [--run-id ID] [--out RUNS_DIR] \
+python -m semant_demo.benchmarks.search_relevance.runner run --config $CONFIG --run-id ID [--out RUNS_DIR] \
     [--configurations ID,...] [--retry-failed]
 ```
 
 It opens the store, loads the dataset (a no-op when it is loaded), ensures one named vector per
 vector used (document embeddings are cached in `cache_dir`; the query prefix never changes them),
 then runs the searches with at most `budget.concurrency` in flight and at most `budget.max_qps`
-started per second. Each result keeps the hits (truncated to the depth, each chunk once), the
+started per second. With several searches in flight their times include contention: take
+latency figures from a separate run with `budget.concurrency: 1`, and say so in the report. Each result keeps the hits (truncated to the depth, each chunk once), the
 query embedding and search times, or the failure's exception class (never its message or the
-query). The manifest's `environment` records the git revision, host, the config file's path and
+query). The manifest's `environment` records the git revision (never the machine's name), the config file's path and
 SHA-256, the store spec and `describe()` (Weaviate version, schema), the embedding endpoints
 (the key's variable name, never a key), load and vector reports, the budget, start and end
 times, and `sessions`: the environments of earlier sessions of the same run.
@@ -186,7 +187,7 @@ intents first (`intents`, `max_intents`, so translations stay together), then `l
 
 ### Incremental runs
 
-A run is identified by its run id (default: the config file's name) under the runs directory.
+A run is identified by its run id (`--run-id`, required) under the runs directory; the runner prints whether it starts a new run or continues one.
 While it runs, each finished search is appended to `results.partial.jsonl`, and
 `run.partial.json` names the dataset and configurations. Running again with the same run id:
 
