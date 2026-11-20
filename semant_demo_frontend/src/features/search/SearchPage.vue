@@ -287,6 +287,7 @@
           :ranked="rankedState"
           :collection-label="collectionLabel"
           :user-collection-id="appliedCollection"
+          :checking="checkingHandoff"
           @retry="charts.retry"
           @retry-ranked="resultCharts.retry"
           @retry-search="runApplied({ force: true })"
@@ -545,7 +546,7 @@ const draftCriteria = computed(() => normalizeCriteria({ ...draftFilters.value, 
 const appliedCollection = ref<string | null>(null)
 const applied = shallowRef<ExploreLocation>(emptyLocation())
 // A collection handed over by the collection page is being checked (`receiveHandoff`): nothing
-// runs meanwhile. `handoffs` counts them, so a check that is no longer current changes nothing.
+// runs meanwhile, and no earlier results or counts are shown under the handed-over criteria. `handoffs` counts them, so a check that is no longer current changes nothing.
 const checkingHandoff = ref(false)
 let handoffs = 0
 

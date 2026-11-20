@@ -1,6 +1,11 @@
 <template>
   <section class="explore-visualizations" aria-label="Visualizations" data-testid="explore-visualizations">
-    <template v-if="availability === 'ranked'">
+    <div v-if="checking" class="explore-visualizations__status" role="status" data-testid="charts-loading">
+      <q-spinner color="primary" size="2.5em" />
+      <div class="q-mt-sm">Checking the collection…</div>
+    </div>
+
+    <template v-else-if="availability === 'ranked'">
       <q-banner v-if="ranked.searchError" rounded class="bg-red-1 text-negative" role="alert" data-testid="charts-search-error">
         <template v-slot:avatar>
           <q-icon name="error_outline" color="negative" />
@@ -69,7 +74,8 @@
  * What the document counts describe is taken from their answer (`scope`), never from the
  * criteria being requested; counts of another population than the one the page charts
  * (`userCollectionId`: after a change of collection or account, before they are counted again)
- * are not shown at all, not even dimmed. The page owns the counts (`useExploreCharts`,
+ * are not shown at all, not even dimmed; nor is anything while the page checks the scope it was
+ * given (`checking`), whose criteria are applied but not counted yet. The page owns the counts (`useExploreCharts`,
  * `useResultCharts`), the search and the criteria; a clicked chart category (or the shown
  * period) is emitted as a filter, which the page applies (a new search or count).
  */
@@ -97,7 +103,12 @@ const props = withDefaults(defineProps<{
   collectionLabel?: CollectionLabel
   /** The collection the page charts now (null: the searchable corpus). */
   userCollectionId?: string | null
-}>(), { userCollectionId: null })
+  /**
+   * The page checks the collection handed over to it: the applied criteria are not counted yet,
+   * so earlier counts of the same collection are not shown under them (review of #796).
+   */
+  checking?: boolean
+}>(), { userCollectionId: null, checking: false })
 const emit = defineEmits<{
   retry: []
   retryRanked: []

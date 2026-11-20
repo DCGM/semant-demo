@@ -146,3 +146,44 @@ test('the collection check ends also when the Collections page loads the list me
   await expect(documentTitles(page)).toHaveCount(2)
   await expect(chip(page, 'Kroniky a dopisy')).toBeVisible()
 })
+
+test('while the collection is checked, Explore shows no counts of its earlier filters under the new ones', async ({ page }) => {
+  // Review of #796: Explore charted the collection for one filter; a bar of another filter
+  // clicked on its Overview showed the earlier counts under the new filter until the check ended.
+  await ensureLoggedIn(page, 'owner')
+  await openCollection(page, chronicles.id)
+  const charts = page.getByTestId('collection-document-charts')
+  await expect(charts.getByTestId('charts-total')).toHaveText('2')
+  await charts.getByTestId('timeline-apply-period').click()
+  await expect(chip(page, 'Kroniky a dopisy')).toBeVisible()
+  await expect(page.getByTestId('charts-total')).toHaveText('2')
+  expect(hash(page)).toBe('#/search?year_min=1850&year_max=1909&mode=documents&view=visualizations')
+
+  await openCollection(page, chronicles.id)
+  const held: (() => void)[] = []
+  let first = true
+  await page.route(url => url.pathname.endsWith('/api/user_collections'), async (route) => {
+    if (route.request().method() === 'GET' && first) {
+      first = false
+      await new Promise<void>(resolve => held.push(resolve))
+    }
+    await route.continue()
+  })
+  const counts = bodies(page, isDistributions)
+  await bar(page, 'corpus-languages', 'Czech (ces)').click()
+  await expect.poll(() => held.length).toBe(1) // the check's list, held
+
+  expect(hash(page)).toBe('#/search?languages=ces&mode=documents&view=visualizations')
+  await expect(chip(page, 'Kroniky a dopisy')).toBeVisible()
+  await expect(page.getByTestId('charts-total')).toHaveCount(0)
+  await expect(page.getByTestId('explore-visualizations').getByTestId('charts-loading')).toContainText('Checking the collection…')
+  await expect(page.getByTestId('corpus-years')).toHaveCount(0)
+  expect(counts).toEqual([]) // not counted before the check ends
+
+  held[0]()
+  await expect(page.getByTestId('charts-total')).toHaveText('2')
+  expect(counts).toEqual([expect.objectContaining({
+    filters: expect.objectContaining({ languages: ['ces'], year_min: null, year_max: null }),
+    user_collection_id: chronicles.id
+  })])
+})
