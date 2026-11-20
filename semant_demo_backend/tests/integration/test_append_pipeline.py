@@ -48,7 +48,9 @@ from semant_demo.maintenance import (
     metadata_sync)
 from semant_demo.maintenance.chunk_titles import UsageTotals
 from tests.fake_providers import create_fake_provider_app, fake_title
+from semant_demo.features.documents.positions import chunk_positions
 from tests.fakes import SECOND_VECTOR, second_embedding
+from tests.seed import position_properties
 
 sys.path.insert(0, str(Path(__file__).parents[3] / "data_tools" / "embedder"))
 sys.path.insert(0, str(Path(__file__).parents[3] / "data_tools" / "meta_data_enrichment"))
@@ -336,7 +338,9 @@ async def test_appended_data_runs_through_every_stage_and_a_replay_writes_nothin
     assert {(r["id"], r["status"]) for r in reported} == {
         (failing["id"], "model_failed"), *((c, "deferred_restricted_document") for c in hidden)}
     stages.titles.failing = None
+    before_rerun = await snapshot(seeded_store, names)
     titled, reported, code = await stages.titles_run()
+    assert changed(before_rerun, await snapshot(seeded_store, names)) == {failing["id"]: {"title"}}
     assert (titled["counts"]["written"], titled["counts"]["deferred_restricted_document"], code) == (1, 2, 1)
 
     embedded = await stages.embed()
@@ -348,15 +352,25 @@ async def test_appended_data_runs_through_every_stage_and_a_replay_writes_nothin
     classified = await stages.classify()
     assert (classified.selected, classified.classified, len(classified.failed)) == (12, 11, 1)
     stages.classifier.failing = set()
+    before_rerun = await snapshot(seeded_store, names)
     classified = await stages.classify()
+    assert changed(before_rerun, await snapshot(seeded_store, names)) == {of[PRAGUE][0]["id"]: {*LABELS, PROVENANCE}}
     assert (classified.selected, classified.classified, classified.failed) == (1, 1, [])
     assert not {c["text"] for c in of[FREUDENTHAL]} & set(stages.classifier.asked)
 
     summarized, code = await stages.summaries()
     assert code == 0 and summarized["counts"]["documents"]["failed"] == 0
 
-    # The new chunks and documents.
+    # The new chunks and documents. A new document starts at the document start, the appended
+    # chunks continue after the chronicle's stored tail.
     after = await snapshot(seeded_store, names)
+    seeded_chronicle = sorted((c for c in corpus.chunks.values() if c["document"] == "chronicle"),
+                              key=lambda c: c["order"])
+    positions = {}
+    for document, chunks in of.items():
+        before_them = [c["text"] for c in seeded_chronicle] if document == chronicle else []
+        computed = list(chunk_positions([*before_them, *(c["text"] for c in chunks)]))[len(before_them):]
+        positions |= {c["id"]: position_properties(p) for c, p in zip(chunks, computed)}
     for chunk_id, line in new.items():
         properties, references, vectors = after[chunk_id]
         document = line["document"]
@@ -365,7 +379,7 @@ async def test_appended_data_runs_through_every_stage_and_a_replay_writes_nothin
         assert {k: properties[k] for k in ("text", "order", "language", "start_page_id")} == {
             k: line[k] for k in ("text", "order", "language", "start_page_id")}
         assert properties["end_paragraph"] == line.get("end_paragraph")   # one chunk is imported without it
-        assert properties["startChar"] is not None and properties["startWord"] is not None
+        assert {k: properties[k] for k in ("startChar", "startWord", "wordOpenAtStart")} == positions[chunk_id]
         assert properties["documentPublic"] is public
         assert properties["haveVector"] == [SECOND_VECTOR]
         assert vectors[SECOND_VECTOR] == pytest.approx(second_embedding(line["text"]))
@@ -421,6 +435,19 @@ async def test_appended_data_runs_through_every_stage_and_a_replay_writes_nothin
     summarized, code = await stages.summaries()
     assert (summarized["counts"]["documents"]["changed"], code) == (0, 0)
     assert await snapshot(seeded_store, names) == before
+
+
+def changed(before: dict, after: dict) -> dict[str, set[str]]:
+    """The properties that differ, by object id (references and vectors must not)."""
+    assert before.keys() == after.keys()
+    differ = {}
+    for object_id, (properties, references, vectors) in before.items():
+        assert (after[object_id][1], after[object_id][2]) == (references, vectors), object_id
+        keys = {k for k in properties.keys() | after[object_id][0].keys()
+                if properties.get(k) != after[object_id][0].get(k)}
+        if keys:
+            differ[object_id] = keys
+    return differ
 
 
 def corpus_document_ids(corpus) -> set[str]:

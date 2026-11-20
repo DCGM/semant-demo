@@ -151,8 +151,8 @@ A new embedder backend can be added by subclassing `Embedder` and implementing `
 `semant_demo_backend/tests/integration/test_embedder_tool.py` runs the pipeline against the
 test-owned Weaviate (`make test-integration`, and in CI) with a fake OpenAI-compatible
 endpoint: vector creation, preservation of properties, references and other vectors,
-resuming, write failures, refused collections (also without `haveVector`), the guarded test
-collection, Search over the filled vector, the read-only `--check` and the selection by
+resuming, write failures, refused collections (also without `haveVector`), an unreachable gRPC
+port, the guarded test collection, Search over the filled vector, the read-only `--check` and the selection by
 `haveVector` (only records lacking the name are read, empty inputs beyond `max_excluded` are
 read with the cursor, a stored vector gets only the name, a chunk inserted by `chunk_ingest` is
 embedded). `semant_demo_backend/tests/test_embedder_cli.py`

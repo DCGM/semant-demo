@@ -105,7 +105,7 @@ The package is linted with Ruff's default rule set (`[tool.ruff.lint]` in `pypro
 `semant_demo_backend/tests/integration/test_classifier_tool.py` runs the pipeline against the
 test-owned Weaviate (`make test-integration`, and in CI) with a fake model: the selection by
 status, missing-only filling, invalid results, paging past failed chunks, the stop after
-consecutive failures, `max_records`, filters, the alias, refusals, the check and the guarded
-test collection. `semant_demo_backend/tests/test_classifier_cli.py` (fast, no Weaviate) covers
+consecutive failures, `max_records`, filters, the alias, refusals, an unreachable gRPC port, the
+check and the guarded test collection. `semant_demo_backend/tests/test_classifier_cli.py` (fast, no Weaviate) covers
 the endpoint confirmation, the exit codes, the provenance validation and the models' failure
 results and fingerprints. The local model itself (`torch`) is not part of the tests.
