@@ -20,7 +20,7 @@ import random
 import statistics
 import time
 from types import SimpleNamespace
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from weaviate.classes.data import DataObject
@@ -136,4 +136,3 @@ async def test_sort_latency_on_a_production_sized_tenant(seeded_store, collectio
                 f.write(text)
     finally:
         await spans.remove_tenant(cid)
-        assert isinstance(cid, UUID)

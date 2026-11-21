@@ -136,9 +136,8 @@ async def test_availability_is_answered_without_the_store_details(setup):
     assert "create_document" not in store.calls
 
 
-async def test_the_operation_declares_the_multipart_body(setup):
-    client, _, _, _ = setup
-    operation = (await client.get("/openapi.json")).json()["paths"]["/api/user_collections/{collection_id}/text_documents"]["post"]
+def test_the_operation_declares_the_multipart_body(openapi_schema):
+    operation = openapi_schema["paths"]["/api/user_collections/{collection_id}/text_documents"]["post"]
     schema = operation["requestBody"]["content"]["multipart/form-data"]["schema"]
     assert schema["required"] == ["files"] and set(schema["properties"]) == {"files", "metadata"}
     assert operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith("TextUploadResponse")
