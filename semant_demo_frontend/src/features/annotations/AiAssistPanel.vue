@@ -640,6 +640,8 @@ function onSuggestionClick(span: TagSpan) {
 const suggestionVirtualScroll = ref<{ $el: HTMLElement; scrollTo:(index: number, edge?: 'start' | 'center' | 'end') => void } | null>(null)
 const revealedSuggestion = ref(false)
 let suggestionFocusRequest = 0
+// Navigation from the tag arrows must keep focus on the arrows rather than the card.
+let tagNavigationTargetId: string | null = null
 
 // The list and the right sidebar are independent scrollers. Bring the selected
 // card towards the top third of the sidebar even if it was just barely visible
@@ -664,7 +666,7 @@ function cardVisibleInBothScrollers(card: HTMLElement): boolean {
     cardRect.bottom <= Math.min(outerRect.bottom, listRect.bottom, window.innerHeight) + 1
 }
 
-async function focusSuggestionById(id: string) {
+async function focusSuggestionById(id: string, fromTagNavigation = false) {
   const request = ++suggestionFocusRequest
   const collectionId = props.collectionId
   const documentId = props.documentId
@@ -708,8 +710,18 @@ async function focusSuggestionById(id: string) {
     // Correct the approximate virtual offset using the real row height.
     if (cardRect.top < listRect.top) viewport.scrollTop += cardRect.top - listRect.top - 4
     else if (cardRect.bottom > listRect.bottom) viewport.scrollTop += cardRect.bottom - listRect.bottom + 4
-    scrollCardIntoSidebar(card)
+    // Tag arrows only scroll the virtual list, never the outer sidebar.
+    // The card can be below the outer viewport until the user scrolls manually.
+    if (!fromTagNavigation) scrollCardIntoSidebar(card)
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (fromTagNavigation) {
+      if (!card.isConnected) continue
+      const updatedCard = card.getBoundingClientRect()
+      const updatedList = viewport.getBoundingClientRect()
+      if (updatedCard.top >= updatedList.top - 1 &&
+          updatedCard.bottom <= updatedList.bottom + 1) return
+      continue
+    }
     if (!cardVisibleInBothScrollers(card)) continue
     const action = card.querySelector<HTMLButtonElement>('.auto-span-highlight')
     action?.focus({ preventScroll: true })
@@ -722,7 +734,11 @@ async function focusSuggestionById(id: string) {
 // updates in the same click, but re-clicking the same ID still reruns scrolling.
 watch(
   [() => aiAssist.highlightedAutoSpanId.value, () => aiAssist.highlightedAutoSpanNavigationRequest.value],
-  ([id]) => { if (id) void focusSuggestionById(id) }
+  ([id]) => {
+    const fromTagNavigation = id != null && tagNavigationTargetId === id
+    tagNavigationTargetId = null
+    if (id) void focusSuggestionById(id, fromTagNavigation)
+  }
 )
 watch(() => aiAssist.aiPanelActive.value, (active) => {
   const id = aiAssist.highlightedAutoSpanId.value
@@ -1069,7 +1085,15 @@ function navigateAutoSpan(tagId: string, direction: 'prev' | 'next') {
     nextIdx = direction === 'next' ? (current + 1) % list.length : (current - 1 + list.length) % list.length
   }
   const target = list[nextIdx]
-  if (target.id) aiAssist.highlightedAutoSpanId.value = target.id
+  if (!target.id) return
+  const alreadyHighlighted = aiAssist.highlightedAutoSpanId.value === target.id
+  tagNavigationTargetId = target.id
+  aiAssist.highlightedAutoSpanId.value = target.id
+  // A single-item tag may navigate to the same ID, which won't trigger the watcher.
+  if (alreadyHighlighted) {
+    tagNavigationTargetId = null
+    void focusSuggestionById(target.id, true)
+  }
 }
 
 // Approve/reject requests of this panel's document: entered when the panel moves to another

@@ -12,7 +12,8 @@ wall-clock phase times, so memory sampled outside (``docker stats``) can be matc
 phases; ``SEMANT_REHEARSAL_SETTLE_SECONDS`` waits that long after the many tenants were
 activated and again after they were deactivated, so a sample falls into each state.
 Sizes scale with ``SEMANT_REHEARSAL_SCALE`` (default 1). Correctness is asserted;
-times are only recorded: they depend on the machine and are not limits.
+times are only recorded: they depend on the machine and are not limits. The backup and
+restore times are polled every 0.1 s (``quick_backup_polls``), not the client's fixed second.
 """
 import asyncio
 import json
@@ -52,7 +53,7 @@ def _span(chunk_id: str, document_id: str, tag_id: str, i: int) -> DataObject:
                       references={"text_chunk": chunk_id})
 
 
-async def test_annotation_tenant_rehearsal(seeded_store, collection_names, ids):
+async def test_annotation_tenant_rehearsal(seeded_store, collection_names, ids, quick_backup_polls):
     names = collection_names
     annotations = seeded_store.collections.get(names.annotation_collection_name)
     chunk, document, tag = ids.chunk["chronicle_1"], ids.doc["chronicle"], ids.tag["person"]

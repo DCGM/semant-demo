@@ -318,7 +318,7 @@ async def test_a_failed_tenant_removal_is_reported_and_a_retry_completes(
 # ── Backup and restore of active and inactive tenants ─────────────────────
 
 async def test_backup_and_restore_keep_active_and_inactive_tenants(
-        api_client, login, ids, seeded_store, collection_names, annotations, store):
+        api_client, login, ids, seeded_store, collection_names, annotations, store, quick_backup_polls):
     """Rehearsal on the test Weaviate (same version as deployed): a filesystem backup of the
     annotation collection restores every tenant with its spans and its activity status."""
     chronicles, newspapers = ids.col["chronicles"], ids.col["newspapers"]

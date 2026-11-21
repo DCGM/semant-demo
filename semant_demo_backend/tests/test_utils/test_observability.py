@@ -63,9 +63,9 @@ def test_usage_metric_attributes_are_low_cardinality():
     assert request_outcome(503) == "server_error"
 
 
-def test_classified_feature_paths_exist_in_the_api(tmp_path):
+def test_classified_feature_paths_exist_in_the_api(openapi_schema):
     """Feature metrics must follow route renames instead of silently counting nothing."""
-    schema = create_app(make_test_config(tmp_path)).openapi()
+    schema = openapi_schema
     post_paths = [path for path, operations in schema["paths"].items() if "post" in operations]
     classified = {feature_for_request(path, "POST") for path in post_paths}
     assert {"rag", "search", "summarize", "ai_assistance", "tagging"} <= classified

@@ -350,3 +350,33 @@ async def test_facet_counts_equal_the_totals_of_choosing_each_value(store, owner
                     own = {"document_filters": {**merged.get("document_filters", {}), **own["document_filters"]}}
                 page = await query(store, owner, ids, AnnotationFilters(**{**merged, **own}))
                 assert page.total == value.count, (base, facet.facet, value.value)
+
+
+async def test_statistics_count_every_facet_over_the_query_itself(store, owner, ids, created):
+    """#818: with ``self_exclusion`` false against real Weaviate, every facet counts the query's own
+    population (its own filter kept), its values add up to ``total`` - ``missing``, and each value's
+    count is what the query narrowed to that value returns (the statistics' drill-down)."""
+    from semant_demo.features.annotations import facets
+    from semant_demo.features.annotations.schemas import AnnotationFacetsRequest
+
+    narrowed = {
+        "tag": lambda f, v: {"tag_ids": [UUID(v)]},
+        "type": lambda f, v: {"types": [SpanType(v)]},
+        "document": lambda f, v: {"document_ids": [UUID(v)]},
+        "year": lambda f, v: {"document_filters": {**f.get("document_filters", {}), "year_min": int(v), "year_max": int(v)}},
+        "library": lambda f, v: {"document_filters": {**f.get("document_filters", {}), "libraries": [v]}},
+        "language": lambda f, v: {"document_filters": {**f.get("document_filters", {}), "languages": [v]}},
+    }
+    for base in ({}, {"tag_ids": [ids.tag["person"]]}, {"q": "Karel", "types": list(SpanType)}):
+        request = AnnotationFacetsRequest(facets=list(narrowed), self_exclusion=False, **base)
+        result = await facets.annotation_facets(store, owner, ids.col["chronicles"], request)
+        assert (result.population, result.self_exclusion) == ("filtered", False)
+        filters = request.model_dump(exclude={"facets", "ranking", "self_exclusion"}, exclude_unset=True)
+        expected = (await query(store, owner, ids, AnnotationFilters(**filters))).total
+        assert {f.facet for f in result.facets} == set(narrowed)
+        for facet in result.facets:
+            assert facet.total == expected, (base, facet.facet)
+            assert facet.total - sum(v.count for v in facet.values) == facet.missing >= 0, (base, facet.facet)
+            for value in facet.values:
+                page = await query(store, owner, ids, AnnotationFilters(**{**filters, **narrowed[facet.facet](filters, value.value)}))
+                assert page.total == value.count, (base, facet.facet, value.value)

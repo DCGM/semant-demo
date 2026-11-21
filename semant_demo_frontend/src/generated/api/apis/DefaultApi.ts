@@ -40,6 +40,8 @@ import type {
   CollectionChunk,
   CollectionExportRequest,
   CollectionExportTicket,
+  CollectionPassages,
+  CollectionPassagesRequest,
   CollectionPerson,
   CollectionStats,
   ContextChatRequest,
@@ -168,6 +170,10 @@ import {
     CollectionExportRequestToJSON,
     CollectionExportTicketFromJSON,
     CollectionExportTicketToJSON,
+    CollectionPassagesFromJSON,
+    CollectionPassagesToJSON,
+    CollectionPassagesRequestFromJSON,
+    CollectionPassagesRequestToJSON,
     CollectionPersonFromJSON,
     CollectionPersonToJSON,
     CollectionStatsFromJSON,
@@ -374,6 +380,10 @@ export interface ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumen
 
 export interface ChatAboutSearchResultsApiSearchChatPostRequest {
     searchChatRequest: SearchChatRequest;
+}
+
+export interface CollectionPassagesApiAnalyticsCollectionPassagesPostRequest {
+    collectionPassagesRequest: CollectionPassagesRequest;
 }
 
 export interface CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest {
@@ -1037,6 +1047,30 @@ export interface DefaultApiInterface {
      * Chat About Search Results
      */
     chatAboutSearchResultsApiSearchChatPost(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for collectionPassagesApiAnalyticsCollectionPassagesPost without sending the request
+     * @param {CollectionPassagesRequest} collectionPassagesRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * @summary Collection Passages
+     * @param {CollectionPassagesRequest} collectionPassagesRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>>;
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages>;
 
     /**
      * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
@@ -3822,6 +3856,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async chatAboutSearchResultsApiSearchChatPost(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.chatAboutSearchResultsApiSearchChatPostRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for collectionPassagesApiAnalyticsCollectionPassagesPost without sending the request
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionPassagesRequest'] == null) {
+            throw new runtime.RequiredError(
+                'collectionPassagesRequest',
+                'Required parameter "collectionPassagesRequest" was null or undefined when calling collectionPassagesApiAnalyticsCollectionPassagesPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/analytics/collection/passages`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CollectionPassagesRequestToJSON(requestParameters['collectionPassagesRequest']),
+        };
+    }
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>> {
+        const requestOptions = await this.collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionPassagesFromJSON(jsonValue));
+    }
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages> {
+        const response = await this.collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**
