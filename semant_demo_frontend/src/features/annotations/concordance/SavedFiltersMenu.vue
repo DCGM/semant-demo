@@ -10,7 +10,7 @@
   >
     <q-tooltip v-if="!menuOpen">{{ tooltip }}</q-tooltip>
     <q-menu anchor="bottom right" self="top right" @before-show="onShow" @hide="menuOpen = false">
-      <q-list dense class="saved-filters__list">
+      <q-list class="saved-filters__list q-py-xs">
         <q-item-label header class="row items-center no-wrap">
           <span>Saved filters of this collection</span>
           <q-icon name="info_outline" size="xs" class="q-ml-xs">
@@ -55,8 +55,8 @@
         </q-item>
         <q-separator />
         <q-item v-close-popup clickable data-testid="saved-filters-save" @click="dialogs.saveAs()">
-          <q-item-section avatar><q-icon name="bookmark_add" /></q-item-section>
-          <q-item-section>Save current filters…</q-item-section>
+          <q-item-section side class="saved-filters__check"><q-icon name="bookmark_add" color="primary" size="sm" /></q-item-section>
+          <q-item-section class="text-primary">Save current filters…</q-item-section>
         </q-item>
       </q-list>
     </q-menu>
@@ -115,7 +115,9 @@ async function toggle (item: SavedSelection) {
 
 <style scoped>
 .saved-filters { min-height: 40px; }
-.saved-filters__list { min-width: 300px; max-width: 420px; }
-.saved-filters__check { min-width: 20px; padding-right: 4px; }
+/* The divider between More filters and this icon in their group. */
+.saved-filters::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; border-left: 1px solid currentColor; opacity: 0.4; }
+.saved-filters__list { min-width: 340px; max-width: 440px; }
+.saved-filters__check { min-width: 28px; padding-right: 8px; }
 .saved-filters__name { overflow-wrap: anywhere; }
 </style>

@@ -18,18 +18,18 @@
       <span class="saved-filter-header__actions">
         <template v-if="saved.modified">
           <q-btn
-            flat dense no-caps size="sm" color="primary" label="Save"
+            flat dense no-caps color="primary" class="saved-filter-header__action" label="Save"
             :disable="!active.canEdit || busy" data-testid="saved-filter-save"
             @click="save"
           >
             <q-tooltip v-if="!active.canEdit">Only its creator and the collection owner can save it; save it as a new one instead</q-tooltip>
             <q-tooltip v-else>Save the current filters, order and columns into “{{ active.name }}” for everyone</q-tooltip>
           </q-btn>
-          <q-btn flat dense no-caps size="sm" color="primary" label="Discard" :disable="busy" data-testid="saved-filter-discard" @click="saved.discard()">
+          <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Discard" :disable="busy" data-testid="saved-filter-discard" @click="saved.discard()">
             <q-tooltip>Go back to the filters as saved</q-tooltip>
           </q-btn>
         </template>
-        <q-btn flat dense no-caps size="sm" color="primary" label="Save as new…" data-testid="saved-filter-save-as" @click="dialogs.saveAs()" />
+        <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Save as new…" data-testid="saved-filter-save-as" @click="dialogs.saveAs()" />
         <q-btn flat round dense size="sm" icon="close" aria-label="Close saved filter" data-testid="saved-filter-close" @click="saved.close()">
           <q-tooltip>Close it and go back to the default filters</q-tooltip>
         </q-btn>
@@ -84,6 +84,8 @@ async function save () {
 }
 .saved-filter-header__name { overflow-wrap: anywhere; }
 .saved-filter-header__status {
+  /* Wide enough for either state, so the actions after it stay put. */
+  min-width: 9.5rem;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -97,4 +99,11 @@ async function save () {
   background: #f57c00;
 }
 .saved-filter-header__actions { display: inline-flex; align-items: center; gap: 2px; }
+/* Readable labels without the button's vertical padding: the line stays low. */
+.saved-filter-header__action {
+  min-height: 26px;
+  padding: 0 6px;
+  font-size: 0.9rem;
+}
+.saved-filter-header__action :deep(.q-btn__content) { line-height: 1.2; }
 </style>
