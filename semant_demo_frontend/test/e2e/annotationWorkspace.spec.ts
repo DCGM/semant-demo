@@ -22,8 +22,11 @@ async function openWorkspace (page: Page, userKey = 'owner') {
   await expect(page.getByTestId('concordance-range')).toContainText('matching annotations')
 }
 
+let chroniclesRenamed = false
+
 /** Renames the seeded collection as its owner. */
 async function renameChronicles (request: APIRequestContext, name: string) {
+  chroniclesRenamed = true
   const response = await request.patch(`/api/user_collections/${chronicles.id}`, {
     headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
     data: { name }
@@ -54,7 +57,8 @@ async function patchSpan (request: APIRequestContext, spanId: string, data: Reco
 test.afterEach(async ({ request }) => {
   await deleteAddedSpans(request, 'owner', 'chronicles')
   // The #838 spec renames the collection; restore it even when that spec times out.
-  await renameChronicles(request, fixture.collection('chronicles').name)
+  if (chroniclesRenamed) await renameChronicles(request, fixture.collection('chronicles').name)
+  chroniclesRenamed = false
 })
 
 test('one aligned line per annotation; rejected ones only on request', async ({ page }) => {
