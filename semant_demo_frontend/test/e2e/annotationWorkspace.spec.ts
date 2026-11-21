@@ -1507,6 +1507,10 @@ test('the collection header settles once the sidebar is open, at every wide widt
     await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
     const title = page.locator('.collection-page-title')
     await expect(title).toHaveText(longName)
+    // Closing and reopening the sidebar changes the width the header gets; it must settle again.
+    await page.getByRole('button', { name: 'Close sidebar' }).click()
+    await row(page, 'Jan Novák').click()
+    await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
     // The title and the tabs once resized each other for ever at a width where both only just
     // fit; which width that is depends on the name, so sweep the widths the sidebar leaves.
     for (let width = 1500; width <= 2000; width += 20) {
