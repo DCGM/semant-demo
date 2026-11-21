@@ -910,10 +910,12 @@ flowchart LR
    the import is not complete while the classification is pending. It is a full-corpus pass.
 
 `semant_demo_backend/tests/integration/test_append_pipeline.py` (#798) runs this order on the
-disposable test store with fake models: the import of new and appended documents, the metadata
-with the library flags of the production sync (#259), and every step above, then the search,
-filters and document reads of the new data, the unchanged existing corpus, a rerun of a failed
-title and classification, and a replay of every step that writes nothing.
+disposable test store with fake models, as a smoke test of the hand-offs: a new document, one
+missing from the Kramerius mirror and chunks appended to an existing document go through the
+import, the metadata (with the library flags of the production sync, #259) and every step above.
+It checks that the new public chunks are searchable, that the unresolved document stays hidden
+and is not sent to an API model, that the existing corpus keeps its data, and that a replay of
+every step writes nothing.
 
 `page_order --document-ids CHECKPOINT.documents.txt` exports the new documents' page lists.
 Scans and anchors for newly imported documents are not covered yet: `page_import` was built for

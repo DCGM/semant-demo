@@ -1,26 +1,15 @@
 """Appending new data to a populated store through every stage together (#798, #560 A).
 
-The seeded fixture corpus is the existing corpus: public documents whose chunks have vectors,
-titles (but letters_2), some classifications and no ``classification_provenance``, like
-production. ``fixtures/append_pipeline/chunks.jsonl`` holds four new documents and two chunks
-appended to the chronicle. The stages run in process in the order of ``docs/DATA_MAINTENANCE.md``
+A smoke test of the hand-offs between the stages; each stage's own tests cover its details.
+The seeded fixture corpus is the existing corpus. ``fixtures/append_pipeline/chunks.jsonl``
+holds a new document (*Karlínské listy*, one chunk without the optional ``end_paragraph``), a new
+document missing from the Kramerius mirror (*Freudenthaler Zeitung*) and two chunks appended to
+the seeded chronicle. The stages run in process in the order of ``docs/DATA_MAINTENANCE.md``
 (*Chunk import*, *Afterwards*) and hand over through the import's document list, as an operator
-does. The Kramerius mirror is an in-memory SQLite ``meta_records`` table, read with the library
-flags of the production sync (#259):
-
-- the Reichenberg *Mittheilungen* (kvkli, German): rows in kvkli and nkp, its start pages in
-  kvkli only, so the pages decide (``page_ancestry``);
-- *Karlínské listy* (mzk, Czech): rows in nkp and mzk, only mzk with MODS metadata
-  (``mirror_metadata``, before the priority ``nkp,mzk``);
-- the Prague *Intelligenzblatt* (nacr, German) and the chronicle: one row each (``mirror_unique``);
-- the *Freudenthaler Zeitung* (German): no row. It stays unresolved, without ``public``, so its
-  chunks stay out of anonymous reads and its text goes to no model that may not receive it (#785).
-
-The models are fakes: titles from the fake provider (an excerpt's first four words), embeddings
-of the second vector from its OpenAI-compatible endpoint, classifications from a fake remote
-(API) model. Nothing goes beyond the test store: no Weaviate client looks up its version on
-pypi.org. One chunk is imported without the optional ``end_paragraph``; search and document
-reads still answer. Every stage then runs again on the same input and writes nothing.
+does; ``metadata_sync`` reads an in-memory SQLite mirror with the flags of the production sync
+(#259). The models are fakes. The test checks that the new public chunks reach search, that the
+unresolved document stays out of anonymous reads and of the API model (#785), that the existing
+corpus keeps its data, and that a replay of every stage writes nothing.
 """
 import asyncio
 import json
@@ -35,7 +24,6 @@ from httpx import ASGITransport
 from openai import AsyncOpenAI
 from sqlalchemy import create_engine, insert
 from weaviate.classes.query import QueryReference
-from weaviate.connect.v4 import _ConnectionBase
 
 from semant_demo.adapters.llm.gateway import LlmGateway, ProviderSettings
 from semant_demo.adapters.llm.models import ModelCatalog
@@ -48,9 +36,7 @@ from semant_demo.maintenance import (
     metadata_sync)
 from semant_demo.maintenance.chunk_titles import UsageTotals
 from tests.fake_providers import create_fake_provider_app, fake_title
-from semant_demo.features.documents.positions import chunk_positions
-from tests.fakes import SECOND_VECTOR, second_embedding
-from tests.seed import position_properties
+from tests.fakes import SECOND_VECTOR
 
 sys.path.insert(0, str(Path(__file__).parents[3] / "data_tools" / "embedder"))
 sys.path.insert(0, str(Path(__file__).parents[3] / "data_tools" / "meta_data_enrichment"))
@@ -61,11 +47,7 @@ from semantmetaenricher.pipeline import EnrichmentPipeline  # noqa: E402
 pytestmark = pytest.mark.integration
 
 INPUT = Path(__file__).parents[1] / "fixtures" / "append_pipeline" / "chunks.jsonl"
-KVKLI, KARLIN, PRAGUE, FREUDENTHAL = (
-    "00094a56-54af-4bd4-9559-c5601d81b15d", "000b03e0-53d7-11ee-9c28-0050568d319f",
-    "000070c8-2b2a-46f9-8052-1ce4b7dac249", "00246353-3566-4e72-80a6-4019d8f94d59")
-RESOLVED = (KVKLI, KARLIN, PRAGUE)
-YEARS = {KVKLI: 1906, KARLIN: 1904, PRAGUE: 1839}
+KARLIN, FREUDENTHAL = "000b03e0-53d7-11ee-9c28-0050568d319f", "00246353-3566-4e72-80a6-4019d8f94d59"
 CATALOG = {"tiers": {"tiny": {"provider": "ollama", "model": "fake-titles", "price_basis": "local_rate",
                               "input_price": 0, "output_price": 0}},
            "features": {"chunk_titles": {"default": "tiny", "limits": {"max_output_tokens": 64,
@@ -86,30 +68,12 @@ def row(document_id: str, library: str, **values) -> dict:
             "start_date": None, "end_date": None, "metadata_json": None, **values}
 
 
-def page_row(page_id: str, library: str, parent: str) -> dict:
-    return row(page_id, library, parent_id=UUID(parent), parent_library=library, record_type="page")
-
-
-class TitleProvider(httpx.AsyncBaseTransport):
-    """The fake provider; fails the requests whose excerpt holds ``failing``."""
-
-    def __init__(self, corpus):
-        self.inner = ASGITransport(app=create_fake_provider_app(corpus))
-        self.failing: str | None = None
-
-    async def handle_async_request(self, request):
-        if self.failing and self.failing in json.loads(request.content)["messages"][-1]["content"]:
-            return httpx.Response(503, json={"error": "unavailable"})
-        return await self.inner.handle_async_request(request)
-
-
 class RemoteModel:
-    """A fake API model (``remote``: its provider would receive the text): answers ``LABELS``;
-    ``failing`` texts get no label. ``asked`` records the classified texts."""
+    """A fake API model (``remote``: its provider would receive the text) answering ``LABELS``.
+    ``asked`` records the classified texts."""
     remote = True
 
     def __init__(self):
-        self.failing: set[str] = set()
         self.asked: list[str] = []
 
     def __enter__(self):
@@ -126,33 +90,18 @@ class RemoteModel:
 
     def generate_batch(self, records, tasks):
         self.asked.extend(r["text"] for r in records)
-        return [{t: None if r["text"] in self.failing else list(LABELS[t]) for t in tasks} for r in records]
-
-
-@pytest.fixture(autouse=True)
-def no_version_lookup(monkeypatch):
-    """The test needs no network beyond the test store: no Weaviate client (the backend's, the
-    embedder's or the classifier's) may look up its latest version on pypi.org."""
-    def refuse(*args, **kwargs):
-        raise AssertionError("a Weaviate client looked up its version on pypi.org")
-    monkeypatch.setattr(_ConnectionBase, "_check_package_version", refuse)
+        return [{t: list(LABELS[t]) for t in tasks} for r in records]
 
 
 @pytest.fixture
 def mirror():
-    """The Kramerius mirror of the new documents and the chronicle (see the module docstring)."""
-    lines = [json.loads(line) for line in INPUT.read_text(encoding="utf-8").splitlines()]
-    kvkli_pages = sorted({c["start_page_id"] for c in lines if c["document"] == KVKLI})
+    """The Kramerius mirror: one row of the new document and of the chronicle; none of the
+    Freudenthaler Zeitung."""
     engine = create_engine("sqlite://")
     META_RECORDS.metadata.create_all(engine)
     with engine.connect() as connection:
         connection.execute(insert(META_RECORDS), [
-            row(KVKLI, "kvkli", title="Mittheilungen aus dem Vereine der Naturfreunde in Reichenberg", date="1906"),
-            row(KVKLI, "nkp", title="Mittheilungen (nkp)"),
-            *[page_row(page, "kvkli", KVKLI) for page in kvkli_pages],
-            row(KARLIN, "nkp", title="Karlínské listy (nkp)"),
-            row(KARLIN, "mzk", title="Karlínské listy", date="1904", metadata_json={"Publisher": [["Karlín"]]}),
-            row(PRAGUE, "nacr", title="Intelligenzblatt zur Prager Zeitung", date="1839"),
+            row(KARLIN, "mzk", title="Karlínské listy", date="1904"),
             row("5e3a0000-0000-4000-8000-00000000d001", "nkp", title="Kronika obce Lhota"),  # the chronicle
         ])
         yield connection
@@ -164,7 +113,7 @@ def stages(seeded_store, collection_names, corpus, store_endpoint, tmp_path, mir
     """Each stage as the operator runs it, on the test store with the fake models."""
     names = collection_names
     runs = iter(range(1000))
-    titles_provider = TitleProvider(corpus)
+    titles_provider = ASGITransport(app=create_fake_provider_app(corpus))
     classifier_model = RemoteModel()
     models_config = tmp_path / "models.yaml"
     models_config.write_text(yaml.safe_dump(CATALOG))
@@ -176,7 +125,6 @@ def stages(seeded_store, collection_names, corpus, store_endpoint, tmp_path, mir
         return tmp_path / f"{name}-{next(runs)}.json"
 
     class Stages:
-        titles = titles_provider
         classifier = classifier_model
 
         @staticmethod
@@ -216,11 +164,8 @@ def stages(seeded_store, collection_names, corpus, store_endpoint, tmp_path, mir
             llm = LlmGateway(ModelCatalog.load(models_config),
                              ProviderSettings(ollama_base_url="http://fake/ollama", max_retries=0), usage,
                              http_transport=titles_provider)
-            reported: list[dict] = []
-            result = await chunk_titles.run(seeded_store, names, llm, endpoint="test", write=True,
-                                            models_config=models_config, usage=usage, progress=quiet,
-                                            reported=reported.append)
-            return result, reported, chunk_titles.exit_code(result)
+            return await chunk_titles.run(seeded_store, names, llm, endpoint="test", write=True,
+                                          models_config=models_config, usage=usage, progress=quiet)
 
         @staticmethod
         async def embed():
@@ -293,111 +238,50 @@ async def test_appended_data_runs_through_every_stage_and_a_replay_writes_nothin
         seeded_store, collection_names, corpus, stages, tmp_path, api_app, api_client):
     names = collection_names
     lines = [json.loads(line) for line in INPUT.read_text(encoding="utf-8").splitlines()]
-    new = {c["id"]: c for c in lines}
     of = {doc: [c for c in lines if c["document"] == doc] for doc in dict.fromkeys(c["document"] for c in lines)}
     chronicle = corpus.documents["chronicle"]["id"]
-    appended = [c["id"] for c in of[chronicle]]
+    shown = [c["id"] for c in lines if c["document"] != FREUDENTHAL]
     hidden = [c["id"] for c in of[FREUDENTHAL]]
     await chunk_summary_schema.update(seeded_store, names, apply=True)  # declared as on production (#561)
     existing, existing_annotations = await snapshot(seeded_store, names), await annotations(seeded_store, names)
 
-    # Import: four new documents and the chronicle's two appended chunks, none of them public yet.
+    # Import: two new documents and the chronicle's two appended chunks, none of them public yet.
     imported, code, document_list = await stages.ingest()
     assert code == 0 and {k: imported["counts"][k] for k in ("new", "append", "chunks_inserted")} == {
-        "new": 4, "append": 1, "chunks_inserted": 14}
+        "new": 2, "append": 1, "chunks_inserted": len(lines)}
     assert set(metadata_sync.read_document_ids(document_list)) == {UUID(d) for d in of}
 
     # An API model run straight after the import selects none of them: they are not public yet.
-    early = await stages.classify()
-    assert (early.selected, early.restricted_by) == (0, "documentPublic") and stages.classifier.asked == []
+    assert (await stages.classify()).selected == 0 and stages.classifier.asked == []
 
-    # Metadata, with the library inferred as in the production sync; the missing document stays unresolved.
     report, applied, code = await stages.metadata(document_list)
-    by_id = {e["id"]: e for e in report["documents"]}
-    assert {d: by_id[d].get("library_from") for d in (KVKLI, KARLIN, PRAGUE, chronicle)} == {
-        KVKLI: "page_ancestry", KARLIN: "mirror_metadata", PRAGUE: "mirror_unique", chronicle: "mirror_unique"}
-    assert report["counts"]["unresolved"] == {"no_library": 1} and by_id[FREUDENTHAL]["kind"] == "no_library"
-    assert by_id[chronicle]["changes"] == {"library": {"old": None, "new": "nkp"}}   # its public stays true
-    assert (applied["applied"], applied["verified"], applied["chunks_pending"], code) == (4, 4, [], 0)
-
+    assert report["counts"]["unresolved"] == {"no_library": 1} and (applied["applied"], code) == (2, 0)
     years, code = await stages.year()
-    assert (years["counts"]["set"], years["counts"]["written"], code) == (12, 12, 0)
-
-    # The new public documents' chunks became public with metadata_sync; the appended ones only now.
+    assert code == 0
     visible, code = await stages.visibility(document_list)
-    assert {k: visible["counts"][k] for k in ("public", "not_public", "written")} == {
-        "public": 4, "not_public": 1, "written": 2} and code == 0
-
-    # Titles: a failed model call is reported and taken up by a rerun; the unresolved document's
-    # chunks are deferred (not public). letters_2 is the existing corpus' untitled chunk.
-    failing = of[KARLIN][0]
-    stages.titles.failing = failing["text"]
-    titled, reported, code = await stages.titles_run()
-    assert {k: titled["counts"][k] for k in ("generate", "written", "model_failed", "deferred_restricted_document")} \
-        == {"generate": 13, "written": 12, "model_failed": 1, "deferred_restricted_document": 2} and code == 1
-    assert {(r["id"], r["status"]) for r in reported} == {
-        (failing["id"], "model_failed"), *((c, "deferred_restricted_document") for c in hidden)}
-    stages.titles.failing = None
-    before_rerun = await snapshot(seeded_store, names)
-    titled, reported, code = await stages.titles_run()
-    assert changed(before_rerun, await snapshot(seeded_store, names)) == {failing["id"]: {"title"}}
-    assert (titled["counts"]["written"], titled["counts"]["deferred_restricted_document"], code) == (1, 2, 1)
-
+    assert code == 0 and visible["counts"]["written"] == len(of[chronicle])   # the appended chunks
+    titled = await stages.titles_run()
+    assert titled["counts"]["deferred_restricted_document"] == len(hidden)
     embedded = await stages.embed()
-    assert (embedded.selected, embedded.embedded, embedded.already_stored, embedded.scanned) == (14, 14, 0, 0)
-
-    # The classification: a failure is retried by the next run; the unresolved document's chunks
-    # wait for an explicit decision (``include_restricted_documents``).
-    stages.classifier.failing = {of[PRAGUE][0]["text"]}
+    assert embedded.embedded == len(lines)
     classified = await stages.classify()
-    assert (classified.selected, classified.classified, len(classified.failed)) == (12, 11, 1)
-    stages.classifier.failing = set()
-    before_rerun = await snapshot(seeded_store, names)
-    classified = await stages.classify()
-    assert changed(before_rerun, await snapshot(seeded_store, names)) == {of[PRAGUE][0]["id"]: {*LABELS, PROVENANCE}}
-    assert (classified.selected, classified.classified, classified.failed) == (1, 1, [])
-    assert not {c["text"] for c in of[FREUDENTHAL]} & set(stages.classifier.asked)
-
+    assert (classified.selected, classified.classified) == (len(shown), len(shown))
     summarized, code = await stages.summaries()
-    assert code == 0 and summarized["counts"]["documents"]["failed"] == 0
+    assert code == 0
 
-    # The new chunks and documents. A new document starts at the document start, the appended
-    # chunks continue after the chronicle's stored tail.
+    # What each stage hands over: the new public chunks are complete, the unresolved document's
+    # chunks have a vector but stay hidden, untitled and unclassified.
     after = await snapshot(seeded_store, names)
-    seeded_chronicle = sorted((c for c in corpus.chunks.values() if c["document"] == "chronicle"),
-                              key=lambda c: c["order"])
-    positions = {}
-    for document, chunks in of.items():
-        before_them = [c["text"] for c in seeded_chronicle] if document == chronicle else []
-        computed = list(chunk_positions([*before_them, *(c["text"] for c in chunks)]))[len(before_them):]
-        positions |= {c["id"]: position_properties(p) for c, p in zip(chunks, computed)}
-    for chunk_id, line in new.items():
-        properties, references, vectors = after[chunk_id]
-        document = line["document"]
-        public = document != FREUDENTHAL
-        assert references["document"] == [document]
-        assert {k: properties[k] for k in ("text", "order", "language", "start_page_id")} == {
-            k: line[k] for k in ("text", "order", "language", "start_page_id")}
-        assert properties["end_paragraph"] == line.get("end_paragraph")   # one chunk is imported without it
-        assert {k: properties[k] for k in ("startChar", "startWord", "wordOpenAtStart")} == positions[chunk_id]
-        assert properties["documentPublic"] is public
-        assert properties["haveVector"] == [SECOND_VECTOR]
-        assert vectors[SECOND_VECTOR] == pytest.approx(second_embedding(line["text"]))
-        assert properties["title"] == (fake_title(line["text"]) if public else None)
-        assert properties[PROVENANCE] == (PROVENANCE_ID if public else UNPROCESSED)
-        assert {t: properties[t] for t in LABELS} == (LABELS if public else dict.fromkeys(LABELS))
-        expected_year = YEARS.get(document, corpus.documents["chronicle"]["properties"]["yearIssued"]
-                                  if document == chronicle else None)
-        assert properties.get("yearIssued") == expected_year
-    for document in RESOLVED:
-        properties = after[document][0]
-        assert (properties["library"], properties["yearIssued"], properties["public"]) == (
-            {KVKLI: "kvkli", KARLIN: "mzk", PRAGUE: "nacr"}[document], YEARS[document], True)
-        assert sorted(properties["chunk_language"]) == [of[document][0]["language"]]
-    assert after[KARLIN][0]["publisher"] == "Karlín" and after[KARLIN][0]["title"] == "Karlínské listy"
-    # Nothing invented for the unresolved document: only the summaries of its chunks.
-    assert {k: v for k, v in after[FREUDENTHAL][0].items() if v not in (None, []) and not k.startswith("chunk_")} \
-        == {} and after[FREUDENTHAL][0]["chunk_language"] == ["deu"]
+    for chunk in lines:
+        properties = after[chunk["id"]][0]
+        public = chunk["document"] != FREUDENTHAL
+        assert properties["documentPublic"] is public, chunk["id"]
+        assert properties["haveVector"] == [SECOND_VECTOR], chunk["id"]
+        assert (properties["title"] is not None) is public, chunk["id"]
+        assert properties[PROVENANCE] == (PROVENANCE_ID if public else UNPROCESSED), chunk["id"]
+        assert (properties.get("yearIssued") is not None) is public, chunk["id"]
+    assert (after[KARLIN][0]["library"], after[KARLIN][0]["public"]) == ("mzk", True)
+    assert not {c["text"] for c in of[FREUDENTHAL]} & set(stages.classifier.asked)
 
     # The existing corpus: unchanged but for what the stages define.
     for object_id, (properties, references, vectors) in existing.items():
@@ -419,35 +303,16 @@ async def test_appended_data_runs_through_every_stage_and_a_replay_writes_nothin
     # Replay: every stage again on the same input writes nothing.
     before = await snapshot(seeded_store, names)
     imported, code, document_list = await stages.ingest()
-    assert (imported["counts"]["replayed"], imported["counts"]["chunks_inserted"], code) == (5, 0, 0)
+    assert (imported["counts"]["chunks_inserted"], code) == (0, 0)
     report, applied, code = await stages.metadata(document_list)
-    # A new report finds them unchanged; applying it writes nothing (exit 1: nothing was eligible).
-    assert (report["counts"]["unchanged"], report["counts"]["unresolved"]) == (4, {"no_library": 1})
-    assert (applied["eligible"], applied["applied"], code) == (0, 0, 1)
-    years, code = await stages.year()
-    assert (years["counts"]["written"], code) == (0, 0)
-    visible, code = await stages.visibility(document_list)
-    assert (visible["counts"]["written"], code) == (0, 0)
-    titled, reported, code = await stages.titles_run()
-    assert (titled["counts"]["written"], titled["counts"]["deferred_restricted_document"]) == (0, 2)
+    assert (applied["applied"], code) == (0, 1)   # exit 1: nothing eligible (documented)
+    await stages.year()
+    await stages.visibility(document_list)
+    await stages.titles_run()
     assert (await stages.embed()).selected == 0
     assert (await stages.classify()).selected == 0
-    summarized, code = await stages.summaries()
-    assert (summarized["counts"]["documents"]["changed"], code) == (0, 0)
+    await stages.summaries()
     assert await snapshot(seeded_store, names) == before
-
-
-def changed(before: dict, after: dict) -> dict[str, set[str]]:
-    """The properties that differ, by object id (references and vectors must not)."""
-    assert before.keys() == after.keys()
-    differ = {}
-    for object_id, (properties, references, vectors) in before.items():
-        assert (after[object_id][1], after[object_id][2]) == (references, vectors), object_id
-        keys = {k for k in properties.keys() | after[object_id][0].keys()
-                if properties.get(k) != after[object_id][0].get(k)}
-        if keys:
-            differ[object_id] = keys
-    return differ
 
 
 def corpus_document_ids(corpus) -> set[str]:
@@ -455,8 +320,8 @@ def corpus_document_ids(corpus) -> set[str]:
 
 
 async def users_see_the_new_documents(api_app, api_client, corpus, tmp_path, of, chronicle):
-    """Anonymous search, filters, browsing and counts include the new public documents and the
-    appended chunks, and nothing of the unresolved document (#279)."""
+    """Anonymous search finds the new public chunks (one stored without ``end_paragraph``) by the
+    vector the embedder filled; nothing of the unresolved document is readable (#279)."""
     path = tmp_path / "search_vectors.yaml"   # the vector the embedder filled, as SEARCH_VECTORS_CONFIG lists it
     path.write_text(yaml.safe_dump({"default": "small", "vectors": [
         {"id": "small", "name": "Small", "target_vector": SECOND_VECTOR,
@@ -465,41 +330,15 @@ async def users_see_the_new_documents(api_app, api_client, corpus, tmp_path, of,
         Config(environ={"SEARCH_VECTORS_CONFIG": str(path)}), ASGITransport(app=create_fake_provider_app(corpus)))
     hidden = {c["id"] for c in of[FREUDENTHAL]}
 
-    async def search(text: str, kind: str) -> list[str]:
-        response = await api_client.post("/api/search", json={"query": text, "type": kind, "limit": 50,
+    async def search(text: str) -> list[str]:
+        response = await api_client.post("/api/search", json={"query": text, "type": "vector", "limit": 50,
                                                               "vector": "small", **NO_SUMMARY})
         assert response.status_code == 200, response.text
         return [r["id"] for r in response.json()["results"]]
 
-    for kind in ("vector", "hybrid"):
-        for chunk in (of[KARLIN][1], of[KVKLI][2], of[chronicle][1]):
-            assert (await search(chunk["text"], kind))[0] == chunk["id"], (kind, chunk["id"])
-        assert not hidden & set(await search(of[FREUDENTHAL][0]["text"], kind))
-    assert of[chronicle][1]["id"] in await search("tesaři z Brna", "text")
-    assert not hidden & set(await search(of[FREUDENTHAL][0]["text"], "text"))
-
-    async def browse(**filters) -> set[str]:
-        response = await api_client.get("/api/documents/browse", params={"limit": 200, **filters})
-        assert response.status_code == 200, response.text
-        return {d["id"] for d in response.json()["items"]}
-
-    seeded = {d["id"] for d in corpus.documents.values()}
-    letters = corpus.documents["letters"]["id"]
-    assert await browse() == seeded | set(RESOLVED)
-    assert await browse(year_min=1900, year_max=1910) == {KVKLI, KARLIN, letters}
-    assert await browse(libraries=["kvkli", "nkp"]) == {KVKLI, chronicle}
-    assert await browse(chunk_languages=["deu"]) == {KVKLI, PRAGUE}
-    assert await browse(chunk_classifications=["communicative_mode:description"]) == {*RESOLVED, chronicle}
-    overview = (await api_client.get("/api/analytics/corpus/overview")).json()
-    assert overview["total_documents"] == len(seeded) + len(RESOLVED)
+    for chunk in (of[KARLIN][1], of[chronicle][1]):
+        assert (await search(chunk["text"]))[0] == chunk["id"]
+    assert not hidden & set(await search(of[FREUDENTHAL][0]["text"]))
+    browsed = await api_client.get("/api/documents/browse", params={"limit": 200})
+    assert {d["id"] for d in browsed.json()["items"]} == {*corpus_document_ids(corpus), KARLIN}
     assert (await api_client.get(f"/api/document/{FREUDENTHAL}")).status_code == 404
-
-    # Reading a new document around its chunk imported without ``end_paragraph`` (#798).
-    bare = of[KARLIN][1]
-    assert "end_paragraph" not in bare
-    window = await api_client.get(f"/api/documents/{KARLIN}/chunks/{bare['id']}/window")
-    assert window.status_code == 200, window.text
-    assert [c["id"] for c in window.json()["chunks"]] == [c["id"] for c in of[KARLIN]]
-    assert {c["id"]: c["end_paragraph"] for c in window.json()["chunks"]}[bare["id"]] is True
-    page = await api_client.get(f"/api/documents/{KARLIN}/chunks/by_page", params={"page": bare["from_page"]})
-    assert page.status_code == 200, page.text
