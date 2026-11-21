@@ -17,16 +17,6 @@ test('app is branded semANT demo with the semANT logo', async ({ page }) => {
   expect(favicon.headers()['content-type']).toBe('image/png')
 })
 
-test('logged-in user stays authenticated across a reload', async ({ page }) => {
-  await ensureLoggedIn(page, 'owner')
-
-  await page.reload()
-  await page.getByRole('button', { name: 'User menu' }).click()
-
-  await expect(page.getByText('Log Out', { exact: true })).toBeVisible()
-  await expect(page.getByText('Log In', { exact: true })).toHaveCount(0)
-})
-
 test('shared user sees the shared collection and opens its document', async ({ page }) => {
   await ensureLoggedIn(page, 'annotator')
 

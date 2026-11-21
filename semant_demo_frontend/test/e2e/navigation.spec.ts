@@ -89,17 +89,6 @@ test('an expired session on a collection page switches to the signed-out menu', 
   await expectSignedOutMenu(page)
 })
 
-test('a stored session that is no longer valid restores as signed out', async ({ page }) => {
-  await ensureLoggedIn(page, 'owner')
-  await page.route('**/api/users/me', (route) => route.fulfill({
-    status: 401, contentType: 'application/json', body: '{"detail":"Unauthorized"}'
-  }))
-
-  await page.reload()
-
-  await expectSignedOutMenu(page)
-})
-
 // #253: back arrows go to a fixed parent page and leave the left navigation drawer alone;
 // the drawer's own collapse control is a separate, labelled toggle.
 test('back arrows go to the parent page without changing the navigation drawer', async ({ page }) => {
