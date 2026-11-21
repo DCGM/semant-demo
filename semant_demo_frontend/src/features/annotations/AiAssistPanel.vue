@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-assist-panel" :class="{ 'has-pending': pendingAutoSpans.length > 0 }">
+  <div ref="panelElement" class="ai-assist-panel" :class="{ 'has-pending': pendingAutoSpans.length > 0 }">
     <!-- The run options fold away while the suggestions are reviewed (#770). -->
     <div class="ai-options-header">
       <span class="ai-section-label q-mb-none">Run options</span>
@@ -593,7 +593,21 @@ function onSuggestionClick(span: TagSpan) {
 // can reach a suggestion which has never been mounted as a DOM element.
 const suggestionVirtualScroll = ref<{ $el: HTMLElement; scrollTo:(index: number, edge?: 'start' | 'center' | 'end') => void } | null>(null)
 const revealedSuggestion = ref(false)
+const panelElement = ref<HTMLElement | null>(null)
 let suggestionFocusRequest = 0
+// Navigation from the tag arrows must keep focus on the arrows rather than the card.
+let tagNavigationTargetId: string | null = null
+
+// The tag navigation sticks to the top while the outer sidebar scrolls.
+// Keep cards below it (not hidden underneath the sticky controls).
+function stickyNavigationBottom(scroller: HTMLElement): number {
+  const nav = panelElement.value?.querySelector<HTMLElement>('.ai-tag-list')
+  const outerRect = scroller.getBoundingClientRect()
+  const navRect = nav?.getBoundingClientRect()
+  return navRect && navRect.top <= outerRect.top + 1
+    ? Math.min(navRect.bottom + 8, outerRect.bottom)
+    : outerRect.top
+}
 
 // The list and the right sidebar are independent scrollers. Bring the selected
 // card towards the top third of the sidebar even if it was just barely visible
@@ -603,7 +617,8 @@ function scrollCardIntoSidebar(card: HTMLElement) {
   if (!scroller) return
   const cardRect = card.getBoundingClientRect()
   const sidebarRect = scroller.getBoundingClientRect()
-  const preferredTop = sidebarRect.top + Math.min(140, Math.max(8, (sidebarRect.height - cardRect.height) / 3))
+  const preferredTop = Math.max(stickyNavigationBottom(scroller),
+    sidebarRect.top + Math.min(140, Math.max(8, (sidebarRect.height - cardRect.height) / 3)))
   scroller.scrollTop += cardRect.top - preferredTop
 }
 
@@ -614,11 +629,11 @@ function cardVisibleInBothScrollers(card: HTMLElement): boolean {
   const cardRect = card.getBoundingClientRect()
   const outerRect = scroller.getBoundingClientRect()
   const listRect = list.getBoundingClientRect()
-  return cardRect.top >= Math.max(outerRect.top, listRect.top, 0) - 1 &&
+  return cardRect.top >= Math.max(outerRect.top, listRect.top, stickyNavigationBottom(scroller), 0) - 1 &&
     cardRect.bottom <= Math.min(outerRect.bottom, listRect.bottom, window.innerHeight) + 1
 }
 
-async function focusSuggestionById(id: string) {
+async function focusSuggestionById(id: string, fromTagNavigation = false) {
   const request = ++suggestionFocusRequest
   const collectionId = props.collectionId
   const documentId = props.documentId
@@ -665,6 +680,9 @@ async function focusSuggestionById(id: string) {
     scrollCardIntoSidebar(card)
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     if (!cardVisibleInBothScrollers(card)) continue
+    // Mouse/keyboard tag navigation should not steal focus from the arrow.
+    // Text/gutter navigation still focuses the selected suggestion card.
+    if (fromTagNavigation) return
     const action = card.querySelector<HTMLButtonElement>('.auto-span-highlight')
     action?.focus({ preventScroll: true })
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
@@ -676,7 +694,11 @@ async function focusSuggestionById(id: string) {
 // updates in the same click, but re-clicking the same ID still reruns scrolling.
 watch(
   [() => aiAssist.highlightedAutoSpanId.value, () => aiAssist.highlightedAutoSpanNavigationRequest.value],
-  ([id]) => { if (id) void focusSuggestionById(id) }
+  ([id]) => {
+    const fromTagNavigation = id != null && tagNavigationTargetId === id
+    tagNavigationTargetId = null
+    if (id) void focusSuggestionById(id, fromTagNavigation)
+  }
 )
 watch(() => aiAssist.aiPanelActive.value, (active) => {
   const id = aiAssist.highlightedAutoSpanId.value
@@ -884,7 +906,15 @@ function navigateAutoSpan(tagId: string, direction: 'prev' | 'next') {
     nextIdx = direction === 'next' ? (current + 1) % list.length : (current - 1 + list.length) % list.length
   }
   const target = list[nextIdx]
-  if (target.id) aiAssist.highlightedAutoSpanId.value = target.id
+  if (!target.id) return
+  const alreadyHighlighted = aiAssist.highlightedAutoSpanId.value === target.id
+  tagNavigationTargetId = target.id
+  aiAssist.highlightedAutoSpanId.value = target.id
+  // A single-item tag may navigate to the same ID, which won't trigger the watcher.
+  if (alreadyHighlighted) {
+    tagNavigationTargetId = null
+    void focusSuggestionById(target.id, true)
+  }
 }
 
 // Approve/reject requests of this panel's document: entered when the panel moves to another
@@ -1266,6 +1296,15 @@ watch(chosenAiTagIds, (ids) => {
   background: rgba(15, 23, 42, 0.03);
   border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 6px;
+}
+
+/* Keep tag arrows accessible while the outer panel scrolls to a deep card.
+   This also works when Pending suggestions expands during navigation. */
+.ai-assist-panel.has-pending .ai-tag-list {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
 }
 
 .ai-tag-list-row {
