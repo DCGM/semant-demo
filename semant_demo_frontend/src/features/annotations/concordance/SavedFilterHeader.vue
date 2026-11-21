@@ -1,7 +1,7 @@
 <template>
   <!-- Grows and shrinks smoothly (rows 0fr → 1fr), so the page below glides instead of jumping;
        while closing it keeps showing the saved filter that was open. -->
-  <div class="saved-filter-header-wrap" :class="{ 'saved-filter-header-wrap--open': !!active }" :inert="!active || undefined">
+  <div class="saved-filter-header-wrap" :class="{ 'saved-filter-header-wrap--open': !!active }" :inert="!active || undefined" @transitionend.self="onCollapsed">
     <div class="saved-filter-header-clip">
     <div v-if="shown" class="saved-filter-header" role="region" aria-label="Open saved filter" data-testid="saved-filter-header">
       <!-- Right-aligned: the status and the buttons that come and go stand left of the name, so
@@ -18,10 +18,11 @@
       <span v-if="saved.modified" class="saved-filter-header__actions">
         <q-btn
           flat dense no-caps color="primary" class="saved-filter-header__action" label="Save"
-          :disable="!shown.canEdit || busy" data-testid="saved-filter-save"
+          :disable="!shown.canEdit || !saved.savable || busy" data-testid="saved-filter-save"
           @click="save"
         >
-          <q-tooltip v-if="!shown.canEdit">Only its creator and the collection owner can save it; save it as a new one instead</q-tooltip>
+          <q-tooltip v-if="!saved.savable">Find similar ranks by one annotation and cannot be saved; go back to the previous view first</q-tooltip>
+          <q-tooltip v-else-if="!shown.canEdit">Only its creator and the collection owner can save it; save it as a new one instead</q-tooltip>
           <q-tooltip v-else>Save the current filters, order and columns into “{{ shown.name }}” for everyone</q-tooltip>
         </q-btn>
         <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Discard" :disable="busy" data-testid="saved-filter-discard" @click="saved.discard()">
@@ -35,7 +36,7 @@
         <q-tooltip max-width="20rem">{{ warning }}</q-tooltip>
       </q-icon>
       <span class="saved-filter-header__actions">
-        <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Save as new…" data-testid="saved-filter-save-as" @click="dialogs.saveAs()" />
+        <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Save as new…" :disable="!saved.savable" data-testid="saved-filter-save-as" @click="dialogs.saveAs()" />
         <q-btn flat round dense size="sm" icon="close" aria-label="Close saved filter" data-testid="saved-filter-close" @click="saved.close()">
           <q-tooltip>Close it and go back to the default filters</q-tooltip>
         </q-btn>
@@ -58,6 +59,8 @@ import { useSavedFiltersStore } from './savedFiltersStore'
 const props = defineProps<{
   tags: Tag[]
   attributes: Attribute[]
+  /** The collection's tags and attributes are loaded: before that every reference looks deleted. */
+  definitionsReady: boolean
 }>()
 
 const saved = reactive(useSavedFiltersStore())
@@ -69,9 +72,13 @@ const active = computed(() => saved.active)
 const lastActive = ref(saved.active)
 watch(active, value => { if (value) lastActive.value = value })
 const shown = computed(() => active.value ?? lastActive.value)
+/** Once closed, the header's content leaves the page. */
+function onCollapsed () {
+  if (!active.value) lastActive.value = null
+}
 const warning = computed(() => {
   const query = active.value?.query
-  if (!query || !props.tags.length) return null
+  if (!query || !props.definitionsReady) return null
   return missingText(missingReferences(query, props.tags, props.attributes))
 })
 
@@ -93,7 +100,8 @@ async function save () {
 .saved-filter-header-wrap--open { grid-template-rows: 1fr; }
 .saved-filter-header-clip { overflow: hidden; min-height: 0; }
 @media (prefers-reduced-motion: reduce) {
-  .saved-filter-header-wrap { transition: none; }
+  /* A transition too short to see, so that transitionend still removes the closed content. */
+  .saved-filter-header-wrap { transition-duration: 1ms; }
 }
 .saved-filter-header {
   display: flex;

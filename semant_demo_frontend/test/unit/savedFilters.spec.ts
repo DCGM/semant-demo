@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 
 import SavedFilterHeader from 'src/features/annotations/concordance/SavedFilterHeader.vue'
+import SavedFiltersMenu from 'src/features/annotations/concordance/SavedFiltersMenu.vue'
 
-import { defaultFilters, useConcordanceStore, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
+import { defaultFilters, useConcordanceStore, withMode, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
 import {
   filtersOf, liveQueryOf, missingReferences, missingText, sameQuery
 } from 'src/features/annotations/concordance/savedFilters'
@@ -59,6 +60,14 @@ describe('live queries', () => {
     expect(filtersOf(similar).similarTo).toBeNull()
     const ranked = filtersOf(liveQueryOf(filters({ similarity: 'válka', mode: 'hybrid' as never }), []))
     expect(ranked.similarity).toBe('válka')
+  })
+
+  it('restores a similarity text as a ranked query that compares equal to itself (#828 review)', () => {
+    const q = liveQueryOf(withMode({ ...defaultFilters(), similarity: 'válka' }), [])
+    expect(q.filters?.rankingQuery).toBe('válka')
+    expect(filtersOf(q)).toMatchObject({ similarity: 'válka', mode: 'hybrid' })
+    expect(sameQuery(q, q)).toBe(true)
+    expect(sameQuery(liveQueryOf(withMode({ ...defaultFilters(), similarity: 'mír' }), []), q)).toBe(false)
   })
 
   it('compares queries as sets, ignoring empty fields', () => {
@@ -189,6 +198,25 @@ describe('saved filters store', () => {
     expect(concordance.shownAttributeIds).toEqual([])
   })
 
+  it('opens, changes and discards a saved similarity text without a false change; Find similar is never saved', async () => {
+    const ranked = { ...saved('s1', 'War'), query: liveQueryOf(withMode({ ...defaultFilters(), similarity: 'válka' }), []) }
+    const { store, concordance } = await opened({ [`GET ${base}`]: () => [[wire(ranked)]] })
+    store.items = [ranked]
+    await store.open(ranked)
+    expect(concordance.filters).toMatchObject({ similarity: 'válka', mode: 'hybrid' })
+    expect(store.modified).toBe(false)
+    await concordance.setFilters({ similarity: 'mír' })
+    expect(store.modified).toBe(true)
+    await store.discard()
+    expect(concordance.filters.similarity).toBe('válka')
+    expect(store.modified).toBe(false)
+
+    expect(store.savable).toBe(true)
+    concordance.filters = { ...concordance.filters, similarTo: { id: 'row-1' } as never, mode: 'similar' as never }
+    expect(store.modified).toBe(true) // the saved filter does not hold this source
+    expect(store.savable).toBe(false)
+  })
+
   it('saves the current filters as the active live filter and updates it', async () => {
     let created: SavedSelection | null = null
     const { store, concordance, server } = await opened({
@@ -251,7 +279,7 @@ describe('open saved filter header', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
   const header = () => mount(SavedFilterHeader, {
-    props: { tags: TAGS, attributes: [ATTRIBUTE] },
+    props: { tags: TAGS, attributes: [ATTRIBUTE], definitionsReady: true },
     global: { plugins: [[Quasar, {}]] }
   })
   const find = (wrapper: ReturnType<typeof header>, id: string) => wrapper.find(`[data-testid="${id}"]`)
@@ -271,6 +299,12 @@ describe('open saved filter header', () => {
     expect(find(wrapper, 'saved-filter-save').exists()).toBe(false)
     expect(find(wrapper, 'saved-filter-warning').exists()).toBe(true) // names a deleted tag
 
+    await wrapper.setProps({ tags: [] }) // the collection's last tag was deleted: still warned
+    expect(find(wrapper, 'saved-filter-warning').exists()).toBe(true)
+    await wrapper.setProps({ definitionsReady: false }) // not loaded yet: no false warning
+    expect(find(wrapper, 'saved-filter-warning').exists()).toBe(false)
+    await wrapper.setProps({ tags: TAGS, definitionsReady: true })
+
     concordance.filters = filters({ text: 'Brno' })
     await wrapper.vm.$nextTick()
     expect(find(wrapper, 'saved-filter-status').text()).toBe('Unsaved changes')
@@ -279,6 +313,34 @@ describe('open saved filter header', () => {
     store.items = [saved('s1', 'Praha', { text: 'Praha' }, { canEdit: false })]
     await wrapper.vm.$nextTick()
     expect(find(wrapper, 'saved-filter-save').attributes('disabled')).toBeDefined() // only its creator and the owner
+    wrapper.unmount()
+  })
+})
+
+describe('saved filters menu', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  it('keeps an unreadable saved filter renamable and deletable, only not openable (#828 review)', async () => {
+    const store = useSavedFiltersStore()
+    store.items = [saved('s1', 'Old', {}, { unreadable: true, query: null, canEdit: true })]
+    const wrapper = mount(SavedFiltersMenu, {
+      props: { collectionId: 'col-1', people: [], me: 'u1' },
+      global: { plugins: [[Quasar, {}]] },
+      attachTo: document.body
+    })
+    store.load = vi.fn() as never
+    await wrapper.find('[data-testid="saved-filters-menu"]').trigger('click')
+    await flushPromises()
+    const item = document.querySelector('[data-testid="saved-filters-item"]') as HTMLElement
+    expect(item.textContent).toContain('Cannot be opened by this version')
+    expect(item.getAttribute('aria-disabled')).not.toBe('true')
+    for (const id of ['saved-filters-rename', 'saved-filters-delete']) {
+      const button = item.querySelector(`[data-testid="${id}"]`) as HTMLButtonElement
+      expect(button.disabled || button.getAttribute('aria-disabled') === 'true').toBe(false)
+    }
+    item.click()
+    await flushPromises()
+    expect(store.activeId).toBeNull() // not opened
     wrapper.unmount()
   })
 })

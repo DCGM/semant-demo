@@ -1,6 +1,6 @@
 <template>
   <q-page class="collection-annotations q-px-md q-pb-lg" data-testid="collection-annotations">
-    <SavedFilterHeader :tags="tags" :attributes="attributesStore.attributes" />
+    <SavedFilterHeader :tags="tags" :attributes="attributesStore.attributes" :definitions-ready="definitionsReady" />
 
     <ConcordanceToolbar
       ref="toolbar"
@@ -501,6 +501,8 @@ const review = reactive(useAnnotationReviewStore())
 const assign = reactive(useAttributeAssignStore())
 const attributesStore = reactive(useAttributesStore())
 const savedFilters = useSavedFiltersStore()
+/** The tags and attributes of this collection are loaded (the saved filter warns about deleted ones). */
+const definitionsReady = ref(false)
 const userStore = useUserStore()
 const tagsStore = useTagsStore()
 const { tags } = storeToRefs(tagsStore)
@@ -1337,8 +1339,10 @@ watch(collectionId, async (id) => {
   if (!id) return
   chunkContext.clear()
   const returning = store.collectionId === id && !!store.page
-  void tagsStore.fetchTagsByCollection(id)
-  void attributesStore.load(id)
+  definitionsReady.value = false
+  void Promise.all([tagsStore.fetchTagsByCollection(id), attributesStore.load(id)]).then(() => {
+    if (collectionId.value === id && !tagsStore.error && !attributesStore.error) definitionsReady.value = true
+  })
   const loading = store.open(id)
   // After open: another collection starts a new workspace, so no live filter is active then.
   void savedFilters.load(id)

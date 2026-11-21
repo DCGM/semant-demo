@@ -32,7 +32,11 @@ export const useSavedFiltersStore = defineStore('savedFilters', () => {
   const active = computed(() => items.value.find(s => s.id === activeId.value) ?? null)
   const current = computed(() => liveQueryOf(concordance.filters, concordance.shownAttributeIds))
   /** The workspace no longer shows the active live filter as saved. */
-  const modified = computed(() => !!active.value?.query && !sameQuery(current.value, active.value.query))
+  /** Find similar is never saved (its source is one annotation), so it always counts as a change. */
+  const modified = computed(() => !!active.value?.query &&
+    (!!concordance.filters.similarTo || !sameQuery(current.value, active.value.query)))
+  /** The current filters can be saved: not while Find similar ranks by a source annotation. */
+  const savable = computed(() => !concordance.filters.similarTo)
 
   function keep (selection: SavedSelection) {
     items.value = [...items.value.filter(s => s.id !== selection.id), selection].sort(byName)
@@ -144,5 +148,5 @@ export const useSavedFiltersStore = defineStore('savedFilters', () => {
     activeId.value = null
   }
 
-  return { collectionId, items, loading, error, activeId, active, modified, load, saveAs, update, rename, remove, open, discard, close, clear }
+  return { collectionId, items, loading, error, activeId, active, modified, savable, load, saveAs, update, rename, remove, open, discard, close, clear }
 })

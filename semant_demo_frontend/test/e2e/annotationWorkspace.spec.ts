@@ -1496,3 +1496,59 @@ test('the selection, outside the filters too, and the filter matches download as
   await dialog.getByRole('button', { name: 'Close' }).last().click()
   await expect(dialog).toHaveCount(0)
 })
+
+test.describe('saved filters (#824)', () => {
+  const NAME = 'E2E saved filter'
+
+  /** Removes the saved filters this test created (by name), so the store stays as seeded. */
+  async function deleteSaved (request: APIRequestContext) {
+    const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+    const path = `/api/user_collections/${chronicles.id}/saved-selections`
+    const list = await (await request.get(path, { headers })).json() as { id: string, name: string }[]
+    for (const s of list.filter(s => s.name.startsWith(NAME))) {
+      expect((await request.delete(`${path}/${s.id}`, { headers })).ok()).toBe(true)
+    }
+  }
+
+  test.beforeEach(async ({ request }) => { await deleteSaved(request) })
+  test.afterEach(async ({ request }) => { await deleteSaved(request) })
+
+  test('save, reload, reopen, change, discard and close a saved filter', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    const header = page.getByTestId('saved-filter-header')
+    await expect(header).toHaveCount(0)
+
+    await page.getByLabel('Contains words', { exact: true }).fill('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await page.getByTestId('saved-filters-menu').click()
+    await page.getByTestId('saved-filters-save').click()
+    await page.locator('.q-dialog input').fill(NAME)
+    await page.locator('.q-dialog').getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByTestId('saved-filter-name')).toHaveText(NAME)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // Saved on the server: after a reload the workspace starts afresh, and the filter opens again.
+    await page.reload()
+    await expect(page.getByTestId('concordance-range')).toContainText('matching annotations')
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('')
+    await page.getByTestId('saved-filters-menu').click()
+    await page.getByTestId('saved-filters-item').filter({ hasText: NAME }).click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // A change is marked; Discard goes back to the filters as saved.
+    await page.getByLabel('Contains words', { exact: true }).fill('hejtman')
+    await expect(page.getByTestId('saved-filter-status')).toHaveText('Unsaved changes')
+    await page.getByTestId('saved-filter-discard').click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // Closing it returns to the default filters.
+    await page.getByTestId('saved-filter-close').click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('')
+    await expect(page.getByTestId('saved-filter-name')).toBeHidden()
+  })
+})

@@ -1,5 +1,5 @@
 import { AnnotationSort, SpanType, TextScope, type Attribute, type LiveQuery, type Tag } from 'src/generated/api'
-import { annotationFilters, defaultFilters, normalizeDocumentFilters, type ConcordanceFilters } from './concordanceStore'
+import { annotationFilters, defaultFilters, normalizeDocumentFilters, withMode, type ConcordanceFilters } from './concordanceStore'
 
 /** What a live filter keeps of the workspace (#824): the annotation query, its order and the shown
  * attribute columns. A Find similar source names one annotation and is not kept; a similarity text is. */
@@ -14,10 +14,11 @@ export function liveQueryOf (f: ConcordanceFilters, shownAttributeIds: string[])
   }
 }
 
-/** The workspace filters of a saved live filter: every filter it does not name is the default. */
+/** The workspace filters of a saved live filter: every filter it does not name is the default, and
+ * the retrieval mode follows from them as in the workspace (a similarity text ranks: hybrid). */
 export function filtersOf (q: LiveQuery): ConcordanceFilters {
   const f = q.filters ?? {}
-  return {
+  return withMode({
     ...defaultFilters(),
     tagIds: [...(f.tagIds ?? [])],
     types: f.types?.length ? [...f.types] : [SpanType.pos, SpanType.auto],
@@ -32,7 +33,7 @@ export function filtersOf (q: LiveQuery): ConcordanceFilters {
     sort: q.sort ?? AnnotationSort.document,
     sortAttribute: q.sort === AnnotationSort.attribute ? q.sortAttribute ?? null : null,
     descending: q.descending ?? false
-  }
+  })
 }
 
 /** `value` with empty fields dropped and lists sorted: every list of a live query is a set. */

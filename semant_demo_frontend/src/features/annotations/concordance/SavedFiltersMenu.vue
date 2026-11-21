@@ -34,9 +34,9 @@
           v-for="item in saved.items"
           :key="item.id"
           v-close-popup
-          clickable
+          :clickable="!item.unreadable"
           :active="item.id === saved.activeId"
-          :disable="item.unreadable"
+          :class="{ 'saved-filters__item--unreadable': item.unreadable }"
           data-testid="saved-filters-item"
           @click="toggle(item)"
         >
@@ -57,9 +57,12 @@
           </q-item-section>
         </q-item>
         <q-separator />
-        <q-item v-close-popup clickable data-testid="saved-filters-save" @click="dialogs.saveAs()">
+        <q-item v-close-popup clickable :disable="!saved.savable" data-testid="saved-filters-save" @click="dialogs.saveAs()">
           <q-item-section side class="saved-filters__check"><q-icon name="bookmark_add" color="primary" size="sm" /></q-item-section>
-          <q-item-section class="text-primary">Save current filters…</q-item-section>
+          <q-item-section class="text-primary">
+            Save current filters…
+            <q-item-label v-if="!saved.savable" caption>Find similar ranks by one annotation and cannot be saved; go back to the previous view first</q-item-label>
+          </q-item-section>
         </q-item>
       </q-list>
     </q-menu>
@@ -110,7 +113,7 @@ function creator (item: SavedSelection) {
 
 /** Opens the saved filter, or closes it when it is the open one. */
 async function toggle (item: SavedSelection) {
-  if (concordance.collectionId !== props.collectionId) return
+  if (item.unreadable || concordance.collectionId !== props.collectionId) return
   if (item.id === saved.activeId) await saved.close()
   else await saved.open(item)
 }
@@ -123,4 +126,5 @@ async function toggle (item: SavedSelection) {
 .saved-filters__list { min-width: 340px; max-width: 440px; }
 .saved-filters__check { min-width: 28px; padding-right: 8px; }
 .saved-filters__name { overflow-wrap: anywhere; }
+.saved-filters__item--unreadable .saved-filters__name { opacity: 0.6; }
 </style>
