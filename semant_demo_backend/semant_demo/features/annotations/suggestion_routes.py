@@ -26,37 +26,74 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from functools import partial
+import logging
 
+import anyio
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from semant_demo.adapters.topicer.client import TopicerClient
+from semant_demo.adapters.sql.ai_runs import AiRunRepository
 from semant_demo.features.annotations import service, suggestions
+from semant_demo.features.user_collections import access
 from semant_demo.features.annotations.candidates import rank_candidates
 from semant_demo.features.annotations.schemas import (
-    DeleteAutoSpansRequest, DeleteAutoSpansResponse, SuggestSpansRequest, SuggestSpansSelectionRequest,
-    TopicerConfigsResponse,
+    AiSuggestionRunInfo, DeleteAutoSpansRequest, DeleteAutoSpansResponse,
+    SuggestSpansRequest, SuggestSpansSelectionRequest, TopicerConfigsResponse,
 )
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.quota.principal import get_allowance_budget
 from semant_demo.features.quota.schemas import QUOTA_EXHAUSTED_RESPONSES
 from semant_demo.features.quota.service import AllowanceBudget
 from semant_demo.features.search.service import SearchBackends
-from semant_demo.routes.dependencies import get_annotation_store, get_search_backends, get_topicer
+from semant_demo.routes.dependencies import (
+    get_ai_run_history, get_annotation_store, get_search_backends, get_topicer,
+)
 from semant_demo.routes.streaming import OperationStreamingResponse
 from semant_demo.users.auth import current_active_user
 from semant_demo.users.models import User
 
 exp_router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _NDJSON_MEDIA_TYPE = "application/x-ndjson"
 
 
-def _run_response(run: suggestions.SuggestionRun) -> OperationStreamingResponse:
-    """NDJSON stream of ``run``, closed however the response ends: closing the events
-    cancels and awaits the run's remaining work, and a run that never started is released
-    (#563)."""
-    return OperationStreamingResponse(_lines(run.events()), run, _NDJSON_MEDIA_TYPE)
+async def _recorded_lines(run: suggestions.SuggestionRun, history: AiRunRepository) -> AsyncGenerator[bytes, None]:
+    """Finish the SQL record even when the client closes the stream (#563)."""
+    try:
+        async with aclosing(_lines(run.events())) as lines:
+            async for line in lines:
+                yield line
+    finally:
+        # _lines closes run.events() before we inspect the final summary.
+        with anyio.CancelScope(shield=True):
+            summary = run.summary
+            try:
+                await history.finish(run.run_id, summary.outcome.value if summary else "cancelled",
+                                     summary.saved if summary else 0)
+            except Exception:
+                logger.exception("Failed to save AI run completion")
+
+
+def _run_response(run: suggestions.SuggestionRun, history: AiRunRepository | None = None) -> OperationStreamingResponse:
+    """NDJSON stream; close the run on disconnect and retain its metadata."""
+    lines = _recorded_lines(run, history) if history and run.run_id else _lines(run.events())
+    return OperationStreamingResponse(lines, run, _NDJSON_MEDIA_TYPE)
+
+
+async def _registered_response(run: suggestions.SuggestionRun, body: SuggestSpansRequest | SuggestSpansSelectionRequest,
+                               user: User, history: AiRunRepository, mode: str) -> OperationStreamingResponse:
+    if not run.run_id or not run.config_name:
+        await run.release()
+        raise RuntimeError("AI run provenance unavailable")
+    try:
+        await history.start(run.run_id, body.collection_id, body.document_id, user.id,
+                            mode, run.config_name, body.tag_ids)
+    except Exception:
+        await run.release()  # Return the already reserved allowance if recording failed.
+        raise
+    return _run_response(run, history)
 
 
 async def _lines(events: AsyncGenerator[suggestions.SuggestionEvent, None]) -> AsyncGenerator[bytes, None]:
@@ -73,6 +110,20 @@ _STREAM_DESCRIPTION = (
     "Stream of SuggestSpansChunkResult, one JSON object per line, ended by one "
     "SuggestSpansRunEnd line (``event == 'end'``)."
 )
+
+
+@exp_router.get("/api/ai/suggestion_runs", response_model=list[AiSuggestionRunInfo])
+async def list_suggestion_runs(
+    collection_id: str,
+    document_id: str,
+    annotations: AnnotationStore = Depends(get_annotation_store),
+    history: AiRunRepository = Depends(get_ai_run_history),
+    current_user: User = Depends(current_active_user),
+) -> list[AiSuggestionRunInfo]:
+    """Read run history for an accessible collection/document, newest first."""
+    grant = await access.require_collection_read(annotations.collections, current_user, collection_id)
+    document = await access.require_document_in_collection(annotations.collections, document_id, grant.collection_id)
+    return await history.list_document(str(grant.collection_id), str(document))
 
 
 @exp_router.get("/api/ai/topicer_configs", response_model=TopicerConfigsResponse)
@@ -100,6 +151,7 @@ async def suggest_spans_thorough(
     provider: TopicerClient = Depends(get_topicer),
     current_user: User = Depends(current_active_user),
     budget: AllowanceBudget = Depends(get_allowance_budget),
+    history: AiRunRepository = Depends(get_ai_run_history),
 ):
     """
     Thorough AI span suggestion: every collection chunk in the document is sent
@@ -110,7 +162,7 @@ async def suggest_spans_thorough(
     :class:`SuggestSpansChunkResult` per chunk, then a :class:`SuggestSpansRunEnd`.
     """
     run = await suggestions.prepare_document_run(store, provider, current_user, body, "thorough", budget)
-    return _run_response(run)
+    return await _registered_response(run, body, current_user, history, "thorough")
 
 
 @exp_router.post(
@@ -125,6 +177,7 @@ async def suggest_spans_optimized(
     backends: SearchBackends = Depends(get_search_backends),
     current_user: User = Depends(current_active_user),
     budget: AllowanceBudget = Depends(get_allowance_budget),
+    history: AiRunRepository = Depends(get_ai_run_history),
 ):
     """
     Optimized AI span suggestion: per tag, a hybrid search picks the document's chunks
@@ -135,7 +188,7 @@ async def suggest_spans_optimized(
     """
     run = await suggestions.prepare_document_run(store, provider, current_user, body, "optimized", budget,
                                                  partial(rank_candidates, backends))
-    return _run_response(run)
+    return await _registered_response(run, body, current_user, history, "optimized")
 
 
 @exp_router.post(
@@ -154,6 +207,7 @@ async def suggest_spans_selection(
     provider: TopicerClient = Depends(get_topicer),
     current_user: User = Depends(current_active_user),
     budget: AllowanceBudget = Depends(get_allowance_budget),
+    history: AiRunRepository = Depends(get_ai_run_history),
 ):
     """
     Run AI span suggestion on a single user-selected passage that may
@@ -171,7 +225,7 @@ async def suggest_spans_selection(
     not on the first chunk of the selection.
     """
     run = await suggestions.prepare_selection_run(store, provider, current_user, body, budget)
-    return _run_response(run)
+    return await _registered_response(run, body, current_user, history, "selection")
 
 
 @exp_router.post(
@@ -183,14 +237,12 @@ async def delete_auto_spans(
     annotations: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> DeleteAutoSpansResponse:
-    """
-    Bulk-delete unresolved AI proposals (``type == 'auto'``) within a single
-    (collection, document) for the given tag UUIDs.
-
-    Useful for cleaning up suggestions the user did not get around to
-    approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and
-    ``failed`` those that could not be deleted (``delete_span``).
-    """
-    result = await service.delete_suggestions_in_document(
-        annotations, current_user, body.collection_id, body.document_id, body.tag_ids)
+    """Delete unresolved AI spans by tag (legacy cleanup) or explicitly selected ids."""
+    if body.span_ids is not None:
+        result = await service.delete_selected_suggestions_in_document(
+            annotations, current_user, body.collection_id, body.document_id,
+            body.span_ids, body.expected_versions)
+    else:
+        result = await service.delete_suggestions_in_document(
+            annotations, current_user, body.collection_id, body.document_id, body.tag_ids or [])
     return DeleteAutoSpansResponse(**result.model_dump(), deleted=len(result.succeeded))

@@ -1,7 +1,10 @@
 import type { TagSpan } from 'src/generated/api'
 
 /** Panel-only presentation; the shared pending list keeps its gutter ordering. */
-export type ProposalSort = 'confidence' | 'document' | 'explanation' | 'created'
+export type ProposalSort = 'confidence' | 'document' | 'explanation' | 'created' | 'distance'
+
+/** Approximate position of the reader viewport in the document. */
+export interface ProposalTextPosition { chunkId: string; charOffset: number }
 
 export interface ProposalFilters {
   tagId: string | null
@@ -17,6 +20,16 @@ export function getCreatedTime(span: TagSpan): number | null {
   if (source == null) return null
   const timestamp = source instanceof Date ? source.getTime() : new Date(source).getTime()
   return Number.isFinite(timestamp) ? timestamp : null
+}
+
+const createdAtFormatter = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+})
+
+/** Show recorded provenance in the reader's local time; never invent a timestamp. */
+export function formatSuggestionCreatedAt(span: TagSpan): string {
+  const time = getCreatedTime(span)
+  return time === null ? 'Date unavailable' : createdAtFormatter.format(time)
 }
 
 /** Changing filters must never add or discard selected IDs outside the visible set. */
@@ -46,12 +59,28 @@ function reasonOf(span: TagSpan): string | null {
   return trimmed ? trimmed.toLocaleLowerCase() : null
 }
 
+/** Use the canonical chunk order plus a fraction of its text length for local distance. */
+function positionOf (
+  chunkId: string, offset: number, order: ReadonlyMap<string, number>,
+  lengths: ReadonlyMap<string, number>
+): number | null {
+  const chunkIndex = order.get(chunkId)
+  if (chunkIndex === undefined) return null
+  const length = Math.max(1, lengths.get(chunkId) ?? 1)
+  return chunkIndex + Math.max(0, Math.min(1, offset / length))
+}
+
 /** Pure, deterministic selector, with AND filters and stable ID ties. */
 export function filterAndSortSuggestions<T extends WithSpan>(
   entries: readonly T[], filters: ProposalFilters, sort: ProposalSort,
-  descending: boolean, chunkOrder: ReadonlyMap<string, number>
+  descending: boolean, chunkOrder: ReadonlyMap<string, number>,
+  readerPosition: ProposalTextPosition | null = null,
+  chunkLengths: ReadonlyMap<string, number> = new Map()
 ): T[] {
   const query = filters.reason.trim().toLocaleLowerCase()
+  const readerAt = readerPosition
+    ? positionOf(readerPosition.chunkId, readerPosition.charOffset, chunkOrder, chunkLengths)
+    : null
   const filtered = entries.filter(({ span }) => {
     if (filters.tagId !== null && span.tagId !== filters.tagId) return false
     if (filters.minimumConfidence !== null &&
@@ -73,6 +102,14 @@ export function filterAndSortSuggestions<T extends WithSpan>(
     } else if (sort === 'created') {
       result = compareNullable(getCreatedTime(left), getCreatedTime(right),
         (x, y) => x - y, descending)
+    } else if (sort === 'distance') {
+      const leftAt = positionOf(left.chunkId, left.start, chunkOrder, chunkLengths)
+      const rightAt = positionOf(right.chunkId, right.start, chunkOrder, chunkLengths)
+      result = compareNullable(
+        leftAt === null || readerAt === null ? null : Math.abs(leftAt - readerAt),
+        rightAt === null || readerAt === null ? null : Math.abs(rightAt - readerAt),
+        (x, y) => x - y, descending
+      )
     } else {
       // Caller disables this mode until all relevant canonical chunk orders exist.
       const leftOrder = chunkOrder.get(left.chunkId)

@@ -201,6 +201,19 @@
 
     <q-separator class="q-my-xs" />
 
+    <div class="ai-run-history q-mb-sm" data-testid="ai-run-history">
+      <q-select
+        v-model="selectedRunId"
+        :options="runOptions"
+        emit-value map-options dense outlined options-dense
+        label="AI run / model" data-testid="ai-run-filter"
+      />
+      <div v-if="runHistoryLoading" class="text-caption text-grey-7" role="status">Loading run history…</div>
+      <div v-else-if="runHistoryError" class="text-caption text-negative" role="status">
+        Run history unavailable; all suggestions remain visible.
+      </div>
+    </div>
+
     <div class="ai-section-label">
       Pending suggestions
       <span class="text-caption text-grey-6 q-ml-xs">({{ pendingAutoSpans.length }})</span>
@@ -311,9 +324,6 @@
           />
         </div>
       </div>
-      <div class="text-caption text-grey-7 q-mb-xs" data-testid="proposal-match-count">
-        {{ visibleSuggestions.length }} of {{ pendingAutoSpans.length }} matching
-      </div>
       <div v-if="documentOrderUnavailable"
         class="text-caption text-warning" role="status">
         Document order is unavailable until the reader has loaded the canonical chunk positions.
@@ -326,58 +336,85 @@
         No matching suggestions. Reset the filters to see all pending proposals.
       </div>
       <div class="auto-span-bulk-bar">
-        <q-checkbox
-          :model-value="visibleSelectionState"
-          :indeterminate-value="'mixed'"
-          :toggle-indeterminate="false"
-          dense
-          size="sm"
-          :disable="isBulkResolving || !visibleSuggestions.length"
-          @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
-        >
-          <span v-if="bulkProgress" class="text-caption text-grey-7" data-testid="bulk-resolve-progress">
-            Saving {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} not saved</template>…
+        <div class="auto-span-bulk-status">
+          <q-checkbox
+            :model-value="visibleSelectionState"
+            :indeterminate-value="'mixed'"
+            :toggle-indeterminate="false"
+            dense
+            size="sm"
+            :disable="isBulkResolving || !visibleSuggestions.length"
+            @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
+          >
+            <span v-if="bulkProgress" class="text-caption text-grey-7" data-testid="bulk-resolve-progress">
+              {{ bulkAction === 'delete' ? 'Deleting' : 'Saving' }} {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} {{ bulkAction === 'delete' ? 'not deleted' : 'not saved' }}</template>…
+            </span>
+            <span v-else class="text-caption text-grey-7" data-testid="proposal-selection-count">
+              {{ selectedVisibleCount }} selected
+            </span>
+          </q-checkbox>
+          <span v-if="!bulkProgress && hiddenSelectedCount"
+            class="text-caption text-grey-7" data-testid="proposal-hidden-count">
+            ({{ hiddenSelectedCount }} hidden)
           </span>
-          <span v-else class="text-caption text-grey-7" data-testid="proposal-selection-count">
-            {{ selectedVisibleCount }} / {{ visibleSuggestions.length }} visible selected
-            <template v-if="hiddenSelectedCount">({{ hiddenSelectedCount }} hidden)</template>
+          <span class="text-caption text-grey-7" data-testid="proposal-match-count">
+            {{ visibleSuggestions.length }} {{ visibleSuggestions.length === 1 ? 'match' : 'matches' }}
           </span>
-        </q-checkbox>
+        </div>
         <q-btn
-          v-if="selectedSuggestionIds.size"
-          flat dense no-caps size="sm"
+          stack flat dense no-caps size="sm"
           icon="playlist_remove"
           label="Clear"
           color="grey-8"
           aria-label="Clear selection"
-          :disable="isBulkResolving"
+          :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="clearSuggestionSelection"
         />
         <q-space />
         <q-btn
-          flat dense no-caps size="sm"
+          stack flat dense no-caps size="sm"
           icon="check"
           color="positive"
           label="Confirm"
+          aria-label="Confirm"
           :loading="isBulkResolving"
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.pos)"
         >
           <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
-          <q-tooltip>Confirm all selected suggestions</q-tooltip>
+          <q-tooltip>Confirm selected suggestions (keeps an approved annotation)</q-tooltip>
         </q-btn>
         <q-btn
-          flat dense no-caps size="sm"
+          stack flat dense no-caps size="sm"
           icon="close"
           color="negative"
           label="Reject"
+          aria-label="Reject"
           :loading="isBulkResolving"
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.neg)"
         >
           <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
-          <q-tooltip>Reject all selected suggestions</q-tooltip>
+          <q-tooltip>Reject selected suggestions (keeps rejected annotations)</q-tooltip>
         </q-btn>
+        <q-btn
+          stack flat dense no-caps size="sm"
+          icon="delete"
+          color="grey-8"
+          label="Delete"
+          aria-label="Delete"
+          data-testid="bulk-delete-selected"
+          :loading="isBulkResolving"
+          :disable="!selectedSuggestionIds.size || isBulkResolving"
+          @click="bulkResolveSelected('delete')"
+        >
+          <template #loading><span class="bulk-spinner" aria-label="Deleting" /></template>
+          <q-tooltip>Delete selected suggestions (no rejection recorded)</q-tooltip>
+        </q-btn>
+      </div>
+      <div class="auto-span-action-note" data-testid="auto-span-action-note">
+        <q-icon name="info_outline" size="14px" aria-hidden="true" />
+        <span><strong>Reject</strong> keeps a negative annotation; <strong>Delete</strong> removes the suggestion without recording a rejection.</span>
       </div>
       <q-linear-progress
         v-if="bulkProgress"
@@ -391,7 +428,7 @@
         ref="suggestionVirtualScroll"
         class="auto-span-list"
         :items="visibleSuggestions"
-        :virtual-scroll-item-size="76"
+        :virtual-scroll-item-size="110"
         :virtual-scroll-slice-size="20"
         v-slot="{ item: entry }"
         data-testid="ai-suggestion-list"
@@ -460,23 +497,29 @@
               :disable="busyAutoSpanIds.has(entry.span.id || '')"
               @click.stop="rejectAutoSpan(entry.span)"
             >
-              <q-tooltip>Reject</q-tooltip>
+              <q-tooltip>Reject (keeps a negative annotation)</q-tooltip>
             </q-btn>
           </div>
-          <div
-            v-if="entry.span.reason"
-            class="auto-span-reason"
-          >
-            {{ entry.span.reason }}
-            <q-tooltip
-              anchor="top middle"
-              self="bottom middle"
-              :delay="150"
-              max-width="320px"
-              class="auto-span-reason-tooltip"
-            >
+          <div class="auto-span-created" data-testid="ai-suggestion-created">
+            <span><strong>Created:</strong> {{ formatSuggestionCreatedAt(entry.span) }}</span>
+          </div>
+          <div class="auto-span-created" data-testid="ai-suggestion-run">
+            <span><strong>Run:</strong> {{ suggestionRunName(entry.span.aiRunId) }}</span>
+          </div>
+          <div v-if="entry.span.reason" class="auto-span-explanation">
+            <div class="auto-span-explanation-label" data-testid="ai-suggestion-explanation-label">Explanation</div>
+            <div class="auto-span-reason">
               {{ entry.span.reason }}
-            </q-tooltip>
+              <q-tooltip
+                anchor="top middle"
+                self="bottom middle"
+                :delay="150"
+                max-width="320px"
+                class="auto-span-reason-tooltip"
+              >
+                {{ entry.span.reason }}
+              </q-tooltip>
+            </div>
           </div>
         </div>
       </q-virtual-scroll>
@@ -493,9 +536,12 @@ import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/s
 import { errorNotification } from 'src/shared/notification'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useChunksStore } from 'src/features/documents/chunksStore'
+import { loadAiRunHistory, matchesAiRun, type AiSuggestionRunInfo } from './aiRunHistory'
 import {
-  filterAndSortSuggestions, toggleVisibleSuggestions, type ProposalSort
+  filterAndSortSuggestions, formatSuggestionCreatedAt, toggleVisibleSuggestions,
+  type ProposalSort, type ProposalTextPosition
 } from './aiSuggestionPresentation'
+import { scrollContainer } from 'src/features/documents/viewer/textReveal'
 import { readStored, writeStored } from 'src/shared/browserStorage'
 import { plural } from 'src/shared/plural'
 import { useTagsStore } from './tagsStore'
@@ -509,7 +555,7 @@ import { readRunTags, writeRunTags } from './aiRunTags'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
-import { describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
+import { confirmBulkDeletion, describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
 
 // AI annotation suggestions for a document: runs over the selected tags, the pending
 // suggestions with approve/reject, and two-way highlighting with the spans in the text
@@ -770,6 +816,9 @@ async function onRunAi() {
   // Not for another document opened meanwhile.
   if (!confirmed || req.collectionId !== props.collectionId || req.documentId !== props.documentId) return
   await aiAssist.run(req)
+  if (req.collectionId === props.collectionId && req.documentId === props.documentId) {
+    await refreshRunHistory()
+  }
 }
 
 interface AutoSpanEntry {
@@ -792,6 +841,54 @@ const pendingAutoSpans = computed<AutoSpanEntry[]>(() =>
   }))
 )
 
+const aiRuns = ref<AiSuggestionRunInfo[]>([])
+const selectedRunId = ref<string | null>(null)
+const runHistoryLoading = ref(false)
+const runHistoryError = ref(false)
+let runHistoryRequest = 0
+
+async function refreshRunHistory () {
+  const request = ++runHistoryRequest
+  const { collectionId, documentId } = props
+  runHistoryLoading.value = true
+  runHistoryError.value = false
+  try {
+    const history = await loadAiRunHistory(collectionId, documentId)
+    if (request !== runHistoryRequest || collectionId !== props.collectionId ||
+      documentId !== props.documentId) return
+    aiRuns.value = history
+  } catch (e) {
+    if (request !== runHistoryRequest) return
+    console.error('Could not load AI run history', e)
+    runHistoryError.value = true
+    selectedRunId.value = null // Never hide suggestions when history is unavailable.
+  } finally {
+    if (request === runHistoryRequest) runHistoryLoading.value = false
+  }
+}
+
+onMounted(() => { void refreshRunHistory() })
+onBeforeUnmount(() => { runHistoryRequest++ })
+const knownRunIds = computed(() => new Set(aiRuns.value.map((run) => run.id)))
+const legacyCount = computed(() => pendingAutoSpans.value.filter((entry) =>
+  matchesAiRun(entry.span.aiRunId, 'legacy', knownRunIds.value)).length)
+function suggestionRunName (runId: string | null | undefined): string {
+  const run = aiRuns.value.find((item) => item.id === runId)
+  return run ? `${run.config_name} · ${run.mode}` : 'Unknown / legacy'
+}
+function runLabel (run: AiSuggestionRunInfo): string {
+  const date = new Date(run.started_at)
+  const when = Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Date unavailable'
+  return `${when} · ${run.config_name} · ${run.mode} (${run.outcome})`
+}
+const runOptions = computed(() => [
+  { label: 'All runs', value: null },
+  ...aiRuns.value.map((run) => ({ label: runLabel(run), value: run.id })),
+  ...(legacyCount.value ? [{ label: `Unknown / legacy (${legacyCount.value})`, value: 'legacy' }] : [])
+])
+const runFilteredSuggestions = computed(() => pendingAutoSpans.value.filter((entry) =>
+  matchesAiRun(entry.span.aiRunId, selectedRunId.value, knownRunIds.value)))
+
 // UI-only sections; collapsing must not change filters or the selected IDs.
 const pendingSuggestionsOpen = ref(true)
 const proposalFiltersOpen = ref(false)
@@ -810,6 +907,90 @@ watch([proposalTagId, proposalReasonQuery, minimumConfidencePercent], () => {
 }, { flush: 'sync' })
 
 const chunkOrder = computed(() => new Map(chunksStore.chunks.map((c) => [c.id, c.order])))
+const chunkLengths = computed(() => new Map(chunksStore.chunks.map((c) => [c.id, c.text?.length ?? 0])))
+const readerTextPosition = ref<ProposalTextPosition | null>(null)
+
+/** Read-only DOM sampling: never change the text reader's state or span rendering. */
+function currentReaderTextPosition (): ProposalTextPosition | null {
+  const root = document.querySelector<HTMLElement>('.doc-page .document-text')
+  if (!root) return null
+  const scroller = scrollContainer(root)
+  if (!scroller) return null
+  const viewport = scroller === document.scrollingElement
+    ? { top: 0, bottom: window.innerHeight }
+    : scroller.getBoundingClientRect()
+  const rect = root.getBoundingClientRect()
+  const top = Math.max(viewport.top, rect.top)
+  const bottom = Math.min(viewport.bottom, rect.bottom)
+  if (top >= bottom) return null
+  const centre = (top + bottom) / 2
+  let nearestChunk: HTMLElement | null = null
+  let nearestDistance = Infinity
+  for (const chunk of Array.from(root.querySelectorAll<HTMLElement>('.chunk-annotator[data-chunk-id]'))) {
+    if (!chunk.dataset.chunkId || !chunkOrder.value.has(chunk.dataset.chunkId)) continue
+    const chunkRect = chunk.getBoundingClientRect()
+    if (chunkRect.bottom <= top || chunkRect.top >= bottom) continue
+    const distance = Math.max(chunkRect.top - centre, centre - chunkRect.bottom, 0)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestChunk = chunk
+    }
+  }
+  if (!nearestChunk?.dataset.chunkId) return null
+  let charOffset = 0
+  let nearestSegmentDistance = Infinity
+  for (const segment of Array.from(nearestChunk.querySelectorAll<HTMLElement>('.text-segment'))) {
+    const start = Number(segment.dataset.start)
+    const end = Number(segment.dataset.end)
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue
+    const segmentRect = segment.getBoundingClientRect()
+    const distance = Math.max(segmentRect.top - centre, centre - segmentRect.bottom, 0)
+    if (distance < nearestSegmentDistance) {
+      nearestSegmentDistance = distance
+      const fraction = Math.max(0, Math.min(1, (centre - segmentRect.top) / Math.max(1, segmentRect.height)))
+      charOffset = Math.round(start + (end - start) * fraction)
+    }
+  }
+  return { chunkId: nearestChunk.dataset.chunkId, charOffset }
+}
+
+let readerPositionTimer: ReturnType<typeof setTimeout> | null = null
+function updateReaderPosition () {
+  readerPositionTimer = null
+  if (proposalSort.value === 'distance') readerTextPosition.value = currentReaderTextPosition()
+}
+function scheduleReaderPosition () {
+  if (proposalSort.value !== 'distance') return
+  if (readerPositionTimer !== null) clearTimeout(readerPositionTimer)
+  // Reorder only after scrolling has settled, not during every frame.
+  readerPositionTimer = setTimeout(updateReaderPosition, 200)
+}
+function onReaderScroll (event: Event) {
+  if (proposalSort.value !== 'distance') return
+  const root = document.querySelector<HTMLElement>('.doc-page .document-text')
+  const scroller = root ? scrollContainer(root) : null
+  if (scroller && (event.target === scroller ||
+    (scroller === document.scrollingElement && event.target === document))) scheduleReaderPosition()
+}
+onMounted(() => {
+  document.addEventListener('scroll', onReaderScroll, true)
+  window.addEventListener('resize', scheduleReaderPosition)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('scroll', onReaderScroll, true)
+  window.removeEventListener('resize', scheduleReaderPosition)
+  if (readerPositionTimer !== null) clearTimeout(readerPositionTimer)
+})
+watch(proposalSort, (mode) => {
+  if (readerPositionTimer !== null) clearTimeout(readerPositionTimer)
+  readerPositionTimer = null
+  readerTextPosition.value = null
+  if (mode === 'distance') void nextTick(scheduleReaderPosition)
+})
+watch([() => chunksStore.loading, () => chunksStore.chunks], () => {
+  if (proposalSort.value === 'distance') void nextTick(scheduleReaderPosition)
+})
+
 const documentOrderAvailable = computed(() => !chunksStore.loading && !chunksStore.error &&
   chunksStore.chunks.length > 0 &&
   pendingAutoSpans.value.every((e) => chunkOrder.value.has(e.span.chunkId)))
@@ -819,7 +1000,8 @@ const proposalSortOptions = computed(() => [
   { label: 'Confidence', value: 'confidence' },
   { label: 'Document order', value: 'document', disable: !documentOrderAvailable.value },
   { label: 'Explanation (alphabetical)', value: 'explanation' },
-  { label: 'Creation time', value: 'created' }
+  { label: 'Creation time', value: 'created' },
+  { label: 'Nearest to current text', value: 'distance', disable: !documentOrderAvailable.value }
 ])
 const selectedProposalTag = computed(() =>
   tags.value.find((tag) => tag.id === proposalTagId.value))
@@ -848,6 +1030,7 @@ function setProposalReason(value: string | number | null) {
 
 function resetProposalFilters() {
   revealedSuggestion.value = false
+  selectedRunId.value = null
   proposalTagId.value = null
   proposalReasonQuery.value = ''
   minimumConfidencePercent.value = null
@@ -857,14 +1040,16 @@ function resetProposalFilters() {
 // selection or highlighted ID, so card actions don't re-run the whole sort.
 const visibleSuggestions = computed<AutoSpanEntry[]>(() => {
   if (documentOrderUnavailable.value) return []
-  return filterAndSortSuggestions(pendingAutoSpans.value,
+  return filterAndSortSuggestions(runFilteredSuggestions.value,
     {
       tagId: proposalTagId.value,
       reason: proposalReasonQuery.value,
       minimumConfidence: minimumConfidencePercent.value === null
         ? null : minimumConfidencePercent.value / 100
     },
-    proposalSort.value, proposalDescending.value, chunkOrder.value)
+    proposalSort.value === 'distance' && readerTextPosition.value === null
+      ? (documentOrderAvailable.value ? 'document' : 'confidence') : proposalSort.value,
+    proposalDescending.value, chunkOrder.value, readerTextPosition.value, chunkLengths.value)
 })
 
 // The AI-run tag selection and the per-tag navigation are independent. Navigation
@@ -932,9 +1117,10 @@ async function resolveSuggestion(span: TagSpan, type: SpanType) {
 const approveAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.pos)
 const rejectAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.neg)
 
-// ── Bulk approve / reject of selected suggestions ──
+// ── Bulk confirm / reject / delete of selected suggestions ──
 const selectedSuggestionIds = ref<Set<string>>(new Set())
 const isBulkResolving = ref(false)
+const bulkAction = ref<'confirm' | 'reject' | 'delete' | null>(null)
 const bulkProgress = ref<BulkResolveProgress | null>(null)
 const selectedVisibleCount = computed(() => visibleSuggestions.value.reduce((n, e) =>
   n + (e.span.id && selectedSuggestionIds.value.has(e.span.id) ? 1 : 0), 0))
@@ -978,21 +1164,37 @@ watch(pendingAutoSpans, (entries) => {
   }
 })
 
-async function bulkResolveSelected(type: SpanType) {
+async function bulkResolveSelected(type: 'pos' | 'neg' | 'delete') {
   if (!selectedSuggestionIds.value.size || isBulkResolving.value) return
-  // Snapshot the exact ID set, including any selected proposals hidden by filters.
-  // Later changes of filters, sort, or pending entries cannot broaden the request.
+  // Snapshot the exact ID set including selections hidden by filters (#806).
   const idSet = new Set(selectedSuggestionIds.value)
-  const targets = pendingAutoSpans.value.flatMap((e) => e.span.id && idSet.has(e.span.id) ? [e.span.id] : [])
+  const selected = pendingAutoSpans.value.filter((e) => e.span.id && idSet.has(e.span.id))
+  const targets = selected.flatMap((e) => e.span.id ? [e.span.id] : [])
   if (!targets.length) return
+  const isCurrent = resolveRequests.capture()
+  const collectionId = props.collectionId
+  const documentId = props.documentId
+  const knownVersions = new Map(selected.flatMap((e) => e.span.id && e.span.editVersion !== undefined
+    ? [[e.span.id, e.span.editVersion] as const] : []))
+  if (type === 'delete' && confirmBulkDeletion(targets.length, pendingAutoSpans.value.length)) {
+    const confirmed = await new Promise<boolean>((resolve) => {
+      $q.dialog({
+        title: `Delete ${targets.length} ${targets.length === 1 ? 'suggestion' : 'suggestions'}?`,
+        message: 'Permanently remove these AI suggestions without recording rejections. This cannot be undone; rerunning AI may produce different results.',
+        persistent: true,
+        cancel: { label: 'Cancel', flat: true, noCaps: true },
+        ok: { label: 'Delete suggestions', color: 'negative', noCaps: true }
+      }).onOk(() => resolve(true)).onCancel(() => resolve(false)).onDismiss(() => resolve(false))
+    })
+    if (!confirmed || !isCurrent()) return
+  }
 
-  // Pre-compute which suggestion should be highlighted once these resolve.
   const targetIds = new Set(targets)
   const nextHighlight =
     pendingAutoSpans.value.find((e) => e.span.id && !targetIds.has(e.span.id))?.span.id ?? null
 
-  const isCurrent = resolveRequests.capture()
   isBulkResolving.value = true
+  bulkAction.value = type === 'delete' ? 'delete' : type === SpanType.pos ? 'confirm' : 'reject'
   bulkProgress.value = { total: targets.length, processed: 0, saved: 0, notSaved: 0 }
   for (const id of targets) busyAutoSpanIds.value.add(id)
   let summary: BulkResolveSummary | null = null
@@ -1002,9 +1204,20 @@ async function bulkResolveSelected(type: SpanType) {
       async (ids) => {
         if (!isCurrent()) return null
         try {
-          return await tagSpans.applyBulkUpdate(ids, { type })
+          if (type !== 'delete') return await tagSpans.applyBulkUpdate(ids, { type })
+          const expectedVersions = Object.fromEntries(ids.flatMap((id) => {
+            const version = knownVersions.get(id)
+            return version === undefined ? [] : [[id, version]]
+          }))
+          const result = await api.deleteAutoSpansApiAiAutoSpansDeletePost({
+            deleteAutoSpansRequest: { collectionId, documentId, spanIds: ids, expectedVersions }
+          })
+          if (!isCurrent()) return null
+          const deletedIds = new Set(result.succeeded ?? [])
+          if (deletedIds.size) tagSpans.removeSpansLocally((s) => !!s.id && deletedIds.has(s.id))
+          return result
         } finally {
-          for (const id of ids) busyAutoSpanIds.value.delete(id)
+          if (isCurrent()) for (const id of ids) busyAutoSpanIds.value.delete(id)
         }
       },
       (progress) => { if (isCurrent()) bulkProgress.value = progress }
@@ -1013,21 +1226,22 @@ async function bulkResolveSelected(type: SpanType) {
     if (isCurrent()) {
       for (const id of targets) busyAutoSpanIds.value.delete(id)
       isBulkResolving.value = false
+      bulkAction.value = null
       bulkProgress.value = null
     }
   }
   if (!isCurrent() || !summary || summary.abandoned) return
-  // Keep the suggestions that were not saved selected, so they can be retried.
   const unresolved = new Set(summary.unresolved)
   selectedSuggestionIds.value = new Set([...selectedSuggestionIds.value].filter((id) => unresolved.has(id)))
   if (summary.saved) aiAssist.highlightedAutoSpanId.value = nextHighlight
   if (summary.error) console.error('Bulk resolve failed', summary.error)
-  const message = describeBulkResolve(summary, type === SpanType.pos ? 'Confirmed' : 'Rejected')
+  const verb = type === 'delete' ? 'Deleted' : type === SpanType.pos ? 'Confirmed' : 'Rejected'
+  const message = describeBulkResolve(summary, verb)
   if (message) {
-    $q.notify({ type: summary.saved === summary.total ? 'warning' : 'negative', message, timeout: 10000 })
+    $q.notify({ type: 'negative', message, timeout: 10000 })
   } else {
     const n = summary.saved
-    $q.notify({ type: 'positive', message: `${type === SpanType.pos ? 'Confirmed' : 'Rejected'} ${n} ${n === 1 ? 'suggestion' : 'suggestions'}.` })
+    $q.notify({ type: 'positive', message: `${verb} ${n} ${n === 1 ? 'suggestion' : 'suggestions'}.` })
   }
 }
 
@@ -1080,10 +1294,14 @@ watch(
     selectedSuggestionIds.value = new Set()
     isBulkDeleting.value = false
     isBulkResolving.value = false
+    bulkAction.value = null
     bulkProgress.value = null
     busyAutoSpanIds.value = new Set()
     proposalSort.value = 'confidence'
     proposalDescending.value = true
+    selectedRunId.value = null
+    aiRuns.value = []
+    void refreshRunHistory()
     resetProposalFilters()
     pendingSuggestionsOpen.value = true
     proposalFiltersOpen.value = false
@@ -1366,6 +1584,19 @@ watch(chosenAiTagIds, (ids) => {
   margin-bottom: 6px;
 }
 
+.auto-span-action-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  margin: 0 4px 8px;
+}
+.auto-span-action-note .q-icon {
+  flex-shrink: 0;
+}
+
 .auto-span-card.is-selected {
   border-style: solid;
   border-color: rgba(37, 99, 235, 0.5);
@@ -1413,9 +1644,24 @@ watch(chosenAiTagIds, (ids) => {
   color: rgba(15, 23, 42, 0.9);
 }
 
+.auto-span-created {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 0 22px;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+.auto-span-explanation {
+  margin: 4px 0 0 22px;
+}
+.auto-span-explanation-label {
+  margin-bottom: 2px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
 .auto-span-reason {
-  margin-top: 4px;
-  padding-left: 22px;
   font-size: 0.82rem;
   font-style: italic;
   color: rgba(71, 85, 105, 0.85);
@@ -1439,5 +1685,42 @@ watch(chosenAiTagIds, (ids) => {
   line-height: 1.4;
   white-space: pre-wrap;
   background: rgba(15, 23, 42, 0.92);
+}
+/* Keep the selection count above four evenly sized icon + label actions (#801). */
+.auto-span-bulk-bar {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 2px;
+}
+.auto-span-bulk-status {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.auto-span-bulk-status > .q-checkbox {
+  min-width: 0;
+}
+.auto-span-bulk-status [data-testid="proposal-selection-count"],
+.auto-span-bulk-status [data-testid="proposal-hidden-count"] {
+  white-space: nowrap;
+}
+.auto-span-bulk-status > [data-testid="proposal-match-count"] {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.auto-span-bulk-bar > .q-space {
+  display: none;
+}
+.auto-span-bulk-bar > .q-btn {
+  flex: 1 1 calc(25% - 2px);
+  min-width: 0;
+  padding: 3px 0;
+  font-size: 11px;
+  line-height: 1.2;
 }
 </style>

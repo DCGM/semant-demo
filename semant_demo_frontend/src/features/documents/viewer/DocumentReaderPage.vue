@@ -417,8 +417,8 @@ const chunkClass = (chunk: CollectionChunk) => ({
 })
 
 // ── Scrolling the text to a span ──
-function scrollToSpan(chunkId: string, start: number, end: number) {
-  textPane.value?.scrollToRange({ chunkId, start, end })
+function scrollToSpan(chunkId: string, start: number, end: number, adaptive = false) {
+  textPane.value?.scrollToRange({ chunkId, start, end }, { adaptive })
 }
 
 // An AI Chat citation (a summary or an answer, #249/#248) is whole-chunk granularity, with no offset within the
@@ -452,7 +452,7 @@ watch(highlightedAutoSpanId, (spanId) => {
   for (const chunkId of Object.keys(tagSpans.spansByChunkId.value)) {
     const span = (tagSpans.spansByChunkId.value[chunkId] || []).find(s => s.id === spanId)
     if (!span) continue
-    scrollToSpan(chunkId, span.start, span.end)
+    scrollToSpan(chunkId, span.start, span.end, true)
     return
   }
 })

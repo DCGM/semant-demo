@@ -1,7 +1,7 @@
 
 # DeleteAutoSpansRequest
 
-Request body for bulk deletion of unresolved AI proposals (``type == auto``) within a single (collection, document) scope.
+Delete unresolved suggestions by tag (Clear unresolved) or by selected span ids.
 
 ## Properties
 
@@ -10,6 +10,8 @@ Name | Type
 `collectionId` | string
 `documentId` | string
 `tagIds` | Array&lt;string&gt;
+`spanIds` | Array&lt;string&gt;
+`expectedVersions` | { [key: string]: number; }
 
 ## Example
 
@@ -21,6 +23,8 @@ const example = {
   "collectionId": null,
   "documentId": null,
   "tagIds": null,
+  "spanIds": null,
+  "expectedVersions": null,
 } satisfies DeleteAutoSpansRequest
 
 console.log(example)

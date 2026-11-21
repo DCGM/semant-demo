@@ -58,6 +58,7 @@ All URIs are relative to *http://localhost*
 | [**listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet**](DefaultApi.md#listattributechangesapiusercollectionscollectionidannotationsannotationidattributechangesget) | **GET** /api/user_collections/{collection_id}/annotations/{annotation_id}/attribute-changes | List Attribute Changes |
 | [**listAttributesApiUserCollectionsCollectionIdAttributesGet**](DefaultApi.md#listattributesapiusercollectionscollectionidattributesget) | **GET** /api/user_collections/{collection_id}/attributes | List Attributes |
 | [**listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet**](DefaultApi.md#listcollectionannotationsapiusercollectionscollectionidannotationsget) | **GET** /api/user_collections/{collection_id}/annotations | List Collection Annotations |
+| [**listSuggestionRunsApiAiSuggestionRunsGet**](DefaultApi.md#listsuggestionrunsapiaisuggestionrunsget) | **GET** /api/ai/suggestion_runs | List Suggestion Runs |
 | [**questionApiQuestionPost**](DefaultApi.md#questionapiquestionpost) | **POST** /api/question | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
 | [**rankedResultsDistributionsApiAnalyticsResultsDistributionsPost**](DefaultApi.md#rankedresultsdistributionsapianalyticsresultsdistributionspost) | **POST** /api/analytics/results/distributions | Ranked Results Distributions |
@@ -1626,7 +1627,7 @@ example().catch(console.error);
 
 Delete Auto Spans
 
-Bulk-delete unresolved AI proposals (&#x60;&#x60;type &#x3D;&#x3D; \&#39;auto\&#39;&#x60;&#x60;) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: &#x60;&#x60;succeeded&#x60;&#x60; lists the deleted spans and &#x60;&#x60;failed&#x60;&#x60; those that could not be deleted (&#x60;&#x60;delete_span&#x60;&#x60;).
+Delete unresolved AI spans by tag (legacy cleanup) or explicitly selected ids.
 
 ### Example
 
@@ -4162,6 +4163,81 @@ example().catch(console.error);
 ### Return type
 
 [**AnnotationPage**](AnnotationPage.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## listSuggestionRunsApiAiSuggestionRunsGet
+
+> Array&lt;AiSuggestionRunInfo&gt; listSuggestionRunsApiAiSuggestionRunsGet(collectionId, documentId)
+
+List Suggestion Runs
+
+Read run history for an accessible collection/document, newest first.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListSuggestionRunsApiAiSuggestionRunsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    documentId: documentId_example,
+  } satisfies ListSuggestionRunsApiAiSuggestionRunsGetRequest;
+
+  try {
+    const data = await api.listSuggestionRunsApiAiSuggestionRunsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **documentId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;AiSuggestionRunInfo&gt;**](AiSuggestionRunInfo.md)
 
 ### Authorization
 

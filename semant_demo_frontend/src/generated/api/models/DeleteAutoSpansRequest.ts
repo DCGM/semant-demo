@@ -14,8 +14,7 @@
 
 import { mapValues } from '../runtime';
 /**
- * Request body for bulk deletion of unresolved AI proposals
- * (``type == auto``) within a single (collection, document) scope.
+ * Delete unresolved suggestions by tag (Clear unresolved) or by selected span ids.
  * @export
  * @interface DeleteAutoSpansRequest
  */
@@ -37,7 +36,19 @@ export interface DeleteAutoSpansRequest {
      * @type {Array<string>}
      * @memberof DeleteAutoSpansRequest
      */
-    tagIds: Array<string>;
+    tagIds?: Array<string> | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof DeleteAutoSpansRequest
+     */
+    spanIds?: Array<string> | null;
+    /**
+     * 
+     * @type {{ [key: string]: number; }}
+     * @memberof DeleteAutoSpansRequest
+     */
+    expectedVersions?: { [key: string]: number; } | null;
 }
 
 /**
@@ -46,7 +57,6 @@ export interface DeleteAutoSpansRequest {
 export function instanceOfDeleteAutoSpansRequest(value: object): value is DeleteAutoSpansRequest {
     if (!('collectionId' in value) || value['collectionId'] === undefined) return false;
     if (!('documentId' in value) || value['documentId'] === undefined) return false;
-    if (!('tagIds' in value) || value['tagIds'] === undefined) return false;
     return true;
 }
 
@@ -62,7 +72,9 @@ export function DeleteAutoSpansRequestFromJSONTyped(json: any, ignoreDiscriminat
         
         'collectionId': json['collection_id'],
         'documentId': json['document_id'],
-        'tagIds': json['tag_ids'],
+        'tagIds': json['tag_ids'] == null ? undefined : json['tag_ids'],
+        'spanIds': json['span_ids'] == null ? undefined : json['span_ids'],
+        'expectedVersions': json['expected_versions'] == null ? undefined : json['expected_versions'],
     };
 }
 
@@ -80,6 +92,8 @@ export function DeleteAutoSpansRequestToJSONTyped(value?: DeleteAutoSpansRequest
         'collection_id': value['collectionId'],
         'document_id': value['documentId'],
         'tag_ids': value['tagIds'],
+        'span_ids': value['spanIds'],
+        'expected_versions': value['expectedVersions'],
     };
 }
 
