@@ -129,6 +129,12 @@ export interface AnnotationFacetsRequest {
      * @memberof AnnotationFacetsRequest
      */
     ranking?: AnnotationRanking;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof AnnotationFacetsRequest
+     */
+    selfExclusion?: boolean;
 }
 
 
@@ -163,6 +169,7 @@ export function AnnotationFacetsRequestFromJSONTyped(json: any, ignoreDiscrimina
         'near': json['near'] == null ? undefined : NearFilterFromJSON(json['near']),
         'facets': json['facets'],
         'ranking': json['ranking'] == null ? undefined : AnnotationRankingFromJSON(json['ranking']),
+        'selfExclusion': json['self_exclusion'] == null ? undefined : json['self_exclusion'],
     };
 }
 
@@ -189,6 +196,7 @@ export function AnnotationFacetsRequestToJSONTyped(value?: AnnotationFacetsReque
         'near': NearFilterToJSON(value['near']),
         'facets': value['facets'],
         'ranking': AnnotationRankingToJSON(value['ranking']),
+        'self_exclusion': value['selfExclusion'],
     };
 }
 

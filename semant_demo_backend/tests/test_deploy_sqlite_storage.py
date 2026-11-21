@@ -74,6 +74,17 @@ def crashed_db(tmp_path):
     return db
 
 
+def _sqlite_default_synchronous():
+    conn = sqlite3.connect(":memory:")
+    try:
+        return conn.execute("PRAGMA synchronous").fetchone()[0]
+    finally:
+        conn.close()
+
+
+SQLITE_DEFAULT_SYNCHRONOUS = _sqlite_default_synchronous()
+
+
 def _values(db):
     async def read():
         engine = create_async_engine(f"sqlite+aiosqlite:///{db}", poolclass=NullPool)
@@ -81,12 +92,16 @@ def _values(db):
             async with engine.connect() as conn:
                 values = dict((await conn.execute(text("SELECT value, count(*) FROM item GROUP BY value"))).all())
                 check = (await conn.execute(text("PRAGMA integrity_check"))).scalar_one()
+                synchronous = (await conn.execute(text("PRAGMA synchronous"))).scalar_one()
         finally:
             await engine.dispose()
+        # The suite's PRAGMA synchronous=OFF for throwaway databases must not apply here.
+        assert synchronous == SQLITE_DEFAULT_SYNCHRONOUS != 0
         return values, check
     return asyncio.run(read())
 
 
+@pytest.mark.sqlite_durable
 def test_reopening_the_persisted_directory_rolls_back_the_interrupted_write(crashed_db):
     values, check = _values(crashed_db)
 
@@ -95,6 +110,7 @@ def test_reopening_the_persisted_directory_rolls_back_the_interrupted_write(cras
     assert not crashed_db.with_name("tasks.db-journal").exists()
 
 
+@pytest.mark.sqlite_durable
 def test_the_database_file_alone_keeps_uncommitted_changes(crashed_db, tmp_path):
     # The former file-only mount: a recreated container sees the file without its journal.
     file_only = tmp_path / "recreated" / "tasks.db"

@@ -208,13 +208,13 @@ async def reset_app_collections(
         if removed:
             await annotations.tenants.remove(removed)
         for name in kept:
-            await _delete_all_objects(annotations.with_tenant(name))
+            await delete_all_objects(annotations.with_tenant(name))
     for name in _app_collections_in_drop_order(names)[1:]:
         with phase(f"reset.delete_objects.{name}"):
-            await _delete_all_objects(client.collections.get(name))
+            await delete_all_objects(client.collections.get(name))
 
 
-async def _delete_all_objects(collection) -> None:
+async def delete_all_objects(collection) -> None:
     """Delete every object of ``collection`` or raise; never loops without progress."""
     # delete_many removes at most QUERY_MAXIMUM_RESULTS objects per call, so repeat
     # until nothing matches.
