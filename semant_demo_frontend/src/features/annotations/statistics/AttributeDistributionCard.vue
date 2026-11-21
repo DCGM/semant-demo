@@ -124,8 +124,8 @@ const hidden = computed(() => valueRows.value - Math.min(valueRows.value, CARD_R
 }
 
 .attribute-distribution__retained {
-  display: block;
-  margin-top: 4px;
+  display: flex;
+  margin-top: 6px;
   font-size: 0.8rem;
 }
 

@@ -143,6 +143,10 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
   font-style: italic;
 }
 
+.distribution-table__missing .distribution-table__text {
+  padding-right: 3px; /* the italic's overhang is not clipped */
+}
+
 .distribution-table__missing .distribution-table__fill {
   background: #a0aec0;
 }
