@@ -95,55 +95,55 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_annotation_attributes.py` | pytest Weaviate | 9 | pending |
-| `backend/tests/integration/test_annotation_concordance.py` | pytest Weaviate | 26 | pending |
-| `backend/tests/integration/test_annotation_enrichment.py` | pytest Weaviate | 7 | pending |
-| `backend/tests/integration/test_annotation_export.py` | pytest Weaviate | 2 | pending |
-| `backend/tests/integration/test_annotation_provenance.py` | pytest Weaviate | 5 | pending |
-| `backend/tests/integration/test_annotation_proximity.py` | pytest Weaviate | 5 | pending |
-| `backend/tests/integration/test_annotation_ranking.py` | pytest Weaviate | 9 | pending |
-| `backend/tests/integration/test_annotation_sorting.py` | pytest Weaviate | 6 | pending |
-| `backend/tests/integration/test_annotations.py` | pytest Weaviate | 17 | pending |
-| `backend/tests/integration/test_classification_provenance_schema.py` | pytest Weaviate | 3 | pending |
-| `backend/tests/test_annotation_collation.py` | pytest fast | 13 | pending |
-| `backend/tests/test_annotation_concordance.py` | pytest fast | 70 | pending |
-| `backend/tests/test_annotation_derivation.py` | pytest fast | 27 | pending |
-| `backend/tests/test_annotation_enrichment.py` | pytest fast | 38 | pending |
-| `backend/tests/test_annotation_export.py` | pytest fast | 41 | pending |
-| `backend/tests/test_annotation_facets.py` | pytest fast | 21 | pending |
-| `backend/tests/test_annotation_proximity.py` | pytest fast | 23 | pending |
-| `backend/tests/test_annotation_ranking.py` | pytest fast | 27 | pending |
-| `backend/tests/test_annotation_service.py` | pytest fast | 131 | pending |
-| `backend/tests/test_annotation_source.py` | pytest fast | 11 | pending |
-| `backend/tests/test_attribute_scope_schema.py` | pytest fast | 16 | pending |
-| `backend/tests/test_attributes.py` | pytest fast | 50 | pending |
-| `backend/tests/test_classification_provenance.py` | pytest fast | 7 | pending |
-| `backend/tests/test_span_offsets.py` | pytest fast | 30 | pending |
-| `frontend/test/unit/annotationExport.spec.ts` | Vitest | 9 | pending |
-| `frontend/test/unit/annotationPopover.spec.ts` | Vitest | 5 | pending |
-| `frontend/test/unit/annotationStatistics.spec.ts` | Vitest | 14 | pending |
-| `frontend/test/unit/annotationStatisticsView.spec.ts` | Vitest | 3 | pending |
-| `frontend/test/unit/annotations.spec.ts` | Vitest | 8 | pending |
-| `frontend/test/unit/attributeAssignment.spec.ts` | Vitest | 31 | pending |
-| `frontend/test/unit/attributeDialogs.spec.ts` | Vitest | 24 | pending |
-| `frontend/test/unit/attributes.spec.ts` | Vitest | 17 | pending |
-| `frontend/test/unit/boundaryEdit.spec.ts` | Vitest | 6 | pending |
-| `frontend/test/unit/bulkResolve.spec.ts` | Vitest | 5 | pending |
-| `frontend/test/unit/cellFilters.spec.ts` | Vitest | 9 | pending |
-| `frontend/test/unit/concordance.spec.ts` | Vitest | 36 | pending |
-| `frontend/test/unit/concordanceFacets.spec.ts` | Vitest | 9 | pending |
-| `frontend/test/unit/concordanceProximity.spec.ts` | Vitest | 11 | pending |
-| `frontend/test/unit/concordanceQuery.spec.ts` | Vitest | 17 | pending |
-| `frontend/test/unit/concordanceRanking.spec.ts` | Vitest | 15 | pending |
-| `frontend/test/unit/concordanceTable.spec.ts` | Vitest | 24 | pending |
-| `frontend/test/unit/editConflicts.spec.ts` | Vitest | 6 | pending |
-| `frontend/test/unit/provenanceSummary.spec.ts` | Vitest | 3 | pending |
-| `frontend/test/unit/spanLanes.spec.ts` | Vitest | 4 | pending |
-| `frontend/test/unit/spanOffsets.spec.ts` | Vitest | 18 | pending |
-| `frontend/test/unit/tagFocus.spec.ts` | Vitest | 4 | pending |
-| `frontend/test/unit/tagSearch.spec.ts` | Vitest | 4 | pending |
-| `frontend/test/unit/tagsDialog.spec.ts` | Vitest | 13 | pending |
-| `frontend/test/unit/writeOutcome.spec.ts` | Vitest | 9 | pending |
+| `backend/tests/integration/test_annotation_attributes.py` | pytest Weaviate | 9 | keep |
+| `backend/tests/integration/test_annotation_concordance.py` | pytest Weaviate | 26 | keep |
+| `backend/tests/integration/test_annotation_enrichment.py` | pytest Weaviate | 7 | keep |
+| `backend/tests/integration/test_annotation_export.py` | pytest Weaviate | 2 | keep |
+| `backend/tests/integration/test_annotation_provenance.py` | pytest Weaviate | 5 | keep |
+| `backend/tests/integration/test_annotation_proximity.py` | pytest Weaviate | 5 | keep |
+| `backend/tests/integration/test_annotation_ranking.py` | pytest Weaviate | 9 | keep |
+| `backend/tests/integration/test_annotation_sorting.py` | pytest Weaviate | 6 | keep |
+| `backend/tests/integration/test_annotations.py` | pytest Weaviate | 17 | keep |
+| `backend/tests/integration/test_classification_provenance_schema.py` | pytest Weaviate | 3 | keep |
+| `backend/tests/test_annotation_collation.py` | pytest fast | 13 | keep |
+| `backend/tests/test_annotation_concordance.py` | pytest fast | 70 | keep |
+| `backend/tests/test_annotation_derivation.py` | pytest fast | 27 | keep |
+| `backend/tests/test_annotation_enrichment.py` | pytest fast | 38 | keep |
+| `backend/tests/test_annotation_export.py` | pytest fast | 41 | keep |
+| `backend/tests/test_annotation_facets.py` | pytest fast | 21 | keep |
+| `backend/tests/test_annotation_proximity.py` | pytest fast | 23 | keep |
+| `backend/tests/test_annotation_ranking.py` | pytest fast | 27 | keep |
+| `backend/tests/test_annotation_service.py` | pytest fast | 131 | keep |
+| `backend/tests/test_annotation_source.py` | pytest fast | 11 | keep |
+| `backend/tests/test_attribute_scope_schema.py` | pytest fast | 16 | keep |
+| `backend/tests/test_attributes.py` | pytest fast | 50 | keep |
+| `backend/tests/test_classification_provenance.py` | pytest fast | 7 | keep |
+| `backend/tests/test_span_offsets.py` | pytest fast | 30 | keep |
+| `frontend/test/unit/annotationExport.spec.ts` | Vitest | 9 | keep |
+| `frontend/test/unit/annotationPopover.spec.ts` | Vitest | 5 | keep |
+| `frontend/test/unit/annotationStatistics.spec.ts` | Vitest | 14 | keep |
+| `frontend/test/unit/annotationStatisticsView.spec.ts` | Vitest | 3 | keep |
+| `frontend/test/unit/annotations.spec.ts` | Vitest | 8 | keep |
+| `frontend/test/unit/attributeAssignment.spec.ts` | Vitest | 31 | keep |
+| `frontend/test/unit/attributeDialogs.spec.ts` | Vitest | 24 | keep |
+| `frontend/test/unit/attributes.spec.ts` | Vitest | 17 | keep |
+| `frontend/test/unit/boundaryEdit.spec.ts` | Vitest | 6 | keep |
+| `frontend/test/unit/bulkResolve.spec.ts` | Vitest | 5 | keep |
+| `frontend/test/unit/cellFilters.spec.ts` | Vitest | 9 | keep |
+| `frontend/test/unit/concordance.spec.ts` | Vitest | 36 | keep |
+| `frontend/test/unit/concordanceFacets.spec.ts` | Vitest | 9 | keep |
+| `frontend/test/unit/concordanceProximity.spec.ts` | Vitest | 11 | keep |
+| `frontend/test/unit/concordanceQuery.spec.ts` | Vitest | 17 | keep |
+| `frontend/test/unit/concordanceRanking.spec.ts` | Vitest | 15 | keep |
+| `frontend/test/unit/concordanceTable.spec.ts` | Vitest | 24 | keep |
+| `frontend/test/unit/editConflicts.spec.ts` | Vitest | 6 | keep |
+| `frontend/test/unit/provenanceSummary.spec.ts` | Vitest | 3 | keep |
+| `frontend/test/unit/spanLanes.spec.ts` | Vitest | 4 | keep |
+| `frontend/test/unit/spanOffsets.spec.ts` | Vitest | 18 | keep |
+| `frontend/test/unit/tagFocus.spec.ts` | Vitest | 4 | keep |
+| `frontend/test/unit/tagSearch.spec.ts` | Vitest | 4 | keep |
+| `frontend/test/unit/tagsDialog.spec.ts` | Vitest | 13 | keep |
+| `frontend/test/unit/writeOutcome.spec.ts` | Vitest | 9 | keep |
 
 ### #851
 
@@ -474,3 +474,19 @@ shared setup; its slowest file is `devTooling.spec.ts` (6.7 s, #857).
 
 The costly remaining test, the ledger race (2.6 s), needs real SQLite lock contention.
 The full note is [on #849](https://github.com/DCGM/semant-demo/issues/849).
+
+### #850 Annotations, attributes, concordance and provenance
+
+**Keep everything; no change.** Fast backend, 505 cases: 14.8 s before #848's fixture
+changes, 5.7 s after. Real Weaviate, 89 cases: 34.1 s before, 29.4 s after. Vitest, 304
+cases: 15.7 s.
+
+- The fast files prove service rules with fakes.
+- Their real-store counterparts, which already cross-reference them in their docstrings,
+  prove what fakes cannot: sort keys, filter rendering, facet totals, Unicode text as stored
+  and tenant reads.
+- The per-file fakes differ by scenario and stay local.
+- No skips or fixed waits. `attributeDialogs.spec.ts` (4 s) is Quasar dialog mounting
+  with fake-timer transitions.
+
+The full note is [on #850](https://github.com/DCGM/semant-demo/issues/850).
