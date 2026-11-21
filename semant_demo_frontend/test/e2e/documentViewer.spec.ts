@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page, type Request } from '@playwright/test'
 import {
   annotation, apiToken, chunkText, deleteAddedSpans, deleteAddedTags, deleteSuggestions, ensureLoggedIn, fixture, openDocument, removeChunk,
-  selectText, sidebarPanelButton
+  selectText, sidebarPanelButton, useViewport
 } from './support'
 
 // Document viewer interactions: text selection and annotation editing, the span gutter,
@@ -783,6 +783,21 @@ test('on a narrow window the text, gutters and side panel stay usable', async ({
   // Tap beside the overlay to close it.
   await page.locator('.q-drawer__backdrop:not(.hidden)').first().click({ position: { x: 100, y: 400 } })
   await expect(sidebar).toBeHidden()
+})
+
+// #869: on a phone the chunk checkboxes lie at the screen's left edge, where the closed
+// drawers' swipe strips used to take every tap.
+test('on a phone, a chunk checkbox at the screen edge selects its chunk', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await useViewport(page, 'phone')
+  await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
+  await expect(page.locator('.gutter-item')).toHaveCount(2)
+
+  await showChunkGutter(page)
+  const checkbox = page.locator('.chunk-checkbox-item').first()
+  expect((await checkbox.boundingBox())?.x).toBe(0)
+  await checkbox.click()
+  await expect(page.locator('.bulk-action-bar')).toContainText('1 selected')
 })
 
 test('the AI Tagging and tags panels keep their state across panel switches', async ({ page }) => {

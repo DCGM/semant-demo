@@ -1,8 +1,10 @@
 <template>
+  <!-- No swipe-open: its invisible edge strip took taps meant for the page on a phone (#869). -->
   <q-drawer
     v-model="drawerOpen"
     side="right"
     bordered
+    no-swipe-open
     :breakpoint="breakpoint"
     :width="width"
     :mini="sidebar.miniState"

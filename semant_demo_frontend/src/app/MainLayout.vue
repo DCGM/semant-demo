@@ -75,10 +75,12 @@
       </q-toolbar>
     </q-header>
 
+    <!-- No swipe-open: its invisible edge strip took taps meant for the page on a phone (#869). -->
     <q-drawer
     v-model="leftDrawerOpen"
     show-if-above
     bordered
+    no-swipe-open
     :width="280"
     :mini="drawerMiniState"
     :mini-width="75"
