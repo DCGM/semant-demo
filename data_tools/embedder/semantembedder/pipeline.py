@@ -7,7 +7,8 @@ from classconfig import ConfigurableMixin, CreatableMixin, ConfigurableValue, Co
 from tqdm import tqdm
 from weaviate.classes.query import Filter
 
-from .db import HAVE_VECTOR, get_async_client, ensure_named_vector_exists, have_vector_problem, named_vector_exists
+from .db import (HAVE_VECTOR, check_grpc, ensure_named_vector_exists, get_async_client, have_vector_problem,
+                 named_vector_exists)
 # Import embedders to register their subclasses for ConfigurableSubclassFactory
 from .embedders import Embedder, VLLMEmbedder
 
@@ -185,6 +186,8 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 if problem:
                     raise ValueError(problem)
                 if not exists and self.create_vector:
+                    # the schema calls use REST: check gRPC before the schema changes
+                    await check_grpc(client, self.collection, self.weaviate_host, self.weaviate_grpc_port)
                     await ensure_named_vector_exists(
                         client=client,
                         collection_name=self.collection,
