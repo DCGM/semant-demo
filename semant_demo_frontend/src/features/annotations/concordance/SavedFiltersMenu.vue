@@ -50,9 +50,9 @@
             </q-item-label>
           </q-item-section>
           <q-item-section v-if="item.canEdit" side>
-            <div class="row no-wrap">
-              <q-btn flat round dense size="sm" icon="edit" :aria-label="`Rename ${item.name}`" data-testid="saved-filters-rename" @click.stop="dialogs.rename(item)" />
-              <q-btn flat round dense size="sm" icon="delete" :aria-label="`Delete ${item.name}`" data-testid="saved-filters-delete" @click.stop="dialogs.remove(item)" />
+            <div class="row no-wrap q-gutter-x-xs">
+              <q-btn flat round dense icon="edit" color="grey-8" :aria-label="`Rename ${item.name}`" data-testid="saved-filters-rename" @click.stop="dialogs.rename(item)" />
+              <q-btn flat round dense icon="delete" color="grey-8" :aria-label="`Delete ${item.name}`" data-testid="saved-filters-delete" @click.stop="dialogs.remove(item)" />
             </div>
           </q-item-section>
         </q-item>

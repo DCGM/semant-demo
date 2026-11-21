@@ -84,8 +84,6 @@ async function save () {
 }
 .saved-filter-header__name { overflow-wrap: anywhere; }
 .saved-filter-header__status {
-  /* Wide enough for either state, so the actions after it stay put. */
-  min-width: 9.5rem;
   display: inline-flex;
   align-items: center;
   gap: 4px;
