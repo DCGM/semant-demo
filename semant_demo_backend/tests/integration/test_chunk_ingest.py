@@ -8,6 +8,7 @@ stored tail, replays without writing and refuses anything that would change, ski
 interleave stored chunks; a failed write blocks only its document and a rerun finishes
 it. Existing objects (properties, references, vectors, update times) never change.
 """
+import asyncio
 import hashlib
 import json
 from types import SimpleNamespace
@@ -24,11 +25,14 @@ from semant_demo.adapters.weaviate import chunk_visibility as visibility
 from semant_demo.adapters.weaviate.classification_provenance import PROPERTY as PROVENANCE, UNPROCESSED
 from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
 from semant_demo.maintenance import chunk_ingest, chunk_positions as backfill, metadata_sync, page_order
+from tests.weaviate_store import StoreEndpoint, connect, delete_all_objects
 
 pytestmark = pytest.mark.integration
 
 DOCS, CHUNKS, TAGS = "IngestDocuments", "IngestChunks", "IngestTags"
 DOCS_ALIAS, CHUNKS_ALIAS = "IngestDocumentsAlias", "IngestChunksAlias"
+BARE_CHUNKS = "IngestBareChunks"
+"""A chunk collection without the position or classification properties, made by a test."""
 VECTOR = "Qwen3_Embedding_0_6B"
 EXISTING, NEW, OTHER = UUID(int=1), UUID(int=2), UUID(int=3)
 TAG = UUID(int=9)
@@ -50,19 +54,74 @@ def quiet(_line: str) -> None:
     pass
 
 
+async def drop_ingest_collections(client) -> None:
+    for alias in (CHUNKS_ALIAS, DOCS_ALIAS):
+        if await client.alias.get(alias_name=alias):
+            await client.alias.delete(alias_name=alias)
+    for name in (CHUNKS, TAGS, DOCS, BARE_CHUNKS):
+        await client.collections.delete(name)
+
+
+async def ingest_schema(client) -> dict:
+    """The configuration of the collections and aliases the import is run against."""
+    configs = await client.collections.list_all(simple=False)
+    aliases = {alias: await client.alias.get(alias_name=alias) for alias in (DOCS_ALIAS, CHUNKS_ALIAS)}
+    return {"collections": {name: configs.get(name) for name in (DOCS, TAGS, CHUNKS)},
+            "aliases": {alias: target and target.collection for alias, target in aliases.items()}}
+
+
+@pytest.fixture(scope="module")
+def created_ingest_schema():
+    """The ingest schema as last created in this module (see ``ingest_store``). The collections
+    are dropped once after the module, so later tests see only the application's."""
+    created: dict = {}
+    yield created
+    if created:
+        asyncio.run(_drop_after_module())
+
+
+async def _drop_after_module() -> None:
+    client = await connect(StoreEndpoint.from_env())
+    try:
+        await drop_ingest_collections(client)
+    finally:
+        await client.close()
+
+
 @pytest.fixture
-async def ingest_store(weaviate_client, collection_names):
+async def ingest_store(weaviate_client, collection_names, created_ingest_schema):
+    """The ingest collections holding only the three stored chunks of EXISTING.
+
+    Emptied before each test, or recreated when their configuration changed (a test added
+    a property) or this is the module's first test: creating the three collections per test
+    was most of this module's runtime."""
     client = weaviate_client
     names = collection_names.model_copy(update={"document_collection_name": DOCS_ALIAS,
                                                  "chunks_collection_name": CHUNKS_ALIAS})
+    await client.collections.delete(BARE_CHUNKS)
+    if created_ingest_schema and await ingest_schema(client) == created_ingest_schema:
+        for name in (CHUNKS, TAGS, DOCS):
+            await delete_all_objects(client.collections.get(name))
+    else:
+        await drop_ingest_collections(client)
+        await create_ingest_collections(client)
+        created_ingest_schema.clear()
+        created_ingest_schema.update(await ingest_schema(client))
+    await client.collections.get(DOCS).data.insert(uuid=EXISTING, properties={"title": "Kronika"})
+    await client.collections.get(TAGS).data.insert(uuid=TAG, properties={"tag_name": "t"})
+    positions = list(chunk_positions(TEXTS[:STORED]))
+    result = await client.collections.get(CHUNKS).data.insert_many([
+        DataObject(uuid=cid(EXISTING, i),
+                   properties={"text": TEXTS[i], "order": i, "language": "ces", "title": f"chunk {i}", "yearIssued": 1920,
+                               "startChar": positions[i].start_char, "startWord": positions[i].start_word,
+                               "wordOpenAtStart": positions[i].word_open_at_start},
+                   references={"document": EXISTING, "positiveTag": TAG}, vector={VECTOR: [0.1 * (i + 1), 0.2, 0.3]})
+        for i in range(STORED)])
+    assert not result.errors
+    return SimpleNamespace(client=client, names=names)
 
-    async def drop():
-        for alias in (CHUNKS_ALIAS, DOCS_ALIAS):
-            if await client.alias.get(alias_name=alias):
-                await client.alias.delete(alias_name=alias)
-        for name in (CHUNKS, TAGS, DOCS, "IngestBareChunks"):
-            await client.collections.delete(name)
-    await drop()
+
+async def create_ingest_collections(client) -> None:
     await client.collections.create(DOCS, vector_config=Configure.Vectors.self_provided(),
                                     properties=[Property(name="title", data_type=DataType.TEXT)])
     await client.collections.create(TAGS, properties=[Property(name="tag_name", data_type=DataType.TEXT)])
@@ -83,21 +142,6 @@ async def ingest_store(weaviate_client, collection_names):
                     ReferenceProperty(name="positiveTag", target_collection=TAGS)])
     await client.alias.create(alias_name=DOCS_ALIAS, target_collection=DOCS)
     await client.alias.create(alias_name=CHUNKS_ALIAS, target_collection=CHUNKS)
-    await client.collections.get(DOCS).data.insert(uuid=EXISTING, properties={"title": "Kronika"})
-    await client.collections.get(TAGS).data.insert(uuid=TAG, properties={"tag_name": "t"})
-    positions = list(chunk_positions(TEXTS[:STORED]))
-    result = await client.collections.get(CHUNKS).data.insert_many([
-        DataObject(uuid=cid(EXISTING, i),
-                   properties={"text": TEXTS[i], "order": i, "language": "ces", "title": f"chunk {i}", "yearIssued": 1920,
-                               "startChar": positions[i].start_char, "startWord": positions[i].start_word,
-                               "wordOpenAtStart": positions[i].word_open_at_start},
-                   references={"document": EXISTING, "positiveTag": TAG}, vector={VECTOR: [0.1 * (i + 1), 0.2, 0.3]})
-        for i in range(STORED)])
-    assert not result.errors
-    try:
-        yield SimpleNamespace(client=client, names=names)
-    finally:
-        await drop()
 
 
 def jsonl(tmp_path, name: str, records: list) -> list:
@@ -431,10 +475,10 @@ async def test_an_existing_id_is_never_overwritten(ingest_store):
 
 async def test_a_schema_without_positions_is_refused_before_writing(ingest_store, tmp_path):
     s = ingest_store
-    await s.client.collections.create("IngestBareChunks", properties=[
+    await s.client.collections.create(BARE_CHUNKS, properties=[
         Property(name="text", data_type=DataType.TEXT), Property(name="order", data_type=DataType.INT)],
         references=[ReferenceProperty(name="document", target_collection=DOCS)])
-    names = s.names.model_copy(update={"chunks_collection_name": "IngestBareChunks"})
+    names = s.names.model_copy(update={"chunks_collection_name": BARE_CHUNKS})
     with pytest.raises(LookupError, match="startChar is missing"):
         await chunk_ingest.run(s.client, names, jsonl(tmp_path, "new.jsonl", [line(NEW, 0)]),
                                checkpoint=tmp_path / "run.json", endpoint="test", write_=True,
@@ -487,18 +531,18 @@ async def test_a_chunk_classified_since_its_import_still_replays(ingest_store, t
 async def test_a_store_without_the_classification_status_is_refused_before_writing(
         ingest_store, tmp_path, declared, state, write):
     s = ingest_store
-    await s.client.collections.create("IngestBareChunks", properties=[
+    await s.client.collections.create(BARE_CHUNKS, properties=[
         Property(name="text", data_type=DataType.TEXT), Property(name="order", data_type=DataType.INT),
         Property(name="startChar", data_type=DataType.INT), Property(name="startWord", data_type=DataType.INT),
         Property(name="wordOpenAtStart", data_type=DataType.BOOL), *([declared] if declared else [])],
         references=[ReferenceProperty(name="document", target_collection=DOCS)])
-    names = s.names.model_copy(update={"chunks_collection_name": "IngestBareChunks"})
+    names = s.names.model_copy(update={"chunks_collection_name": BARE_CHUNKS})
     with pytest.raises(LookupError, match=f"classification_provenance is {state}.*classification_provenance_schema"):
         await chunk_ingest.run(s.client, names, jsonl(tmp_path, "new.jsonl", [line(NEW, 0)]),
                                checkpoint=tmp_path / "run.json", endpoint="test", write_=write,
                                backup={"offline_backup": "test copy"} if write else None, progress=quiet)
     assert not await s.client.collections.get(DOCS).query.fetch_object_by_id(NEW)
-    assert not (await s.client.collections.get("IngestBareChunks").aggregate.over_all(total_count=True)).total_count
+    assert not (await s.client.collections.get(BARE_CHUNKS).aggregate.over_all(total_count=True)).total_count
     assert not (tmp_path / "run.json").exists()
 
 
