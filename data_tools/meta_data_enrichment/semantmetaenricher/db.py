@@ -3,7 +3,7 @@ import weaviate
 from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Property, DataType, Tokenization
 from weaviate.classes.query import Filter
-from weaviate.exceptions import WeaviateBaseError, WeaviateUnsupportedFeatureError
+from weaviate.exceptions import WeaviateUnsupportedFeatureError
 
 def get_client(
     host: str = "localhost",
@@ -13,7 +13,10 @@ def get_client(
     api_key: Optional[str] = None
 ) -> weaviate.WeaviateClient:
     """Create a Weaviate client based on parameters.
-    
+
+    The client's start-up checks (its version lookup on pypi.org and its gRPC ping) are skipped,
+    as in the backend, so an unreachable gRPC port fails at the first query, not when connecting.
+
     Args:
         host: Weaviate host address.
         port: HTTP/REST port.
@@ -37,21 +40,6 @@ def get_client(
         auth_credentials=auth_credentials,
         skip_init_checks=True,
     )
-
-
-def check_grpc(client: weaviate.WeaviateClient, collection_name: str, host: str, grpc_port: int) -> None:
-    """Read one object of the collection over gRPC, which every query uses. The client skips its
-    start-up checks (its version lookup on pypi.org and its gRPC ping, as in the backend), so a run
-    checks gRPC here before it changes anything.
-
-    Raises:
-        ConnectionError: The query failed (e.g. a wrong or unreachable ``weaviate_grpc_port``).
-    """
-    try:
-        client.collections.get(collection_name).query.fetch_objects(limit=1, return_properties=[])
-    except WeaviateBaseError as e:
-        raise ConnectionError(f"Weaviate does not answer a query over gRPC at {host}:{grpc_port} "
-                              f"(weaviate_grpc_port): {e}") from e
 
 
 PROVENANCE = "classification_provenance"

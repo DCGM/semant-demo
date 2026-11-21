@@ -7,7 +7,6 @@ after consecutive failures and after ``max_failures``, the read-only schema, the
 ``max_records``, the check and the guarded test collection. Collections are named ``ClassifierToolTest*`` and deleted after
 each test, as are aliases to them.
 """
-import socket
 import sys
 from pathlib import Path
 
@@ -287,22 +286,6 @@ def test_a_refused_run_changes_nothing(client, make_pipeline, setup, settings, r
     assert reason in result.refused and result.exit_code() == 2
     assert model.asked == [] and client.collections.get(TEST_COLLECTION).config.get().properties == before
     assert stored(client)["chunk"].get("style") is None
-
-
-def test_an_unreachable_grpc_port_stops_a_run_before_any_change(client, make_pipeline):
-    """The client skips its start-up checks (no version lookup on pypi.org, #798), so the run
-    reads one object over gRPC before anything else."""
-    create_collection(client, unprocessed("one", "two"))
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    model = FakeModel()
-
-    with pytest.raises(ConnectionError, match=f"gRPC at .*:{port}"):
-        make_pipeline(model, weaviate_grpc_port=port).run()
-    with pytest.raises(ConnectionError, match=f"gRPC at .*:{port}"):
-        make_pipeline(model, weaviate_grpc_port=port).check()
-    assert model.asked == [] and {p[PROVENANCE] for p in stored(client).values()} == {UNPROCESSED}
 
 
 def test_a_model_without_a_mapped_task_is_refused(client, make_pipeline):
