@@ -48,7 +48,7 @@ Environment: WEAVIATE_URL (default http://127.0.0.1:8080), FULL_INTERVAL_DAYS (7
 KEEP_CHAINS (2), MAX_AGE_HOURS (--check, 26), MIN_FREE_GIB (200), FREE_FACTOR (1.25),
 TIMEOUT_HOURS (20), POLL_SECONDS (30), BACKUP_MOUNT (optional mountpoint that must be mounted
 and contain BACKUP_ROOT and STATE_DIR), REHEARSAL_ENDPOINTS (restore targets, comma-separated
-HOST:PORT; default 127.0.0.1:8090,localhost:8090).
+HOST:PORT; default 127.0.0.1:18090,localhost:18090).
 
 Standard library only; runs on the host's Python 3.10.
 """
@@ -97,7 +97,7 @@ class Settings:
     timeout: timedelta = timedelta(hours=20)
     poll_seconds: float = 30.0
     backup_mount: str = ""
-    rehearsal_endpoints: tuple[str, ...] = ("127.0.0.1:8090", "localhost:8090")
+    rehearsal_endpoints: tuple[str, ...] = ("127.0.0.1:18090", "localhost:18090")
 
     @classmethod
     def from_env(cls, env: dict[str, str] | os._Environ) -> "Settings":
@@ -651,7 +651,7 @@ def confirmed_endpoint(api: Weaviate, confirm: str | None) -> str:
 
 def rehearsal_endpoint(api: Weaviate, settings: Settings, confirm: str | None) -> str:
     """The endpoint of a disposable rehearsal Weaviate: named in REHEARSAL_ENDPOINTS
-    (default 127.0.0.1:8090) and repeated in --confirm-endpoint. Another name or address that
+    (default 127.0.0.1:18090) and repeated in --confirm-endpoint. Another name or address that
     reaches production would pass a deny list, so only listed endpoints are accepted."""
     endpoint = confirmed_endpoint(api, confirm)
     if endpoint in PRODUCTION_ENDPOINTS or endpoint not in settings.rehearsal_endpoints:

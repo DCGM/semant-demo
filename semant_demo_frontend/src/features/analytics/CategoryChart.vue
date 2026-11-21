@@ -1,7 +1,7 @@
 <template>
   <div class="category-chart">
     <p v-if="filterable && rows.some(isFilterableRow)" class="category-chart__hint">
-      Click a bar to filter by its {{ axis.toLowerCase() }}{{ searches ? ': a new search, whose results and counts may differ' : '' }}.
+      Click a bar to filter by its {{ axis.toLowerCase() }}{{ searches ? ': a new search, whose results and counts may differ' : opensExplore ? ' and open those documents in Explore' : '' }}.
     </p>
     <VegaChart
       :spec="spec"
@@ -62,9 +62,11 @@ const props = withDefaults(defineProps<{
   filterable?: boolean
   /** Applying a filter starts a new search (a text query's charts), said in the hint. */
   searches?: boolean
+  /** Applying a filter opens Explore with it (the collection page, #795), said in the hint. */
+  opensExplore?: boolean
   /** Prefix of the test ids, e.g. `libraries`. */
   testId: string
-}>(), { unit: 'documents', filterable: false, searches: false })
+}>(), { unit: 'documents', filterable: false, searches: false, opensExplore: false })
 const emit = defineEmits<{ applyFilter: [value: string] }>()
 
 const numberFormat = new Intl.NumberFormat('en')

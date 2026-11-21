@@ -6,7 +6,8 @@ by the documents feature.
 """
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status, Response, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Response, Query
+from starlette.datastructures import UploadFile
 
 from semant_demo.features.user_collections.schemas import CreateResponse, Collection, CollectionStats, PostCollection, PatchCollection, PatchCollectionOwner, ShareCollectionRequest, CollectionChunk, CollectionPerson
 from semant_demo.adapters.sql.attributes import AttributeRepository
@@ -14,9 +15,15 @@ from semant_demo.adapters.sql.saved_selections import SavedSelectionRepository
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
-from semant_demo.features.user_collections import service
+from semant_demo.features.user_collections import service, text_upload
+from semant_demo.features.user_collections.schemas import TextUploadAvailability, TextUploadResponse
+from semant_demo.adapters.weaviate.text_upload import TextUploadRepository
+from semant_demo.features.search.vectors import SearchVectors
 from semant_demo.adapters.topicer.client import TopicerClient
-from semant_demo.routes.dependencies import get_attribute_definitions, get_saved_selections, get_topicer, get_user_collections, get_tags, get_user_lookup
+from semant_demo.routes.dependencies import (
+    get_attribute_definitions, get_saved_selections, get_search_vectors, get_text_upload_store, get_topicer,
+    get_user_collections, get_tags, get_user_lookup,
+)
 from semant_demo.features.documents.schemas import Document, DocumentStats
 from semant_demo.core.outcomes import WriteResult
 from semant_demo.features.annotations.schemas import Tag
@@ -181,6 +188,90 @@ async def get_collection_documents(collection_id: str, collections: UserCollecti
     Returns documents which belong to collection given by id
     """
     return await service.list_documents(collections, current_user, collection_id)
+
+_UPLOAD_BODY = {"requestBody": {"required": True, "content": {"multipart/form-data": {"schema": {
+    "type": "object", "required": ["files"], "properties": {
+        "files": {"type": "array", "items": {"type": "string", "format": "binary"},
+                  "description": "The UTF-8 .txt files."},
+        "metadata": {"type": "string", "format": "binary",
+                     "description": "Optional metadata CSV (docs/TEXT_UPLOAD.md)."}}}}}}}
+
+
+async def _read_upload(request: Request, limits: text_upload.UploadLimits
+                       ) -> tuple[list[text_upload.UploadedFile], text_upload.UploadedFile | None]:
+    """The files of the multipart body, read only now (after the access checks) and only up to
+    one byte beyond each limit, so a too large file is reported without being held."""
+    length = request.headers.get("content-length", "")
+    if not length.isdigit():
+        raise HTTPException(status_code=status.HTTP_411_LENGTH_REQUIRED, detail="Content-Length is required.")
+    if int(length) > limits.max_request_bytes:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                            detail=f"The upload is larger than {limits.max_request_bytes // 1_000_000} MB.")
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send the files as multipart/form-data.")
+    form = await request.form(max_files=limits.max_files + 1, max_fields=4)
+    try:
+        _check_upload_parts(form)
+        files = [text_upload.UploadedFile(f.filename or "", await f.read(limits.max_file_bytes + 1))
+                 for f in form.getlist("files")]
+        metadata = form.get("metadata")
+        csv = (text_upload.UploadedFile(metadata.filename or "", await metadata.read(limits.max_csv_bytes + 1))
+               if metadata is not None else None)
+    finally:
+        await form.close()
+    return files, csv
+
+
+def _check_upload_parts(form) -> None:
+    """Refuse a body whose parts are not file parts named ``files`` and at most one file part
+    named ``metadata``, so nothing the caller sent is silently ignored (#785)."""
+    problems = []
+    unknown = sorted({key for key in form.keys() if key not in ("files", "metadata")})
+    if unknown:
+        problems.append(f"Unexpected form part(s): {', '.join(unknown)}; send only 'files' and 'metadata'.")
+    if any(not isinstance(f, UploadFile) for f in form.getlist("files")):
+        problems.append("Every 'files' part must be a file.")
+    metadata = form.getlist("metadata")
+    if len(metadata) > 1:
+        problems.append("Send at most one 'metadata' CSV file.")
+    if any(not isinstance(m, UploadFile) for m in metadata):
+        problems.append("The 'metadata' part must be a CSV file, not a text field.")
+    if problems:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=" ".join(problems))
+
+
+@exp_router.get("/api/text_documents/availability", response_model=TextUploadAvailability,
+                response_model_exclude_none=True)
+async def text_upload_availability(collections: UserCollectionRepository = Depends(get_user_collections),
+                                   store: TextUploadRepository = Depends(get_text_upload_store),
+                                   vectors: SearchVectors = Depends(get_search_vectors)) -> TextUploadAvailability:
+    """
+    Whether this server can take text uploads: the configured search vectors are approved
+    for private text and the database declares what an upload writes. Reads only the schema;
+    the details of a refusal are in the server log, not the response. The upload dialog and
+    the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+    """
+    ready = await text_upload.availability(store, vectors, collections.link)
+    return TextUploadAvailability(available=ready.available, message=ready.message)
+
+
+@exp_router.post("/api/user_collections/{collection_id}/text_documents", response_model=TextUploadResponse,
+                 response_model_exclude_none=True, openapi_extra=_UPLOAD_BODY)
+async def upload_text_documents(collection_id: str, request: Request,
+                                collections: UserCollectionRepository = Depends(get_user_collections),
+                                store: TextUploadRepository = Depends(get_text_upload_store),
+                                vectors: SearchVectors = Depends(get_search_vectors),
+                                current_user: User = Depends(current_active_user)) -> TextUploadResponse:
+    """
+    Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with
+    embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The
+    body is read after the access check. Every file gets a result; an invalid file or CSV
+    means nothing was saved. 503 when uploads are not enabled on this server.
+    """
+    limits = text_upload.DEFAULT_LIMITS
+    return await text_upload.upload_text_documents(
+        collections, store, vectors, current_user, collection_id, lambda: _read_upload(request, limits), limits)
+
 
 @exp_router.post("/api/user_collections/{collection_id}/documents/{document_id}", response_model=WriteResult)
 async def add_document_to_collection(collection_id: str, document_id: str,

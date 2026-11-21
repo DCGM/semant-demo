@@ -37,13 +37,13 @@ export interface DocumentSummaryCitation {
      * @type {number}
      * @memberof DocumentSummaryCitation
      */
-    fromPage: number;
+    fromPage?: number | null;
     /**
      * 
      * @type {number}
      * @memberof DocumentSummaryCitation
      */
-    toPage: number;
+    toPage?: number | null;
 }
 
 /**
@@ -51,8 +51,6 @@ export interface DocumentSummaryCitation {
  */
 export function instanceOfDocumentSummaryCitation(value: object): value is DocumentSummaryCitation {
     if (!('chunkId' in value) || value['chunkId'] === undefined) return false;
-    if (!('fromPage' in value) || value['fromPage'] === undefined) return false;
-    if (!('toPage' in value) || value['toPage'] === undefined) return false;
     return true;
 }
 
@@ -68,8 +66,8 @@ export function DocumentSummaryCitationFromJSONTyped(json: any, ignoreDiscrimina
         
         'chunkId': json['chunk_id'],
         'order': json['order'] == null ? undefined : json['order'],
-        'fromPage': json['from_page'],
-        'toPage': json['to_page'],
+        'fromPage': json['from_page'] == null ? undefined : json['from_page'],
+        'toPage': json['to_page'] == null ? undefined : json['to_page'],
     };
 }
 

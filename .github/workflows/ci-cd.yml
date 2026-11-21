@@ -1100,6 +1100,28 @@ jobs:
           echo "Health check failed after 6 attempts."
           exit 1
 
+      - name: Text upload readiness (#785)
+        # Read-only: whether the shared test store and the configured vectors can take text
+        # uploads (docs/TEXT_UPLOAD.md#deployment-readiness). A store that cannot is reported as a
+        # warning with the backend's log line naming what is missing; the preview still deploys.
+        run: |
+          DEPLOY_PATH="${{ vars.RUNNER_WORKDIR }}/${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}"
+          TEST_SUBDOMAIN=$(grep "^TEST_SUBDOMAIN=" "$DEPLOY_PATH/.env" | cut -d= -f2)
+          if ! BODY=$(curl --fail --silent --max-time 20 "https://${TEST_SUBDOMAIN}/api/text_documents/availability"); then
+            echo "::warning title=Text upload readiness::The availability check did not answer."
+            exit 0
+          fi
+          echo "$BODY"
+          if echo "$BODY" | grep -q '"available":true'; then
+            echo "Text upload: available on https://${TEST_SUBDOMAIN}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cd "$DEPLOY_PATH"
+          DETAIL=$(docker compose -p "${{ vars.DEPLOY_SUBDIR }}-test-pr-${PR_NUMBER}" -f docker-compose.app-test.yml logs --no-color --since 5m app 2>/dev/null \
+            | grep -o "Text upload unavailable:.*" | tail -n 1)
+          echo "::warning title=Text upload readiness::${BODY} ${DETAIL}"
+          { echo "**Text upload is not available on this preview.** ${BODY}"; echo; echo "\`${DETAIL:-no backend log line found}\`"; } >> "$GITHUB_STEP_SUMMARY"
+
   teardown-test-pr:
     name: "Teardown test PR #${{ github.event.pull_request.number }}"
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository

@@ -45,19 +45,19 @@ export interface DocumentViewChunk {
      * @type {string}
      * @memberof DocumentViewChunk
      */
-    startPageId: string;
+    startPageId?: string | null;
     /**
      * 
      * @type {number}
      * @memberof DocumentViewChunk
      */
-    fromPage: number;
+    fromPage?: number | null;
     /**
      * 
      * @type {number}
      * @memberof DocumentViewChunk
      */
-    toPage: number;
+    toPage?: number | null;
     /**
      * 
      * @type {string}
@@ -150,9 +150,6 @@ export interface DocumentViewChunk {
 export function instanceOfDocumentViewChunk(value: object): value is DocumentViewChunk {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
-    if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
-    if (!('fromPage' in value) || value['fromPage'] === undefined) return false;
-    if (!('toPage' in value) || value['toPage'] === undefined) return false;
     if (!('document' in value) || value['document'] === undefined) return false;
     if (!('order' in value) || value['order'] === undefined) return false;
     if (!('inUserCollection' in value) || value['inUserCollection'] === undefined) return false;
@@ -171,9 +168,9 @@ export function DocumentViewChunkFromJSONTyped(json: any, ignoreDiscriminator: b
         
         'id': json['id'],
         'text': json['text'],
-        'startPageId': json['start_page_id'],
-        'fromPage': json['from_page'],
-        'toPage': json['to_page'],
+        'startPageId': json['start_page_id'] == null ? undefined : json['start_page_id'],
+        'fromPage': json['from_page'] == null ? undefined : json['from_page'],
+        'toPage': json['to_page'] == null ? undefined : json['to_page'],
         'document': json['document'],
         'title': json['title'] == null ? undefined : json['title'],
         'endParagraph': json['end_paragraph'] == null ? undefined : json['end_paragraph'],

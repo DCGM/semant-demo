@@ -39,6 +39,8 @@ import type {
   CollectionChunk,
   CollectionExportRequest,
   CollectionExportTicket,
+  CollectionPassages,
+  CollectionPassagesRequest,
   CollectionPerson,
   CollectionStats,
   ContextChatRequest,
@@ -113,6 +115,8 @@ import type {
   TagSpanBatchRequest,
   TagSpanWriteResult,
   TextScope,
+  TextUploadAvailability,
+  TextUploadResponse,
   TopicerConfigsResponse,
   UserSearchResult,
   WriteResult,
@@ -166,6 +170,10 @@ import {
     CollectionExportRequestToJSON,
     CollectionExportTicketFromJSON,
     CollectionExportTicketToJSON,
+    CollectionPassagesFromJSON,
+    CollectionPassagesToJSON,
+    CollectionPassagesRequestFromJSON,
+    CollectionPassagesRequestToJSON,
     CollectionPersonFromJSON,
     CollectionPersonToJSON,
     CollectionStatsFromJSON,
@@ -314,6 +322,10 @@ import {
     TagSpanWriteResultToJSON,
     TextScopeFromJSON,
     TextScopeToJSON,
+    TextUploadAvailabilityFromJSON,
+    TextUploadAvailabilityToJSON,
+    TextUploadResponseFromJSON,
+    TextUploadResponseToJSON,
     TopicerConfigsResponseFromJSON,
     TopicerConfigsResponseToJSON,
     UserSearchResultFromJSON,
@@ -374,6 +386,10 @@ export interface ChatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumen
 
 export interface ChatAboutSearchResultsApiSearchChatPostRequest {
     searchChatRequest: SearchChatRequest;
+}
+
+export interface CollectionPassagesApiAnalyticsCollectionPassagesPostRequest {
+    collectionPassagesRequest: CollectionPassagesRequest;
 }
 
 export interface CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest {
@@ -804,6 +820,12 @@ export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
     expectedVersion?: number | null;
 }
 
+export interface UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest {
+    collectionId: string;
+    files: Array<Blob>;
+    metadata?: Blob;
+}
+
 /**
  * DefaultApi - interface
  * 
@@ -1046,6 +1068,30 @@ export interface DefaultApiInterface {
      * Chat About Search Results
      */
     chatAboutSearchResultsApiSearchChatPost(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for collectionPassagesApiAnalyticsCollectionPassagesPost without sending the request
+     * @param {CollectionPassagesRequest} collectionPassagesRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * @summary Collection Passages
+     * @param {CollectionPassagesRequest} collectionPassagesRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>>;
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages>;
 
     /**
      * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
@@ -3099,6 +3145,28 @@ export interface DefaultApiInterface {
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse>;
 
     /**
+     * Creates request options for textUploadAvailabilityApiTextDocumentsAvailabilityGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * @summary Text Upload Availability
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadAvailability>>;
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadAvailability>;
+
+    /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
      * @param {string} collectionId 
      * @param {string} userId 
@@ -3317,6 +3385,34 @@ export interface DefaultApiInterface {
      * Update Tag Span
      */
     updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
+
+    /**
+     * Creates request options for uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost without sending the request
+     * @param {string} collectionId 
+     * @param {Array<Blob>} files The UTF-8 .txt files.
+     * @param {Blob} [metadata] Optional metadata CSV (docs/TEXT_UPLOAD.md).
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * @summary Upload Text Documents
+     * @param {string} collectionId 
+     * @param {Array<Blob>} files The UTF-8 .txt files.
+     * @param {Blob} [metadata] Optional metadata CSV (docs/TEXT_UPLOAD.md).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadResponse>>;
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadResponse>;
 
 }
 
@@ -3859,6 +3955,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async chatAboutSearchResultsApiSearchChatPost(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.chatAboutSearchResultsApiSearchChatPostRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for collectionPassagesApiAnalyticsCollectionPassagesPost without sending the request
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionPassagesRequest'] == null) {
+            throw new runtime.RequiredError(
+                'collectionPassagesRequest',
+                'Required parameter "collectionPassagesRequest" was null or undefined when calling collectionPassagesApiAnalyticsCollectionPassagesPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/analytics/collection/passages`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CollectionPassagesRequestToJSON(requestParameters['collectionPassagesRequest']),
+        };
+    }
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>> {
+        const requestOptions = await this.collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionPassagesFromJSON(jsonValue));
+    }
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages> {
+        const response = await this.collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**
@@ -8441,6 +8591,45 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for textUploadAvailabilityApiTextDocumentsAvailabilityGet without sending the request
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/text_documents/availability`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadAvailability>> {
+        const requestOptions = await this.textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TextUploadAvailabilityFromJSON(jsonValue));
+    }
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadAvailability> {
+        const response = await this.textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
      */
     async unshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequestOpts(requestParameters: UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest): Promise<runtime.RequestOpts> {
@@ -8978,6 +9167,94 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {
         const response = await this.updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost without sending the request
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost().'
+            );
+        }
+
+        if (requestParameters['files'] == null) {
+            throw new runtime.RequiredError(
+                'files',
+                'Required parameter "files" was null or undefined when calling uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+        const consumes: runtime.Consume[] = [
+            { contentType: 'multipart/form-data' },
+        ];
+        // @ts-ignore: canConsumeForm may be unused
+        const canConsumeForm = runtime.canConsumeForm(consumes);
+
+        let formParams: { append(param: string, value: any): any };
+        let useForm = false;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        if (useForm) {
+            formParams = new FormData();
+        } else {
+            formParams = new URLSearchParams();
+        }
+
+        if (requestParameters['files'] != null) {
+            requestParameters['files'].forEach((element) => {
+                formParams.append('files', element as any);
+            })
+        }
+
+        if (requestParameters['metadata'] != null) {
+            formParams.append('metadata', requestParameters['metadata'] as any);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/text_documents`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: formParams,
+        };
+    }
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadResponse>> {
+        const requestOptions = await this.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TextUploadResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadResponse> {
+        const response = await this.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

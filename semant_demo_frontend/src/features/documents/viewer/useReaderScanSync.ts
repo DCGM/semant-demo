@@ -1,7 +1,7 @@
 import { shallowRef, watch } from 'vue'
 import type { CollectionChunk, DocumentPage } from 'src/generated/api'
 import { useApi } from 'src/shared/api'
-import { readPageChunks } from '../correspondence/pageChunks'
+import { coversPage, readPageChunks } from '../correspondence/pageChunks'
 import { useTextScanSync, type TextScanSyncOptions } from '../correspondence/useTextScanSync'
 import { createLayoutCache } from '../scan/pageAssets'
 import type { useChunkWindow } from './useChunkWindow'
@@ -42,7 +42,7 @@ export function useReaderScanSync (o: ReaderScanSyncOptions) {
     const orders = read.chunks.map(c => c.order)
     const { shown, fresh } = await o.chunkWindow.showRange(Math.min(...orders), Math.max(...orders))
     if (fresh.length) await o.loadSpans(fresh.map(c => c.id))
-    return { chunks: shown.filter(c => c.fromPage <= order && order <= c.toPage), complete: read.complete }
+    return { chunks: shown.filter(c => coversPage(c, order)), complete: read.complete }
   }
 
   /** The reader's chunks of page `order`, shown first; once per page (a failed read is tried again). */

@@ -30,13 +30,25 @@ class OpenAICompatibleEmbeddings:
         """Embeds ``text`` as a document (HyDE: a query phrased as a document)."""
         return await self._embed(self.document_prefix + text)
 
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embeds ``texts`` as documents in one request, in order."""
+        return await self._embed_many([self.document_prefix + text for text in texts])
+
     async def _embed(self, text: str) -> list[float]:
-        body: dict = {"model": self.model, "input": [text], "encoding_format": "float"}
+        [embedding] = await self._embed_many([text])
+        return embedding
+
+    async def _embed_many(self, texts: list[str]) -> list[list[float]]:
+        body: dict = {"model": self.model, "input": texts, "encoding_format": "float"}
         if self.dimensions is not None:
             body["dimensions"] = self.dimensions
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         async with httpx.AsyncClient(transport=self.transport) as client:
             resp = await client.post(f"{self.base_url}/embeddings", json=body, headers=headers, timeout=self.timeout)
             resp.raise_for_status()
-            [item] = resp.json()["data"]
-            return item["embedding"]
+            data = resp.json()["data"]
+            if all("index" in item for item in data):
+                data = sorted(data, key=lambda item: item["index"])
+            if len(data) != len(texts):
+                raise ValueError(f"expected {len(texts)} embeddings, got {len(data)}")
+            return [item["embedding"] for item in data]

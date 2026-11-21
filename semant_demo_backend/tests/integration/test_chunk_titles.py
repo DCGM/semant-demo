@@ -172,6 +172,28 @@ async def test_documents_without_a_title_are_deferred_until_allowed(seeded_store
     assert await title_of(seeded_store, collection_names, gazette_1["id"]) == fake_title(gazette_1["text"])
 
 
+async def test_chunks_of_documents_that_are_not_public_are_deferred_until_included(
+        seeded_store, collection_names, corpus, chunk_run, provider):
+    """#785: restricted and unknown-rights documents (uploaded private texts among them) are
+    not sent to the model unless ``--include-restricted-documents``."""
+    letters, letters_2 = corpus.documents["letters"], corpus.chunks["letters_2"]
+    documents = seeded_store.collections.get(collection_names.document_collection_name)
+    for public in (False, None):
+        await documents.data.update(uuid=letters["id"], properties={"public": public})
+
+        deferred = await chunk_run(write=True)
+
+        assert deferred["counts"]["deferred_restricted_document"] == 1 and deferred["counts"]["written"] == 0
+        assert deferred["reported_chunks"] == [{"id": letters_2["id"], "status": "deferred_restricted_document",
+                                                "document_ids": [letters["id"]]}]
+        assert provider.prompts == [] and chunk_titles.exit_code(deferred) == 1
+        assert await title_of(seeded_store, collection_names, letters_2["id"]) is None
+
+    included = await chunk_run(write=True, include_restricted=True)
+    assert included["counts"]["written"] == 1 and included["include_restricted"] is True
+    assert await title_of(seeded_store, collection_names, letters_2["id"]) == fake_title(letters_2["text"])
+
+
 async def test_a_failed_model_call_is_reported_and_taken_up_by_a_rerun(seeded_store, collection_names, corpus,
                                                                        chunk_run, provider):
     letters_2 = corpus.chunks["letters_2"]

@@ -52,10 +52,13 @@ def main():
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Read-only: count the records a run would embed (with the vector, without it, empty input). "
-             "No schema change, no embedding requests, no writes. It reads every record with the vector, "
-             "like a run. Exit code 0 when nothing is left to embed, 1 when records are, 2 when the check fails "
-             "or a run would be refused."
+        help="Read-only: count what a run would do with the records whose haveVector lacks the vector's name "
+             "(embed them, only add the name where the vector is already stored, skip an empty input). "
+             "No schema change, no embedding requests, no writes. Like a run, it reads only the selected "
+             "records, but beyond max_excluded of them it reads the rest with the cursor (the id and "
+             "haveVector of every record). "
+             "Exit code 0 when a run would write nothing, 1 when it would, 2 when the check fails or a run "
+             "would be refused (then it reads no records)."
     )
     parser.add_argument(
         "--force",
@@ -135,7 +138,7 @@ def main():
         if stats.refused:
             print(f"A run would be refused: {stats.refused}", file=sys.stderr)
             sys.exit(2)
-        sys.exit(1 if stats.missing else 0)
+        sys.exit(1 if stats.missing or stats.already_stored else 0)
 
     try:
         print(f"Loading configuration from '{args.config}'...")
