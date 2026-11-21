@@ -75,21 +75,21 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_access.py` | pytest Weaviate | 36 | pending |
-| `backend/tests/integration/test_document_rights.py` | pytest Weaviate | 22 | pending |
-| `backend/tests/test_auth/test_auth_routes.py` | pytest fast | 12 | pending |
-| `backend/tests/test_auth/test_user_search.py` | pytest fast | 7 | pending |
-| `backend/tests/test_quota/test_ai_routes.py` | pytest fast | 53 | pending |
-| `backend/tests/test_quota/test_ledger.py` | pytest fast | 25 | pending |
-| `backend/tests/test_quota/test_operations.py` | pytest fast | 19 | pending |
-| `backend/tests/test_quota/test_quota_routes.py` | pytest fast | 22 | pending |
-| `backend/tests/test_quota/test_suggestions_quota.py` | pytest fast | 10 | pending |
-| `backend/tests/test_user_collection_access.py` | pytest fast | 42 | pending |
-| `backend/tests/test_user_collection_service.py` | pytest fast | 106 | pending |
-| `frontend/test/unit/authDialogFocus.spec.ts` | Vitest | 6 | pending |
-| `frontend/test/unit/collectionPermissions.spec.ts` | Vitest | 9 | pending |
-| `frontend/test/unit/documentRights.spec.ts` | Vitest | 11 | pending |
-| `frontend/test/unit/quota.spec.ts` | Vitest | 20 | pending |
+| `backend/tests/integration/test_access.py` | pytest Weaviate | 36 | keep |
+| `backend/tests/integration/test_document_rights.py` | pytest Weaviate | 22 | keep |
+| `backend/tests/test_auth/test_auth_routes.py` | pytest fast | 12 | keep |
+| `backend/tests/test_auth/test_user_search.py` | pytest fast | 7 | keep |
+| `backend/tests/test_quota/test_ai_routes.py` | pytest fast | 53 | keep |
+| `backend/tests/test_quota/test_ledger.py` | pytest fast | 25 | keep |
+| `backend/tests/test_quota/test_operations.py` | pytest fast | 19 | keep |
+| `backend/tests/test_quota/test_quota_routes.py` | pytest fast | 22 | keep |
+| `backend/tests/test_quota/test_suggestions_quota.py` | pytest fast | 10 | keep |
+| `backend/tests/test_user_collection_access.py` | pytest fast | 42 | keep |
+| `backend/tests/test_user_collection_service.py` | pytest fast | 106 | keep |
+| `frontend/test/unit/authDialogFocus.spec.ts` | Vitest | 6 | keep |
+| `frontend/test/unit/collectionPermissions.spec.ts` | Vitest | 9 | keep |
+| `frontend/test/unit/documentRights.spec.ts` | Vitest | 11 | keep |
+| `frontend/test/unit/quota.spec.ts` | Vitest | 20 | keep |
 
 ### #850
 
@@ -455,3 +455,22 @@ test (#857). Real-store setup is still ~0.3 s per test, mostly the per-test Weav
 (56 s in all, 38 s of it 29 schema recreations after tests that change the schema),
 client connection (29 s) and seeding (17 s) (#854, after #686). Vitest has no costly
 shared setup; its slowest file is `devTooling.spec.ts` (6.7 s, #857).
+
+### #849 Authentication, access, rights and quotas
+
+**Keep everything; no change.** Same machine and commands as #848. Fast backend, 296 cases:
+61.1 s before #848's fixture changes, 25.5 s after. Real Weaviate, 58 cases: 32.1 s before,
+26.2 s after. Vitest, 64 cases: 2.9 s. Each layer catches a different regression:
+
+- `test_user_collection_access.py` pins the rule table.
+- `test_user_collection_service.py` proves every service entry point applies it before any
+  repository call or user lookup.
+- `integration/test_access.py` and `integration/test_document_rights.py` prove the HTTP
+  wiring, the real store filters and the stored state after each denial.
+- The quota files cover separate layers: the SQL ledger, gateway operations, Topicer
+  settlement, AI route admission and the guest cookie.
+- The Vitest specs pin UI rights and labels; the browser specs (#856) pin the rendered
+  controls.
+
+The costly remaining test, the ledger race (2.6 s), needs real SQLite lock contention.
+The full note is [on #849](https://github.com/DCGM/semant-demo/issues/849).
