@@ -107,7 +107,7 @@
         {{ statisticsSummary.total === 1 ? 'annotation' : 'annotations' }}{{ statisticsSummary.topK ? ` in the top ${statisticsSummary.k} by similarity` : '' }}
         in <strong data-testid="statistics-documents">{{ statisticsSummary.documents == null ? '—' : formatCount(statisticsSummary.documents) }}</strong>
         {{ statisticsSummary.documents == null ? 'source documents (not available for this query)' : statisticsSummary.documents === 1 ? 'source document' : 'source documents' }}
-        <span class="text-grey-8">· shares {{ statisticsSummary.denominator }}</span>
+        <span class="text-grey-8">· {{ statisticsStatuses }} · shares {{ statisticsSummary.denominator }}</span>
       </span>
       <q-spinner v-if="statisticsView && statisticsLoading" color="primary" size="1.2em" aria-label="Loading statistics" />
       <q-space />
@@ -133,6 +133,7 @@
       :filters="store.filters"
       :statistics="statistics"
       :error="statisticsError"
+      :stale="statisticsLoading"
       :tags="tags"
       :documents="store.documents"
       :dimension="statisticsDimension"
@@ -502,7 +503,7 @@ import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import AnnotationStatisticsPanel from '../statistics/AnnotationStatisticsPanel.vue'
-import { DIMENSIONS, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
+import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
 import { useAnnotationStatistics } from '../statistics/useAnnotationStatistics'
 import type { ConcordanceFilters } from './concordanceStore'
 import SimilarSourceBar from './SimilarSourceBar.vue'
@@ -562,6 +563,8 @@ const statisticsDimension = computed<Dimension | null>(() => {
 const { statistics, loading: statisticsLoading, error: statisticsError, load: loadStatistics } = useAnnotationStatistics(
   computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters))
 const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
+/** The statuses counted, named on the summary line with the denominator. */
+const statisticsStatuses = computed(() => STATUS_ORDER.filter(t => store.filters.types.includes(t)).map(t => STATUS_LABELS[t].toLowerCase()).join(', '))
 /** Annotations changed here (a review, undo, boundary edit or attribute assignment): the menus'
  * counts and, when shown, the statistics are read again. */
 function countsChanged () {
