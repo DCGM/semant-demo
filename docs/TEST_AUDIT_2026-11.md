@@ -154,81 +154,81 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_chunk_have_vector.py` | pytest Weaviate | 3 | pending |
-| `backend/tests/integration/test_collection_analytics.py` | pytest Weaviate | 9 | pending |
-| `backend/tests/integration/test_collection_passages.py` | pytest Weaviate | 9 | pending |
-| `backend/tests/integration/test_corpus_analytics.py` | pytest Weaviate | 23 | pending |
-| `backend/tests/integration/test_document_search.py` | pytest Weaviate | 10 | pending |
-| `backend/tests/integration/test_mcp.py` | pytest Weaviate | 19 | pending (disputed with #853) |
-| `backend/tests/integration/test_ranked_result_analytics.py` | pytest Weaviate | 8 | pending |
-| `backend/tests/integration/test_search.py` | pytest Weaviate | 81 | pending |
-| `backend/tests/integration/test_search_criteria.py` | pytest Weaviate | 36 | pending |
-| `backend/tests/test_candidates.py` | pytest fast | 5 | pending |
-| `backend/tests/test_corpus_analytics.py` | pytest fast | 94 | pending |
-| `backend/tests/test_mcp.py` | pytest fast | 61 | pending (disputed with #853) |
-| `backend/tests/test_search_classifications.py` | pytest fast | 5 | pending |
-| `backend/tests/test_search_criteria.py` | pytest fast | 32 | pending |
-| `backend/tests/test_search_service.py` | pytest fast | 90 | pending |
-| `backend/tests/test_search_vectors.py` | pytest fast | 29 | pending |
-| `frontend/test/unit/collectionStats.spec.ts` | Vitest | 18 | pending |
-| `frontend/test/unit/corpusOverview.spec.ts` | Vitest | 44 | pending |
-| `frontend/test/unit/corpusTimeline.spec.ts` | Vitest | 11 | pending |
-| `frontend/test/unit/exploreDocuments.spec.ts` | Vitest | 7 | pending |
-| `frontend/test/unit/exploreHandoff.spec.ts` | Vitest | 9 | pending |
-| `frontend/test/unit/exploreRankedCharts.spec.ts` | Vitest | 9 | pending |
-| `frontend/test/unit/exploreResults.spec.ts` | Vitest | 19 | pending |
-| `frontend/test/unit/exploreVisualizations.spec.ts` | Vitest | 20 | pending |
-| `frontend/test/unit/resultClassifications.spec.ts` | Vitest | 8 | pending |
-| `frontend/test/unit/searchHistory.spec.ts` | Vitest | 42 | pending |
-| `frontend/test/unit/searchResultCard.spec.ts` | Vitest | 11 | pending |
-| `frontend/test/unit/serverQueries.spec.ts` | Vitest | 9 | pending |
+| `backend/tests/integration/test_chunk_have_vector.py` | pytest Weaviate | 3 | keep |
+| `backend/tests/integration/test_collection_analytics.py` | pytest Weaviate | 9 | keep |
+| `backend/tests/integration/test_collection_passages.py` | pytest Weaviate | 9 | keep |
+| `backend/tests/integration/test_corpus_analytics.py` | pytest Weaviate | 23 | keep |
+| `backend/tests/integration/test_document_search.py` | pytest Weaviate | 10 | keep |
+| `backend/tests/integration/test_mcp.py` | pytest Weaviate | 19 | keep (disputed with #853) |
+| `backend/tests/integration/test_ranked_result_analytics.py` | pytest Weaviate | 8 | keep |
+| `backend/tests/integration/test_search.py` | pytest Weaviate | 81 | keep |
+| `backend/tests/integration/test_search_criteria.py` | pytest Weaviate | 36 | keep |
+| `backend/tests/test_candidates.py` | pytest fast | 5 | keep |
+| `backend/tests/test_corpus_analytics.py` | pytest fast | 94 | keep |
+| `backend/tests/test_mcp.py` | pytest fast | 61 | keep (disputed with #853) |
+| `backend/tests/test_search_classifications.py` | pytest fast | 5 | keep |
+| `backend/tests/test_search_criteria.py` | pytest fast | 32 | keep |
+| `backend/tests/test_search_service.py` | pytest fast | 90 | keep |
+| `backend/tests/test_search_vectors.py` | pytest fast | 29 | keep |
+| `frontend/test/unit/collectionStats.spec.ts` | Vitest | 18 | keep |
+| `frontend/test/unit/corpusOverview.spec.ts` | Vitest | 44 | keep |
+| `frontend/test/unit/corpusTimeline.spec.ts` | Vitest | 11 | keep |
+| `frontend/test/unit/exploreDocuments.spec.ts` | Vitest | 7 | keep |
+| `frontend/test/unit/exploreHandoff.spec.ts` | Vitest | 9 | keep |
+| `frontend/test/unit/exploreRankedCharts.spec.ts` | Vitest | 9 | keep |
+| `frontend/test/unit/exploreResults.spec.ts` | Vitest | 19 | keep |
+| `frontend/test/unit/exploreVisualizations.spec.ts` | Vitest | 20 | keep |
+| `frontend/test/unit/resultClassifications.spec.ts` | Vitest | 8 | keep |
+| `frontend/test/unit/searchHistory.spec.ts` | Vitest | 42 | keep |
+| `frontend/test/unit/searchResultCard.spec.ts` | Vitest | 11 | keep |
+| `frontend/test/unit/serverQueries.spec.ts` | Vitest | 9 | keep |
 
 ### #852
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_chunk_document_public.py` | pytest Weaviate | 7 | pending |
-| `backend/tests/integration/test_chunk_ingest.py` | pytest Weaviate | 40 | pending |
-| `backend/tests/integration/test_chunk_positions.py` | pytest Weaviate | 6 | pending |
-| `backend/tests/integration/test_chunk_year.py` | pytest Weaviate | 4 | pending |
-| `backend/tests/integration/test_collection_export.py` | pytest Weaviate | 3 | pending |
-| `backend/tests/integration/test_page_import.py` | pytest Weaviate | 1 | pending |
-| `backend/tests/integration/test_page_layout_anchors.py` | pytest Weaviate | 4 | pending |
-| `backend/tests/integration/test_page_order.py` | pytest Weaviate | 3 | pending |
-| `backend/tests/integration/test_text_upload.py` | pytest Weaviate | 3 | pending |
-| `backend/tests/test_chunk_ingest.py` | pytest fast | 66 | pending |
-| `backend/tests/test_chunk_positions.py` | pytest fast | 10 | pending |
-| `backend/tests/test_chunk_year.py` | pytest fast | 21 | pending |
-| `backend/tests/test_collection_export.py` | pytest fast | 7 | pending |
-| `backend/tests/test_document_service.py` | pytest fast | 60 | pending |
-| `backend/tests/test_page_assets.py` | pytest fast | 45 | pending |
-| `backend/tests/test_page_import.py` | pytest fast | 24 | pending |
-| `backend/tests/test_page_layout.py` | pytest fast | 72 | pending |
-| `backend/tests/test_page_order.py` | pytest fast | 34 | pending |
-| `backend/tests/test_real_pages.py` | pytest fast | 10 | pending |
-| `backend/tests/test_scan_profile.py` | pytest fast | 24 | pending |
-| `backend/tests/test_synthetic_documents.py` | pytest fast | 7 | pending |
-| `backend/tests/test_text_upload.py` | pytest fast | 84 | pending |
-| `backend/tests/test_text_upload_route.py` | pytest fast | 12 | pending |
-| `frontend/test/unit/chunkContext.spec.ts` | Vitest | 43 | pending |
-| `frontend/test/unit/chunkWindow.spec.ts` | Vitest | 6 | pending |
-| `frontend/test/unit/documentImagePane.spec.ts` | Vitest | 13 | pending |
-| `frontend/test/unit/documentRemoval.spec.ts` | Vitest | 17 | pending |
-| `frontend/test/unit/documentText.spec.ts` | Vitest | 3 | pending |
-| `frontend/test/unit/documentTextPane.spec.ts` | Vitest | 11 | pending |
-| `frontend/test/unit/documentWorkspace.spec.ts` | Vitest | 8 | pending |
-| `frontend/test/unit/documentWorkspaceLayout.spec.ts` | Vitest | 10 | pending |
-| `frontend/test/unit/layoutMap.spec.ts` | Vitest | 15 | pending (disputed with #855) |
-| `frontend/test/unit/longPassage.spec.ts` | Vitest | 3 | pending |
-| `frontend/test/unit/originalSource.spec.ts` | Vitest | 27 | pending |
-| `frontend/test/unit/readerCitation.spec.ts` | Vitest | 1 | pending |
-| `frontend/test/unit/readerOffsets.spec.ts` | Vitest | 17 | pending |
-| `frontend/test/unit/readerScanGaps.spec.ts` | Vitest | 4 | pending |
-| `frontend/test/unit/realPages.spec.ts` | Vitest | 7 | pending |
-| `frontend/test/unit/scanGeometry.spec.ts` | Vitest | 25 | pending |
-| `frontend/test/unit/textScanSync.spec.ts` | Vitest | 17 | pending |
-| `frontend/test/unit/textSimilarity.spec.ts` | Vitest | 5 | pending |
-| `frontend/test/unit/textUpload.spec.ts` | Vitest | 11 | pending |
+| `backend/tests/integration/test_chunk_document_public.py` | pytest Weaviate | 7 | keep |
+| `backend/tests/integration/test_chunk_ingest.py` | pytest Weaviate | 40 | **simplify fixture** (#860) |
+| `backend/tests/integration/test_chunk_positions.py` | pytest Weaviate | 6 | keep |
+| `backend/tests/integration/test_chunk_year.py` | pytest Weaviate | 4 | keep |
+| `backend/tests/integration/test_collection_export.py` | pytest Weaviate | 3 | keep |
+| `backend/tests/integration/test_page_import.py` | pytest Weaviate | 1 | keep |
+| `backend/tests/integration/test_page_layout_anchors.py` | pytest Weaviate | 4 | keep |
+| `backend/tests/integration/test_page_order.py` | pytest Weaviate | 3 | keep |
+| `backend/tests/integration/test_text_upload.py` | pytest Weaviate | 3 | keep |
+| `backend/tests/test_chunk_ingest.py` | pytest fast | 66 | keep |
+| `backend/tests/test_chunk_positions.py` | pytest fast | 10 | keep |
+| `backend/tests/test_chunk_year.py` | pytest fast | 21 | keep |
+| `backend/tests/test_collection_export.py` | pytest fast | 7 | keep |
+| `backend/tests/test_document_service.py` | pytest fast | 60 | keep |
+| `backend/tests/test_page_assets.py` | pytest fast | 45 | keep |
+| `backend/tests/test_page_import.py` | pytest fast | 24 | keep |
+| `backend/tests/test_page_layout.py` | pytest fast | 72 | keep |
+| `backend/tests/test_page_order.py` | pytest fast | 34 | keep |
+| `backend/tests/test_real_pages.py` | pytest fast | 10 | keep |
+| `backend/tests/test_scan_profile.py` | pytest fast | 24 | keep |
+| `backend/tests/test_synthetic_documents.py` | pytest fast | 7 | keep |
+| `backend/tests/test_text_upload.py` | pytest fast | 84 | keep |
+| `backend/tests/test_text_upload_route.py` | pytest fast | 12 | **simplify fixture** (`openapi_schema`) |
+| `frontend/test/unit/chunkContext.spec.ts` | Vitest | 43 | keep |
+| `frontend/test/unit/chunkWindow.spec.ts` | Vitest | 6 | keep |
+| `frontend/test/unit/documentImagePane.spec.ts` | Vitest | 13 | keep |
+| `frontend/test/unit/documentRemoval.spec.ts` | Vitest | 17 | keep |
+| `frontend/test/unit/documentText.spec.ts` | Vitest | 3 | keep |
+| `frontend/test/unit/documentTextPane.spec.ts` | Vitest | 11 | keep |
+| `frontend/test/unit/documentWorkspace.spec.ts` | Vitest | 8 | keep |
+| `frontend/test/unit/documentWorkspaceLayout.spec.ts` | Vitest | 10 | keep |
+| `frontend/test/unit/layoutMap.spec.ts` | Vitest | 15 | keep (disputed with #855) |
+| `frontend/test/unit/longPassage.spec.ts` | Vitest | 3 | keep |
+| `frontend/test/unit/originalSource.spec.ts` | Vitest | 27 | keep |
+| `frontend/test/unit/readerCitation.spec.ts` | Vitest | 1 | keep |
+| `frontend/test/unit/readerOffsets.spec.ts` | Vitest | 17 | keep |
+| `frontend/test/unit/readerScanGaps.spec.ts` | Vitest | 4 | keep |
+| `frontend/test/unit/realPages.spec.ts` | Vitest | 7 | keep |
+| `frontend/test/unit/scanGeometry.spec.ts` | Vitest | 25 | keep |
+| `frontend/test/unit/textScanSync.spec.ts` | Vitest | 17 | keep |
+| `frontend/test/unit/textSimilarity.spec.ts` | Vitest | 5 | keep |
+| `frontend/test/unit/textUpload.spec.ts` | Vitest | 11 | keep |
 
 ### #853
 
@@ -498,3 +498,99 @@ cases: 15.7 s.
   with fake-timer transitions.
 
 The full note is [on #850](https://github.com/DCGM/semant-demo/issues/850).
+
+### #851 Search, Explore, classifications and analytics
+
+**Keep everything; no change.** Measured after #848's fixture changes, on the same machine
+and with the same commands as #848:
+
+| Layer | Files | Cases | Time |
+| --- | ---: | ---: | --- |
+| Fast backend | 7 | 316 | 30.4 s (setup 6.0 s) |
+| Real Weaviate | 9 | 198 | 83.7 s (setup 46.6 s) |
+| Vitest | 12 | 207 | 9.3 s (sum of file times) |
+
+`test_mcp.py` (17.2 s) and `test_corpus_analytics.py` (11.6 s) take nearly all of the fast
+time. Their tests are not slow; each starts its own application. A fresh test app costs
+~0.35 s: ~0.15–0.2 s of lifespan, then ~0.15 s on its first request, when FastAPI 0.142
+builds the routes' dependency state (later requests take <1 ms). Sharing one app per
+module would save ~15 s in `test_mcp.py`. ADR 0005 asks for fresh application instances
+per test, and the corpus-analytics HTTP tests check per-app caches, so this stays (#847).
+
+- **Service vs real store:** **keep both layers.** The fast files cover
+  - normalization and validation of the shared criteria,
+  - the Weaviate filters they become,
+  - the cache rules,
+  - the MCP tool projections and bounds.
+
+  The real-store files cover
+  - the store's matching,
+  - aggregation totals,
+  - legacy stores read through aliases,
+  - parity of MCP with the Search page.
+
+  Each fast docstring names its real-store counterpart.
+- **Route validation in `integration/test_search_criteria.py`:** **keep.** This means
+  `test_invalid_search_criteria_are_rejected` and `test_browse_rejects_invalid_document_filters`,
+  8 cases taking 2.6 s. Moving them to the fast layer would add a fresh app for each of
+  them, so ~2.6 s would move into the suite that runs most often.
+- **Parameterized tables:** **keep.** `test_search_service.py` (90 cases, 0.5 s) and
+  `test_search_vectors.py` (29) cost milliseconds.
+- **Waits:**
+  - `test_mcp.py::test_tool_calls_time_out` sleeps in the fake service, under a short
+    configured timeout (0.4 s).
+  - The Vitest `flush()` helpers are zero-delay.
+- **Skips:** none.
+
+`test_mcp.py` (fast and integration) stays here, still disputed with #853. The full note is
+[on #851](https://github.com/DCGM/semant-demo/issues/851).
+
+### #852 Documents, chunks, import/export, pages, scans and text
+
+**One fixture simplified ([#860](https://github.com/DCGM/semant-demo/pull/860)); keep the
+rest.**
+
+| Layer | Files | Cases | Time |
+| --- | ---: | ---: | --- |
+| Fast backend | 14 | 476 | 18.3 s |
+| Real Weaviate | 9 | 71 | 96.8 s; ~41 s with #860 (only `test_chunk_ingest.py` changes) |
+| Vitest | 19 | 243 | 4.2 s (sum of file times) |
+
+- **`integration/test_chunk_ingest.py`:** **simplify fixture** (#860).
+  - Before: `ingest_store` dropped and created three collections and two aliases for each
+    of the 40 tests, taking 64.8 s.
+  - After: it empties and reseeds them, recreating them only when their configuration
+    changed, as `reset_app_collections` does (#686). It takes 15.8 s, measured on the same
+    `origin/main` base with call time unchanged.
+  - The collections are dropped once after the module.
+  - The module passes in normal and reversed order.
+  - With the reset disabled, 39 of the 40 tests error.
+- **`test_text_upload_route.py::test_the_operation_declares_the_multipart_body`:**
+  **simplify fixture.** It reads the shared `openapi_schema` instead of `/openapi.json` of
+  its own app (0.9 s), the 16th test to do so.
+- **Mapping vs persistence:** **keep.** The fast files cover
+  - chunk positions and ingest validation,
+  - page order, layout anchoring and page import,
+  - text chunking,
+  - upload limits.
+
+  The real-store files cover what is stored and read back:
+  - positions,
+  - public flags,
+  - export,
+  - page order,
+  - layout anchors read without the property,
+  - failed uploads never shown.
+- **`test_page_layout.py::test_bit_parallel_edit_distance_agrees_with_dynamic_programming`:**
+  **keep.** It takes 5 × 0.8 s. It is a randomized property check against a plain dynamic
+  programming oracle; fewer cases or a faster oracle would weaken it.
+- **`integration/test_text_upload.py::test_a_failed_upload_is_reported_and_never_shown`:**
+  **keep.** It takes 3.2 s, all of it the production retry backoff (1 s + 2 s). The route
+  reads the module-level `text_upload.DEFAULT_LIMITS`, so removing the wait needs either a
+  patched global or a limits dependency; that is a follow-up (#847).
+- **Vitest:** **keep.**
+  - The `textScanSync` and `chunkContext` waits are zero-delay flushes.
+  - `scanGeometry` delays one layout by 5 ms on purpose, to resolve out of order.
+- **Skips:** none.
+
+The full note is [on #852](https://github.com/DCGM/semant-demo/issues/852).
