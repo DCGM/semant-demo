@@ -33,8 +33,8 @@
       @back="store.returnFromSimilar"
     />
 
+    <!-- In both views: the selection is the workspace's, and the view toggle below stays in place. -->
     <SelectionBar
-      v-if="!statisticsView"
       class="q-mb-xs"
       :selected-count="selection.size"
       :total="store.total"
