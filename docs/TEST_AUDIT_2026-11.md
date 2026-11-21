@@ -765,7 +765,7 @@ The full note is [on #855](https://github.com/DCGM/semant-demo/issues/855).
 
 ### #856 Playwright E2E, capture and cross-layer coverage
 
-**Sign-in setup simplified, four repeated tests removed ([#PR](https://github.com/DCGM/semant-demo/pull/PR)); keep the
+**Sign-in setup simplified, four repeated tests removed ([#866](https://github.com/DCGM/semant-demo/pull/866)); keep the
 rest.** Same machine as #848, `make test-e2e` (one worker, fresh build and store) before and
 after; view captures with `make e2e-dev-capture` (3 viewports):
 
