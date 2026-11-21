@@ -5,38 +5,46 @@ import { spawnSync } from 'child_process'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 const frontend = resolve(__dirname, '../..')
 const which = (tool: string) => spawnSync('bash', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).stdout.trim()
 
 describe('ESLint no-undef', () => {
-  /** Rule ids and messages from linting `code` as `filePath` with the project's ESLint config. */
-  function lint (filePath: string, code: string): { ruleId: string | null, message: string }[] {
-    const result = spawnSync(process.execPath,
-      [join(frontend, 'node_modules/eslint/bin/eslint.js'), '--format', 'json', '--stdin', '--stdin-filename', filePath],
-      { cwd: frontend, input: code, encoding: 'utf8' })
-    const [file] = JSON.parse(result.stdout) as { messages: { ruleId: string | null, message: string }[] }[]
+  // One in-process ESLint with the project's config: the same rules as `npm run lint`,
+  // without starting a Node process per case.
+  type Message = { ruleId: string | null, message: string }
+  type Linter = { lintText (code: string, options: { filePath: string }): Promise<{ messages: Message[] }[]> }
+  let eslint: Linter
+  beforeAll(async () => {
+    const { ESLint } = await import(join(frontend, 'node_modules/eslint/lib/api.js')) as
+      { ESLint: new (options: { cwd: string }) => Linter }
+    eslint = new ESLint({ cwd: frontend })
+  })
+
+  /** Rule ids and messages from linting `code` as `filePath`. */
+  async function lint (filePath: string, code: string): Promise<Message[]> {
+    const [file] = await eslint.lintText(code, { filePath: join(frontend, filePath) })
     return file.messages
   }
-  const undefinedNames = (filePath: string, code: string) =>
-    lint(filePath, code).filter(m => m.ruleId === 'no-undef').map(m => m.message)
+  const undefinedNames = async (filePath: string, code: string) =>
+    (await lint(filePath, code)).filter(m => m.ruleId === 'no-undef').map(m => m.message)
 
-  it('ignores TypeScript type names in .ts files and Vue TypeScript scripts', () => {
-    expect(undefinedNames('src/probe.ts',
+  it('ignores TypeScript type names in .ts files and Vue TypeScript scripts', async () => {
+    expect(await undefinedNames('src/probe.ts',
       "export const init: KeyboardEventInit = { key: 'a' }\n")).toEqual([])
-    expect(undefinedNames('src/components/ProbeComponent.vue',
+    expect(await undefinedNames('src/components/ProbeComponent.vue',
       "<script setup lang=\"ts\">\nconst init: KeyboardEventInit = { key: 'a' }\nconsole.log(init)\n</script>\n\n<template><div /></template>\n"
     )).toEqual([])
   }, 30_000)
 
-  it('still reports an undefined runtime variable in JavaScript', () => {
-    expect(undefinedNames('src/probe.js', 'module.exports = undefinedThing\n'))
+  it('still reports an undefined runtime variable in JavaScript', async () => {
+    expect(await undefinedNames('src/probe.js', 'module.exports = undefinedThing\n'))
       .toEqual(["'undefinedThing' is not defined."])
   }, 30_000)
 
-  it('requires TypeScript component scripts, which the type check covers', () => {
-    const messages = lint('src/components/ProbeComponent.vue', '<script setup>\nconsole.log(1)\n</script>\n\n<template><div /></template>\n')
+  it('requires TypeScript component scripts, which the type check covers', async () => {
+    const messages = await lint('src/components/ProbeComponent.vue', '<script setup>\nconsole.log(1)\n</script>\n\n<template><div /></template>\n')
     expect(messages.map(m => m.ruleId)).toContain('vue/block-lang')
   }, 30_000)
 })
