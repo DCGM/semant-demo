@@ -185,6 +185,8 @@ class SuggestionRun:
         self._release = release
         self.summary: SuggestSpansRunEnd | None = None
         """The final summary once the run ended (also when cancelled; then not sent)."""
+        self.run_id = str(tally.actor.ai_run_id) if tally.actor and tally.actor.ai_run_id else None
+        self.config_name: str | None = None
 
     async def events(self) -> AsyncGenerator[SuggestionEvent, None]:
         try:
@@ -604,8 +606,10 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                     tag_id=tag.id, tag_name=tag.name, max_chunks=provider.max_chunks_per_tag,
                     processed_chunks=len(ids), candidates_truncated=candidates.truncated))
 
-    return SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
-                         hold=lambda: store.activity.in_use(collection_id), release=release)
+    run = SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
+                        hold=lambda: store.activity.in_use(collection_id), release=release)
+    run.config_name = config
+    return run
 
 
 # ── Selection ──────────────────────────────────────────────────────────────
@@ -745,5 +749,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
         if not save_failed:
             tally.completed_calls += 1
 
-    return SuggestionRun(produce, f"selection, collection {collection_id}, document {document_id}", tally,
-                         hold=lambda: store.activity.in_use(collection_id), release=release)
+    run = SuggestionRun(produce, f"selection, collection {collection_id}, document {document_id}", tally,
+                        hold=lambda: store.activity.in_use(collection_id), release=release)
+    run.config_name = config
+    return run

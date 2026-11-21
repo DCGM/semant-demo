@@ -14,8 +14,7 @@
 
 import { mapValues } from '../runtime';
 /**
- * Request body for bulk deletion of unresolved AI proposals
- * (``type == auto``) within a single (collection, document) scope.
+ * Delete unresolved suggestions by tag (Clear unresolved) or by selected span ids.
  * @export
  * @interface DeleteAutoSpansRequest
  */
@@ -39,13 +38,13 @@ export interface DeleteAutoSpansRequest {
      */
     tagIds?: Array<string> | null;
     /**
-     * IDs of selected unresolved suggestions, instead of tagIds.
+     * 
      * @type {Array<string>}
      * @memberof DeleteAutoSpansRequest
      */
     spanIds?: Array<string> | null;
     /**
-     * Optional known edit versions for conflict detection.
+     * 
      * @type {{ [key: string]: number; }}
      * @memberof DeleteAutoSpansRequest
      */

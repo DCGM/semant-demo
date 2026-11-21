@@ -16,6 +16,7 @@
 import * as runtime from '../runtime';
 import type {
   AdjacentChunks,
+  AiSuggestionRunInfo,
   AnnotatedDocument,
   AnnotationCounts,
   AnnotationExportRequest,
@@ -119,6 +120,8 @@ import type {
 import {
     AdjacentChunksFromJSON,
     AdjacentChunksToJSON,
+    AiSuggestionRunInfoFromJSON,
+    AiSuggestionRunInfoToJSON,
     AnnotatedDocumentFromJSON,
     AnnotatedDocumentToJSON,
     AnnotationCountsFromJSON,
@@ -593,6 +596,11 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     k?: number;
     similarTo?: string | null;
     includeSource?: boolean;
+}
+
+export interface ListSuggestionRunsApiAiSuggestionRunsGetRequest {
+    collectionId: string;
+    documentId: string;
 }
 
 export interface QuestionApiQuestionPostRequest {
@@ -1315,7 +1323,7 @@ export interface DefaultApiInterface {
     deleteAutoSpansApiAiAutoSpansDeletePostRequestOpts(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
+     * Delete unresolved AI spans by tag (legacy cleanup) or explicitly selected ids.
      * @summary Delete Auto Spans
      * @param {DeleteAutoSpansRequest} deleteAutoSpansRequest 
      * @param {*} [options] Override http request option.
@@ -1325,7 +1333,7 @@ export interface DefaultApiInterface {
     deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>>;
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
+     * Delete unresolved AI spans by tag (legacy cleanup) or explicitly selected ids.
      * Delete Auto Spans
      */
     deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse>;
@@ -2236,6 +2244,32 @@ export interface DefaultApiInterface {
      * List Collection Annotations
      */
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
+
+    /**
+     * Creates request options for listSuggestionRunsApiAiSuggestionRunsGet without sending the request
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listSuggestionRunsApiAiSuggestionRunsGetRequestOpts(requestParameters: ListSuggestionRunsApiAiSuggestionRunsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Read run history for an accessible collection/document, newest first.
+     * @summary List Suggestion Runs
+     * @param {string} collectionId 
+     * @param {string} documentId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listSuggestionRunsApiAiSuggestionRunsGetRaw(requestParameters: ListSuggestionRunsApiAiSuggestionRunsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AiSuggestionRunInfo>>>;
+
+    /**
+     * Read run history for an accessible collection/document, newest first.
+     * List Suggestion Runs
+     */
+    listSuggestionRunsApiAiSuggestionRunsGet(requestParameters: ListSuggestionRunsApiAiSuggestionRunsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AiSuggestionRunInfo>>;
 
     /**
      * Creates request options for questionApiQuestionPost without sending the request
@@ -4450,7 +4484,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
+     * Delete unresolved AI spans by tag (legacy cleanup) or explicitly selected ids.
      * Delete Auto Spans
      */
     async deleteAutoSpansApiAiAutoSpansDeletePostRaw(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<DeleteAutoSpansResponse>> {
@@ -4461,7 +4495,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Bulk-delete unresolved AI proposals (``type == \'auto\'``) within a single (collection, document) for the given tag UUIDs.  Useful for cleaning up suggestions the user did not get around to approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and ``failed`` those that could not be deleted (``delete_span``).
+     * Delete unresolved AI spans by tag (legacy cleanup) or explicitly selected ids.
      * Delete Auto Spans
      */
     async deleteAutoSpansApiAiAutoSpansDeletePost(requestParameters: DeleteAutoSpansApiAiAutoSpansDeletePostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DeleteAutoSpansResponse> {
@@ -6435,6 +6469,72 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage> {
         const response = await this.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listSuggestionRunsApiAiSuggestionRunsGet without sending the request
+     */
+    async listSuggestionRunsApiAiSuggestionRunsGetRequestOpts(requestParameters: ListSuggestionRunsApiAiSuggestionRunsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling listSuggestionRunsApiAiSuggestionRunsGet().'
+            );
+        }
+
+        if (requestParameters['documentId'] == null) {
+            throw new runtime.RequiredError(
+                'documentId',
+                'Required parameter "documentId" was null or undefined when calling listSuggestionRunsApiAiSuggestionRunsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['collectionId'] != null) {
+            queryParameters['collection_id'] = requestParameters['collectionId'];
+        }
+
+        if (requestParameters['documentId'] != null) {
+            queryParameters['document_id'] = requestParameters['documentId'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/ai/suggestion_runs`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Read run history for an accessible collection/document, newest first.
+     * List Suggestion Runs
+     */
+    async listSuggestionRunsApiAiSuggestionRunsGetRaw(requestParameters: ListSuggestionRunsApiAiSuggestionRunsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AiSuggestionRunInfo>>> {
+        const requestOptions = await this.listSuggestionRunsApiAiSuggestionRunsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AiSuggestionRunInfoFromJSON));
+    }
+
+    /**
+     * Read run history for an accessible collection/document, newest first.
+     * List Suggestion Runs
+     */
+    async listSuggestionRunsApiAiSuggestionRunsGet(requestParameters: ListSuggestionRunsApiAiSuggestionRunsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AiSuggestionRunInfo>> {
+        const response = await this.listSuggestionRunsApiAiSuggestionRunsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

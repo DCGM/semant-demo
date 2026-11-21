@@ -178,6 +178,26 @@ test('the model picked in the panel is used and remembered (#189)', async ({ pag
   await expect(page.getByTestId('ai-model-select')).toContainText('fake-local')
 })
 
+test('AI suggestion runs stay identifiable after a reload (#801)', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await startPersonRun(page)
+  await expect(suggestionCards(page)).toHaveCount(1)
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  const chooser = page.getByTestId('ai-run-filter')
+  await expect(chooser).toBeVisible()
+  await expect(page.getByTestId('ai-suggestion-run').first()).toContainText('llm-openrouter')
+  await chooser.click()
+  await expect(page.getByRole('option', { name: /llm-openrouter/ }).first()).toBeVisible()
+  await page.getByRole('option', { name: /llm-openrouter/ }).first().click()
+  await expect(suggestionCards(page)).toHaveCount(1)
+
+  await page.reload()
+  await sidebarPanelButton(page, 'AI Tagging').click()
+  await expect(page.getByTestId('ai-suggestion-run').first()).toContainText('llm-openrouter')
+})
+
 test('proposal filters preserve hidden selection and AI-run tags (#465)', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')

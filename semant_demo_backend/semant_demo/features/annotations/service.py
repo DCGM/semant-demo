@@ -320,7 +320,8 @@ async def save_span(store: AnnotationStore, collection_id: UUID, document_id: UU
     if refresh is not None:
         failed += refresh.failures + await refresh_vector(store, collection_id, span_id, refresh)
     return _write_result(TagSpan(id=str(span_id), **span.model_dump(),
-                                 createdAt=created["createdAt"] if created else None), failed)
+                                 createdAt=created["createdAt"] if created else None,
+                                 aiRunId=str(actor.ai_run_id) if created and actor and actor.ai_run_id else None), failed)
 
 
 async def create_span(store: AnnotationStore, user: Principal | None, span: PostSpan) -> TagSpanWriteResult:

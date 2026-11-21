@@ -77,6 +77,8 @@ class TagSpan(BaseModel):
     confidence: float | None = None
     # Actual #460 provenance only; None for legacy annotations/collections without it.
     createdAt: datetime | None = None
+    aiRunId: str | None = None
+    """AI run provenance; None when this annotation predates the provenance schema."""
     editVersion: int = 0
     """Span writes (type, tag, offsets) since creation (#460); 0 for spans never written
     since. Sent back as ``expected_version`` so a collaborator's intervening write is
@@ -859,6 +861,18 @@ class TagSpanBatchRequest(BaseModel):
 ##################
 # AI suggestions #
 ##################
+
+class AiSuggestionRunInfo(BaseModel):
+    """Persisted run metadata; also exists for runs with no surviving suggestions."""
+    id: str
+    mode: Literal["optimized", "thorough", "selection"]
+    config_name: str
+    tag_ids: list[str]
+    started_at: datetime
+    finished_at: datetime | None = None
+    outcome: str = "running"
+    saved: int = 0
+
 
 class SuggestSpansRequest(BaseModel):
     """Request body for AI span suggestion endpoints."""

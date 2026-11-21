@@ -20,6 +20,7 @@ Name | Type
 `reason` | string
 `confidence` | number
 `createdAt` | Date
+`aiRunId` | string
 `editVersion` | number
 `attributeVersion` | number
 
@@ -43,6 +44,7 @@ const example = {
   "reason": null,
   "confidence": null,
   "createdAt": null,
+  "aiRunId": null,
   "editVersion": null,
   "attributeVersion": null,
 } satisfies TagSpanWriteResult

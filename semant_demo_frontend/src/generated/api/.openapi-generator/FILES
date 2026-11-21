@@ -3,6 +3,7 @@ apis/DefaultApi.ts
 apis/UsersApi.ts
 apis/index.ts
 docs/AdjacentChunks.md
+docs/AiSuggestionRunInfo.md
 docs/AnnotatedDocument.md
 docs/AnnotationCounts.md
 docs/AnnotationExportRequest.md
@@ -185,6 +186,7 @@ docs/YearBin.md
 docs/YearCount.md
 index.ts
 models/AdjacentChunks.ts
+models/AiSuggestionRunInfo.ts
 models/AnnotatedDocument.ts
 models/AnnotationCounts.ts
 models/AnnotationExportRequest.ts

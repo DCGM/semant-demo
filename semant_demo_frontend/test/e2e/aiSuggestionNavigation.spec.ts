@@ -32,7 +32,7 @@ test('gutter navigation scrolls the outer sidebar to a deep virtualized suggesti
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
-  await expect(page.getByTestId('proposal-match-count')).toContainText('121 of 121 matching')
+  await expect(page.getByTestId('proposal-match-count')).toContainText('121 matches')
   await expect(page.locator(`[data-suggestion-id="${targetId}"]`)).toHaveCount(0)
 
   // Expanded controls push the suggestion viewport below the outer sidebar fold.
@@ -83,5 +83,5 @@ test('gutter navigation scrolls the outer sidebar to a deep virtualized suggesti
   await expect.poll(() => sidebar.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
   await expect.poll(cardFullyVisible).toBe(true)
   await expect(card.getByTestId('proposal-highlight')).toBeFocused()
-  await expect(page.getByTestId('proposal-selection-count')).toContainText('0 / 121 visible selected')
+  await expect(page.getByTestId('proposal-selection-count')).toContainText('0 selected')
 })

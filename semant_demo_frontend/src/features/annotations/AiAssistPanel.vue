@@ -201,6 +201,19 @@
 
     <q-separator class="q-my-xs" />
 
+    <div class="ai-run-history q-mb-sm" data-testid="ai-run-history">
+      <q-select
+        v-model="selectedRunId"
+        :options="runOptions"
+        emit-value map-options dense outlined options-dense
+        label="AI run / model" data-testid="ai-run-filter"
+      />
+      <div v-if="runHistoryLoading" class="text-caption text-grey-7" role="status">Loading run history…</div>
+      <div v-else-if="runHistoryError" class="text-caption text-negative" role="status">
+        Run history unavailable; all suggestions remain visible.
+      </div>
+    </div>
+
     <div class="ai-section-label">
       Pending suggestions
       <span class="text-caption text-grey-6 q-ml-xs">({{ pendingAutoSpans.length }})</span>
@@ -488,8 +501,10 @@
             </q-btn>
           </div>
           <div class="auto-span-created" data-testid="ai-suggestion-created">
-            <q-icon name="schedule" size="13px" aria-hidden="true" />
-            <span>Created: {{ formatSuggestionCreatedAt(entry.span) }}</span>
+            <span><strong>Created:</strong> {{ formatSuggestionCreatedAt(entry.span) }}</span>
+          </div>
+          <div class="auto-span-created" data-testid="ai-suggestion-run">
+            <span><strong>Run:</strong> {{ suggestionRunName(entry.span.aiRunId) }}</span>
           </div>
           <div v-if="entry.span.reason" class="auto-span-explanation">
             <div class="auto-span-explanation-label" data-testid="ai-suggestion-explanation-label">Explanation</div>
@@ -521,6 +536,7 @@ import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/s
 import { errorNotification } from 'src/shared/notification'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useChunksStore } from 'src/features/documents/chunksStore'
+import { loadAiRunHistory, matchesAiRun, type AiSuggestionRunInfo } from './aiRunHistory'
 import {
   filterAndSortSuggestions, formatSuggestionCreatedAt, toggleVisibleSuggestions,
   type ProposalSort, type ProposalTextPosition
@@ -784,6 +800,9 @@ async function onRunAi() {
   // Not for another document opened meanwhile.
   if (!confirmed || req.collectionId !== props.collectionId || req.documentId !== props.documentId) return
   await aiAssist.run(req)
+  if (req.collectionId === props.collectionId && req.documentId === props.documentId) {
+    await refreshRunHistory()
+  }
 }
 
 interface AutoSpanEntry {
@@ -805,6 +824,54 @@ const pendingAutoSpans = computed<AutoSpanEntry[]>(() =>
     tag: tagsById.value[span.tagId]
   }))
 )
+
+const aiRuns = ref<AiSuggestionRunInfo[]>([])
+const selectedRunId = ref<string | null>(null)
+const runHistoryLoading = ref(false)
+const runHistoryError = ref(false)
+let runHistoryRequest = 0
+
+async function refreshRunHistory () {
+  const request = ++runHistoryRequest
+  const { collectionId, documentId } = props
+  runHistoryLoading.value = true
+  runHistoryError.value = false
+  try {
+    const history = await loadAiRunHistory(collectionId, documentId)
+    if (request !== runHistoryRequest || collectionId !== props.collectionId ||
+      documentId !== props.documentId) return
+    aiRuns.value = history
+  } catch (e) {
+    if (request !== runHistoryRequest) return
+    console.error('Could not load AI run history', e)
+    runHistoryError.value = true
+    selectedRunId.value = null // Never hide suggestions when history is unavailable.
+  } finally {
+    if (request === runHistoryRequest) runHistoryLoading.value = false
+  }
+}
+
+onMounted(() => { void refreshRunHistory() })
+onBeforeUnmount(() => { runHistoryRequest++ })
+const knownRunIds = computed(() => new Set(aiRuns.value.map((run) => run.id)))
+const legacyCount = computed(() => pendingAutoSpans.value.filter((entry) =>
+  matchesAiRun(entry.span.aiRunId, 'legacy', knownRunIds.value)).length)
+function suggestionRunName (runId: string | null | undefined): string {
+  const run = aiRuns.value.find((item) => item.id === runId)
+  return run ? `${run.config_name} · ${run.mode}` : 'Unknown / legacy'
+}
+function runLabel (run: AiSuggestionRunInfo): string {
+  const date = new Date(run.started_at)
+  const when = Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Date unavailable'
+  return `${when} · ${run.config_name} · ${run.mode} (${run.outcome})`
+}
+const runOptions = computed(() => [
+  { label: 'All runs', value: null },
+  ...aiRuns.value.map((run) => ({ label: runLabel(run), value: run.id })),
+  ...(legacyCount.value ? [{ label: `Unknown / legacy (${legacyCount.value})`, value: 'legacy' }] : [])
+])
+const runFilteredSuggestions = computed(() => pendingAutoSpans.value.filter((entry) =>
+  matchesAiRun(entry.span.aiRunId, selectedRunId.value, knownRunIds.value)))
 
 // UI-only sections; collapsing must not change filters or the selected IDs.
 const pendingSuggestionsOpen = ref(true)
@@ -947,6 +1014,7 @@ function setProposalReason(value: string | number | null) {
 
 function resetProposalFilters() {
   revealedSuggestion.value = false
+  selectedRunId.value = null
   proposalTagId.value = null
   proposalReasonQuery.value = ''
   minimumConfidencePercent.value = null
@@ -956,7 +1024,7 @@ function resetProposalFilters() {
 // selection or highlighted ID, so card actions don't re-run the whole sort.
 const visibleSuggestions = computed<AutoSpanEntry[]>(() => {
   if (documentOrderUnavailable.value) return []
-  return filterAndSortSuggestions(pendingAutoSpans.value,
+  return filterAndSortSuggestions(runFilteredSuggestions.value,
     {
       tagId: proposalTagId.value,
       reason: proposalReasonQuery.value,
@@ -1207,6 +1275,9 @@ watch(
     busyAutoSpanIds.value = new Set()
     proposalSort.value = 'confidence'
     proposalDescending.value = true
+    selectedRunId.value = null
+    aiRuns.value = []
+    void refreshRunHistory()
     resetProposalFilters()
     pendingSuggestionsOpen.value = true
     proposalFiltersOpen.value = false
