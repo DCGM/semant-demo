@@ -106,7 +106,7 @@ first; `create_vector: true` adds the vector to the configured collection on the
 
 ## How it works
 
-1. The collection must declare `haveVector`; otherwise the run is refused before any change. The named vector is created in the schema if it's missing (`create_vector`).
+1. The collection must declare `haveVector`; otherwise the run is refused before any change. The named vector is created in the schema if it's missing (`create_vector`). The Weaviate client skips its version lookup on pypi.org and its gRPC ping, as the backend does (#798); these schema steps use REST, so before it creates a missing vector the run reads one record over gRPC and stops with a `ConnectionError` when that fails (e.g. a wrong `weaviate_grpc_port`).
 2. The run reads again and again the first `scan_batch_size` records with `haveVector contains_none([name])`, with their properties and the target vector. A record written leaves the selection; the records read and not yet written (being embedded or written, or with an empty input) are left out of the next query by id (`by_id().contains_none`). A record that already stores the vector gets only the name before the next query. Weaviate's cursor (`after`) cannot be combined with a filter, and keyset paging (sorted by `_id`) costs minutes a page when most records are selected (measured in #816). On an older copy of production (8.3 M chunks, Weaviate 1.34) a query took about 0.03 s when 1000 chunks were selected, 0.07 s when all were, and 0.15 s with all selected and 5000 ids left out.
    When more than `max_excluded` ids would be left out (many empty inputs, or `--check`, which writes nothing), the rest is read with the cursor: `scan_batch_size` ids and `haveVector` lists per request, and the records of each page lacking the name again by id (`by_id().contains_any`) with their properties and the vector. On the copy the cursor alone reads the whole collection in about 19–21 minutes, against 34–38 for reading every record with the vector; when every record is selected, the reads by id come on top.
 3. The texts are rendered with `input_template` and sent in requests of `embed_batch_size` texts to the embedder, with up to `max_concurrent_requests` requests in flight. Records whose rendered text is empty are skipped; they stay selected and every run reports them.
@@ -151,7 +151,8 @@ A new embedder backend can be added by subclassing `Embedder` and implementing `
 `semant_demo_backend/tests/integration/test_embedder_tool.py` runs the pipeline against the
 test-owned Weaviate (`make test-integration`, and in CI) with a fake OpenAI-compatible
 endpoint: vector creation, preservation of properties, references and other vectors,
-resuming, write failures, refused collections (also without `haveVector`), the guarded test
+resuming, write failures, refused collections (also without `haveVector`), an unreachable gRPC
+port before the vector is created, the guarded test
 collection, Search over the filled vector, the read-only `--check` and the selection by
 `haveVector` (only records lacking the name are read, empty inputs beyond `max_excluded` are
 read with the cursor, a stored vector gets only the name, a chunk inserted by `chunk_ingest` is
