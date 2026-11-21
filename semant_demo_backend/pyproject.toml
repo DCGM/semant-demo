@@ -36,6 +36,7 @@ markers = [
   "integration: requires isolated local infrastructure",
   "live: explicitly authorized external provider test",
   "benchmark: controlled performance measurement",
+  "sqlite_durable: SQLite databases keep their production synchronization setting (no PRAGMA synchronous=OFF)",
 ]
 
 [tool.ruff]

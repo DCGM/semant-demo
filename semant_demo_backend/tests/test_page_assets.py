@@ -337,10 +337,10 @@ async def test_without_an_asset_directory_every_document_is_text_only(tmp_path):
     assert image.status_code == 404
 
 
-def test_page_reads_need_no_login_and_take_a_collection(tmp_path):
+def test_page_reads_need_no_login_and_take_a_collection(openapi_schema):
     """Assets are loaded by the browser without a token; the manifest and page chunks take an
     optional login and ``collection_id`` (#279), and are answered anonymously (tests above)."""
-    paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
+    paths = openapi_schema["paths"]
 
     assert "security" not in paths["/api/documents/{document_id}/pages/{page_id}/{kind}"]["get"]
     for path in ("/api/documents/{document_id}/pages", "/api/documents/{document_id}/chunks/by_page"):
