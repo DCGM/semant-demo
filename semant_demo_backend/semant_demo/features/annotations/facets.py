@@ -187,14 +187,13 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
         async def scope_of(facet: str) -> _Scope:
             return await _lexical_scope(store, cid, _without(request, facet))
     else:
-        # One population for every facet (#818): read once, shared by all facets.
-        shared: asyncio.Task[_Scope] | None = None
+        # One population for every facet (#818), read once before any facet. A refusal of the population
+        # itself (a proximity match or document filters over their limits) fails the whole request: it
+        # is no empty population, and leaving every facet out would read as zero annotations.
+        shared = await _lexical_scope(store, cid, request)
 
         async def scope_of(_: str) -> _Scope:
-            nonlocal shared
-            if shared is None:
-                shared = asyncio.ensure_future(_lexical_scope(store, cid, request))
-            return await shared
+            return shared
 
     async def one(facet: str) -> Facet | None:
         try:
@@ -202,6 +201,7 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
         except InvalidRequestError:
             # Annotations in more than 10,000 documents: a count that needs the documents cannot be made (the
             # filters of #663 refuse that too), the others still can. Left out; the menu shows no counts.
+            # (With self_exclusion false the population is read before, so only such a facet is left out.)
             return None
 
     async def counted(facet: str) -> Facet:
