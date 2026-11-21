@@ -146,6 +146,19 @@ export function denominatorText (statistics: AnnotationFacets, total: number): s
   return `of all ${n} annotations matching the query`
 }
 
+/** The numbers of the statistics' summary line: total, distinct documents (null: not counted) and the
+ * denominator of every share. */
+export function summaryOf (statistics: AnnotationFacets) {
+  const total = statistics.facets[0]?.total ?? 0
+  return {
+    total,
+    documents: facetOf(statistics, 'document')?.distinct ?? null,
+    topK: isTopK(statistics),
+    k: statistics.k ?? null,
+    denominator: denominatorText(statistics, total)
+  }
+}
+
 /** How many rows a distribution's card shows; its detail lists all of them. */
 export const CARD_ROWS = 8
 

@@ -4,9 +4,9 @@
     <thead class="sr-only">
       <tr>
         <th scope="col">{{ title }}</th>
+        <td aria-hidden="true" />
         <th scope="col">Annotations</th>
         <th scope="col">Share</th>
-        <td aria-hidden="true" />
       </tr>
     </thead>
     <tbody>
@@ -16,19 +16,22 @@
             v-if="row.drill"
             type="button"
             class="distribution-table__link"
-            :title="`List the ${formatCount(row.count)} annotations of ${row.label}`"
+            :title="`${row.label}: list its ${formatCount(row.count)} annotations`"
             :data-testid="`${testId}-show-${row.key}`"
             @click="emit('drill', row.drill)"
-          >{{ row.label }}</button>
-          <span v-else :title="row.kind === 'missing' ? 'The annotation list has no filter for a missing value' : undefined">{{ row.label }}</span>
+          ><span class="distribution-table__text">{{ row.label }}</span></button>
+          <span
+            v-else class="distribution-table__text"
+            :title="row.kind === 'missing' ? 'The annotation list has no filter for a missing value' : row.label"
+          >{{ row.label }}</span>
         </th>
-        <td class="distribution-table__count">{{ formatCount(row.count) }}</td>
-        <td class="distribution-table__share">{{ formatShare(row.share) }}</td>
         <td class="distribution-table__bar-cell" aria-hidden="true">
           <span class="distribution-table__bar">
             <span class="distribution-table__fill" :style="{ width: `${barWidth(row)}%` }" />
           </span>
         </td>
+        <td class="distribution-table__count">{{ formatCount(row.count) }}</td>
+        <td class="distribution-table__share">{{ formatShare(row.share) }}</td>
       </tr>
     </tbody>
   </table>
@@ -37,8 +40,8 @@
 <script setup lang="ts">
 /**
  * Rows of one distribution (#818) as a table, one line each: the label (a button listing its
- * annotations when it has a drill-down), the count, the share of the named denominator and a bar
- * scaled to the largest row. One accessible element: the bars are decoration of the numbers beside them.
+ * annotations when it has a drill-down; a long one is shortened, in full in its tooltip), a bar
+ * scaled to the largest row right beside it, the count and the share of the named denominator. One accessible element: the bars are decoration of the numbers beside them.
  */
 import { computed } from 'vue'
 import type { ConcordanceFilters } from '../concordance/concordanceStore'
@@ -73,14 +76,22 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
 .distribution-table__label {
   font-weight: 400;
   text-align: left;
-  width: 38%;
+  white-space: nowrap;
+  width: 1%;
   padding-right: 12px !important;
-  overflow-wrap: anywhere;
+}
+
+/* As wide as the label needs, at most this; the bar takes the rest. */
+.distribution-table__text {
+  display: block;
+  max-width: var(--label-width, 14rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .distribution-table__bar-cell {
-  width: 62%;
-  padding-left: 16px !important;
+  width: 100%;
+  min-width: 60px;
 }
 
 .distribution-table__count,
@@ -101,6 +112,7 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
   border: 0;
   padding: 0;
   font: inherit;
+  max-width: 100%;
   color: var(--q-primary);
   cursor: pointer;
   text-align: left;
