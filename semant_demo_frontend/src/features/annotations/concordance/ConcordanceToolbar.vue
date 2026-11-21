@@ -157,23 +157,25 @@
           </q-input>
         </div>
 
-        <q-btn
-          outline
-          dense
-          no-caps
-          color="primary"
-          :icon="moreOpen ? 'expand_less' : 'tune'"
-          :label="moreFilterCount ? `More filters (${moreFilterCount})` : 'More filters'"
-          class="concordance-toolbar__more-button"
-          aria-controls="concordance-more-filters"
-          :aria-expanded="moreOpen ? 'true' : 'false'"
-          data-testid="concordance-more-filters"
-          @click="toggleMore"
-        >
-          <q-tooltip>Sources, years, document title, library, language and attributes</q-tooltip>
-        </q-btn>
-        <!-- Saved filters of the collection (#824). -->
-        <slot name="saved" />
+        <!-- More filters and the collection's saved filters (#824) form one group: both act on all filters. -->
+        <q-btn-group outline class="concordance-toolbar__more-group">
+          <q-btn
+            outline
+            dense
+            no-caps
+            color="primary"
+            :icon="moreOpen ? 'expand_less' : 'tune'"
+            :label="moreFilterCount ? `More filters (${moreFilterCount})` : 'More filters'"
+            class="concordance-toolbar__more-button"
+            aria-controls="concordance-more-filters"
+            :aria-expanded="moreOpen ? 'true' : 'false'"
+            data-testid="concordance-more-filters"
+            @click="toggleMore"
+          >
+            <q-tooltip>Sources, years, document title, library, language and attributes</q-tooltip>
+          </q-btn>
+          <slot name="saved" />
+        </q-btn-group>
       </div>
 
       <div
@@ -902,6 +904,10 @@ const shownLabel = computed(() => {
   white-space: nowrap;
 }
 
+.concordance-toolbar__more-group {
+  flex: 0 0 auto;
+}
+
 .concordance-toolbar__more-button {
   min-height: 40px;
   flex: 0 0 auto;
@@ -1184,8 +1190,12 @@ const shownLabel = computed(() => {
 
   .concordance-toolbar__tags,
   .concordance-toolbar__status,
-  .concordance-toolbar__more-button {
+  .concordance-toolbar__more-group {
     flex: 1 1 100%;
+  }
+
+  .concordance-toolbar__more-button {
+    flex: 1 1 auto;
   }
 
   .concordance-toolbar__status :deep(.q-btn) {

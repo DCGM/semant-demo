@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 
-import SavedFiltersMenu from 'src/features/annotations/concordance/SavedFiltersMenu.vue'
+import SavedFilterHeader from 'src/features/annotations/concordance/SavedFilterHeader.vue'
 
 import { defaultFilters, useConcordanceStore, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
 import {
@@ -178,6 +178,11 @@ describe('saved filters store', () => {
     expect(store.modified).toBe(false)
 
     concordance.shownAttributeIds = ['attr-1']
+    await concordance.setFilters({ text: 'Brno' })
+    await store.discard() // back to the filters as saved
+    expect(concordance.filters).toMatchObject({ tagIds: ['tag-1'], text: 'Praha' })
+    expect(store.modified).toBe(false)
+
     await store.close() // the open one clicked again: back to the default filters and columns
     expect(store.activeId).toBeNull()
     expect(concordance.filters).toEqual(defaultFilters())
@@ -242,33 +247,38 @@ describe('saved filters store', () => {
   })
 })
 
-describe('saved filters menu button', () => {
+describe('open saved filter header', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
-  const button = () => mount(SavedFiltersMenu, {
-    props: { collectionId: 'col-1', tags: TAGS, attributes: [ATTRIBUTE], people: [], me: 'u1' },
+  const header = () => mount(SavedFilterHeader, {
+    props: { tags: TAGS, attributes: [ATTRIBUTE] },
     global: { plugins: [[Quasar, {}]] }
   })
-  const find = (wrapper: ReturnType<typeof button>, id: string) => wrapper.find(`[data-testid="${id}"]`)
+  const find = (wrapper: ReturnType<typeof header>, id: string) => wrapper.find(`[data-testid="${id}"]`)
 
-  it('names the open saved filter, marks changes and deleted references, and takes no row of its own', async () => {
+  it('appears only for an open saved filter and shows whether it changed, what is deleted and who may save', async () => {
     const concordance = useConcordanceStore()
     const store = useSavedFiltersStore()
-    const wrapper = button()
-    expect(find(wrapper, 'saved-filters-label').text()).toBe('Saved filters')
-    expect(find(wrapper, 'saved-filters-modified').exists()).toBe(false)
+    const wrapper = header()
+    expect(find(wrapper, 'saved-filter-header').exists()).toBe(false)
 
     store.items = [saved('s1', 'Praha', { text: 'Praha', tagIds: ['gone-tag'] })]
     store.activeId = 's1'
     concordance.filters = filtersOf(store.items[0]!.query!)
     await wrapper.vm.$nextTick()
-    expect(find(wrapper, 'saved-filters-label').text()).toBe('Praha')
-    expect(find(wrapper, 'saved-filters-modified').exists()).toBe(false)
-    expect(find(wrapper, 'saved-filters-warning-icon').exists()).toBe(true) // names a deleted tag
+    expect(find(wrapper, 'saved-filter-name').text()).toBe('Praha')
+    expect(find(wrapper, 'saved-filter-status').text()).toMatch(/Saved$/)
+    expect(find(wrapper, 'saved-filter-save').exists()).toBe(false)
+    expect(find(wrapper, 'saved-filter-warning').exists()).toBe(true) // names a deleted tag
 
     concordance.filters = filters({ text: 'Brno' })
     await wrapper.vm.$nextTick()
-    expect(find(wrapper, 'saved-filters-modified').exists()).toBe(true)
+    expect(find(wrapper, 'saved-filter-status').text()).toBe('Unsaved changes')
+    expect(find(wrapper, 'saved-filter-save').attributes('disabled')).toBeUndefined()
+    expect(find(wrapper, 'saved-filter-discard').exists()).toBe(true)
+    store.items = [saved('s1', 'Praha', { text: 'Praha' }, { canEdit: false })]
+    await wrapper.vm.$nextTick()
+    expect(find(wrapper, 'saved-filter-save').attributes('disabled')).toBeDefined() // only its creator and the owner
     wrapper.unmount()
   })
 })

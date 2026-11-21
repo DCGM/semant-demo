@@ -1,5 +1,7 @@
 <template>
   <q-page class="collection-annotations q-px-md q-pb-lg" data-testid="collection-annotations">
+    <SavedFilterHeader :tags="tags" :attributes="attributesStore.attributes" />
+
     <ConcordanceToolbar
       ref="toolbar"
       :filters="store.filters"
@@ -16,8 +18,6 @@
       <template #saved>
         <SavedFiltersMenu
           :collection-id="collectionId"
-          :tags="tags"
-          :attributes="attributesStore.attributes"
           :people="store.people"
           :me="userStore.getUserId ?? null"
         />
@@ -466,6 +466,7 @@ import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotat
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import SimilarSourceBar from './SimilarSourceBar.vue'
 import SavedFiltersMenu from './SavedFiltersMenu.vue'
+import SavedFilterHeader from './SavedFilterHeader.vue'
 import { useSavedFiltersStore } from './savedFiltersStore'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'

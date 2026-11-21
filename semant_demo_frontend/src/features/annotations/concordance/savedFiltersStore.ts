@@ -121,6 +121,12 @@ export const useSavedFiltersStore = defineStore('savedFilters', () => {
     await concordance.setFilters(filtersOf(selection.query))
   }
 
+  /** Shows the open saved filter as saved again, dropping the changes made since. */
+  async function discard () {
+    const selection = active.value
+    if (selection) await open(selection)
+  }
+
   /** Closes the open saved filter: the workspace returns to the default filters and columns. */
   async function close () {
     activeId.value = null
@@ -138,5 +144,5 @@ export const useSavedFiltersStore = defineStore('savedFilters', () => {
     activeId.value = null
   }
 
-  return { collectionId, items, loading, error, activeId, active, modified, load, saveAs, update, rename, remove, open, close, clear }
+  return { collectionId, items, loading, error, activeId, active, modified, load, saveAs, update, rename, remove, open, discard, close, clear }
 })
