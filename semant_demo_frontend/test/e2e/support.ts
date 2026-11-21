@@ -25,7 +25,10 @@ export const fixture = {
 // - Every test sets up its own state (viewport, session, search); none relies on another
 //   test or on test order. Helpers are idempotent: call them from any starting state.
 // - They act through the UI as a user would and wait on visible state, never on sleeps,
-//   retries or `force` clicks; a missing control fails with a message naming it.
+//   retries or `force` clicks; a missing control fails with a message naming it. The one
+//   exception is signing a fresh page in: it starts with a stored session (as after a
+//   reload) instead of filling the login dialog, which smoke, navigation and supportHelpers
+//   test. The dialog took ~1.3 s of a typical test (#856).
 // - Use them for setup. Keep the behavior a test is about spelled out in the test.
 //
 //   await useViewport(page, 'phone')
@@ -76,6 +79,22 @@ async function expectSignedIn (page: Page, signedIn: boolean): Promise<void> {
  */
 export async function ensureLoggedIn (page: Page, userKey: string): Promise<void> {
   const user = fixture.user(userKey)
+  if (!page.url().startsWith('http')) {
+    // A fresh page starts signed in, with the session restored from storage on its first
+    // load. Only that load: reloads and other tabs keep whatever the app stored by then.
+    const token = await apiToken(page.request, userKey)
+    await page.addInitScript((token) => {
+      try {
+        if (sessionStorage.getItem('e2e.sessionStored')) return
+        sessionStorage.setItem('e2e.sessionStored', '1')
+        localStorage.setItem('auth_token', token)
+      } catch { /* a page without storage of the app's origin, such as about:blank */ }
+    }, token)
+    await openApp(page)
+    await expectSignedIn(page, true)
+    expect((await storedUser(page))?.username, 'signed in as another user').toBe(user.username)
+    return
+  }
   await openApp(page)
   const current = await storedUser(page)
   if (current?.username === user.username) {
@@ -290,11 +309,26 @@ export function annotation (page: Page, spanKey: string): Locator {
 }
 
 /** A bearer token for API calls a test makes itself (setup and cleanup). */
-export async function apiToken (request: APIRequestContext, userKey: string): Promise<string> {
-  const user = fixture.user(userKey)
-  const response = await request.post('/api/auth/jwt/login', { form: { username: user.username, password: user.password } })
-  expect(response.ok()).toBe(true)
-  return (await response.json()).access_token
+const tokens = new Map<string, Promise<string>>()
+
+/**
+ * A bearer token of `userKey`, issued once per test worker: a login hashes the password at
+ * the production cost (~0.1 s), and the cleanup helpers need a token in every test. Tokens
+ * stay valid for the run; signing out does not revoke them (stateless JWTs).
+ */
+export function apiToken (request: APIRequestContext, userKey: string): Promise<string> {
+  let token = tokens.get(userKey)
+  if (!token) {
+    const user = fixture.user(userKey)
+    token = (async () => {
+      const response = await request.post('/api/auth/jwt/login', { form: { username: user.username, password: user.password } })
+      expect(response.ok(), `login of ${userKey} answered ${response.status()}`).toBe(true)
+      return (await response.json()).access_token as string
+    })()
+    tokens.set(userKey, token)
+    token.catch(() => tokens.delete(userKey))
+  }
+  return token
 }
 
 /** Deletes the unresolved AI suggestions a test created (fixture spans of other tags stay). */

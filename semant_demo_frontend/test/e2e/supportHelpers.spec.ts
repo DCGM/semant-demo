@@ -28,6 +28,19 @@ test('ensureLoggedIn signs in on a fresh page, keeps the right user and replaces
   expect(await storedToken(page)).not.toBe(token)
 })
 
+test('a fresh page starts signed in only once: a sign-out stays after a reload and in a new tab', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner') // the session is stored before the first load
+  await logOut(page)
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'User menu' })).toBeVisible()
+  expect(await storedToken(page)).toBeNull()
+  const other = await page.context().newPage()
+  await other.goto('/')
+  await expect(other.getByRole('button', { name: 'User menu' })).toBeVisible()
+  expect(await storedToken(other)).toBeNull()
+})
+
 test('logOut ends a session and does nothing on a signed-out page', async ({ page }) => {
   await logOut(page) // fresh page: nothing to sign out
   await ensureLoggedIn(page, 'annotator')
