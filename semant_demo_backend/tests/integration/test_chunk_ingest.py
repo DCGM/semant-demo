@@ -25,7 +25,7 @@ from semant_demo.adapters.weaviate import chunk_visibility as visibility
 from semant_demo.adapters.weaviate.classification_provenance import PROPERTY as PROVENANCE, UNPROCESSED
 from semant_demo.features.documents.positions import ChunkPosition, chunk_positions
 from semant_demo.maintenance import chunk_ingest, chunk_positions as backfill, metadata_sync, page_order
-from tests.weaviate_store import StoreEndpoint, connect, delete_all_objects
+from tests.weaviate_store import claim_store, connect, delete_all_objects
 
 pytestmark = pytest.mark.integration
 
@@ -54,7 +54,9 @@ def quiet(_line: str) -> None:
     pass
 
 
-async def drop_ingest_collections(client) -> None:
+async def drop_ingest_collections(client, token: str) -> None:
+    """Delete the ingest collections and aliases, after verifying the store is this run's."""
+    await claim_store(client, token)
     for alias in (CHUNKS_ALIAS, DOCS_ALIAS):
         if await client.alias.get(alias_name=alias):
             await client.alias.delete(alias_name=alias)
@@ -72,41 +74,50 @@ async def ingest_schema(client) -> dict:
 
 @pytest.fixture(scope="module")
 def created_ingest_schema():
-    """The ingest schema as last created in this module (see ``ingest_store``). The collections
-    are dropped once after the module, so later tests see only the application's."""
-    created: dict = {}
+    """The ingest schema as last created in this module (see ``ingest_store``), with the
+    endpoint (and its ownership token) it was created in. The collections are dropped once
+    after the module, in that same store, so later tests see only the application's."""
+    created = SimpleNamespace(schema={}, endpoint=None)
     yield created
-    if created:
-        asyncio.run(_drop_after_module())
+    if created.endpoint is not None:
+        asyncio.run(_drop_after_module(created.endpoint))
 
 
-async def _drop_after_module() -> None:
-    client = await connect(StoreEndpoint.from_env())
+async def _drop_after_module(endpoint) -> None:
+    client = await connect(endpoint)
     try:
-        await drop_ingest_collections(client)
+        await drop_ingest_collections(client, endpoint.token)
     finally:
         await client.close()
 
 
 @pytest.fixture
-async def ingest_store(weaviate_client, collection_names, created_ingest_schema):
+async def ingest_store(weaviate_client, store_endpoint, collection_names, created_ingest_schema):
     """The ingest collections holding only the three stored chunks of EXISTING.
 
     Emptied before each test, or recreated when their configuration changed (a test added
     a property) or this is the module's first test: creating the three collections per test
-    was most of this module's runtime."""
+    was most of this module's runtime. Nothing is deleted before ``claim_store`` verifies
+    that the store belongs to this run."""
     client = weaviate_client
+    token = store_endpoint.token
     names = collection_names.model_copy(update={"document_collection_name": DOCS_ALIAS,
                                                  "chunks_collection_name": CHUNKS_ALIAS})
+    await claim_store(client, token)
+    if created_ingest_schema.endpoint not in (None, store_endpoint):
+        raise RuntimeError(f"The test store changed within the module: {created_ingest_schema.endpoint} "
+                           f"to {store_endpoint}.")
+    created_ingest_schema.endpoint = store_endpoint
     await client.collections.delete(BARE_CHUNKS)
-    if created_ingest_schema and await ingest_schema(client) == created_ingest_schema:
+    schema = created_ingest_schema.schema
+    if schema and await ingest_schema(client) == schema:
         for name in (CHUNKS, TAGS, DOCS):
             await delete_all_objects(client.collections.get(name))
     else:
-        await drop_ingest_collections(client)
+        await drop_ingest_collections(client, token)
         await create_ingest_collections(client)
-        created_ingest_schema.clear()
-        created_ingest_schema.update(await ingest_schema(client))
+        schema.clear()
+        schema.update(await ingest_schema(client))
     await client.collections.get(DOCS).data.insert(uuid=EXISTING, properties={"title": "Kronika"})
     await client.collections.get(TAGS).data.insert(uuid=TAG, properties={"tag_name": "t"})
     positions = list(chunk_positions(TEXTS[:STORED]))
