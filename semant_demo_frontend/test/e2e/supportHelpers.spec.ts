@@ -41,6 +41,19 @@ test('a fresh page starts signed in only once: a sign-out stays after a reload a
   expect(await storedToken(other)).toBeNull()
 })
 
+test('a used page that went to about:blank signs in the requested user, also replacing another', async ({ page }) => {
+  // The tab's sessionStorage keeps the mark of its first sign-in, so no session is stored again.
+  await ensureLoggedIn(page, 'owner')
+  await logOut(page)
+  await page.goto('about:blank')
+  await ensureLoggedIn(page, 'annotator') // signed out before about:blank
+  expect(await signedInUsername(page)).toBe(fixture.user('annotator').username)
+
+  await page.goto('about:blank')
+  await ensureLoggedIn(page, 'owner') // another user still signed in before about:blank
+  expect(await signedInUsername(page)).toBe(fixture.user('owner').username)
+})
+
 test('logOut ends a session and does nothing on a signed-out page', async ({ page }) => {
   await logOut(page) // fresh page: nothing to sign out
   await ensureLoggedIn(page, 'annotator')

@@ -81,7 +81,9 @@ export async function ensureLoggedIn (page: Page, userKey: string): Promise<void
   const user = fixture.user(userKey)
   if (!page.url().startsWith('http')) {
     // A fresh page starts signed in, with the session restored from storage on its first
-    // load. Only that load: reloads and other tabs keep whatever the app stored by then.
+    // load. Only that load: reloads and other tabs keep whatever the app stored by then. A
+    // used page sent to about:blank keeps its tab's mark and stores nothing; the checks
+    // below then sign in or switch users through the UI as on any other page.
     const token = await apiToken(page.request, userKey)
     await page.addInitScript((token) => {
       try {
@@ -90,10 +92,6 @@ export async function ensureLoggedIn (page: Page, userKey: string): Promise<void
         localStorage.setItem('auth_token', token)
       } catch { /* a page without storage of the app's origin, such as about:blank */ }
     }, token)
-    await openApp(page)
-    await expectSignedIn(page, true)
-    expect((await storedUser(page))?.username, 'signed in as another user').toBe(user.username)
-    return
   }
   await openApp(page)
   const current = await storedUser(page)

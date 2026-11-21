@@ -356,7 +356,7 @@ the parent tracker decides, and the other stage cross-references it.
 | `frontend/test/e2e/sessionTeardown.spec.ts` | Playwright | 7 | remove 2 (7 → 5) |
 | `frontend/test/e2e/sidebar.spec.ts` | Playwright | 4 | keep |
 | `frontend/test/e2e/smoke.spec.ts` | Playwright | 7 | consolidate (7 → 6) |
-| `frontend/test/e2e/supportHelpers.spec.ts` | Playwright | 5 | simplify fixture (5 → 6) |
+| `frontend/test/e2e/supportHelpers.spec.ts` | Playwright | 5 | simplify fixture (5 → 7) |
 | `frontend/test/e2e/textUpload.spec.ts` | Playwright | 6 | keep |
 
 ### #857
@@ -771,7 +771,7 @@ after; view captures with `make e2e-dev-capture` (3 viewports):
 
 | Suite | Cases | Before | After |
 | --- | ---: | --- | --- |
-| Browser | 298 → 295 | 14.1 min (801 s in tests) | 9.3 min (513 s in tests) |
+| Browser | 298 → 296 | 14.1 min (801 s in tests) | 9.3 min (515 s in tests) |
 | View capture | 33 (99 runs) | 7.6 min | 6.2 min |
 
 - **Sign-in (`test/e2e/support.ts`):** **simplify fixture.** The login dialog took ~1.3 s of a
@@ -779,9 +779,11 @@ after; view captures with `make e2e-dev-capture` (3 viewports):
   user's token in storage, so the app restores the session on its first load, as after a
   reload. Only that load: an init script marks the tab in `sessionStorage`, so a reload after a
   sign-out and a new tab stay signed out. The new `supportHelpers.spec.ts` test checks this
-  and fails without the mark. A page that already shows the app still signs in through the
-  dialog (switching users, a rejected stored token), and the dialog itself stays covered by
-  `smoke.spec.ts` (registration, log out, log in) and `navigation.spec.ts`.
+  and fails without the mark. The helper then checks the session it finds, as on any page:
+  a page that already shows the app, or a used page sent to `about:blank` (whose mark stays),
+  signs in or switches users through the dialog; a second new test covers that case, from
+  review. The dialog itself stays covered by `smoke.spec.ts` (registration, log out, log in)
+  and `navigation.spec.ts`.
 - **API tokens (`apiToken`):** **simplify fixture.** It logged in (~0.1 s, the production
   Argon2 cost) on every call, several times per test in the cleanup hooks. It now logs each
   user in once per worker; tokens are stateless JWTs that a sign-out does not revoke.
