@@ -337,12 +337,15 @@
               {{ bulkAction === 'delete' ? 'Deleting' : 'Saving' }} {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} {{ bulkAction === 'delete' ? 'not deleted' : 'not saved' }}</template>…
             </span>
             <span v-else class="text-caption text-grey-7" data-testid="proposal-selection-count">
-              {{ selectedVisibleCount }} / {{ visibleSuggestions.length }} visible selected
-              <template v-if="hiddenSelectedCount">({{ hiddenSelectedCount }} hidden)</template>
+              {{ selectedVisibleCount }} selected
             </span>
           </q-checkbox>
+          <span v-if="!bulkProgress && hiddenSelectedCount"
+            class="text-caption text-grey-7" data-testid="proposal-hidden-count">
+            ({{ hiddenSelectedCount }} hidden)
+          </span>
           <span class="text-caption text-grey-7" data-testid="proposal-match-count">
-            {{ visibleSuggestions.length }} of {{ pendingAutoSpans.length }} matching
+            {{ visibleSuggestions.length }} {{ visibleSuggestions.length === 1 ? 'match' : 'matches' }}
           </span>
         </div>
         <q-btn
@@ -1606,6 +1609,10 @@ watch(chosenAiTagIds, (ids) => {
 }
 .auto-span-bulk-status > .q-checkbox {
   min-width: 0;
+}
+.auto-span-bulk-status [data-testid="proposal-selection-count"],
+.auto-span-bulk-status [data-testid="proposal-hidden-count"] {
+  white-space: nowrap;
 }
 .auto-span-bulk-status > [data-testid="proposal-match-count"] {
   margin-left: auto;
