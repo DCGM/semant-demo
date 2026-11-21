@@ -1513,7 +1513,8 @@ test('the collection header settles once the sidebar is open, at every wide widt
   await expect(title).toHaveText(longName)
   // The title and the tabs once resized each other for ever at a width where both only just
   // fit; which width that is depends on the name, so sweep the widths the sidebar leaves.
-  for (let width = 1500; width <= 2000; width += 20) {
+  // With this name the old layout oscillated at about 2060-2090 px (sidebar open).
+  for (let width = 1600; width <= 2400; width += 10) {
     await page.setViewportSize({ width, height: viewports.wide.height })
     const widths = new Set<number>()
     for (let sample = 0; sample < 8; sample++) {
