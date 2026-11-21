@@ -123,13 +123,6 @@
           :to="{ name: 'collectionAnnotations' }"
         />
         <q-separator vertical size="1.8px" inset />
-        <q-route-tab
-          name="statistics"
-          label="Statistics"
-          icon="bar_chart"
-          :to="{ name: 'collectionStatistics' }"
-        />
-        <q-separator vertical size="1.8px" inset />
         <!-- Leads to the part shown, so the tab stays active on either of its routes; from another tab it opens Tags. -->
         <q-route-tab
           name="tags"
