@@ -84,7 +84,7 @@ async def change_owner(collections: UserCollectionRepository, users: UserLookup,
 
 async def delete_collection(collections: UserCollectionRepository, user: Principal | None,
                             collection_id: Id, attributes: AttributeRepository,
-                            selections: SavedSelectionRepository | None = None) -> None:
+                            selections: SavedSelectionRepository) -> None:
     """
     Deletes the collection with its tags and annotations, then its attribute definitions and
     change records (#331) and its saved selections (#824). Owner only. A failed step raises ``IncompleteWriteError`` naming it
@@ -105,8 +105,6 @@ async def delete_collection(collections: UserCollectionRepository, user: Princip
             f"delete_attribute_definitions ({type(exc).__name__}). The leftover rows are unreachable "
             "and can be removed later (see docs/TODO.md).",
             step="delete_attribute_definitions", completed={"delete_collection": 1}) from exc
-    if selections is None:
-        return
     try:
         await selections.delete_collection(grant.collection_id)
     except Exception as exc:

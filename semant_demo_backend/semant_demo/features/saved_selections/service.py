@@ -70,7 +70,8 @@ async def list_saved_selections(store: SavedSelectionStore, user: Principal | No
 async def create_saved_selection(store: SavedSelectionStore, user: Principal | None, collection_id: Id,
                                  body: PostSavedSelection) -> SavedSelection:
     """Saves a live filter under a name unique in the collection (400 when taken or when the
-    collection already has ``MAX_SAVED_SELECTIONS``)."""
+    collection already has ``MAX_SAVED_SELECTIONS``). The limit is soft: it is counted before the
+    insert, so concurrent creates can pass it by a few."""
     grant = await access.require_collection_read(store.collections, user, collection_id)
     if await store.selections.count(grant.collection_id) >= MAX_SAVED_SELECTIONS:
         raise InvalidRequestError(f"A collection has at most {MAX_SAVED_SELECTIONS} saved selections; delete one first")
