@@ -22,6 +22,15 @@ async function openWorkspace (page: Page, userKey = 'owner') {
   await expect(page.getByTestId('concordance-range')).toContainText('matching annotations')
 }
 
+/** Renames the seeded collection as its owner. */
+async function renameChronicles (request: APIRequestContext, name: string) {
+  const response = await request.patch(`/api/user_collections/${chronicles.id}`, {
+    headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
+    data: { name }
+  })
+  expect(response.ok()).toBe(true)
+}
+
 /** Creates a confirmed span through the API (removed again by `deleteAddedSpans`). */
 async function createSpan (request: APIRequestContext, chunkKey: string, start: number, end: number) {
   const response = await request.post('/api/tag_spans', {
@@ -44,6 +53,8 @@ async function patchSpan (request: APIRequestContext, spanId: string, data: Reco
 
 test.afterEach(async ({ request }) => {
   await deleteAddedSpans(request, 'owner', 'chronicles')
+  // The #838 spec renames the collection; restore it even when that spec times out.
+  await renameChronicles(request, fixture.collection('chronicles').name)
 })
 
 test('one aligned line per annotation; rejected ones only on request', async ({ page }) => {
@@ -1487,4 +1498,31 @@ test('the selection, outside the filters too, and the filter matches download as
   expect((await downloading).suggestedFilename()).toMatch(/^annotations-filters-\d{4}-\d{2}-\d{2}\.csv$/)
   await dialog.getByRole('button', { name: 'Close' }).last().click()
   await expect(dialog).toHaveCount(0)
+})
+
+test('the collection header settles once the sidebar is open, at every wide width (#838)', async ({ page, request }) => {
+  test.setTimeout(90_000)
+  const longName = 'Kroniky a dopisy z Moravy a Čech'
+  // A name long enough to be truncated beside the open sidebar, as in the report.
+  await renameChronicles(request, longName)
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await row(page, 'Jan Novák').click()
+  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
+  const title = page.locator('.collection-page-title')
+  await expect(title).toHaveText(longName)
+  // The title and the tabs once resized each other for ever at a width where both only just
+  // fit; which width that is depends on the name, so sweep the widths the sidebar leaves.
+  for (let width = 1500; width <= 2000; width += 20) {
+    await page.setViewportSize({ width, height: viewports.wide.height })
+    const widths = new Set<number>()
+    for (let sample = 0; sample < 8; sample++) {
+      await page.waitForTimeout(40)
+      widths.add(Math.round((await title.boundingBox())!.width))
+    }
+    expect([...widths], `${width}: the title width is stable`).toHaveLength(1)
+  }
+  // The tabs still fit the page beside the sidebar (their arrows take over when they do not, #489).
+  await page.setViewportSize({ width: 1000, height: viewports.wide.height })
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
 })
