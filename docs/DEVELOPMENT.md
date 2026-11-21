@@ -305,6 +305,13 @@ They never use the development container, `.dev-data/` or `local_data/`:
   total time of each fixture phase (reset, seed, Weaviate connect, SQLite users, app
   startup, pytest setup/call/teardown) and writes the per-test records to the file. Without
   the variable the timing is off.
+- The controlled measurements (`@pytest.mark.benchmark`, six files under
+  `tests/integration/`) run in no CI job and no `make` target. Each module docstring says what
+  it measures, its sizes and how to run it alone; all of them take ~8 minutes:
+  `scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/python -m pytest -m benchmark -s'`.
+  Because nothing runs them, re-run the one you rely on before you quote it: the November 2026
+  test audit (#858) found one failing after an interface change. Times depend on the machine
+  and are not limits.
 - In every backend test process (`tests/conftest.py`, #848), SQLite connections opened
   through SQLAlchemy skip `fsync` (`PRAGMA synchronous=OFF`; a test of crash recovery
   opts out with `@pytest.mark.sqlite_durable`) and passwords are hashed with
