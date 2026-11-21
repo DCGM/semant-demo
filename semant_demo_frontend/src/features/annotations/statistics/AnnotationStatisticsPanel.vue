@@ -59,6 +59,7 @@
         </template>
       </div>
 
+      <!-- One column: each distribution as tall as its rows, never stretched by a neighbour. -->
       <div v-else class="annotation-statistics__grid">
         <DistributionCard
           v-for="d in DIMENSIONS"
@@ -148,14 +149,14 @@ const truncatedBy = computed(() => {
 }
 
 .annotation-statistics__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-items: start;
+  max-width: 1100px;
 }
 
 .annotation-statistics__detail {
-  max-width: 760px;
+  max-width: 1100px;
 }
 
 .annotation-statistics__detail-head {

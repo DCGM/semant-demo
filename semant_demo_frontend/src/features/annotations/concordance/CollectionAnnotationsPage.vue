@@ -69,6 +69,25 @@
     />
 
     <div class="collection-annotations__summary" aria-live="polite">
+      <!-- First in the row, so it stays in place whatever each view puts after it. -->
+      <q-btn-toggle
+        :model-value="statisticsView ? 'statistics' : 'list'"
+        dense
+        no-caps
+        unelevated
+        rounded
+        toggle-color="primary"
+        color="white"
+        text-color="primary"
+        class="collection-annotations__view"
+        aria-label="View"
+        data-testid="annotations-view"
+        :options="[
+          { value: 'list', label: 'List', icon: 'view_list', attrs: { 'data-testid': 'annotations-view-list' } },
+          { value: 'statistics', label: 'Statistics', icon: 'bar_chart', attrs: { 'data-testid': 'annotations-view-statistics' } }
+        ]"
+        @update:model-value="showView"
+      />
       <template v-if="!statisticsView">
       <span data-testid="concordance-range">{{ rangeLabel }}</span>
       <span v-if="rankedText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-ranked">{{ rankedText }}</span>
@@ -85,23 +104,6 @@
       </template>
       <span v-else-if="rankedText" class="collection-annotations__ranked text-grey-8">{{ rankedText }}</span>
       <q-space />
-      <q-btn-toggle
-        :model-value="statisticsView ? 'statistics' : 'list'"
-        dense
-        no-caps
-        unelevated
-        toggle-color="primary"
-        color="grey-2"
-        text-color="dark"
-        class="collection-annotations__view"
-        aria-label="View"
-        data-testid="annotations-view"
-        :options="[
-          { value: 'list', label: 'List', icon: 'view_list', attrs: { 'data-testid': 'annotations-view-list' } },
-          { value: 'statistics', label: 'Statistics', icon: 'bar_chart', attrs: { 'data-testid': 'annotations-view-statistics' } }
-        ]"
-        @update:model-value="showView"
-      />
       <q-btn
         v-if="!statisticsView"
         flat
@@ -1400,6 +1402,14 @@ watch(collectionId, async (id) => {
 </script>
 
 <style scoped>
+.collection-annotations__view {
+  border: 1px solid var(--q-primary);
+}
+
+.collection-annotations__view :deep(.q-btn) {
+  padding: 0 12px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

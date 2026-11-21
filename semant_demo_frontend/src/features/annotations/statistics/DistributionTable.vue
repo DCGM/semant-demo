@@ -6,6 +6,7 @@
         <th scope="col">{{ title }}</th>
         <th scope="col">Annotations</th>
         <th scope="col">Share</th>
+        <td aria-hidden="true" />
       </tr>
     </thead>
     <tbody>
@@ -20,12 +21,14 @@
             @click="emit('drill', row.drill)"
           >{{ row.label }}</button>
           <span v-else :title="row.kind === 'missing' ? 'The annotation list has no filter for a missing value' : undefined">{{ row.label }}</span>
-          <span class="distribution-table__bar" aria-hidden="true">
-            <span class="distribution-table__fill" :style="{ width: `${barWidth(row)}%` }" />
-          </span>
         </th>
         <td class="distribution-table__count">{{ formatCount(row.count) }}</td>
         <td class="distribution-table__share">{{ formatShare(row.share) }}</td>
+        <td class="distribution-table__bar-cell" aria-hidden="true">
+          <span class="distribution-table__bar">
+            <span class="distribution-table__fill" :style="{ width: `${barWidth(row)}%` }" />
+          </span>
+        </td>
       </tr>
     </tbody>
   </table>
@@ -33,9 +36,9 @@
 
 <script setup lang="ts">
 /**
- * Rows of one distribution (#818) as a table: the label (a button listing its annotations when it
- * has a drill-down) over a bar scaled to the largest row, the count and the share of the named
- * denominator. One accessible element: the bars are decoration of the numbers beside them.
+ * Rows of one distribution (#818) as a table, one line each: the label (a button listing its
+ * annotations when it has a drill-down), the count, the share of the named denominator and a bar
+ * scaled to the largest row. One accessible element: the bars are decoration of the numbers beside them.
  */
 import { computed } from 'vue'
 import type { ConcordanceFilters } from '../concordance/concordanceStore'
@@ -63,15 +66,21 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
 .distribution-table td,
 .distribution-table th {
   padding: 3px 0;
-  vertical-align: top;
+  vertical-align: middle;
+  border-bottom: 1px solid #f1f4f8;
 }
 
 .distribution-table__label {
   font-weight: 400;
   text-align: left;
-  width: 100%;
+  width: 38%;
   padding-right: 12px !important;
   overflow-wrap: anywhere;
+}
+
+.distribution-table__bar-cell {
+  width: 62%;
+  padding-left: 16px !important;
 }
 
 .distribution-table__count,
@@ -104,8 +113,7 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
 
 .distribution-table__bar {
   display: block;
-  height: 4px;
-  margin-top: 2px;
+  height: 10px;
   background: #edf2f7;
   border-radius: 2px;
 }
