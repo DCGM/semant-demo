@@ -105,16 +105,22 @@ describe('the attribute section of the statistics view', () => {
   it('shows applicable counts with annotations and assignments, and explains multi-valued totals', () => {
     const wrapper = mountPanel([facet()])
     const card = wrapper.get('[data-testid="statistics-attribute-a1"]')
-    expect(card.get('[data-testid="statistics-attribute-summary"]').text()).toContain('6 of 10 confirmed annotations with a value · 7 assignments')
-    expect(card.text()).toContain('counts once under each of its values')
+    expect(card.get('[data-testid="statistics-attribute-summary"]').text()).toContain('6 of 10 annotations with a value · 7 assignments')
     expect(card.get('[data-testid="statistics-attribute-a1-values-show-red"]').text()).toBe('Red')
-    expect(card.text()).not.toContain('retained')
   })
 
-  it('labels retained values as a different population only after asking for them', async () => {
+  it('counts retained values only after the card\'s checkbox is ticked', async () => {
     const wrapper = mountPanel([facet()])
+    const red = () => wrapper.get('[data-testid="statistics-attribute-a1-values-show-red"]').element.closest('tr')!.textContent
+    expect(red()).toContain('4')
+    expect(wrapper.get('[data-testid="statistics-include-retained"]').text()).toContain('Include 2 retained')
     await wrapper.get('[data-testid="statistics-include-retained"]').trigger('click')
-    expect(wrapper.get('[data-testid="statistics-attribute-a1"]').text()).toContain('a different population')
+    expect(red()).toContain('6')
+  })
+
+  it('offers no checkbox when nothing is retained', () => {
+    const wrapper = mountPanel([facet({ values: [{ value: 'red', count: 4, inapplicable: 0 }] })])
+    expect(wrapper.find('[data-testid="statistics-include-retained"]').exists()).toBe(false)
   })
 
   it('emits the narrowed query when a value is chosen', async () => {
