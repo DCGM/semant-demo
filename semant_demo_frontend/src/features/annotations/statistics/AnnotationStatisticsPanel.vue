@@ -1,5 +1,5 @@
 <template>
-  <section class="annotation-statistics" aria-label="Statistics" data-testid="annotation-statistics">
+  <section class="annotation-statistics" :class="{ 'annotation-statistics--stale': stale }" aria-label="Statistics" data-testid="annotation-statistics" :aria-busy="stale ? 'true' : 'false'">
     <div v-if="error" class="annotation-statistics__state text-negative" role="alert" data-testid="statistics-error">
       {{ error }}
       <q-btn flat dense no-caps color="primary" label="Retry" @click="emit('retry')" />
@@ -93,6 +93,8 @@ const props = defineProps<{
   filters: ConcordanceFilters
   statistics: AnnotationFacets | null
   error: string | null
+  /** A newer query is being counted: the counts shown are of the previous one, dimmed until then. */
+  stale?: boolean
   tags: Tag[]
   documents: AnnotatedDocument[]
   /** The distribution shown in full; null for all of them. */
@@ -121,6 +123,11 @@ const truncatedBy = computed(() => {
 </script>
 
 <style scoped>
+.annotation-statistics--stale {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
 .annotation-statistics__warning {
   background: #fffbeb;
   border-left: 3px solid #d69e2e;
