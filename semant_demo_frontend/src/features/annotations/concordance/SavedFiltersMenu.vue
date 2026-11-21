@@ -24,7 +24,10 @@
         <q-item v-if="saved.error" data-testid="saved-filters-error">
           <q-item-section class="text-negative">{{ saved.error }}</q-item-section>
         </q-item>
-        <q-item v-else-if="!saved.items.length && !saved.loading" data-testid="saved-filters-empty">
+        <q-item v-else-if="!saved.items.length && saved.loading" data-testid="saved-filters-loading">
+          <q-item-section class="text-grey-7">Loading…</q-item-section>
+        </q-item>
+        <q-item v-else-if="!saved.items.length" data-testid="saved-filters-empty">
           <q-item-section class="text-grey-7">No saved filters yet.</q-item-section>
         </q-item>
         <q-item
@@ -116,7 +119,7 @@ async function toggle (item: SavedSelection) {
 <style scoped>
 .saved-filters { min-height: 40px; }
 /* The divider between More filters and this icon in their group. */
-.saved-filters::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; border-left: 1px solid currentColor; opacity: 0.4; }
+.saved-filters { border-left: 1px solid rgba(25, 118, 210, 0.35); }
 .saved-filters__list { min-width: 340px; max-width: 440px; }
 .saved-filters__check { min-width: 28px; padding-right: 8px; }
 .saved-filters__name { overflow-wrap: anywhere; }
