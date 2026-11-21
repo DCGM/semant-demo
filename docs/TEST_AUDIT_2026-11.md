@@ -277,26 +277,26 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_annotation_migration.py` | pytest Weaviate | 10 | pending |
-| `backend/tests/integration/test_annotation_tenants.py` | pytest Weaviate | 16 | pending (disputed with #850) |
-| `backend/tests/integration/test_api_store.py` | pytest Weaviate | 7 | pending |
-| `backend/tests/integration/test_db_benchmark.py` | pytest Weaviate | 1 | pending (disputed with #858) |
-| `backend/tests/integration/test_document_cleanup.py` | pytest Weaviate | 2 | pending |
-| `backend/tests/integration/test_local_dev_documents.py` | pytest Weaviate | 3 | pending |
-| `backend/tests/integration/test_metadata_sync.py` | pytest Weaviate | 3 | pending (disputed with #852) |
-| `backend/tests/integration/test_partial_writes.py` | pytest Weaviate | 12 | pending |
-| `backend/tests/integration/test_repositories.py` | pytest Weaviate | 43 | pending |
-| `backend/tests/integration/test_repository_routes.py` | pytest Weaviate | 22 | pending |
-| `backend/tests/integration/test_store_ownership.py` | pytest Weaviate | 15 | pending (disputed with #849) |
-| `backend/tests/integration/test_user_collections_store.py` | pytest Weaviate | 11 | pending |
-| `backend/tests/integration/test_weaviate_backup.py` | pytest Weaviate | 2 | pending |
-| `backend/tests/test_annotation_migration.py` | pytest fast | 33 | pending |
-| `backend/tests/test_db_benchmark.py` | pytest fast | 59 | pending (disputed with #858) |
-| `backend/tests/test_document_cleanup.py` | pytest fast | 15 | pending |
-| `backend/tests/test_metadata_sync.py` | pytest fast | 146 | pending (disputed with #852) |
-| `backend/tests/test_weaviate_backup_script.py` | pytest fast | 29 | pending (disputed with #857) |
-| `backend/tests/test_weaviate_store.py` | pytest fast | 11 | pending |
-| `backend/tests/test_write_outcomes.py` | pytest fast | 12 | pending |
+| `backend/tests/integration/test_annotation_migration.py` | pytest Weaviate | 10 | **simplify fixture** (#863) |
+| `backend/tests/integration/test_annotation_tenants.py` | pytest Weaviate | 16 | **simplify fixture** (#863; disputed with #850) |
+| `backend/tests/integration/test_api_store.py` | pytest Weaviate | 7 | keep |
+| `backend/tests/integration/test_db_benchmark.py` | pytest Weaviate | 1 | **simplify fixture** (#863; disputed with #858) |
+| `backend/tests/integration/test_document_cleanup.py` | pytest Weaviate | 2 | keep |
+| `backend/tests/integration/test_local_dev_documents.py` | pytest Weaviate | 3 | keep |
+| `backend/tests/integration/test_metadata_sync.py` | pytest Weaviate | 3 | keep (disputed with #852) |
+| `backend/tests/integration/test_partial_writes.py` | pytest Weaviate | 12 | keep |
+| `backend/tests/integration/test_repositories.py` | pytest Weaviate | 43 | keep |
+| `backend/tests/integration/test_repository_routes.py` | pytest Weaviate | 22 | keep |
+| `backend/tests/integration/test_store_ownership.py` | pytest Weaviate | 15 | keep (disputed with #849) |
+| `backend/tests/integration/test_user_collections_store.py` | pytest Weaviate | 11 | keep |
+| `backend/tests/integration/test_weaviate_backup.py` | pytest Weaviate | 2 | keep |
+| `backend/tests/test_annotation_migration.py` | pytest fast | 33 | keep |
+| `backend/tests/test_db_benchmark.py` | pytest fast | 59 | keep (disputed with #858) |
+| `backend/tests/test_document_cleanup.py` | pytest fast | 15 | keep |
+| `backend/tests/test_metadata_sync.py` | pytest fast | 146 | keep (disputed with #852) |
+| `backend/tests/test_weaviate_backup_script.py` | pytest fast | 29 | keep (disputed with #857) |
+| `backend/tests/test_weaviate_store.py` | pytest fast | 11 | keep |
+| `backend/tests/test_write_outcomes.py` | pytest fast | 12 | keep |
 
 ### #855
 
@@ -664,3 +664,57 @@ Remaining risks:
   error; that is product behavior, not changed here.
 
 The full note is [on #853](https://github.com/DCGM/semant-demo/issues/853).
+
+### #854 Storage adapters, SQL/Weaviate, migrations, backup and maintenance
+
+**Two waits removed ([#863](https://github.com/DCGM/semant-demo/pull/863)); keep the rest.**
+Same machine and commands as #848:
+
+| Layer | Files | Cases | Before | After |
+| --- | ---: | ---: | --- | --- |
+| Fast backend | 7 | 305 | 2.3 s | unchanged (no change) |
+| Real Weaviate | 13 | 147 | 65.6 s (setup 29.6 s, call 35.2 s) | 55.0 s (call 24.5 s); 54.0 s reversed |
+
+- **`integration/test_db_benchmark.py`:** **simplify fixture.** It took 8.8 s, nearly all of
+  it the `smoke` profile's pacing (10 requests a second, ~110 requests). The test now
+  starts requests unpaced (0.8 s); the pacing and time caps are unit-tested in
+  `test_db_benchmark.py`, and the bundled profile is unchanged. Benchmark semantics stay
+  with #858.
+- **Backups through the Weaviate client (`test_annotation_tenants.py`,
+  `test_annotation_migration.py`):** **simplify fixture.** `wait_for_completion` checks the
+  backup every second and cannot be configured; the new `quick_backup_polls` fixture
+  (`integration/conftest.py`, stage 1's file) checks every 0.1 s. 2.7 s → 1.0 s and
+  2.1 s → 1.1 s. `test_annotation_tenant_rehearsal.py` (#850) and `test_chunk_ingest.py`
+  (#852) also wait on backups and can opt in.
+- **Adapter contracts, fakes vs the real store:** **keep both layers.** The fast files cover
+  validation, refusals before connecting, outcome classification and paging against
+  in-memory stores (`test_document_cleanup.py`, `test_write_outcomes.py`,
+  `test_annotation_migration.py`, `test_metadata_sync.py`); the real-store files cover what
+  only Weaviate shows: reference filters, aliases, tenants and their activity, Unicode round
+  trips, injected partial writes and the stored state after them. Each module docstring
+  names the other layer, and no assertion pair was found duplicated.
+- **Isolation and destructive-operation guards (`test_weaviate_store.py`,
+  `test_store_ownership.py`):** **keep**, unchanged. `test_reset_recreates_a_changed_schema`
+  (1.4 s) and `test_cleanup_drops_only_application_collections` (1.8 s) are the guarded
+  operations themselves.
+- **Backup and recovery (`test_weaviate_backup.py`, `test_weaviate_backup_script.py`):**
+  **keep.** The script already polls every 0.2 s; its 2 s are two backups and two restores.
+- **Waits:** the 0.2 s in `test_a_long_operation_keeps_its_tenant_recorded_as_in_use` is the
+  background touch it tests (every 0.05 s).
+- **Setup:** 6 schema recreations take 7.7 s (1.3 s each), after tests that change the
+  schema on purpose (legacy `Span`, `legacy_documents`, the `library` property); the next
+  test's reset recreates it (#686). Not changed.
+- **Skips:** none.
+
+Ownership: `test_db_benchmark.py` (both layers) stays here, cross-referenced to #858, as the
+issue names it; the other disputed files follow the owner map.
+
+Remaining risks:
+
+- `quick_backup_polls` replaces `asyncio` inside `weaviate.backup.executor`; a client upgrade
+  that renames it fails the fixture (`monkeypatch.setattr` raises), it does not silently
+  slow down.
+- `integration/shard_durations.json` still lists `test_db_benchmark.py` at 9.7 s (now ~2.5 s
+  with setup); the sharding is #454's.
+
+The full note is [on #854](https://github.com/DCGM/semant-demo/issues/854).
