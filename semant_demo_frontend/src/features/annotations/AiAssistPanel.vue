@@ -311,9 +311,6 @@
           />
         </div>
       </div>
-      <div class="text-caption text-grey-7 q-mb-xs" data-testid="proposal-match-count">
-        {{ visibleSuggestions.length }} of {{ pendingAutoSpans.length }} matching
-      </div>
       <div v-if="documentOrderUnavailable"
         class="text-caption text-warning" role="status">
         Document order is unavailable until the reader has loaded the canonical chunk positions.
@@ -326,57 +323,77 @@
         No matching suggestions. Reset the filters to see all pending proposals.
       </div>
       <div class="auto-span-bulk-bar">
-        <q-checkbox
-          :model-value="visibleSelectionState"
-          :indeterminate-value="'mixed'"
-          :toggle-indeterminate="false"
-          dense
-          size="sm"
-          :disable="isBulkResolving || !visibleSuggestions.length"
-          @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
-        >
-          <span v-if="bulkProgress" class="text-caption text-grey-7" data-testid="bulk-resolve-progress">
-            Saving {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} not saved</template>…
+        <div class="auto-span-bulk-status">
+          <q-checkbox
+            :model-value="visibleSelectionState"
+            :indeterminate-value="'mixed'"
+            :toggle-indeterminate="false"
+            dense
+            size="sm"
+            :disable="isBulkResolving || !visibleSuggestions.length"
+            @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
+          >
+            <span v-if="bulkProgress" class="text-caption text-grey-7" data-testid="bulk-resolve-progress">
+              {{ bulkAction === 'delete' ? 'Deleting' : 'Saving' }} {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} {{ bulkAction === 'delete' ? 'not deleted' : 'not saved' }}</template>…
+            </span>
+            <span v-else class="text-caption text-grey-7" data-testid="proposal-selection-count">
+              {{ selectedVisibleCount }} / {{ visibleSuggestions.length }} visible selected
+              <template v-if="hiddenSelectedCount">({{ hiddenSelectedCount }} hidden)</template>
+            </span>
+          </q-checkbox>
+          <span class="text-caption text-grey-7" data-testid="proposal-match-count">
+            {{ visibleSuggestions.length }} of {{ pendingAutoSpans.length }} matching
           </span>
-          <span v-else class="text-caption text-grey-7" data-testid="proposal-selection-count">
-            {{ selectedVisibleCount }} / {{ visibleSuggestions.length }} visible selected
-            <template v-if="hiddenSelectedCount">({{ hiddenSelectedCount }} hidden)</template>
-          </span>
-        </q-checkbox>
+        </div>
         <q-btn
-          v-if="selectedSuggestionIds.size"
-          flat dense no-caps size="sm"
+          stack flat dense no-caps size="sm"
           icon="playlist_remove"
           label="Clear"
           color="grey-8"
           aria-label="Clear selection"
-          :disable="isBulkResolving"
+          :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="clearSuggestionSelection"
         />
         <q-space />
         <q-btn
-          flat dense no-caps size="sm"
+          stack flat dense no-caps size="sm"
           icon="check"
           color="positive"
           label="Confirm"
+          aria-label="Confirm"
           :loading="isBulkResolving"
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.pos)"
         >
           <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
-          <q-tooltip>Confirm all selected suggestions</q-tooltip>
+          <q-tooltip>Confirm selected suggestions (keeps an approved annotation)</q-tooltip>
         </q-btn>
         <q-btn
-          flat dense no-caps size="sm"
+          stack flat dense no-caps size="sm"
           icon="close"
           color="negative"
           label="Reject"
+          aria-label="Reject"
           :loading="isBulkResolving"
           :disable="!selectedSuggestionIds.size || isBulkResolving"
           @click="bulkResolveSelected(SpanType.neg)"
         >
           <template #loading><span class="bulk-spinner" aria-label="Saving" /></template>
-          <q-tooltip>Reject all selected suggestions</q-tooltip>
+          <q-tooltip>Reject selected suggestions (keeps rejected annotations)</q-tooltip>
+        </q-btn>
+        <q-btn
+          stack flat dense no-caps size="sm"
+          icon="delete"
+          color="grey-8"
+          label="Delete"
+          aria-label="Delete"
+          data-testid="bulk-delete-selected"
+          :loading="isBulkResolving"
+          :disable="!selectedSuggestionIds.size || isBulkResolving"
+          @click="bulkResolveSelected('delete')"
+        >
+          <template #loading><span class="bulk-spinner" aria-label="Deleting" /></template>
+          <q-tooltip>Delete selected suggestions (no rejection recorded)</q-tooltip>
         </q-btn>
       </div>
       <q-linear-progress
@@ -509,7 +526,7 @@ import { readRunTags, writeRunTags } from './aiRunTags'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useTopicerModelStore } from './topicerModelStore'
 import useTagSpans from './useTagSpans'
-import { describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
+import { confirmBulkDeletion, describeBulkResolve, runBulkResolve, type BulkResolveProgress, type BulkResolveSummary } from './bulkResolve'
 
 // AI annotation suggestions for a document: runs over the selected tags, the pending
 // suggestions with approve/reject, and two-way highlighting with the spans in the text
@@ -908,9 +925,10 @@ async function resolveSuggestion(span: TagSpan, type: SpanType) {
 const approveAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.pos)
 const rejectAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.neg)
 
-// ── Bulk approve / reject of selected suggestions ──
+// ── Bulk confirm / reject / delete of selected suggestions ──
 const selectedSuggestionIds = ref<Set<string>>(new Set())
 const isBulkResolving = ref(false)
+const bulkAction = ref<'confirm' | 'reject' | 'delete' | null>(null)
 const bulkProgress = ref<BulkResolveProgress | null>(null)
 const selectedVisibleCount = computed(() => visibleSuggestions.value.reduce((n, e) =>
   n + (e.span.id && selectedSuggestionIds.value.has(e.span.id) ? 1 : 0), 0))
@@ -954,21 +972,37 @@ watch(pendingAutoSpans, (entries) => {
   }
 })
 
-async function bulkResolveSelected(type: SpanType) {
+async function bulkResolveSelected(type: 'pos' | 'neg' | 'delete') {
   if (!selectedSuggestionIds.value.size || isBulkResolving.value) return
-  // Snapshot the exact ID set, including any selected proposals hidden by filters.
-  // Later changes of filters, sort, or pending entries cannot broaden the request.
+  // Snapshot the exact ID set including selections hidden by filters (#806).
   const idSet = new Set(selectedSuggestionIds.value)
-  const targets = pendingAutoSpans.value.flatMap((e) => e.span.id && idSet.has(e.span.id) ? [e.span.id] : [])
+  const selected = pendingAutoSpans.value.filter((e) => e.span.id && idSet.has(e.span.id))
+  const targets = selected.flatMap((e) => e.span.id ? [e.span.id] : [])
   if (!targets.length) return
+  const isCurrent = resolveRequests.capture()
+  const collectionId = props.collectionId
+  const documentId = props.documentId
+  const knownVersions = new Map(selected.flatMap((e) => e.span.id && e.span.editVersion !== undefined
+    ? [[e.span.id, e.span.editVersion] as const] : []))
+  if (type === 'delete' && confirmBulkDeletion(targets.length, pendingAutoSpans.value.length)) {
+    const confirmed = await new Promise<boolean>((resolve) => {
+      $q.dialog({
+        title: `Delete ${targets.length} ${targets.length === 1 ? 'suggestion' : 'suggestions'}?`,
+        message: 'Permanently remove these AI suggestions without recording rejections. This cannot be undone; rerunning AI may produce different results.',
+        persistent: true,
+        cancel: { label: 'Cancel', flat: true, noCaps: true },
+        ok: { label: 'Delete suggestions', color: 'negative', noCaps: true }
+      }).onOk(() => resolve(true)).onCancel(() => resolve(false)).onDismiss(() => resolve(false))
+    })
+    if (!confirmed || !isCurrent()) return
+  }
 
-  // Pre-compute which suggestion should be highlighted once these resolve.
   const targetIds = new Set(targets)
   const nextHighlight =
     pendingAutoSpans.value.find((e) => e.span.id && !targetIds.has(e.span.id))?.span.id ?? null
 
-  const isCurrent = resolveRequests.capture()
   isBulkResolving.value = true
+  bulkAction.value = type === 'delete' ? 'delete' : type === SpanType.pos ? 'confirm' : 'reject'
   bulkProgress.value = { total: targets.length, processed: 0, saved: 0, notSaved: 0 }
   for (const id of targets) busyAutoSpanIds.value.add(id)
   let summary: BulkResolveSummary | null = null
@@ -978,9 +1012,20 @@ async function bulkResolveSelected(type: SpanType) {
       async (ids) => {
         if (!isCurrent()) return null
         try {
-          return await tagSpans.applyBulkUpdate(ids, { type })
+          if (type !== 'delete') return await tagSpans.applyBulkUpdate(ids, { type })
+          const expectedVersions = Object.fromEntries(ids.flatMap((id) => {
+            const version = knownVersions.get(id)
+            return version === undefined ? [] : [[id, version]]
+          }))
+          const result = await api.deleteAutoSpansApiAiAutoSpansDeletePost({
+            deleteAutoSpansRequest: { collectionId, documentId, spanIds: ids, expectedVersions }
+          })
+          if (!isCurrent()) return null
+          const deletedIds = new Set(result.succeeded ?? [])
+          if (deletedIds.size) tagSpans.removeSpansLocally((s) => !!s.id && deletedIds.has(s.id))
+          return result
         } finally {
-          for (const id of ids) busyAutoSpanIds.value.delete(id)
+          if (isCurrent()) for (const id of ids) busyAutoSpanIds.value.delete(id)
         }
       },
       (progress) => { if (isCurrent()) bulkProgress.value = progress }
@@ -989,21 +1034,22 @@ async function bulkResolveSelected(type: SpanType) {
     if (isCurrent()) {
       for (const id of targets) busyAutoSpanIds.value.delete(id)
       isBulkResolving.value = false
+      bulkAction.value = null
       bulkProgress.value = null
     }
   }
   if (!isCurrent() || !summary || summary.abandoned) return
-  // Keep the suggestions that were not saved selected, so they can be retried.
   const unresolved = new Set(summary.unresolved)
   selectedSuggestionIds.value = new Set([...selectedSuggestionIds.value].filter((id) => unresolved.has(id)))
   if (summary.saved) aiAssist.highlightedAutoSpanId.value = nextHighlight
   if (summary.error) console.error('Bulk resolve failed', summary.error)
-  const message = describeBulkResolve(summary, type === SpanType.pos ? 'Confirmed' : 'Rejected')
+  const verb = type === 'delete' ? 'Deleted' : type === SpanType.pos ? 'Confirmed' : 'Rejected'
+  const message = describeBulkResolve(summary, verb)
   if (message) {
-    $q.notify({ type: summary.saved === summary.total ? 'warning' : 'negative', message, timeout: 10000 })
+    $q.notify({ type: 'negative', message, timeout: 10000 })
   } else {
     const n = summary.saved
-    $q.notify({ type: 'positive', message: `${type === SpanType.pos ? 'Confirmed' : 'Rejected'} ${n} ${n === 1 ? 'suggestion' : 'suggestions'}.` })
+    $q.notify({ type: 'positive', message: `${verb} ${n} ${n === 1 ? 'suggestion' : 'suggestions'}.` })
   }
 }
 
@@ -1056,6 +1102,7 @@ watch(
     selectedSuggestionIds.value = new Set()
     isBulkDeleting.value = false
     isBulkResolving.value = false
+    bulkAction.value = null
     bulkProgress.value = null
     busyAutoSpanIds.value = new Set()
     proposalSort.value = 'confidence'
@@ -1415,5 +1462,38 @@ watch(chosenAiTagIds, (ids) => {
   line-height: 1.4;
   white-space: pre-wrap;
   background: rgba(15, 23, 42, 0.92);
+}
+/* Keep the selection count above four evenly sized icon + label actions (#801). */
+.auto-span-bulk-bar {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 2px;
+}
+.auto-span-bulk-status {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.auto-span-bulk-status > .q-checkbox {
+  min-width: 0;
+}
+.auto-span-bulk-status > [data-testid="proposal-match-count"] {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.auto-span-bulk-bar > .q-space {
+  display: none;
+}
+.auto-span-bulk-bar > .q-btn {
+  flex: 1 1 calc(25% - 2px);
+  min-width: 0;
+  padding: 3px 0;
+  font-size: 11px;
+  line-height: 1.2;
 }
 </style>

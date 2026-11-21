@@ -1003,13 +1003,18 @@ class SuggestSpansRunEnd(BaseModel):
 
 
 class DeleteAutoSpansRequest(BaseModel):
-    """
-    Request body for bulk deletion of unresolved AI proposals
-    (``type == auto``) within a single (collection, document) scope.
-    """
+    """Delete unresolved suggestions by tag (Clear unresolved) or by selected span ids."""
     collection_id: str
     document_id: str
-    tag_ids: list[str]
+    tag_ids: list[str] | None = None
+    span_ids: list[str] | None = None
+    expected_versions: dict[str, int] | None = None
+
+    @model_validator(mode="after")
+    def one_selection_mode(self) -> "DeleteAutoSpansRequest":
+        if (self.tag_ids is None) == (self.span_ids is None):
+            raise ValueError("Provide either tag_ids or span_ids, not both")
+        return self
 
 
 class DeleteAutoSpansResponse(WriteResult):

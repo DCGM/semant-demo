@@ -771,6 +771,51 @@ async def delete_suggestions_in_document(store: AnnotationStore, user: Principal
     return await _delete_in_document(store, user, collection_id, document_id, tag_ids, SpanType.auto)
 
 
+async def delete_selected_suggestions_in_document(
+        store: AnnotationStore, user: Principal | None, collection_id: Id, document_id: Id,
+        span_ids: list[Id], expected_versions: dict[str, int] | None = None) -> WriteResult:
+    """Best-effort id-scoped removal. Never remove a reviewed span or one of another document.
+
+    Check its type, chunk and optional edit version under the per-span write lock.
+    The lock is process-local, matching the existing versioned edit contract (#460).
+    """
+    grant = await access.require_annotation_edit(store.collections, user, collection_id)
+    document = await access.require_document_in_collection(store.collections, document_id, grant.collection_id)
+    ids = list(dict.fromkeys(access.parse_id(sid, "Span") for sid in span_ids))
+    if not ids:
+        return WriteResult(outcome=outcome_of(0, 0))
+    cid = await use_tenant(store, grant)
+    known = await store.spans.read_many(cid, ids)
+    chunks = list({UUID(span.chunkId) for span in known.values()})
+    allowed_chunks = await store.collections.chunk_ids_in_collection(chunks, cid, document)
+    expected = {access.parse_id(sid, "Span"): version for sid, version in (expected_versions or {}).items()}
+
+    deleted: list[str] = []
+    failed: list[StepFailure] = []
+    for sid in ids:
+        try:
+            async with store.spans.lock(sid):
+                current = await store.spans.read(cid, sid)
+                if current is None or UUID(current.chunkId) not in allowed_chunks:
+                    raise NotFoundError("Suggestion not found in this document")
+                if store.spans.provenance and sid in expected and current.editVersion != expected[sid]:
+                    raise _conflict(current)
+                if current.type != SpanType.auto:
+                    raise InvalidRequestError("Only pending AI suggestions can be deleted")
+                await store.spans.delete(cid, sid)
+                deleted.append(str(sid))
+        except EditConflictError:
+            failed.append(_conflict_failure(sid))
+        except NotFoundError:
+            failed.append(_missing_failure(sid))
+        except InvalidRequestError:
+            failed.append(StepFailure(item_id=str(sid), step="check_type",
+                                      message="The annotation is no longer a pending suggestion."))
+        except Exception as error:
+            failed.append(step_failure("delete_span", sid, error))
+    return WriteResult(outcome=outcome_of(len(deleted), len(failed)), succeeded=deleted, failed=failed)
+
+
 #############################
 # Annotation rows (#328)    #
 #############################

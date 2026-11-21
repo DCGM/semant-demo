@@ -183,14 +183,12 @@ async def delete_auto_spans(
     annotations: AnnotationStore = Depends(get_annotation_store),
     current_user: User = Depends(current_active_user),
 ) -> DeleteAutoSpansResponse:
-    """
-    Bulk-delete unresolved AI proposals (``type == 'auto'``) within a single
-    (collection, document) for the given tag UUIDs.
-
-    Useful for cleaning up suggestions the user did not get around to
-    approving or rejecting. Best effort: ``succeeded`` lists the deleted spans and
-    ``failed`` those that could not be deleted (``delete_span``).
-    """
-    result = await service.delete_suggestions_in_document(
-        annotations, current_user, body.collection_id, body.document_id, body.tag_ids)
+    """Delete unresolved AI spans by tag (legacy cleanup) or explicitly selected ids."""
+    if body.span_ids is not None:
+        result = await service.delete_selected_suggestions_in_document(
+            annotations, current_user, body.collection_id, body.document_id,
+            body.span_ids, body.expected_versions)
+    else:
+        result = await service.delete_suggestions_in_document(
+            annotations, current_user, body.collection_id, body.document_id, body.tag_ids or [])
     return DeleteAutoSpansResponse(**result.model_dump(), deleted=len(result.succeeded))

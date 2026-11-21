@@ -43,7 +43,12 @@ class FakeCollections:
         return {COLLECTION: (OWNER.id, {SHARED.id}), SECOND_COLLECTION: (OWNER.id, set())}.get(cid)
 
     async def chunk_ids_in_collection(self, ids, cid, document=None):
-        return {i for i in ids if i in TEXTS or i == ELSEWHERE_CHUNK} if cid == COLLECTION else set()
+        if cid != COLLECTION:
+            return set()
+        allowed = set(TEXTS) if document == DOCUMENT else {ELSEWHERE_CHUNK} if document == ELSEWHERE_DOCUMENT else set()
+        if document is None:
+            allowed = set(TEXTS) | {ELSEWHERE_CHUNK}
+        return set(ids) & allowed
 
     async def document_in_collection(self, document_id, cid):
         return (document_id, cid) == (DOCUMENT, COLLECTION)
@@ -618,6 +623,58 @@ async def test_scoped_delete_keeps_going_after_a_failed_span(store, writes):
 async def test_scoped_delete_with_a_document_outside_the_collection_is_not_found(store, writes):
     with pytest.raises(NotFoundError):
         await service.delete_approved_spans_in_document(store, OWNER, COLLECTION, uuid4(), [TAG])
+    assert writes == []
+
+
+async def test_selected_auto_delete_removes_only_requested_ids(store, writes):
+    result = await service.delete_selected_suggestions_in_document(
+        store, SHARED, COLLECTION, DOCUMENT, [SPAN_A, SPAN_A])
+    assert result.outcome == 'complete'
+    assert result.succeeded == [str(SPAN_A)]
+    assert SPAN_A not in store.spans.stored[COLLECTION]
+    assert store.spans.stored[COLLECTION][SPAN_B].type == SpanType.auto
+    assert writes == [('delete_span', SPAN_A)]
+
+
+async def test_selected_auto_delete_never_deletes_reviewed_or_foreign_spans(store, writes):
+    elsewhere = uuid4()
+    store.spans.stored[COLLECTION][SPAN_B] = store.spans.stored[COLLECTION][SPAN_B].model_copy(
+        update={'type': SpanType.pos})
+    store.spans.stored[COLLECTION][elsewhere] = TagSpan(
+        id=str(elsewhere), chunkId=str(ELSEWHERE_CHUNK), tagId=str(TAG), start=0, end=2,
+        type=SpanType.auto)
+    result = await service.delete_selected_suggestions_in_document(
+        store, OWNER, COLLECTION, DOCUMENT, [SPAN_A, SPAN_B, elsewhere, SPAN_C, uuid4()])
+    assert result.succeeded == [str(SPAN_A)]
+    assert result.outcome == 'partial'
+    assert {f.step for f in result.failed} == {'check_type', 'find_annotation'}
+    assert SPAN_B in store.spans.stored[COLLECTION]
+    assert elsewhere in store.spans.stored[COLLECTION]
+    assert SPAN_C in store.spans.stored[SECOND_COLLECTION]
+    assert writes == [('delete_span', SPAN_A)]
+
+
+async def test_selected_auto_delete_respects_versions_and_partial_failures(store, writes):
+    store.spans.provenance = True
+    store.spans.stored[COLLECTION][SPAN_A] = store.spans.stored[COLLECTION][SPAN_A].model_copy(
+        update={'editVersion': 1})
+    store.spans.fail[f'delete_span:{SPAN_B}'] = RuntimeError('unavailable')
+    result = await service.delete_selected_suggestions_in_document(
+        store, OWNER, COLLECTION, DOCUMENT, [SPAN_A, SPAN_B],
+        {str(SPAN_A): 0, str(SPAN_B): 0})
+    assert result.outcome == 'failed'
+    assert result.succeeded == []
+    assert [(f.item_id, f.step) for f in result.failed] == [
+        (str(SPAN_A), 'edit_conflict'), (str(SPAN_B), 'delete_span')]
+    assert SPAN_A in store.spans.stored[COLLECTION]
+    assert SPAN_B in store.spans.stored[COLLECTION]
+
+
+async def test_selected_auto_delete_requires_annotate_rights_and_document(store, writes):
+    with pytest.raises(NotFoundError):
+        await service.delete_selected_suggestions_in_document(store, OTHER, COLLECTION, DOCUMENT, [SPAN_A])
+    with pytest.raises(NotFoundError):
+        await service.delete_selected_suggestions_in_document(store, OWNER, COLLECTION, uuid4(), [SPAN_A])
     assert writes == []
 
 

@@ -48,6 +48,40 @@ test('suggestions appear while the run is under way and cancelling keeps them', 
   await expect(suggestionCards(page)).toHaveCount(1)
 })
 
+test('bulk Delete removes only selected suggestions and leaves other pending suggestions', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await startPersonRun(page)
+  await expect(suggestionCards(page)).toHaveCount(1)
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByRole('button', { name: 'Run AI' })).toBeVisible()
+
+  const panel = page.locator('.ai-assist-panel')
+  await suggestionCards(page).first().locator('.q-checkbox').click()
+  await expect(page.getByTestId('proposal-selection-count')).toContainText('1 / 2 visible selected')
+  await panel.getByTestId('bulk-delete-selected').click()
+  await expect(suggestionCards(page)).toHaveCount(0)
+  await expect(panel.locator('.auto-span-card')).toHaveCount(1)
+
+  await page.reload()
+  await sidebarPanelButton(page, 'AI Tagging').click()
+  await expect(suggestionCards(page)).toHaveCount(0)
+  await expect(panel.locator('.auto-span-card')).toHaveCount(1)
+})
+
+test('bulk Delete asks before deleting all pending suggestions', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Tagging').click()
+  const panel = page.locator('.ai-assist-panel')
+  await panel.locator('.auto-span-bulk-bar .q-checkbox').click()
+  await panel.getByTestId('bulk-delete-selected').click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Delete 1 suggestion?')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(panel.locator('.auto-span-card')).toHaveCount(1)
+})
+
 test('leaving the document during a run shows nothing of it in the next view', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
@@ -193,7 +227,7 @@ test('changing collection/document clears proposal filters and selection (#465)'
   await expect(page.getByTestId('no-matching-proposals')).toHaveCount(0)
   await expect(page.getByTestId('proposal-match-count')).toContainText('1 of 1 matching')
   await expect(page.getByTestId('proposal-selection-count')).toContainText('0 / 1 visible selected')
-  await expect(panel.getByRole('button', { name: 'Clear selection' })).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Clear selection' })).toBeDisabled()
   await expect(panel.getByRole('button', { name: 'Confirm' })).toBeDisabled()
 })
 
