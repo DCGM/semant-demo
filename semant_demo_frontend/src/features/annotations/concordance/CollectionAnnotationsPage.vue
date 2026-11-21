@@ -12,16 +12,17 @@
       class="q-mb-sm"
       @change="store.setFilters"
       @show-attributes="ids => { store.shownAttributeIds = ids }"
-    />
-
-    <SavedFiltersBar
-      :collection-id="collectionId"
-      :tags="tags"
-      :attributes="attributesStore.attributes"
-      :people="store.people"
-      :me="userStore.getUserId ?? null"
-      class="q-mb-xs"
-    />
+    >
+      <template #saved>
+        <SavedFiltersMenu
+          :collection-id="collectionId"
+          :tags="tags"
+          :attributes="attributesStore.attributes"
+          :people="store.people"
+          :me="userStore.getUserId ?? null"
+        />
+      </template>
+    </ConcordanceToolbar>
 
     <ConcordanceFilterChips
       :filters="store.filters"
@@ -464,7 +465,7 @@ import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import SimilarSourceBar from './SimilarSourceBar.vue'
-import SavedFiltersBar from './SavedFiltersBar.vue'
+import SavedFiltersMenu from './SavedFiltersMenu.vue'
 import { useSavedFiltersStore } from './savedFiltersStore'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'

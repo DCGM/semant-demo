@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { SavedSelection } from 'src/generated/api'
 import { apiErrorMessage, captureSession, createContextGuard, createScope, useApi } from 'src/shared/api'
-import { useConcordanceStore } from './concordanceStore'
+import { defaultFilters, useConcordanceStore } from './concordanceStore'
 import { filtersOf, liveQueryOf, sameQuery } from './savedFilters'
 
 const byName = (a: SavedSelection, b: SavedSelection) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
@@ -121,6 +121,13 @@ export const useSavedFiltersStore = defineStore('savedFilters', () => {
     await concordance.setFilters(filtersOf(selection.query))
   }
 
+  /** Closes the open saved filter: the workspace returns to the default filters and columns. */
+  async function close () {
+    activeId.value = null
+    concordance.shownAttributeIds = []
+    await concordance.setFilters(defaultFilters())
+  }
+
   function clear () {
     scope.reset()
     listRequests.enter()
@@ -131,5 +138,5 @@ export const useSavedFiltersStore = defineStore('savedFilters', () => {
     activeId.value = null
   }
 
-  return { collectionId, items, loading, error, activeId, active, modified, load, saveAs, update, rename, remove, open, clear }
+  return { collectionId, items, loading, error, activeId, active, modified, load, saveAs, update, rename, remove, open, close, clear }
 })

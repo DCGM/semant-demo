@@ -172,6 +172,8 @@
         >
           <q-tooltip>Sources, years, document title, library, language and attributes</q-tooltip>
         </q-btn>
+        <!-- Saved filters of the collection (#824). -->
+        <slot name="saved" />
       </div>
 
       <div
