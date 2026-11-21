@@ -22,6 +22,7 @@ import yaml
 from httpx import ASGITransport
 from openai import AsyncOpenAI
 from weaviate.classes.config import Configure, DataType, Property, Tokenization
+import weaviate.retry
 from weaviate.classes.query import QueryReference
 
 from semant_demo.adapters.weaviate.search import ChunkSearchRepository
@@ -273,14 +274,23 @@ def unused_port() -> int:
 
 
 async def test_an_unreachable_grpc_port_stops_a_run_before_it_creates_the_vector(tool_store, make_pipeline,
-                                                                                  embed_calls):
+                                                                                  embed_calls, monkeypatch):
     # The client skips its start-up checks (no version lookup on pypi.org, #798) and the schema
     # calls use REST, so the run reads one object over gRPC before it adds the vector.
     await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
     port = unused_port()
+    # The client retries an unavailable gRPC query six times, waiting 1 + 2 + … + 32 s; the
+    # retries still happen, without the 63 s of waiting.
+    backoff = []
+
+    async def no_wait(seconds):
+        backoff.append(seconds)
+
+    monkeypatch.setattr(weaviate.retry, "asyncio", type("NoWait", (), {"sleep": staticmethod(no_wait)}))
 
     with pytest.raises(ConnectionError, match=f"gRPC at .*:{port}"):
         await make_pipeline(weaviate_grpc_port=port).run_async()
+    assert backoff == [1, 2, 4, 8, 16, 32]
     assert set((await tool_store.collections.get(TEST_COLLECTION).config.get()).vector_config) == {"default"}
     assert embed_calls == []
 

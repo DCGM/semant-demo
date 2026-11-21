@@ -234,44 +234,44 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_chunk_summaries.py` | pytest Weaviate | 14 | pending |
-| `backend/tests/integration/test_chunk_titles.py` | pytest Weaviate | 9 | pending |
-| `backend/tests/integration/test_classifier_tool.py` | pytest Weaviate | 30 | pending |
-| `backend/tests/integration/test_embedder_tool.py` | pytest Weaviate | 16 | pending |
-| `backend/tests/integration/test_span_chat.py` | pytest Weaviate | 5 | pending |
-| `backend/tests/integration/test_suggestions.py` | pytest Weaviate | 5 | pending |
-| `backend/tests/test_ai_suggestion_dates.py` | pytest fast | 2 | pending |
-| `backend/tests/test_chat/test_document_chat.py` | pytest fast | 18 | pending |
-| `backend/tests/test_chat/test_search_chat.py` | pytest fast | 13 | pending |
-| `backend/tests/test_chunk_summaries.py` | pytest fast | 13 | pending |
-| `backend/tests/test_chunk_titles.py` | pytest fast | 61 | pending |
-| `backend/tests/test_classifier_cli.py` | pytest fast | 35 | pending |
-| `backend/tests/test_embedder_cli.py` | pytest fast | 11 | pending |
-| `backend/tests/test_fake_providers.py` | pytest fast | 7 | pending |
-| `backend/tests/test_llm/test_features.py` | pytest fast | 38 | pending |
-| `backend/tests/test_llm/test_gateway.py` | pytest fast | 71 | pending |
-| `backend/tests/test_llm/test_rag_sources.py` | pytest fast | 8 | pending |
-| `backend/tests/test_rag_routes.py` | pytest fast | 10 | pending |
-| `backend/tests/test_span_chat.py` | pytest fast | 17 | pending |
-| `backend/tests/test_suggestions.py` | pytest fast | 47 | pending |
-| `backend/tests/test_summarization/test_document_service.py` | pytest fast | 10 | pending |
-| `backend/tests/test_summarization/test_lengths.py` | pytest fast | 19 | pending |
-| `backend/tests/test_summarization/test_service.py` | pytest fast | 9 | pending |
-| `backend/tests/test_summarization/test_templated.py` | pytest fast | 3 | pending |
-| `backend/tests/test_topicer_client.py` | pytest fast | 29 | pending |
-| `backend/tests/test_utils/test_template.py` | pytest fast | 2 | pending |
-| `frontend/test/unit/aiAssistance.spec.ts` | Vitest | 16 | pending |
-| `frontend/test/unit/aiRunConfirmation.spec.ts` | Vitest | 10 | pending |
-| `frontend/test/unit/aiSuggestionPresentation.spec.ts` | Vitest | 8 | pending |
-| `frontend/test/unit/chatSources.spec.ts` | Vitest | 17 | pending |
-| `frontend/test/unit/chatStorage.spec.ts` | Vitest | 11 | pending |
-| `frontend/test/unit/citationTokens.spec.ts` | Vitest | 3 | pending |
-| `frontend/test/unit/documentViewAiCleanup.spec.ts` | Vitest | 3 | pending |
-| `frontend/test/unit/ragExplain.spec.ts` | Vitest | 3 | pending (disputed with #851) |
-| `frontend/test/unit/scopedChat.spec.ts` | Vitest | 24 | pending |
-| `frontend/test/unit/spanDiscussion.spec.ts` | Vitest | 4 | pending |
-| `frontend/test/unit/tagSuggestion.spec.ts` | Vitest | 13 | pending |
-| `frontend/test/unit/topicerModelStore.spec.ts` | Vitest | 7 | pending |
+| `backend/tests/integration/test_chunk_summaries.py` | pytest Weaviate | 14 | keep (closes its report file) |
+| `backend/tests/integration/test_chunk_titles.py` | pytest Weaviate | 9 | keep |
+| `backend/tests/integration/test_classifier_tool.py` | pytest Weaviate | 30 | keep |
+| `backend/tests/integration/test_embedder_tool.py` | pytest Weaviate | 16 | **simplify fixture** (#862) |
+| `backend/tests/integration/test_span_chat.py` | pytest Weaviate | 5 | keep |
+| `backend/tests/integration/test_suggestions.py` | pytest Weaviate | 5 | keep |
+| `backend/tests/test_ai_suggestion_dates.py` | pytest fast | 2 | keep |
+| `backend/tests/test_chat/test_document_chat.py` | pytest fast | 18 | keep |
+| `backend/tests/test_chat/test_search_chat.py` | pytest fast | 13 | keep |
+| `backend/tests/test_chunk_summaries.py` | pytest fast | 13 | keep |
+| `backend/tests/test_chunk_titles.py` | pytest fast | 61 | keep |
+| `backend/tests/test_classifier_cli.py` | pytest fast | 35 | keep |
+| `backend/tests/test_embedder_cli.py` | pytest fast | 11 | keep |
+| `backend/tests/test_fake_providers.py` | pytest fast | 7 | keep (asserts `retry-after-ms`) |
+| `backend/tests/test_llm/test_features.py` | pytest fast | 38 | keep |
+| `backend/tests/test_llm/test_gateway.py` | pytest fast | 71 | keep (no retry backoff, via the fake) |
+| `backend/tests/test_llm/test_rag_sources.py` | pytest fast | 8 | keep |
+| `backend/tests/test_rag_routes.py` | pytest fast | 10 | keep |
+| `backend/tests/test_span_chat.py` | pytest fast | 17 | keep |
+| `backend/tests/test_suggestions.py` | pytest fast | 47 | keep |
+| `backend/tests/test_summarization/test_document_service.py` | pytest fast | 10 | keep |
+| `backend/tests/test_summarization/test_lengths.py` | pytest fast | 19 | keep |
+| `backend/tests/test_summarization/test_service.py` | pytest fast | 9 | keep |
+| `backend/tests/test_summarization/test_templated.py` | pytest fast | 3 | keep |
+| `backend/tests/test_topicer_client.py` | pytest fast | 29 | keep |
+| `backend/tests/test_utils/test_template.py` | pytest fast | 2 | keep |
+| `frontend/test/unit/aiAssistance.spec.ts` | Vitest | 16 | keep |
+| `frontend/test/unit/aiRunConfirmation.spec.ts` | Vitest | 10 | keep |
+| `frontend/test/unit/aiSuggestionPresentation.spec.ts` | Vitest | 8 | keep |
+| `frontend/test/unit/chatSources.spec.ts` | Vitest | 17 | keep |
+| `frontend/test/unit/chatStorage.spec.ts` | Vitest | 11 | keep |
+| `frontend/test/unit/citationTokens.spec.ts` | Vitest | 3 | keep |
+| `frontend/test/unit/documentViewAiCleanup.spec.ts` | Vitest | 3 | keep |
+| `frontend/test/unit/ragExplain.spec.ts` | Vitest | 3 | keep (disputed with #851) |
+| `frontend/test/unit/scopedChat.spec.ts` | Vitest | 24 | keep |
+| `frontend/test/unit/spanDiscussion.spec.ts` | Vitest | 4 | keep |
+| `frontend/test/unit/tagSuggestion.spec.ts` | Vitest | 13 | keep |
+| `frontend/test/unit/topicerModelStore.spec.ts` | Vitest | 7 | keep |
 
 ### #854
 
@@ -594,3 +594,73 @@ rest.**
 - **Skips:** none.
 
 The full note is [on #852](https://github.com/DCGM/semant-demo/issues/852).
+
+### #853 LLM, RAG, chat, streaming, summaries and suggestions
+
+**Two waits removed ([#862](https://github.com/DCGM/semant-demo/pull/862)); keep the rest.**
+Same machine and commands as #848:
+
+| Layer | Files | Cases | Before | After |
+| --- | ---: | ---: | --- | --- |
+| Fast backend | 20 | 423 | 9.2 s | 8.3 s |
+| Real Weaviate | 6 | 80 | 128.0 s | 67.3 s (63.1 s reversed) |
+| Vitest | 12 | 119 | 2.7 s (sum of file times) | unchanged (no frontend change) |
+
+- **`integration/test_embedder_tool.py::test_an_unreachable_grpc_port_stops_a_run_before_it_creates_the_vector`:**
+  **simplify fixture.** It took 63.3 s: the Weaviate client retries an unavailable gRPC
+  query six times and sleeps 1 + 2 + 4 + 8 + 16 + 32 s in between (`weaviate.retry`, not
+  configurable). The test now replaces that sleep and asserts the six backoff steps, so the
+  retries still happen. The file takes 12 s again, as `shard_durations.json` assumes; the
+  test came with #798 on 21 November, after that file was measured.
+- **The fake providers' 501 for unfaked routes:** it now sends `retry-after-ms: 1`. The
+  OpenAI client still retries it once, without its random backoff of up to a second
+  (`test_gateway.py`, two tests, and `test_quota/test_operations.py`, #849).
+  `test_fake_providers.py` asserts the header. The fakes are stage 1's; the browser server
+  and the development stack use them too, where a failing unfaked call also ends sooner.
+- **`integration/test_chunk_summaries.py`:** keep; one test closes the report file it read
+  (a `ResourceWarning`). Its setup (~1.9 s per test) is the per-test schema recreation after
+  the summary properties were added; Weaviate cannot drop a property, so this stays (#854
+  measures the reset).
+- **Gateway, features and RAG (`test_llm/**`, `test_rag_routes.py`):** **keep.**
+  - `test_gateway.py` covers tier policy, provider wiring and usage, cost and cancellation
+    metering per provider.
+  - `test_features.py` runs every RAG pipeline, the question endpoint and search summaries
+    through the real gateway against the HTTP fakes.
+  - `test_rag_sources.py` covers citation numbering across agent searches.
+  - `test_rag_routes.py` covers configuration loading, feedback and content-free logs.
+- **Chat and summaries (`test_chat/**`, `test_summarization/**`):** **keep.** The chat fake
+  (`FakeLlm` in `test_document_chat.py`, also used by `test_search_chat.py`) streams through
+  a feature catalog; `tests/fakes.py`'s `FakeLlm` and `FakeStreamingChat` serve other
+  interfaces, so they are not duplicates. `test_templated.py` pins the message and option
+  mapping with its own prompts, `test_lengths.py` the bundled length levels.
+- **Span chat and suggestions:** **keep both layers.** The fast files cover access before
+  any read, history limits, UTF-16 offsets, failures mid-stream and cancellation
+  (`test_suggestions.py`: closing the stream, consumer cancellation, a write finished
+  before cancelling). The real-store files cover reloading through the span API, offsets
+  as stored and a disconnect on a real server.
+- **Offline tools (`test_chunk_titles.py`, `test_chunk_summaries.py`, `test_classifier_cli.py`,
+  `test_embedder_cli.py` and their integration files):** **keep.** The fast files cover
+  CLI refusals, endpoint confirmation, planning and exit codes; the integration files cover
+  the runs, resumption and the guarded test collections against the store.
+- **`test_topicer_client.py`, `test_ai_suggestion_dates.py`, `test_utils/test_template.py`:**
+  **keep.** They cost milliseconds; the Topicer tests pin content-free errors and usage.
+- **Waits:** the 0.2 s pacing in `test_fake_providers.py` is what it tests (the browser
+  tests rely on it); `test_chunk_titles.py` already removes its backoff; the Vitest
+  `flush()` helpers are zero-delay.
+- **Skips:** none.
+
+Ownership: `test_mcp.py` stays with #851 and the quota files with #849, as the owner map
+says; the tool files above (titles, summaries, classifier, embedder, Topicer), which the
+issue text does not name, are this stage's by the owner map.
+
+Remaining risks:
+
+- `integration/test_embedder_tool.py::test_a_filled_vector_keeps_the_chunk_data_and_is_searchable`
+  failed once in 33 runs (18 of its file, 15 alone), in the first run after the change, though
+  it runs before the changed test. The trace was not kept.
+- A reversed run once warned that a garbage-collected aiosqlite connection was not
+  returned, after `integration/test_suggestions.py`'s disconnect test.
+- A wrong `weaviate_grpc_port` makes the embedder wait the same 63 s before it reports the
+  error; that is product behavior, not changed here.
+
+The full note is [on #853](https://github.com/DCGM/semant-demo/issues/853).
