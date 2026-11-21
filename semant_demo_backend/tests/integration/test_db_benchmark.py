@@ -5,9 +5,18 @@ import json
 
 import pytest
 
-from semant_demo.maintenance.db_benchmark import cli
+from semant_demo.maintenance.db_benchmark import cli, runner
 
 pytestmark = pytest.mark.integration
+
+
+class _Unpaced(runner.Pacer):
+    """Starts every request at once. The smoke profile's 10 requests a second took ~8 s of
+    this test; the pacing itself is unit-tested in tests/test_db_benchmark.py."""
+
+    def __init__(self, max_qps: float):
+        super().__init__(max_qps)
+        self.interval = 0.0
 
 
 async def _counts(client) -> dict[str, int]:
@@ -29,7 +38,8 @@ def _target(store_endpoint) -> list[str]:
             "--grpc-port", str(store_endpoint.grpc_port)]
 
 
-async def test_smoke_run_and_inventory_are_read_only(seeded_store, store_endpoint, corpus, tmp_path):
+async def test_smoke_run_and_inventory_are_read_only(seeded_store, store_endpoint, corpus, tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "Pacer", _Unpaced)
     before = await _counts(seeded_store)
 
     key = ["--id-key-file", str(tmp_path / "key")]
