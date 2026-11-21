@@ -1,8 +1,8 @@
 <template>
   <q-slide-transition>
     <div v-if="active" class="saved-filter-header" role="region" aria-label="Open saved filter" data-testid="saved-filter-header">
-      <q-icon name="bookmark" color="primary" size="xs" />
-      <span class="saved-filter-header__name text-weight-medium" data-testid="saved-filter-name">{{ active.name }}</span>
+      <!-- Right-aligned: the status and the buttons that come and go stand left of the name, so
+           the name and what follows it stay above the saved filters icon. -->
       <span
         class="saved-filter-header__status"
         :class="saved.modified ? 'saved-filter-header__status--changed' : 'text-grey-7'"
@@ -10,25 +10,28 @@
         data-testid="saved-filter-status"
       >
         <template v-if="saved.modified"><span class="saved-filter-header__dot" aria-hidden="true" />Unsaved changes</template>
-        <template v-else><q-icon name="check" size="xs" />Saved</template>
+        <template v-else><q-icon name="check" size="xs" />Filters saved</template>
       </span>
+      <span v-if="saved.modified" class="saved-filter-header__actions">
+        <q-btn
+          flat dense no-caps color="primary" class="saved-filter-header__action" label="Save"
+          :disable="!active.canEdit || busy" data-testid="saved-filter-save"
+          @click="save"
+        >
+          <q-tooltip v-if="!active.canEdit">Only its creator and the collection owner can save it; save it as a new one instead</q-tooltip>
+          <q-tooltip v-else>Save the current filters, order and columns into “{{ active.name }}” for everyone</q-tooltip>
+        </q-btn>
+        <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Discard" :disable="busy" data-testid="saved-filter-discard" @click="saved.discard()">
+          <q-tooltip>Go back to the filters as saved</q-tooltip>
+        </q-btn>
+      </span>
+      <span class="saved-filter-header__separator" aria-hidden="true" />
+      <q-icon name="bookmark" color="primary" size="xs" />
+      <span class="saved-filter-header__name text-weight-medium" data-testid="saved-filter-name">{{ active.name }}</span>
       <q-icon v-if="warning" name="warning" color="warning" size="xs" data-testid="saved-filter-warning">
         <q-tooltip max-width="20rem">{{ warning }}</q-tooltip>
       </q-icon>
       <span class="saved-filter-header__actions">
-        <template v-if="saved.modified">
-          <q-btn
-            flat dense no-caps color="primary" class="saved-filter-header__action" label="Save"
-            :disable="!active.canEdit || busy" data-testid="saved-filter-save"
-            @click="save"
-          >
-            <q-tooltip v-if="!active.canEdit">Only its creator and the collection owner can save it; save it as a new one instead</q-tooltip>
-            <q-tooltip v-else>Save the current filters, order and columns into “{{ active.name }}” for everyone</q-tooltip>
-          </q-btn>
-          <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Discard" :disable="busy" data-testid="saved-filter-discard" @click="saved.discard()">
-            <q-tooltip>Go back to the filters as saved</q-tooltip>
-          </q-btn>
-        </template>
         <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Save as new…" data-testid="saved-filter-save-as" @click="dialogs.saveAs()" />
         <q-btn flat round dense size="sm" icon="close" aria-label="Close saved filter" data-testid="saved-filter-close" @click="saved.close()">
           <q-tooltip>Close it and go back to the default filters</q-tooltip>
@@ -99,6 +102,7 @@ async function save () {
   background: #f57c00;
 }
 .saved-filter-header__actions { display: inline-flex; align-items: center; gap: 2px; }
+.saved-filter-header__separator { align-self: stretch; margin: 4px 2px; border-left: 1px solid rgba(0, 0, 0, 0.15); }
 /* Readable labels without the button's vertical padding: the line stays low. */
 .saved-filter-header__action {
   min-height: 26px;

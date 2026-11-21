@@ -267,7 +267,7 @@ describe('open saved filter header', () => {
     concordance.filters = filtersOf(store.items[0]!.query!)
     await wrapper.vm.$nextTick()
     expect(find(wrapper, 'saved-filter-name').text()).toBe('Praha')
-    expect(find(wrapper, 'saved-filter-status').text()).toMatch(/Saved$/)
+    expect(find(wrapper, 'saved-filter-status').text()).toMatch(/Filters saved$/)
     expect(find(wrapper, 'saved-filter-save').exists()).toBe(false)
     expect(find(wrapper, 'saved-filter-warning').exists()).toBe(true) // names a deleted tag
 
