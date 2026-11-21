@@ -1,27 +1,22 @@
 import { expect, test, type Locator } from '@playwright/test'
 import { ensureLoggedIn, fixture, openDocument, sidebarPanelButton } from './support'
 
-// Both the tag navigation and the chosen card must remain visible in the
-// outer sidebar, even when the options/filters take up most of its height.
-async function expectNavigationAndCardVisible(nav: Locator) {
-  await expect.poll(() => nav.evaluate((element) => {
-    const outer = element.closest<HTMLElement>('.sidebar-panel')?.parentElement
-    const navList = element.closest<HTMLElement>('.ai-tag-list')
+// Tag arrows scroll the inner virtual list without moving the entire sidebar.
+// The selected card may remain below the outer viewport until manual scrolling.
+async function expectNavigationWithoutSidebarScroll(nav: Locator, sidebar: Locator) {
+  await expect(nav).toBeInViewport()
+  await expect.poll(() => sidebar.evaluate((el) => el.scrollTop)).toBe(0)
+  await expect.poll(() => nav.evaluate(() => {
     const card = document.querySelector<HTMLElement>('.auto-span-card.is-highlighted')
     const list = card?.closest<HTMLElement>('.auto-span-list')
-    if (!outer || !navList || !card || !list) return false
-    const outerRect = outer.getBoundingClientRect()
-    const navRect = navList.getBoundingClientRect()
+    if (!card || !list || !card.isConnected) return false
     const cardRect = card.getBoundingClientRect()
     const listRect = list.getBoundingClientRect()
-    const stickyBottom = navRect.top <= outerRect.top + 1 ? navRect.bottom : outerRect.top
-    return navRect.top >= outerRect.top - 1 && navRect.bottom <= outerRect.bottom + 1 &&
-      cardRect.top >= Math.max(outerRect.top, listRect.top, stickyBottom) - 1 &&
-      cardRect.bottom <= Math.min(outerRect.bottom, listRect.bottom, window.innerHeight) + 1
+    return cardRect.top >= listRect.top - 1 && cardRect.bottom <= listRect.bottom + 1
   })).toBe(true)
 }
 
-test('tag arrows keep navigation visible with expanded controls and folded suggestions', async ({ page }) => {
+test('tag arrows scroll suggestions without scrolling the sidebar', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 650 })
   const chunkId = fixture.chunk('chronicle_1').id
   const sourceId = fixture.span('lhota_automatic').id
@@ -62,28 +57,40 @@ test('tag arrows keep navigation visible with expanded controls and folded sugge
   await expect(page.getByTestId('proposal-match-count')).toContainText('120 of 121 matching')
   const nav = page.locator('.ai-run-options .ai-tag-list-row')
     .filter({ hasText: fixture.tag('person').name }).locator('.ai-tag-nav')
+  const sidebar = page.locator('.q-drawer .scroll.q-px-md.q-pb-md')
+    .filter({ has: page.locator('.ai-assist-panel') })
+  // The tag list is part of the normal panel flow, not a sticky overlay.
+  await expect.poll(() => nav.evaluate((el) =>
+    getComputedStyle(el.closest('.ai-tag-list')!).position)).toBe('static')
+  await sidebar.evaluate((el) => { el.scrollTop = 0 })
 
-  // Mouse clicks need not leave the button focused; verify navigation and
-  // card visibility instead of browser-dependent click focus behavior.
   // Previous from no selection goes to a deep, initially unmounted suggestion.
   await nav.locator('button').first().click()
-  await expectNavigationAndCardVisible(nav)
+  await expectNavigationWithoutSidebarScroll(nav, sidebar)
+  await expect.poll(() => page.getByTestId('ai-suggestion-list').evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0)
   await expect(page.getByTestId('proposal-match-count')).toContainText('120 of 121 matching')
 
   await nav.locator('button').last().click()
-  await expectNavigationAndCardVisible(nav)
+  await expectNavigationWithoutSidebarScroll(nav, sidebar)
 
-  // Navigation opens Pending suggestions without hiding the tag arrows.
+  // Navigation still expands Pending suggestions, without moving the outer sidebar.
   await page.getByTestId('pending-suggestions-toggle').click()
   await expect(page.getByTestId('pending-suggestions-toggle')).toHaveAttribute('aria-expanded', 'false')
+  await sidebar.evaluate((el) => { el.scrollTop = 0 })
   await nav.locator('button').first().click()
   await expect(page.getByTestId('pending-suggestions-toggle')).toHaveAttribute('aria-expanded', 'true')
-  await expectNavigationAndCardVisible(nav)
+  await expectNavigationWithoutSidebarScroll(nav, sidebar)
 
-  // The alternate navigation shown when Run options are folded must work too.
+  // The alternate navigation shown when Run options are folded behaves the same way.
   await page.getByTestId('ai-options-toggle').click()
   const foldedNav = page.getByTestId('ai-folded-nav').locator('.ai-tag-list-row')
     .filter({ hasText: fixture.tag('person').name }).locator('.ai-tag-nav')
+  await sidebar.evaluate((el) => { el.scrollTop = 0 })
   await foldedNav.locator('button').last().click()
-  await expectNavigationAndCardVisible(foldedNav)
+  await expectNavigationWithoutSidebarScroll(foldedNav, sidebar)
+
+  // Manually scrolling the sidebar reveals the already-highlighted card.
+  await sidebar.evaluate((el) => { el.scrollTop = el.scrollHeight })
+  await expect(page.locator('.auto-span-card.is-highlighted')).toBeInViewport()
 })
