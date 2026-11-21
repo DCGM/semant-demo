@@ -103,7 +103,7 @@ describe('statistics computations', () => {
 describe('the statistics view', () => {
   const originalFetch = globalThis.fetch
   let requests: { path: string, body: Record<string, unknown> | undefined }[]
-  let answer: () => Response
+  let answer: () => Response | Promise<Response>
 
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -125,7 +125,7 @@ describe('the statistics view', () => {
     let emitted: unknown[][] = []
     const Host = defineComponent({
       setup () {
-        const { statistics, error, load } = useAnnotationStatistics(computed(() => 'c1'), filters)
+        const { statistics, error, load, loading } = useAnnotationStatistics(computed(() => 'c1'), filters)
         const summary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
         return () => h('div', [
           summary.value ? h('p', { 'data-testid': 'summary' }, `${summary.value.total} / ${summary.value.documents ?? '—'} / ${summary.value.denominator}`) : null,
@@ -133,6 +133,7 @@ describe('the statistics view', () => {
             filters: filters.value,
             statistics: statistics.value,
             error: error.value,
+            stale: loading.value,
             tags: labels.tags,
             documents: labels.documents,
             dimension: dimension as never,
@@ -219,5 +220,25 @@ describe('the statistics view', () => {
     await wrapper.get('[data-testid="statistics-error"] button').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-testid="summary"]').text()).toMatch(/^6 \//)
+  })
+
+  it('shows a refused query as an error, not as no annotations', async () => {
+    answer = () => json({ detail: 'Too many annotations to compare' }, 400)
+    const wrapper = await mountPanel()
+    expect(wrapper.get('[data-testid="statistics-error"]').text()).toContain('could not be computed for this query')
+    expect(wrapper.find('[data-testid="statistics-empty"]').exists()).toBe(false)
+  })
+
+  it('offers no drill-down while a newer query is counted', async () => {
+    const wrapper = await mountPanel()
+    expect(wrapper.find('[data-testid="statistics-tag-show-t2"]').exists()).toBe(true)
+    let release!: () => void
+    answer = () => { const r = json(statistics()); return new Promise<Response>(resolve => { release = () => resolve(r) }) }
+    wrapper.filters.value = { ...defaultFilters(), text: 'Karel' }
+    await flushPromises()
+    expect(wrapper.find('[data-testid="statistics-tag-show-t2"]').exists()).toBe(false) // old counts, new filters
+    release()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="statistics-tag-show-t2"]').exists()).toBe(true)
   })
 })

@@ -287,6 +287,19 @@ async def test_a_count_that_needs_more_documents_than_allowed_is_left_out_not_th
     assert set(found) == {"tag"}  # also over the query's own population: left out, never counted as 0
 
 
+async def test_a_refused_population_fails_the_statistics_instead_of_counting_nothing(populated, monkeypatch):
+    """#818 review: with ``self_exclusion`` false a refused shared population (here the proximity match
+    over its limit) is an error, never an answer without facets that would read as zero annotations.
+    The filter menus (self-exclusion) still only leave out the facets whose own population was refused."""
+    async def refused(*args):
+        raise InvalidRequestError("Too many annotations to compare")
+
+    monkeypatch.setattr(service, "_apply_near", refused)
+    with pytest.raises(InvalidRequestError):
+        await facets.annotation_facets(populated, OWNER, COLLECTION, request("tag", "year", self_exclusion=False))
+    assert await facet_counts(populated, "tag", "year") == {}
+
+
 async def test_the_proximity_filter_restricts_every_facet_before_counting(populated, monkeypatch):
     kept = {populated.spans.rows[0].id, populated.spans.rows[3].id}
     seen = []

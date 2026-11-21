@@ -60,7 +60,7 @@
           :filters="filters"
           :labels="labels"
           :denominator="denominator"
-          :drillable="!topK"
+          :drillable="drillable"
           @drill="change => emit('drill', change)"
           @open="emit('dimension', d)"
         />
@@ -105,6 +105,10 @@ const emit = defineEmits<{ drill: [change: Partial<ConcordanceFilters>], dimensi
 const statistics = computed(() => props.statistics)
 const topK = computed(() => isTopK(props.statistics))
 const total = computed(() => props.statistics?.facets[0]?.total ?? 0)
+/** A category can be listed only when its count is of the current query: never for a ranked top k
+ * (a narrower query would rank again), nor while a newer query is counted (the counts shown are of
+ * the previous one, the filter change would be of the new one). */
+const drillable = computed(() => !topK.value && !props.stale)
 const denominator = computed(() => (props.statistics ? denominatorText(props.statistics, total.value) : ''))
 const labels = computed(() => ({ tags: props.tags, documents: props.documents }))
 
@@ -114,7 +118,7 @@ const detailFacet = computed(() => (props.dimension ? facetOf(props.statistics, 
 const detailRows = computed(() => {
   const d = props.dimension
   if (!d || !detailFacet.value) return []
-  return orderedRows(distributionRows(detailFacet.value, d, labels.value, props.filters, !topK.value), d, order.value)
+  return orderedRows(distributionRows(detailFacet.value, d, labels.value, props.filters, drillable.value), d, order.value)
 })
 const truncatedBy = computed(() => {
   const f = detailFacet.value
