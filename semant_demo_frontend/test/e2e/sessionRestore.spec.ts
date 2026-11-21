@@ -120,6 +120,7 @@ test('a rejected token on reload still ends the session', async ({ page }) => {
   await page.reload()
 
   await expect(drawerItem(page, 'Log in')).toBeVisible()
+  for (const label of ['Collections', 'Settings', 'Sign out']) await expect(drawerItem(page, label)).toHaveCount(0)
   await expect.poll(() => storedToken(page)).toBeNull()
   await expect(banner(page)).toHaveCount(0)
 })

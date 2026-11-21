@@ -322,42 +322,42 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `frontend/test/capture/views.spec.ts` | Playwright capture | 33 | pending |
-| `frontend/test/e2e/aiSuggestionNavigation.spec.ts` | Playwright | 1 | pending |
-| `frontend/test/e2e/aiSuggestions.spec.ts` | Playwright | 10 | pending |
-| `frontend/test/e2e/aiTagNavigationVisibility.spec.ts` | Playwright | 1 | pending |
-| `frontend/test/e2e/annotationAttributes.spec.ts` | Playwright | 8 | pending |
-| `frontend/test/e2e/annotationWorkspace.spec.ts` | Playwright | 39 | pending |
-| `frontend/test/e2e/attributes.spec.ts` | Playwright | 11 | pending |
-| `frontend/test/e2e/chatSources.spec.ts` | Playwright | 9 | pending |
-| `frontend/test/e2e/collectionCharts.spec.ts` | Playwright | 7 | pending |
-| `frontend/test/e2e/collections.spec.ts` | Playwright | 9 | pending |
-| `frontend/test/e2e/corpusOverview.spec.ts` | Playwright | 6 | pending |
-| `frontend/test/e2e/documentChat.spec.ts` | Playwright | 5 | pending |
-| `frontend/test/e2e/documentRights.spec.ts` | Playwright | 6 | pending |
-| `frontend/test/e2e/documentSummary.spec.ts` | Playwright | 10 | pending |
-| `frontend/test/e2e/documentViewer.spec.ts` | Playwright | 32 | pending |
-| `frontend/test/e2e/documentWorkspace.spec.ts` | Playwright | 21 | pending |
-| `frontend/test/e2e/navigation.spec.ts` | Playwright | 12 | pending |
-| `frontend/test/e2e/originalSource.spec.ts` | Playwright | 4 | pending |
-| `frontend/test/e2e/permissions.spec.ts` | Playwright | 4 | pending |
-| `frontend/test/e2e/quota.spec.ts` | Playwright | 4 | pending |
-| `frontend/test/e2e/realScans.spec.ts` | Playwright | 3 | pending |
-| `frontend/test/e2e/scanViewer.spec.ts` | Playwright | 7 | pending |
-| `frontend/test/e2e/searchChat.spec.ts` | Playwright | 2 | pending |
-| `frontend/test/e2e/searchClassifications.spec.ts` | Playwright | 1 | pending |
-| `frontend/test/e2e/searchContext.spec.ts` | Playwright | 5 | pending |
-| `frontend/test/e2e/searchExplore.spec.ts` | Playwright | 14 | pending |
-| `frontend/test/e2e/searchHistory.spec.ts` | Playwright | 10 | pending |
-| `frontend/test/e2e/searchResultCards.spec.ts` | Playwright | 6 | pending |
-| `frontend/test/e2e/searchVectors.spec.ts` | Playwright | 3 | pending |
-| `frontend/test/e2e/searchVisualizations.spec.ts` | Playwright | 13 | pending |
-| `frontend/test/e2e/sessionRestore.spec.ts` | Playwright | 6 | pending |
-| `frontend/test/e2e/sessionTeardown.spec.ts` | Playwright | 7 | pending |
-| `frontend/test/e2e/sidebar.spec.ts` | Playwright | 4 | pending |
-| `frontend/test/e2e/smoke.spec.ts` | Playwright | 7 | pending |
-| `frontend/test/e2e/supportHelpers.spec.ts` | Playwright | 5 | pending |
-| `frontend/test/e2e/textUpload.spec.ts` | Playwright | 6 | pending |
+| `frontend/test/capture/views.spec.ts` | Playwright capture | 33 | simplify fixture |
+| `frontend/test/e2e/aiSuggestionNavigation.spec.ts` | Playwright | 1 | keep |
+| `frontend/test/e2e/aiSuggestions.spec.ts` | Playwright | 10 | keep |
+| `frontend/test/e2e/aiTagNavigationVisibility.spec.ts` | Playwright | 1 | keep |
+| `frontend/test/e2e/annotationAttributes.spec.ts` | Playwright | 8 | keep |
+| `frontend/test/e2e/annotationWorkspace.spec.ts` | Playwright | 39 | keep |
+| `frontend/test/e2e/attributes.spec.ts` | Playwright | 11 | keep |
+| `frontend/test/e2e/chatSources.spec.ts` | Playwright | 9 | keep |
+| `frontend/test/e2e/collectionCharts.spec.ts` | Playwright | 7 | keep |
+| `frontend/test/e2e/collections.spec.ts` | Playwright | 9 | keep |
+| `frontend/test/e2e/corpusOverview.spec.ts` | Playwright | 6 | keep |
+| `frontend/test/e2e/documentChat.spec.ts` | Playwright | 5 | keep |
+| `frontend/test/e2e/documentRights.spec.ts` | Playwright | 6 | keep |
+| `frontend/test/e2e/documentSummary.spec.ts` | Playwright | 10 | keep |
+| `frontend/test/e2e/documentViewer.spec.ts` | Playwright | 32 | keep |
+| `frontend/test/e2e/documentWorkspace.spec.ts` | Playwright | 21 | keep |
+| `frontend/test/e2e/navigation.spec.ts` | Playwright | 12 | consolidate (12 → 11) |
+| `frontend/test/e2e/originalSource.spec.ts` | Playwright | 4 | keep |
+| `frontend/test/e2e/permissions.spec.ts` | Playwright | 4 | keep |
+| `frontend/test/e2e/quota.spec.ts` | Playwright | 4 | keep |
+| `frontend/test/e2e/realScans.spec.ts` | Playwright | 3 | keep |
+| `frontend/test/e2e/scanViewer.spec.ts` | Playwright | 7 | keep |
+| `frontend/test/e2e/searchChat.spec.ts` | Playwright | 2 | keep |
+| `frontend/test/e2e/searchClassifications.spec.ts` | Playwright | 1 | keep |
+| `frontend/test/e2e/searchContext.spec.ts` | Playwright | 5 | keep |
+| `frontend/test/e2e/searchExplore.spec.ts` | Playwright | 14 | keep |
+| `frontend/test/e2e/searchHistory.spec.ts` | Playwright | 10 | keep |
+| `frontend/test/e2e/searchResultCards.spec.ts` | Playwright | 6 | keep |
+| `frontend/test/e2e/searchVectors.spec.ts` | Playwright | 3 | keep |
+| `frontend/test/e2e/searchVisualizations.spec.ts` | Playwright | 13 | keep |
+| `frontend/test/e2e/sessionRestore.spec.ts` | Playwright | 6 | keep (one assertion added) |
+| `frontend/test/e2e/sessionTeardown.spec.ts` | Playwright | 7 | remove 2 (7 → 5) |
+| `frontend/test/e2e/sidebar.spec.ts` | Playwright | 4 | keep |
+| `frontend/test/e2e/smoke.spec.ts` | Playwright | 7 | consolidate (7 → 6) |
+| `frontend/test/e2e/supportHelpers.spec.ts` | Playwright | 5 | simplify fixture (5 → 7) |
+| `frontend/test/e2e/textUpload.spec.ts` | Playwright | 6 | keep |
 
 ### #857
 
@@ -762,6 +762,77 @@ Ownership: `layoutMap.spec.ts` stays with #852, and `devTooling`/`dependencyChec
 #857, as the owner map says, although the issue lists them.
 
 The full note is [on #855](https://github.com/DCGM/semant-demo/issues/855).
+
+### #856 Playwright E2E, capture and cross-layer coverage
+
+**Sign-in setup simplified, four repeated tests removed ([#866](https://github.com/DCGM/semant-demo/pull/866)); keep the
+rest.** Same machine as #848, `make test-e2e` (one worker, fresh build and store) before and
+after; view captures with `make e2e-dev-capture` (3 viewports):
+
+| Suite | Cases | Before | After |
+| --- | ---: | --- | --- |
+| Browser | 298 → 296 | 14.1 min (801 s in tests) | 9.3 min (515 s in tests) |
+| View capture | 33 (99 runs) | 7.6 min | 6.2 min |
+
+- **Sign-in (`test/e2e/support.ts`):** **simplify fixture.** The login dialog took ~1.3 s of a
+  typical 2.6 s test (`ensureLoggedIn` is called 170 times). A fresh page now starts with the
+  user's token in storage, so the app restores the session on its first load, as after a
+  reload. Only that load: an init script marks the tab in `sessionStorage`, so a reload after a
+  sign-out and a new tab stay signed out. The new `supportHelpers.spec.ts` test checks this
+  and fails without the mark. The helper then checks the session it finds, as on any page:
+  a page that already shows the app, or a used page sent to `about:blank` (whose mark stays),
+  signs in or switches users through the dialog; a second new test covers that case, from
+  review. The dialog itself stays covered by `smoke.spec.ts` (registration, log out, log in)
+  and `navigation.spec.ts`.
+- **API tokens (`apiToken`):** **simplify fixture.** It logged in (~0.1 s, the production
+  Argon2 cost) on every call, several times per test in the cleanup hooks. It now logs each
+  user in once per worker; tokens are stateless JWTs that a sign-out does not revoke.
+- **Removed as repeated:**
+  - `sessionTeardown.spec.ts`: *a failed server logout still signs out here and says so* and
+    *signing out ends the session at once while the server logout never answers*. Their unit
+    twins in `test/unit/sessionTeardown.spec.ts`, added in the same commits (#267, #322), drive
+    the same API client through a stubbed `fetch` and assert the same notices, the cleared
+    token and data, and the `Bearer` header.
+  - `navigation.spec.ts`: *a stored session that is no longer valid restores as signed out*,
+    the same 401-on-reload as `sessionRestore.spec.ts`'s *a rejected token on reload still
+    ends the session*, which now also asserts the signed-in menu items are gone.
+  - `smoke.spec.ts`: *logged-in user stays authenticated across a reload*, covered by
+    `navigation.spec.ts` (*a restored session opens a direct link*, a reload with the full
+    signed-in menu) and `supportHelpers.spec.ts`.
+- **Session specs kept from the #855 overlap:** the cross-tab tests use real `storage`
+  events between pages, the restore tests real page loads, offline and `online` events; the
+  explanation-dialog teardown catches render errors of the real leave transition, which the
+  unit test runs on a fake clock.
+- **Viewport repeats (wide and phone, 9 tests × 2):** **keep.** The phone runs take other
+  paths (overlay navigation, folded filters, sideways-scrolling columns, bounded heights),
+  which only a browser lays out.
+- **Annotation, document, attribute, search and AI specs:** **keep.** They cover selection,
+  focus, drag, gutter and popover placement, virtualized scrolling, streaming, URL history
+  and late answers through the real API client, none of which jsdom can show. Their slowest
+  part was sign-in and cleanup, fixed above.
+- **Captures (`test/capture/views.spec.ts`):** **simplify fixture.** 17 reloads that only
+  cleared the sign-in notification are gone; a fresh page shows none now.
+- **Waits:** the two fixed waits in `annotationWorkspace.spec.ts` (0.3 s, 0.5 s) are the
+  windows in which no further adjacent read may happen; they stay.
+- **Skips:** none.
+
+Not changed: sharding and `shard_durations.json` (#454, #685), parallel workers (#815). The
+per-file times dropped by up to half, so the durations file is now pessimistic but still
+ordered.
+
+Remaining risks:
+
+- 9 of the 99 capture runs fail on `main` with or without this change, on a freshly seeded
+  server too ([#869](https://github.com/DCGM/semant-demo/issues/869)): *annotation workspace
+  columns (#665)* (no `concordance-chips`; wide, narrow), *collection attributes* (the 30 s
+  test timeout) and *applicable attributes in Create/Edit Tag (#516)* (the narrowing
+  confirmation never appears) at all three widths, and *document view - popover, bulk bar
+  and create-tag dialog (#379)* on a phone (the drawer's edge opener takes the click). The
+  captures are not in CI, so they drift.
+- Tests now start from a restored session rather than a fresh login; a bug only in the
+  path right after a dialog login would be caught by the login tests alone.
+
+The full note is [on #856](https://github.com/DCGM/semant-demo/issues/856).
 
 ### #857 Tooling, CI, deployment and contract checks
 
