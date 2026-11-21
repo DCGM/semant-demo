@@ -4,6 +4,7 @@ Tests in this package must carry ``pytestmark = pytest.mark.integration``. A mis
 unowned store is an error, not a skip, so a required integration run cannot pass
 without exercising Weaviate.
 """
+import asyncio
 import shutil
 
 import httpx
@@ -12,6 +13,7 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
+import weaviate.backup.executor
 from weaviate.classes.query import QueryReference
 from weaviate.collections.data.async_ import _DataCollectionAsync
 
@@ -116,6 +118,15 @@ async def legacy_documents(seeded_store, collection_names, corpus, store_token):
     await create_documents_collection(seeded_store, collection_names, legacy=True)
     await insert_documents(seeded_store, collection_names, corpus)
     return seeded_store
+
+
+@pytest.fixture
+def quick_backup_polls(monkeypatch):
+    """The Weaviate client's ``wait_for_completion`` checks a backup or restore every 0.1 s
+    instead of every second (``weaviate.backup.executor``, not configurable)."""
+    async def sleep(seconds):
+        await asyncio.sleep(min(seconds, 0.1))
+    monkeypatch.setattr(weaviate.backup.executor, "asyncio", type("QuickPolls", (), {"sleep": staticmethod(sleep)}))
 
 
 @pytest.fixture
