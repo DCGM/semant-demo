@@ -65,8 +65,11 @@ the parent tracker decides, and the other stage cross-references it.
 | #855 | 15 | 160 |
 | #856 | 36 | 331 |
 | #857 | 24 | 499 |
-| #858 | 6 | 7 |
-| **Total** | **276** | **4,904** |
+| #858 | 7 | 8 |
+| **Total** | **277** | **4,905** |
+
+The #858 reconciliation added `integration/test_append_pipeline.py` (1 case), which the
+inventory missed; the other totals above are the inventory's.
 
 ### #848
 
@@ -392,12 +395,13 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_annotation_facets_benchmark.py` | pytest benchmark | 2 | pending |
-| `backend/tests/integration/test_annotation_sort_benchmark.py` | pytest benchmark | 1 | pending |
-| `backend/tests/integration/test_annotation_tenant_rehearsal.py` | pytest benchmark | 1 | pending |
-| `backend/tests/integration/test_chunk_position_benchmark.py` | pytest benchmark | 1 | pending |
-| `backend/tests/integration/test_chunk_summary_benchmark.py` | pytest benchmark | 1 | pending |
-| `backend/tests/integration/test_document_search_benchmark.py` | pytest benchmark | 1 | pending |
+| `backend/tests/integration/test_annotation_facets_benchmark.py` | pytest benchmark + Weaviate | 2 | keep; benchmark's stub repaired (it failed since #785) |
+| `backend/tests/integration/test_annotation_sort_benchmark.py` | pytest benchmark | 1 | keep (a dead assertion removed) |
+| `backend/tests/integration/test_annotation_tenant_rehearsal.py` | pytest benchmark | 1 | **simplify fixture**: `quick_backup_polls` |
+| `backend/tests/integration/test_chunk_position_benchmark.py` | pytest benchmark | 1 | keep |
+| `backend/tests/integration/test_chunk_summary_benchmark.py` | pytest benchmark | 1 | keep |
+| `backend/tests/integration/test_document_search_benchmark.py` | pytest benchmark | 1 | keep |
+| `backend/tests/integration/test_append_pipeline.py` | pytest Weaviate | 1 | keep (inventory gap, added by #798) |
 
 
 ## Stage outcomes
@@ -930,3 +934,94 @@ Kept, with the reasons:
 Ownership: the three files that the owner map gave this stage but the issue does not list
 (`test_api_contracts.py`, `test_config.py`, `test_observability.py`) were reviewed here.
 `devTooling` and `dependencyCheck` stay with #857, as #855 agreed.
+
+### #858 Benchmarks, opt-in tests, inventory gaps and reconciliation
+
+**One broken benchmark repaired, one benchmark's backup timing made accurate, a dead
+assertion removed; keep the rest. One uncovered test script tracked in
+[#870](https://github.com/DCGM/semant-demo/issues/870).** Same machine as #848, with the
+production services running beside it (the throwaway Weaviate of `scripts/with-test-weaviate.sh`
+on random loopback ports, sequential runs).
+
+`scripts/with-test-weaviate.sh sh -c 'cd semant_demo_backend && ../.venv/bin/python -m pytest -m benchmark -s --durations=0'`,
+Weaviate 1.40.1, default sizes:
+
+| Benchmark (call time) | Before | After |
+| --- | --- | --- |
+| `test_annotation_tenant_rehearsal.py` | 127.0 s; backup 4.0 s, restore 1.0 s | 120.0 s; backup 3.2 s, restore 1.0 s |
+| `test_document_search_benchmark.py` | 97.5 s (populating 100,000 chunks: 89 s) | unchanged |
+| `test_chunk_summary_benchmark.py` | 80.5 s | unchanged |
+| `test_chunk_position_benchmark.py` | 75.7 s | unchanged |
+| `test_annotation_sort_benchmark.py` | 71.2 s | 69.4 s (noise) |
+| `test_annotation_facets_benchmark.py` (benchmark) | **failed** after 10.5 s | 12.6 s, passes |
+| All six | 1 failed, 5 passed, 7 min 48 s | 6 passed |
+
+Setup is at most 2.1 s per benchmark; the time is the synthetic data each one generates,
+which is what it measures. Selection: `-m benchmark` collects these 6 of 3,482 backend
+cases; `-m live` collects none.
+
+Decisions:
+
+- **`test_annotation_facets_benchmark.py`:** **keep both cases.** The latency benchmark had
+  failed since #785 added `include_restricted` to `Documents.read_eligible`: its stub took
+  no such argument (`TypeError` in `annotation_documents`). The stub now accepts it; all
+  synthetic documents are public. Nothing had run it since. The in-CI correctness case
+  (2.6 s with setup) is unaffected; it filters by no document condition.
+- **`test_annotation_tenant_rehearsal.py`:** **simplify fixture.** It opts in to
+  `quick_backup_polls` (#854). The client's `wait_for_completion` polls once a second,
+  so the reported `backup_ms` was the backup rounded up to the next poll (4.0 s for a
+  3.2 s backup). Restore takes ~1.0 s with either poll. Correctness assertions unchanged.
+- **`test_annotation_sort_benchmark.py`:** **keep.** Removed `assert isinstance(cid, UUID)`
+  in its `finally`, which could not fail.
+- **`test_chunk_position_benchmark.py`:** **keep.** The only check, at 7,000 chunks, that
+  the reads after #463 derive what the whole-document reads did and read the same number of
+  rows at every document length; the fast derivation tests (#850) use short documents.
+- **`test_chunk_summary_benchmark.py`:** **keep.** Throughput of the #529 recomputation at
+  150,000 chunks; no correctness test runs it at that size.
+- **`test_document_search_benchmark.py`:** **keep.** Besides the #607 timings it is the
+  recorded evidence that Weaviate's `group_by` is unusable for distinct documents on 1.40.1;
+  re-run it after a Weaviate upgrade.
+- **`live` marker:** **keep.** ADR 0005 declares it for authorized provider tests, and
+  `tests/conftest.py` excludes it from the network guard. No test uses it and no provider
+  permissions or cost limits apply today.
+- **`test_db_benchmark.py` (both layers):** reviewed by #854, as agreed there. The
+  `db_benchmark` CLI's profiles are unit-tested there; `docs/DB_BENCHMARK.md` describes
+  read-only runs against a deployment, which need authorization and are not tests.
+
+Reconciliation against the stage 1 inventory (`git ls-files` against the ledger's rows):
+
+- Every test file on `main` has exactly one row and one owner, with one exception, now
+  claimed here: `integration/test_append_pipeline.py` (#798, on `main` since
+  20 November, 1 case, 3.4 s with setup). **Keep**: the only test of the hand-offs between the
+  maintenance stages; each stage's own tests are with #852 and #854.
+- `semant_demo/features/rag/pipelines/rag_test.py` is not a test: it is the `TestRag`
+  pipeline registered in the application. `testpaths = ["tests"]` keeps pytest from
+  collecting it.
+- Case counts since the inventory: `test_ci_changes.py` 156 → 153 (#867), and one case
+  each added to `integration/test_embedder_tool.py` and `test_api_contracts.py` (#798
+  review fixes). Now: fast backend 2,831 in 96 files, real Weaviate 645 in 51, benchmarks 6,
+  Vitest 1,091 in 89 (all pass, 13 s), browser 296 in 35 (#856), captures 33.
+- Entry points outside the stage suites, all with an owner:
+  - `make e2e-dev-capture`: #856, failures tracked in #869.
+  - `SEMANT_FIXTURE_PROFILE`: #848.
+  - `make check-classifier`: lint only, in CI's backend job.
+  - `scripts/mcp_smoke.py`: a manual, read-only smoke of a running MCP endpoint
+    (`docs/MCP.md`), covered in CI by both `test_mcp.py` files (#851).
+  - `deploy/test_sqlite_backup.sh`: **not run by anything.** It holds 30 checks of the
+    production SQLite backup script (#399). CI treats changes to it as deployment changes
+    but runs no job for it, and the backend CI image has no `sqlite3` CLI (17 of its checks
+    fail there). It passes locally in 2 s. Tracked in
+    [#870](https://github.com/DCGM/semant-demo/issues/870); it touches CI jobs and images, so
+    it is coordinated with #454.
+- No file has two owners. The disputed files of the owner map were decided by their
+  stages: #854 kept `test_db_benchmark.py`; #857 and #855 settled theirs.
+
+Remaining risks:
+
+- No job runs the benchmarks, so their stubs and fixtures drift silently: collection
+  catches import errors, not signatures. `docs/DEVELOPMENT.md` now says how to run them all
+  and to re-run one before quoting it. Running them at small sizes in CI would be #454's
+  call; their sizes are mostly constants, not settings.
+- `deploy/sqlite_backup.sh` stays untested in CI until #870.
+
+The full note is [on #858](https://github.com/DCGM/semant-demo/issues/858).

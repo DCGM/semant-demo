@@ -73,7 +73,8 @@ class Documents:
     async def read_many(self, ids):
         return {i: self.documents[i] for i in ids if i in self.documents}
 
-    async def read_eligible(self, ids, collection_id=None, conditions=()):
+    async def read_eligible(self, ids, collection_id=None, conditions=(), include_restricted=False):
+        # Every synthetic document is public, so ``include_restricted`` changes nothing here.
         def holds(document):
             return all(isinstance(c, NumberRange) and document.yearIssued is not None
                        and (c.minimum is None or document.yearIssued >= c.minimum)
