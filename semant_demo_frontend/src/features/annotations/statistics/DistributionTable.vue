@@ -68,7 +68,8 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
 
 .distribution-table td,
 .distribution-table th {
-  padding: 3px 0;
+  padding: 4px 0;
+  line-height: 1.4;
   vertical-align: middle;
   border-bottom: 1px solid #f1f4f8;
 }
@@ -112,6 +113,7 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
   border: 0;
   padding: 0;
   font: inherit;
+  display: block;
   max-width: 100%;
   color: var(--q-primary);
   cursor: pointer;
