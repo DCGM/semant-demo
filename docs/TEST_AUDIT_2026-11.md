@@ -237,7 +237,7 @@ the parent tracker decides, and the other stage cross-references it.
 | `backend/tests/integration/test_chunk_summaries.py` | pytest Weaviate | 14 | keep (closes its report file) |
 | `backend/tests/integration/test_chunk_titles.py` | pytest Weaviate | 9 | keep |
 | `backend/tests/integration/test_classifier_tool.py` | pytest Weaviate | 30 | keep |
-| `backend/tests/integration/test_embedder_tool.py` | pytest Weaviate | 16 | **simplify fixture** (no client backoff wait) |
+| `backend/tests/integration/test_embedder_tool.py` | pytest Weaviate | 16 | **simplify fixture** (#862) |
 | `backend/tests/integration/test_span_chat.py` | pytest Weaviate | 5 | keep |
 | `backend/tests/integration/test_suggestions.py` | pytest Weaviate | 5 | keep |
 | `backend/tests/test_ai_suggestion_dates.py` | pytest fast | 2 | keep |
@@ -501,7 +501,7 @@ The full note is [on #850](https://github.com/DCGM/semant-demo/issues/850).
 
 ### #853 LLM, RAG, chat, streaming, summaries and suggestions
 
-**Two waits removed ([#PR](https://github.com/DCGM/semant-demo/pull/PR)); keep the rest.**
+**Two waits removed ([#862](https://github.com/DCGM/semant-demo/pull/862)); keep the rest.**
 Same machine and commands as #848:
 
 | Layer | Files | Cases | Before | After |
