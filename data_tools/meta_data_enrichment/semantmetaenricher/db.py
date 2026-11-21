@@ -16,6 +16,8 @@ def get_client(
 
     The client's start-up checks (its version lookup on pypi.org and its gRPC ping) are skipped,
     as in the backend, so an unreachable gRPC port fails at the first query, not when connecting.
+    Without ``api_key`` the client also skips asking the server whether it requires OIDC login, so
+    a missing login fails at the first request instead.
 
     Args:
         host: Weaviate host address.
