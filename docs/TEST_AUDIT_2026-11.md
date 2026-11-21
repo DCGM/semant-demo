@@ -302,21 +302,21 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `frontend/test/unit/MiniStateButton.spec.ts` | Vitest | 6 | pending |
-| `frontend/test/unit/authNavigation.spec.ts` | Vitest | 18 | pending (disputed with #849) |
-| `frontend/test/unit/contextScopedStores.spec.ts` | Vitest | 22 | pending |
-| `frontend/test/unit/documentPanels.spec.ts` | Vitest | 2 | pending (disputed with #852) |
-| `frontend/test/unit/leftoverTimers.spec.ts` | Vitest | 1 | pending |
-| `frontend/test/unit/rightSidebar.spec.ts` | Vitest | 10 | pending |
-| `frontend/test/unit/routes.spec.ts` | Vitest | 20 | pending |
-| `frontend/test/unit/selectionBar.spec.ts` | Vitest | 9 | pending (disputed with #851) |
-| `frontend/test/unit/sessionRestore.spec.ts` | Vitest | 27 | pending |
-| `frontend/test/unit/sessionTeardown.spec.ts` | Vitest | 24 | pending |
-| `frontend/test/unit/timerTracking.spec.ts` | Vitest | 5 | pending |
-| `frontend/test/unit/transport.spec.ts` | Vitest | 7 | pending |
-| `frontend/test/unit/usePagination.spec.ts` | Vitest | 4 | pending (disputed with #851) |
-| `frontend/test/unit/useTagEditing.spec.ts` | Vitest | 3 | pending |
-| `frontend/test/unit/wrappingBadges.spec.ts` | Vitest | 2 | pending |
+| `frontend/test/unit/MiniStateButton.spec.ts` | Vitest | 6 | keep |
+| `frontend/test/unit/authNavigation.spec.ts` | Vitest | 18 | keep (disputed with #849) |
+| `frontend/test/unit/contextScopedStores.spec.ts` | Vitest | 22 | keep |
+| `frontend/test/unit/documentPanels.spec.ts` | Vitest | 2 | keep (disputed with #852) |
+| `frontend/test/unit/leftoverTimers.spec.ts` | Vitest | 1 | keep |
+| `frontend/test/unit/rightSidebar.spec.ts` | Vitest | 10 | keep |
+| `frontend/test/unit/routes.spec.ts` | Vitest | 20 | keep |
+| `frontend/test/unit/selectionBar.spec.ts` | Vitest | 9 | keep (disputed with #851) |
+| `frontend/test/unit/sessionRestore.spec.ts` | Vitest | 27 | keep |
+| `frontend/test/unit/sessionTeardown.spec.ts` | Vitest | 24 | keep |
+| `frontend/test/unit/timerTracking.spec.ts` | Vitest | 5 | keep |
+| `frontend/test/unit/transport.spec.ts` | Vitest | 7 | keep |
+| `frontend/test/unit/usePagination.spec.ts` | Vitest | 4 | keep (disputed with #851) |
+| `frontend/test/unit/useTagEditing.spec.ts` | Vitest | 3 | keep |
+| `frontend/test/unit/wrappingBadges.spec.ts` | Vitest | 2 | keep |
 
 ### #856
 
@@ -594,3 +594,47 @@ rest.**
 - **Skips:** none.
 
 The full note is [on #852](https://github.com/DCGM/semant-demo/issues/852).
+
+### #855 Frontend shell, state, routing, shared UI and transport
+
+**Keep everything; no change.** Same machine as #848, `npx vitest run` on the 15 stage specs:
+160 cases, 6.5 s (sum of file times), all passing. Every one of the 89 unit specs in
+`test/unit/**/*.spec.ts` has an owner in this ledger, and none is listed without a file.
+
+- **`leftoverTimers.spec.ts`:** **keep.** It is 3.3 s of the 6.5 s: one test that starts its
+  own Vitest run (`test/unit/fixtures/leftoverTimers/`, ~2.1 s of Vitest start-up). The
+  regression (#551) is a worker crash between files, which only a separate run shows. Its
+  1 s `keepsRunning` timer keeps the other file's worker alive past that file's 50 ms
+  timers. A shorter timer would make the run skip the case, and the test would still pass,
+  so it stays.
+- **`timerTracking.spec.ts`:** **keep.** Its 1–5 ms waits are the timers under test; it
+  covers the custom jsdom environment that `leftoverTimers` relies on.
+- **Session and navigation (`sessionRestore`, `sessionTeardown`, `authNavigation`,
+  `contextScopedStores`, `transport`):** **keep.**
+  - The specs mount `MainLayout` with a memory router, the auth guard and a stubbed
+    `fetch`.
+  - They cover each answer and race of verification, sign-out and account switches, and
+    the clearing of every user-scoped store.
+  - All of this is in under 1 s per file, with no fixed waits.
+  - `jwt`, `stubNotify` and `json` are repeated in three files but differ (an `aud` claim,
+    an answer factory vs a `Response`, recorded notices). Sharing them would save ~20 lines
+    and no time, so they stay local.
+- **Overlap with the browser tests:** `test/e2e/sessionRestore.spec.ts` (6) and
+  `sessionTeardown.spec.ts` (7) repeat a few scenarios, for example a failed server logout
+  and a sign-out in another tab. The browser tests check what only a browser shows: real
+  storage events between tabs, reloads, offline. The unit specs check every branch. Any
+  trim belongs at the browser layer and is #856's decision.
+- **Shell and shared UI (`routes`, `rightSidebar`, `MiniStateButton`, `wrappingBadges`,
+  `useTagEditing`, `usePagination`, `selectionBar`, `documentPanels`):** **keep.** Each
+  takes under 0.25 s.
+  - `routes` pins the deep links and the routes that only some builds have.
+  - `wrappingBadges` measures line wrapping with a stubbed layout.
+  - The disputed `selectionBar` and `usePagination` (#851) and `documentPanels` (#852)
+    are shell components the feature stages left here.
+- **Fixed waits:** none beyond zero-delay flushes; #736 already removed the others.
+- **Skips:** none.
+
+Ownership: `layoutMap.spec.ts` stays with #852, and `devTooling`/`dependencyCheck` with
+#857, as the owner map says, although the issue lists them.
+
+The full note is [on #855](https://github.com/DCGM/semant-demo/issues/855).
