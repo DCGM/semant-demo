@@ -1,6 +1,9 @@
 <template>
-  <q-slide-transition>
-    <div v-if="active" class="saved-filter-header" role="region" aria-label="Open saved filter" data-testid="saved-filter-header">
+  <!-- Grows and shrinks smoothly (rows 0fr → 1fr), so the page below glides instead of jumping;
+       while closing it keeps showing the saved filter that was open. -->
+  <div class="saved-filter-header-wrap" :class="{ 'saved-filter-header-wrap--open': !!active }" :inert="!active || undefined">
+    <div class="saved-filter-header-clip">
+    <div v-if="shown" class="saved-filter-header" role="region" aria-label="Open saved filter" data-testid="saved-filter-header">
       <!-- Right-aligned: the status and the buttons that come and go stand left of the name, so
            the name and what follows it stay above the saved filters icon. -->
       <span
@@ -15,11 +18,11 @@
       <span v-if="saved.modified" class="saved-filter-header__actions">
         <q-btn
           flat dense no-caps color="primary" class="saved-filter-header__action" label="Save"
-          :disable="!active.canEdit || busy" data-testid="saved-filter-save"
+          :disable="!shown.canEdit || busy" data-testid="saved-filter-save"
           @click="save"
         >
-          <q-tooltip v-if="!active.canEdit">Only its creator and the collection owner can save it; save it as a new one instead</q-tooltip>
-          <q-tooltip v-else>Save the current filters, order and columns into “{{ active.name }}” for everyone</q-tooltip>
+          <q-tooltip v-if="!shown.canEdit">Only its creator and the collection owner can save it; save it as a new one instead</q-tooltip>
+          <q-tooltip v-else>Save the current filters, order and columns into “{{ shown.name }}” for everyone</q-tooltip>
         </q-btn>
         <q-btn flat dense no-caps color="primary" class="saved-filter-header__action" label="Discard" :disable="busy" data-testid="saved-filter-discard" @click="saved.discard()">
           <q-tooltip>Go back to the filters as saved</q-tooltip>
@@ -27,7 +30,7 @@
       </span>
       <span class="saved-filter-header__separator" aria-hidden="true" />
       <q-icon name="bookmark" color="primary" size="xs" />
-      <span class="saved-filter-header__name text-weight-medium" data-testid="saved-filter-name">{{ active.name }}</span>
+      <span class="saved-filter-header__name text-weight-medium" data-testid="saved-filter-name">{{ shown.name }}</span>
       <q-icon v-if="warning" name="warning" color="warning" size="xs" data-testid="saved-filter-warning">
         <q-tooltip max-width="20rem">{{ warning }}</q-tooltip>
       </q-icon>
@@ -38,12 +41,13 @@
         </q-btn>
       </span>
     </div>
-  </q-slide-transition>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { QBtn, QIcon, QSlideTransition, QTooltip } from 'quasar'
+import { computed, reactive, ref, watch } from 'vue'
+import { QBtn, QIcon, QTooltip } from 'quasar'
 import type { Attribute, Tag } from 'src/generated/api'
 import { missingReferences, missingText } from './savedFilters'
 import { useSavedFilterDialogs } from './useSavedFilterDialogs'
@@ -61,6 +65,10 @@ const dialogs = useSavedFilterDialogs()
 const busy = ref(false)
 
 const active = computed(() => saved.active)
+/** The open saved filter, or while the header closes the one that was open. */
+const lastActive = ref(saved.active)
+watch(active, value => { if (value) lastActive.value = value })
+const shown = computed(() => active.value ?? lastActive.value)
 const warning = computed(() => {
   const query = active.value?.query
   if (!query || !props.tags.length) return null
@@ -77,6 +85,16 @@ async function save () {
 </script>
 
 <style scoped>
+.saved-filter-header-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.saved-filter-header-wrap--open { grid-template-rows: 1fr; }
+.saved-filter-header-clip { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .saved-filter-header-wrap { transition: none; }
+}
 .saved-filter-header {
   display: flex;
   flex-wrap: wrap;
