@@ -1,23 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { QLayout, QPageContainer, Quasar } from 'quasar'
-import { RouterView, createMemoryHistory, createRouter } from 'vue-router'
-import { defineComponent, h } from 'vue'
+import { Quasar } from 'quasar'
 
 import { SpanType, type AnnotationFacets, type Facet } from 'src/generated/api'
-import { defaultFilters, useConcordanceStore, withMode } from 'src/features/annotations/concordance/concordanceStore'
-import AnnotationStatisticsPage from 'src/features/annotations/statistics/AnnotationStatisticsPage.vue'
+import { defaultFilters, withMode, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
+import AnnotationStatisticsPanel from 'src/features/annotations/statistics/AnnotationStatisticsPanel.vue'
 import {
-  denominatorText, distributionRows, drillChange, formatShare, statisticsRequest, type Labels
+  denominatorText, distributionRows, drillChange, formatShare, orderedRows, statisticsRequest, type Labels
 } from 'src/features/annotations/statistics/statistics'
 
 // The statistics of the annotation workspace query (#818): one population for every distribution
 // (facets without self-exclusion), named denominators, Missing rows, and a drill-down that lists
 // exactly a category's annotations (the query narrowed to it); ranked scopes are labelled and not
 // drilled; a failed read is an error, never zeros.
-
-vi.mock('src/shared/visualization/VegaChart.vue', () => ({ default: { name: 'VegaChart', props: ['spec', 'label', 'clickable'], render: () => null } }))
 
 const labels: Labels = {
   tags: [{ id: 't1', name: 'Speaker' }, { id: 't2', name: 'Topic' }] as Labels['tags'],
@@ -83,6 +79,12 @@ describe('statistics computations', () => {
     expect(drillChange('language', 'ces', f).documentFilters).toMatchObject({ languages: ['ces'], libraries: ['mzk', 'nkp'] })
   })
 
+  it('orders rows by count or by value, the Missing row last', () => {
+    const rows = distributionRows(statistics().facets[2], 'year', labels, defaultFilters(), true)
+    expect(orderedRows(rows, 'year', 'count').map(r => r.key)).toEqual(['1912', '1850', '__missing__'])
+    expect(orderedRows(rows, 'year', 'value').map(r => r.key)).toEqual(['1850', '1912', '__missing__'])
+  })
+
   it('offers no drill-down when it would not reproduce the counts', () => {
     const rows = distributionRows(statistics().facets[1], 'tag', labels, defaultFilters(), false)
     expect(rows.every(r => r.drill === null)).toBe(true)
@@ -96,7 +98,7 @@ describe('statistics computations', () => {
   })
 })
 
-describe('the statistics page', () => {
+describe('the statistics view', () => {
   const originalFetch = globalThis.fetch
   let requests: { path: string, body: Record<string, unknown> | undefined }[]
   let answer: () => Response
@@ -110,70 +112,67 @@ describe('the statistics page', () => {
     globalThis.fetch = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const path = new URL(String(input)).pathname
       requests.push({ path, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined })
-      if (path.endsWith('/facets')) return answer()
-      if (path.endsWith('/annotations/documents')) return json(labels.documents)
-      if (path.endsWith('/ids')) return json({ ids: [], versions: {} })
-      if (path.endsWith('/annotations')) return json({ rows: [], total: 0, offset: 0, limit: 50 })
-      return json([])
+      return path.endsWith('/facets') ? answer() : json([])
     }) as typeof fetch
   })
   afterEach(() => { globalThis.fetch = originalFetch })
 
-  async function mountPage () {
-    const Page = { render: () => null }
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { name: 'collectionStatistics', path: '/collections/:collectionId/statistics', component: AnnotationStatisticsPage },
-        { name: 'collectionAnnotations', path: '/collections/:collectionId/annotations', component: Page }
-      ]
+  async function mountPanel (filters: ConcordanceFilters = defaultFilters(), dimension: string | null = null) {
+    const wrapper = mount(AnnotationStatisticsPanel, {
+      props: { filters, collectionId: 'c1', tags: labels.tags, documents: labels.documents, dimension: dimension as never },
+      global: { plugins: [Quasar] }
     })
-    await router.push('/collections/c1/statistics')
-    await router.isReady()
-    const InLayout = defineComponent({ render: () => h(QLayout, () => [h(QPageContainer, () => h(RouterView))]) })
-    const wrapper = mount(InLayout, { global: { plugins: [router, Quasar] } })
     await flushPromises()
-    return { wrapper, router }
+    return wrapper
   }
 
   const statisticsCalls = () => requests.filter(r => r.path.endsWith('/facets'))
 
-  it('shows the totals of the workspace query and reads them again when the query changes', async () => {
-    const { wrapper } = await mountPage()
+  it('counts the query of the list, again when the query changes but not when its order does', async () => {
+    const wrapper = await mountPanel()
     expect(statisticsCalls()).toHaveLength(1)
     expect(statisticsCalls()[0].body).toMatchObject({ self_exclusion: false, types: ['pos', 'auto'] })
     expect(wrapper.get('[data-testid="statistics-total"]').text()).toBe('6')
     expect(wrapper.get('[data-testid="statistics-documents"]').text()).toBe('1')
-    expect(wrapper.get('[data-testid="statistics-summary"]').text()).toContain('confirmed (66.7 %)')
-    expect(wrapper.find('[data-testid="statistics-top-k"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="statistics-summary"]').text()).toContain('of all 6 annotations matching the query')
 
-    await wrapper.get('[data-testid="statistics-status-neg"]').trigger('click')
+    await wrapper.setProps({ filters: { ...defaultFilters(), types: [SpanType.pos, SpanType.auto, SpanType.neg] } })
     await flushPromises()
-    expect(useConcordanceStore().filters.types).toEqual(['pos', 'auto', 'neg'])
     expect(statisticsCalls().at(-1)?.body).toMatchObject({ types: ['pos', 'auto', 'neg'] })
-
     const before = statisticsCalls().length
-    await useConcordanceStore().setFilters({ descending: true })
+    await wrapper.setProps({ filters: { ...defaultFilters(), types: [SpanType.pos, SpanType.auto, SpanType.neg], descending: true } })
     await flushPromises()
-    expect(statisticsCalls()).toHaveLength(before) // the order of the list does not change the counts
+    expect(statisticsCalls()).toHaveLength(before)
   })
 
-  it('lists exactly a category in the annotation list', async () => {
-    const { wrapper, router } = await mountPage()
+  it('lists exactly a category when its label is clicked; a Missing row has no link', async () => {
+    const wrapper = await mountPanel()
     await wrapper.get('[data-testid="statistics-tag-show-t2"]').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.name).toBe('collectionAnnotations')
-    expect(useConcordanceStore().filters.tagIds).toEqual(['t2'])
+    expect(wrapper.emitted('drill')?.[0]).toEqual([{ tagIds: ['t2'] }])
     expect(wrapper.find('[data-testid="statistics-year-show-__missing__"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="statistics-year"]').text()).toContain('Unknown year')
+  })
+
+  it('keeps cards short and shows every row in the detail', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => [String(1900 + i), i + 1] as [string, number])
+    const counted = statistics()
+    answer = () => json({ ...counted, facets: counted.facets.map(f => (f.facet === 'year' ? facet('year', many, 2, 80) : f)) })
+    const wrapper = await mountPanel()
+    expect(wrapper.findAll('[data-testid="statistics-year"] tbody tr')).toHaveLength(9) // 8 years and Unknown
+    await wrapper.get('[data-testid="statistics-year-all"]').trigger('click')
+    expect(wrapper.emitted('dimension')?.[0]).toEqual(['year'])
+
+    const detail = await mountPanel(defaultFilters(), 'year')
+    expect(detail.findAll('[data-testid="statistics-detail-year"] tbody tr')).toHaveLength(13)
+    await detail.get('[data-testid="statistics-back"]').trigger('click')
+    expect(detail.emitted('dimension')?.[0]).toEqual([null])
   })
 
   it('labels a ranked top k and offers no drill-down', async () => {
     answer = () => json(statistics({ population: 'top_k', k: 100 }))
-    useConcordanceStore().enter('c1')
-    useConcordanceStore().filters = withMode({ ...defaultFilters(), similarity: 'řečník' })
-    const { wrapper } = await mountPage()
+    const wrapper = await mountPanel(withMode({ ...defaultFilters(), similarity: 'řečník' }))
     expect(statisticsCalls()[0].body).toMatchObject({ ranking: { mode: 'hybrid' }, ranking_query: 'řečník' })
-    expect(wrapper.get('[data-testid="statistics-top-k"]').text()).toContain('top 100')
+    expect(wrapper.get('[data-testid="statistics-top-k"]').text()).toContain('100 most similar')
     expect(wrapper.text()).toContain('not the whole collection')
     expect(wrapper.find('[data-testid="statistics-tag-show-t1"]').exists()).toBe(false)
   })
@@ -181,7 +180,7 @@ describe('the statistics page', () => {
   it('says when a distribution could not be counted, instead of showing zeros', async () => {
     const counted = statistics()
     answer = () => json({ ...counted, facets: counted.facets.filter(f => !['year', 'document', 'library', 'language'].includes(f.facet)) })
-    const { wrapper } = await mountPage()
+    const wrapper = await mountPanel()
     expect(wrapper.find('[data-testid="statistics-year-unavailable"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="statistics-documents"]').text()).toBe('—')
   })
@@ -189,7 +188,7 @@ describe('the statistics page', () => {
   it('shows a failed read as an error with a retry, never as zero counts', async () => {
     answer = () => json({ detail: 'x' }, 500)
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { wrapper } = await mountPage()
+    const wrapper = await mountPanel()
     expect(wrapper.get('[data-testid="statistics-error"]').text()).toContain('Failed to load the statistics.')
     expect(wrapper.find('[data-testid="statistics-total"]').exists()).toBe(false)
     answer = () => json(statistics())

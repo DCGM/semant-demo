@@ -1,4 +1,3 @@
-import type { VisualizationSpec } from 'vega-embed'
 import { SpanType, type AnnotatedDocument, type AnnotationFacets, type AnnotationFacetsRequest, type Facet, type Tag } from 'src/generated/api'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
 import { annotationFilters, ranking, type ConcordanceFilters } from '../concordance/concordanceStore'
@@ -147,45 +146,25 @@ export function denominatorText (statistics: AnnotationFacets, total: number): s
   return `of all ${n} annotations matching the query`
 }
 
-/** How many bars a chart shows at most; the table lists every row. */
-export const CHART_ROWS = 15
+/** How many rows a distribution's card shows; its detail lists all of them. */
+export const CARD_ROWS = 8
 
-const SCHEMA = 'https://vega.github.io/schema/vega-lite/v5.json'
-const BAR_STEP = 22
+export type RowOrder = 'count' | 'value'
 
-/** Horizontal bars of the first `CHART_ROWS` rows, in their order; Missing in grey. */
-export function distributionSpec (rows: DistributionRow[], title: string, clickable: boolean): VisualizationSpec {
-  const shown = rows.slice(0, CHART_ROWS)
-  return {
-    $schema: SCHEMA,
-    data: {
-      values: shown.map((row, order) => ({
-        key: row.key,
-        label: row.label,
-        count: row.count,
-        kind: row.kind,
-        order,
-        share: formatShare(row.share),
-        action: clickable && row.drill ? 'Click to list these annotations' : ''
-      }))
-    },
-    height: Math.max(shown.length, 1) * BAR_STEP,
-    mark: { type: 'bar', tooltip: true, cursor: clickable ? 'pointer' : 'default' },
-    encoding: {
-      y: { field: 'label', type: 'nominal', title, sort: { field: 'order', order: 'ascending' }, axis: { labelLimit: 200 } },
-      x: { field: 'count', type: 'quantitative', title: 'Annotations', axis: { format: ',d', tickMinStep: 1 } },
-      color: {
-        field: 'kind',
-        type: 'nominal',
-        scale: { domain: ['value', 'missing'], range: ['#3b6ea8', '#a0aec0'] },
-        legend: null
-      },
-      tooltip: [
-        { field: 'label', type: 'nominal', title },
-        { field: 'count', type: 'quantitative', title: 'Annotations', format: ',d' },
-        { field: 'share', type: 'nominal', title: 'Share' },
-        ...(clickable ? [{ field: 'action', type: 'nominal' as const, title: ' ' }] : [])
-      ]
-    }
-  } as VisualizationSpec
+/** The rows in `order`: most annotations first, or by value (statuses in their order, years in
+ * time order, names alphabetically); the Missing row always last. */
+export function orderedRows (rows: DistributionRow[], dimension: Dimension, order: RowOrder): DistributionRow[] {
+  const values = rows.filter(r => r.kind === 'value')
+  const missing = rows.filter(r => r.kind === 'missing')
+  const sorted = [...values]
+  if (order === 'count') sorted.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+  else if (dimension === 'type') sorted.sort((a, b) => STATUS_ORDER.indexOf(a.key as SpanType) - STATUS_ORDER.indexOf(b.key as SpanType))
+  else if (dimension === 'year') sorted.sort((a, b) => Number(a.key) - Number(b.key))
+  else sorted.sort((a, b) => a.label.localeCompare(b.label))
+  return [...sorted, ...missing]
+}
+
+/** The order a distribution is shown in by default: statuses and years by value, the others by count. */
+export function defaultOrder (dimension: Dimension): RowOrder {
+  return dimension === 'type' || dimension === 'year' ? 'value' : 'count'
 }

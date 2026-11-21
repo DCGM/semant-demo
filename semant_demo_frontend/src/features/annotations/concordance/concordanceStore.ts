@@ -344,9 +344,8 @@ export const useConcordanceStore = defineStore('concordance', () => {
     return result.rows[0] ?? null
   }
 
-  /** Makes `id` the workspace's collection without reading anything: as it was left, or a new
-   * workspace for another collection (the statistics view shares the query, #818). */
-  function enter (id: string) {
+  /** Shows the collection's workspace: as it was left, or a new one for another collection. */
+  async function open (id: string) {
     if (scope.enter(id)) {
       reset()
       collectionId.value = id
@@ -354,11 +353,6 @@ export const useConcordanceStore = defineStore('concordance', () => {
       useAttributeAssignStore().clear()
     }
     selection.enter(id)
-  }
-
-  /** Shows the collection's workspace: as it was left, or a new one for another collection. */
-  async function open (id: string) {
-    enter(id)
     // Names only label provenance: the workspace does not wait for them.
     void loadPeople()
     // The counts only label the filter menus: the list does not wait for them.
@@ -799,7 +793,6 @@ export const useConcordanceStore = defineStore('concordance', () => {
     people,
     scrollY,
     shownAttributeIds,
-    enter,
     open,
     load,
     refreshRows,
