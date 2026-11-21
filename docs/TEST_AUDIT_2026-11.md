@@ -365,7 +365,7 @@ the parent tracker decides, and the other stage cross-references it.
 | --- | --- | ---: | --- |
 | `backend/tests/test_api_contracts.py` | pytest fast | 72 | keep |
 | `backend/tests/test_browser_shards.py` | pytest fast | 12 | keep |
-| `backend/tests/test_ci_changes.py` | pytest fast | 156 | **remove** 3 subsumed cases (#857); keep the rest |
+| `backend/tests/test_ci_changes.py` | pytest fast | 156 | **remove** 3 subsumed cases (#867); keep the rest |
 | `backend/tests/test_config.py` | pytest fast | 19 | keep |
 | `backend/tests/test_dependency_locks.py` | pytest fast | 17 | keep |
 | `backend/tests/test_deploy_commit.py` | pytest fast | 6 | keep |
@@ -386,7 +386,7 @@ the parent tracker decides, and the other stage cross-references it.
 | `backend/tests/test_python_deps_check.py` | pytest fast | 7 | keep |
 | `backend/tests/test_utils/test_observability.py` | pytest fast | 18 | keep |
 | `frontend/test/unit/dependencyCheck.spec.ts` | Vitest | 4 | keep |
-| `frontend/test/unit/devTooling.spec.ts` | Vitest | 8 | **simplify fixture** (#857): ESLint in-process |
+| `frontend/test/unit/devTooling.spec.ts` | Vitest | 8 | **simplify fixture** (#867): ESLint in-process |
 
 ### #858
 
@@ -765,7 +765,7 @@ The full note is [on #855](https://github.com/DCGM/semant-demo/issues/855).
 
 ### #857 Tooling, CI, deployment and contract checks
 
-**Three repeated checks removed and the ESLint cases made cheaper; keep the rest.** Same
+**Three repeated checks removed and the ESLint cases made cheaper ([#867](https://github.com/DCGM/semant-demo/pull/867)); keep the rest.** Same
 machine as #848. Fast backend: the 22 stage files from the owner map, run alone with
 `pytest -q -m "not integration and not live and not benchmark" <files>`. Vitest: the two
 specs, `npx vitest run test/unit/devTooling.spec.ts test/unit/dependencyCheck.spec.ts`.
