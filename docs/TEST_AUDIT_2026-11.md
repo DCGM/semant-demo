@@ -363,30 +363,30 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/test_api_contracts.py` | pytest fast | 72 | pending |
-| `backend/tests/test_browser_shards.py` | pytest fast | 12 | pending |
-| `backend/tests/test_ci_changes.py` | pytest fast | 156 | pending |
-| `backend/tests/test_config.py` | pytest fast | 19 | pending |
-| `backend/tests/test_dependency_locks.py` | pytest fast | 17 | pending |
-| `backend/tests/test_deploy_commit.py` | pytest fast | 6 | pending |
-| `backend/tests/test_deploy_feedback_storage.py` | pytest fast | 7 | pending |
-| `backend/tests/test_deploy_gating.py` | pytest fast | 3 | pending |
-| `backend/tests/test_deploy_image.py` | pytest fast | 1 | pending |
-| `backend/tests/test_deploy_mcp_rate_limit.py` | pytest fast | 4 | pending |
-| `backend/tests/test_deploy_page_assets.py` | pytest fast | 2 | pending |
-| `backend/tests/test_deploy_search_vectors.py` | pytest fast | 6 | pending |
-| `backend/tests/test_deploy_sqlite_storage.py` | pytest fast | 5 | pending |
-| `backend/tests/test_docker_preflight.py` | pytest fast | 29 | pending |
-| `backend/tests/test_e2e_dev_script.py` | pytest fast | 17 | pending |
-| `backend/tests/test_integration_shards.py` | pytest fast | 13 | pending |
-| `backend/tests/test_local_dev.py` | pytest fast | 60 | pending |
-| `backend/tests/test_local_dev_script.py` | pytest fast | 26 | pending |
-| `backend/tests/test_makefile_args.py` | pytest fast | 4 | pending |
-| `backend/tests/test_offline_guard.py` | pytest fast | 3 | pending |
-| `backend/tests/test_python_deps_check.py` | pytest fast | 7 | pending |
-| `backend/tests/test_utils/test_observability.py` | pytest fast | 18 | pending |
-| `frontend/test/unit/dependencyCheck.spec.ts` | Vitest | 4 | pending (disputed with #855) |
-| `frontend/test/unit/devTooling.spec.ts` | Vitest | 8 | pending (disputed with #855) |
+| `backend/tests/test_api_contracts.py` | pytest fast | 72 | keep |
+| `backend/tests/test_browser_shards.py` | pytest fast | 12 | keep |
+| `backend/tests/test_ci_changes.py` | pytest fast | 156 | **remove** 3 subsumed cases (#867); keep the rest |
+| `backend/tests/test_config.py` | pytest fast | 19 | keep |
+| `backend/tests/test_dependency_locks.py` | pytest fast | 17 | keep |
+| `backend/tests/test_deploy_commit.py` | pytest fast | 6 | keep |
+| `backend/tests/test_deploy_feedback_storage.py` | pytest fast | 7 | keep |
+| `backend/tests/test_deploy_gating.py` | pytest fast | 3 | keep (sole owner of the preview and deploy `needs`) |
+| `backend/tests/test_deploy_image.py` | pytest fast | 1 | keep |
+| `backend/tests/test_deploy_mcp_rate_limit.py` | pytest fast | 4 | keep |
+| `backend/tests/test_deploy_page_assets.py` | pytest fast | 2 | keep |
+| `backend/tests/test_deploy_search_vectors.py` | pytest fast | 6 | keep |
+| `backend/tests/test_deploy_sqlite_storage.py` | pytest fast | 5 | keep |
+| `backend/tests/test_docker_preflight.py` | pytest fast | 29 | keep (1 s time-outs are under test) |
+| `backend/tests/test_e2e_dev_script.py` | pytest fast | 17 | keep |
+| `backend/tests/test_integration_shards.py` | pytest fast | 13 | keep (real-inventory case 5.6 s, see outcome) |
+| `backend/tests/test_local_dev.py` | pytest fast | 60 | keep |
+| `backend/tests/test_local_dev_script.py` | pytest fast | 26 | keep |
+| `backend/tests/test_makefile_args.py` | pytest fast | 4 | keep |
+| `backend/tests/test_offline_guard.py` | pytest fast | 3 | keep |
+| `backend/tests/test_python_deps_check.py` | pytest fast | 7 | keep |
+| `backend/tests/test_utils/test_observability.py` | pytest fast | 18 | keep |
+| `frontend/test/unit/dependencyCheck.spec.ts` | Vitest | 4 | keep |
+| `frontend/test/unit/devTooling.spec.ts` | Vitest | 8 | **simplify fixture** (#867): ESLint in-process |
 
 ### #858
 
@@ -833,3 +833,98 @@ Remaining risks:
   path right after a dialog login would be caught by the login tests alone.
 
 The full note is [on #856](https://github.com/DCGM/semant-demo/issues/856).
+
+### #857 Tooling, CI, deployment and contract checks
+
+**Three repeated checks removed and the ESLint cases made cheaper ([#867](https://github.com/DCGM/semant-demo/pull/867)); keep the rest.** Same
+machine as #848. Fast backend: the 22 stage files from the owner map, run alone with
+`pytest -q -m "not integration and not live and not benchmark" <files>`. Vitest: the two
+specs, `npx vitest run test/unit/devTooling.spec.ts test/unit/dependencyCheck.spec.ts`.
+
+| Layer | Files | Cases before → after | Before | After |
+| --- | ---: | --- | --- | --- |
+| Fast backend | 22 | 488 → 485 | 23.5 s | 25.5 s (run-to-run noise; the 3 removed cases took milliseconds) |
+| Vitest | 2 | 12 → 12 | 4.4 s wall, 3.6 s in tests | 2.3 s wall, 1.3 s in tests |
+
+Changes:
+
+- **`devTooling.spec.ts`, ESLint cases:** **simplify fixture.** Before, each of the four
+  lints started its own `node eslint.js --stdin` (~0.7 s each, mostly loading the config
+  and plugins). Now one in-process `ESLint` instance runs them with the project's
+  `.eslintrc.js`, the same rules as `npm run lint`. Mutation check: with `no-undef` turned
+  back on for TypeScript and `vue/block-lang` off, two cases fail, as before. The
+  `api-client.sh` cases still run the real script, because what they test is the script's
+  interpreter lookup.
+- **`test_ci_changes.py`:** **remove** three cases that other tests already cover.
+  - `test_preview_still_starts_without_waiting_for_application_tests` and
+    `test_deployments_require_the_gate`: `test_deploy_gating.py` asserts the same `needs`,
+    and more strictly. It also checks the fork and `closed` conditions for the preview and
+    requires every check plus the gate for the deployments.
+  - `test_repository_markdown_links_resolve`: it ran the link check of `make check-docs`
+    and the `docs-check` job. That job is required in every mode. It has the same fork
+    condition as `test-backend` and also runs in the docs and frontend modes, where
+    `test-backend` is skipped. A broken link failed two jobs.
+    `test_link_check_reports_broken_relative_links_only` still covers the checker itself.
+
+Kept, with the reasons:
+
+- **Gate and classifier (`test_ci_changes.py`, 153 cases):** **keep.** Most cases are
+  the 28-case failure matrix (7 suites × failure/cancelled/skipped/missing) and the path
+  allowlists for each mode. Each runs in milliseconds, and together they pin the gate's
+  strict failure rules (#687). Consolidating them would save nothing measurable and would
+  make failures harder to read.
+- **Sharding (`test_integration_shards.py`, `test_browser_shards.py`):** **keep.** Both
+  files are built the same way but test different scripts and reports: pytest with JUnit,
+  and `playwright --list` with the JSON reporter.
+  - `test_real_inventory_is_partitioned_with_committed_durations` takes 5.6 s, the
+    slowest case in this stage. It is the only test that parses real
+    `pytest --collect-only -q` output and the committed `shard_durations.json`.
+  - That time is a second interpreter collecting the whole suite (3,485 tests, about
+    1.4 s of collection) to select the integration tests.
+  - Limiting collection to `tests/integration` would change what CI's plan step
+    collects, which is #454's CI design, so it is not changed here.
+- **Docker preflight (`test_docker_preflight.py`, 29 cases):** **keep.**
+  - Five cases wait 1 s each: these are the time-outs under test.
+  - In the `hangs-after-probe` cases, the probe must succeed within the same
+    `SEMANT_DOCKER_TIMEOUT`, so a shorter value could fail on a loaded runner.
+  - The script documents whole seconds.
+- **Dependency checks:** **keep all three layers.** Each catches a different failure.
+  - `test_dependency_locks.py`: the two locks agree, the Dockerfile installs only the
+    runtime lock, and `check-since` works. The network re-resolution itself is the
+    `python-locks` job and is not repeated here.
+  - `test_python_deps_check.py`: the installed environment against the lock. CI does not
+    run `make deps-check`, so `test_this_environment_matches_the_real_lock` is the only CI
+    run of this preflight on the real lock. Locally it repeats `deps-check-backend`, at a
+    cost of 0.14 s.
+  - `dependencyCheck.spec.ts`: `node_modules` against `package-lock.json`, which CI
+    otherwise never checks because it installs with `npm ci`.
+- **Generated API client:** no test generates the client. The drift check is the
+  `api-client-drift` job and `make api-check`. `devTooling.spec.ts` covers only how
+  `api-client.sh` selects its interpreter, so nothing is checked twice.
+- **Launchers and the development profile (`test_local_dev.py`,
+  `test_local_dev_script.py`, `test_e2e_dev_script.py`, `test_makefile_args.py`):**
+  **keep.**
+  - These are data-ownership guards: each refusal must leave both stores unchanged.
+  - They also cover argument passing through `make` and the browser-loop guards.
+  - Docker, curl, npx and Python are stubs, and no case takes more than 0.15 s.
+- **Deployment files (`test_deploy_*.py`):** **keep.**
+  - Each file pins a different deployment incident: #233, #298, #300, #385, #406, #594
+    and #635. Most read YAML without starting a process.
+  - The 0.8 s setup in `test_deploy_sqlite_storage.py` is a durable write and a writer
+    killed mid-transaction, which is what the test checks.
+- **`test_api_contracts.py`, `test_config.py`, `test_utils/test_observability.py`,
+  `test_offline_guard.py`:** **keep.**
+  - `test_api_contracts.py` covers the OpenAPI components and request validation through
+    the real routes. It uses #848's shared schema, and its slowest case takes 0.24 s.
+  - `test_config.py`: each setting has exactly one source.
+  - `test_utils/test_observability.py`: no path text, query or question reaches logs,
+    spans or metrics.
+  - `test_offline_guard.py` tests the network guard itself, which `test_harness_defaults.py`
+    does not.
+- **Not run by default:** every file in this stage runs in the `test-backend` or
+  `test-frontend` job. `test_makefile_args.py` skips only where `make` is missing; CI's
+  `python:3.12` image has it. Nothing here is opt-in.
+
+Ownership: the three files that the owner map gave this stage but the issue does not list
+(`test_api_contracts.py`, `test_config.py`, `test_observability.py`) were reviewed here.
+`devTooling` and `dependencyCheck` stay with #857, as #855 agreed.
