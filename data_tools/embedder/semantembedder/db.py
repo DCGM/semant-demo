@@ -3,6 +3,7 @@ from typing import Optional
 import weaviate
 from weaviate.auth import AuthApiKey
 from weaviate.classes.config import Configure, Property, DataType, Tokenization, VectorDistances, Vectorizers
+from weaviate.exceptions import WeaviateBaseError
 
 
 def get_async_client(
@@ -16,7 +17,8 @@ def get_async_client(
 
     Use it as `async with get_async_client(...) as client:` to connect and close it automatically.
     The client's start-up checks (its version lookup on pypi.org and its gRPC ping) are skipped,
-    as in the backend, so an unreachable gRPC port fails at the first query, not when connecting.
+    as in the backend, so an unreachable gRPC port fails at the first query, not when connecting;
+    ``check_grpc`` runs one before the run changes the schema.
 
     Args:
         host: Weaviate host address.
@@ -41,6 +43,20 @@ def get_async_client(
         auth_credentials=auth_credentials,
         skip_init_checks=True,
     )
+
+
+async def check_grpc(client: weaviate.WeaviateAsyncClient, collection_name: str, host: str, grpc_port: int) -> None:
+    """Read one object of the collection over gRPC, which the run's queries use; called before the
+    run adds a missing vector to the schema, whose calls use REST.
+
+    Raises:
+        ConnectionError: The query failed (e.g. a wrong or unreachable ``weaviate_grpc_port``).
+    """
+    try:
+        await client.collections.use(collection_name).query.fetch_objects(limit=1, return_properties=[])
+    except WeaviateBaseError as e:
+        raise ConnectionError(f"Weaviate does not answer a query over gRPC at {host}:{grpc_port} "
+                              f"(weaviate_grpc_port): {e}") from e
 
 
 def build_vector_index_config(index_type: str, distance_metric: str):
