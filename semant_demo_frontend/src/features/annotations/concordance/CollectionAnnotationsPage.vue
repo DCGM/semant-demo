@@ -102,7 +102,14 @@
         </q-btn>
       </span>
       </template>
-      <span v-else-if="rankedText" class="collection-annotations__ranked text-grey-8">{{ rankedText }}</span>
+      <span v-else-if="statisticsSummary" data-testid="statistics-summary">
+        <strong data-testid="statistics-total">{{ formatCount(statisticsSummary.total) }}</strong>
+        {{ statisticsSummary.total === 1 ? 'annotation' : 'annotations' }}{{ statisticsSummary.topK ? ` in the top ${statisticsSummary.k} by similarity` : '' }}
+        in <strong data-testid="statistics-documents">{{ statisticsSummary.documents == null ? '—' : formatCount(statisticsSummary.documents) }}</strong>
+        {{ statisticsSummary.documents == null ? 'source documents (not available for this query)' : statisticsSummary.documents === 1 ? 'source document' : 'source documents' }}
+        <span class="text-grey-8">· shares {{ statisticsSummary.denominator }}</span>
+      </span>
+      <q-spinner v-if="statisticsView && statisticsLoading" color="primary" size="1.2em" aria-label="Loading statistics" />
       <q-space />
       <q-btn
         v-if="!statisticsView"
@@ -123,12 +130,14 @@
     <AnnotationStatisticsPanel
       v-if="statisticsView"
       :filters="store.filters"
-      :collection-id="collectionId"
+      :statistics="statistics"
+      :error="statisticsError"
       :tags="tags"
       :documents="store.documents"
       :dimension="statisticsDimension"
       @drill="drillFromStatistics"
       @dimension="showDimension"
+      @retry="loadStatistics"
     />
     <template v-else>
 
@@ -492,7 +501,8 @@ import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import AnnotationStatisticsPanel from '../statistics/AnnotationStatisticsPanel.vue'
-import { DIMENSIONS, type Dimension } from '../statistics/statistics'
+import { DIMENSIONS, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
+import { useAnnotationStatistics } from '../statistics/useAnnotationStatistics'
 import type { ConcordanceFilters } from './concordanceStore'
 import SimilarSourceBar from './SimilarSourceBar.vue'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
@@ -547,6 +557,10 @@ const statisticsDimension = computed<Dimension | null>(() => {
   const d = route.query.dimension
   return typeof d === 'string' && (DIMENSIONS as readonly string[]).includes(d) ? d as Dimension : null
 })
+// Read only while the view is shown (and again on every return to it).
+const { statistics, loading: statisticsLoading, error: statisticsError, load: loadStatistics } = useAnnotationStatistics(
+  computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters))
+const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
 function showView (view: 'list' | 'statistics') {
   void router.push({ query: view === 'statistics' ? { view } : {} })
 }

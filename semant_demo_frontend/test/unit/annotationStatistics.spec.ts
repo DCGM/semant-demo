@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { computed, defineComponent, h, ref } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { Quasar } from 'quasar'
 
 import { SpanType, type AnnotationFacets, type Facet } from 'src/generated/api'
 import { defaultFilters, withMode, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
 import AnnotationStatisticsPanel from 'src/features/annotations/statistics/AnnotationStatisticsPanel.vue'
+import { useAnnotationStatistics } from 'src/features/annotations/statistics/useAnnotationStatistics'
 import {
-  denominatorText, distributionRows, drillChange, formatShare, orderedRows, statisticsRequest, type Labels
+  denominatorText, distributionRows, drillChange, formatShare, orderedRows, statisticsRequest, summaryOf, type Labels
 } from 'src/features/annotations/statistics/statistics'
 
 // The statistics of the annotation workspace query (#818): one population for every distribution
@@ -117,13 +119,37 @@ describe('the statistics view', () => {
   })
   afterEach(() => { globalThis.fetch = originalFetch })
 
-  async function mountPanel (filters: ConcordanceFilters = defaultFilters(), dimension: string | null = null) {
-    const wrapper = mount(AnnotationStatisticsPanel, {
-      props: { filters, collectionId: 'c1', tags: labels.tags, documents: labels.documents, dimension: dimension as never },
-      global: { plugins: [Quasar] }
+  /** The panel with the statistics read as the annotations page reads them. */
+  async function mountPanel (initial: ConcordanceFilters = defaultFilters(), dimension: string | null = null) {
+    const filters = ref(initial)
+    let emitted: unknown[][] = []
+    const Host = defineComponent({
+      setup () {
+        const { statistics, error, load } = useAnnotationStatistics(computed(() => 'c1'), filters)
+        const summary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
+        return () => h('div', [
+          summary.value ? h('p', { 'data-testid': 'summary' }, `${summary.value.total} / ${summary.value.documents ?? '—'} / ${summary.value.denominator}`) : null,
+          h(AnnotationStatisticsPanel, {
+            filters: filters.value,
+            statistics: statistics.value,
+            error: error.value,
+            tags: labels.tags,
+            documents: labels.documents,
+            dimension: dimension as never,
+            onDrill: (c: unknown) => emitted.push(['drill', c]),
+            onDimension: (d: unknown) => emitted.push(['dimension', d]),
+            onRetry: () => { void load() }
+          })
+        ])
+      }
     })
+    const wrapper = mount(Host, { global: { plugins: [Quasar] } })
     await flushPromises()
-    return wrapper
+    return Object.assign(wrapper, {
+      filters,
+      events: (name: string) => emitted.filter(e => e[0] === name).map(e => e.slice(1)),
+      reset: () => { emitted = [] }
+    })
   }
 
   const statisticsCalls = () => requests.filter(r => r.path.endsWith('/facets'))
@@ -132,15 +158,13 @@ describe('the statistics view', () => {
     const wrapper = await mountPanel()
     expect(statisticsCalls()).toHaveLength(1)
     expect(statisticsCalls()[0].body).toMatchObject({ self_exclusion: false, types: ['pos', 'auto'] })
-    expect(wrapper.get('[data-testid="statistics-total"]').text()).toBe('6')
-    expect(wrapper.get('[data-testid="statistics-documents"]').text()).toBe('1')
-    expect(wrapper.get('[data-testid="statistics-summary"]').text()).toContain('of all 6 annotations matching the query')
+    expect(wrapper.get('[data-testid="summary"]').text()).toBe('6 / 1 / of all 6 annotations matching the query')
 
-    await wrapper.setProps({ filters: { ...defaultFilters(), types: [SpanType.pos, SpanType.auto, SpanType.neg] } })
+    wrapper.filters.value = { ...defaultFilters(), types: [SpanType.pos, SpanType.auto, SpanType.neg] }
     await flushPromises()
     expect(statisticsCalls().at(-1)?.body).toMatchObject({ types: ['pos', 'auto', 'neg'] })
     const before = statisticsCalls().length
-    await wrapper.setProps({ filters: { ...defaultFilters(), types: [SpanType.pos, SpanType.auto, SpanType.neg], descending: true } })
+    wrapper.filters.value = { ...defaultFilters(), types: [SpanType.pos, SpanType.auto, SpanType.neg], descending: true }
     await flushPromises()
     expect(statisticsCalls()).toHaveLength(before)
   })
@@ -148,7 +172,7 @@ describe('the statistics view', () => {
   it('lists exactly a category when its label is clicked; a Missing row has no link', async () => {
     const wrapper = await mountPanel()
     await wrapper.get('[data-testid="statistics-tag-show-t2"]').trigger('click')
-    expect(wrapper.emitted('drill')?.[0]).toEqual([{ tagIds: ['t2'] }])
+    expect(wrapper.events('drill')[0]).toEqual([{ tagIds: ['t2'] }])
     expect(wrapper.find('[data-testid="statistics-year-show-__missing__"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="statistics-year"]').text()).toContain('Unknown year')
   })
@@ -160,12 +184,12 @@ describe('the statistics view', () => {
     const wrapper = await mountPanel()
     expect(wrapper.findAll('[data-testid="statistics-year"] tbody tr')).toHaveLength(9) // 8 years and Unknown
     await wrapper.get('[data-testid="statistics-year-all"]').trigger('click')
-    expect(wrapper.emitted('dimension')?.[0]).toEqual(['year'])
+    expect(wrapper.events('dimension')[0]).toEqual(['year'])
 
     const detail = await mountPanel(defaultFilters(), 'year')
     expect(detail.findAll('[data-testid="statistics-detail-year"] tbody tr')).toHaveLength(13)
     await detail.get('[data-testid="statistics-back"]').trigger('click')
-    expect(detail.emitted('dimension')?.[0]).toEqual([null])
+    expect(detail.events('dimension')[0]).toEqual([null])
   })
 
   it('labels a ranked top k and offers no drill-down', async () => {
@@ -182,7 +206,7 @@ describe('the statistics view', () => {
     answer = () => json({ ...counted, facets: counted.facets.filter(f => !['year', 'document', 'library', 'language'].includes(f.facet)) })
     const wrapper = await mountPanel()
     expect(wrapper.find('[data-testid="statistics-year-unavailable"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="statistics-documents"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="summary"]').text()).toMatch(/^6 \/ — \//)
   })
 
   it('shows a failed read as an error with a retry, never as zero counts', async () => {
@@ -190,10 +214,10 @@ describe('the statistics view', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const wrapper = await mountPanel()
     expect(wrapper.get('[data-testid="statistics-error"]').text()).toContain('Failed to load the statistics.')
-    expect(wrapper.find('[data-testid="statistics-total"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="summary"]').exists()).toBe(false)
     answer = () => json(statistics())
     await wrapper.get('[data-testid="statistics-error"] button').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-testid="statistics-total"]').text()).toBe('6')
+    expect(wrapper.get('[data-testid="summary"]').text()).toMatch(/^6 \//)
   })
 })

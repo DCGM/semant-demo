@@ -1,21 +1,11 @@
 <template>
   <section class="annotation-statistics" aria-label="Statistics" data-testid="annotation-statistics">
-    <q-linear-progress v-if="loading" indeterminate color="primary" class="q-mb-sm" aria-label="Loading statistics" />
-
     <div v-if="error" class="annotation-statistics__state text-negative" role="alert" data-testid="statistics-error">
       {{ error }}
-      <q-btn flat dense no-caps color="primary" label="Retry" @click="load" />
+      <q-btn flat dense no-caps color="primary" label="Retry" @click="emit('retry')" />
     </div>
 
     <template v-else-if="statistics">
-      <p class="annotation-statistics__summary" data-testid="statistics-summary">
-        <strong data-testid="statistics-total">{{ formatCount(total) }}</strong>
-        {{ total === 1 ? 'annotation' : 'annotations' }}{{ topK ? ` in the top ${statistics.k} by similarity` : '' }}
-        in
-        <strong data-testid="statistics-documents">{{ documents == null ? '—' : formatCount(documents) }}</strong>
-        {{ documents == null ? 'source documents (not available for this query)' : documents === 1 ? 'source document' : 'source documents' }}.
-        <span class="text-grey-8">Shares are {{ denominator }}.</span>
-      </p>
       <p v-if="topK" class="annotation-statistics__warning" data-testid="statistics-top-k">
         Only the {{ statistics.k }} most similar annotations are counted, not every match. Listing one
         category would rank again, so it is not offered; clear the similarity ranking to count every match.
@@ -59,7 +49,8 @@
         </template>
       </div>
 
-      <!-- One column: each distribution as tall as its rows, never stretched by a neighbour. -->
+      <!-- Columns filled top to bottom in a fixed order: each distribution as tall as its rows, never
+           stretched by a neighbour, and no column of empty space beside one. -->
       <div v-else class="annotation-statistics__grid">
         <DistributionCard
           v-for="d in DIMENSIONS"
@@ -82,13 +73,14 @@
 /**
  * The statistics view of the annotation workspace (#818): the annotations the current filters
  * select, counted by status, tag, year, source, library and language instead of listed. The page
- * keeps the toolbar and filter chips above it, so the scope is the list's query. A category's label
+ * reads the statistics (`useAnnotationStatistics`) and keeps the toolbar, filter chips and the
+ * summary line above this view, so the scope is the list's query. A category's label
  * emits `drill` with the filter change that lists exactly its annotations; `dimension` shows one
  * distribution in full (`dimension` events open and close it).
  */
-import { computed, ref, toRef, watch } from 'vue'
-import { QBtn, QBtnToggle, QLinearProgress, QSpace } from 'quasar'
-import type { AnnotatedDocument, Tag } from 'src/generated/api'
+import { computed, ref, watch } from 'vue'
+import { QBtn, QBtnToggle, QSpace } from 'quasar'
+import type { AnnotatedDocument, AnnotationFacets, Tag } from 'src/generated/api'
 import type { ConcordanceFilters } from '../concordance/concordanceStore'
 import DistributionCard from './DistributionCard.vue'
 import DistributionTable from './DistributionTable.vue'
@@ -96,30 +88,27 @@ import {
   DIMENSIONS, DIMENSION_LABELS, defaultOrder, denominatorText, distributionRows, facetOf, formatCount, isTopK, orderedRows,
   type Dimension, type RowOrder
 } from './statistics'
-import { useAnnotationStatistics } from './useAnnotationStatistics'
 
 const props = defineProps<{
   filters: ConcordanceFilters
-  collectionId: string
+  statistics: AnnotationFacets | null
+  error: string | null
   tags: Tag[]
   documents: AnnotatedDocument[]
   /** The distribution shown in full; null for all of them. */
   dimension: Dimension | null
 }>()
-const emit = defineEmits<{ drill: [change: Partial<ConcordanceFilters>], dimension: [dimension: Dimension | null] }>()
+const emit = defineEmits<{ drill: [change: Partial<ConcordanceFilters>], dimension: [dimension: Dimension | null], retry: [] }>()
 
-const collection = computed(() => props.collectionId || null)
-const { statistics, loading, error, load } = useAnnotationStatistics(collection, toRef(props, 'filters'))
-
-const topK = computed(() => isTopK(statistics.value))
-const total = computed(() => statistics.value?.facets[0]?.total ?? 0)
-const documents = computed(() => facetOf(statistics.value, 'document')?.distinct ?? null)
-const denominator = computed(() => (statistics.value ? denominatorText(statistics.value, total.value) : ''))
+const statistics = computed(() => props.statistics)
+const topK = computed(() => isTopK(props.statistics))
+const total = computed(() => props.statistics?.facets[0]?.total ?? 0)
+const denominator = computed(() => (props.statistics ? denominatorText(props.statistics, total.value) : ''))
 const labels = computed(() => ({ tags: props.tags, documents: props.documents }))
 
 const order = ref<RowOrder>('count')
 watch(() => props.dimension, (d) => { if (d) order.value = defaultOrder(d) }, { immediate: true })
-const detailFacet = computed(() => (props.dimension ? facetOf(statistics.value, props.dimension) : null))
+const detailFacet = computed(() => (props.dimension ? facetOf(props.statistics, props.dimension) : null))
 const detailRows = computed(() => {
   const d = props.dimension
   if (!d || !detailFacet.value) return []
@@ -132,10 +121,6 @@ const truncatedBy = computed(() => {
 </script>
 
 <style scoped>
-.annotation-statistics__summary {
-  margin: 4px 0 12px;
-}
-
 .annotation-statistics__warning {
   background: #fffbeb;
   border-left: 3px solid #d69e2e;
@@ -149,14 +134,18 @@ const truncatedBy = computed(() => {
 }
 
 .annotation-statistics__grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 1100px;
+  columns: 3 440px;
+  column-gap: 12px;
+}
+
+.annotation-statistics__grid > * {
+  break-inside: avoid;
+  margin-bottom: 12px;
 }
 
 .annotation-statistics__detail {
   max-width: 1100px;
+  --label-width: 28rem;
 }
 
 .annotation-statistics__detail-head {
