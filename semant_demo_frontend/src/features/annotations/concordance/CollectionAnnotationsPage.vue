@@ -129,6 +129,7 @@
 
     <AnnotationStatisticsPanel
       v-if="statisticsView"
+      class="q-mt-md"
       :filters="store.filters"
       :statistics="statistics"
       :error="statisticsError"
@@ -561,6 +562,12 @@ const statisticsDimension = computed<Dimension | null>(() => {
 const { statistics, loading: statisticsLoading, error: statisticsError, load: loadStatistics } = useAnnotationStatistics(
   computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters))
 const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
+/** Annotations changed here (a review, undo, boundary edit or attribute assignment): the menus'
+ * counts and, when shown, the statistics are read again. */
+function countsChanged () {
+  void store.loadFacets()
+  if (statisticsView.value) void loadStatistics()
+}
 function showView (view: 'list' | 'statistics') {
   void router.push({ query: view === 'statistics' ? { view } : {} })
 }
@@ -892,7 +899,7 @@ function afterReview (report: ReviewReport) {
   if (report.action !== ReviewAction.approve) void store.loadDocuments()
   // The counts of the filter menus follow a review that changed (or may have changed) annotations,
   // once per review, whether or not they are on this page (#667).
-  if (report.saved.length || report.missing.length || report.failed.length) void store.loadFacets()
+  if (report.saved.length || report.missing.length || report.failed.length) countsChanged()
   return loading
 }
 
@@ -1218,7 +1225,7 @@ async function saveBoundary () {
         values: { start: saved.start, end: saved.end, ...(result.chunkId !== saved.chunkId ? { chunkId: saved.chunkId } : {}) }
       }]
     })
-    void store.loadFacets() // the text, and so the words filter's counts, may have changed
+    countsChanged() // the text, and so the words filter's counts, may have changed
     if (boundary.value === b) boundary.value = null
     await followFocused()
     if (applies() && !boundary.value) await cancelBoundary()
@@ -1275,7 +1282,7 @@ const answered = (attributeId: string) => (result: AttributeAssignResult) => sto
 function noteAssigned (changed: number) {
   if (changed && (review.undoable || review.undoNote)) review.noteChange(null, 'Attribute assignments cannot be undone.')
   // The attribute menu's counts follow an assignment that changed something, once per assignment (#667).
-  if (changed) void store.loadFacets()
+  if (changed) countsChanged()
 }
 
 /** Assigns values to one annotation (a row's column or the sidebar), at the attribute version
