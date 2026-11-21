@@ -828,7 +828,9 @@ Remaining risks:
   test timeout) and *applicable attributes in Create/Edit Tag (#516)* (the narrowing
   confirmation never appears) at all three widths, and *document view - popover, bulk bar
   and create-tag dialog (#379)* on a phone (the drawer's edge opener takes the click). The
-  captures are not in CI, so they drift.
+  captures are not in CI, so they drift. Fixed in #869: three were drift (a focus that
+  arrives later, a checkbox that became a switch, a refusal that became a confirmation);
+  the phone one was a product bug, the drawers' swipe strips covering the screen edges.
 - Tests now start from a restored session rather than a fresh login; a bug only in the
   path right after a dialog login would be caught by the login tests alone.
 

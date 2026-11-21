@@ -277,6 +277,8 @@ test('annotation workspace columns (#665)', async ({ page, request }, testInfo) 
       await page.getByTestId('concordance-more-filters').click()
       await page.getByTestId('concordance-year-from').click()
     }
+    // The header button focuses the field a moment later (Quasar defers it); type only then.
+    await expect(page.getByLabel('From year', { exact: true })).toBeFocused()
     await page.keyboard.type('1800')
     await expect(page.getByTestId('concordance-chips')).toContainText('1800')
     await expect(page.getByRole('grid')).not.toHaveAttribute('aria-busy', 'true')
@@ -594,7 +596,7 @@ test('collection attributes (#331, #506, #522)', async ({ page, request }, testI
 
     await page.getByTestId('attribute-create').click()
     await page.getByLabel('Name').fill('Stance')
-    await page.getByRole('dialog').getByRole('checkbox', { name: 'Allow multiple values per annotation' }).click()
+    await page.getByRole('dialog').getByRole('switch', { name: 'Allow multiple values per annotation' }).click()
     await page.getByLabel('Value 1', { exact: true }).fill('for')
     await page.getByRole('button', { name: 'Add value', exact: true }).click()
     await page.getByLabel('Value 2', { exact: true }).fill('against')
@@ -731,8 +733,8 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
 })
 
 test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }, testInfo) => {
-  // Create Tag lists the Selected tags attributes to switch and the All tags ones locked on; a
-  // refused removal of the tag from an attribute is shown at that attribute.
+  // Create Tag lists the Selected tags attributes to switch and the All tags ones locked on;
+  // switching off an attribute whose values are in use asks to confirm at that attribute (#568).
   const base = `/api/user_collections/${fixture.collection('chronicles').id}`
   const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
   const person = fixture.tag('person')
@@ -778,9 +780,10 @@ test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }
     await row.getByRole('button', { name: 'Edit tag' }).click()
     await toggle('Speaker type').click()
     await dialog.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(dialog.getByTestId('tag-applicable-attribute-error')).toContainText('1 annotations')
-    await dialog.getByTestId('tag-applicable-attribute-error').scrollIntoViewIfNeeded()
-    await save(page, testInfo, 'tag-edit-refused-attribute')
+    await expect(dialog.getByTestId('tag-applicable-attribute-warning')).toContainText('apply on 1 annotation.')
+    await expect(dialog.getByRole('button', { name: 'Confirm and save' })).toBeVisible()
+    await dialog.getByTestId('tag-applicable-attribute-warning').scrollIntoViewIfNeeded()
+    await save(page, testInfo, 'tag-edit-confirm-attribute')
   } finally {
     await deleteAddedAttributes(request, 'owner', 'chronicles')
   }
