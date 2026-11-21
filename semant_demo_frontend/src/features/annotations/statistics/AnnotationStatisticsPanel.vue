@@ -65,6 +65,33 @@
           @open="emit('dimension', d)"
         />
       </div>
+
+      <!-- Accepted attribute values (#819): their own population, so apart from the distributions above. -->
+      <section v-if="!dimension && attributeCards.length" class="annotation-statistics__attributes" data-testid="statistics-attributes">
+        <div class="annotation-statistics__attributes-head">
+          <h3 class="annotation-statistics__detail-title">Accepted attribute values</h3>
+          <q-toggle
+            v-if="anyRetained"
+            v-model="includeRetained"
+            dense label="Include retained values of annotations the attribute no longer applies to"
+            data-testid="statistics-include-retained"
+          />
+        </div>
+        <p class="annotation-statistics__note" data-testid="statistics-attributes-note">
+          Confirmed annotations whose tag the attribute applies to, per value; shares are of those annotations.
+          Annotations with a value and assignments are counted separately.
+        </p>
+        <div class="annotation-statistics__grid">
+          <AttributeDistributionCard
+            v-for="c in attributeCards"
+            :key="c.attribute.id"
+            :attribute="c.attribute"
+            :distribution="c.distribution"
+            :include-retained="includeRetained"
+            @drill="change => emit('drill', change)"
+          />
+        </div>
+      </section>
     </template>
   </section>
 </template>
@@ -79,13 +106,14 @@
  * distribution in full (`dimension` events open and close it).
  */
 import { computed, ref, watch } from 'vue'
-import { QBtn, QBtnToggle, QSpace } from 'quasar'
-import type { AnnotatedDocument, AnnotationFacets, Tag } from 'src/generated/api'
+import { QBtn, QBtnToggle, QSpace, QToggle } from 'quasar'
+import type { AnnotatedDocument, AnnotationFacets, Attribute, Tag } from 'src/generated/api'
 import type { ConcordanceFilters } from '../concordance/concordanceStore'
+import AttributeDistributionCard from './AttributeDistributionCard.vue'
 import DistributionCard from './DistributionCard.vue'
 import DistributionTable from './DistributionTable.vue'
 import {
-  DIMENSIONS, DIMENSION_LABELS, defaultOrder, denominatorText, distributionRows, facetOf, formatCount, isTopK, orderedRows,
+  DIMENSIONS, DIMENSION_LABELS, attributeDistribution, attributeFacetName, defaultOrder, denominatorText, distributionRows, facetOf, formatCount, isTopK, orderedRows,
   type Dimension, type RowOrder
 } from './statistics'
 
@@ -97,6 +125,8 @@ const props = defineProps<{
   stale?: boolean
   tags: Tag[]
   documents: AnnotatedDocument[]
+  /** The collection's attributes, whose accepted values are counted (#819). */
+  attributes?: Attribute[]
   /** The distribution shown in full; null for all of them. */
   dimension: Dimension | null
 }>()
@@ -111,6 +141,16 @@ const total = computed(() => props.statistics?.facets[0]?.total ?? 0)
 const drillable = computed(() => !topK.value && !props.stale)
 const denominator = computed(() => (props.statistics ? denominatorText(props.statistics, total.value) : ''))
 const labels = computed(() => ({ tags: props.tags, documents: props.documents }))
+
+const includeRetained = ref(false)
+const attributeCards = computed(() => (props.attributes ?? []).filter(a => !a.retired).map(attribute => ({
+  attribute,
+  distribution: attributeDistribution(
+    props.statistics?.facets.find(f => f.facet === attributeFacetName(attribute.id)) ?? null,
+    attribute, props.filters, drillable.value, includeRetained.value)
+})))
+const anyRetained = computed(() => attributeCards.value.some(c => (c.distribution?.retained ?? 0) > 0))
+watch(anyRetained, (any) => { if (!any) includeRetained.value = false })
 
 const order = ref<RowOrder>('count')
 watch(() => props.dimension, (d) => { if (d) order.value = defaultOrder(d) }, { immediate: true })
@@ -152,6 +192,17 @@ const truncatedBy = computed(() => {
 .annotation-statistics__grid > * {
   break-inside: avoid;
   margin-bottom: 12px;
+}
+
+.annotation-statistics__attributes {
+  margin-top: 16px;
+}
+
+.annotation-statistics__attributes-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }
 
 .annotation-statistics__detail {

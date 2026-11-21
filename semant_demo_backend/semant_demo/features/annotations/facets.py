@@ -110,29 +110,57 @@ async def _by_document(store: service.AnnotationStore, cid: UUID, name: str, sco
 
 
 async def _by_attribute(store: service.AnnotationStore, cid: UUID, facet: str, scope: _Scope, attribute,
-                        limiter: asyncio.Semaphore) -> Facet:
+                        limiter: asyncio.Semaphore, statistics: bool = False) -> Facet:
     """Approved annotations holding each value of the attribute (as the attribute filter matches), and
     of them those whose current tag the attribute no longer applies to (#500). An annotation holding
-    several values counts once under each."""
+    several values counts once under each.
+
+    ``statistics`` (#819) adds the applicable-only population the accepted-value statistics count:
+    ``eligible`` (approved annotations of a tag the attribute applies to), ``with_value`` (of them, those
+    with at least one value) and ``assignments`` (their values, one per annotation and value)."""
     query, documents = scope.query, scope.document_ids
 
     async def count(q: AnnotationQuery) -> int:
         async with limiter:
             return await store.spans.count_rows(cid, q, documents)
 
+    # The tags whose annotations the attribute applies to within the query's own tag filter; None: any tag.
+    if attribute.all_tags:
+        applicable_tags = list(query.tag_ids) if query.tag_ids else None
+    else:
+        applicable_tags = [t for t in attribute.tag_ids if not query.tag_ids or t in query.tag_ids]
+
     async def value(v) -> FacetValue:
         held = query.model_copy(update={"holds_value": codec.encode(attribute.id, v.id)})
         n = await count(held)
         if n == 0 or attribute.all_tags:
             return FacetValue(value=str(v.id), count=n)
-        tags = [t for t in attribute.tag_ids if not query.tag_ids or t in query.tag_ids]
-        applying = await count(held.model_copy(update={"tag_ids": tags})) if tags else 0
+        applying = await count(held.model_copy(update={"tag_ids": applicable_tags})) if applicable_tags else 0
         return FacetValue(value=str(v.id), count=n, inapplicable=n - applying)
 
+    async def eligible() -> int:
+        if applicable_tags is not None and not applicable_tags or SpanType.pos not in query.types:
+            return 0
+        return await count(query.model_copy(update={"types": [SpanType.pos], "tag_ids": applicable_tags}))
+
+    async def with_value() -> int:
+        if applicable_tags is not None and not applicable_tags or not attribute.values:
+            return 0
+        # The query's own filter on this attribute already requires one of its values: keep it.
+        own = query.attribute_values.get(attribute.id) or [d.id for d in attribute.values]
+        return await count(query.model_copy(update={"attribute_values": {**query.attribute_values, attribute.id: own},
+                                                    "tag_ids": applicable_tags}))
+
     unassigned = query.model_copy(update={"attribute_unassigned": [*query.attribute_unassigned, attribute.id]})
-    *values, missing = await asyncio.gather(*(value(v) for v in attribute.values), count(unassigned))
-    return Facet(facet=facet, values=[v for v, d in zip(values, attribute.values) if v.count or not d.retired],
-                 missing=missing, total=scope.total)
+    extra = (eligible(), with_value()) if statistics else ()
+    answers = await asyncio.gather(*(value(v) for v in attribute.values), count(unassigned), *extra)
+    values, (missing, *rest) = answers[:len(attribute.values)], answers[len(attribute.values):]
+    shown = [v for v, d in zip(values, attribute.values) if v.count or not d.retired]
+    result = Facet(facet=facet, values=shown, missing=missing, total=scope.total)
+    if statistics:
+        result.eligible, result.with_value = rest
+        result.assignments = sum(v.count - v.inapplicable for v in values)
+    return result
 
 
 async def annotation_facets(store: service.AnnotationStore, user: Principal | None, collection_id: service.Id,
@@ -208,7 +236,8 @@ async def annotation_facets(store: service.AnnotationStore, user: Principal | No
         scope = await scope_of(facet)
         name = facet.partition(":")[0]
         if name == "attribute":
-            return await _by_attribute(store, cid, facet, scope, definitions[UUID(facet.partition(":")[2])], limiter)
+            return await _by_attribute(store, cid, facet, scope, definitions[UUID(facet.partition(":")[2])], limiter,
+                                       statistics=not request.self_exclusion)
         if scope.total == 0:
             return Facet(facet=facet, values=[], missing=0, total=0, **({"distinct": 0} if name == "document" else {}))
         if name in ("tag", "type"):

@@ -1,6 +1,7 @@
-import { SpanType, type AnnotatedDocument, type AnnotationFacets, type AnnotationFacetsRequest, type Facet, type Tag } from 'src/generated/api'
+import { Cardinality, SpanType, type AnnotatedDocument, type AnnotationFacets, type AnnotationFacetsRequest, type Attribute, type Facet, type Tag } from 'src/generated/api'
+import { orderedValues, valueName } from 'src/features/attributes/attributeForm'
 import { languageLabel, libraryLabel } from 'src/features/analytics/corpusOverview'
-import { annotationFilters, ranking, type ConcordanceFilters } from '../concordance/concordanceStore'
+import { MAX_FACET_ATTRIBUTES, annotationFilters, ranking, type ConcordanceFilters } from '../concordance/concordanceStore'
 
 /**
  * The statistics of the workspace's annotation query (#818): the facet counts of #667 over exactly
@@ -40,10 +41,18 @@ const MISSING_LABELS: Record<Dimension, string> = {
   language: 'Unknown language'
 }
 
-/** The facet request of the statistics of `f`: the query itself, every facet over its own population. */
-export function statisticsRequest (f: ConcordanceFilters): AnnotationFacetsRequest {
-  return { ...annotationFilters(f), ranking: ranking(f), facets: [...DIMENSIONS], selfExclusion: false }
+/** The facet request of the statistics of `f`: the query itself, every facet over its own population,
+ * and the accepted values of each of `attributeIds` (#819). */
+export function statisticsRequest (f: ConcordanceFilters, attributeIds: string[] = []): AnnotationFacetsRequest {
+  return {
+    ...annotationFilters(f),
+    ranking: ranking(f),
+    facets: [...DIMENSIONS, ...attributeIds.slice(0, MAX_FACET_ATTRIBUTES).map(attributeFacetName)],
+    selfExclusion: false
+  }
 }
+
+export const attributeFacetName = (attributeId: string) => `attribute:${attributeId}`
 
 /** One row of a distribution: a value, or the annotations without one (`missing`). */
 export interface DistributionRow {
@@ -180,4 +189,104 @@ export function orderedRows (rows: DistributionRow[], dimension: Dimension, orde
 /** The order a distribution is shown in by default: statuses and years by value, the others by count. */
 export function defaultOrder (dimension: Dimension): RowOrder {
   return dimension === 'type' || dimension === 'year' ? 'value' : 'count'
+}
+
+// ── Accepted attribute values (#819) ──
+
+/** The counting contract of the accepted-value distributions (#334): the population is the confirmed
+ * annotations of the query whose current tag the attribute applies to; a value counts the annotations
+ * of it holding the value; values kept after a retag (#500) are no current classification and count
+ * only when asked for, as a population of their own. */
+export interface AttributeDistribution {
+  attribute: Attribute
+  rows: DistributionRow[]
+  /** Confirmed annotations of the query the attribute applies to: the denominator of every share. */
+  eligible: number
+  /** Of them, annotations with at least one value (one with several counts once). */
+  withValue: number
+  /** Values assigned to them, one per annotation and value: more than `withValue` for a multi-valued attribute. */
+  assignments: number
+  /** Annotations of the query with no value of the attribute (the Missing row). */
+  missing: number
+  /** Values retained on annotations whose tag the attribute no longer applies to (never in the counts above). */
+  retained: number
+  multiValued: boolean
+}
+
+/** The tags a drill-down of the attribute lists: those it applies to within the query's own tag
+ * filter ([]: any tag, as the query); null when none, so no annotation is counted. */
+export function applicableTags (attribute: Attribute, f: ConcordanceFilters): string[] | null {
+  if (attribute.allTags) return f.tagIds
+  const own = attribute.tagIds ?? []
+  const tags = f.tagIds.length ? own.filter(t => f.tagIds.includes(t)) : own
+  return tags.length ? tags : null
+}
+
+/**
+ * The filter change that lists exactly the annotations a value row counts: confirmed, holding the
+ * value, of a tag the attribute applies to (`stored`: any tag, the stored-value filter of #500, a
+ * different population), or, with `valueId` null, confirmed annotations without any value. Null
+ * when the query cannot be narrowed that way: the attribute's own filter in the query excludes the value
+ * (values of one attribute match any, so the query AND the value is not one filter).
+ */
+export function attributeDrillChange (attribute: Attribute, valueId: string | null, f: ConcordanceFilters,
+  stored = false): Partial<ConcordanceFilters> | null {
+  const prefix = `${attribute.id}:`
+  const own = f.attributeValues.filter(v => v.startsWith(prefix))
+  const others = f.attributeValues.filter(v => !v.startsWith(prefix))
+  if (valueId && own.length && !own.includes(`${prefix}${valueId}`)) return null
+  if (valueId && f.attributeUnassigned.includes(attribute.id)) return null
+  if (!valueId && own.length) return null
+  const tags = stored ? f.tagIds : applicableTags(attribute, f)
+  if (!tags) return null
+  const unassigned = f.attributeUnassigned.filter(a => a !== attribute.id)
+  return {
+    types: [SpanType.pos],
+    tagIds: tags,
+    attributeValues: valueId ? [...others, `${prefix}${valueId}`] : others,
+    attributeUnassigned: valueId ? unassigned : [...unassigned, attribute.id]
+  }
+}
+
+/** The distribution of one attribute from its facet, or null when the server gave no statistics for it. */
+export function attributeDistribution (facet: Facet | null, attribute: Attribute, f: ConcordanceFilters,
+  drillable: boolean, includeRetained: boolean): AttributeDistribution | null {
+  if (!facet || facet.eligible == null || facet.withValue == null || facet.assignments == null) return null
+  const eligible = facet.eligible
+  const share = (n: number) => (eligible ? n / eligible : 0)
+  const counted = new Map(facet.values.map(v => [v.value, v]))
+  const defined = orderedValues(attribute).filter(v => !v.retired || (counted.get(v.id)?.count ?? 0) > 0)
+  const rows: DistributionRow[] = defined.map(value => {
+    const c = counted.get(value.id)
+    const count = includeRetained ? c?.count ?? 0 : (c?.count ?? 0) - (c?.inapplicable ?? 0)
+    return {
+      key: value.id,
+      label: valueName(value),
+      count,
+      share: share(count),
+      kind: 'value',
+      drill: drillable ? attributeDrillChange(attribute, value.id, f, includeRetained) : null
+    }
+  })
+  const missing = Math.max(0, eligible - facet.withValue)
+  if (missing > 0) {
+    rows.push({
+      key: '__missing__',
+      label: 'Not assigned',
+      count: missing,
+      share: share(missing),
+      kind: 'missing',
+      drill: drillable ? attributeDrillChange(attribute, null, f) : null
+    })
+  }
+  return {
+    attribute,
+    rows,
+    eligible,
+    withValue: facet.withValue,
+    assignments: facet.assignments,
+    missing: Math.max(0, eligible - facet.withValue),
+    retained: facet.values.reduce((n, v) => n + (v.inapplicable ?? 0), 0),
+    multiValued: attribute.cardinality === Cardinality.multi
+  }
 }

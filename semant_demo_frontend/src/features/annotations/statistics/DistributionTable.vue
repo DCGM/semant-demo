@@ -22,7 +22,7 @@
           ><span class="distribution-table__text">{{ row.label }}</span></button>
           <span
             v-else class="distribution-table__text"
-            :title="row.kind === 'missing' ? 'The annotation list has no filter for a missing value' : row.label"
+            :title="row.kind === 'missing' ? 'The annotation list cannot show this category for the current query' : row.label"
           >{{ row.label }}</span>
         </th>
         <td class="distribution-table__bar-cell" aria-hidden="true">

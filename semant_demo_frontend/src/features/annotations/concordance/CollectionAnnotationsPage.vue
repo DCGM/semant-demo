@@ -136,6 +136,7 @@
       :stale="statisticsLoading"
       :tags="tags"
       :documents="store.documents"
+      :attributes="attributesStore.attributes"
       :dimension="statisticsDimension"
       @drill="drillFromStatistics"
       @dimension="showDimension"
@@ -561,7 +562,8 @@ const statisticsDimension = computed<Dimension | null>(() => {
 })
 // Read only while the view is shown (and again on every return to it).
 const { statistics, loading: statisticsLoading, error: statisticsError, load: loadStatistics } = useAnnotationStatistics(
-  computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters))
+  computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters),
+  computed(() => attributesStore.attributes.filter(a => !a.retired).map(a => a.id)))
 const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
 /** The statuses counted, named on the summary line with the denominator. */
 const statisticsStatuses = computed(() => STATUS_ORDER.filter(t => store.filters.types.includes(t)).map(t => STATUS_LABELS[t].toLowerCase()).join(', '))
