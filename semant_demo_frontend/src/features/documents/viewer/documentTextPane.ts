@@ -41,7 +41,7 @@ export interface DocumentTextPaneApi {
   /** Scrolls a chunk to the middle of the view. */
   scrollToChunk: (chunkId: string) => void
   /** Scrolls the start of a range to the middle of the view. */
-  scrollToRange: (range: ChunkRange) => void
+  scrollToRange: (range: ChunkRange, options?: { adaptive?: boolean }) => void
   /** Scrolls only when the start of the range is not visible enough; whether it scrolled. */
   revealRange: (range: Pick<ChunkRange, 'chunkId' | 'start'>, options?: { margin?: number }) => boolean
 }

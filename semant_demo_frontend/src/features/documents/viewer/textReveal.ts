@@ -25,6 +25,14 @@ export function revealDelta (target: Band, view: Band, margin = 48): number {
   return Math.round(Math.min(target.bottom - bottom, target.top - top))
 }
 
+/** Long jumps should not animate through pages of unrelated text. */
+export function navigationScrollBehavior (target: Band, view: Band): ScrollBehavior {
+  const viewHeight = view.bottom - view.top
+  if (viewHeight <= 0) return 'smooth'
+  const centerDistance = Math.abs((target.top + target.bottom - view.top - view.bottom) / 2)
+  return centerDistance > 2 * viewHeight ? 'instant' : 'smooth'
+}
+
 /** The nearest ancestor of `el` that scrolls vertically, else the page. */
 export function scrollContainer (el: HTMLElement): HTMLElement | null {
   for (let p = el.parentElement; p; p = p.parentElement) {

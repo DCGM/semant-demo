@@ -396,6 +396,10 @@
           <q-tooltip>Delete selected suggestions (no rejection recorded)</q-tooltip>
         </q-btn>
       </div>
+      <div class="auto-span-action-note" data-testid="auto-span-action-note">
+        <q-icon name="info_outline" size="14px" aria-hidden="true" />
+        <span><strong>Reject</strong> keeps a negative annotation; <strong>Delete</strong> removes the suggestion without recording a rejection.</span>
+      </div>
       <q-linear-progress
         v-if="bulkProgress"
         :value="bulkProgress.total ? bulkProgress.processed / bulkProgress.total : 0"
@@ -408,7 +412,7 @@
         ref="suggestionVirtualScroll"
         class="auto-span-list"
         :items="visibleSuggestions"
-        :virtual-scroll-item-size="76"
+        :virtual-scroll-item-size="110"
         :virtual-scroll-slice-size="20"
         v-slot="{ item: entry }"
         data-testid="ai-suggestion-list"
@@ -477,23 +481,27 @@
               :disable="busyAutoSpanIds.has(entry.span.id || '')"
               @click.stop="rejectAutoSpan(entry.span)"
             >
-              <q-tooltip>Reject</q-tooltip>
+              <q-tooltip>Reject (keeps a negative annotation)</q-tooltip>
             </q-btn>
           </div>
-          <div
-            v-if="entry.span.reason"
-            class="auto-span-reason"
-          >
-            {{ entry.span.reason }}
-            <q-tooltip
-              anchor="top middle"
-              self="bottom middle"
-              :delay="150"
-              max-width="320px"
-              class="auto-span-reason-tooltip"
-            >
+          <div class="auto-span-created" data-testid="ai-suggestion-created">
+            <q-icon name="schedule" size="13px" aria-hidden="true" />
+            <span>Created: {{ formatSuggestionCreatedAt(entry.span) }}</span>
+          </div>
+          <div v-if="entry.span.reason" class="auto-span-explanation">
+            <div class="auto-span-explanation-label" data-testid="ai-suggestion-explanation-label">Explanation</div>
+            <div class="auto-span-reason">
               {{ entry.span.reason }}
-            </q-tooltip>
+              <q-tooltip
+                anchor="top middle"
+                self="bottom middle"
+                :delay="150"
+                max-width="320px"
+                class="auto-span-reason-tooltip"
+              >
+                {{ entry.span.reason }}
+              </q-tooltip>
+            </div>
           </div>
         </div>
       </q-virtual-scroll>
@@ -511,8 +519,10 @@ import { errorNotification } from 'src/shared/notification'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useChunksStore } from 'src/features/documents/chunksStore'
 import {
-  filterAndSortSuggestions, toggleVisibleSuggestions, type ProposalSort
+  filterAndSortSuggestions, formatSuggestionCreatedAt, toggleVisibleSuggestions,
+  type ProposalSort, type ProposalTextPosition
 } from './aiSuggestionPresentation'
+import { scrollContainer } from 'src/features/documents/viewer/textReveal'
 import { readStored, writeStored } from 'src/shared/browserStorage'
 import { plural } from 'src/shared/plural'
 import { useTagsStore } from './tagsStore'
@@ -811,6 +821,90 @@ watch([proposalTagId, proposalReasonQuery, minimumConfidencePercent], () => {
 }, { flush: 'sync' })
 
 const chunkOrder = computed(() => new Map(chunksStore.chunks.map((c) => [c.id, c.order])))
+const chunkLengths = computed(() => new Map(chunksStore.chunks.map((c) => [c.id, c.text?.length ?? 0])))
+const readerTextPosition = ref<ProposalTextPosition | null>(null)
+
+/** Read-only DOM sampling: never change the text reader's state or span rendering. */
+function currentReaderTextPosition (): ProposalTextPosition | null {
+  const root = document.querySelector<HTMLElement>('.doc-page .document-text')
+  if (!root) return null
+  const scroller = scrollContainer(root)
+  if (!scroller) return null
+  const viewport = scroller === document.scrollingElement
+    ? { top: 0, bottom: window.innerHeight }
+    : scroller.getBoundingClientRect()
+  const rect = root.getBoundingClientRect()
+  const top = Math.max(viewport.top, rect.top)
+  const bottom = Math.min(viewport.bottom, rect.bottom)
+  if (top >= bottom) return null
+  const centre = (top + bottom) / 2
+  let nearestChunk: HTMLElement | null = null
+  let nearestDistance = Infinity
+  for (const chunk of Array.from(root.querySelectorAll<HTMLElement>('.chunk-annotator[data-chunk-id]'))) {
+    if (!chunk.dataset.chunkId || !chunkOrder.value.has(chunk.dataset.chunkId)) continue
+    const chunkRect = chunk.getBoundingClientRect()
+    if (chunkRect.bottom <= top || chunkRect.top >= bottom) continue
+    const distance = Math.max(chunkRect.top - centre, centre - chunkRect.bottom, 0)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestChunk = chunk
+    }
+  }
+  if (!nearestChunk?.dataset.chunkId) return null
+  let charOffset = 0
+  let nearestSegmentDistance = Infinity
+  for (const segment of Array.from(nearestChunk.querySelectorAll<HTMLElement>('.text-segment'))) {
+    const start = Number(segment.dataset.start)
+    const end = Number(segment.dataset.end)
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue
+    const segmentRect = segment.getBoundingClientRect()
+    const distance = Math.max(segmentRect.top - centre, centre - segmentRect.bottom, 0)
+    if (distance < nearestSegmentDistance) {
+      nearestSegmentDistance = distance
+      const fraction = Math.max(0, Math.min(1, (centre - segmentRect.top) / Math.max(1, segmentRect.height)))
+      charOffset = Math.round(start + (end - start) * fraction)
+    }
+  }
+  return { chunkId: nearestChunk.dataset.chunkId, charOffset }
+}
+
+let readerPositionTimer: ReturnType<typeof setTimeout> | null = null
+function updateReaderPosition () {
+  readerPositionTimer = null
+  if (proposalSort.value === 'distance') readerTextPosition.value = currentReaderTextPosition()
+}
+function scheduleReaderPosition () {
+  if (proposalSort.value !== 'distance') return
+  if (readerPositionTimer !== null) clearTimeout(readerPositionTimer)
+  // Reorder only after scrolling has settled, not during every frame.
+  readerPositionTimer = setTimeout(updateReaderPosition, 200)
+}
+function onReaderScroll (event: Event) {
+  if (proposalSort.value !== 'distance') return
+  const root = document.querySelector<HTMLElement>('.doc-page .document-text')
+  const scroller = root ? scrollContainer(root) : null
+  if (scroller && (event.target === scroller ||
+    (scroller === document.scrollingElement && event.target === document))) scheduleReaderPosition()
+}
+onMounted(() => {
+  document.addEventListener('scroll', onReaderScroll, true)
+  window.addEventListener('resize', scheduleReaderPosition)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('scroll', onReaderScroll, true)
+  window.removeEventListener('resize', scheduleReaderPosition)
+  if (readerPositionTimer !== null) clearTimeout(readerPositionTimer)
+})
+watch(proposalSort, (mode) => {
+  if (readerPositionTimer !== null) clearTimeout(readerPositionTimer)
+  readerPositionTimer = null
+  readerTextPosition.value = null
+  if (mode === 'distance') void nextTick(scheduleReaderPosition)
+})
+watch([() => chunksStore.loading, () => chunksStore.chunks], () => {
+  if (proposalSort.value === 'distance') void nextTick(scheduleReaderPosition)
+})
+
 const documentOrderAvailable = computed(() => !chunksStore.loading && !chunksStore.error &&
   chunksStore.chunks.length > 0 &&
   pendingAutoSpans.value.every((e) => chunkOrder.value.has(e.span.chunkId)))
@@ -820,7 +914,8 @@ const proposalSortOptions = computed(() => [
   { label: 'Confidence', value: 'confidence' },
   { label: 'Document order', value: 'document', disable: !documentOrderAvailable.value },
   { label: 'Explanation (alphabetical)', value: 'explanation' },
-  { label: 'Creation time', value: 'created' }
+  { label: 'Creation time', value: 'created' },
+  { label: 'Nearest to current text', value: 'distance', disable: !documentOrderAvailable.value }
 ])
 const selectedProposalTag = computed(() =>
   tags.value.find((tag) => tag.id === proposalTagId.value))
@@ -865,7 +960,9 @@ const visibleSuggestions = computed<AutoSpanEntry[]>(() => {
       minimumConfidence: minimumConfidencePercent.value === null
         ? null : minimumConfidencePercent.value / 100
     },
-    proposalSort.value, proposalDescending.value, chunkOrder.value)
+    proposalSort.value === 'distance' && readerTextPosition.value === null
+      ? (documentOrderAvailable.value ? 'document' : 'confidence') : proposalSort.value,
+    proposalDescending.value, chunkOrder.value, readerTextPosition.value, chunkLengths.value)
 })
 
 // The AI-run tag selection and the per-tag navigation are independent. Navigation
@@ -1389,6 +1486,19 @@ watch(chosenAiTagIds, (ids) => {
   margin-bottom: 6px;
 }
 
+.auto-span-action-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  margin: 0 4px 8px;
+}
+.auto-span-action-note .q-icon {
+  flex-shrink: 0;
+}
+
 .auto-span-card.is-selected {
   border-style: solid;
   border-color: rgba(37, 99, 235, 0.5);
@@ -1436,9 +1546,24 @@ watch(chosenAiTagIds, (ids) => {
   color: rgba(15, 23, 42, 0.9);
 }
 
+.auto-span-created {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 0 22px;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+.auto-span-explanation {
+  margin: 4px 0 0 22px;
+}
+.auto-span-explanation-label {
+  margin-bottom: 2px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
 .auto-span-reason {
-  margin-top: 4px;
-  padding-left: 22px;
   font-size: 0.82rem;
   font-style: italic;
   color: rgba(71, 85, 105, 0.85);

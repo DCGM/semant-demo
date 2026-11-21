@@ -102,7 +102,7 @@ describe('bulk deletion of selected suggestions (#801)', () => {
   })
 
   it('reuses the batched progress and keeps only unsuccessful IDs for retry', async () => {
-    const result = await runBulkResolve(['one', 'two', 'three'], async (batch) => ({
+    const result = await runBulkResolve(['one', 'two', 'three'], async () => ({
       succeeded: ['one', 'three'],
       failed: [{ itemId: 'two', step: 'check_type', message: 'already reviewed' }]
     }))

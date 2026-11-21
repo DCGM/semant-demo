@@ -48,6 +48,35 @@ test('suggestions appear while the run is under way and cancelling keeps them', 
   await expect(suggestionCards(page)).toHaveCount(1)
 })
 
+test('suggestions label their explanation, show creation time, and distinguish Reject from Delete', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await startPersonRun(page)
+  const panel = page.locator('.ai-assist-panel')
+  const card = suggestionCards(page).first()
+  await expect(card).toBeVisible()
+  await expect(panel.getByTestId('auto-span-action-note')).toContainText('Reject')
+  await expect(panel.getByTestId('auto-span-action-note')).toContainText('Delete')
+  await expect(card.getByTestId('ai-suggestion-created')).toContainText('Created:')
+  await expect(card.getByTestId('ai-suggestion-explanation-label')).toHaveText('Explanation')
+  await page.getByRole('button', { name: 'Cancel' }).click()
+})
+
+test('distance sorting keeps AI annotations visible in the reader', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await sidebarPanelButton(page, 'AI Tagging').click()
+  const panel = page.locator('.ai-assist-panel')
+  const annotatedText = page.locator('.doc-page .text-segment.is-auto').first()
+  await expect(annotatedText).toBeVisible()
+  const sort = panel.getByTestId('proposal-sort')
+  await sort.click()
+  await page.getByRole('option', { name: 'Nearest to current text' }).click()
+  await expect(sort).toContainText('Nearest to current text')
+  await expect(panel.locator('.auto-span-card')).toHaveCount(1)
+  await expect(annotatedText).toBeVisible()
+})
+
 test('bulk Delete removes only selected suggestions and leaves other pending suggestions', async ({ page }) => {
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
