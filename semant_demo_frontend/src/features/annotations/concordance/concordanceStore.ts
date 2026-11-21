@@ -77,7 +77,7 @@ export function withMode (f: ConcordanceFilters): ConcordanceFilters {
 }
 
 /** The ranking of the filters for the API; none in lexical mode. */
-function ranking (f: ConcordanceFilters): AnnotationRanking | undefined {
+export function ranking (f: ConcordanceFilters): AnnotationRanking | undefined {
   if (f.mode === RetrievalMode.lexical) return undefined
   return {
     mode: f.mode,

@@ -18,12 +18,14 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 from semant_demo.adapters.weaviate.analytics import (
-    PER_VALUE_CONCURRENCY, AnyOf, ContainsWords, CorpusAnalyticsRepository, DocumentCounts, NumberRange, Unavailable,
-    UnavailableFilter, ValueCounts, where)
+    PER_VALUE_CONCURRENCY, AnyOf, ContainsWords, CorpusAnalyticsRepository, DocumentCounts, NumberRange, PassageCounts,
+    Unavailable, UnavailableFilter, ValueCounts, where)
 from semant_demo.features.analytics import service
 from semant_demo.features.analytics.schemas import DocumentFilters
+from semant_demo.features.documents.criteria import ChunkVocabulary
+from semant_demo.features.search.filters import TASK_CLASSES
 from semant_demo.main import create_app
-from semant_demo.routes.dependencies import get_corpus_analytics, get_user_collections
+from semant_demo.routes.dependencies import get_chunk_vocabulary, get_corpus_analytics, get_user_collections
 from semant_demo.users.auth import current_active_optional_user
 from tests.app_support import make_test_config, offline_weaviate
 
@@ -778,3 +780,190 @@ async def test_library_years_of_a_collection_are_answered_for_its_owner(tmp_path
     body = response.json()
     assert (body["scope"], body["user_collection_id"]) == ("user_collection", str(COLLECTION))
     assert analytics.collections == [COLLECTION, COLLECTION]
+
+
+# The included passages of a user collection (#807): counted live, for readers of the collection only.
+
+PASSAGES = "/api/analytics/collection/passages"
+
+
+class FakePassages:
+    """Answers with fixed passage counts and records each call (what was counted, for which collection)."""
+
+    def __init__(self, total: int, language: ValueCounts | Unavailable | None = None,
+                 **values: ValueCounts | Unavailable):
+        self.total = total
+        self.language = language if language is not None else counts([])
+        self.values = values
+        self.calls: list[tuple] = []
+
+    async def count_passage_languages(self, collection_id, prop, group_limit):
+        self.calls.append(("languages", collection_id, prop))
+        return PassageCounts(self.total, self.language)
+
+    async def count_passage_values(self, collection_id, prop, vocabulary, group_limit):
+        self.calls.append(("values", collection_id, prop, tuple(vocabulary)))
+        answer = self.values.get(prop, Unavailable("missing"))
+        if isinstance(answer, list):  # one answer per call, in turn
+            answer = answer.pop(0)
+        return PassageCounts(self.total, answer)
+
+
+VOCABULARY = ChunkVocabulary(classifications={name: tuple(values) for name, values in TASK_CLASSES.items()})
+
+
+async def test_passages_without_a_dimension_are_counted_by_language_only():
+    analytics = FakePassages(10, language=counts([("ces", 5), ("und", 2), ("", 1)], known=8))
+
+    body = await service.collection_passages(analytics, service.CollectionScope(COLLECTION))
+
+    assert (body.scope, body.user_collection_id, body.unit, body.data_source, body.total_passages) == \
+        ("user_collection", str(COLLECTION), "passages", "live_aggregation", 10)
+    # A stored "und" is a value; Unknown is the passages without a language, an empty one included.
+    assert [(v.value, v.count) for v in body.languages.values] == [("ces", 5), ("und", 2)]
+    assert (body.languages.other_count, body.languages.unknown_count) == (0, 3)
+    assert body.classification is None
+    assert analytics.calls == [("languages", COLLECTION, "language")]
+
+
+async def test_a_dimension_lists_every_configured_value_in_order_then_values_outside_it():
+    vocabulary = TASK_CLASSES["complexity"]
+    analytics = FakePassages(10, complexity=counts(
+        [("easy", 4), ("very_easy", 3), ("moderate", 3), ("", 1)], known=7))
+
+    body = await service.collection_passages(analytics, service.CollectionScope(COLLECTION), "complexity", VOCABULARY)
+
+    assert body.languages is None
+    assert analytics.calls == [("values", COLLECTION, "complexity", tuple(vocabulary))]
+    classification = body.classification
+    assert (classification.dimension, classification.available) == ("complexity", True)
+    # Every configured value in vocabulary order, also those no passage holds; a blank value is none.
+    assert [(v.value, v.count, v.configured) for v in classification.values] == \
+        [(value, {"easy": 4, "very_easy": 3, "moderate": 3}.get(value, 0), True) for value in vocabulary]
+    assert (classification.without_value_count, classification.without_value_approximate) == (3, False)
+
+
+async def test_a_value_outside_the_vocabulary_is_listed_and_makes_without_value_approximate():
+    analytics = FakePassages(6, style=counts([("formal", 3), ("unheard_of", 2), ("archaic_x", 2)], known=4))
+
+    classification = (await service.collection_passages(analytics, service.CollectionScope(COLLECTION),
+                                                        "style", VOCABULARY)).classification
+
+    configured = [v.value for v in classification.values if v.configured]
+    assert configured == TASK_CLASSES["style"]
+    # After the configured values, most passages first (then by value).
+    assert [(v.value, v.count) for v in classification.values if not v.configured] == \
+        [("archaic_x", 2), ("unheard_of", 2)]
+    assert (classification.without_value_count, classification.without_value_approximate) == (2, True)
+
+
+async def test_an_unavailable_dimension_has_no_counts_never_zeros():
+    analytics = FakePassages(5, style=Unavailable("unsupported_type"))
+
+    classification = (await service.collection_passages(analytics, service.CollectionScope(COLLECTION),
+                                                        "style", VOCABULARY)).classification
+
+    assert (classification.available, classification.unavailable_reason) == (False, "unsupported_type")
+    assert (classification.values, classification.without_value_count) == (None, None)
+
+
+@pytest.mark.parametrize("value_counts", [
+    counts([("formal", 1)], known=6),  # more passages with a value than passages
+    counts([("formal", 6)], known=5),  # a value on more passages than there are
+    counts([("formal", 4)], known=3),  # a configured value on more passages than hold any
+    counts([("formal", 1)], known=3),  # passages with a value, but no value to hold
+    counts([("formal", 1)], complete=False),  # the group limit cut the values
+])
+async def test_passage_counts_that_do_not_add_up_are_counted_again_then_fail(value_counts):
+    analytics = FakePassages(5, style=value_counts)
+
+    with pytest.raises(service.IncompleteCounts):
+        await service.collection_passages(analytics, service.CollectionScope(COLLECTION), "style", VOCABULARY)
+    assert len(analytics.calls) == 2  # counted once more before failing
+
+
+async def test_a_value_outside_the_vocabulary_may_be_the_value_of_passages_with_a_value():
+    # "unheard_of" is not configured: the passages matching the vocabulary need not hold a configured value.
+    analytics = FakePassages(5, style=counts([("formal", 1), ("unheard_of", 2)], known=3))
+
+    classification = (await service.collection_passages(analytics, service.CollectionScope(COLLECTION), "style",
+                                                        VOCABULARY)).classification
+
+    assert (classification.without_value_count, classification.without_value_approximate) == (2, True)
+
+
+async def test_counts_that_changed_between_the_readings_are_counted_once_more():
+    analytics = FakePassages(5, style=[counts([("formal", 6)], known=5), counts([("formal", 4)])])
+
+    classification = (await service.collection_passages(analytics, service.CollectionScope(COLLECTION), "style",
+                                                        VOCABULARY)).classification
+
+    assert len(analytics.calls) == 2
+    assert classification.values[0].count == 4
+
+
+async def test_the_configured_values_come_from_the_search_filters():
+    configured = ChunkVocabulary(classifications={"style": ("formal", "folksy")})
+    analytics = FakePassages(3, style=counts([("formal", 1), ("informal", 1)]))
+
+    classification = (await service.collection_passages(analytics, service.CollectionScope(COLLECTION), "style",
+                                                        configured)).classification
+
+    assert analytics.calls == [("values", COLLECTION, "style", ("formal", "folksy"))]
+    assert [(v.value, v.count, v.configured) for v in classification.values] == \
+        [("formal", 1, True), ("folksy", 0, True), ("informal", 1, False)]
+    with pytest.raises(service.UnconfiguredClassification):
+        await service.collection_passages(analytics, service.CollectionScope(COLLECTION), "complexity", configured)
+
+
+@pytest.mark.parametrize("user_id, body, status", [
+    (None, {"user_collection_id": str(COLLECTION)}, 401),
+    (OUTSIDER, {"user_collection_id": str(COLLECTION)}, 404),
+    (OWNER, {"user_collection_id": "5e3a0000-0000-4000-8000-00000000c999"}, 404),
+    (OWNER, {"user_collection_id": "not-an-id"}, 404),
+    (OWNER, {"user_collection_id": str(COLLECTION), "dimension": "no_such_class"}, 422),
+    (OWNER, {"user_collection_id": str(COLLECTION), "dimension": "language"}, 422),  # not a classification
+    (OWNER, {}, 422),
+])
+async def test_passages_the_caller_cannot_read_or_ask_for_are_refused_before_counting(tmp_path, user_id, body,
+                                                                                     status):
+    analytics = FakePassages(3)
+
+    response, = await _request_as(tmp_path, analytics, user_id, (PASSAGES, body))
+
+    assert response.status_code == status
+    assert analytics.calls == []
+
+
+async def test_a_classification_the_filters_do_not_configure_is_refused_before_counting(tmp_path):
+    analytics = FakePassages(3)
+    app = create_app(make_test_config(tmp_path), weaviate_connector=offline_weaviate)
+    app.dependency_overrides[get_corpus_analytics] = lambda: analytics
+    app.dependency_overrides[get_user_collections] = FakeCollections
+    app.dependency_overrides[get_chunk_vocabulary] = lambda: ChunkVocabulary(classifications={"style": ("formal",)})
+    app.dependency_overrides[current_active_optional_user] = lambda: SimpleNamespace(id=OWNER)
+    async with LifespanManager(app), AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(PASSAGES, json={"user_collection_id": str(COLLECTION), "dimension": "complexity"})
+
+    assert response.status_code == 400
+    assert "not a configured classification" in response.json()["detail"]
+    assert analytics.calls == []
+
+
+async def test_passages_are_answered_for_the_owner_each_time_anew(tmp_path):
+    analytics = FakePassages(3, language=counts([("ces", 3)]), subject_domain=counts([("religion", 2)]))
+    asked = {"user_collection_id": str(COLLECTION)}
+
+    languages, again, dimension = await _request_as(
+        tmp_path, analytics, OWNER, (PASSAGES, asked), (PASSAGES, asked), (PASSAGES, {**asked, "dimension": "subject_domain"}))
+
+    assert [r.status_code for r in (languages, again, dimension)] == [200] * 3
+    assert analytics.calls == [("languages", COLLECTION, "language")] * 2 + \
+        [("values", COLLECTION, "subject_domain", tuple(TASK_CLASSES["subject_domain"]))]
+    assert dimension.json()["languages"] is None
+    assert dimension.json()["classification"]["dimension"] == "subject_domain"
+    schema = create_app(make_test_config(tmp_path)).openapi()
+    operation = schema["paths"][PASSAGES]["post"]
+    assert operation["security"] == [{"OAuth2PasswordBearer": []}]
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == \
+        {"$ref": "#/components/schemas/CollectionPassages"}
