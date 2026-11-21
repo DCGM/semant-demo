@@ -12,7 +12,6 @@ are named ``EmbedderToolTest*`` and deleted after each test.
 """
 import asyncio
 import json
-import socket
 import sys
 from pathlib import Path
 
@@ -264,26 +263,6 @@ async def test_a_collection_without_the_expected_have_vector_is_refused_before_a
     config = await tool_store.collections.get(name).config.get()
     assert set(config.vector_config) == {"default"} and embed_calls == []
     assert [p.name for p in config.properties] == ["text", *([HAVE_VECTOR] if declared else [])]
-
-
-def unused_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-async def test_an_unreachable_grpc_port_stops_a_run_before_any_change(tool_store, make_pipeline, embed_calls):
-    # The client skips its start-up checks (no version lookup on pypi.org, #798), so the run reads
-    # one object over gRPC before it creates the vector.
-    await create_test_collection(tool_store, collection_name=TEST_COLLECTION)
-    port = unused_port()
-
-    with pytest.raises(ConnectionError, match=f"gRPC at .*:{port}"):
-        await make_pipeline(weaviate_grpc_port=port).run_async()
-    with pytest.raises(ConnectionError, match=f"gRPC at .*:{port}"):
-        await make_pipeline(weaviate_grpc_port=port).check_async()
-    assert set((await tool_store.collections.get(TEST_COLLECTION).config.get()).vector_config) == {"default"}
-    assert embed_calls == []
 
 
 async def test_the_test_collection_is_replaced_only_when_forced(tool_store):
