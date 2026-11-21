@@ -330,3 +330,52 @@ def test_the_test_collection_is_ready_for_a_run_and_guarded(client, make_pipelin
 
     create_test_collection(client, list(FIELD_TASKS), replace=True, collection_name=TEST_COLLECTION)
     assert all(p[PROVENANCE] == UNPROCESSED for p in stored(client).values()) and len(stored(client)) == 10
+
+
+class RemoteModel(FakeModel):
+    """An API model: its provider would receive the chunk text."""
+    remote = True
+
+
+@pytest.mark.parametrize("flag", [False, True], ids=["by-reference", "by-documentPublic"])
+@pytest.mark.parametrize("model,include,classified", [
+    (FakeModel, None, {"public", "restricted", "unknown"}),   # a local model classifies everything
+    (RemoteModel, None, {"public"}),                          # an API model only public documents' chunks
+    (RemoteModel, True, {"public", "restricted", "unknown"}),
+    (FakeModel, False, {"public"}),
+])
+def test_chunks_of_documents_that_are_not_public_need_an_explicit_decision_for_an_api_model(
+        client, make_pipeline, model, include, classified, flag):
+    """#785: private uploaded texts (``public`` false) and documents of unknown rights reach an
+    API model only with ``include_restricted_documents``. A collection declaring the indexed
+    ``documentPublic`` (#793) is filtered on it, not on the slow document reference: a chunk
+    without the value is not public, whatever its document says."""
+    from weaviate.classes.config import ReferenceProperty
+    documents = f"{TEST_COLLECTION}Documents"
+    client.collections.create(name=documents, properties=[Property(name="public", data_type=DataType.BOOL)])
+    rights = {"public": True, "restricted": False, "unknown": None, "unflagged": True}
+    ids = {key: str(client.collections.get(documents).data.insert({"public": value} if value is not None else {}))
+           for key, value in rights.items()}
+    client.collections.create(name=TEST_COLLECTION, properties=[
+        Property(name="text", data_type=DataType.TEXT),
+        *(Property(name=f, data_type=DataType.TEXT_ARRAY) for f in FIELD_TASKS),
+        Property(name=PROVENANCE, data_type=DataType.TEXT, tokenization=Tokenization.FIELD,
+                 index_filterable=True, index_searchable=False),
+        *([Property(name="documentPublic", data_type=DataType.BOOL)] if flag else []),
+    ], references=[ReferenceProperty(name="document", target_collection=documents)])
+    chunks = client.collections.get(TEST_COLLECTION)
+    for key in rights:
+        flags = {"documentPublic": rights[key] is True} if flag and key != "unflagged" else {}
+        chunks.data.insert({"text": key, PROVENANCE: UNPROCESSED, **flags}, references={"document": ids[key]})
+
+    settings = {} if include is None else {"include_restricted_documents": include}
+    fake = model()
+    result = make_pipeline(fake, **settings).run()
+
+    everything = classified == {"public", "restricted", "unknown"}
+    expected = classified | ({"unflagged"} if everything or not flag else set())
+    assert {text for text, _ in fake.asked} == expected
+    assert result.restricted_documents == ("included" if everything else "excluded")
+    assert result.restricted_by == (None if everything else "documentPublic" if flag else "document reference")
+    assert {text for text, p in stored(client).items() if p[PROVENANCE] == PROVENANCE_ID} == expected
+    assert result.remaining == 0 and result.exit_code() == 0

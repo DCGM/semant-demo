@@ -12,6 +12,7 @@ All URIs are relative to *http://localhost*
 | [**bulkUpdateTagSpansApiTagSpansBulkUpdatePost**](DefaultApi.md#bulkupdatetagspansapitagspansbulkupdatepost) | **POST** /api/tag_spans/bulk_update | Bulk Update Tag Spans |
 | [**chatAboutDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdChatPost**](DefaultApi.md#chataboutdocumentapiusercollectionscollectioniddocumentsdocumentidchatpost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/chat | Chat About Document |
 | [**chatAboutSearchResultsApiSearchChatPost**](DefaultApi.md#chataboutsearchresultsapisearchchatpost) | **POST** /api/search/chat | Chat About Search Results |
+| [**collectionPassagesApiAnalyticsCollectionPassagesPost**](DefaultApi.md#collectionpassagesapianalyticscollectionpassagespost) | **POST** /api/analytics/collection/passages | Collection Passages |
 | [**corpusDistributionsApiAnalyticsCorpusDistributionsPost**](DefaultApi.md#corpusdistributionsapianalyticscorpusdistributionspost) | **POST** /api/analytics/corpus/distributions | Corpus Distributions |
 | [**corpusLibraryYearsApiAnalyticsCorpusLibraryYearsPost**](DefaultApi.md#corpuslibraryyearsapianalyticscorpuslibraryyearspost) | **POST** /api/analytics/corpus/library-years | Corpus Library Years |
 | [**corpusOverviewApiAnalyticsCorpusOverviewGet**](DefaultApi.md#corpusoverviewapianalyticscorpusoverviewget) | **GET** /api/analytics/corpus/overview | Corpus Overview |
@@ -87,6 +88,7 @@ All URIs are relative to *http://localhost*
 | [**suggestSpansThoroughApiAiSuggestSpansThoroughPost**](DefaultApi.md#suggestspansthoroughapiaisuggestspansthoroughpost) | **POST** /api/ai/suggest_spans/thorough | Suggest Spans Thorough |
 | [**summarizeApiSummarizeSummaryTypePost**](DefaultApi.md#summarizeapisummarizesummarytypepost) | **POST** /api/summarize/{summary_type} | Summarize |
 | [**summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost**](DefaultApi.md#summarizedocumentapiusercollectionscollectioniddocumentsdocumentidsummarypost) | **POST** /api/user_collections/{collection_id}/documents/{document_id}/summary | Summarize Document |
+| [**textUploadAvailabilityApiTextDocumentsAvailabilityGet**](DefaultApi.md#textuploadavailabilityapitextdocumentsavailabilityget) | **GET** /api/text_documents/availability | Text Upload Availability |
 | [**unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete**](DefaultApi.md#unsharecollectionapiusercollectionscollectionidshareuseriddelete) | **DELETE** /api/user_collections/{collection_id}/share/{user_id} | Unshare Collection |
 | [**updateAttributeApiUserCollectionsCollectionIdAttributesAttributeIdPatch**](DefaultApi.md#updateattributeapiusercollectionscollectionidattributesattributeidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id} | Update Attribute |
 | [**updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch**](DefaultApi.md#updateattributevalueapiusercollectionscollectionidattributesattributeidvaluesvalueidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id} | Update Attribute Value |
@@ -94,6 +96,7 @@ All URIs are relative to *http://localhost*
 | [**updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapiusercollectionscollectionidownerpatch) | **PATCH** /api/user_collections/{collection_id}/owner | Update Collection Owner |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
 | [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
+| [**uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost**](DefaultApi.md#uploadtextdocumentsapiusercollectionscollectionidtextdocumentspost) | **POST** /api/user_collections/{collection_id}/text_documents | Upload Text Documents |
 
 
 
@@ -741,6 +744,78 @@ example().catch(console.error);
 | **404** | None of the search results can be read any more, or the collection is not readable. |  -  |
 | **422** | A filter of the criteria is not available in this corpus database. |  -  |
 | **413** | The question and the first search result do not fit the input limit. |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## collectionPassagesApiAnalyticsCollectionPassagesPost
+
+> CollectionPassages collectionPassagesApiAnalyticsCollectionPassagesPost(collectionPassagesRequest)
+
+Collection Passages
+
+Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without &#x60;&#x60;dimension&#x60;&#x60;: the total and the passages per detected language. With &#x60;&#x60;dimension&#x60;&#x60; (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CollectionPassagesApiAnalyticsCollectionPassagesPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // CollectionPassagesRequest
+    collectionPassagesRequest: ...,
+  } satisfies CollectionPassagesApiAnalyticsCollectionPassagesPostRequest;
+
+  try {
+    const data = await api.collectionPassagesApiAnalyticsCollectionPassagesPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionPassagesRequest** | [CollectionPassagesRequest](CollectionPassagesRequest.md) |  | |
+
+### Return type
+
+[**CollectionPassages**](CollectionPassages.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
@@ -6338,6 +6413,65 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## textUploadAvailabilityApiTextDocumentsAvailabilityGet
+
+> TextUploadAvailability textUploadAvailabilityApiTextDocumentsAvailabilityGet()
+
+Text Upload Availability
+
+Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { TextUploadAvailabilityApiTextDocumentsAvailabilityGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const api = new DefaultApi();
+
+  try {
+    const data = await api.textUploadAvailabilityApiTextDocumentsAvailabilityGet();
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TextUploadAvailability**](TextUploadAvailability.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete
 
 > Collection unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete(collectionId, userId)
@@ -6866,6 +7000,84 @@ example().catch(console.error);
 ### HTTP request headers
 
 - **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost
+
+> TextUploadResponse uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(collectionId, files, metadata)
+
+Upload Text Documents
+
+Uploads private UTF-8 &#x60;&#x60;.txt&#x60;&#x60; files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // Array<Blob> | The UTF-8 .txt files.
+    files: /path/to/file.txt,
+    // Blob | Optional metadata CSV (docs/TEXT_UPLOAD.md). (optional)
+    metadata: BINARY_DATA_HERE,
+  } satisfies UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest;
+
+  try {
+    const data = await api.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **files** | `Array<Blob>` | The UTF-8 .txt files. | |
+| **metadata** | `Blob` | Optional metadata CSV (docs/TEXT_UPLOAD.md). | [Optional] [Defaults to `undefined`] |
+
+### Return type
+
+[**TextUploadResponse**](TextUploadResponse.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `multipart/form-data`
 - **Accept**: `application/json`
 
 

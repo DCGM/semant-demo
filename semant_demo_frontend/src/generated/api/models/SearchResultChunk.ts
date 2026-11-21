@@ -61,19 +61,19 @@ export interface SearchResultChunk {
      * @type {string}
      * @memberof SearchResultChunk
      */
-    startPageId: string;
+    startPageId?: string | null;
     /**
      * 
      * @type {number}
      * @memberof SearchResultChunk
      */
-    fromPage: number;
+    fromPage?: number | null;
     /**
      * 
      * @type {number}
      * @memberof SearchResultChunk
      */
-    toPage: number;
+    toPage?: number | null;
     /**
      * 
      * @type {string}
@@ -207,9 +207,6 @@ export type SearchResultChunkOriginEnum = typeof SearchResultChunkOriginEnum[key
 export function instanceOfSearchResultChunk(value: object): value is SearchResultChunk {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
-    if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
-    if (!('fromPage' in value) || value['fromPage'] === undefined) return false;
-    if (!('toPage' in value) || value['toPage'] === undefined) return false;
     if (!('document' in value) || value['document'] === undefined) return false;
     if (!('order' in value) || value['order'] === undefined) return false;
     if (!('documentObject' in value) || value['documentObject'] === undefined) return false;
@@ -228,9 +225,9 @@ export function SearchResultChunkFromJSONTyped(json: any, ignoreDiscriminator: b
         
         'id': json['id'],
         'text': json['text'],
-        'startPageId': json['start_page_id'],
-        'fromPage': json['from_page'],
-        'toPage': json['to_page'],
+        'startPageId': json['start_page_id'] == null ? undefined : json['start_page_id'],
+        'fromPage': json['from_page'] == null ? undefined : json['from_page'],
+        'toPage': json['to_page'] == null ? undefined : json['to_page'],
         'document': json['document'],
         'title': json['title'] == null ? undefined : json['title'],
         'endParagraph': json['end_paragraph'] == null ? undefined : json['end_paragraph'],

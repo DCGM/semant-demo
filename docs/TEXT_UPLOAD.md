@@ -1,0 +1,178 @@
+# Uploading private text documents (#785)
+
+The owner of a collection can upload plain-text files into it: **Upload text documents** in
+the collection's *Documents & tagging* tab, next to *Add from Library*. Each file becomes a
+new, **private** document (`Documents.public = false`) of that collection, with ordered,
+embedded chunks. It is readable only through the collection, by its owner and the users it
+is shared with ([ADR 0007](adr/0007-access-and-collaboration.md#corpus-document-rights-279-decided-2026-11-18),
+#279), and never appears in unscoped Search, Explore, RAG, MCP or corpus counts.
+
+The upload is the API route `POST /api/user_collections/{collection_id}/text_documents`
+(`multipart/form-data`: `files`, one or more file parts; `metadata`, at most one file part).
+Any other part, a text field in their place or a second `metadata` answers 400 before
+anything is saved, so no metadata the caller sent is silently ignored. Code:
+`features/user_collections/text_upload.py` (validation, chunking, embedding, write order),
+`adapters/weaviate/text_upload.py` (the writes and readbacks), frontend
+`features/documents/upload/`.
+
+## Files
+
+- `.txt` files of UTF-8 plain text; an initial byte order mark is dropped, `\r\n` and `\r`
+  line ends become `\n`. Other encodings, binary content (a NUL character) and empty files
+  are refused.
+- The title is the file name without `.txt` unless the CSV gives one. The file name is not an
+  identifier: every upload creates a new document with new ids, also for a name uploaded
+  before. Two files of one upload may not have the same name.
+- No library code, Kramerius URL, page ids or scans are invented; the document is text-only
+  and its chunks have no `start_page_id`, `from_page` or `to_page`.
+
+Limits (backend, `UploadLimits`; the client checks the first ones too): 20 files per
+upload, 2 MB per file, 1 MB for the CSV, 24 MB per request, 2,000 chunks per file, and two
+uploads at a time per backend process (another answers 503 before its files are read), so
+uploads leave the embedder room for search queries. Files are processed one after another;
+a large upload takes minutes (it is one request: keep the dialog open).
+
+## Metadata CSV
+
+Optional. UTF-8 (a byte order mark is allowed), comma separated, with a header row.
+Copy this template (also offered for download in the dialog):
+
+```csv
+filename,title,author,yearIssued,language
+example.txt,Example document,Jane Doe,1925,ces
+```
+
+| Column | Required | Stored as |
+| --- | --- | --- |
+| `filename` | yes | Matches exactly one uploaded file name (case-sensitive, as uploaded). Not stored. |
+| `title` | no | `Documents.title`; blank: the file name without `.txt`. At most 500 characters. |
+| `author` | no | `Documents.author`, a one-element list. At most 300 characters. |
+| `yearIssued` | no | `Documents.yearIssued` (an integer, e.g. `1925` or `-50`) and the chunks' copy `Chunks.yearIssued` used by year filters (#153). |
+| `language` | no | `Documents.language` and `Chunks.language`, lowercased. Blank, or an ISO 639 code in any case: two-letter (ISO 639-1, `cs`), three-letter terminologic (ISO 639-2/T, `ces`) or bibliographic (ISO 639-2/B, `cze`). Stored as the three-letter ISO 639-2/T code (`ces`), the form the Language search filter uses; the filter offers only some languages (`ces`, `deu`, `hun`, `lat`, `zxx`), and other stored languages are kept but not selectable there. Anything else is refused for that file (`invalid`) with a hint. The code list is `features/user_collections/language_codes.py`, generated from the Library of Congress ISO 639-2 list. |
+
+Any other column (`public`, `library`, `id`, ...) refuses the upload: the CSV cannot set
+rights, the source library or ids. There is no `description` column: no deployed `Documents`
+schema declares that property ([DATABASE](DATABASE.md#collection-documents)). Files without a row get only their title. Kramerius
+`metadata_sync` is never run for these documents.
+
+Every problem is reported before anything is written, and **any problem means nothing of the
+upload is saved**: the file's own problem (encoding, size, its CSV row's year or length) on
+that file (`invalid`), the others marked `not_written`; problems of the CSV as a whole
+(encoding, header, unknown or repeated columns, rows naming files that are not uploaded) in
+the response's `errors`.
+
+## Chunks and embeddings
+
+The text is cut into paragraphs at blank lines; whole paragraphs are packed into chunks of
+up to 1,000 characters, and a paragraph longer than 1,500 is split at whitespace
+(`chunk_text`, deterministic). The chunk texts joined in order are exactly the file's text
+(paragraph breaks included), so positions (`startChar`, `startWord`, `wordOpenAtStart`,
+computed by `features/documents/positions.py`, #463) and annotation offsets refer to that
+text. `end_paragraph` marks a chunk that ends a paragraph. Every chunk gets
+`classification_provenance = UNPROCESSED` (#590) and, where the store declares them,
+`documentPublic = false` (#793; the document is private) and `haveVector` listing the vectors
+written (#805; no embedder selects the chunk again). No classification, title generation or
+chunk summaries run during an upload (below).
+
+Each chunk gets a vector for **every configured search vector** (`SEARCH_VECTORS_CONFIG`),
+computed with that vector's document-side embedding (`embed_documents`, the plain chunk
+text for the Qwen vector, as `data_tools/embedder` writes it), in batches of 32 with up to
+3 attempts per batch. An upload is refused (503) unless every configured vector is marked
+`private_text: true`: only a self-hosted model on infrastructure the deployment controls
+may receive private text. The shipped Qwen and Gemma configurations are self-hosted and
+marked; a configuration that adds an external embedding provider disables uploads until
+that is decided.
+
+The store must declare what the upload writes (`Documents.title`, `public`, the
+`collection` reference; `Chunks.text`, `order`, `end_paragraph`, the position properties,
+`classification_provenance`, the `document` and collection references and every configured
+named vector; `documentPublic` and `haveVector` are optional but must have their documented
+types when declared); otherwise uploads answer 503 and the server log names what is missing. The
+schema is never changed by an upload.
+
+### Deployment readiness
+
+`GET /api/text_documents/availability` (no login, reads only the schema) answers
+`{"available": true}`, or `false` with the message an upload would get; the store's details
+are not in the response. When unavailable the backend logs one line naming each missing or
+differently typed declaration with what is declared and what is needed:
+
+```text
+Text upload unavailable: the store does not declare what the upload writes: Chunks.startChar (not declared, needs int); Chunks vector default of search vector Main (not configured; the store has Qwen3_Embedding_0_6B)
+```
+
+The upload dialog asks it when it opens and disables **Upload** with that message. Every PR
+preview deployment asks it after the health check and reports an unavailable store as a
+warning on the deploy job with that log line (the preview still deploys; the shared test
+store is never changed by a deployment). Making a store ready is an operator's additive
+schema change on that store, authorized separately.
+
+## Write order and results
+
+Access (owner only; a shared user gets 403, others 404, signed out 401) and the
+configuration are checked before the request body is read. Then, per file:
+
+1. the document is inserted, private and **not linked** to any collection;
+2. its chunks are inserted batch by batch as they are embedded, each with its document and
+   collection references and its vectors in one write;
+3. everything is read back: every chunk with its order, text, references and vectors, and no
+   other chunk of the document;
+4. the uploader's ownership is checked again (embedding takes minutes; the collection may
+   have changed owner): if they no longer own it the file `failed` and its document stays
+   unlinked;
+5. the document is linked to the collection. Only from now on can anyone read it.
+
+Each file's result (`TextUploadFileResult`):
+
+| Status | Meaning | What to do |
+| --- | --- | --- |
+| `completed` | Saved, read back and in the collection. | — |
+| `invalid` | The file or its CSV row is invalid (`error`). Nothing of the upload was saved. | Correct or remove it and upload again. |
+| `not_written` | Valid, but not saved because of another problem of the upload. | Upload again once that is corrected. |
+| `failed` | Saving stopped (`error`: the step, e.g. an embedding outage). The document is in no collection and nobody can read it. | Upload the file again: it becomes a new document. |
+| `uncertain` | Saved, but adding it to the collection could not be confirmed. | Reload the collection; upload again only if the document is missing. |
+
+The dialog keeps the files that were not saved selected and removes saved ones, so uploading
+again never creates a second copy; after a partial success it also clears the CSV (it names
+saved files too, which a new upload would refuse) and asks for one with the remaining rows.
+
+A browser refuses to send a file that changed on disk after it was chosen (Chrome:
+`net::ERR_UPLOAD_FILE_CHANGED`), for example a CSV corrected in an editor after a refused
+upload. The dialog therefore reads every chosen file before sending. If one cannot be read, it
+sends nothing, names the file, and drops it from the selection so that choosing it again
+takes its current content.
+
+Nothing is rolled back or deleted (ADR 0002). A failed or interrupted upload leaves a private
+document, possibly with some chunks, that belongs to no collection. No reader shows it:
+unscoped reads need `public = true` and collection reads need the link. It is never reused.
+Its chunks carry the collection reference, so the collection's raw chunk count
+(`/stats`) includes them until they are removed. The server logs the document id with
+`Text upload: document <id> stopped at <step>`.
+
+## Operations
+
+**Finding leftovers of failed uploads.** Documents with `public = false` and no
+`collection` reference are either leftovers of failed uploads or documents removed from
+every collection that held them (or whose collections were deleted). They are unreachable:
+nobody can read them, so nobody can add them to a collection again (#279). An owner can add
+an uploaded document to another collection of theirs while it is still readable through the
+first one. A
+removal command is not part of #785 (see [TODO.md](TODO.md)); `document_cleanup` removes
+only documents without chunks.
+
+**Downstream processing.** Uploaded chunks are found by `classification_provenance =
+UNPROCESSED` together with their document's `public = false`. Their text must reach only
+models approved for private text:
+
+- `data_tools/meta_data_enrichment` (classification) selects chunks of documents that are
+  not public only for a local model, or with `include_restricted_documents: true`; it
+  excludes them by the indexed `Chunks.documentPublic` when declared, else by the slow
+  `document` reference
+  ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-classification-data_toolsmeta_data_enrichment-590)).
+- `chunk_titles` defers them (`deferred_restricted_document`) unless
+  `--include-restricted-documents`
+  ([DATA_MAINTENANCE.md](DATA_MAINTENANCE.md#chunk-titles-chunk_titles-575)).
+- `chunk_summaries` makes no model call; its corpus-wide pass is not needed for an upload, so
+  the new documents match no chunk-value document filter until its next scheduled run.
+- `metadata_sync`, `page_order` and `page_import` do not apply: the documents have no library
+  and no pages.

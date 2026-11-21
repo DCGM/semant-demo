@@ -22,6 +22,9 @@ vectors:
     name: Qwen3 Embedding 0.6B
     description: Chunk text embedded with Qwen/Qwen3-Embedding-0.6B (1,024 dimensions).
     target_vector: Qwen3_Embedding_0_6B
+    # Self-hosted (qwen-embedder on the deployment's own network): approved to embed the
+    # private text of uploaded documents (#785, docs/TEXT_UPLOAD.md).
+    private_text: true
     embedding:
       provider: openai
       base_url: http://qwen-embedder:8000/v1

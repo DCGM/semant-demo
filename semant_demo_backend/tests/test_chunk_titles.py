@@ -149,6 +149,15 @@ def test_plan_skips_titled_chunks_and_defers_documents_without_a_title():
     assert plan(chunk(None, DOC, OTHER), titles) == ("several_documents", None)
 
 
+def test_plan_defers_chunks_of_documents_that_are_not_public():
+    """#785: only a public document's text goes to the model unless restricted ones are included."""
+    titles = {DOC: "Kronika", OTHER: None}
+    assert plan(chunk(None, DOC), titles, public={DOC}) == ("generate", "Kronika")
+    assert plan(chunk(None, DOC), titles, public=set()) == ("deferred_restricted_document", None)
+    assert plan(chunk(None, DOC), titles, public=None) == ("generate", "Kronika")  # --include-restricted-documents
+    assert plan(chunk("Požár", DOC), titles, public=set()) == ("has_title", None)
+
+
 def test_selection_identity_ignores_order_and_duplicates():
     assert Selection().identity() == {"kind": "untitled"}
     one = Selection(True, (DOC, OTHER), (CHUNK,)).identity()

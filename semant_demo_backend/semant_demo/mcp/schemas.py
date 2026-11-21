@@ -65,10 +65,11 @@ class Passage(BaseModel):
     document_id: UUID
     order: int | None
     """Position in the document (0-based, document order); null when unknown."""
-    from_page: int
-    to_page: int
-    """Zero-based page indices (page-list order) the passage spans, as stored (coarse)."""
-    start_page_id: UUID
+    from_page: int | None
+    to_page: int | None
+    """Zero-based page indices (page-list order) the passage spans, as stored (coarse); null
+    for a text-only document."""
+    start_page_id: UUID | None
     language: str | None
     """Language of this passage's text."""
     text: str

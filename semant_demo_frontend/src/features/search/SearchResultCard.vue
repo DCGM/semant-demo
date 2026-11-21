@@ -39,7 +39,7 @@
         <div><q-icon name="person" class="q-mr-xs"/>{{ chunk.documentObject.author?.join(', ') || 'Unknown Author' }}</div>
         <div><q-icon name="event" class="q-mr-xs"/>{{ chunk.documentObject.yearIssued || 'Year N/A' }}</div>
         <div><q-icon name="language" class="q-mr-xs"/>{{ chunk.language || 'N/A' }}</div>
-        <div><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
+        <div v-if="chunk.fromPage != null && chunk.toPage != null"><q-icon name="description" class="q-mr-xs"/>Pages: {{ chunk.fromPage }}–{{ chunk.toPage }}</div>
       </div>
       <div class="search-result__source text-caption text-grey-8" v-if="chunk.documentObject.title || sourceUrl || chunk.documentObject._public !== true">
         <span v-if="chunk.documentObject.title"><strong>Source:</strong> {{ chunk.documentObject.title }}</span>

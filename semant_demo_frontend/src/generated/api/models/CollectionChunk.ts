@@ -44,19 +44,19 @@ export interface CollectionChunk {
      * @type {string}
      * @memberof CollectionChunk
      */
-    startPageId: string;
+    startPageId?: string | null;
     /**
      * 
      * @type {number}
      * @memberof CollectionChunk
      */
-    fromPage: number;
+    fromPage?: number | null;
     /**
      * 
      * @type {number}
      * @memberof CollectionChunk
      */
-    toPage: number;
+    toPage?: number | null;
     /**
      * 
      * @type {boolean}
@@ -101,9 +101,6 @@ export interface CollectionChunk {
 export function instanceOfCollectionChunk(value: object): value is CollectionChunk {
     if (!('id' in value) || value['id'] === undefined) return false;
     if (!('text' in value) || value['text'] === undefined) return false;
-    if (!('startPageId' in value) || value['startPageId'] === undefined) return false;
-    if (!('fromPage' in value) || value['fromPage'] === undefined) return false;
-    if (!('toPage' in value) || value['toPage'] === undefined) return false;
     if (!('order' in value) || value['order'] === undefined) return false;
     return true;
 }
@@ -120,9 +117,9 @@ export function CollectionChunkFromJSONTyped(json: any, ignoreDiscriminator: boo
         
         'id': json['id'],
         'text': json['text'],
-        'startPageId': json['start_page_id'],
-        'fromPage': json['from_page'],
-        'toPage': json['to_page'],
+        'startPageId': json['start_page_id'] == null ? undefined : json['start_page_id'],
+        'fromPage': json['from_page'] == null ? undefined : json['from_page'],
+        'toPage': json['to_page'] == null ? undefined : json['to_page'],
         'endParagraph': json['end_paragraph'] == null ? undefined : json['end_paragraph'],
         'title': json['title'] == null ? undefined : json['title'],
         'language': json['language'] == null ? undefined : json['language'],

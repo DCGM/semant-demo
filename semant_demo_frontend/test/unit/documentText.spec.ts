@@ -22,7 +22,7 @@ vi.mock('src/shared/api', async () => {
       default: {
         readDocumentPageChunksApiDocumentsDocumentIdChunksByPageGet: ({ page, limit }: { page: number, limit: number }) => {
           calls.push(`by_page ${page} ${limit}`)
-          const covering = chunks.filter(c => c.fromPage <= page && page <= c.toPage)
+          const covering = chunks.filter(c => c.fromPage != null && c.toPage != null && c.fromPage <= page && page <= c.toPage)
           return Promise.resolve({ page, chunks: covering.slice(0, limit), hasMore: covering.length > limit })
         },
         readDocumentAdjacentChunksApiDocumentsDocumentIdChunksChunkIdAdjacentGet: ({ chunkId, limit }: { chunkId: string, limit: number }) => {

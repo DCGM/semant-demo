@@ -288,6 +288,53 @@ describe('TagsDialog applicable attributes', () => {
     expect(wrapper.emitted('ok')).toHaveLength(1)
   })
 
+  it('moves through and adds examples with Enter, never saving the tag', async () => {
+    const save = vi.fn()
+    // Quasar defers focusing until the dialog's show transition has ended.
+    controlTransitions()
+    const wrapper = await open({ tag: { ...person, examples: ['first'] }, save })
+    await transition()
+    const field = (label: string) => input(wrapper, label).find('input').element as HTMLInputElement
+    // Enter in the example, as the browser sends it: it must not reach the form as a submit.
+    const enter = async (label: string) => {
+      field(label).focus()
+      const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+      field(label).dispatchEvent(event)
+      await flushPromises()
+      expect(event.defaultPrevented).toBe(true)
+    }
+    const focused = () => document.activeElement?.getAttribute('aria-label')
+    const examples = () => wrapper.findAllComponents(QInput).map(i => i.props('label')).filter(l => l?.startsWith('Example'))
+
+    // In the last example with text, Enter adds one and focuses it.
+    await enter('Example 1')
+    expect(examples()).toEqual(['Example 1', 'Example 2'])
+    expect(focused()).toBe('Example 2')
+    // A blank last example adds nothing and keeps the focus.
+    await enter('Example 2')
+    expect(examples()).toEqual(['Example 1', 'Example 2'])
+    expect(focused()).toBe('Example 2')
+    // In an earlier example, Enter moves to the next one.
+    await enter('Example 1')
+    expect(focused()).toBe('Example 2')
+
+    expect(input(wrapper, 'Example 1').props('modelValue')).toBe('first')
+    expect(save).not.toHaveBeenCalled()
+    expect(wrapper.emitted('ok')).toBeUndefined()
+  })
+
+  it('saves the tag after an example is cleared with its clear button', async () => {
+    const save = vi.fn().mockImplementation((payload: object) => Promise.resolve({ ...person, ...payload }))
+    const tag = { ...person, examples: ['first', 'second'] }
+    const wrapper = await open({ tag, save })
+    // QInput's clear button sets the example to null.
+    await input(wrapper, 'Example 1').find('.q-field__focusable-action').trigger('click')
+    await flushPromises()
+    expect(input(wrapper, 'Example 1').props('modelValue')).toBeNull()
+    await confirm(wrapper, 'Save')
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ examples: ['second'] }), tag)
+  })
+
   it('still saves the tag when the attributes cannot be loaded', async () => {
     listed.mockRejectedValue(refused(503, 'Service unavailable'))
     const save = vi.fn().mockResolvedValue(created)

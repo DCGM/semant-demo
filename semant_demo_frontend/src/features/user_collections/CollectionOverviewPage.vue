@@ -244,14 +244,56 @@
       <ErrorDisplay class="q-mt-md" :error="collectionStatsError" />
       <q-inner-loading :showing="collectionStatsLoading" />
     </q-card>
+
+    <q-card v-if="collectionLoaded" flat bordered class="panel-card q-mt-lg" data-testid="collection-document-charts">
+      <q-card-section class="q-pb-sm">
+        <div class="statistics-header">
+          <div class="text-subtitle1 text-weight-medium">Document charts</div>
+          <div class="statistics-subtitle">
+            Publication years, source libraries and languages of the collection's documents. Click a bar to explore those
+            documents.
+          </div>
+        </div>
+      </q-card-section>
+
+      <q-card-section class="q-pt-none">
+        <q-banner v-if="chartsFailed" rounded class="bg-red-1 text-negative" role="alert" data-testid="charts-error">
+          <template v-slot:avatar>
+            <q-icon name="error_outline" color="negative" />
+          </template>
+          The documents of this collection could not be counted.
+          <template v-slot:action>
+            <q-btn flat color="negative" label="Try again" data-testid="charts-retry" @click="chartsQuery.refetch()" />
+          </template>
+        </q-banner>
+        <div v-else-if="!chartsShown" class="charts-loading" role="status" data-testid="charts-loading">
+          <q-spinner color="primary" size="2.5em" />
+          <div class="q-mt-sm">Counting the documents of the collection…</div>
+        </div>
+        <ScopedDocumentCharts
+          v-else
+          :distributions="chartsShown"
+          :loading="chartsQuery.isFetching.value"
+          :collection-name="activeCollection?.name ?? `Collection ${collectionId}`"
+          opens-explore
+          :empty-hint="rights.editMembership ? 'Add documents in the Documents tab, or documents and passages from Explore.' : 'No documents have been added to it yet.'"
+          @apply-filter="exploreChartFilter"
+        />
+      </q-card-section>
+    </q-card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import type { UserSearchResult } from 'src/generated/api'
+import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from 'src/features/auth/userStore'
+import ScopedDocumentCharts from 'src/features/analytics/ScopedDocumentCharts.vue'
+import type { ChartFilter } from 'src/features/analytics/corpusOverview'
+import { collectionChartLocation, exploreCollection } from 'src/features/explore/exploreHandoff'
+import { useCollectionDocumentCharts } from './useCollectionDocumentCharts'
+import type { CorpusDistributions, UserSearchResult } from 'src/generated/api'
 import { createContextGuard } from 'src/shared/api'
 import { useUserCollectionsStore } from './userCollectionsStore'
 import useColorPicker from 'src/shared/useColorPicker'
@@ -297,8 +339,9 @@ const collectionId = computed(() => {
 // The collection is loaded (again) before anything below asks for its statistics, members
 // or members, so an earlier visit's answer doesn't count as loaded. The same page shown
 // for another collection loads that one; earlier answers are dropped.
+// Leaving the collection pages (no collection id any more) loads nothing.
 watch(collectionId, (id, previous) => {
-  if (id !== previous) void fetchCollection(id)
+  if (id && id !== previous) void fetchCollection(id)
 }, { immediate: true })
 
 // Statistics of this collection only, asked again on every visit (`useCollectionStats`),
@@ -309,6 +352,34 @@ const collectionStatsQuery = useCollectionStats(collectionId, collectionLoaded)
 const collectionStatsLoading = computed(() => collectionLoaded.value && collectionStatsQuery.isFetching.value)
 const collectionStatsFailed = computed(() => collectionLoaded.value && collectionStatsQuery.isError.value)
 const collectionStatsError = computed(() => collectionStatsFailed.value ? 'Failed to fetch collection statistics' : null)
+
+// The document charts of the whole collection (#795), loaded as the statistics are. Shown only
+// while the collection is loaded, and only counts that say they are of this collection (`scope`,
+// `userCollectionId`): never another collection's, the corpus's or the previous account's. A
+// failed load shows its error, never zeros; so does a complete answer of another scope (a server
+// fault), rather than loading for good (review of #796).
+const chartsQuery = useCollectionDocumentCharts(collectionId, collectionLoaded)
+const ofThisCollection = (d: CorpusDistributions) => d.scope === 'user_collection' && d.userCollectionId === collectionId.value
+// A retry in progress shows the loading state, not the error it may clear.
+const chartsFailed = computed(() => {
+  const d = chartsQuery.data.value
+  return collectionLoaded.value && !chartsQuery.isFetching.value && (chartsQuery.isError.value || (!!d && !ofThisCollection(d)))
+})
+const chartsShown = computed(() => {
+  const d = chartsQuery.data.value
+  if (!collectionLoaded.value || chartsFailed.value || !d) return null
+  return ofThisCollection(d) ? d : null
+})
+
+// A clicked year bin, library or language opens Explore with this collection and that filter
+// alone (#622 decision 8); the collection is handed over, never put in the URL.
+const $router = useRouter()
+const userStore = useUserStore()
+function exploreChartFilter (filter: ChartFilter) {
+  const userId = userStore.getUserId
+  if (!userId) return
+  void exploreCollection($router, { userId: String(userId), collectionId: collectionId.value, location: collectionChartLocation(filter) })
+}
 
 const normalizedDescription = computed(() => (activeCollection.value?.description ?? '').trim())
 const normalizedEditedDescription = computed(() => editableDescription.value.trim())
@@ -609,6 +680,16 @@ const submitColorEdit = async () => {
   line-height: 1;
   font-weight: 700;
   color: #1f2a37;
+}
+
+.charts-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 160px;
+  padding: 32px 16px;
+  text-align: center;
+  color: #4a5568;
 }
 
 .stat-helper {
