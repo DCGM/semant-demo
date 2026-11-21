@@ -393,8 +393,11 @@ onMounted(async () => {
 .collection-tabs {
   // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page;
   // the arrows sit outside the tabs (outside-arrows), so they never cover the last one (#489).
-  flex: 1 1 auto;
-  min-width: 0;
+  // The basis is 0, not auto: an auto basis includes the arrows, which appear and disappear as
+  // the title shrinks, so at some widths the two resized each other for ever (#838). The
+  // min-content floor keeps the name giving way before the tabs scroll.
+  flex: 1 1 0;
+  min-width: min-content;
   // A margin, not q-pl-md: outside-arrows sets the tabs' own padding.
   margin-left: 16px;
 }

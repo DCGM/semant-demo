@@ -1488,3 +1488,22 @@ test('the selection, outside the filters too, and the filter matches download as
   await dialog.getByRole('button', { name: 'Close' }).last().click()
   await expect(dialog).toHaveCount(0)
 })
+
+test('the collection header settles once the sidebar is open, at every wide width (#838)', async ({ page }) => {
+  await useViewport(page, 'wide')
+  await openWorkspace(page)
+  await row(page, 'Jan Novák').click()
+  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
+  const title = page.locator('.collection-page-title')
+  // The title and the tabs once resized each other for ever at a width where both only just
+  // fit; which width that is depends on the name, so sweep the widths the sidebar leaves.
+  for (let width = 1400; width <= 2000; width += 20) {
+    await page.setViewportSize({ width, height: viewports.wide.height })
+    const widths = new Set<number>()
+    for (let sample = 0; sample < 8; sample++) {
+      await page.waitForTimeout(40)
+      widths.add(Math.round((await title.boundingBox())!.width))
+    }
+    expect([...widths], `${width}: the title width is stable`).toHaveLength(1)
+  }
+})
