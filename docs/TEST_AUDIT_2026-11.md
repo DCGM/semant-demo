@@ -277,10 +277,10 @@ the parent tracker decides, and the other stage cross-references it.
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
-| `backend/tests/integration/test_annotation_migration.py` | pytest Weaviate | 10 | **simplify fixture** (#PR) |
-| `backend/tests/integration/test_annotation_tenants.py` | pytest Weaviate | 16 | **simplify fixture** (#PR; disputed with #850) |
+| `backend/tests/integration/test_annotation_migration.py` | pytest Weaviate | 10 | **simplify fixture** (#863) |
+| `backend/tests/integration/test_annotation_tenants.py` | pytest Weaviate | 16 | **simplify fixture** (#863; disputed with #850) |
 | `backend/tests/integration/test_api_store.py` | pytest Weaviate | 7 | keep |
-| `backend/tests/integration/test_db_benchmark.py` | pytest Weaviate | 1 | **simplify fixture** (#PR; disputed with #858) |
+| `backend/tests/integration/test_db_benchmark.py` | pytest Weaviate | 1 | **simplify fixture** (#863; disputed with #858) |
 | `backend/tests/integration/test_document_cleanup.py` | pytest Weaviate | 2 | keep |
 | `backend/tests/integration/test_local_dev_documents.py` | pytest Weaviate | 3 | keep |
 | `backend/tests/integration/test_metadata_sync.py` | pytest Weaviate | 3 | keep (disputed with #852) |
@@ -597,7 +597,7 @@ The full note is [on #852](https://github.com/DCGM/semant-demo/issues/852).
 
 ### #854 Storage adapters, SQL/Weaviate, migrations, backup and maintenance
 
-**Two waits removed ([#PR](https://github.com/DCGM/semant-demo/pull/PR)); keep the rest.**
+**Two waits removed ([#863](https://github.com/DCGM/semant-demo/pull/863)); keep the rest.**
 Same machine and commands as #848:
 
 | Layer | Files | Cases | Before | After |
