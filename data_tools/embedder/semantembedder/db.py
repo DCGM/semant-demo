@@ -18,7 +18,9 @@ def get_async_client(
     Use it as `async with get_async_client(...) as client:` to connect and close it automatically.
     The client's start-up checks (its version lookup on pypi.org and its gRPC ping) are skipped,
     as in the backend, so an unreachable gRPC port fails at the first query, not when connecting;
-    ``check_grpc`` runs one before the run changes the schema.
+    ``check_grpc`` runs one before the run changes the schema. Without ``api_key`` the client also
+    skips asking the server whether it requires OIDC login, so a missing login fails at the first
+    request instead.
 
     Args:
         host: Weaviate host address.
