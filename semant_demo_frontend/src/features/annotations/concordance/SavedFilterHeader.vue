@@ -78,6 +78,8 @@ async function save () {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  /* Right-aligned, above the saved filters icon it belongs to. */
+  justify-content: flex-end;
   gap: 2px 8px;
   min-height: 28px;
   margin-bottom: 4px;
