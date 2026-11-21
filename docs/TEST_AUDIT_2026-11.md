@@ -821,11 +821,12 @@ ordered.
 Remaining risks:
 
 - 9 of the 99 capture runs fail on `main` with or without this change, on a freshly seeded
-  server too: *annotation workspace columns (#665)* (no `concordance-chips`), *collection
-  attributes* (timeout in an API call), *applicable attributes in Create/Edit Tag (#516)* (an
-  attribute create is refused) at all three widths, and *document view - popover, bulk bar
+  server too ([#869](https://github.com/DCGM/semant-demo/issues/869)): *annotation workspace
+  columns (#665)* (no `concordance-chips`; wide, narrow), *collection attributes* (the 30 s
+  test timeout) and *applicable attributes in Create/Edit Tag (#516)* (the narrowing
+  confirmation never appears) at all three widths, and *document view - popover, bulk bar
   and create-tag dialog (#379)* on a phone (the drawer's edge opener takes the click). The
-  captures are not in CI, so they drift; this needs a follow-up issue.
+  captures are not in CI, so they drift.
 - Tests now start from a restored session rather than a fresh login; a bug only in the
   path right after a dialog login would be caught by the login tests alone.
 
