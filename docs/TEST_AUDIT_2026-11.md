@@ -15,16 +15,20 @@ sharding ([#454](https://github.com/DCGM/semant-demo/issues/454)).
 
 | Suite | Entry point | Files | Cases |
 | --- | --- | ---: | ---: |
-| Backend fast | `make check-backend` (`pytest -m "not integration and not live and not benchmark"`) | 95 | 2,830 |
+| Backend fast | `make check-backend` (`pytest -m "not integration and not live and not benchmark"`) | 96 | 2,833 |
 | Backend real Weaviate | `make test-integration` (`-m integration`) | 50 | 643 |
 | Backend benchmarks | `-m benchmark`, opt-in ([#858](https://github.com/DCGM/semant-demo/issues/858)) | 6 | 6 |
 | Backend live | marker `live` is declared; no test uses it | 0 | 0 |
 | Frontend unit | `npm test` (Vitest, jsdom) | 89 | 1,091 |
 | Browser | `make test-e2e` (Playwright, one worker) | 35 | 298 |
-| View capture | `make e2e-dev-capture`, `test/capture` × 3 viewports | 1 | 33 × 3 |
+| View capture | `make e2e-dev-capture`, `test/capture` × 3 viewports | 1 | 33 (99 runs) |
 
 Counts are collected cases (pytest `--collect-only`, Vitest's report, `playwright test --list`),
-parameterizations included. 150 backend test files hold 3,479 cases; only
+parameterizations included. They are logical cases: the capture runner executes each of its
+33 cases at three viewports, so a full run of every suite executes 4,970 tests for the
+4,904 cases counted here and in the owner map. Compare timings by executions, ownership by
+cases. The inventory is the 21 November `main` tree plus `test_harness_defaults.py`, which
+#848 added. 151 backend test files hold 3,482 cases; only
 `integration/test_annotation_facets_benchmark.py` mixes markers (real-store tests that run in
 every integration suite and one opt-in benchmark).
 
@@ -51,7 +55,7 @@ the parent tracker decides, and the other stage cross-references it.
 
 | Stage | Files | Cases |
 | --- | ---: | ---: |
-| #848 | 2 | 22 |
+| #848 | 3 | 25 |
 | #849 | 15 | 400 |
 | #850 | 49 | 898 |
 | #851 | 28 | 721 |
@@ -62,13 +66,14 @@ the parent tracker decides, and the other stage cross-references it.
 | #856 | 36 | 331 |
 | #857 | 24 | 499 |
 | #858 | 6 | 7 |
-| **Total** | **275** | **4901** |
+| **Total** | **276** | **4,904** |
 
 ### #848
 
 | File | Layer | Cases | Decision |
 | --- | --- | ---: | --- |
 | `backend/tests/test_app/test_bootstrap.py` | pytest fast | 17 | keep |
+| `backend/tests/test_harness_defaults.py` | pytest fast | 3 | keep (added by #848) |
 | `backend/tests/test_page_fixtures.py` | pytest fast | 5 | keep |
 
 ### #849
@@ -419,11 +424,14 @@ repeated work was in the shared fixtures, in three places:
    `tests/conftest.py` sets `PRAGMA synchronous=OFF` on SQLAlchemy's SQLite connections in
    test processes. Transactions, locking and isolation are unchanged, so the quota-ledger
    race tests keep their meaning; only durability after a power loss, which no throwaway
-   test database needs, is gone.
+   test database needs, is gone. Tests marked `sqlite_durable` keep SQLite's own setting:
+   the rollback-journal recovery tests in `test_deploy_sqlite_storage.py` (#406) assert it.
 2. **Passwords were hashed at the production cost.** 189 Argon2id hashes and verifications
    (registration, login, corpus users) took 16.4 s. Fixed: Argon2id with its minimum
-   parameters in test processes. The same fastapi-users code hashes and verifies; no test
-   asserts the cost. `tests.e2e_server` and the development stack run as their own
+   parameters in test processes. The same fastapi-users code hashes and verifies; no
+   behavior test asserts the cost. The patch replaces a name inside fastapi-users, so
+   `test_harness_defaults.py` checks the parameters of an actual hash and fails if an
+   upgrade restores the defaults. `tests.e2e_server` and the development stack run as their own
    processes and keep the defaults.
 3. **The OpenAPI schema was generated again by 15 tests** (0.75 s each). Fixed: the
    `openapi_schema` fixture generates the default-settings schema once per run and gives

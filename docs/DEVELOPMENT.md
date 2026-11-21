@@ -306,9 +306,10 @@ They never use the development container, `.dev-data/` or `local_data/`:
   startup, pytest setup/call/teardown) and writes the per-test records to the file. Without
   the variable the timing is off.
 - In every backend test process (`tests/conftest.py`, #848), SQLite connections opened
-  through SQLAlchemy skip `fsync` (`PRAGMA synchronous=OFF`) and passwords are hashed with
-  Argon2id at its minimum work factor. The databases are throwaway files and no test
-  depends on crash durability or hashing cost; the schema creation of each test app was
+  through SQLAlchemy skip `fsync` (`PRAGMA synchronous=OFF`; a test of crash recovery
+  opts out with `@pytest.mark.sqlite_durable`) and passwords are hashed with
+  Argon2id at its minimum work factor. The databases are throwaway files and no other
+  test depends on crash durability or hashing cost; the schema creation of each test app was
   otherwise mostly waiting for the disk (~0.16 s instead of ~0.03 s) and each registration
   or login took ~0.1 s. Deployed applications and the separate `tests.e2e_server` process
   keep the defaults. The `openapi_schema` fixture gives a test a copy of the default-settings

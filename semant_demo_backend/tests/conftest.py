@@ -4,12 +4,13 @@ Tests without an ``integration``, ``live`` or ``benchmark`` marker are fast test
 must not open network connections. Loopback is refused too, so a fast test cannot reach
 a local development Weaviate or provider by accident. Unix sockets remain allowed.
 
-SQLite databases opened through SQLAlchemy in tests do not wait for the disk, and
-passwords are hashed with a minimal work factor. The OpenAPI schema of the default test
+SQLite databases opened through SQLAlchemy in tests do not wait for the disk, except in
+tests marked ``sqlite_durable``, and passwords are hashed with a minimal work factor. The OpenAPI schema of the default test
 settings is generated once per run (#848).
 """
 import copy
 import socket
+import sys
 from functools import partial
 
 import fastapi_users.password
@@ -30,11 +31,15 @@ class NetworkAccessInFastTest(OSError):
     pass
 
 
+_sqlite_durable = False
+"""True while a ``sqlite_durable`` test runs: its databases keep SQLite's own synchronization."""
+
+
 def _skip_sqlite_fsync(dbapi_connection, connection_record):
-    # Every test database is a throwaway file, so durability after a crash does not
+    # Every ordinary test database is a throwaway file, so durability after a crash does not
     # matter; transactions, locking and isolation are unchanged. Waiting for fsync made
     # up most of an application's startup (its schema creation) on a disk-backed tmp_path.
-    if "sqlite" in type(dbapi_connection).__module__:
+    if not _sqlite_durable and "sqlite" in type(dbapi_connection).__module__:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA synchronous=OFF")
         cursor.close()
@@ -45,6 +50,14 @@ def sqlite_without_fsync():
     event.listen(Engine, "connect", _skip_sqlite_fsync)
     yield
     event.remove(Engine, "connect", _skip_sqlite_fsync)
+
+
+@pytest.fixture(autouse=True)
+def sqlite_durability(request, monkeypatch):
+    """Durability and recovery tests (marker ``sqlite_durable``) open SQLite databases with
+    the synchronization setting production uses."""
+    if request.node.get_closest_marker("sqlite_durable"):
+        monkeypatch.setattr(sys.modules[__name__], "_sqlite_durable", True)
 
 
 @pytest.fixture(autouse=True, scope="session")
