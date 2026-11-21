@@ -1,5 +1,7 @@
 <template>
   <q-page class="collection-annotations q-px-md q-pb-lg" data-testid="collection-annotations">
+    <SavedFilterHeader :tags="tags" :attributes="attributesStore.attributes" />
+
     <ConcordanceToolbar
       ref="toolbar"
       :filters="store.filters"
@@ -12,7 +14,15 @@
       class="q-mb-sm"
       @change="store.setFilters"
       @show-attributes="ids => { store.shownAttributeIds = ids }"
-    />
+    >
+      <template #saved>
+        <SavedFiltersMenu
+          :collection-id="collectionId"
+          :people="store.people"
+          :me="userStore.getUserId ?? null"
+        />
+      </template>
+    </ConcordanceToolbar>
 
     <ConcordanceFilterChips
       :filters="store.filters"
@@ -455,6 +465,9 @@ import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import SimilarSourceBar from './SimilarSourceBar.vue'
+import SavedFiltersMenu from './SavedFiltersMenu.vue'
+import SavedFilterHeader from './SavedFilterHeader.vue'
+import { useSavedFiltersStore } from './savedFiltersStore'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
@@ -487,6 +500,7 @@ const selection = reactive(useAnnotationSelectionStore())
 const review = reactive(useAnnotationReviewStore())
 const assign = reactive(useAttributeAssignStore())
 const attributesStore = reactive(useAttributesStore())
+const savedFilters = useSavedFiltersStore()
 const userStore = useUserStore()
 const tagsStore = useTagsStore()
 const { tags } = storeToRefs(tagsStore)
@@ -1326,6 +1340,8 @@ watch(collectionId, async (id) => {
   void tagsStore.fetchTagsByCollection(id)
   void attributesStore.load(id)
   const loading = store.open(id)
+  // After open: another collection starts a new workspace, so no live filter is active then.
+  void savedFilters.load(id)
   if (returning) {
     // Back from a document: the same place, then the rows as they are now.
     await nextTick()

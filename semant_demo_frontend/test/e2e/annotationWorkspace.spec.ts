@@ -354,6 +354,14 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await openWorkspace(page)
   await rows(page).first().click()
   await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
+  // The sidebar slides in and narrows the page, which can wrap the toolbar: measure the rows
+  // only once it is fully in and the page ends where it starts.
+  await expect.poll(() => page.evaluate(() => {
+    const drawer = document.querySelector('.q-drawer--right')?.getBoundingClientRect()
+    const workspace = document.querySelector('[data-testid=collection-annotations]')?.getBoundingClientRect()
+    if (!drawer || !workspace) return false
+    return Math.round(drawer.right) <= window.innerWidth && Math.round(workspace.right) <= Math.round(drawer.left)
+  })).toBe(true)
   // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
   // and the later ones do not.
   const second = await rows(page).nth(1).boundingBox()

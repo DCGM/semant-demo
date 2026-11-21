@@ -94,6 +94,7 @@ docs/HTTPValidationError.md
 docs/LayoutStart.md
 docs/LibraryYearDistribution.md
 docs/LibraryYears.md
+docs/LiveQuery.md
 docs/LocationInner.md
 docs/MaxValue.md
 docs/MaxValue1.md
@@ -115,11 +116,13 @@ docs/PatchAttribute.md
 docs/PatchAttributeValue.md
 docs/PatchCollection.md
 docs/PatchCollectionOwner.md
+docs/PatchSavedSelection.md
 docs/PatchSpan.md
 docs/PatchTag.md
 docs/PostAttribute.md
 docs/PostAttributeValue.md
 docs/PostCollection.md
+docs/PostSavedSelection.md
 docs/PostSpan.md
 docs/PostTag.md
 docs/ProximityCoverage.md
@@ -143,6 +146,8 @@ docs/ResultKind.md
 docs/ResultMember.md
 docs/RetrievalMode.md
 docs/ReviewAction.md
+docs/SavedSelection.md
+docs/SavedSelectionKind.md
 docs/SearchChatRequest.md
 docs/SearchCriteria.md
 docs/SearchFilter.md
@@ -278,6 +283,7 @@ models/HTTPValidationError.ts
 models/LayoutStart.ts
 models/LibraryYearDistribution.ts
 models/LibraryYears.ts
+models/LiveQuery.ts
 models/LocationInner.ts
 models/MaxValue.ts
 models/MaxValue1.ts
@@ -299,11 +305,13 @@ models/PatchAttribute.ts
 models/PatchAttributeValue.ts
 models/PatchCollection.ts
 models/PatchCollectionOwner.ts
+models/PatchSavedSelection.ts
 models/PatchSpan.ts
 models/PatchTag.ts
 models/PostAttribute.ts
 models/PostAttributeValue.ts
 models/PostCollection.ts
+models/PostSavedSelection.ts
 models/PostSpan.ts
 models/PostTag.ts
 models/ProximityCoverage.ts
@@ -327,6 +335,8 @@ models/ResultKind.ts
 models/ResultMember.ts
 models/RetrievalMode.ts
 models/ReviewAction.ts
+models/SavedSelection.ts
+models/SavedSelectionKind.ts
 models/SearchChatRequest.ts
 models/SearchCriteria.ts
 models/SearchFilter.ts
