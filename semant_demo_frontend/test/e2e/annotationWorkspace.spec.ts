@@ -1489,21 +1489,39 @@ test('the selection, outside the filters too, and the filter matches download as
   await expect(dialog).toHaveCount(0)
 })
 
-test('the collection header settles once the sidebar is open, at every wide width (#838)', async ({ page }) => {
-  await useViewport(page, 'wide')
-  await openWorkspace(page)
-  await row(page, 'Jan Novák').click()
-  await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
-  const title = page.locator('.collection-page-title')
-  // The title and the tabs once resized each other for ever at a width where both only just
-  // fit; which width that is depends on the name, so sweep the widths the sidebar leaves.
-  for (let width = 1400; width <= 2000; width += 20) {
-    await page.setViewportSize({ width, height: viewports.wide.height })
-    const widths = new Set<number>()
-    for (let sample = 0; sample < 8; sample++) {
-      await page.waitForTimeout(40)
-      widths.add(Math.round((await title.boundingBox())!.width))
+test('the collection header settles once the sidebar is open, at every wide width (#838)', async ({ page, request }) => {
+  const longName = 'Kroniky a dopisy z Moravy a Čech'
+  const rename = async (name: string) => {
+    const response = await request.patch(`/api/user_collections/${chronicles.id}`, {
+      headers: { Authorization: `Bearer ${await apiToken(request, 'owner')}` },
+      data: { name }
+    })
+    expect(response.ok()).toBe(true)
+  }
+  // A name long enough to be truncated beside the open sidebar, as in the report.
+  await rename(longName)
+  try {
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    await row(page, 'Jan Novák').click()
+    await expect(page.getByTestId('right-sidebar-title')).toHaveText('Annotation')
+    const title = page.locator('.collection-page-title')
+    await expect(title).toHaveText(longName)
+    // The title and the tabs once resized each other for ever at a width where both only just
+    // fit; which width that is depends on the name, so sweep the widths the sidebar leaves.
+    for (let width = 1500; width <= 2000; width += 20) {
+      await page.setViewportSize({ width, height: viewports.wide.height })
+      const widths = new Set<number>()
+      for (let sample = 0; sample < 8; sample++) {
+        await page.waitForTimeout(40)
+        widths.add(Math.round((await title.boundingBox())!.width))
+      }
+      expect([...widths], `${width}: the title width is stable`).toHaveLength(1)
     }
-    expect([...widths], `${width}: the title width is stable`).toHaveLength(1)
+    // The tabs still fit the page beside the sidebar (their arrows take over when they do not, #489).
+    await page.setViewportSize({ width: 1000, height: viewports.wide.height })
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+  } finally {
+    await rename(fixture.collection('chronicles').name)
   }
 })

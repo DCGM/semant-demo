@@ -325,7 +325,8 @@ onMounted(async () => {
 
 .collection-header {
   padding: 2px 0;
-  flex: 0 1 auto;
+  // Shrinks (to its ellipsis) long before the tabs do; see .collection-tabs.
+  flex: 0 100 auto;
   min-width: 12rem;
 }
 
@@ -393,11 +394,12 @@ onMounted(async () => {
 .collection-tabs {
   // Shrinks with scroll arrows when the tabs do not fit, rather than overflowing the page;
   // the arrows sit outside the tabs (outside-arrows), so they never cover the last one (#489).
-  // The basis is 0, not auto: an auto basis includes the arrows, which appear and disappear as
-  // the title shrinks, so at some widths the two resized each other for ever (#838). The
-  // min-content floor keeps the name giving way before the tabs scroll.
-  flex: 1 1 0;
-  min-width: min-content;
+  // A fixed basis (about the tabs' natural width), not auto: an auto basis includes the
+  // arrows, which appear and disappear as the title shrinks, so at some widths the two resized
+  // each other for ever (#838). The header's far larger shrink factor (below) makes the name
+  // give way first (#479); only then do the tabs shrink and scroll.
+  flex: 1 1 56rem;
+  min-width: 0;
   // A margin, not q-pl-md: outside-arrows sets the tabs' own padding.
   margin-left: 16px;
 }
