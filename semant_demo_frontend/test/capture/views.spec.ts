@@ -1061,7 +1061,6 @@ test('collection overview passage charts (#807)', async ({ page }, testInfo) => 
   const collection = fixture.collection('chronicles')
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${collection.id}/overview`)
-  await page.reload() // without the sign-in notification
   const charts = page.getByTestId('collection-passage-charts')
   await expect(charts.getByTestId('passage-charts-total')).toHaveText('4')
   await expect(charts.getByTestId('passage-classification-occurring')).toBeVisible()
