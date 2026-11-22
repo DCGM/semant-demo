@@ -270,8 +270,8 @@ async def test_a_failed_store_read_is_an_error_not_an_empty_overview(tmp_path):
     assert "total_documents" not in response.text
 
 
-def test_overview_is_a_public_typed_operation(tmp_path):
-    schema = create_app(make_test_config(tmp_path)).openapi()
+def test_overview_is_a_public_typed_operation(openapi_schema):
+    schema = openapi_schema
     operation = schema["paths"][PATH]
 
     assert list(operation) == ["get"]
@@ -453,8 +453,8 @@ async def test_only_unfiltered_distributions_are_served_again(tmp_path):
     assert responses[4].json()["computed_at"] == responses[0].json()["computed_at"]
 
 
-def test_distributions_are_a_public_typed_operation(tmp_path):
-    schema = create_app(make_test_config(tmp_path)).openapi()
+def test_distributions_are_a_public_typed_operation(openapi_schema):
+    schema = openapi_schema
     operation = schema["paths"][DISTRIBUTIONS]
 
     assert list(operation) == ["post"]
@@ -666,7 +666,7 @@ async def test_per_value_counts_run_at_most_a_few_at_once_across_requests():
     assert list(first) == list(second) == values
 
 
-async def test_library_years_are_answered_anonymously_and_refuse_unavailable_filters(tmp_path):
+async def test_library_years_are_answered_anonymously_and_refuse_unavailable_filters(tmp_path, openapi_schema):
     analytics = heatmap_analytics()
 
     ok, refused = await _request(tmp_path, analytics, (LIBRARY_YEARS, {}),
@@ -675,7 +675,7 @@ async def test_library_years_are_answered_anonymously_and_refuse_unavailable_fil
     assert ok.status_code == 200
     assert [r["library"] for r in ok.json()["rows"]] == ["mzk", "nkp", None]
     assert refused.status_code == 422
-    schema = create_app(make_test_config(tmp_path)).openapi()
+    schema = openapi_schema
     operation = schema["paths"][LIBRARY_YEARS]["post"]
     assert operation["security"] == [{"OAuth2PasswordBearer": []}]  # optional, for a collection scope
     assert operation["responses"]["200"]["content"]["application/json"]["schema"] == \
@@ -950,7 +950,7 @@ async def test_a_classification_the_filters_do_not_configure_is_refused_before_c
     assert analytics.calls == []
 
 
-async def test_passages_are_answered_for_the_owner_each_time_anew(tmp_path):
+async def test_passages_are_answered_for_the_owner_each_time_anew(tmp_path, openapi_schema):
     analytics = FakePassages(3, language=counts([("ces", 3)]), subject_domain=counts([("religion", 2)]))
     asked = {"user_collection_id": str(COLLECTION)}
 
@@ -962,7 +962,7 @@ async def test_passages_are_answered_for_the_owner_each_time_anew(tmp_path):
         [("values", COLLECTION, "subject_domain", tuple(TASK_CLASSES["subject_domain"]))]
     assert dimension.json()["languages"] is None
     assert dimension.json()["classification"]["dimension"] == "subject_domain"
-    schema = create_app(make_test_config(tmp_path)).openapi()
+    schema = openapi_schema
     operation = schema["paths"][PASSAGES]["post"]
     assert operation["security"] == [{"OAuth2PasswordBearer": []}]
     assert operation["responses"]["200"]["content"]["application/json"]["schema"] == \

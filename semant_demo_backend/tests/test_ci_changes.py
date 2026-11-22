@@ -559,13 +559,7 @@ def test_jobs_conditioned_on_the_classification_need_it_and_tolerate_its_failure
             assert "!cancelled()" in condition or "always()" in condition, job
 
 
-def test_preview_still_starts_without_waiting_for_application_tests():
-    assert WORKFLOW[ci.PREVIEW_JOB]["needs"] == ["classify"]
-
-
-def test_deployments_require_the_gate():
-    for job in ("deploy-production", "deploy-test-main"):
-        assert "ci-result" in WORKFLOW[job]["needs"]
+# What the preview and the deployments wait for is in test_deploy_gating.py.
 
 
 # --- documentation links ------------------------------------------------------------------
@@ -582,6 +576,5 @@ def test_link_check_reports_broken_relative_links_only(tmp_path, monkeypatch):
 
     assert links.broken_links("x.md") == ["docs/Missing.md", "./shot.png", "docs/Gone.md"]
 
-
-def test_repository_markdown_links_resolve():
-    assert links.main() == 0
+# The repository's own links are checked by `make check-docs` and the docs-check CI job,
+# which runs in every mode the backend suite runs in.

@@ -40,7 +40,6 @@ async function expectSidebarsOpen (page: Page, testInfo: TestInfo) {
 
 test('search results', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
-  await page.reload() // without the sign-in notification
   await search(page, 'Lhota')
   await expectSidebarsOpen(page, testInfo)
   await save(page, testInfo, 'search-results')
@@ -168,7 +167,6 @@ test('search vector selection', async ({ page }, testInfo) => {
 test('document view', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
-  await page.reload() // without the sign-in notification
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expect(page.locator('.gutter-item')).toHaveCount(2)
   await expectSidebarsOpen(page, testInfo)
@@ -178,7 +176,6 @@ test('document view', async ({ page }, testInfo) => {
 test('document view - AI Chat panel with a summary (#249, #245)', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
-  await page.reload() // without the sign-in notification
   await expect(annotation(page, 'novak_manual')).toBeVisible()
   await expectSidebarsOpen(page, testInfo)
   // On phone the right sidebar is a closed overlay by default; open it to reach the panel.
@@ -195,7 +192,6 @@ test('document view - AI Chat panel with a summary (#249, #245)', async ({ page 
 test('document view - popover, bulk bar and create-tag dialog (#379)', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/documents/${fixture.document('chronicle').id}`)
-  await page.reload() // without the sign-in notification
   await expect(page.locator('.gutter-item')).toHaveCount(2)
   await expectSidebarsOpen(page, testInfo)
 
@@ -230,7 +226,6 @@ test('annotation workspace (#329)', async ({ page, request }, testInfo) => {
     }
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
-    await page.reload() // without the sign-in notification
     await expect(page.getByTestId('kwic-row')).toHaveCount(8)
     await page.getByTestId('kwic-row').nth(3).getByRole('checkbox').click()
     await save(page, testInfo, 'annotation-workspace')
@@ -267,7 +262,6 @@ test('annotation workspace columns (#665)', async ({ page, request }, testInfo) 
     }
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
-    await page.reload() // without the sign-in notification
     await expect(page.getByTestId('kwic-row')).toHaveCount(7)
     await page.getByTestId('concordance-show-attribute').click()
     await page.getByRole('option', { name: 'Role', exact: true }).click()
@@ -283,6 +277,8 @@ test('annotation workspace columns (#665)', async ({ page, request }, testInfo) 
       await page.getByTestId('concordance-more-filters').click()
       await page.getByTestId('concordance-year-from').click()
     }
+    // The header button focuses the field a moment later (Quasar defers it); type only then.
+    await expect(page.getByLabel('From year', { exact: true })).toBeFocused()
     await page.keyboard.type('1800')
     await expect(page.getByTestId('concordance-chips')).toContainText('1800')
     await expect(page.getByRole('grid')).not.toHaveAttribute('aria-busy', 'true')
@@ -313,7 +309,6 @@ test('annotation workspace query (#663)', async ({ page }, testInfo) => {
   // then the document filter menu.
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
-  await page.reload() // without the sign-in notification
   await expect(page.getByTestId('kwic-row').first()).toBeVisible()
   await expandFilters(page)
   await page.getByTestId('concordance-text-scope').click()
@@ -346,7 +341,6 @@ test('annotation workspace ranked (#664)', async ({ page }, testInfo) => {
   // then search by meaning with the mode selector and k.
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
-  await page.reload() // without the sign-in notification
   const novak = page.getByTestId('kwic-row').filter({ has: page.locator('.kwic__key', { hasText: 'Jan Novák' }) })
   await novak.click()
   await expect(page.getByTestId('chunk-context-mark').first()).toBeVisible()
@@ -376,7 +370,6 @@ test('annotation workspace review (#459)', async ({ page, request }, testInfo) =
   try {
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
-    await page.reload() // without the sign-in notification
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
     await expandFilters(page)
     await page.getByTestId('concordance-status-pos').click()
@@ -434,7 +427,6 @@ test('annotation provenance and edit conflicts (#460)', async ({ page, request }
     })).json() as { id: string }
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${collectionId}/annotations`)
-    await page.reload() // without the sign-in notification
 
     // Created by the owner, then retagged by the shared annotator.
     await patch(created.id, { tagId: fixture.tag('place').id }, 'annotator')
@@ -489,7 +481,6 @@ test('annotation boundary editing and undo (#461)', async ({ page, request }, te
   try {
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${collectionId}/annotations`)
-    await page.reload() // without the sign-in notification
     await page.locator(`[data-testid="kwic-row"][data-annotation-id="${brno.id}"]`).click()
     await expectRightSidebarIn(page)
     await expectSidebarsOpen(page, testInfo)
@@ -582,7 +573,6 @@ test('collection attributes (#331, #506, #522)', async ({ page, request }, testI
 
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/attributes`)
-    await page.reload() // without the sign-in notification
     await expect(page.getByTestId('attribute')).toHaveCount(3)
     await save(page, testInfo, 'attributes')
 
@@ -606,7 +596,7 @@ test('collection attributes (#331, #506, #522)', async ({ page, request }, testI
 
     await page.getByTestId('attribute-create').click()
     await page.getByLabel('Name').fill('Stance')
-    await page.getByRole('dialog').getByRole('checkbox', { name: 'Allow multiple values per annotation' }).click()
+    await page.getByRole('dialog').getByRole('switch', { name: 'Allow multiple values per annotation' }).click()
     await page.getByLabel('Value 1', { exact: true }).fill('for')
     await page.getByRole('button', { name: 'Add value', exact: true }).click()
     await page.getByLabel('Value 2', { exact: true }).fill('against')
@@ -635,7 +625,6 @@ test('attribute name taken (#331)', async ({ page, request }, testInfo) => {
   try {
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/attributes`)
-    await page.reload() // without the sign-in notification
     await page.getByTestId('attribute-create').click()
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Name').fill('role')
@@ -673,7 +662,6 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
   try {
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/annotations`)
-    await page.reload() // without the sign-in notification
     await expect(page.getByTestId('kwic-row')).toHaveCount(4)
     // Two columns side by side (#537).
     await page.getByTestId('concordance-show-attribute').click()
@@ -745,8 +733,8 @@ test('attribute assignment in the workspace (#331)', async ({ page, request }, t
 })
 
 test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }, testInfo) => {
-  // Create Tag lists the Selected tags attributes to switch and the All tags ones locked on; a
-  // refused removal of the tag from an attribute is shown at that attribute.
+  // Create Tag lists the Selected tags attributes to switch and the All tags ones locked on;
+  // switching off an attribute whose values are in use asks to confirm at that attribute (#568).
   const base = `/api/user_collections/${fixture.collection('chronicles').id}`
   const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
   const person = fixture.tag('person')
@@ -776,7 +764,6 @@ test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }
   try {
     await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${fixture.collection('chronicles').id}/tags`)
-    await page.reload() // without the sign-in notification
     const dialog = page.getByRole('dialog')
     const toggle = (name: string) => dialog.getByTestId('tag-applicable-attribute').filter({ hasText: name }).getByRole('switch')
 
@@ -793,9 +780,10 @@ test('applicable attributes in Create/Edit Tag (#516)', async ({ page, request }
     await row.getByRole('button', { name: 'Edit tag' }).click()
     await toggle('Speaker type').click()
     await dialog.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(dialog.getByTestId('tag-applicable-attribute-error')).toContainText('1 annotations')
-    await dialog.getByTestId('tag-applicable-attribute-error').scrollIntoViewIfNeeded()
-    await save(page, testInfo, 'tag-edit-refused-attribute')
+    await expect(dialog.getByTestId('tag-applicable-attribute-warning')).toContainText('apply on 1 annotation.')
+    await expect(dialog.getByRole('button', { name: 'Confirm and save' })).toBeVisible()
+    await dialog.getByTestId('tag-applicable-attribute-warning').scrollIntoViewIfNeeded()
+    await save(page, testInfo, 'tag-edit-confirm-attribute')
   } finally {
     await deleteAddedAttributes(request, 'owner', 'chronicles')
   }
@@ -974,7 +962,6 @@ test('explore visualizations', async ({ page }, testInfo) => {
 
 test('explore visualizations of a collection, with its heatmap and when empty (#768)', async ({ page }, testInfo) => {
   await ensureLoggedIn(page, 'owner')
-  await page.reload() // without the sign-in notification
   await page.goto('/#/search?chunk_languages=ces')
   await expect(page.getByTestId('document-result-open')).toHaveCount(3)
   await page.getByRole('button', { name: 'Search filters' }).click()
@@ -1038,7 +1025,6 @@ test('collection overview document charts and Explore this collection (#795)', a
   const collection = fixture.collection('chronicles')
   await ensureLoggedIn(page, 'owner')
   await page.goto(`/#/collections/${collection.id}/overview`)
-  await page.reload() // without the sign-in notification
   const charts = page.getByTestId('collection-document-charts')
   await expect(charts.getByTestId('charts-total')).toHaveText('2')
   await save(page, testInfo, 'collection-overview-header')
