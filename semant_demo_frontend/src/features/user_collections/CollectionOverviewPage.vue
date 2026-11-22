@@ -281,6 +281,26 @@
         />
       </q-card-section>
     </q-card>
+
+    <q-card v-if="collectionLoaded" flat bordered class="panel-card q-mt-lg" data-testid="collection-passage-charts">
+      <q-card-section class="q-pb-sm">
+        <div class="statistics-header">
+          <div class="text-subtitle1 text-weight-medium">Passage charts</div>
+          <div class="statistics-subtitle">
+            Detected language and classifications of the passages added to the collection.
+          </div>
+        </div>
+      </q-card-section>
+
+      <q-card-section class="q-pt-none">
+        <CollectionPassageCharts
+          :collection-id="collectionId"
+          :collection-name="activeCollection?.name ?? `Collection ${collectionId}`"
+          :enabled="collectionLoaded"
+          :empty-hint="rights.editMembership ? 'Add passages from Explore, or whole documents in the Documents tab.' : 'No passages have been added to it yet.'"
+        />
+      </q-card-section>
+    </q-card>
   </div>
 </template>
 
@@ -293,6 +313,7 @@ import ScopedDocumentCharts from 'src/features/analytics/ScopedDocumentCharts.vu
 import type { ChartFilter } from 'src/features/analytics/corpusOverview'
 import { collectionChartLocation, exploreCollection } from 'src/features/explore/exploreHandoff'
 import { useCollectionDocumentCharts } from './useCollectionDocumentCharts'
+import CollectionPassageCharts from './CollectionPassageCharts.vue'
 import type { CorpusDistributions, UserSearchResult } from 'src/generated/api'
 import { createContextGuard } from 'src/shared/api'
 import { useUserCollectionsStore } from './userCollectionsStore'
