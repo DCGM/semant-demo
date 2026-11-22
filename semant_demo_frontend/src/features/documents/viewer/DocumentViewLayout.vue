@@ -56,8 +56,8 @@
         @summarize="summarizeDocument"
         @ask="documentChat.ask"
         @stop="documentChat.stop"
-        @new-conversation="documentChat.reset"
-        @cite="(source) => citeInReader(source.chunkId, source.order)"
+        @new-conversation="clearChat"
+        @cite="onCite"
       />
     </RightSidebarPanel>
     <RightSidebarPanel :id="DOCUMENT_SIDEBAR_PANELS.metadata" label="Document" icon="description" :order="2">
@@ -94,9 +94,9 @@ import DocumentTagsPanel from 'src/features/annotations/DocumentTagsPanel.vue'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import useAiAssistance from 'src/features/annotations/useAiAssistance'
 import useTagSpans from 'src/features/annotations/useTagSpans'
-import { citeInReader } from 'src/features/documents/readerCitation'
+import { citeInReader, clearReaderCitation } from 'src/features/documents/readerCitation'
 import ScopedChatPanel from 'src/features/chat/ScopedChatPanel.vue'
-import useScopedChat, { citedSources, type ChatAnswer, type DocumentChatScope } from 'src/features/chat/useScopedChat'
+import useScopedChat, { citedSources, type ChatAnswer, type ChatSource, type DocumentChatScope } from 'src/features/chat/useScopedChat'
 import { documentChatKey } from 'src/features/chat/chatStorage'
 import { useUserStore } from 'src/features/auth/userStore'
 import { useApi } from 'src/shared/api'
@@ -136,6 +136,15 @@ const documentChat = useScopedChat((): DocumentChatScope => ({
 }), {
   storageKey: (scope) => userStore.getUserId ? documentChatKey(userStore.getUserId, scope) : null
 })
+function clearChat () {
+  documentChat.reset()
+  clearReaderCitation()
+}
+function onCite (source: ChatSource) {
+  // Document chat is not a cross-document navigation tool; ignore a mismatched source.
+  if (source.documentId !== props.documentId) return
+  citeInReader(source.chunkId, source.order, props.documentId, props.collectionId)
+}
 const tagsPanelRef = ref<InstanceType<typeof DocumentTagsPanel> | null>(null)
 /** The collection could not be read (no access, or it does not exist). */
 const collectionUnavailable = ref(false)
@@ -190,6 +199,7 @@ watch(() => sidebar.activePanelId === DOCUMENT_SIDEBAR_PANELS.ai, (active) => {
 onBeforeUnmount(() => {
   // Leaving the document view aborts document-wide and selection runs; their late
   // events are ignored. Suggestions already saved stay saved.
+  clearReaderCitation()
   aiAssist.reset()
   aiAssist.aiPanelActive.value = false
   aiAssist.highlightedAutoSpanId.value = null
@@ -256,6 +266,7 @@ const updateLayoutHeight = () => {
 watch(
   () => [props.documentId, props.collectionId] as const,
   async ([documentId, collectionId]) => {
+    clearReaderCitation()
     // Reset shared AI assistance state so stale "Processed N chunks" / pending
     // suggestions from the previous document don't leak into the new one.
     aiAssist.reset()

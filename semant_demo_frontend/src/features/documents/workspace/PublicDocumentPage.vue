@@ -56,6 +56,7 @@
           ref="textPane"
           :chunks="text.chunks.value"
           :preserve-whitespace="preserveWhitespace"
+          :cited-chunk-id="citedChunkId"
           :active-range="activeRange"
           :active-approximate="!!sync.textFocus.value?.approximate"
           :page-marks="sync.pageMarks.value"
@@ -105,6 +106,7 @@ import { createLayoutCache } from '../scan/pageAssets'
 import { selectionRange } from '../correspondence/layoutMap'
 import { useDocumentText } from '../correspondence/useDocumentText'
 import { useTextScanSync } from '../correspondence/useTextScanSync'
+import { clearReaderCitation, requestedCitation } from '../readerCitation'
 import { DOCUMENT_SIDEBAR_PANELS } from '../viewer/documentSidebar'
 import DocumentTextPane from '../viewer/DocumentTextPane.vue'
 import WhitespaceToggle from '../viewer/WhitespaceToggle.vue'
@@ -146,6 +148,9 @@ const pages = shallowRef<DocumentPage[]>([])
 /** The text keeps its original whitespace (as in the collection reader), or collapses it. */
 const preserveWhitespace = ref(true)
 const layouts = shallowRef(createLayoutCache())
+/** Whole-chunk evidence from a citation or a chunk-only deep link; not a selection. */
+const citedChunkId = ref<string | null>(null)
+let citationGeneration = 0
 /** A passage opened by a deep link, until another interaction. */
 const linkedRange = shallowRef<ChunkRange | null>(null)
 /** The deep link has been handled: from then on, page changes in the scan viewer are followed. */
@@ -214,7 +219,10 @@ function onLoaded (info: { available: boolean, pages: DocumentPage[] }) {
 }
 
 function onScanPage (page: DocumentPage, index: number) {
-  if (following && !sync.isOwnPageChange(page.pageId)) linkedRange.value = null
+  if (following && !sync.isOwnPageChange(page.pageId)) {
+    linkedRange.value = null
+    citedChunkId.value = null
+  }
   void sync.onScanPage(page, index, { follow: following })
 }
 
@@ -233,15 +241,23 @@ function onTextSelect ({ start, end }: TextSelection) {
 
 /** Keys that scroll the page cancel a focus still on its way, like the wheel (not in the scan viewer or a field). */
 function onKeydown (e: KeyboardEvent) {
-  if (!['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '].includes(e.key)) return
   const target = e.target as HTMLElement | null
+  if (e.key === 'Escape' && citedChunkId.value && !target?.closest?.('input, textarea, [contenteditable]')) {
+    ++citationGeneration
+    citedChunkId.value = null
+    clearReaderCitation()
+    return
+  }
+  if (!['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '].includes(e.key)) return
   if (target?.closest?.('[data-testid="workspace-scan"], input, textarea, [contenteditable]')) return
   sync.cancel()
 }
 
 async function open (documentId: string) {
+  ++citationGeneration
   following = false
   linkedRange.value = null
+  citedChunkId.value = null
   text.reset()
   layouts.value = createLayoutCache()
   manifest = new Promise(resolve => { manifestReady = resolve })
@@ -263,6 +279,7 @@ async function open (documentId: string) {
 
 /** A linked passage (`?chunk=&start=&end=`): its text in view and its lines on the scan. */
 async function showPassage (documentId: string, chunkId: string, generation: number) {
+  citedChunkId.value = null
   const chunk = await text.openChunk(chunkId)
   await manifest
   if (documentId !== props.documentId || generation !== targetGeneration) return
@@ -272,6 +289,7 @@ async function showPassage (documentId: string, chunkId: string, generation: num
   const start = Math.min(queryNumber('start') ?? 0, length)
   const end = Math.min(length, Math.max(start, queryNumber('end') ?? start))
   linkedRange.value = end > start ? { chunkId, start, end } : null
+  citedChunkId.value = end === start ? chunkId : null
   await nextTick()
   textPane.value?.revealRange({ chunkId, start })
   await sync.showTextOnScan({ chunkId, start, end }, { markLine: end === start })
@@ -289,6 +307,7 @@ function followLink () {
     void showPassage(props.documentId, chunkId, generation)
     return
   }
+  citedChunkId.value = null
   // The scan shows the linked page already: its text is shown as for a page change.
   const shown = workspacePane.value?.currentPage()
   const index = shown ? pages.value.findIndex(p => p.pageId === shown.pageId) : -1
@@ -306,6 +325,7 @@ async function loadDocument (id: string) {
     if (id === props.documentId) documentData.value = doc
   } catch (e) {
     if (id !== props.documentId) return
+    citedChunkId.value = null
     documentError.value = errorStatus(e) === 404
       // Unknown and restricted documents are not told apart (#279).
       ? (collectionId.value
@@ -314,6 +334,21 @@ async function loadDocument (id: string) {
       : 'The document could not be loaded.'
   }
 }
+
+// External citation actions use the same presentation as chunk-only links. The document
+// endpoint still enforces corpus/collection access; a missing chunk leaves no highlight.
+watch(requestedCitation, async (citation) => {
+  const generation = ++citationGeneration
+  citedChunkId.value = null
+  if (!citation || citation.documentId !== props.documentId || citation.collectionId !== collectionId.value || documentError.value) return
+  const chunk = await text.openChunk(citation.chunkId)
+  if (generation !== citationGeneration || !chunk || citation.documentId !== props.documentId) return
+  await nextTick()
+  if (generation !== citationGeneration) return
+  citedChunkId.value = chunk.id
+  textPane.value?.scrollToChunk(chunk.id)
+  void sync.showTextOnScan({ chunkId: chunk.id, start: 0, end: 0 })
+})
 
 // Another document is read anew; another link to this one (a query-only navigation: Vue
 // Router reuses the page) shows its target with the document read so far.
@@ -334,6 +369,7 @@ watch(() => route.query.view, (view) => {
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(() => {
+  ++citationGeneration
   window.removeEventListener('keydown', onKeydown)
   sync.cancel()
 })

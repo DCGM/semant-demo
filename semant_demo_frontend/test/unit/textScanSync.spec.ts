@@ -80,6 +80,32 @@ describe('useTextScanSync', () => {
     expect(reads).toEqual(['p0', 'p1'])
   })
 
+  it('keeps cited lines across scan/text interactions and page navigation, but clears on dismiss', async () => {
+    const { sync, focusScan } = setup()
+    await sync.showCitationOnScan({ chunkId: 'c0', start: 0, end: CHUNKS[0].text.length })
+    expect(sync.citationScanHighlights.value.map(h => `${h.pageId}/${h.lineId}`))
+      .toEqual(['p0/r0-l0', 'p0/r1-l0', 'p0/r1-l1', 'p1/r0-l0'])
+    expect(focusScan).toHaveBeenCalledTimes(1)
+    await sync.showTextOnScan({ chunkId: 'c1', start: 0, end: CHUNKS[1].text.length })
+    expect(sync.citationScanHighlights.value).toHaveLength(4)
+    await sync.showLineInText({ pageId: 'p1', lineId: 'r1-l0' })
+    expect(sync.citationScanHighlights.value).toHaveLength(4)
+    await sync.onScanPage(PAGES[1], 1)
+    expect(sync.citationScanHighlights.value.some(h => h.pageId === 'p1')).toBe(true)
+    sync.clearCitationScan()
+    expect(sync.citationScanHighlights.value).toEqual([])
+  })
+
+  it('marks approximate citation lines as imprecise and ignores unavailable anchors', async () => {
+    const { sync } = setup()
+    await sync.showCitationOnScan({ chunkId: 'c1', start: 0, end: CHUNKS[1].text.length })
+    expect(sync.citationScanHighlights.value).toEqual([
+      { pageId: 'p1', lineId: 'r1-l0', start: undefined, end: undefined, approximate: true }
+    ])
+    await sync.showCitationOnScan({ chunkId: 'c2', start: 0, end: CHUNKS[2].text.length })
+    expect(sync.citationScanHighlights.value).toEqual([])
+  })
+
   it('highlights a range across chunks, approximate parts as whole lines, and says so', async () => {
     const { sync } = setup()
     const len = CHUNKS[0].text.length

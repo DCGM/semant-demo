@@ -138,6 +138,17 @@ async function panesSettled (page: Page) {
 }
 
 test.describe('the public document view', () => {
+  test('a chunk-only citation highlights the whole chunk, and a later link clears it', async ({ page }) => {
+    await open(page, chronicle.id, `?chunk=${fixture.chunk('chronicle_2').id}`)
+    await expect(chunk(page, 'chronicle_2')).toHaveClass(/is-cited-chunk/)
+    await expect(chunk(page, 'chronicle_1')).not.toHaveClass(/is-cited-chunk/)
+    await page.goto(`/#/documents/${chronicle.id}?page=${PAGE_2}`)
+    await expect(chunk(page, 'chronicle_2')).not.toHaveClass(/is-cited-chunk/)
+    // No scan is required for a whole-chunk citation.
+    await open(page, letters.id, `?chunk=${fixture.chunk('letters_1').id}`)
+    await expect(chunk(page, 'letters_1')).toHaveClass(/is-cited-chunk/)
+  })
+
   test('a deep-linked passage opens its page and exact words; a scan line selects its exact text', async ({ page }) => {
     await useViewport(page, 'wide')
     const passage = fixture.chunk('gazette_1')

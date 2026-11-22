@@ -71,11 +71,14 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   /** The first line id of each page whose layout was read, for page breaks. */
   const firstLines = new Map<string, string | undefined>()
   const scanHighlights = shallowRef<ScanHighlight[]>([])
+  /** Evidence cited by AI, independent of the temporary text/scan navigation overlay. */
+  const citationScanHighlights = shallowRef<ScanHighlight[]>([])
   const textFocus = shallowRef<TextFocus | null>(null)
   const notice = ref('')
   const currentPageId = ref<string | null>(null)
 
   let interaction: AbortController | null = null
+  let citationRead: AbortController | null = null
   let marking: AbortController | null = null
   /** The page a focus request of ours opens: the scan viewer's change to it is not followed. */
   let ownPage: string | null = null
@@ -86,6 +89,7 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
 
   watch(o.pages, () => {
     cancel()
+    clearCitationScan()
     marking?.abort()
     maps.value = new Map()
     firstLines.clear()
@@ -105,6 +109,13 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   function cancel () {
     interaction?.abort()
     interaction = null
+  }
+
+  /** A citation is dismissed only on a new citation, document change or explicit close. */
+  function clearCitationScan () {
+    citationRead?.abort()
+    citationRead = null
+    citationScanHighlights.value = []
   }
 
   const layoutOf = (signal: AbortSignal) => async (pageId: string) => {
@@ -194,6 +205,58 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
       }
     } catch (e) {
       failed(signal, e)
+    }
+  }
+
+  /**
+   * Maps the complete cited range independently of user interactions. Keeping every pageId
+   * lets the same outlines appear again after scan page navigation, even when a chunk crosses
+   * page boundaries. Never treat an approximate layout as character-precise evidence.
+   */
+  async function showCitationOnScan (range: ChunkRange): Promise<void> {
+    clearCitationScan()
+    if (!available.value) return
+    const controller = new AbortController()
+    citationRead = controller
+    const signal = controller.signal
+    try {
+      const lines: ScanHighlight[] = []
+      let incomplete = false
+      for (const part of parts(range)) {
+        const map = await mapOf(part.chunk, signal)
+        if (signal.aborted) return
+        if (typeof map === 'string') {
+          incomplete = true
+          continue
+        }
+        const found = linesForRange(map, part.start, part.end)
+        if (!found.length || part.end > map.covered) incomplete = true
+        lines.push(...found.map(line => ({
+          ...line, approximate: map.precision !== 'exact'
+        })))
+      }
+      if (signal.aborted) return
+      citationScanHighlights.value = lines
+      if (!lines.length) return
+      if (lines.some(line => line.approximate)) notice.value = NOTICES.approximateText
+      else if (incomplete) notice.value = NOTICES.partial
+      const first = lines[0]
+      ownPage = first.pageId
+      try {
+        if (!signal.aborted) await o.focusScan({
+          pageId: first.pageId,
+          lineIds: lines.filter(line => line.pageId === first.pageId).map(line => line.lineId),
+          start: first.start,
+          end: lines.length === 1 ? first.end : undefined
+        })
+      } finally {
+        ownPage = null
+      }
+    } catch (e) {
+      if (!signal.aborted && !isAbortError(e)) {
+        citationScanHighlights.value = []
+        notice.value = NOTICES.layoutFailed
+      }
     }
   }
 
@@ -351,6 +414,9 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     maps,
     pageMarks,
     scanHighlights,
+    citationScanHighlights,
+    clearCitationScan,
+    showCitationOnScan,
     textFocus,
     notice,
     currentPageId,
