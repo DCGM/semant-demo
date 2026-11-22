@@ -49,9 +49,12 @@ describe('accepted attribute-value distributions', () => {
     expect(d.retained).toBe(2)
   })
 
-  it('counts retained inapplicable values only when asked, and says how many', () => {
+  it('counts retained inapplicable values only when asked, without shares of the applicable population', () => {
     const d = attributeDistribution(facet(), attribute(), defaultFilters(), true, true)!
-    expect(d.rows.find(r => r.key === 'red')!.count).toBe(6)
+    expect(d.rows.find(r => r.key === 'red')!.count).toBe(6) // 6 holders of 10 eligible annotations would read 60 %
+    expect(d.rows.every(r => r.share === null)).toBe(true)
+    expect(d.rows.some(r => r.kind === 'missing')).toBe(false) // Not assigned is of the applicable population
+    expect(d.stored).toBe(9)
     expect(d.retained).toBe(2)
   })
 
@@ -116,6 +119,8 @@ describe('the attribute section of the statistics view', () => {
     expect(wrapper.get('[data-testid="statistics-include-retained"]').text()).toContain('Include 2 retained')
     await wrapper.get('[data-testid="statistics-include-retained"]').trigger('click')
     expect(red()).toContain('6')
+    expect(red()).toContain('–')
+    expect(wrapper.get('[data-testid="statistics-attribute-summary"]').text()).toContain('9 stored values, 2 of them retained')
   })
 
   it('offers no checkbox when nothing is retained', () => {

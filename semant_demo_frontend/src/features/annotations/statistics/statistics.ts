@@ -59,8 +59,9 @@ export interface DistributionRow {
   key: string
   label: string
   count: number
-  /** `count` of the distribution's total (0..1); 0 when the total is 0. */
-  share: number
+  /** `count` of the distribution's total (0..1); 0 when the total is 0; null when no meaningful denominator
+   * exists (retained values joined the counts of an applicable-only population, #819). */
+  share: number | null
   kind: 'value' | 'missing'
   /** The filter change that lists exactly these annotations in the KWIC; null when there is none
    * (Missing rows, ranked scopes). */
@@ -206,6 +207,8 @@ export interface AttributeDistribution {
   withValue: number
   /** Values assigned to them, one per annotation and value: more than `withValue` for a multi-valued attribute. */
   assignments: number
+  /** Stored holders of values, retained ones included: what the rows count when `includeRetained` asks. */
+  stored: number
   /** Annotations of the query with no value of the attribute (the Missing row). */
   missing: number
   /** Values retained on annotations whose tag the attribute no longer applies to (never in the counts above). */
@@ -253,7 +256,8 @@ export function attributeDistribution (facet: Facet | null, attribute: Attribute
   drillable: boolean, includeRetained: boolean): AttributeDistribution | null {
   if (!facet || facet.eligible == null || facet.withValue == null || facet.assignments == null) return null
   const eligible = facet.eligible
-  const share = (n: number) => (eligible ? n / eligible : 0)
+  // Retained values come from outside the eligible population: no share of it is meaningful then.
+  const share = (n: number) => (includeRetained ? null : eligible ? n / eligible : 0)
   const counted = new Map(facet.values.map(v => [v.value, v]))
   const defined = orderedValues(attribute).filter(v => !v.retired || (counted.get(v.id)?.count ?? 0) > 0)
   const rows: DistributionRow[] = defined.map(value => {
@@ -269,7 +273,7 @@ export function attributeDistribution (facet: Facet | null, attribute: Attribute
     }
   })
   const missing = Math.max(0, eligible - facet.withValue)
-  if (missing > 0) {
+  if (missing > 0 && !includeRetained) {
     rows.push({
       key: '__missing__',
       label: 'Not assigned',
@@ -285,6 +289,7 @@ export function attributeDistribution (facet: Facet | null, attribute: Attribute
     eligible,
     withValue: facet.withValue,
     assignments: facet.assignments,
+    stored: facet.values.reduce((n, v) => n + v.count, 0),
     missing: Math.max(0, eligible - facet.withValue),
     retained: facet.values.reduce((n, v) => n + (v.inapplicable ?? 0), 0),
     multiValued: attribute.cardinality === Cardinality.multi

@@ -17,7 +17,11 @@
         No confirmed annotation of a tag this attribute applies to matches the query.
       </p>
       <template v-else>
-        <p class="attribute-distribution__summary" data-testid="statistics-attribute-summary">
+        <p v-if="includeRetained" class="attribute-distribution__summary" data-testid="statistics-attribute-summary">
+          <strong>{{ formatCount(distribution.stored) }}</strong> stored
+          {{ distribution.stored === 1 ? 'value' : 'values' }}, {{ formatCount(distribution.retained) }} of them retained
+        </p>
+        <p v-else class="attribute-distribution__summary" data-testid="statistics-attribute-summary">
           <strong>{{ formatCount(distribution.withValue) }}</strong> of {{ formatCount(distribution.eligible) }}
           {{ distribution.eligible === 1 ? 'annotation' : 'annotations' }} with a value<template v-if="multiValued">
             · <strong>{{ formatCount(distribution.assignments) }}</strong>
@@ -47,7 +51,7 @@
         >
           <q-tooltip max-width="320px">
             Values kept on annotations whose tag the attribute no longer applies to. They are not current
-            classifications, so this shows a different population; clicking a value then lists all its holders.
+            classifications, so this is a different population: no shares or Not assigned row, and a value lists all its holders.
           </q-tooltip>
         </q-checkbox>
       </template>

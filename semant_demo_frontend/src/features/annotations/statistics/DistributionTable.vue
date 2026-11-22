@@ -31,7 +31,7 @@
           </span>
         </td>
         <td class="distribution-table__count">{{ formatCount(row.count) }}</td>
-        <td class="distribution-table__share">{{ formatShare(row.share) }}</td>
+        <td class="distribution-table__share">{{ row.share == null ? '–' : formatShare(row.share) }}</td>
       </tr>
     </tbody>
   </table>
