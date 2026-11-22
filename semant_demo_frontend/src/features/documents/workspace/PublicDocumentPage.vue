@@ -31,6 +31,7 @@
       :page-id="pageId"
       :document-title="documentData?.title ?? ''"
       :highlights="sync.scanHighlights.value"
+      :citation-highlights="sync.citationScanHighlights.value"
       :layout-cache="layouts"
       @navigate="onNavigate"
       @page-change="onScanPage"
@@ -219,10 +220,8 @@ function onLoaded (info: { available: boolean, pages: DocumentPage[] }) {
 }
 
 function onScanPage (page: DocumentPage, index: number) {
-  if (following && !sync.isOwnPageChange(page.pageId)) {
-    linkedRange.value = null
-    citedChunkId.value = null
-  }
+  if (following && !sync.isOwnPageChange(page.pageId)) linkedRange.value = null
+  // A cited chunk may span pages: navigation must not dismiss its evidence outline.
   void sync.onScanPage(page, index, { follow: following })
 }
 
@@ -245,6 +244,7 @@ function onKeydown (e: KeyboardEvent) {
   if (e.key === 'Escape' && citedChunkId.value && !target?.closest?.('input, textarea, [contenteditable]')) {
     ++citationGeneration
     citedChunkId.value = null
+    sync.clearCitationScan()
     clearReaderCitation()
     return
   }
@@ -258,6 +258,7 @@ async function open (documentId: string) {
   following = false
   linkedRange.value = null
   citedChunkId.value = null
+  sync.clearCitationScan()
   text.reset()
   layouts.value = createLayoutCache()
   manifest = new Promise(resolve => { manifestReady = resolve })
@@ -277,9 +278,10 @@ async function open (documentId: string) {
   if (!text.chunks.value.length && documentId === props.documentId) await text.openStart()
 }
 
-/** A linked passage (`?chunk=&start=&end=`): its text in view and its lines on the scan. */
+/** A chunk-only link cites the complete passage; an explicit range keeps normal point/range focus. */
 async function showPassage (documentId: string, chunkId: string, generation: number) {
   citedChunkId.value = null
+  sync.clearCitationScan()
   const chunk = await text.openChunk(chunkId)
   await manifest
   if (documentId !== props.documentId || generation !== targetGeneration) return
@@ -288,11 +290,13 @@ async function showPassage (documentId: string, chunkId: string, generation: num
   const length = chunk.text.length
   const start = Math.min(queryNumber('start') ?? 0, length)
   const end = Math.min(length, Math.max(start, queryNumber('end') ?? start))
+  const wholeChunk = route.query.start == null && route.query.end == null
   linkedRange.value = end > start ? { chunkId, start, end } : null
-  citedChunkId.value = end === start ? chunkId : null
+  citedChunkId.value = wholeChunk ? chunkId : null
   await nextTick()
   textPane.value?.revealRange({ chunkId, start })
-  await sync.showTextOnScan({ chunkId, start, end }, { markLine: end === start })
+  if (wholeChunk) await sync.showCitationOnScan({ chunkId, start: 0, end: length })
+  else await sync.showTextOnScan({ chunkId, start, end }, { markLine: end === start })
 }
 
 /**
@@ -308,6 +312,7 @@ function followLink () {
     return
   }
   citedChunkId.value = null
+  sync.clearCitationScan()
   // The scan shows the linked page already: its text is shown as for a page change.
   const shown = workspacePane.value?.currentPage()
   const index = shown ? pages.value.findIndex(p => p.pageId === shown.pageId) : -1
@@ -326,6 +331,7 @@ async function loadDocument (id: string) {
   } catch (e) {
     if (id !== props.documentId) return
     citedChunkId.value = null
+    sync.clearCitationScan()
     documentError.value = errorStatus(e) === 404
       // Unknown and restricted documents are not told apart (#279).
       ? (collectionId.value
@@ -340,14 +346,16 @@ async function loadDocument (id: string) {
 watch(requestedCitation, async (citation) => {
   const generation = ++citationGeneration
   citedChunkId.value = null
+  sync.clearCitationScan()
   if (!citation || citation.documentId !== props.documentId || citation.collectionId !== collectionId.value || documentError.value) return
   const chunk = await text.openChunk(citation.chunkId)
+  await manifest
   if (generation !== citationGeneration || !chunk || citation.documentId !== props.documentId) return
   await nextTick()
   if (generation !== citationGeneration) return
   citedChunkId.value = chunk.id
   textPane.value?.scrollToChunk(chunk.id)
-  void sync.showTextOnScan({ chunkId: chunk.id, start: 0, end: 0 })
+  void sync.showCitationOnScan({ chunkId: chunk.id, start: 0, end: chunk.text.length })
 })
 
 // Another document is read anew; another link to this one (a query-only navigation: Vue
@@ -372,6 +380,7 @@ onBeforeUnmount(() => {
   ++citationGeneration
   window.removeEventListener('keydown', onKeydown)
   sync.cancel()
+  sync.clearCitationScan()
 })
 </script>
 

@@ -144,9 +144,32 @@ test.describe('the public document view', () => {
     await expect(chunk(page, 'chronicle_1')).not.toHaveClass(/is-cited-chunk/)
     await page.goto(`/#/documents/${chronicle.id}?page=${PAGE_2}`)
     await expect(chunk(page, 'chronicle_2')).not.toHaveClass(/is-cited-chunk/)
-    // No scan is required for a whole-chunk citation.
+    // Text-only documents have the same whole-chunk treatment without a scan.
     await open(page, letters.id, `?chunk=${fixture.chunk('letters_1').id}`)
     await expect(chunk(page, 'letters_1')).toHaveClass(/is-cited-chunk/)
+  })
+
+  test('a public citation keeps its scan outline during interaction; a point link does not cite the chunk', async ({ page }) => {
+    await useViewport(page, 'wide')
+    const passage = fixture.chunk('gazette_1')
+    await open(page, gazette.id, `?chunk=${passage.id}`)
+    await expect(chunk(page, 'gazette_1')).toHaveClass(/is-cited-chunk/)
+    await expect(overlay(page)).toHaveAttribute('data-layout-page-id', GAZETTE_PAGE)
+    const citations = page.locator('polygon.scan-citation-outline')
+    await expect(citations).toHaveCount(1)
+    await expect(citations).toHaveAttribute('data-citation-line-id', 'r002-l001')
+    await expect(citations).not.toHaveClass(/scan-citation--approximate/)
+
+    // Focusing another line affects the transient blue layer, not the cited orange one.
+    await clickLine(page, 'r003-l001')
+    await expect(chunk(page, 'gazette_1')).toHaveClass(/is-cited-chunk/)
+    await expect(citations).toHaveAttribute('data-citation-line-id', 'r002-l001')
+    await expect(page.locator('polygon.scan-line--active')).toHaveAttribute('data-line-id', 'r003-l001')
+
+    // An explicit point in a chunk is not a citation to its whole text.
+    await open(page, gazette.id, `?chunk=${passage.id}&start=0&end=0`)
+    await expect(chunk(page, 'gazette_1')).not.toHaveClass(/is-cited-chunk/)
+    await expect(citations).toHaveCount(0)
   })
 
   test('a deep-linked passage opens its page and exact words; a scan line selects its exact text', async ({ page }) => {
@@ -471,13 +494,22 @@ test.describe('the layout of the document views (#600)', () => {
   })
 
   test('the collection reader\'s controls stay above the text while it scrolls (#588)', async ({ page }) => {
-    await ensureLoggedIn(page, 'owner')
+    // Set the phone viewport before loading the app, so Quasar doesn't have to
+    // animate its desktop drawer into the mobile layout during the assertion.
     await page.setViewportSize({ width: 390, height: 400 })
+    await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${chronicles.id}/documents/${chronicle.id}/v1?view=text`)
     await expect(chunkText(page, 'chronicle_1')).toBeVisible()
     const text = page.getByTestId('workspace-text')
     await expect.poll(() => text.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
     const controls = page.getByTestId('workspace-controls')
+    // Measure only once the controls fill the phone screen and the responsive
+    // drawer/layout transition has settled, rather than snapshotting mid-slide.
+    await expect.poll(async () => {
+      const box = await controls.boundingBox()
+      return box ? { x: Math.round(box.x), width: Math.round(box.width) } : null
+    }).toEqual({ x: 0, width: 390 })
+    await settled(controls)
     const before = (await controls.boundingBox())!
     await text.hover()
     await page.mouse.wheel(0, 300)

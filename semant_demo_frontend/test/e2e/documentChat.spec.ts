@@ -23,6 +23,9 @@ test('an answer cites only the chunks in the collection, and a citation scrolls 
   await page.locator('.gutter-item').first().click()
   const popover = page.locator('.annotation-popover')
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
+  const selected = page.locator('.chunk-annotator .is-selected')
+  await expect(selected.first()).toBeVisible()
+  const selectedText = await selected.allTextContents()
 
   await sidebarPanelButton(page, 'AI Chat').click()
   await ask(page, 'Co se stalo v obci?')
@@ -36,6 +39,7 @@ test('an answer cites only the chunks in the collection, and a citation scrolls 
   await expect(cited(page)).toHaveCount(1)
   await expect(chunkText(page, 'chronicle_3')).toHaveClass(/is-cited-chunk/)
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
+  expect(await selected.allTextContents()).toEqual(selectedText)
 })
 
 test('a follow-up sends the earlier turns with their cited chunk ids, never source text, and keeps the S labels', async ({ page }) => {
