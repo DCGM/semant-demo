@@ -7,6 +7,7 @@ Classifications: chronicle_1 (narration, moderate, formal), letters_1 (interacti
 The seeded ``Documents`` lack the summary properties, as a store before #529 does.
 """
 import json
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -156,7 +157,7 @@ async def test_recomputation_stores_the_distinct_values_of_each_document(summari
     assert chronicle.values["language"] == ("ces",)
     assert gazette.values["language"] == ("ces",) and gazette.values["style"] == ()
     assert chronicle.computed_at is not None and chronicle.computed_at.isoformat() == result["computed_at"]
-    manifest = [json.loads(line) for line in open(result["manifest"], encoding="utf-8")]
+    manifest = [json.loads(line) for line in Path(result["manifest"]).read_text(encoding="utf-8").splitlines()]
     assert manifest == [{"id": str(ORPHAN), "kind": "chunk", "status": "no_document", "document_ids": []}]
     assert result["distinct_values"]["language"] == 1  # the orphan's "deu" is not counted for any document
 

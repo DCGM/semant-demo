@@ -256,11 +256,14 @@ test.describe('switching annotations of one long document', () => {
       // The passage is scrolled to Brně within itself; the sidebar does not scroll.
       expect(await body.evaluate(el => el.scrollTop), `${width}: the passage scrolled`).toBeGreaterThan(0)
       expect(await panel(page).evaluate(el => el.closest('.scroll')?.scrollTop ?? 0), `${width}: the sidebar did not`).toBe(0)
-      // Scrolling the passage by hand moves only the passage.
-      const before = await body.evaluate(el => el.scrollTop)
+      // Scrolling the passage by hand moves only the passage. Measured by where the annotation
+      // is on the screen, not by scrollTop: scrolling up near the start loads earlier text
+      // (#780), and keeping the reading position then raises scrollTop while the text stays.
+      const before = (await mark(page).boundingBox())!.y
       await body.hover()
       await page.mouse.wheel(0, -600)
-      await expect.poll(() => body.evaluate(el => el.scrollTop), `${width}: the passage scrolls by the wheel`).toBeLessThan(before)
+      await expect.poll(async () => (await mark(page).boundingBox())?.y ?? before,
+        `${width}: the passage scrolls by the wheel`).toBeGreaterThan(before)
       expect((await actions.boundingBox())?.y, `${width}: the actions stay in place`).toBe(top)
       await expect(actions.getByRole('button', { name: 'Confirm' })).toBeInViewport()
       // Scrolled away from the annotation, the passage offers the way back to it.
@@ -351,6 +354,14 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await openWorkspace(page)
   await rows(page).first().click()
   await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
+  // The sidebar slides in and narrows the page, which can wrap the toolbar: measure the rows
+  // only once it is fully in and the page ends where it starts.
+  await expect.poll(() => page.evaluate(() => {
+    const drawer = document.querySelector('.q-drawer--right')?.getBoundingClientRect()
+    const workspace = document.querySelector('[data-testid=collection-annotations]')?.getBoundingClientRect()
+    if (!drawer || !workspace) return false
+    return Math.round(drawer.right) <= window.innerWidth && Math.round(workspace.right) <= Math.round(drawer.left)
+  })).toBe(true)
   // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
   // and the later ones do not.
   const second = await rows(page).nth(1).boundingBox()
@@ -1484,4 +1495,60 @@ test('the selection, outside the filters too, and the filter matches download as
   expect((await downloading).suggestedFilename()).toMatch(/^annotations-filters-\d{4}-\d{2}-\d{2}\.csv$/)
   await dialog.getByRole('button', { name: 'Close' }).last().click()
   await expect(dialog).toHaveCount(0)
+})
+
+test.describe('saved filters (#824)', () => {
+  const NAME = 'E2E saved filter'
+
+  /** Removes the saved filters this test created (by name), so the store stays as seeded. */
+  async function deleteSaved (request: APIRequestContext) {
+    const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+    const path = `/api/user_collections/${chronicles.id}/saved-selections`
+    const list = await (await request.get(path, { headers })).json() as { id: string, name: string }[]
+    for (const s of list.filter(s => s.name.startsWith(NAME))) {
+      expect((await request.delete(`${path}/${s.id}`, { headers })).ok()).toBe(true)
+    }
+  }
+
+  test.beforeEach(async ({ request }) => { await deleteSaved(request) })
+  test.afterEach(async ({ request }) => { await deleteSaved(request) })
+
+  test('save, reload, reopen, change, discard and close a saved filter', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    const header = page.getByTestId('saved-filter-header')
+    await expect(header).toHaveCount(0)
+
+    await page.getByLabel('Contains words', { exact: true }).fill('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await page.getByTestId('saved-filters-menu').click()
+    await page.getByTestId('saved-filters-save').click()
+    await page.locator('.q-dialog input').fill(NAME)
+    await page.locator('.q-dialog').getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByTestId('saved-filter-name')).toHaveText(NAME)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // Saved on the server: after a reload the workspace starts afresh, and the filter opens again.
+    await page.reload()
+    await expect(page.getByTestId('concordance-range')).toContainText('matching annotations')
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('')
+    await page.getByTestId('saved-filters-menu').click()
+    await page.getByTestId('saved-filters-item').filter({ hasText: NAME }).click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // A change is marked; Discard goes back to the filters as saved.
+    await page.getByLabel('Contains words', { exact: true }).fill('hejtman')
+    await expect(page.getByTestId('saved-filter-status')).toHaveText('Unsaved changes')
+    await page.getByTestId('saved-filter-discard').click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // Closing it returns to the default filters.
+    await page.getByTestId('saved-filter-close').click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('')
+    await expect(page.getByTestId('saved-filter-name')).toBeHidden()
+  })
 })

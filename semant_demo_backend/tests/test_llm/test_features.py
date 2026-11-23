@@ -265,8 +265,8 @@ async def test_invalid_question_requests_never_reach_the_model(tmp_path, path, b
     assert calls == []
 
 
-def test_clients_cannot_name_a_summary_model(tmp_path):
-    schema = create_app(make_test_config(tmp_path)).openapi()["components"]["schemas"]
+def test_clients_cannot_name_a_summary_model(openapi_schema):
+    schema = openapi_schema["components"]["schemas"]
 
     for name in ("SearchRequest", "SummaryRequestBase"):
         if name in schema:

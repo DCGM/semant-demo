@@ -1,5 +1,7 @@
 <template>
   <q-page class="collection-annotations q-px-md q-pb-lg" data-testid="collection-annotations">
+    <SavedFilterHeader :tags="tags" :attributes="attributesStore.attributes" :definitions-ready="definitionsReady" />
+
     <ConcordanceToolbar
       ref="toolbar"
       :filters="store.filters"
@@ -12,7 +14,15 @@
       class="q-mb-sm"
       @change="store.setFilters"
       @show-attributes="ids => { store.shownAttributeIds = ids }"
-    />
+    >
+      <template #saved>
+        <SavedFiltersMenu
+          :collection-id="collectionId"
+          :people="store.people"
+          :me="userStore.getUserId ?? null"
+        />
+      </template>
+    </ConcordanceToolbar>
 
     <ConcordanceFilterChips
       :filters="store.filters"
@@ -33,6 +43,7 @@
       @back="store.returnFromSimilar"
     />
 
+    <!-- In both views: the selection is the workspace's, and the view toggle below stays in place. -->
     <SelectionBar
       class="q-mb-xs"
       :selected-count="selection.size"
@@ -68,6 +79,26 @@
     />
 
     <div class="collection-annotations__summary" aria-live="polite">
+      <!-- First in the row, so it stays in place whatever each view puts after it. -->
+      <q-btn-toggle
+        :model-value="statisticsView ? 'statistics' : 'list'"
+        dense
+        no-caps
+        unelevated
+        rounded
+        toggle-color="primary"
+        color="white"
+        text-color="primary"
+        class="collection-annotations__view"
+        aria-label="View"
+        data-testid="annotations-view"
+        :options="[
+          { value: 'list', label: 'List', icon: 'view_list', attrs: { 'data-testid': 'annotations-view-list' } },
+          { value: 'statistics', label: 'Statistics', icon: 'bar_chart', attrs: { 'data-testid': 'annotations-view-statistics' } }
+        ]"
+        @update:model-value="showView"
+      />
+      <template v-if="!statisticsView">
       <span data-testid="concordance-range">{{ rangeLabel }}</span>
       <span v-if="rankedText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-ranked">{{ rankedText }}</span>
       <span v-if="unsortableText" class="collection-annotations__ranked text-grey-8" data-testid="concordance-unsortable">{{ unsortableText }}</span>
@@ -80,8 +111,18 @@
           <q-tooltip>Read the list again: rows that no longer match leave it</q-tooltip>
         </q-btn>
       </span>
+      </template>
+      <span v-else-if="statisticsSummary" data-testid="statistics-summary">
+        <strong data-testid="statistics-total">{{ formatCount(statisticsSummary.total) }}</strong>
+        {{ statisticsSummary.total === 1 ? 'annotation' : 'annotations' }}{{ statisticsSummary.topK ? ` in the top ${statisticsSummary.k} by similarity` : '' }}
+        in <strong data-testid="statistics-documents">{{ statisticsSummary.documents == null ? '—' : formatCount(statisticsSummary.documents) }}</strong>
+        {{ statisticsSummary.documents == null ? 'source documents (not available for this query)' : statisticsSummary.documents === 1 ? 'source document' : 'source documents' }}
+        <span class="text-grey-8">· {{ statisticsStatuses }} · shares {{ statisticsSummary.denominator }}</span>
+      </span>
+      <q-spinner v-if="statisticsView && statisticsLoading" color="primary" size="1.2em" aria-label="Loading statistics" />
       <q-space />
       <q-btn
+        v-if="!statisticsView"
         flat
         dense
         no-caps
@@ -93,8 +134,24 @@
       >
         <q-tooltip>Download the selected annotations, the filter matches or all annotations as a spreadsheet file</q-tooltip>
       </q-btn>
-      <PagerButtons v-if="store.total > PAGE_SIZE" />
+      <PagerButtons v-if="store.total > PAGE_SIZE && !statisticsView" />
     </div>
+
+    <AnnotationStatisticsPanel
+      v-if="statisticsView"
+      class="q-mt-md"
+      :filters="store.filters"
+      :statistics="statistics"
+      :error="statisticsError"
+      :stale="statisticsLoading"
+      :tags="tags"
+      :documents="store.documents"
+      :dimension="statisticsDimension"
+      @drill="drillFromStatistics"
+      @dimension="showDimension"
+      @retry="loadStatistics"
+    />
+    <template v-else>
 
     <AnnotationExportDialog
       v-model="exportOpen"
@@ -158,6 +215,7 @@
       <q-space />
       <PagerButtons />
     </div>
+    </template>
 
     <!-- Registered once a row is opened. -->
     <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Annotation" icon="format_quote" :order="1" fill v-slot="{ visible }">
@@ -437,8 +495,8 @@
 <script setup lang="ts">
 import { plural } from 'src/shared/plural'
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { QBtn, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
-import { onBeforeRouteLeave, useRoute } from 'vue-router'
+import { QBtn, QBtnToggle, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import {
   RetrievalMode, ReviewAction, SpanType, TextStatus, type AnnotationListRow, type Attribute, type AttributeAssignResult
@@ -454,7 +512,14 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
+import AnnotationStatisticsPanel from '../statistics/AnnotationStatisticsPanel.vue'
+import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
+import { useAnnotationStatistics } from '../statistics/useAnnotationStatistics'
+import type { ConcordanceFilters } from './concordanceStore'
 import SimilarSourceBar from './SimilarSourceBar.vue'
+import SavedFiltersMenu from './SavedFiltersMenu.vue'
+import SavedFilterHeader from './SavedFilterHeader.vue'
+import { useSavedFiltersStore } from './savedFiltersStore'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
@@ -487,6 +552,9 @@ const selection = reactive(useAnnotationSelectionStore())
 const review = reactive(useAnnotationReviewStore())
 const assign = reactive(useAttributeAssignStore())
 const attributesStore = reactive(useAttributesStore())
+const savedFilters = useSavedFiltersStore()
+/** The tags and attributes of this collection are loaded (the saved filter warns about deleted ones). */
+const definitionsReady = ref(false)
 const userStore = useUserStore()
 const tagsStore = useTagsStore()
 const { tags } = storeToRefs(tagsStore)
@@ -498,6 +566,38 @@ const panel = ref<InstanceType<typeof ChunkContextPanel> | null>(null)
 const spansRepo = useTagSpansRepository()
 
 const collectionId = computed(() => typeof route.params.collectionId === 'string' ? route.params.collectionId : '')
+
+// ── Statistics view (#818): the same query, counted instead of listed (`?view=statistics`, one
+// distribution in full with `&dimension=`). ──
+const router = useRouter()
+const statisticsView = computed(() => route.query.view === 'statistics')
+const statisticsDimension = computed<Dimension | null>(() => {
+  const d = route.query.dimension
+  return typeof d === 'string' && (DIMENSIONS as readonly string[]).includes(d) ? d as Dimension : null
+})
+// Read only while the view is shown (and again on every return to it).
+const { statistics, loading: statisticsLoading, error: statisticsError, load: loadStatistics } = useAnnotationStatistics(
+  computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters))
+const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
+/** The statuses counted, named on the summary line with the denominator. */
+const statisticsStatuses = computed(() => STATUS_ORDER.filter(t => store.filters.types.includes(t)).map(t => STATUS_LABELS[t].toLowerCase()).join(', '))
+/** Annotations changed here (a review, undo, boundary edit or attribute assignment): the menus'
+ * counts and, when shown, the statistics are read again. */
+function countsChanged () {
+  void store.loadFacets()
+  if (statisticsView.value) void loadStatistics()
+}
+function showView (view: 'list' | 'statistics') {
+  void router.push({ query: view === 'statistics' ? { view } : {} })
+}
+function showDimension (dimension: Dimension | null) {
+  void router.push({ query: dimension ? { view: 'statistics', dimension } : { view: 'statistics' } })
+}
+/** Lists exactly a category's annotations: the query narrowed to it, then the list. */
+function drillFromStatistics (change: Partial<ConcordanceFilters>) {
+  void store.setFilters(change)
+  void router.push({ query: {} })
+}
 
 const ranked = computed(() => store.filters.mode !== RetrievalMode.lexical)
 
@@ -637,7 +737,8 @@ const documentRoute = computed(() => {
 
 function showContext (row: AnnotationListRow) {
   if (!row.documentId || !row.chunkId) return null
-  return chunkContext.open({ documentId: row.documentId, chunkId: row.chunkId })
+  // Through the collection: a private document (an uploaded text, #785) is readable only there (#279).
+  return chunkContext.open({ documentId: row.documentId, chunkId: row.chunkId, collectionId: collectionId.value || null })
 }
 
 /** Opens the row in the sidebar; viewing context never changes the selection. */
@@ -818,7 +919,7 @@ function afterReview (report: ReviewReport) {
   if (report.action !== ReviewAction.approve) void store.loadDocuments()
   // The counts of the filter menus follow a review that changed (or may have changed) annotations,
   // once per review, whether or not they are on this page (#667).
-  if (report.saved.length || report.missing.length || report.failed.length) void store.loadFacets()
+  if (report.saved.length || report.missing.length || report.failed.length) countsChanged()
   return loading
 }
 
@@ -1144,7 +1245,7 @@ async function saveBoundary () {
         values: { start: saved.start, end: saved.end, ...(result.chunkId !== saved.chunkId ? { chunkId: saved.chunkId } : {}) }
       }]
     })
-    void store.loadFacets() // the text, and so the words filter's counts, may have changed
+    countsChanged() // the text, and so the words filter's counts, may have changed
     if (boundary.value === b) boundary.value = null
     await followFocused()
     if (applies() && !boundary.value) await cancelBoundary()
@@ -1201,7 +1302,7 @@ const answered = (attributeId: string) => (result: AttributeAssignResult) => sto
 function noteAssigned (changed: number) {
   if (changed && (review.undoable || review.undoNote)) review.noteChange(null, 'Attribute assignments cannot be undone.')
   // The attribute menu's counts follow an assignment that changed something, once per assignment (#667).
-  if (changed) void store.loadFacets()
+  if (changed) countsChanged()
 }
 
 /** Assigns values to one annotation (a row's column or the sidebar), at the attribute version
@@ -1291,6 +1392,7 @@ const SHORTCUTS: Record<string, 'approve' | 'reject' | 'next' | 'previous'> = {
 }
 
 function onReviewShortcut (event: KeyboardEvent) {
+  if (statisticsView.value) return
   if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.defaultPrevented) return
   const shortcut = SHORTCUTS[event.code]
   if (!shortcut || !selection.focused || !rightSidebar.open || rightSidebar.activePanelId !== CONTEXT_PANEL_ID) return
@@ -1322,9 +1424,13 @@ watch(collectionId, async (id) => {
   if (!id) return
   chunkContext.clear()
   const returning = store.collectionId === id && !!store.page
-  void tagsStore.fetchTagsByCollection(id)
-  void attributesStore.load(id)
+  definitionsReady.value = false
+  void Promise.all([tagsStore.fetchTagsByCollection(id), attributesStore.load(id)]).then(() => {
+    if (collectionId.value === id && !tagsStore.error && !attributesStore.error) definitionsReady.value = true
+  })
   const loading = store.open(id)
+  // After open: another collection starts a new workspace, so no live filter is active then.
+  void savedFilters.load(id)
   if (returning) {
     // Back from a document: the same place, then the rows as they are now.
     await nextTick()
@@ -1341,6 +1447,14 @@ watch(collectionId, async (id) => {
 </script>
 
 <style scoped>
+.collection-annotations__view {
+  border: 1px solid var(--q-primary);
+}
+
+.collection-annotations__view :deep(.q-btn) {
+  padding: 0 12px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

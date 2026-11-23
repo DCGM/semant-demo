@@ -42,10 +42,13 @@ docs/CategoryCount.md
 docs/CategoryDistribution.md
 docs/ChatTurn.md
 docs/ChunkFilters.md
+docs/ClassificationValueCount.md
 docs/Collection.md
 docs/CollectionChunk.md
 docs/CollectionExportRequest.md
 docs/CollectionExportTicket.md
+docs/CollectionPassages.md
+docs/CollectionPassagesRequest.md
 docs/CollectionPerson.md
 docs/CollectionStats.md
 docs/ContextChatRequest.md
@@ -91,6 +94,7 @@ docs/HTTPValidationError.md
 docs/LayoutStart.md
 docs/LibraryYearDistribution.md
 docs/LibraryYears.md
+docs/LiveQuery.md
 docs/LocationInner.md
 docs/MaxValue.md
 docs/MaxValue1.md
@@ -103,6 +107,7 @@ docs/NearRelation.md
 docs/NominalFilterValue.md
 docs/PageChunks.md
 docs/Partnumber.md
+docs/PassageClassification.md
 docs/PassageReadRequest.md
 docs/PassageReadResponse.md
 docs/PassageSearchRequest.md
@@ -111,11 +116,13 @@ docs/PatchAttribute.md
 docs/PatchAttributeValue.md
 docs/PatchCollection.md
 docs/PatchCollectionOwner.md
+docs/PatchSavedSelection.md
 docs/PatchSpan.md
 docs/PatchTag.md
 docs/PostAttribute.md
 docs/PostAttributeValue.md
 docs/PostCollection.md
+docs/PostSavedSelection.md
 docs/PostSpan.md
 docs/PostTag.md
 docs/ProximityCoverage.md
@@ -139,6 +146,8 @@ docs/ResultKind.md
 docs/ResultMember.md
 docs/RetrievalMode.md
 docs/ReviewAction.md
+docs/SavedSelection.md
+docs/SavedSelectionKind.md
 docs/SearchChatRequest.md
 docs/SearchCriteria.md
 docs/SearchFilter.md
@@ -164,6 +173,9 @@ docs/TagSpanBatchRequest.md
 docs/TagSpanWriteResult.md
 docs/TextScope.md
 docs/TextStatus.md
+docs/TextUploadAvailability.md
+docs/TextUploadFileResult.md
+docs/TextUploadResponse.md
 docs/TopicerConfigsResponse.md
 docs/Url.md
 docs/UserCreate.md
@@ -220,10 +232,13 @@ models/CategoryCount.ts
 models/CategoryDistribution.ts
 models/ChatTurn.ts
 models/ChunkFilters.ts
+models/ClassificationValueCount.ts
 models/Collection.ts
 models/CollectionChunk.ts
 models/CollectionExportRequest.ts
 models/CollectionExportTicket.ts
+models/CollectionPassages.ts
+models/CollectionPassagesRequest.ts
 models/CollectionPerson.ts
 models/CollectionStats.ts
 models/ContextChatRequest.ts
@@ -268,6 +283,7 @@ models/HTTPValidationError.ts
 models/LayoutStart.ts
 models/LibraryYearDistribution.ts
 models/LibraryYears.ts
+models/LiveQuery.ts
 models/LocationInner.ts
 models/MaxValue.ts
 models/MaxValue1.ts
@@ -280,6 +296,7 @@ models/NearRelation.ts
 models/NominalFilterValue.ts
 models/PageChunks.ts
 models/Partnumber.ts
+models/PassageClassification.ts
 models/PassageReadRequest.ts
 models/PassageReadResponse.ts
 models/PassageSearchRequest.ts
@@ -288,11 +305,13 @@ models/PatchAttribute.ts
 models/PatchAttributeValue.ts
 models/PatchCollection.ts
 models/PatchCollectionOwner.ts
+models/PatchSavedSelection.ts
 models/PatchSpan.ts
 models/PatchTag.ts
 models/PostAttribute.ts
 models/PostAttributeValue.ts
 models/PostCollection.ts
+models/PostSavedSelection.ts
 models/PostSpan.ts
 models/PostTag.ts
 models/ProximityCoverage.ts
@@ -316,6 +335,8 @@ models/ResultKind.ts
 models/ResultMember.ts
 models/RetrievalMode.ts
 models/ReviewAction.ts
+models/SavedSelection.ts
+models/SavedSelectionKind.ts
 models/SearchChatRequest.ts
 models/SearchCriteria.ts
 models/SearchFilter.ts
@@ -341,6 +362,9 @@ models/TagSpanBatchRequest.ts
 models/TagSpanWriteResult.ts
 models/TextScope.ts
 models/TextStatus.ts
+models/TextUploadAvailability.ts
+models/TextUploadFileResult.ts
+models/TextUploadResponse.ts
 models/TopicerConfigsResponse.ts
 models/Url.ts
 models/UserCreate.ts

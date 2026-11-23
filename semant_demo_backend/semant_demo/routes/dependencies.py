@@ -3,6 +3,7 @@ from starlette.requests import HTTPConnection
 
 from semant_demo.adapters.filesystem.page_assets import PageAssetStore
 from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.adapters.sql.saved_selections import SavedSelectionRepository
 from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway
@@ -11,12 +12,14 @@ from semant_demo.adapters.weaviate.analytics import CorpusAnalyticsRepository
 from semant_demo.adapters.weaviate.user_collections import UserCollectionRepository
 from semant_demo.adapters.weaviate.documents import DocumentRepository
 from semant_demo.adapters.weaviate.tags import TagRepository
+from semant_demo.adapters.weaviate.text_upload import TextUploadRepository
 from semant_demo.bootstrap import AppResources, WeaviateRepositories
 from semant_demo.config import Config
 from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.documents.asset_access import AssetSigner
 from semant_demo.features.attributes.service import AttributeStore
+from semant_demo.features.saved_selections.service import SavedSelectionStore
 from semant_demo.features.quota.service import QuotaPolicy
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.search.vectors import SearchVectors
@@ -72,6 +75,10 @@ async def get_tags(connection: HTTPConnection) -> TagRepository:
 async def get_user_collections(connection: HTTPConnection) -> UserCollectionRepository:
     return _weaviate(connection).user_collections
 
+async def get_text_upload_store(connection: HTTPConnection) -> TextUploadRepository:
+    """The writes of the text document upload (#785)."""
+    return TextUploadRepository(_weaviate(connection).client, get_config(connection).collectionNames)
+
 async def get_corpus_analytics(connection: HTTPConnection) -> CorpusAnalyticsRepository:
     return _weaviate(connection).analytics
 
@@ -91,6 +98,13 @@ def get_attribute_definitions(connection: HTTPConnection) -> AttributeRepository
 async def get_attribute_store(connection: HTTPConnection) -> AttributeStore:
     return AttributeStore(definitions=get_resources(connection).attributes,
                           annotations=await get_annotation_store(connection))
+
+def get_saved_selections(connection: HTTPConnection) -> SavedSelectionRepository:
+    return get_resources(connection).saved_selections
+
+async def get_saved_selection_store(connection: HTTPConnection) -> SavedSelectionStore:
+    return SavedSelectionStore(collections=_weaviate(connection).user_collections,
+                               selections=get_resources(connection).saved_selections)
 
 async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)

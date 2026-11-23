@@ -13,7 +13,12 @@ def get_client(
     api_key: Optional[str] = None
 ) -> weaviate.WeaviateClient:
     """Create a Weaviate client based on parameters.
-    
+
+    The client's start-up checks (its version lookup on pypi.org and its gRPC ping) are skipped,
+    as in the backend, so an unreachable gRPC port fails at the first query, not when connecting.
+    Without ``api_key`` the client also skips asking the server whether it requires OIDC login, so
+    a missing login fails at the first request instead.
+
     Args:
         host: Weaviate host address.
         port: HTTP/REST port.
@@ -34,7 +39,8 @@ def get_client(
         port=port,
         grpc_port=grpc_port,
         headers=headers,
-        auth_credentials=auth_credentials
+        auth_credentials=auth_credentials,
+        skip_init_checks=True,
     )
 
 
@@ -43,6 +49,11 @@ PROVENANCE = "classification_provenance"
 configured model/version identifier. Declared by the backend's
 ``classification_provenance_schema``; this tool never declares it on a real store."""
 UNPROCESSED = "UNPROCESSED"
+DOCUMENT_LINK = "document"
+"""The chunk's reference to its document, whose ``public`` decides who may read it (#279)."""
+DOCUMENT_PUBLIC = "documentPublic"
+"""The chunk's indexed, fail-closed copy of its document's ``public`` (#793): ``true`` only for a
+chunk of exactly one public document."""
 TEST_COLLECTION = "MetaDataEnrichmentTest"
 
 

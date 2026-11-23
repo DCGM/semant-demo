@@ -36,6 +36,11 @@ async function chooseLanguage (page: Page, label: string) {
   await page.getByRole('option', { name: label, exact: true }).click()
   await page.keyboard.press('Escape') // closes the options menu
   await page.getByRole('button', { name: 'Search filters' }).click()
+  // An option picked while its menu still opens queues a focus of the select, which Quasar
+  // runs when the menu has closed (`focus-manager`), ~0.2 s later: it took the focus from the
+  // search input, and the next Enter searched nothing. Wait for the menu and the panel to close.
+  await expect(page.getByRole('option', { name: label, exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Language', { exact: true })).toBeHidden()
 }
 
 for (const viewport of ['wide', 'phone'] as const) {

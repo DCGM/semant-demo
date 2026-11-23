@@ -15,10 +15,12 @@ pip install -e .
 
 ## Features
 
+- **Documents that are not public** (`public` false or absent: restricted library documents and private uploaded texts, #785): selected only with `include_restricted_documents: true`, or, when it is unset, for a local model; an API model's provider never receives their text unless the option is set (`restricted_documents` in the summary). Selects `documentPublic == true` (the indexed, fail-closed copy of the document's `public`, #793) when the collection declares it, otherwise filters on the `document` reference, which is slow on a large store (`restricted_by` in the summary); a collection with neither has no document rights to apply.
 - **Selection by status**: only `UNPROCESSED` chunks, optionally narrowed by `filters` (never on a mapped field or `classification_provenance`). Each page is the first page of what is left (no offset), so no chunk is skipped and no query reaches Weaviate's `QUERY_MAXIMUM_RESULTS`.
 - **Missing fields only**: the model is asked only for the mapped fields a chunk is missing (absent, `null` or `[]`). Existing non-empty values are never overwritten.
 - **One update per chunk**: the computed fields and the provenance are written together, and only when every missing field got a valid result (a non-empty list of the task's labels). Otherwise nothing is written and the chunk stays `UNPROCESSED` for the next run.
 - **Stop on repeated failures**: after `max_consecutive_failures` failed chunks in a row (e.g. an unreachable model) the run stops instead of iterating the whole selection. After `max_failures` failed chunks in total it stops too: the ids of the failed chunks are excluded from every query and listed in the summary, so they must stay few.
+- **No start-up checks**: the Weaviate client skips its version lookup on pypi.org and its gRPC ping, as the backend does (#798); a wrong `weaviate_grpc_port` fails at the first query, before any write.
 - **Read-only schema**: a missing collection, a missing or non-`text[]` mapped field and a missing `classification_provenance` refuse the run. The schema is never changed; declare `classification_provenance` with the backend's `classification_provenance_schema --apply` ([DATA_MAINTENANCE.md](../../docs/DATA_MAINTENANCE.md#chunk-classification-status-classification_provenance_schema-590)). The collection may be an alias.
 - **Local multitask models**: loads the converted ModernBERT multitask classifier and runs only the classification heads mapped in the config.
 - **Configured via YAML**: uses the `classconfig` library to validate the configuration on the pipeline class.
@@ -92,7 +94,7 @@ The configuration file is a flat YAML file mapped directly to the `EnrichmentPip
 - Database collection target: `collection` (a collection or an alias)
 - `provenance`: the model/version identifier (see above)
 - Data mapping: `field_tasks`, a non-empty dict mapping Weaviate field names (declared as `text[]`) to classification tasks
-- Selection and execution: `filters`, `batch_size`, `max_records` (limit per run), `max_consecutive_failures`, `max_failures`, `max_retries`, `retry_delay` (database updates)
+- Selection and execution: `filters`, `include_restricted_documents`, `batch_size`, `max_records` (limit per run), `max_consecutive_failures`, `max_failures`, `max_retries`, `retry_delay` (database updates)
 - Model definition: `model` (select `LocalHFClassifierModel` or `APIModel` via the `cls` field). `APIModel` treats a failed request, an unrenderable prompt or a refusal as no result, so the chunk is not written.
 
 ## Tests

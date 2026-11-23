@@ -75,6 +75,8 @@ class TagSpan(BaseModel):
     # service. Stored alongside the span itself in the database.
     reason: str | None = None
     confidence: float | None = None
+    # Actual #460 provenance only; None for legacy annotations/collections without it.
+    createdAt: datetime | None = None
     editVersion: int = 0
     """Span writes (type, tag, offsets) since creation (#460); 0 for spans never written
     since. Sent back as ``expected_version`` so a collaborator's intervening write is
@@ -655,6 +657,11 @@ class AnnotationFacetsRequest(AnnotationFilters):
     ``library``, ``language`` and ``attribute:<attribute id>``."""
     facets: list[str] = Field(min_length=1, max_length=MAX_FACETS)
     ranking: AnnotationRanking = Field(default_factory=AnnotationRanking)
+    self_exclusion: bool = True
+    """Lexical queries: count each facet with the query's filter on that same facet removed (the filter
+    menus). False counts every facet over exactly the query's own population, as the statistics of
+    the query do (#818): the values of a single-valued facet then add up to ``total`` - ``missing``
+    of the same annotations. Ranked queries always count their top ``k`` as it is."""
 
     @field_validator("facets")
     @classmethod

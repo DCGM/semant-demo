@@ -12,11 +12,13 @@ export type AppliedReason = 'navigation' | 'apply'
  * changes, and also when `apply` is called with the current one (an explicit "search again").
  * Malformed URL values are left out, named in `invalid`, and replaced in the URL (no new
  * history entry). While another page is shown (a kept-alive page), its URLs are ignored, and
- * coming back to the same URL changes nothing.
+ * coming back to the same URL changes nothing, unless `appliesUnchanged(location)` says that
+ * navigation must apply it anyway (a collection handed over for it, `exploreHandoff`).
  */
 export function useExploreLocation (
   routeName: string,
-  onApplied: (location: ExploreLocation, details: { reason: AppliedReason, invalid: string[] }) => void
+  onApplied: (location: ExploreLocation, details: { reason: AppliedReason, invalid: string[] }) => void,
+  { appliesUnchanged }: { appliesUnchanged?: (location: ExploreLocation) => boolean } = {}
 ) {
   const route = useRoute()
   const router = useRouter()
@@ -26,7 +28,7 @@ export function useExploreLocation (
   function fromUrl (query: LocationQuery) {
     const { location, invalid } = parseLocationQuery(query)
     if (invalid.length) void router.replace({ name: routeName, query: locationQuery(location) })
-    if (initialized && locationKey(location) === locationKey(applied.value)) {
+    if (initialized && locationKey(location) === locationKey(applied.value) && !appliesUnchanged?.(location)) {
       if (invalid.length) onApplied(applied.value, { reason: 'navigation', invalid })
       return
     }

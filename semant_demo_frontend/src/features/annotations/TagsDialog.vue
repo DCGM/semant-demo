@@ -139,11 +139,13 @@
           >
             <div class="col">
               <q-input
+                :ref="(el: unknown) => { exampleInputs[index] = el as QInput | null }"
                 v-model="tagExamples[index]"
                 outlined
                 :label="`Example ${index + 1}`"
                 :disable="saving"
                 clearable
+                @keydown.enter.exact="onExampleEnter(index, $event)"
               />
             </div>
             <div class="col-auto self-center">
@@ -194,7 +196,7 @@
 
 <script setup lang="ts">
 import FormDialog from 'src/shared/ui/FormDialog.vue'
-import { QForm, useDialogPluginComponent } from 'quasar'
+import { QForm, QInput, useDialogPluginComponent } from 'quasar'
 import { storeToRefs } from 'pinia'
 import useColorPicker from 'src/shared/useColorPicker'
 import { plural } from 'src/shared/plural'
@@ -238,7 +240,7 @@ const tagPictogram = ref<string>(
   props.tag?.pictogram?.trim() || defaultTagPictogram
 )
 const tagDefinition = ref<string | null>(props.tag?.definition ?? null)
-const tagExamples = ref<string[]>(
+const tagExamples = ref<(string | null)[]>(
   props.tag?.examples?.length
     ? [...props.tag.examples]
     : ['']
@@ -293,14 +295,35 @@ const tagPictogramOptions = [
   { label: 'Info', value: 'info' }
 ]
 
+// An example cleared with its clear button is null (QInput's clearable).
 const normalizedExamples = computed<string[]>(() => {
   return tagExamples.value
-    .map((item: string) => item.trim())
+    .map((item: string | null) => (item ?? '').trim())
     .filter((item: string) => item.length > 0)
 })
 
 const addExampleField = () => {
   tagExamples.value.push('')
+}
+
+// Enter in an example moves to the next one; in the last one with text it adds an example (#763).
+// It never submits the form, and a blank last example adds nothing.
+// Not reactive: filled by the inputs' function refs while rendering.
+const exampleInputs: (QInput | null)[] = []
+const onExampleEnter = async (index: number, event: KeyboardEvent) => {
+  // Enter that confirms an input method's composition belongs to the input method. Safari ends
+  // the composition before that keydown, which it marks only with keyCode 229.
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  if (saving.value) return
+  if (index < tagExamples.value.length - 1) {
+    exampleInputs[index + 1]?.focus()
+    return
+  }
+  if (!tagExamples.value[index]?.trim()) return
+  addExampleField()
+  await nextTick()
+  exampleInputs[index + 1]?.focus()
 }
 
 const removeExampleField = (index: number) => {

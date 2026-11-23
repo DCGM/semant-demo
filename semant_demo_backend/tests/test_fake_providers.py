@@ -103,6 +103,8 @@ async def test_unfaked_provider_routes_fail_visibly(fake_client):
     response = await fake_client.post("/v1/chat/completions", json={})
 
     assert response.status_code == 501
+    # The OpenAI client retries a 5xx after this instead of its random backoff (#853).
+    assert response.headers["retry-after-ms"] == "1"
 
 
 async def test_configured_openrouter_chat_summarizes_the_passages_it_was_sent(fake_app, tmp_path):

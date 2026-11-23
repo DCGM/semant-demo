@@ -38,15 +38,15 @@ def _ref(schema: dict) -> str:
     return schema["$ref"].rsplit("/", 1)[1]
 
 
-def test_each_api_model_is_one_component(tmp_path):
-    components = create_app(make_test_config(tmp_path)).openapi()["components"]["schemas"]
+def test_each_api_model_is_one_component(openapi_schema):
+    components = openapi_schema["components"]["schemas"]
 
     # Name clashes give module-path names; differing request/response variants -Input/-Output.
     assert [name for name in components if "__" in name or name.endswith(("-Input", "-Output"))] == []
 
 
-def test_every_document_read_uses_the_document_component(tmp_path):
-    schema = create_app(make_test_config(tmp_path)).openapi()
+def test_every_document_read_uses_the_document_component(openapi_schema):
+    schema = openapi_schema
     components = schema["components"]["schemas"]
 
     assert _ref(components["DocumentBrowse"]["properties"]["items"]["items"]) == "Document"
@@ -57,10 +57,10 @@ def test_every_document_read_uses_the_document_component(tmp_path):
     assert components["Document"]["properties"]["author"]["anyOf"][0] == {"type": "array", "items": {"type": "string"}}
 
 
-def test_chunk_projections_keep_their_names_and_wire_properties(tmp_path):
+def test_chunk_projections_keep_their_names_and_wire_properties(openapi_schema):
     """#284: each chunk read has its own owner-named component; renaming kept the wire fields.
     #541 added the optional ``layoutStart`` to the corpus and collection chunks."""
-    schema = create_app(make_test_config(tmp_path)).openapi()
+    schema = openapi_schema
     components = schema["components"]["schemas"]
     stored = {"id", "text", "start_page_id", "from_page", "to_page", "document", "title", "end_paragraph",
               "language", "order", "layoutStart", "ner_P", "ner_T", "ner_A", "ner_G", "ner_I", "ner_M", "ner_O"}
@@ -130,9 +130,14 @@ USER_COLLECTION_ROUTES = {
     ("delete", "/api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id}"),
     ("post", "/api/user_collections/{collection_id}/annotations/attributes/assign"),
     ("get", "/api/user_collections/{collection_id}/annotations/{annotation_id}/attribute-changes"),
+    ("get", "/api/user_collections/{collection_id}/saved-selections"),
+    ("post", "/api/user_collections/{collection_id}/saved-selections"),
+    ("patch", "/api/user_collections/{collection_id}/saved-selections/{selection_id}"),
+    ("delete", "/api/user_collections/{collection_id}/saved-selections/{selection_id}"),
     ("post", "/api/user_collections/{collection_id}/chunks/{chunk_id}"),
     ("delete", "/api/user_collections/{collection_id}/chunks/{chunk_id}"),
     ("get", "/api/user_collections/{collection_id}/documents"),
+    ("post", "/api/user_collections/{collection_id}/text_documents"),
     ("get", "/api/user_collections/{collection_id}/documents/{document_id}"),
     ("post", "/api/user_collections/{collection_id}/documents/{document_id}"),
     ("delete", "/api/user_collections/{collection_id}/documents/{document_id}"),
@@ -145,9 +150,19 @@ USER_COLLECTION_ROUTES = {
 }
 
 
-def test_collection_routes_are_one_route_family(tmp_path):
+def test_a_chunk_stored_without_end_paragraph_reads_as_ending_a_paragraph():
+    """#798: ``chunk_ingest`` takes ``end_paragraph`` as optional, so the store returns None for
+    a chunk imported without it; every corpus chunk read (search, window, page) must still answer."""
+    stored = {"id": CHUNK, "text": "Text", "document": DOC, "order": 0, "end_paragraph": None}
+
+    assert DocumentChunk(**stored).end_paragraph is True
+    assert SearchResultChunk(**stored, document_object=Document(id=DOC)).end_paragraph is True
+    assert DocumentChunk(**{**stored, "end_paragraph": False}).end_paragraph is False
+
+
+def test_collection_routes_are_one_route_family(openapi_schema):
     """#287: collection-scoped routes live under /api/user_collections only; old aliases are gone."""
-    paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
+    paths = openapi_schema["paths"]
     routes = {(method, path) for path, operations in paths.items() for method in operations}
 
     assert {r for r in routes if r[1].startswith("/api/user_collections")} == USER_COLLECTION_ROUTES
@@ -178,9 +193,9 @@ async def test_document_responses_serialize_stored_properties(tmp_path):
     assert browse.json()["items"] == [expected]
 
 
-def test_chunk_count_keeps_its_public_contract(tmp_path):
+def test_chunk_count_keeps_its_public_contract(openapi_schema):
     # Moved from the Collections router to the Documents feature in #210.
-    operation = create_app(make_test_config(tmp_path)).openapi()["paths"]["/api/documents/{document_id}/chunks/count"]
+    operation = openapi_schema["paths"]["/api/documents/{document_id}/chunks/count"]
 
     assert list(operation) == ["get"]
     assert operation["get"]["operationId"] == "count_document_chunks_api_documents__document_id__chunks_count_get"
@@ -254,8 +269,8 @@ def test_search_response_is_accepted_back_as_summary_input():
     assert again.model_dump(mode="json") == wire
 
 
-def test_search_hit_classifications_are_optional_and_round_trip(tmp_path):
-    hit_schema = create_app(make_test_config(tmp_path)).openapi()["components"]["schemas"]["SearchResultChunk"]
+def test_search_hit_classifications_are_optional_and_round_trip(openapi_schema):
+    hit_schema = openapi_schema["components"]["schemas"]["SearchResultChunk"]
     assert "metadata" not in hit_schema.get("required", [])
     assert hit_schema["properties"]["metadata"]["additionalProperties"] == {"type": "array", "items": {"type": "string"}}
 
@@ -330,8 +345,8 @@ async def test_browse_without_chunk_filters_is_unchanged(tmp_path):
     assert len(_RecordingDocuments.calls) == 1
 
 
-def test_browse_documents_its_chunk_filter_parameters(tmp_path):
-    operation = create_app(make_test_config(tmp_path)).openapi()["paths"]["/api/documents/browse"]["get"]
+def test_browse_documents_its_chunk_filter_parameters(openapi_schema):
+    operation = openapi_schema["paths"]["/api/documents/browse"]["get"]
     parameters = {p["name"]: p for p in operation["parameters"]}
 
     assert parameters["chunk_languages"]["schema"]["type"] == "array"

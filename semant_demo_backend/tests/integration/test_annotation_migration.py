@@ -234,7 +234,8 @@ async def test_a_state_of_another_run_is_refused(migration_store, legacy, tmp_pa
         migration.load_state(state_path, "elsewhere:8080", "Span", "Annotation", False)
 
 
-async def test_the_backup_must_hold_the_source_collections(seeded_store, collection_names, legacy):
+async def test_the_backup_must_hold_the_source_collections(seeded_store, collection_names, legacy,
+                                                           quick_backup_polls):
     names = collection_names
     partial, full = f"partial-{uuid.uuid4().hex[:8]}", f"full-{uuid.uuid4().hex[:8]}"
     await seeded_store.backup.create(backup_id=partial, backend=BackupStorage.FILESYSTEM,

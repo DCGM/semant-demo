@@ -9,6 +9,8 @@ vectors:
     name: BGE Multilingual Gemma2
     description: The original chunk embeddings (BAAI/bge-multilingual-gemma2, 3584 dimensions).
     target_vector: default
+    # The project's own embedding service: approved to embed uploaded private text (#785).
+    private_text: true
     embedding:
       provider: embedding_service  # EMBEDDING_SERVICE_HOST / EMBEDDING_SERVICE_PORT
 

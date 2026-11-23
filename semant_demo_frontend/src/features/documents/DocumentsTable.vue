@@ -26,6 +26,15 @@
           color="primary"
           @click="handleBrowseLibrary"
         />
+        <BaseButton
+          v-if="rights.editMembership"
+          icon="upload_file"
+          label="Upload text documents"
+          color="primary"
+          outline
+          data-testid="upload-text-documents"
+          @click="handleUploadText"
+        />
         <q-input
           :class="{ 'q-ml-md': rights.editMembership }"
           v-model="filter"
@@ -166,6 +175,7 @@ import { Document, DocumentStats } from 'src/generated/api'
 import { useDocumentsStore } from './documentsStore'
 import useBrowseLibraryDialog from './useBrowseLibraryDialog'
 import { bulkRemovalConfirmation, singleRemovalConfirmation } from './removalConfirmation'
+import TextUploadDialog from './upload/TextUploadDialog.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseButton from 'src/shared/ui/BaseButton.vue'
 import ColumnPicker from 'src/shared/ui/ColumnPicker.vue'
@@ -236,6 +246,13 @@ const loadAllDocumentStats = async () => {
 
 const handleBrowseLibrary = () => {
   openBrowseLibraryDialog({ collectionId: collectionId.value })
+}
+
+// Private .txt documents (#785); the list is reloaded when the dialog added any.
+const handleUploadText = () => {
+  const id = collectionId.value
+  $q.dialog({ component: TextUploadDialog, componentProps: { collectionId: id } })
+    .onOk(() => { if (id === collectionId.value) void fetchDocumentsByCollection(id) })
 }
 
 const handleTagDocument = (documentId: string) => {

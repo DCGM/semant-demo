@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Document(BaseModel):
@@ -70,12 +70,16 @@ class DocumentChunk(BaseModel):
     offsets refer to; the search hit (``SearchResultChunk``) extends it with display text."""
     id: UUID
     text: str
-    start_page_id: UUID
-    from_page: int
-    to_page: int
+    start_page_id: UUID | None = None
+    from_page: int | None = None
+    to_page: int | None = None
+    """The first page's id and the page range; absent for a text-only document (an uploaded
+    text, #785), whose chunks have no pages."""
     document: UUID
     title: str | None = None
     end_paragraph: bool = True
+    """Whether the chunk ends a paragraph. A chunk stored without it (``chunk_ingest`` takes it
+    as optional) reads as true, as the collection chunk does (#798)."""
     language: str | None = None
     order: int | None
     layoutStart: LayoutStart | None = None
@@ -89,6 +93,11 @@ class DocumentChunk(BaseModel):
     ner_I: list[str] | None = None  # Institution entities
     ner_M: list[str] | None = None  # Media entities
     ner_O: list[str] | None = None  # Cultural artifacts
+
+    @field_validator("end_paragraph", mode="before")
+    @classmethod
+    def _absent_ends_a_paragraph(cls, value):
+        return True if value is None else value
 
 
 class DocumentBrowse(BaseModel):

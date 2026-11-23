@@ -39,6 +39,8 @@ import type {
   CollectionChunk,
   CollectionExportRequest,
   CollectionExportTicket,
+  CollectionPassages,
+  CollectionPassagesRequest,
   CollectionPerson,
   CollectionStats,
   ContextChatRequest,
@@ -78,11 +80,13 @@ import type {
   PatchAttributeValue,
   PatchCollection,
   PatchCollectionOwner,
+  PatchSavedSelection,
   PatchSpan,
   PatchTag,
   PostAttribute,
   PostAttributeValue,
   PostCollection,
+  PostSavedSelection,
   PostSpan,
   PostTag,
   QuestionRequest,
@@ -94,6 +98,7 @@ import type {
   RankedResultsDistributions,
   RankedResultsDistributionsRequest,
   RetrievalMode,
+  SavedSelection,
   SearchChatRequest,
   SearchFiltersResponse,
   SearchRequest,
@@ -110,6 +115,8 @@ import type {
   TagSpanBatchRequest,
   TagSpanWriteResult,
   TextScope,
+  TextUploadAvailability,
+  TextUploadResponse,
   TopicerConfigsResponse,
   UserSearchResult,
   WriteResult,
@@ -163,6 +170,10 @@ import {
     CollectionExportRequestToJSON,
     CollectionExportTicketFromJSON,
     CollectionExportTicketToJSON,
+    CollectionPassagesFromJSON,
+    CollectionPassagesToJSON,
+    CollectionPassagesRequestFromJSON,
+    CollectionPassagesRequestToJSON,
     CollectionPersonFromJSON,
     CollectionPersonToJSON,
     CollectionStatsFromJSON,
@@ -241,6 +252,8 @@ import {
     PatchCollectionToJSON,
     PatchCollectionOwnerFromJSON,
     PatchCollectionOwnerToJSON,
+    PatchSavedSelectionFromJSON,
+    PatchSavedSelectionToJSON,
     PatchSpanFromJSON,
     PatchSpanToJSON,
     PatchTagFromJSON,
@@ -251,6 +264,8 @@ import {
     PostAttributeValueToJSON,
     PostCollectionFromJSON,
     PostCollectionToJSON,
+    PostSavedSelectionFromJSON,
+    PostSavedSelectionToJSON,
     PostSpanFromJSON,
     PostSpanToJSON,
     PostTagFromJSON,
@@ -273,6 +288,8 @@ import {
     RankedResultsDistributionsRequestToJSON,
     RetrievalModeFromJSON,
     RetrievalModeToJSON,
+    SavedSelectionFromJSON,
+    SavedSelectionToJSON,
     SearchChatRequestFromJSON,
     SearchChatRequestToJSON,
     SearchFiltersResponseFromJSON,
@@ -305,6 +322,10 @@ import {
     TagSpanWriteResultToJSON,
     TextScopeFromJSON,
     TextScopeToJSON,
+    TextUploadAvailabilityFromJSON,
+    TextUploadAvailabilityToJSON,
+    TextUploadResponseFromJSON,
+    TextUploadResponseToJSON,
     TopicerConfigsResponseFromJSON,
     TopicerConfigsResponseToJSON,
     UserSearchResultFromJSON,
@@ -367,6 +388,10 @@ export interface ChatAboutSearchResultsApiSearchChatPostRequest {
     searchChatRequest: SearchChatRequest;
 }
 
+export interface CollectionPassagesApiAnalyticsCollectionPassagesPostRequest {
+    collectionPassagesRequest: CollectionPassagesRequest;
+}
+
 export interface CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest {
     corpusDistributionsRequest: CorpusDistributionsRequest;
 }
@@ -388,6 +413,11 @@ export interface CountDocumentChunksApiDocumentsDocumentIdChunksCountGetRequest 
 export interface CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest {
     collectionId: string;
     postAttribute: PostAttribute;
+}
+
+export interface CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest {
+    collectionId: string;
+    postSavedSelection: PostSavedSelection;
 }
 
 export interface CreateTagApiTagsPostRequest {
@@ -420,6 +450,11 @@ export interface DeleteAutoSpansApiAiAutoSpansDeletePostRequest {
 
 export interface DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest {
     collectionId: string;
+}
+
+export interface DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest {
+    collectionId: string;
+    selectionId: string;
 }
 
 export interface DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest {
@@ -587,6 +622,10 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     k?: number;
     similarTo?: string | null;
     includeSource?: boolean;
+}
+
+export interface ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest {
+    collectionId: string;
 }
 
 export interface QuestionApiQuestionPostRequest {
@@ -763,6 +802,12 @@ export interface UpdateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRe
     patchCollectionOwner: PatchCollectionOwner;
 }
 
+export interface UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest {
+    collectionId: string;
+    selectionId: string;
+    patchSavedSelection: PatchSavedSelection;
+}
+
 export interface UpdateTagApiTagsTagUuidPatchRequest {
     tagUuid: string;
     patchTag: PatchTag;
@@ -773,6 +818,12 @@ export interface UpdateTagSpanApiTagSpansSpanIdPatchRequest {
     collectionId: string;
     patchSpan: PatchSpan;
     expectedVersion?: number | null;
+}
+
+export interface UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest {
+    collectionId: string;
+    files: Array<Blob>;
+    metadata?: Blob;
 }
 
 /**
@@ -1019,6 +1070,30 @@ export interface DefaultApiInterface {
     chatAboutSearchResultsApiSearchChatPost(requestParameters: ChatAboutSearchResultsApiSearchChatPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
+     * Creates request options for collectionPassagesApiAnalyticsCollectionPassagesPost without sending the request
+     * @param {CollectionPassagesRequest} collectionPassagesRequest 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * @summary Collection Passages
+     * @param {CollectionPassagesRequest} collectionPassagesRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>>;
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages>;
+
+    /**
      * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
      * @param {CorpusDistributionsRequest} corpusDistributionsRequest 
      * @throws {RequiredError}
@@ -1165,6 +1240,32 @@ export interface DefaultApiInterface {
      * Create Attribute
      */
     createAttributeApiUserCollectionsCollectionIdAttributesPost(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute>;
+
+    /**
+     * Creates request options for createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost without sending the request
+     * @param {string} collectionId 
+     * @param {PostSavedSelection} postSavedSelection 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequestOpts(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * @summary Create Saved Selection
+     * @param {string} collectionId 
+     * @param {PostSavedSelection} postSavedSelection 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRaw(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>>;
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * Create Saved Selection
+     */
+    createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection>;
 
     /**
      * Creates request options for createTagApiTagsPost without sending the request
@@ -1327,7 +1428,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiUserCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * @summary Delete Collection
      * @param {string} collectionId 
      * @param {*} [options] Override http request option.
@@ -1337,10 +1438,36 @@ export interface DefaultApiInterface {
     deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     deleteCollectionApiUserCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete without sending the request
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequestOpts(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * @summary Delete Saved Selection
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRaw(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * Delete Saved Selection
+     */
+    deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost without sending the request
@@ -2226,6 +2353,30 @@ export interface DefaultApiInterface {
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
 
     /**
+     * Creates request options for listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequestOpts(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * @summary List Saved Selections
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRaw(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SavedSelection>>>;
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * List Saved Selections
+     */
+    listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SavedSelection>>;
+
+    /**
      * Creates request options for questionApiQuestionPost without sending the request
      * @param {QuestionRequest} questionRequest 
      * @throws {RequiredError}
@@ -2994,6 +3145,28 @@ export interface DefaultApiInterface {
     summarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPost(requestParameters: SummarizeDocumentApiUserCollectionsCollectionIdDocumentsDocumentIdSummaryPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<DocumentSummaryResponse>;
 
     /**
+     * Creates request options for textUploadAvailabilityApiTextDocumentsAvailabilityGet without sending the request
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts(): Promise<runtime.RequestOpts>;
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * @summary Text Upload Availability
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadAvailability>>;
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    textUploadAvailabilityApiTextDocumentsAvailabilityGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadAvailability>;
+
+    /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
      * @param {string} collectionId 
      * @param {string} userId 
@@ -3130,6 +3303,34 @@ export interface DefaultApiInterface {
     updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch(requestParameters: UpdateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
+     * Creates request options for updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch without sending the request
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @param {PatchSavedSelection} patchSavedSelection 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequestOpts(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * @summary Update Saved Selection
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @param {PatchSavedSelection} patchSavedSelection 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRaw(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>>;
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * Update Saved Selection
+     */
+    updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection>;
+
+    /**
      * Creates request options for updateTagApiTagsTagUuidPatch without sending the request
      * @param {string} tagUuid 
      * @param {PatchTag} patchTag 
@@ -3184,6 +3385,34 @@ export interface DefaultApiInterface {
      * Update Tag Span
      */
     updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult>;
+
+    /**
+     * Creates request options for uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost without sending the request
+     * @param {string} collectionId 
+     * @param {Array<Blob>} files The UTF-8 .txt files.
+     * @param {Blob} [metadata] Optional metadata CSV (docs/TEXT_UPLOAD.md).
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * @summary Upload Text Documents
+     * @param {string} collectionId 
+     * @param {Array<Blob>} files The UTF-8 .txt files.
+     * @param {Blob} [metadata] Optional metadata CSV (docs/TEXT_UPLOAD.md).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadResponse>>;
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadResponse>;
 
 }
 
@@ -3729,6 +3958,60 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for collectionPassagesApiAnalyticsCollectionPassagesPost without sending the request
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionPassagesRequest'] == null) {
+            throw new runtime.RequiredError(
+                'collectionPassagesRequest',
+                'Required parameter "collectionPassagesRequest" was null or undefined when calling collectionPassagesApiAnalyticsCollectionPassagesPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/analytics/collection/passages`;
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: CollectionPassagesRequestToJSON(requestParameters['collectionPassagesRequest']),
+        };
+    }
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CollectionPassages>> {
+        const requestOptions = await this.collectionPassagesApiAnalyticsCollectionPassagesPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CollectionPassagesFromJSON(jsonValue));
+    }
+
+    /**
+     * Counts of the passages included in one user collection (#807; the chunks linked to it, not every passage of its documents), for readers of the collection only (401 without a user, 404 otherwise), always counted now. Without ``dimension``: the total and the passages per detected language. With ``dimension`` (a chunk classification the search filters configure, 400 otherwise): the total and the passages per value of that classification only, every configured value included; a passage can hold several.
+     * Collection Passages
+     */
+    async collectionPassagesApiAnalyticsCollectionPassagesPost(requestParameters: CollectionPassagesApiAnalyticsCollectionPassagesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CollectionPassages> {
+        const response = await this.collectionPassagesApiAnalyticsCollectionPassagesPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for corpusDistributionsApiAnalyticsCorpusDistributionsPost without sending the request
      */
     async corpusDistributionsApiAnalyticsCorpusDistributionsPostRequestOpts(requestParameters: CorpusDistributionsApiAnalyticsCorpusDistributionsPostRequest): Promise<runtime.RequestOpts> {
@@ -4050,6 +4333,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async createAttributeApiUserCollectionsCollectionIdAttributesPost(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute> {
         const response = await this.createAttributeApiUserCollectionsCollectionIdAttributesPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost without sending the request
+     */
+    async createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequestOpts(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost().'
+            );
+        }
+
+        if (requestParameters['postSavedSelection'] == null) {
+            throw new runtime.RequiredError(
+                'postSavedSelection',
+                'Required parameter "postSavedSelection" was null or undefined when calling createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PostSavedSelectionToJSON(requestParameters['postSavedSelection']),
+        };
+    }
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * Create Saved Selection
+     */
+    async createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRaw(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>> {
+        const requestOptions = await this.createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SavedSelectionFromJSON(jsonValue));
+    }
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * Create Saved Selection
+     */
+    async createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection> {
+        const response = await this.createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -4440,7 +4785,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4451,11 +4796,70 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiUserCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete without sending the request
+     */
+    async deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequestOpts(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete().'
+            );
+        }
+
+        if (requestParameters['selectionId'] == null) {
+            throw new runtime.RequiredError(
+                'selectionId',
+                'Required parameter "selectionId" was null or undefined when calling deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections/{selection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"selection_id"}}`, encodeURIComponent(String(requestParameters['selectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * Delete Saved Selection
+     */
+    async deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRaw(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * Delete Saved Selection
+     */
+    async deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -6377,6 +6781,58 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet without sending the request
+     */
+    async listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequestOpts(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * List Saved Selections
+     */
+    async listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRaw(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SavedSelection>>> {
+        const requestOptions = await this.listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(SavedSelectionFromJSON));
+    }
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * List Saved Selections
+     */
+    async listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SavedSelection>> {
+        const response = await this.listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for questionApiQuestionPost without sending the request
      */
     async questionApiQuestionPostRequestOpts(requestParameters: QuestionApiQuestionPostRequest): Promise<runtime.RequestOpts> {
@@ -8135,6 +8591,45 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for textUploadAvailabilityApiTextDocumentsAvailabilityGet without sending the request
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts(): Promise<runtime.RequestOpts> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+
+        let urlPath = `/api/text_documents/availability`;
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadAvailability>> {
+        const requestOptions = await this.textUploadAvailabilityApiTextDocumentsAvailabilityGetRequestOpts();
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TextUploadAvailabilityFromJSON(jsonValue));
+    }
+
+    /**
+     * Whether this server can take text uploads: the configured search vectors are approved for private text and the database declares what an upload writes. Reads only the schema; the details of a refusal are in the server log, not the response. The upload dialog and the preview deployment check it before anyone uploads (docs/TEXT_UPLOAD.md).
+     * Text Upload Availability
+     */
+    async textUploadAvailabilityApiTextDocumentsAvailabilityGet(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadAvailability> {
+        const response = await this.textUploadAvailabilityApiTextDocumentsAvailabilityGetRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for unshareCollectionApiUserCollectionsCollectionIdShareUserIdDelete without sending the request
      */
     async unshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequestOpts(requestParameters: UnshareCollectionApiUserCollectionsCollectionIdShareUserIdDeleteRequest): Promise<runtime.RequestOpts> {
@@ -8467,6 +8962,76 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch without sending the request
+     */
+    async updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequestOpts(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch().'
+            );
+        }
+
+        if (requestParameters['selectionId'] == null) {
+            throw new runtime.RequiredError(
+                'selectionId',
+                'Required parameter "selectionId" was null or undefined when calling updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch().'
+            );
+        }
+
+        if (requestParameters['patchSavedSelection'] == null) {
+            throw new runtime.RequiredError(
+                'patchSavedSelection',
+                'Required parameter "patchSavedSelection" was null or undefined when calling updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections/{selection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"selection_id"}}`, encodeURIComponent(String(requestParameters['selectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchSavedSelectionToJSON(requestParameters['patchSavedSelection']),
+        };
+    }
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * Update Saved Selection
+     */
+    async updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRaw(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>> {
+        const requestOptions = await this.updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SavedSelectionFromJSON(jsonValue));
+    }
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * Update Saved Selection
+     */
+    async updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection> {
+        const response = await this.updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for updateTagApiTagsTagUuidPatch without sending the request
      */
     async updateTagApiTagsTagUuidPatchRequestOpts(requestParameters: UpdateTagApiTagsTagUuidPatchRequest): Promise<runtime.RequestOpts> {
@@ -8602,6 +9167,94 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async updateTagSpanApiTagSpansSpanIdPatch(requestParameters: UpdateTagSpanApiTagSpansSpanIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TagSpanWriteResult> {
         const response = await this.updateTagSpanApiTagSpansSpanIdPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost without sending the request
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost().'
+            );
+        }
+
+        if (requestParameters['files'] == null) {
+            throw new runtime.RequiredError(
+                'files',
+                'Required parameter "files" was null or undefined when calling uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+        const consumes: runtime.Consume[] = [
+            { contentType: 'multipart/form-data' },
+        ];
+        // @ts-ignore: canConsumeForm may be unused
+        const canConsumeForm = runtime.canConsumeForm(consumes);
+
+        let formParams: { append(param: string, value: any): any };
+        let useForm = false;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
+        if (useForm) {
+            formParams = new FormData();
+        } else {
+            formParams = new URLSearchParams();
+        }
+
+        if (requestParameters['files'] != null) {
+            requestParameters['files'].forEach((element) => {
+                formParams.append('files', element as any);
+            })
+        }
+
+        if (requestParameters['metadata'] != null) {
+            formParams.append('metadata', requestParameters['metadata'] as any);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/text_documents`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: formParams,
+        };
+    }
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TextUploadResponse>> {
+        const requestOptions = await this.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TextUploadResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Uploads private UTF-8 ``.txt`` files into the collection, each as a new document with embedded chunks, optionally with a metadata CSV (docs/TEXT_UPLOAD.md). Owner only. The body is read after the access check. Every file gets a result; an invalid file or CSV means nothing was saved. 503 when uploads are not enabled on this server.
+     * Upload Text Documents
+     */
+    async uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost(requestParameters: UploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TextUploadResponse> {
+        const response = await this.uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPostRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

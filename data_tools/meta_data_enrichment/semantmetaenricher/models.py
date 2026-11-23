@@ -126,6 +126,9 @@ def build_structured_output_model(task: str, classes: tuple[str, ...]) -> type[B
 class Model(ConfigurableMixin, CreatableMixin, abc.ABC):
     """Base class for configurable models."""
 
+    remote = False
+    """Whether the chunk text leaves this process for another service (an API model)."""
+
     def __enter__(self):
         return self
 
@@ -178,6 +181,10 @@ def file_sha256(path: str) -> str:
 
 class APIModel(Model):
     """Model that connects to OpenAI-compatible APIs using structured outputs."""
+
+    remote = True
+    """The chunk text is sent to ``base_url``: restricted documents are excluded unless the
+    pipeline's ``include_restricted_documents`` is set (#785)."""
     
     api_key: Optional[str] = ConfigurableValue(
         desc="API Key (optional, defaults to environment variable)",

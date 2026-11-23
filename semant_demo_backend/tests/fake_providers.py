@@ -5,7 +5,8 @@ endpoint (``/openai/v1/embeddings``: the second search vector), Topicer and LLM 
 Used by the browser-test profile (``tests/e2e_server.py``), where the backend reaches its
 providers over HTTP, and as the ``llm_transport`` of the LLM gateway in tests. Every other
 provider route answers 501, so a feature that would call an unfaked provider fails
-visibly instead of reaching a real service.
+visibly instead of reaching a real service; ``retry-after-ms: 1`` lets the OpenAI client
+retry it without its backoff of up to a second.
 
 Chat replies report token usage (whitespace-separated words) unless the requested model
 name contains ``no-usage``. OpenAI-compatible replies also report an OpenRouter-style
@@ -57,10 +58,10 @@ def fake_provider_environ(config_dir: Path, fake_url: str, fake_port: int) -> di
     search_vectors_path = config_dir / "search_vectors.yaml"
     search_vectors_path.write_text(yaml.safe_dump({"default": "fake-default", "vectors": [
         {"id": "fake-default", "name": "Fake default", "description": "The test store's default vector.",
-         "target_vector": "default", "embedding": {"provider": "embedding_service"}},
+         "target_vector": "default", "embedding": {"provider": "embedding_service"}, "private_text": True},
         {"id": "fake-small", "name": "Fake small", "description": "The test store's second vector.",
          "target_vector": SECOND_VECTOR, "embedding": {"provider": "openai", "base_url": f"{fake_url}/openai/v1",
-                                                 "model": "fake-small"}},
+                                                 "model": "fake-small"}, "private_text": True},
     ]}))
     return {
         "LLM_MODELS_CONFIG": str(llm_models_path),
@@ -348,6 +349,7 @@ def create_fake_provider_app(corpus: Corpus, stream_delay: float = 0.0) -> FastA
         return JSONResponse(
             status_code=501,
             content={"detail": f"{request.method} /{path} is not provided by the fake AI providers."},
+            headers={"retry-after-ms": "1"},
         )
 
     return app

@@ -64,9 +64,10 @@ class CollectionChunk(BaseModel):
     """A chunk listed for a collection (``in_collection``), without its document or entities."""
     id: UUID
     text: str
-    start_page_id: UUID
-    from_page: int
-    to_page: int
+    start_page_id: UUID | None = None
+    from_page: int | None = None
+    to_page: int | None = None
+    """Absent for a text-only document (#785)."""
     end_paragraph: bool = True
     title: str | None = None
     language: str | None = None
@@ -79,3 +80,42 @@ class CollectionChunk(BaseModel):
 class CreateResponse(BaseModel):
     created: bool
     message: str
+
+
+TextUploadStatus = Literal["completed", "invalid", "not_written", "failed", "uncertain"]
+
+
+class TextUploadFileResult(BaseModel):
+    """What happened to one uploaded text file (#785).
+
+    * ``completed``: the document, all its chunks with their vectors and its collection link
+      are saved and read back.
+    * ``invalid``: the file or its metadata row is invalid (``error``); nothing of the upload
+      was saved.
+    * ``not_written``: valid, but not saved because another file or the CSV is invalid.
+    * ``failed``: saving stopped (``error``). The document is not in any collection and
+      nobody can read it; uploading the file again creates a new document.
+    * ``uncertain``: everything was saved but adding the document to the collection could
+      not be confirmed; reload the collection before uploading again.
+    """
+    filename: str
+    status: TextUploadStatus
+    document_id: UUID | None = None
+    """The created document (``completed``, ``failed`` and ``uncertain`` once it was created)."""
+    title: str | None = None
+    chunks: int = 0
+    error: str | None = None
+
+
+class TextUploadAvailability(BaseModel):
+    """Whether this server takes text uploads (#785); ``message`` says why not, without the
+    store's details (those are logged)."""
+    available: bool
+    message: str | None = None
+
+
+class TextUploadResponse(BaseModel):
+    """The result of every file of a text upload, in request order, and the problems of the
+    upload as a whole (the metadata CSV, the number of files); any problem means nothing was saved."""
+    files: list[TextUploadFileResult]
+    errors: list[str] = []

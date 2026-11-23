@@ -204,28 +204,155 @@
     <div class="ai-section-label">
       Pending suggestions
       <span class="text-caption text-grey-6 q-ml-xs">({{ pendingAutoSpans.length }})</span>
+      <q-space />
+      <q-btn
+        flat dense round size="sm"
+        :icon="pendingSuggestionsOpen ? 'expand_less' : 'expand_more'"
+        :aria-label="pendingSuggestionsOpen ? 'Hide pending suggestions' : 'Show pending suggestions'"
+        :aria-expanded="pendingSuggestionsOpen ? 'true' : 'false'"
+        data-testid="pending-suggestions-toggle"
+        @click="pendingSuggestionsOpen = !pendingSuggestionsOpen"
+      >
+        <q-tooltip>{{ pendingSuggestionsOpen ? 'Hide pending suggestions' : 'Show pending suggestions' }}</q-tooltip>
+      </q-btn>
     </div>
-    <div v-if="!pendingAutoSpans.length" class="text-body2 text-grey-6">
+    <div v-if="pendingSuggestionsOpen && !pendingAutoSpans.length" class="text-body2 text-grey-6">
       No unresolved AI suggestions in the displayed chunks.
     </div>
-    <template v-else>
+    <template v-else-if="pendingSuggestionsOpen">
+      <!-- Sorting is always available; only optional filters are folded away. -->
+      <div class="proposal-toolbar" role="group" aria-label="Sort and filter suggestions">
+        <q-select
+          v-model="proposalSort"
+          :options="proposalSortOptions"
+          emit-value map-options dense outlined options-dense
+          label="Sort by" class="proposal-sort" data-testid="proposal-sort"
+        />
+        <q-btn
+          flat dense round size="sm"
+          :icon="proposalDescending ? 'south' : 'north'"
+          :aria-label="proposalDescending ? 'Sort descending' : 'Sort ascending'"
+          @click="proposalDescending = !proposalDescending"
+        >
+          <q-tooltip>Reverse sort direction</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat dense no-caps size="sm" color="primary" icon="filter_list"
+          :label="activeProposalFilterCount ? `Filters (${activeProposalFilterCount})` : 'Filters'"
+          :aria-expanded="proposalFiltersOpen ? 'true' : 'false'"
+          data-testid="proposal-filters-toggle"
+          @click="proposalFiltersOpen = !proposalFiltersOpen"
+        >
+          <q-tooltip>{{ proposalFiltersOpen ? 'Hide filters' : 'Show filters' }}</q-tooltip>
+        </q-btn>
+      </div>
+      <div v-if="!proposalFiltersOpen && hasActiveProposalFilters" class="proposal-active-filters"
+        role="group" aria-label="Active suggestion filters" data-testid="proposal-active-filters">
+        <q-chip v-if="proposalTagId !== null" dense removable color="grey-2" text-color="grey-9" class="proposal-filter-chip"
+          data-testid="proposal-filter-tag-chip" remove-aria-label="Remove tag filter"
+          @remove="proposalTagId = null">
+          <span class="proposal-chip-text">Tag: {{ selectedProposalTag?.name || 'Unknown tag' }}</span>
+        </q-chip>
+        <q-chip v-if="minimumConfidencePercent !== null" dense removable color="grey-2" text-color="grey-9" class="proposal-filter-chip"
+          data-testid="proposal-filter-confidence-chip" remove-aria-label="Remove confidence filter"
+          @remove="minimumConfidencePercent = null">
+          ≥{{ minimumConfidencePercent }}%
+        </q-chip>
+        <q-chip v-if="proposalReasonQuery.trim()" dense removable color="grey-2" text-color="grey-9" class="proposal-filter-chip"
+          data-testid="proposal-filter-reason-chip" remove-aria-label="Remove explanation filter"
+          @remove="proposalReasonQuery = ''">
+          <span class="proposal-chip-text">Explanation: {{ proposalReasonQuery.trim() }}</span>
+        </q-chip>
+      </div>
+      <!-- Filters only change the presentation of proposals, not the AI-run tag choices. -->
+      <div v-if="proposalFiltersOpen" class="proposal-controls">
+        <div class="proposal-controls-header">
+          <span class="text-caption text-grey-7" data-testid="proposal-filter-count">
+            {{ activeProposalFilterCount }} active {{ activeProposalFilterCount === 1 ? 'filter' : 'filters' }}
+          </span>
+          <q-btn flat dense no-caps color="primary" label="Reset filters" size="sm" icon="refresh"
+            :disable="!hasActiveProposalFilters" data-testid="proposal-reset-filters"
+            @click="resetProposalFilters" />
+        </div>
+        <div class="proposal-control-row">
+          <q-select
+            v-model="proposalTagId" :options="proposalTagOptions"
+            emit-value map-options dense outlined options-dense
+            label="Filter by tag" class="proposal-control" data-testid="proposal-tag-filter"
+          >
+            <template #prepend>
+              <q-icon v-if="selectedProposalTag"
+                :name="selectedProposalTag.pictogram || 'label'"
+                :style="{ color: selectedProposalTag.color }" size="18px" />
+            </template>
+            <template #option="{ opt, itemProps }">
+              <q-item v-bind="itemProps">
+                <q-item-section v-if="opt.icon" avatar>
+                  <q-icon :name="opt.icon" :style="{ color: opt.color }" size="18px" />
+                </q-item-section>
+                <q-item-section><q-item-label>{{ opt.label }}</q-item-label></q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+          <q-input
+            :model-value="minimumConfidencePercent"
+            @update:model-value="setMinimumConfidence"
+            type="number" min="0" max="100" step="1"
+            dense outlined clearable label="Min. confidence(%)"
+            class="proposal-control" data-testid="proposal-confidence-filter"
+          />
+        </div>
+        <div class="proposal-control-row">
+          <q-input
+            :model-value="proposalReasonQuery" @update:model-value="setProposalReason"
+            dense outlined clearable
+            label="Explanation contains" class="proposal-control proposal-control--full"
+            data-testid="proposal-reason-filter"
+          />
+        </div>
+      </div>
+      <div class="text-caption text-grey-7 q-mb-xs" data-testid="proposal-match-count">
+        {{ visibleSuggestions.length }} of {{ pendingAutoSpans.length }} matching
+      </div>
+      <div v-if="documentOrderUnavailable"
+        class="text-caption text-warning" role="status">
+        Document order is unavailable until the reader has loaded the canonical chunk positions.
+      </div>
+      <div v-if="revealedSuggestion" class="text-caption text-grey-7" role="status">
+        Filters were reset to reveal the suggestion selected in the text.
+      </div>
+      <div v-if="!visibleSuggestions.length && !documentOrderUnavailable" class="text-body2 text-grey-6 q-my-xs"
+        data-testid="no-matching-proposals">
+        No matching suggestions. Reset the filters to see all pending proposals.
+      </div>
       <div class="auto-span-bulk-bar">
         <q-checkbox
-          :model-value="allSuggestionsSelected"
+          :model-value="visibleSelectionState"
           :indeterminate-value="'mixed'"
           :toggle-indeterminate="false"
           dense
           size="sm"
-          :disable="isBulkResolving"
+          :disable="isBulkResolving || !visibleSuggestions.length"
           @update:model-value="(v: unknown) => toggleSelectAllSuggestions(!!v)"
         >
           <span v-if="bulkProgress" class="text-caption text-grey-7" data-testid="bulk-resolve-progress">
             Saving {{ bulkProgress.processed }} / {{ bulkProgress.total }}<template v-if="bulkProgress.notSaved">, {{ bulkProgress.notSaved }} not saved</template>…
           </span>
-          <span v-else class="text-caption text-grey-7">
-            {{ selectedSuggestionIds.size }} / {{ pendingAutoSpans.length }} selected
+          <span v-else class="text-caption text-grey-7" data-testid="proposal-selection-count">
+            {{ selectedVisibleCount }} / {{ visibleSuggestions.length }} visible selected
+            <template v-if="hiddenSelectedCount">({{ hiddenSelectedCount }} hidden)</template>
           </span>
         </q-checkbox>
+        <q-btn
+          v-if="selectedSuggestionIds.size"
+          flat dense no-caps size="sm"
+          icon="playlist_remove"
+          label="Clear"
+          color="grey-8"
+          aria-label="Clear selection"
+          :disable="isBulkResolving"
+          @click="clearSuggestionSelection"
+        />
         <q-space />
         <q-btn
           flat dense no-caps size="sm"
@@ -259,18 +386,26 @@
         size="3px"
         class="q-mb-xs"
       />
-      <div class="auto-span-list" @scroll.passive="onSuggestionListScroll">
+      <q-virtual-scroll
+        v-if="visibleSuggestions.length && !documentOrderUnavailable"
+        ref="suggestionVirtualScroll"
+        class="auto-span-list"
+        :items="visibleSuggestions"
+        :virtual-scroll-item-size="76"
+        :virtual-scroll-slice-size="20"
+        v-slot="{ item: entry }"
+        data-testid="ai-suggestion-list"
+      >
         <div
-          v-for="entry in renderedAutoSpans"
           :key="entry.span.id || `${entry.span.chunkId}:${entry.span.start}:${entry.span.end}:${entry.span.tagId}`"
-          class="auto-span-card"
+          class="auto-span-card q-mb-xs"
           :class="{
             'is-busy': busyAutoSpanIds.has(entry.span.id || ''),
             'is-highlighted': aiAssist.highlightedAutoSpanId.value && entry.span.id === aiAssist.highlightedAutoSpanId.value,
             'is-selected': entry.span.id ? selectedSuggestionIds.has(entry.span.id) : false
           }"
-          :ref="(el) => { if (entry.span.id) suggestionCardRefs[entry.span.id] = el as HTMLElement | null }"
           @click="onSuggestionClick(entry.span)"
+          :data-suggestion-id="entry.span.id"
         >
           <div class="auto-span-header">
             <q-checkbox
@@ -288,7 +423,12 @@
               size="16px"
               class="q-mr-xs"
             />
-            <span class="auto-span-tag-name">{{ entry.tag?.name || 'Unknown tag' }}</span>
+            <button type="button" class="auto-span-highlight" data-testid="proposal-highlight"
+              :aria-label="`Highlight suggestion for ${entry.tag?.name || 'unknown tag'}`"
+              :aria-pressed="entry.span.id === aiAssist.highlightedAutoSpanId.value"
+              @click.stop="onSuggestionClick(entry.span)">
+              <span class="auto-span-tag-name">{{ entry.tag?.name || 'Unknown tag' }}</span>
+            </button>
             <q-badge
               v-if="entry.span.confidence != null"
               outline
@@ -339,14 +479,7 @@
             </q-tooltip>
           </div>
         </div>
-        <div
-          v-if="renderedAutoSpans.length < pendingAutoSpans.length"
-          class="text-caption text-grey-6 q-pa-xs text-center"
-          data-testid="suggestions-more"
-        >
-          Showing {{ renderedAutoSpans.length }} of {{ pendingAutoSpans.length }}; scroll for more
-        </div>
-      </div>
+      </q-virtual-scroll>
     </template>
   </div>
 </template>
@@ -359,6 +492,10 @@ import { SpanType, Tag, TagSpan, WriteOutcome } from 'src/generated/api'
 import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/shared/api'
 import { errorNotification } from 'src/shared/notification'
 import { describeIncomplete } from 'src/shared/writeOutcome'
+import { useChunksStore } from 'src/features/documents/chunksStore'
+import {
+  filterAndSortSuggestions, toggleVisibleSuggestions, type ProposalSort
+} from './aiSuggestionPresentation'
 import { readStored, writeStored } from 'src/shared/browserStorage'
 import { plural } from 'src/shared/plural'
 import { useTagsStore } from './tagsStore'
@@ -387,6 +524,7 @@ const OPTIONS_COLLAPSED_KEY = 'semant.aiRunOptionsCollapsed'
 const $q = useQuasar()
 const { default: api } = useApi()
 const { tags } = storeToRefs(useTagsStore())
+const chunksStore = useChunksStore()
 const tagEditing = useTagEditing(() => props.collectionId)
 const aiAssist = useAiAssistance()
 const tagSpans = useTagSpans()
@@ -451,35 +589,115 @@ function onSuggestionClick(span: TagSpan) {
     aiAssist.highlightedAutoSpanId.value === span.id ? null : span.id
 }
 
-// Track card DOM nodes so we can scroll to whichever one is highlighted from
-// the document side (i.e. the user clicked an auto span in the text).
-const suggestionCardRefs = ref<Record<string, HTMLElement | null>>({})
+// QVirtualScroll mounts only the cards in its viewport. Its scrollTo(index)
+// can reach a suggestion which has never been mounted as a DOM element.
+const suggestionVirtualScroll = ref<{ $el: HTMLElement; scrollTo:(index: number, edge?: 'start' | 'center' | 'end') => void } | null>(null)
+const revealedSuggestion = ref(false)
+let suggestionFocusRequest = 0
+// Navigation from the tag arrows must keep focus on the arrows rather than the card.
+let tagNavigationTargetId: string | null = null
 
-// Only the first cards are rendered and more as the list is scrolled (#464): with every
-// card rendered, each change of a long list (a bulk approval batch) re-rendered over a
-// thousand cards and blocked the page for hundreds of milliseconds.
-const SUGGESTION_RENDER_STEP = 60
-const suggestionRenderLimit = ref(SUGGESTION_RENDER_STEP)
-const renderedAutoSpans = computed(() => pendingAutoSpans.value.slice(0, suggestionRenderLimit.value))
-function onSuggestionListScroll(e: Event) {
-  const el = e.target as HTMLElement
-  if (suggestionRenderLimit.value >= pendingAutoSpans.value.length) return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) suggestionRenderLimit.value += SUGGESTION_RENDER_STEP
+// The list and the right sidebar are independent scrollers. Bring the selected
+// card towards the top third of the sidebar even if it was just barely visible
+// at the bottom; otherwise repeated text clicks can appear to do nothing.
+function scrollCardIntoSidebar(card: HTMLElement) {
+  const scroller = card.closest<HTMLElement>('.sidebar-panel')?.parentElement
+  if (!scroller) return
+  const cardRect = card.getBoundingClientRect()
+  const sidebarRect = scroller.getBoundingClientRect()
+  const preferredTop = sidebarRect.top + Math.min(140, Math.max(8, (sidebarRect.height - cardRect.height) / 3))
+  scroller.scrollTop += cardRect.top - preferredTop
 }
 
+function cardVisibleInBothScrollers(card: HTMLElement): boolean {
+  const scroller = card.closest<HTMLElement>('.sidebar-panel')?.parentElement
+  const list = card.closest<HTMLElement>('.auto-span-list')
+  if (!scroller || !list || !card.isConnected) return false
+  const cardRect = card.getBoundingClientRect()
+  const outerRect = scroller.getBoundingClientRect()
+  const listRect = list.getBoundingClientRect()
+  return cardRect.top >= Math.max(outerRect.top, listRect.top, 0) - 1 &&
+    cardRect.bottom <= Math.min(outerRect.bottom, listRect.bottom, window.innerHeight) + 1
+}
+
+async function focusSuggestionById(id: string, fromTagNavigation = false) {
+  const request = ++suggestionFocusRequest
+  const collectionId = props.collectionId
+  const documentId = props.documentId
+  let index = visibleSuggestions.value.findIndex((e) => e.span.id === id)
+  if (index === -1 && pendingAutoSpans.value.some((e) => e.span.id === id)) {
+    // A text/gutter click always wins over presentation filters; do not silently
+    // ignore the annotation or mutate the user's selected proposal IDs.
+    resetProposalFilters()
+    revealedSuggestion.value = true
+    await nextTick()
+    if (request !== suggestionFocusRequest || collectionId !== props.collectionId ||
+        documentId !== props.documentId || aiAssist.highlightedAutoSpanId.value !== id) return
+    index = visibleSuggestions.value.findIndex((e) => e.span.id === id)
+  }
+  if (index < 0) return // already resolved or removed in a stream
+  // Text/gutter navigation can reveal a proposal even after the list was folded.
+  pendingSuggestionsOpen.value = true
+  await nextTick()
+  if (request !== suggestionFocusRequest ||
+    collectionId !== props.collectionId || documentId !== props.documentId ||
+    visibleSuggestions.value[index]?.span.id !== id) return
+  suggestionVirtualScroll.value?.scrollTo(index, 'center')
+  // With variable-height cards QVirtualScroll may refine the destination over
+  // several frames. Focus is not enough: verify both scroll viewports too.
+  await nextTick()
+  for (let frame = 0; frame < 24; frame++) {
+    if (request !== suggestionFocusRequest || collectionId !== props.collectionId ||
+        documentId !== props.documentId || aiAssist.highlightedAutoSpanId.value !== id ||
+        visibleSuggestions.value[index]?.span.id !== id) return
+    const viewport = suggestionVirtualScroll.value?.$el
+    const card = Array.from(viewport?.querySelectorAll<HTMLElement>('.auto-span-card') ?? [])
+      .find((el) => el.dataset.suggestionId === id)
+    if (!card || !viewport) {
+      // Retry the index jump when the destination is not mounted yet.
+      if (frame > 0 && frame % 5 === 0) suggestionVirtualScroll.value?.scrollTo(index, 'center')
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      continue
+    }
+    const cardRect = card.getBoundingClientRect()
+    const listRect = viewport.getBoundingClientRect()
+    // Correct the approximate virtual offset using the real row height.
+    if (cardRect.top < listRect.top) viewport.scrollTop += cardRect.top - listRect.top - 4
+    else if (cardRect.bottom > listRect.bottom) viewport.scrollTop += cardRect.bottom - listRect.bottom + 4
+    // Tag arrows only scroll the virtual list, never the outer sidebar.
+    // The card can be below the outer viewport until the user scrolls manually.
+    if (!fromTagNavigation) scrollCardIntoSidebar(card)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (fromTagNavigation) {
+      if (!card.isConnected) continue
+      const updatedCard = card.getBoundingClientRect()
+      const updatedList = viewport.getBoundingClientRect()
+      if (updatedCard.top >= updatedList.top - 1 &&
+          updatedCard.bottom <= updatedList.bottom + 1) return
+      continue
+    }
+    if (!cardVisibleInBothScrollers(card)) continue
+    const action = card.querySelector<HTMLButtonElement>('.auto-span-highlight')
+    action?.focus({ preventScroll: true })
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (action && document.activeElement === action && cardVisibleInBothScrollers(card)) return
+  }
+}
+
+// Watch both the highlighted ID and explicit navigation requests. Vue batches
+// updates in the same click, but re-clicking the same ID still reruns scrolling.
 watch(
-  () => aiAssist.highlightedAutoSpanId.value,
-  (id) => {
-    if (!id) return
-    // A suggestion highlighted from the text may be past the rendered cards.
-    const index = pendingAutoSpans.value.findIndex((e) => e.span.id === id)
-    if (index >= suggestionRenderLimit.value) suggestionRenderLimit.value = index + SUGGESTION_RENDER_STEP
-    void nextTick(() => {
-      const el = suggestionCardRefs.value[id]
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    })
+  [() => aiAssist.highlightedAutoSpanId.value, () => aiAssist.highlightedAutoSpanNavigationRequest.value],
+  ([id]) => {
+    const fromTagNavigation = id != null && tagNavigationTargetId === id
+    tagNavigationTargetId = null
+    if (id) void focusSuggestionById(id, fromTagNavigation)
   }
 )
+watch(() => aiAssist.aiPanelActive.value, (active) => {
+  const id = aiAssist.highlightedAutoSpanId.value
+  if (active && id) void focusSuggestionById(id)
+})
 
 function toggleAiTag(tagId: string, on: boolean) {
   if (on) {
@@ -565,8 +783,8 @@ const tagsById = computed(() => {
   return m
 })
 
-// Canonical pending auto spans (ordered by confidence desc) come from the
-// composable; we just join in the tag for display.
+// The shared composable keeps its original confidence order for text/gutter
+// consumers. Only this panel applies the independent presentation order.
 const pendingAutoSpans = computed<AutoSpanEntry[]>(() =>
   aiAssist.pendingAutoSpans.value.map((span) => ({
     span,
@@ -574,11 +792,86 @@ const pendingAutoSpans = computed<AutoSpanEntry[]>(() =>
   }))
 )
 
-// Group pending suggestions by tag id so each tag in the AI tag list can show
-// per-tag navigation arrows and a counter.
+// UI-only sections; collapsing must not change filters or the selected IDs.
+const pendingSuggestionsOpen = ref(true)
+const proposalFiltersOpen = ref(false)
+
+const proposalSort = ref<ProposalSort>('confidence')
+const proposalDescending = ref(true)
+// Natural defaults per mode: confidence/newest first, document/alphabetical first.
+watch(proposalSort, (mode) => {
+  proposalDescending.value = mode === 'confidence' || mode === 'created'
+})
+const proposalTagId = ref<string | null>(null)
+const proposalReasonQuery = ref('')
+const minimumConfidencePercent = ref<number | null>(null)
+watch([proposalTagId, proposalReasonQuery, minimumConfidencePercent], () => {
+  revealedSuggestion.value = false
+}, { flush: 'sync' })
+
+const chunkOrder = computed(() => new Map(chunksStore.chunks.map((c) => [c.id, c.order])))
+const documentOrderAvailable = computed(() => !chunksStore.loading && !chunksStore.error &&
+  chunksStore.chunks.length > 0 &&
+  pendingAutoSpans.value.every((e) => chunkOrder.value.has(e.span.chunkId)))
+const documentOrderUnavailable = computed(() =>
+  proposalSort.value === 'document' && !documentOrderAvailable.value)
+const proposalSortOptions = computed(() => [
+  { label: 'Confidence', value: 'confidence' },
+  { label: 'Document order', value: 'document', disable: !documentOrderAvailable.value },
+  { label: 'Explanation (alphabetical)', value: 'explanation' },
+  { label: 'Creation time', value: 'created' }
+])
+const selectedProposalTag = computed(() =>
+  tags.value.find((tag) => tag.id === proposalTagId.value))
+const proposalTagOptions = computed(() => [
+  { label: 'All tags', value: null, icon: null, color: null },
+  ...tags.value.map((tag) => ({
+    label: tag.name, value: tag.id, icon: tag.pictogram || 'label', color: tag.color
+  }))
+])
+const activeProposalFilterCount = computed(() => Number(proposalTagId.value !== null) +
+  Number(minimumConfidencePercent.value !== null) + Number(!!proposalReasonQuery.value.trim()))
+const hasActiveProposalFilters = computed(() => activeProposalFilterCount.value > 0)
+
+function setMinimumConfidence(value: string | number | null) {
+  if (value === '' || value === null) {
+    minimumConfidencePercent.value = null
+    return
+  }
+  const numeric = Number(value)
+  if (Number.isFinite(numeric)) minimumConfidencePercent.value = Math.max(0, Math.min(100, numeric))
+}
+
+function setProposalReason(value: string | number | null) {
+  proposalReasonQuery.value = String(value ?? '')
+}
+
+function resetProposalFilters() {
+  revealedSuggestion.value = false
+  proposalTagId.value = null
+  proposalReasonQuery.value = ''
+  minimumConfidencePercent.value = null
+}
+
+// Computed only from pending annotations, metadata and controls, not checkbox
+// selection or highlighted ID, so card actions don't re-run the whole sort.
+const visibleSuggestions = computed<AutoSpanEntry[]>(() => {
+  if (documentOrderUnavailable.value) return []
+  return filterAndSortSuggestions(pendingAutoSpans.value,
+    {
+      tagId: proposalTagId.value,
+      reason: proposalReasonQuery.value,
+      minimumConfidence: minimumConfidencePercent.value === null
+        ? null : minimumConfidencePercent.value / 100
+    },
+    proposalSort.value, proposalDescending.value, chunkOrder.value)
+})
+
+// The AI-run tag selection and the per-tag navigation are independent. Navigation
+// follows the filtered, presented suggestions; the gutter still uses its own order.
 const autoSpansByTag = computed<Record<string, TagSpan[]>>(() => {
   const out: Record<string, TagSpan[]> = {}
-  for (const entry of pendingAutoSpans.value) {
+  for (const entry of visibleSuggestions.value) {
     const list = out[entry.span.tagId] ?? (out[entry.span.tagId] = [])
     list.push(entry.span)
   }
@@ -607,7 +900,15 @@ function navigateAutoSpan(tagId: string, direction: 'prev' | 'next') {
     nextIdx = direction === 'next' ? (current + 1) % list.length : (current - 1 + list.length) % list.length
   }
   const target = list[nextIdx]
-  if (target.id) aiAssist.highlightedAutoSpanId.value = target.id
+  if (!target.id) return
+  const alreadyHighlighted = aiAssist.highlightedAutoSpanId.value === target.id
+  tagNavigationTargetId = target.id
+  aiAssist.highlightedAutoSpanId.value = target.id
+  // A single-item tag may navigate to the same ID, which won't trigger the watcher.
+  if (alreadyHighlighted) {
+    tagNavigationTargetId = null
+    void focusSuggestionById(target.id, true)
+  }
 }
 
 // Approve/reject requests of this panel's document: entered when the panel moves to another
@@ -624,7 +925,7 @@ async function resolveSuggestion(span: TagSpan, type: SpanType) {
   } catch (e: unknown) {
     if (isCurrent() && !isAbortError(e)) errorNotification(await apiErrorMessage(e, resolveAutoSpanFailure(type)))
   } finally {
-    busyAutoSpanIds.value.delete(span.id)
+    if (isCurrent()) busyAutoSpanIds.value.delete(span.id)
   }
 }
 
@@ -635,13 +936,13 @@ const rejectAutoSpan = (span: TagSpan) => resolveSuggestion(span, SpanType.neg)
 const selectedSuggestionIds = ref<Set<string>>(new Set())
 const isBulkResolving = ref(false)
 const bulkProgress = ref<BulkResolveProgress | null>(null)
-
-const allSuggestionsSelected = computed(() => {
-  const ids = pendingAutoSpans.value
-    .map((e) => e.span.id)
-    .filter((id): id is string => !!id)
-  if (!ids.length) return false
-  return ids.every((id) => selectedSuggestionIds.value.has(id))
+const selectedVisibleCount = computed(() => visibleSuggestions.value.reduce((n, e) =>
+  n + (e.span.id && selectedSuggestionIds.value.has(e.span.id) ? 1 : 0), 0))
+const hiddenSelectedCount = computed(() => selectedSuggestionIds.value.size - selectedVisibleCount.value)
+const visibleSelectionState = computed(() => {
+  if (!selectedVisibleCount.value) return false
+  if (selectedVisibleCount.value === visibleSuggestions.value.filter((e) => !!e.span.id).length) return true
+  return 'mixed'
 })
 
 function toggleSuggestionSelection(span: TagSpan, on: boolean) {
@@ -653,14 +954,12 @@ function toggleSuggestionSelection(span: TagSpan, on: boolean) {
 }
 
 function toggleSelectAllSuggestions(on: boolean) {
-  if (on) {
-    const ids = pendingAutoSpans.value
-      .map((e) => e.span.id)
-      .filter((id): id is string => !!id)
-    selectedSuggestionIds.value = new Set(ids)
-  } else {
-    selectedSuggestionIds.value = new Set()
-  }
+  selectedSuggestionIds.value = toggleVisibleSuggestions(
+    selectedSuggestionIds.value, visibleSuggestions.value, on)
+}
+
+function clearSuggestionSelection() {
+  selectedSuggestionIds.value = new Set()
 }
 
 // Drop ids from the selection once their spans disappear from the pending list
@@ -681,9 +980,9 @@ watch(pendingAutoSpans, (entries) => {
 
 async function bulkResolveSelected(type: SpanType) {
   if (!selectedSuggestionIds.value.size || isBulkResolving.value) return
-  // Snapshot the spans we want to act on before any mutations start removing them from
-  // the pending list.
-  const idSet = selectedSuggestionIds.value
+  // Snapshot the exact ID set, including any selected proposals hidden by filters.
+  // Later changes of filters, sort, or pending entries cannot broaden the request.
+  const idSet = new Set(selectedSuggestionIds.value)
   const targets = pendingAutoSpans.value.flatMap((e) => e.span.id && idSet.has(e.span.id) ? [e.span.id] : [])
   if (!targets.length) return
 
@@ -711,11 +1010,13 @@ async function bulkResolveSelected(type: SpanType) {
       (progress) => { if (isCurrent()) bulkProgress.value = progress }
     )
   } finally {
-    for (const id of targets) busyAutoSpanIds.value.delete(id)
-    isBulkResolving.value = false
-    bulkProgress.value = null
+    if (isCurrent()) {
+      for (const id of targets) busyAutoSpanIds.value.delete(id)
+      isBulkResolving.value = false
+      bulkProgress.value = null
+    }
   }
-  if (!isCurrent() || summary.abandoned) return
+  if (!isCurrent() || !summary || summary.abandoned) return
   // Keep the suggestions that were not saved selected, so they can be retried.
   const unresolved = new Set(summary.unresolved)
   selectedSuggestionIds.value = new Set([...selectedSuggestionIds.value].filter((id) => unresolved.has(id)))
@@ -732,16 +1033,19 @@ async function bulkResolveSelected(type: SpanType) {
 
 async function onBulkDelete() {
   if (!selectedAiTagIds.value.length) return
+  const isCurrent = resolveRequests.capture()
+  const request = {
+    collectionId: props.collectionId,
+    documentId: props.documentId,
+    tagIds: [...selectedAiTagIds.value]
+  }
   isBulkDeleting.value = true
   lastDeletedCount.value = null
   try {
     const result = await api.deleteAutoSpansApiAiAutoSpansDeletePost({
-      deleteAutoSpansRequest: {
-        collectionId: props.collectionId,
-        documentId: props.documentId,
-        tagIds: [...selectedAiTagIds.value]
-      }
+      deleteAutoSpansRequest: request
     })
+    if (!isCurrent()) return
     lastDeletedCount.value = result.deleted
     lastStatusKind.value = 'deleted'
     // Drop exactly the spans the backend deleted; failed ones stay visible.
@@ -751,10 +1055,11 @@ async function onBulkDelete() {
       $q.notify({ type: 'negative', message: describeIncomplete(result, 'Removing suggestions') })
     }
   } catch (e) {
+    if (!isCurrent()) return
     console.error('Bulk delete of auto spans failed', e)
     $q.notify({ type: 'negative', message: 'Failed to remove suggestions.' })
   } finally {
-    isBulkDeleting.value = false
+    if (isCurrent()) isBulkDeleting.value = false
   }
 }
 
@@ -771,8 +1076,18 @@ watch(
   () => [props.collectionId, props.documentId],
   () => {
     resolveRequests.enter()
+    suggestionFocusRequest++
     selectedSuggestionIds.value = new Set()
-    suggestionRenderLimit.value = SUGGESTION_RENDER_STEP
+    isBulkDeleting.value = false
+    isBulkResolving.value = false
+    bulkProgress.value = null
+    busyAutoSpanIds.value = new Set()
+    proposalSort.value = 'confidence'
+    proposalDescending.value = true
+    resetProposalFilters()
+    pendingSuggestionsOpen.value = true
+    proposalFiltersOpen.value = false
+    revealedSuggestion.value = false
     lastDeletedCount.value = null
     lastStatusKind.value = null
   }
@@ -850,11 +1165,126 @@ watch(chosenAiTagIds, (ids) => {
   margin-bottom: 6px;
 }
 
+/* The AI panel is not `fill`: the parent right sidebar scrolls over run options,
+   filters and actions. The virtualized list keeps a bounded inner viewport. */
+.ai-assist-panel {
+  min-height: 0;
+  height: auto;
+}
+.ai-assist-panel .ai-tag-list,
+.ai-assist-panel.has-pending .ai-tag-list {
+  flex: none;
+}
+.ai-assist-panel .auto-span-list,
+.ai-assist-panel.has-pending .auto-span-list {
+  flex: none;
+  min-height: 0;
+  max-height: 360px;
+}
+
+.proposal-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 4px;
+  margin: 4px 0 5px;
+}
+.proposal-sort {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.proposal-toolbar > .q-btn {
+  flex: 0 0 auto;
+}
+.proposal-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+.proposal-active-filters .q-chip {
+  margin: 2px;
+  max-width: 100%;
+}
+.proposal-active-filters .proposal-filter-chip {
+  border: 1px solid #dadce0;
+}
+.proposal-active-filters .proposal-filter-chip :deep(.q-chip__icon--remove) {
+  opacity: 0.65;
+  font-size: 18px;
+}
+.proposal-chip-text {
+  display: inline-block;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.proposal-controls {
+  flex: 0 0 auto;
+  padding: 4px 0 6px;
+}
+.proposal-control--full {
+  flex-basis: 100%;
+}
+.proposal-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.proposal-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  min-width: 0;
+}
+
+/* The tag label is the only keyboard-operated highlight action in a card.
+   It is a sibling of the checkbox and action buttons, not their ancestor. */
+.auto-span-highlight {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+  text-align: left;
+}
+.auto-span-highlight:focus-visible {
+  outline: 2px solid var(--q-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* Preserve numeric validation but hide the native stepper arrows. */
+.proposal-controls :deep(input[type="number"]) {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.proposal-controls :deep(input[type="number"]::-webkit-outer-spin-button),
+.proposal-controls :deep(input[type="number"]::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.proposal-control {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 .ai-tag-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 15%;
+  max-height: min(260px, 40vh);
   overflow-y: auto;
   padding: 4px 6px;
   background: rgba(15, 23, 42, 0.03);
@@ -903,9 +1333,7 @@ watch(chosenAiTagIds, (ids) => {
 }
 
 .auto-span-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: block;
   max-height: 360px;
   overflow-y: auto;
   padding-right: 4px;

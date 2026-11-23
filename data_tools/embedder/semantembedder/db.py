@@ -2,7 +2,8 @@ from typing import Optional
 
 import weaviate
 from weaviate.auth import AuthApiKey
-from weaviate.classes.config import Configure, Property, DataType, VectorDistances, Vectorizers
+from weaviate.classes.config import Configure, Property, DataType, Tokenization, VectorDistances, Vectorizers
+from weaviate.exceptions import WeaviateBaseError
 
 
 def get_async_client(
@@ -15,6 +16,11 @@ def get_async_client(
     """Create an (not yet connected) async Weaviate client based on parameters.
 
     Use it as `async with get_async_client(...) as client:` to connect and close it automatically.
+    The client's start-up checks (its version lookup on pypi.org and its gRPC ping) are skipped,
+    as in the backend, so an unreachable gRPC port fails at the first query, not when connecting;
+    ``check_grpc`` runs one before the run changes the schema. Without ``api_key`` the client also
+    skips asking the server whether it requires OIDC login, so a missing login fails at the first
+    request instead.
 
     Args:
         host: Weaviate host address.
@@ -36,8 +42,23 @@ def get_async_client(
         port=port,
         grpc_port=grpc_port,
         headers=headers,
-        auth_credentials=auth_credentials
+        auth_credentials=auth_credentials,
+        skip_init_checks=True,
     )
+
+
+async def check_grpc(client: weaviate.WeaviateAsyncClient, collection_name: str, host: str, grpc_port: int) -> None:
+    """Read one object of the collection over gRPC, which the run's queries use; called before the
+    run adds a missing vector to the schema, whose calls use REST.
+
+    Raises:
+        ConnectionError: The query failed (e.g. a wrong or unreachable ``weaviate_grpc_port``).
+    """
+    try:
+        await client.collections.use(collection_name).query.fetch_objects(limit=1, return_properties=[])
+    except WeaviateBaseError as e:
+        raise ConnectionError(f"Weaviate does not answer a query over gRPC at {host}:{grpc_port} "
+                              f"(weaviate_grpc_port): {e}") from e
 
 
 def build_vector_index_config(index_type: str, distance_metric: str):
@@ -101,6 +122,32 @@ async def named_vector_exists(client: weaviate.WeaviateAsyncClient, collection_n
     return False
 
 
+HAVE_VECTOR = "haveVector"
+"""The list of the named vectors stored on a record (#805, #816): the embedder selects the records
+whose list lacks its vector and adds the name when it writes the vector."""
+HAVE_VECTOR_DECLARATION = {"data_type": "text[]", "tokenization": "field", "filterable": True, "searchable": False}
+"""How ``haveVector`` must be declared: as the backend's ``chunk_have_vector`` declares it
+(``semant_demo/adapters/weaviate/have_vector.py``, ``EXPECTED``)."""
+
+
+async def have_vector_problem(client: weaviate.WeaviateAsyncClient, collection_name: str) -> Optional[str]:
+    """Why the collection's ``haveVector`` cannot be used (missing or declared otherwise), None when it can;
+    read-only. A run never declares it: a write to an undeclared property would let Weaviate's auto-schema
+    create it with other settings."""
+    config = await client.collections.use(collection_name).config.get()
+    for prop in config.properties:
+        if prop.name == HAVE_VECTOR:
+            declared = {"data_type": prop.data_type.value,
+                        "tokenization": prop.tokenization.value if prop.tokenization else None,
+                        "filterable": bool(prop.index_filterable), "searchable": bool(prop.index_searchable)}
+            if declared == HAVE_VECTOR_DECLARATION:
+                return None
+            return (f"Collection '{collection_name}' declares '{HAVE_VECTOR}' as {declared}, "
+                    f"expected {HAVE_VECTOR_DECLARATION}.")
+    return (f"Collection '{collection_name}' has no '{HAVE_VECTOR}' property. Declare it and list the vectors "
+            f"the records already store with the backend's chunk_have_vector (docs/DATA_MAINTENANCE.md).")
+
+
 async def ensure_named_vector_exists(
     client: weaviate.WeaviateAsyncClient,
     collection_name: str,
@@ -162,6 +209,8 @@ async def create_test_collection(client: weaviate.WeaviateAsyncClient, replace: 
             Property(name="language", data_type=DataType.TEXT),
             Property(name="title", data_type=DataType.TEXT),
             Property(name="text", data_type=DataType.TEXT),
+            Property(name=HAVE_VECTOR, data_type=DataType.TEXT_ARRAY, tokenization=Tokenization.FIELD,
+                     index_filterable=True, index_searchable=False),
         ],
         vector_config=[Configure.Vectors.self_provided(name="default")]
     )

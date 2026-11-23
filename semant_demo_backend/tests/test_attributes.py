@@ -1113,6 +1113,11 @@ async def test_deleting_the_definitions_of_a_collection_keeps_other_collections(
     assert [a.id for a in await definitions.read_all(SECOND_COLLECTION)] == [other.id]
 
 
+class _NoSelections:
+    async def delete_collection(self, cid):
+        pass
+
+
 class _Collections(FakeCollections):
     def __init__(self, fail: Exception | None = None):
         self.deleted: list = []
@@ -1132,12 +1137,12 @@ async def test_a_collection_is_deleted_before_its_definitions_and_they_survive_a
                                     assign(attribute, [APPROVED], AssignMode.add, attribute.values[:1]))
     failing = _Collections(RuntimeError("weaviate is down"))
     with pytest.raises(RuntimeError):
-        await collection_service.delete_collection(failing, OWNER, COLLECTION, definitions)
+        await collection_service.delete_collection(failing, OWNER, COLLECTION, definitions, _NoSelections())
     assert [a.id for a in await definitions.read_all(COLLECTION)] == [attribute.id]
     assert len(await definitions.read_changes(COLLECTION, APPROVED)) == 1
 
     collections = _Collections()
-    await collection_service.delete_collection(collections, OWNER, COLLECTION, definitions)
+    await collection_service.delete_collection(collections, OWNER, COLLECTION, definitions, _NoSelections())
     assert collections.deleted == [COLLECTION] and await definitions.read_all(COLLECTION) == []
 
 
@@ -1150,11 +1155,11 @@ async def test_a_failed_definition_cleanup_after_the_collection_is_gone_is_repor
             raise RuntimeError("database is locked")
     collections = _Collections()
     with pytest.raises(IncompleteWriteError) as error:
-        await collection_service.delete_collection(collections, OWNER, COLLECTION, Broken())
+        await collection_service.delete_collection(collections, OWNER, COLLECTION, Broken(), _NoSelections())
     assert error.value.step == "delete_attribute_definitions" and collections.deleted == [COLLECTION]
     assert error.value.completed == {"delete_collection": 1}
     with pytest.raises(AccessDenied):  # a shared user may not delete the collection or its definitions
-        await collection_service.delete_collection(collections, SHARED, COLLECTION, definitions)
+        await collection_service.delete_collection(collections, SHARED, COLLECTION, definitions, _NoSelections())
 
 
 # ── Removing a deleted tag from the attributes (#508) ──────────────────────

@@ -208,13 +208,13 @@ async def reset_app_collections(
         if removed:
             await annotations.tenants.remove(removed)
         for name in kept:
-            await _delete_all_objects(annotations.with_tenant(name))
+            await delete_all_objects(annotations.with_tenant(name))
     for name in _app_collections_in_drop_order(names)[1:]:
         with phase(f"reset.delete_objects.{name}"):
-            await _delete_all_objects(client.collections.get(name))
+            await delete_all_objects(client.collections.get(name))
 
 
-async def _delete_all_objects(collection) -> None:
+async def delete_all_objects(collection) -> None:
     """Delete every object of ``collection`` or raise; never loops without progress."""
     # delete_many removes at most QUERY_MAXIMUM_RESULTS objects per call, so repeat
     # until nothing matches.
@@ -339,6 +339,9 @@ async def create_app_schema(client: WeaviateAsyncClient, names: CollectionNames)
             *(Property(name=name, data_type=text_array) for name in TASK_CLASSES),
             # the classification status (#590), as classification_provenance_schema declares it
             Property(name="classification_provenance", data_type=text, tokenization=Tokenization.FIELD,
+                     index_filterable=True, index_searchable=False),
+            # the stored named vectors (#805, #816), as chunk_have_vector declares it (have_vector.EXPECTED)
+            Property(name="haveVector", data_type=text_array, tokenization=Tokenization.FIELD,
                      index_filterable=True, index_searchable=False),
         ],
         references=[

@@ -435,8 +435,8 @@ async def test_search_chat_streams_for_a_guest_about_the_chosen_results_and_is_s
     assert ai.rows("SELECT status FROM llm_quota_operation WHERE feature = 'context_chat'") == [("settled",)]
 
 
-def test_ai_routes_declare_the_429_and_search_does_not(tmp_path):
-    paths = create_app(make_test_config(tmp_path)).openapi()["paths"]
+def test_ai_routes_declare_the_429_and_search_does_not(openapi_schema):
+    paths = openapi_schema["paths"]
 
     for path in ("/api/rag", "/api/rag/explain", "/api/question", "/api/summarize/{summary_type}",
                  "/api/ai/discuss_span", "/api/ai/suggest_spans/thorough", "/api/ai/suggest_spans/optimized",
