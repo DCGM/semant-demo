@@ -546,16 +546,13 @@ def report_summary(dataset: Dataset, configs: Sequence[Configuration], aggregate
     return lines
 
 
-CONCLUSIONS = ("_To be written by the reviewer from the numbers above: which configuration to recommend for general "
-               "search, what the cross-language results show and which follow-up experiments are worth running. "
-               "This report states measurements only._")
+CONCLUSIONS = ("_This report states measurements only; it draws no conclusions. Conclusions (which configuration "
+               "to recommend, what the cross-language results show, which follow-up experiments are worth running) "
+               "are written by people from these numbers, in a separate document._")
 
 
 def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_inconsistent: bool = False,
-                 samples: int = BOOTSTRAP_SAMPLES, seed: int = SEED, example_count: int = 2,
-                 conclusions: str | None = None) -> dict[str, Any]:
-    """Writes the report; ``conclusions`` is the reviewer's Markdown for the Conclusions section
-    (a placeholder without it)."""
+                 samples: int = BOOTSTRAP_SAMPLES, seed: int = SEED, example_count: int = 2) -> dict[str, Any]:
     out.mkdir(parents=True, exist_ok=True)
     configs, rows = score(dataset, runs, exclude_inconsistent)
     aggregates = aggregate(configs, rows, seed=seed, samples=samples)
@@ -583,7 +580,7 @@ def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_in
 
     md = ["# Search relevance report", "", "## Summary", "",
           *report_summary(dataset, configs, aggregates, inconsistent, exclude_inconsistent, names), "",
-          "## Conclusions", "", conclusions.strip() if conclusions and conclusions.strip() else CONCLUSIONS, "",
+          "## Conclusions", "", CONCLUSIONS, "",
           "## Dataset and runs", "", *provenance(dataset, runs), "",
           "## Configurations", "", *configuration_table(configs, names), "",
           "## Metrics and unjudged results", "", *METRIC_TEXT, "",
@@ -884,8 +881,6 @@ def parser() -> argparse.ArgumentParser:
     report = commands.add_parser("report", help="a report of every configuration of the runs")
     common(report)
     report.add_argument("--examples", type=int, default=2, help="best and worst intents shown per configuration")
-    report.add_argument("--conclusions", type=Path,
-                        help="a Markdown file with the reviewer's conclusions, shown in the Conclusions section")
     compare = commands.add_parser("compare", help="two configurations side by side")
     common(compare)
     compare.add_argument("--a", required=True, help="configuration A (the baseline)")
@@ -898,10 +893,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         dataset, runs = load(args.dataset, args.run)
         if args.command == "report":
-            conclusions = args.conclusions.read_text(encoding="utf-8") if args.conclusions else None
             build_report(dataset, runs, args.out, exclude_inconsistent=args.exclude_inconsistent,
-                         samples=args.bootstrap, seed=args.seed, example_count=args.examples,
-                         conclusions=conclusions)
+                         samples=args.bootstrap, seed=args.seed, example_count=args.examples)
             print(f"Wrote {args.out / 'report.md'}")
         else:
             build_compare(dataset, runs, args.a, args.b, args.out, exclude_inconsistent=args.exclude_inconsistent,

@@ -390,8 +390,7 @@ dependency, `requirements-dev.txt`).
 ```sh
 cd semant_demo_backend
 python -m semant_demo.benchmarks.search_relevance.report report \
-    --dataset DATASET --run RUN [--run RUN2 ...] --out OUT [--exclude-inconsistent] [--examples 2] \
-        [--conclusions CONCLUSIONS.md]
+    --dataset DATASET --run RUN [--run RUN2 ...] --out OUT [--exclude-inconsistent] [--examples 2]
 python -m semant_demo.benchmarks.search_relevance.report compare \
     --dataset DATASET --run RUN [--run RUN2] --a CONFIG --b CONFIG --out OUT
 ```
@@ -401,8 +400,8 @@ refused. A configuration is named by its id, or `run_id/configuration_id` when s
 share an id. `--bootstrap N` (default 2000, 0: no CIs) and `--seed` (default 728) set the
 bootstrap; the same inputs and seed give the same numbers.
 
-- `report` writes `report.md` (summary, the reviewer's conclusions from `--conclusions`, or a placeholder,
-  provenance, configurations, metric definitions, overall table with CIs, the query language ×
+- `report` writes `report.md` (summary; a Conclusions section that only says conclusions are
+  written by people in a separate document, never generated; provenance, configurations, metric definitions, overall table with CIs, the query language ×
   source language matrices, same/cross language, query style, source chunk properties such as
   `ocr_quality` or a chunk title, latency, limitations; configurations are shown by readable
   names such as "Hybrid bge-m3, α=0.75, relativeScore fusion", with their ids in the

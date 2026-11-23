@@ -214,14 +214,12 @@ def test_report_writes_markdown_tables_and_plots(tmp_path, dataset, run):
         assert f"plots/{name}.png" in text
 
 
-def test_report_explains_unjudged_effect_and_takes_conclusions(tmp_path, dataset, run):
-    notes = tmp_path / "conclusions.md"
-    notes.write_text("BM25 alone is not enough.\n", encoding="utf-8")
+def test_report_explains_unjudged_effect_and_draws_no_conclusions(tmp_path, dataset, run):
     out = tmp_path / "report"
     assert main(["report", "--dataset", str(dataset.directory), "--run", str(run.directory), "--out", str(out),
-                 "--bootstrap", "0", "--conclusions", str(notes)]) == 0
+                 "--bootstrap", "0"]) == 0
     text = (out / "report.md").read_text(encoding="utf-8")
-    assert "## Conclusions\n\nBM25 alone is not enough.\n" in text and "To be written by the reviewer" not in text
+    assert "## Conclusions\n\n_This report states measurements only; it draws no conclusions." in text
     assert "### Effect of unjudged results" in text and "Rank correlation (Spearman)" in text
     assert ("| configuration | top-10 results | without a grade | distinct ungraded pairs | nDCG@10 standard | rank "
             "| nDCG@10 condensed | rank |") in text
