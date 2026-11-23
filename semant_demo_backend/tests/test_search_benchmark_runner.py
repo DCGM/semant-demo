@@ -483,3 +483,25 @@ def test_a_relative_token_file_is_resolved_against_the_config(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path.parent)  # run from elsewhere
     config, _ = load_config(path)
     assert config.store.token_file == tmp_path / "token"
+
+
+def test_a_vector_with_chunks_that_could_not_be_embedded_stops_the_run(tmp_path, dataset):
+    class Unembedded(FakeStore):
+        async def ensure_vector(self, spec, endpoint, cache_dir):
+            report = await super().ensure_vector(spec, endpoint, cache_dir)
+            report.embedded, report.failed = 0, {"HTTP400": len(self.dataset.corpus)}
+            return report
+    store = Unembedded()
+    with pytest.raises(runner.RunnerError, match=r"vector fake: 9 chunks could not be embedded \{'HTTP400': 9\}"):
+        run(plan_for(tmp_path, dataset, base_config()), tmp_path, store)
+    assert store.calls == []  # no search ran
+    assert not (tmp_path / "runs/r1").exists() or not any((tmp_path / "runs/r1").iterdir())
+
+
+def test_the_example_config_asks_no_server_to_shorten_embeddings():
+    from pathlib import Path
+
+    import yaml
+    example = Path(runner.__file__).parents[2] / "configs" / "search_benchmark" / "runner.example.yaml"
+    vectors = yaml.safe_load(example.read_text())["vectors"]
+    assert all("dimensions" not in vector for vector in vectors.values())

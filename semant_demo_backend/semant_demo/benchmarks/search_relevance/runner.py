@@ -338,8 +338,11 @@ async def execute(plan: Plan, directory: Path, run_id: str, open_store: OpenStor
                 base = config.vectors[vector_id].spec(vector_id)  # documents never get the query prefix
                 report = await store.ensure_vector(base, config.endpoint(vector_id), config.cache_dir)
                 environment["vectors"][vector_id] = _jsonable(asdict(report))
-                if report.failed:
-                    log(f"warning: vector {vector_id}: chunks without a vector {report.failed}")
+                if report.failed:  # a chunk without a vector is never found: the comparison would be unfair
+                    raise RunnerError(
+                        f"vector {vector_id}: {sum(report.failed.values())} chunks could not be embedded "
+                        f"{report.failed}; fix the model or endpoint and rerun (embeddings made so far are "
+                        "cached). An HTTP400 often means a setting the server refuses, e.g. `dimensions`")
             environment["store"] = _jsonable(await store.describe())
             _write_partial_state(directory, dataset, state, environment)
             to_search = {c.configuration_id for c, _ in work}
