@@ -217,9 +217,10 @@
     </div>
     </template>
 
-    <!-- Registered once a row is opened. -->
-    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Annotation" icon="format_quote" :order="1" fill v-slot="{ visible }">
+    <!-- On the rail from the start, available once a row is open. -->
+    <RightSidebarPanel :id="CONTEXT_PANEL_ID" label="Annotation" icon="format_quote" :order="1" :disabled="!selection.focused" fill v-slot="{ visible }">
       <ChunkContextPanel
+        v-if="selection.focused"
         :visible="visible"
         ref="panel"
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
@@ -809,17 +810,17 @@ function closeSidebarOnEscape (event: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', closeSidebarOnEscape))
 
-/** The Statistics panel (#680) is registered from the start, which would make the sidebar open
- * beside the list on every visit (the shell opens it when a page brings its first panel). The list
- * is the page's task, so the sidebar starts closed, as it did before a row was opened; opening a
- * row or the sidebar button opens it. */
+/** The panels are registered from the start (Annotation disabled until a row is open), so the shell
+ * opens the sidebar on every visit. The list is the page's task, so the sidebar starts as the rail
+ * of icons only (where it opens at all: not as the overlay of a narrow screen); choosing a panel or
+ * opening a row expands it. */
 async function startSidebarClosed () {
   sidebarSettling.value = true
   await nextTick() // after the shell's own open-on-first-panel
-  if (!selection.focused) rightSidebar.open = false
+  if (!selection.focused && rightSidebar.open) rightSidebar.miniState = true
   sidebarSettling.value = false
 }
-/** The sidebar is still being closed: its panels are not counted as shown (nothing is read). */
+/** The sidebar is still being reduced to its rail: its panels are not counted as shown (nothing is read). */
 const sidebarSettling = ref(false)
 onMounted(startSidebarClosed)
 onActivated(startSidebarClosed)

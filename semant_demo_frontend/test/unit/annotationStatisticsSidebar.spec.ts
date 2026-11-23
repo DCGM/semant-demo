@@ -82,20 +82,29 @@ describe('the statistics panel of the annotations sidebar', () => {
   const reads = () => requests.filter(r => r.path.endsWith('/facets') && r.body?.self_exclusion === false)
   const q = (testId: string) => document.body.querySelector<HTMLElement>(`[data-testid="${testId}"]`)
 
-  it('starts with the sidebar closed, though the panel is registered', async () => {
+  it('starts as the rail of icons, Annotation unavailable until a row is open, and reads nothing', async () => {
     const sidebar = useRightSidebarStore()
     sidebar.open = true // what the shell does when a page brings its first panel
     const { wrapper } = await mountPage()
-    expect(sidebar.hasPanels).toBe(true)
-    expect(sidebar.open).toBe(false)
+    expect(sidebar.open).toBe(true)
+    expect(sidebar.miniState).toBe(true)
+    expect(sidebar.sortedPanels.map(p => [p.label, p.disabled])).toEqual([['Annotation', true], ['Statistics', false]])
+    expect(sidebar.activePanelId).toBe('annotation-statistics')
+    sidebar.activate('annotation-context') // a disabled panel cannot be chosen
+    expect(sidebar.activePanelId).toBe('annotation-statistics')
     expect(reads()).toHaveLength(0)
+    // choosing the Statistics expands the rail and reads
+    sidebar.activate('annotation-statistics')
+    await flushPromises()
+    expect(sidebar.miniState).toBe(false)
+    expect(reads()).toHaveLength(1)
     wrapper.unmount()
   })
 
   it('is registered after the annotation panel and reads nothing while the sidebar is closed', async () => {
     const { wrapper, sidebar } = await mountPage()
-    expect(sidebar.sortedPanels.map(p => p.label)).toEqual(['Statistics'])
-    expect(sidebar.sortedPanels[0]).toMatchObject({ icon: 'bar_chart', order: 2 })
+    expect(sidebar.sortedPanels.map(p => p.label)).toEqual(['Annotation', 'Statistics'])
+    expect(sidebar.sortedPanels[1]).toMatchObject({ icon: 'bar_chart', order: 2 })
     expect(reads()).toHaveLength(0)
     sidebar.open = true
     await flushPromises()

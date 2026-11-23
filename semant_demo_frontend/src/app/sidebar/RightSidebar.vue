@@ -18,7 +18,8 @@
           :key="panel.id"
           class="rail-item"
           :class="{ 'rail-item--active': panel.id === sidebar.activePanelId }"
-          clickable
+          :clickable="!panel.disabled"
+          :disable="panel.disabled"
           v-ripple
           :aria-label="panel.label"
           :aria-current="panel.id === sidebar.activePanelId ? 'true' : undefined"
