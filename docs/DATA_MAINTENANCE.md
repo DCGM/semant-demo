@@ -908,6 +908,9 @@ flowchart LR
    the chunks' classifications. Until it runs, the new documents have no summaries and match no
    chunk filter. A run before the classification (e.g. for the language filter) is only interim:
    the import is not complete while the classification is pending. It is a full-corpus pass.
+7. `import_status --document-ids CHECKPOINT.documents.txt` checks, read-only, that every step
+   above reached the imported documents and that the index finds their vectors
+   ([Import status](#import-status-import_status-884)).
 
 `semant_demo_backend/tests/integration/test_append_pipeline.py` (#798) runs this order on the
 disposable test store with fake models, as a smoke test of the hand-offs: a new document, one
@@ -937,6 +940,55 @@ Procedure on a shared store (authorized per task):
 7. Run the follow-up commands.
 
 Record the counts and the backup id on the issue.
+
+## Import status (`import_status`, #884)
+
+An exit code 0 of each step after an import does not prove that every imported document and
+chunk was enriched. `import_status` reads only the documents of the import's list and their
+chunks, writes nothing (no `--confirm-endpoint`) and reports per step how many are complete,
+with the ids of the incomplete ones (the first 100 per step; the counts are complete).
+
+```bash
+python -m semant_demo.maintenance.import_status --report status.json --document-ids CHECKPOINT.documents.txt \
+    [--vector-name Qwen3_Embedding_0_6B] [--coverage-sample 100] [--coverage-k 10] [--seed 884]
+```
+
+| Stage | Unit | Complete when |
+| --- | --- | --- |
+| `chunks` | document | it has chunks |
+| `metadata` | document | `public` is a bool (else `unresolved`) and `library` is set (`metadata_sync`) |
+| `year` | chunk | `yearIssued` equals the document's year, absent when it has none (`chunk_year`) |
+| `visibility` | chunk | `documentPublic` is `true` exactly when the document's `public` is (`chunk_document_public`) |
+| `titles` | chunk | a non-empty `title` (`chunk_titles`) |
+| `vectors` | chunk | `haveVector` lists `--vector-name` (the embedder) |
+| `classification` | chunk | `classification_provenance` other than `UNPROCESSED` (the classifier) |
+| `summaries` | document | the summaries equal a recomputation from its chunks and were computed (`chunk_summaries`) |
+
+- **Expected gaps** are counted apart, not as incomplete: the untitled and `UNPROCESSED` chunks
+  of a document that is not public (deferred by `chunk_titles` and an API model, #785; a local
+  model may classify them), and chunks without `classification_provenance`, stored before the
+  property existed (e.g. the earlier chunks of a document the import appends to; the import sets
+  `UNPROCESSED` on every chunk it inserts). Documents without a title or a year are counted in
+  `documents_without`: the source may have none.
+- **Vector index:** up to `--coverage-sample` chunks are sampled among the imported documents'
+  chunks that list the vector. A query with the chunk's own stored vector must find it in the top
+  `--coverage-k`, and a query restricted to its id must find it, as in
+  [`db_benchmark inventory`](DB_BENCHMARK.md), whose whole-collection sample rarely includes
+  new chunks. Chunks with duplicate text share a vector and may miss the top K; inspect the
+  listed `missed_ids`. `--coverage-sample 0` skips the check.
+- **Exit codes:** 0 when no step is incomplete (expected gaps aside) and the index found every
+  sampled chunk; 1 otherwise; 2 when refused: an existing report, a missing, empty or invalid
+  document list, a listed document that does not exist, a missing collection, a missing chunk
+  property of a step (`yearIssued`, `documentPublic`, `title`, `haveVector`,
+  `classification_provenance`), missing summary properties or a missing named vector.
+- It reads the listed documents in batches of 100 and the chunks of each document through the
+  `document` reference (ids and the properties above, never text; vectors only of the sampled
+  chunks). A document with more chunks than `QUERY_MAXIMUM_RESULTS` fails instead of being
+  truncated. Run it while nothing writes the imported documents.
+
+`semant_demo_backend/tests/integration/test_import_status.py` runs it after the order of
+*Afterwards* on the [append test's](#chunk-import-chunk_ingest-313) data and after leaving out
+each step.
 
 ## Annotation derived data (`annotation_enrichment`, #328)
 
