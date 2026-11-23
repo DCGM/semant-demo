@@ -25,6 +25,101 @@ Production-derived corpus text, queries and grades stay **outside Git**. The tes
 synthetic fixture `tests/search_benchmark_fixture.py`
 (`python -m tests.search_benchmark_fixture OUT` writes it).
 
+## Worked example
+
+One information need followed through every stage. The values are the synthetic fixture's
+(`tests/search_benchmark_fixture.py`), so they can be reproduced with
+`python -m tests.search_benchmark_fixture OUT`; a real dataset has thousands of chunks and
+hundreds of needs, but the same records.
+
+```text
+ corpus (sampled chunks) ─► intent (need + source chunk) ─► queries (ces, eng, deu)
+        │                                                        │
+        │                       pooling: several searches propose candidate chunks
+        │                                                        │
+        └────────────────► qrels: each (intent, chunk) graded 0/1/2 once ◄──┘
+                                          │                  frozen dataset
+ runner: each configuration searches each query ─► ranked chunk ids (results.jsonl)
+                                          │
+ reports: rankings against the qrels ─► nDCG@10, P@10, Hit@10, … per language pair
+```
+
+**1. Sample (corpus).** The generator samples chunks of the corpus, balanced across the corpus
+languages. Four of the fixture's nine chunks:
+
+| chunk | language | text |
+|---|---|---|
+| 1 | ces | Dne 12. března vyhořela v obci Lhota stodola sedláka Nováka. |
+| 4 | eng | A fire destroyed the barn of farmer Novak in the village of Lhota on 12 March. |
+| 7 | deu | Am 12. März brannte in Lhota die Scheune des Bauern Novak nieder. |
+| 2 | ces | Na trhu v Brně se prodávalo obilí za vyšší ceny než loni. |
+
+**2. Intent.** A model is shown one sampled chunk, the **source chunk** (here chunk 1), and
+writes an **information need**: what a user wants to find, in one English sentence, plus a query
+in the source chunk's language in a requested **style** (`keywords`, `question`, `entity`, …):
+
+```json
+{"intent_id": "fire-lhota", "style": "question",
+ "need": "Where and when did farmer Novak's barn burn down?",
+ "source_chunk_ids": ["…-000000000001"], "source_language": "ces"}
+```
+
+**3. Queries.** The need's query is translated into the other query languages, keeping the need
+(not the words). Each query is one formulation of the intent in one language:
+
+| query_id | language | origin | text |
+|---|---|---|---|
+| fire-lhota.ces | ces | generated | Kdy vyhořela stodola v Lhotě? |
+| fire-lhota.eng | eng | translated | When did the barn in Lhota burn? |
+| fire-lhota.deu | deu | translated | Wann brannte die Scheune in Lhota? |
+
+**4. Pooling.** Grading every chunk for every need is too expensive, so a few searches propose
+**candidates**: each pooling method (here `bm25` and `vector`) searches every query of the
+intent, and their top results, together with the source chunk, form the intent's pool.
+`pooled_by` records who proposed each candidate.
+
+**5. Grading (qrels).** A model grades each (intent, candidate) pair once against the **need**:
+2 relevant, 1 partly relevant, 0 not relevant. The grade belongs to the intent, so its three
+queries share it. A pair may also be graded per query language (`language_grades`); `consistent`
+says whether those agree:
+
+| chunk | grade | pooled_by | language_grades | consistent |
+|---|---|---|---|---|
+| 1 | 2 | source, bm25 | – | true |
+| 4 | 2 | vector | – | true |
+| 7 | 1 | vector | ces 2, eng 1, deu 1 | false |
+| 2 | 0 | bm25 | – | true |
+
+Chunks 4 and 7 answer the same need in English and German: the grades of other chunks than the
+source are what make cross-language results measurable. Chunks nobody proposed (3, 5, 6, …)
+have **no qrel**: they are *unjudged*, not known to be irrelevant.
+
+**6. Run.** The frozen dataset is loaded into the benchmark store, and the runner searches every
+query in every configuration and saves the ranked chunk ids. For the English query:
+
+| configuration | ranked chunks | embed_ms | search_ms |
+|---|---|---|---|
+| bm25 | 4, 5, 6 | – | 2.0 |
+| vector | 1, 4, 7, 2, 3 | 5.0 | 3.0 |
+
+**7. Report.** The rankings are scored against the qrels, with the query's own language grade
+where one exists (chunk 7 counts as 1 for the English query, 2 for the Czech one). The best
+possible ranking for the English query is 1, 4, 7 (grades 2, 2, 1):
+
+| configuration | query | nDCG@10 | P@10 | Hit@10 | unjudged@10 |
+|---|---|---|---|---|---|
+| bm25 | fire-lhota.eng | 0.556 | 0.1 | 0 | 0.667 |
+| vector | fire-lhota.eng | 1.000 | 0.3 | 1 | 0.200 |
+| bm25 | fire-lhota.ces | 0.469 | 0.1 | 1 | 0.333 |
+| vector | fire-lhota.ces | 1.000 | 0.3 | 1 | 0.200 |
+
+BM25 finds only same-language words: for the English query it ranks English chunks, finds the
+relevant chunk 4 but misses the Czech source chunk (Hit@10 0), and two of its three results are
+unjudged. The vector search ranks all relevant chunks first in both languages. The report averages
+such per-query values per configuration, by query language × source language and by same vs
+cross language, with confidence intervals that resample whole intents (the three translations of
+a need are not independent).
+
 ## Dataset
 
 ```text
