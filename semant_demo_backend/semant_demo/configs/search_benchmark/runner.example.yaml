@@ -33,14 +33,14 @@ vectors:
     model: Qwen/Qwen3-Embedding-0.6B
     target_vector: Qwen3_Embedding_0_6B
     document_template: "{text}"
-    dimensions: 1024
+    # No `dimensions`: it asks the server to shorten the embeddings, which vLLM refuses (HTTP 400)
+    # for models without Matryoshka support, Qwen3-Embedding-0.6B and BGE-M3 among them.
     query_prefixes:
       instruct: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
       none: ""
   bge:
     model: BAAI/bge-m3
     target_vector: BGE_M3
-    dimensions: 1024
     query_prefixes:
       none: ""
 

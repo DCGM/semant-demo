@@ -191,7 +191,9 @@ python -m semant_demo.benchmarks.search_relevance.runner run --config $CONFIG --
 
 It opens the store, loads the dataset (a no-op when it is loaded), ensures one named vector per
 vector used (document embeddings are cached in `cache_dir`; the query prefix never changes them),
-then runs the searches with at most `budget.concurrency` in flight and at most `budget.max_qps`
+stops when a vector has chunks that could not be embedded (a chunk without a vector is never found, so
+the comparison would be unfair; give no `dimensions` to a vLLM server of a model without Matryoshka
+support, it answers HTTP 400), then runs the searches with at most `budget.concurrency` in flight and at most `budget.max_qps`
 started per second. With several searches in flight their times include contention: take
 latency figures from a separate run with `budget.concurrency: 1`, and say so in the report. Each result keeps the hits (truncated to the depth, each chunk once), the
 query embedding and search times, or the failure's exception class (never its message or the
