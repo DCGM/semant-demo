@@ -33,18 +33,20 @@ describe('the statistics panel of the annotations sidebar', () => {
   const originalFetch = globalThis.fetch
   let requests: { path: string, body: Record<string, unknown> | undefined }[]
   let failStatistics = false
+  let payload: unknown = statistics
 
   beforeEach(() => {
     setActivePinia(createPinia())
     requests = []
     failStatistics = false
+    payload = statistics
     globalThis.fetch = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const path = new URL(String(input)).pathname
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
       requests.push({ path, body })
       const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
       if (path.endsWith('/annotations/facets')) {
-        if (body?.self_exclusion === false) return failStatistics ? json({ detail: 'x' }, 500) : json(statistics)
+        if (body?.self_exclusion === false) return failStatistics ? json({ detail: 'x' }, 500) : json(payload)
         return json({ population: 'filtered', self_exclusion: true, facets: [] })
       }
       if (path.endsWith('/annotations/review')) return json({ succeeded: ['a1'], failed: [], versions: { a1: 2 }, previous: {} })
@@ -172,6 +174,40 @@ describe('the statistics panel of the annotations sidebar', () => {
     await flushPromises()
     expect(requests.some(r => r.path.endsWith('/annotations/review'))).toBe(true)
     expect(reads().length).toBe(before + 2)
+    wrapper.unmount()
+  })
+
+  it('counts exactly what the Statistics view counts: one request, the same numbers', async () => {
+    const store = useConcordanceStore()
+    const { wrapper, sidebar } = await mountPage('?view=statistics')
+    await store.setFilters({ text: 'Karel' })
+    sidebar.open = true
+    await flushPromises()
+    const bodies = reads().map(r => JSON.stringify(r.body))
+    expect(bodies.length).toBeGreaterThanOrEqual(2) // the view's and the panel's
+    expect(new Set(bodies.slice(-2)).size).toBe(1)
+    expect(q('statistics-sidebar-total')?.textContent).toBe(q('statistics-total')?.textContent)
+    expect(q('statistics-sidebar-documents')?.textContent).toBe(q('statistics-documents')?.textContent)
+    wrapper.unmount()
+  })
+
+  it('says a ranked top k is not the whole collection and offers no drill-down', async () => {
+    payload = { ...statistics, population: 'top_k', k: 40 }
+    const { wrapper, sidebar } = await mountPage()
+    sidebar.open = true
+    await flushPromises()
+    expect(q('statistics-sidebar-top-k')?.textContent).toContain('40 most similar')
+    expect(q('statistics-sidebar-table-tag-show-t2')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('names a distribution the server could not count as unavailable', async () => {
+    payload = { ...statistics, facets: statistics.facets.filter(f => f.facet !== 'document') }
+    const { wrapper, sidebar } = await mountPage()
+    sidebar.open = true
+    await flushPromises()
+    expect(q('statistics-sidebar-document-unavailable')).not.toBeNull()
+    expect(q('statistics-sidebar-documents')?.textContent).toBe('—')
     wrapper.unmount()
   })
 

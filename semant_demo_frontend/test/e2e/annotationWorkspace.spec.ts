@@ -85,7 +85,7 @@ test('opening, checking and keyboard use are distinct; the source shows the exac
   // Checking a row does not open its source.
   await row(page, 'Prahy').getByRole('checkbox').click()
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
-  await expect(sidebarPanelButton(page, 'Annotation')).toHaveCount(0)
+  await expect(sidebarPanelButton(page, 'Annotation')).toHaveAttribute('aria-disabled', 'true') // on the rail, not selectable yet
 
   // Clicking a row opens it in the shared sidebar without checking it.
   await row(page, 'Jan Novák').click()
@@ -356,6 +356,15 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
   // The sidebar slides in and narrows the page, which can wrap the toolbar: measure the rows
   // only once it is fully in and the page ends where it starts.
+  // The sidebar starts as the rail of icons and expands when the row opens: wait until its width settles.
+  await expect(page.locator('.q-drawer--right:not(.q-drawer--mini)')).toBeVisible()
+  let lastWidth = -1
+  await expect.poll(async () => {
+    const width = await page.evaluate(() => document.querySelector('.q-drawer--right')?.getBoundingClientRect().width ?? 0)
+    const settled = width === lastWidth
+    lastWidth = width
+    return settled
+  }).toBe(true)
   await expect.poll(() => page.evaluate(() => {
     const drawer = document.querySelector('.q-drawer--right')?.getBoundingClientRect()
     const workspace = document.querySelector('[data-testid=collection-annotations]')?.getBoundingClientRect()
