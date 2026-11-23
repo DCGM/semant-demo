@@ -1,5 +1,7 @@
 <template>
   <q-page class="collection-annotations q-px-md q-pb-lg" data-testid="collection-annotations">
+    <SavedFilterHeader :tags="tags" :attributes="attributesStore.attributes" :definitions-ready="definitionsReady" />
+
     <ConcordanceToolbar
       ref="toolbar"
       :filters="store.filters"
@@ -12,7 +14,15 @@
       class="q-mb-sm"
       @change="store.setFilters"
       @show-attributes="ids => { store.shownAttributeIds = ids }"
-    />
+    >
+      <template #saved>
+        <SavedFiltersMenu
+          :collection-id="collectionId"
+          :people="store.people"
+          :me="userStore.getUserId ?? null"
+        />
+      </template>
+    </ConcordanceToolbar>
 
     <ConcordanceFilterChips
       :filters="store.filters"
@@ -508,6 +518,9 @@ import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, formatCount, summaryOf, type D
 import { useAnnotationStatistics } from '../statistics/useAnnotationStatistics'
 import type { ConcordanceFilters } from './concordanceStore'
 import SimilarSourceBar from './SimilarSourceBar.vue'
+import SavedFiltersMenu from './SavedFiltersMenu.vue'
+import SavedFilterHeader from './SavedFilterHeader.vue'
+import { useSavedFiltersStore } from './savedFiltersStore'
 import ConcordanceTable, { type RowDecision } from './ConcordanceTable.vue'
 import ConcordanceToolbar from './ConcordanceToolbar.vue'
 import SelectionBar from './SelectionBar.vue'
@@ -540,6 +553,9 @@ const selection = reactive(useAnnotationSelectionStore())
 const review = reactive(useAnnotationReviewStore())
 const assign = reactive(useAttributeAssignStore())
 const attributesStore = reactive(useAttributesStore())
+const savedFilters = useSavedFiltersStore()
+/** The tags and attributes of this collection are loaded (the saved filter warns about deleted ones). */
+const definitionsReady = ref(false)
 const userStore = useUserStore()
 const tagsStore = useTagsStore()
 const { tags } = storeToRefs(tagsStore)
@@ -1410,9 +1426,13 @@ watch(collectionId, async (id) => {
   if (!id) return
   chunkContext.clear()
   const returning = store.collectionId === id && !!store.page
-  void tagsStore.fetchTagsByCollection(id)
-  void attributesStore.load(id)
+  definitionsReady.value = false
+  void Promise.all([tagsStore.fetchTagsByCollection(id), attributesStore.load(id)]).then(() => {
+    if (collectionId.value === id && !tagsStore.error && !attributesStore.error) definitionsReady.value = true
+  })
   const loading = store.open(id)
+  // After open: another collection starts a new workspace, so no live filter is active then.
+  void savedFilters.load(id)
   if (returning) {
     // Back from a document: the same place, then the rows as they are now.
     await nextTick()
