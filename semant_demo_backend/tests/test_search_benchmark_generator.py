@@ -85,13 +85,10 @@ class FakeSource:
         self.reads["languages"] += 1
         return dict(Counter(c.language for c in self.chunks))
 
-    async def after(self, cursor, limit):
-        self.reads["after"] += 1
-        return [c for c in self.chunks if cursor is None or c.id.int > cursor.int][:limit]
-
-    async def window(self, language, offset, limit):
-        self.reads["window"] += 1
-        return [c for c in self.chunks if c.language == language][offset:offset + limit]
+    async def scan(self, page):
+        self.reads["scan"] += 1
+        for chunk in self.chunks:  # in id order
+            yield chunk.id, chunk.language
 
     async def neighbours(self, document_id, orders):
         self.reads["neighbours"] += 1
@@ -206,9 +203,9 @@ async def test_sampling_balances_languages_caps_documents_and_records_exclusions
     for language in LANGUAGES:  # balanced strata: both periods and document types
         periods = {c.attributes["period"] for c in corpus if c.language == language}
         assert periods == {"1850-1874", "1900-1924"}
-    assert report["excluded_languages"] == {MIXED: 1, UNKNOWN: 1, "fra": 1}
-    assert report["drawn_exclusions"] == {"mixed_language": 1, "unknown_language": 1, "other_language": 1,
-                                          "too_short": 1, "no_document": 1}
+    assert report["excluded_languages"] == {MIXED: 1, UNKNOWN: 1, "fra": 1}  # counted by the scan, never read
+    assert report["read_exclusions"] == {"too_short": 1, "no_document": 1}
+    assert report["scanned"] == len(chunks) and report["method"] == "scan + reservoir sample"
     assert report["short"] == {}
     assert all(c.document.title and c.attributes["sampled_by"].startswith("random") for c in corpus)
 
@@ -222,16 +219,29 @@ async def test_sampling_is_deterministic_with_its_seed():
     assert {c.chunk_id for c in first} != {c.chunk_id for c in other}
 
 
-async def test_sampling_reads_a_rare_language_through_windows_and_reports_a_short_one():
-    chunks = source_chunks(documents=6, languages=("ces",)) + source_chunks(documents=1, per_document=3,
-                                                                             languages=("deu",))
-    source = FakeSource(chunks)
-    corpus, report = await sample_corpus(source, config(languages=("ces", "deu"),
-                                                        sample={"max_draws": 1, "cursor_batch": 2}))
-    assert report["methods"] == {"ces": "random+window", "deu": "random+window"}
-    assert source.reads["window"] >= 1
-    assert Counter(c.language for c in corpus)["deu"] == 2  # three chunks of one document, at most two
-    assert report["short"] == {"deu": {"target": 6, "selected": 2}}
+async def test_a_rare_language_is_sampled_from_all_its_chunks_and_a_short_one_reported():
+    # 1 German chunk in 33: a scan reaches all of them wherever they are, unlike batches or filters.
+    common = source_chunks(documents=8, per_document=12, languages=("ces",))
+    rare = source_chunks(documents=3, per_document=1, languages=("deu",))
+    source = FakeSource(common + rare)
+    corpus, report = await sample_corpus(source, config(languages=("ces", "deu"), sample={"oversample": 1}))
+    assert source.reads["scan"] == 1 and report["scanned"] == 99
+    assert {c.chunk_id for c in corpus if c.language == "deu"} == {c.id for c in rare}  # every one of the 3
+    assert report["short"] == {"deu": {"target": 6, "selected": 3}}
+    assert report["sampled_ids"] == {"ces": 6, "deu": 3}  # oversample 1: target, or all a language has
+
+
+async def test_the_reservoir_is_a_uniform_sample_of_the_whole_scan():
+    chunks = source_chunks(documents=40, per_document=25, languages=("ces",))  # 1,000 chunks
+    first_half = {c.id for c in sorted(chunks, key=lambda c: c.id)[:500]}  # the scan reads in id order
+    hits = Counter()
+    for seed in range(200):
+        corpus, _ = await sample_corpus(FakeSource(chunks), config(
+            languages=("ces",), seeds={"sample": seed}, sample={"per_language": 10, "oversample": 1,
+                                                                "max_per_document": 25, "strata": "proportional"}))
+        hits.update(int(c.chunk_id in first_half) for c in corpus)
+    # Half the ids lie in the first half of the scan: about half the sampled chunks must too.
+    assert 0.44 < hits[1] / (hits[0] + hits[1]) < 0.56
 
 
 async def test_sampling_adds_neighbouring_chunks_as_context():
@@ -853,15 +863,10 @@ def test_budget_takes_the_same_source_options_as_run(tmp_path, capsys):
     assert "calls" in json.loads(capsys.readouterr().out)
 
 
-async def test_sampling_draws_again_when_the_document_cap_leaves_a_language_short():
-    # Ids consecutive per document: a cursor batch then holds one or two documents' chunks, so
-    # the first draws give enough candidates but too few documents for max_per_document 1.
-    step = 2 ** 128 // (len(LANGUAGES) * 30 + 1)  # documents spread over the id space
-    chunks = [SourceChunk(UUID(int=(n * 30 + d + 1) * step + o), did(lang, d), o, lang, text(lang, d, o))
-              for n, lang in enumerate(LANGUAGES) for d in range(30) for o in range(10)]
-    cfg = config(sample={"per_language": 6, "max_per_document": 1, "oversample": 1, "cursor_batch": 10,
-                         "context_fraction": 0})
+async def test_oversampling_lets_the_document_cap_reach_the_target():
+    # Ten chunks per document and at most one per document: the target needs ids from many documents.
+    chunks = source_chunks(documents=30, per_document=10, languages=("ces",))
+    cfg = config(languages=("ces",), sample={"per_language": 6, "max_per_document": 1, "oversample": 4})
     corpus, report = await sample_corpus(FakeSource(chunks), cfg)
-    assert Counter(c.language for c in corpus) == {"ces": 6, "eng": 6, "deu": 6}
-    assert max(Counter(c.document_id for c in corpus).values()) == 1
-    assert report["extra_rounds"] > 0 and report.get("short", {}) == {}
+    assert len(corpus) == 6 and max(Counter(c.document_id for c in corpus).values()) == 1
+    assert report["short"] == {}

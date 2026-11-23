@@ -53,17 +53,13 @@ class SampleSection(_Section):
     max_per_document: int = Field(20, ge=1)
     """At most this many sampled chunks from one document (context chunks not counted)."""
     oversample: float = Field(3.0, ge=1)
-    """Candidates drawn per wanted chunk, so the per-document cap and strata can be honoured."""
-    cursor_batch: int = Field(50, ge=1, le=1000)
-    """Chunks read after one random id (ids are random UUIDs, so a batch is a random sample)."""
-    max_draws: int = Field(2000, ge=1)
-    """Random-cursor reads at most; a language still short is then sampled through windows."""
-    window: int = Field(200, ge=1)
-    max_windows: int = Field(20, ge=0)
-    """Language-filtered windows per short language at most (rare languages)."""
+    """Ids sampled (and read in full) per wanted chunk of a language, so the per-document cap and
+    the strata can be honoured."""
+    scan_batch: int = Field(5000, ge=100, le=10000)
+    """Chunks per page of the scan over ids and languages."""
     strata: Literal["balanced", "proportional"] = "balanced"
     """``balanced``: round-robin over (period, document type) strata of the candidates;
-    ``proportional``: as drawn."""
+    ``proportional``: in random order."""
     period_years: int = Field(25, ge=1)
     context_fraction: float = Field(0.1, ge=0, le=1)
     """Share of sampled chunks whose neighbours (``context_neighbours`` on each side) are added."""

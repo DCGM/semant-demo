@@ -45,9 +45,8 @@ sample:
   per_language: 10000
   min_chars: 200
   max_per_document: 20
-  oversample: 2
-  cursor_batch: 100
-  max_draws: 2000
+  oversample: 2                     # ids sampled per wanted chunk (reservoir of the scan)
+  scan_batch: 5000                  # one read-only scan over every chunk's id and language
   strata: balanced                  # round-robin over (25-year period, document type)
   period_years: 25
   context_fraction: 0.05            # neighbours of 5 % of the sampled chunks

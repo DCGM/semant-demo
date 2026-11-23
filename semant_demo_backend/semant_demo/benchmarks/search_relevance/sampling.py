@@ -1,23 +1,20 @@
 """Step ``sample`` (#726): a language-balanced, document-spread sample of the source corpus.
 
-1. **Inventory**: chunk counts by stored language. Languages not configured, mixed and unknown
-   ones are excluded from the balance (counted in the report).
-2. **Candidates**: random-cursor reads (a batch of chunks after a random UUID; chunk ids are
-   random v4 UUIDs, so each batch is a random sample of the whole store) until every language has
-   ``oversample`` x its target or the draws run out. A language still short (a rare one) is read
-   from random language-filtered windows (within the first ``MAX_WINDOW`` the filter reaches, at
-   the cost of uniformity). Drawn chunks that are too short, have no document or another
-   language are counted as exclusions.
+1. **Scan**: one pass over every chunk's id and language (in id order). It counts the
+   languages exactly and keeps, per corpus language, a uniform random sample of
+   ``oversample`` x its target ids (reservoir sampling with the ``sample`` seed), so a rare
+   language is sampled from all its chunks, not from what a batch or a filter happens to reach.
+   Languages not configured, mixed and unknown ones are excluded from the balance (counted).
+2. **Read**: the sampled ids are read in full (text, title, document, year, type). Chunks that
+   are too short or have no document are counted as exclusions.
 3. **Selection** per language toward its target: round-robin over (period, document type)
-   strata (``balanced``) or as drawn (``proportional``), at most ``max_per_document`` per document.
-   A language still short after selection (the document cap and the strata can leave candidates
-   unused) draws again toward its shortfall, up to ``EXTRA_ROUNDS`` times, while ``max_draws`` lasts
-   and a round still finds new candidates.
+   strata (``balanced``) or in random order (``proportional``), at most ``max_per_document`` per
+   document. A language with fewer usable chunks than its target is reported short.
 4. **Context**: for a seeded share of the selected chunks, their neighbours in the document
    (``attributes.context_of``), so related passages occur together.
 5. **Near-duplicates** are kept (they are realistic) and marked (``attributes.near_duplicate_of``).
 
-Everything random comes from the ``sample`` seed; reads happen in a fixed order, so the same
+Everything random comes from the ``sample`` seed and the scan's order is the ids', so the same
 store and configuration give the same sample.
 """
 from __future__ import annotations
@@ -28,20 +25,18 @@ import random
 import re
 from itertools import combinations
 from collections import Counter, defaultdict, deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 from uuid import UUID
 
 from semant_demo.benchmarks.search_relevance.config import GeneratorConfig
 from semant_demo.benchmarks.search_relevance.contracts import LANGUAGE_PATTERN, CorpusChunk, DocumentInfo
 from semant_demo.benchmarks.search_relevance.llm import gather
-from semant_demo.benchmarks.search_relevance.source import MAX_WINDOW, MIXED, UNKNOWN, SourceChunk, SourceReader
+from semant_demo.benchmarks.search_relevance.source import SourceChunk, SourceReader
 
-IDLE_DRAWS = 20
-EXTRA_ROUNDS = 8
-"""Further draw rounds for a language the selection left short."""
-"""Random-cursor reads in a row that found nothing new: the store is exhausted."""
 READ_CONCURRENCY = 8
+READ_SLICE = 1000
+"""Sampled ids read per task (the source reads them in batches of its own)."""
 
 
 def period(year: int | None, years: int) -> str:
@@ -64,51 +59,37 @@ class Sampler:
         self.seen: set[UUID] = set()
         self.exclusions: Counter[str] = Counter()
 
-    def _consider(self, chunk: SourceChunk) -> bool:
-        """Records a drawn chunk; True when it was not seen before."""
-        if chunk.id in self.seen:
-            return False
-        self.seen.add(chunk.id)
-        if chunk.language == MIXED:
-            self.exclusions["mixed_language"] += 1
-        elif chunk.language == UNKNOWN:
-            self.exclusions["unknown_language"] += 1
-        elif chunk.language not in self.targets:
-            self.exclusions["other_language"] += 1
-        elif chunk.document_id is None:
+    def _consider(self, chunk: SourceChunk) -> None:
+        """Records a chunk read in full as a candidate of its language, or why it is not one."""
+        if chunk.document_id is None:
             self.exclusions["no_document"] += 1
         elif len(chunk.text) < self.s.min_chars:
             self.exclusions["too_short"] += 1
-        else:
+        elif chunk.language in self.targets:
             self.candidates[chunk.language][chunk.id] = chunk
-        return True
 
-    async def _draw(self, wanted: dict[str, int], draws: int = 0) -> int:
-        """Draw random-cursor batches until every language of ``wanted`` has that many candidates,
-        counting on from ``draws`` toward ``max_draws``; the draws made so far."""
-        idle = 0
-        while draws < self.s.max_draws and idle < IDLE_DRAWS and any(
-                len(self.candidates[lang]) < n for lang, n in wanted.items()):
-            cursor = UUID(int=self.rnd.getrandbits(128))
-            batch = await self.source.after(cursor, self.s.cursor_batch)
-            if len(batch) < self.s.cursor_batch:  # past the last id: wrap around
-                batch += await self.source.after(None, self.s.cursor_batch - len(batch))
-            draws += 1
-            new = [self._consider(chunk) for chunk in batch]
-            idle = 0 if any(new) else idle + 1
-        return draws
+    async def _scan(self) -> tuple[Counter[str], dict[str, list[UUID]]]:
+        """Exact language counts and, per corpus language, a uniform random sample of
+        ``oversample`` x target ids (reservoir sampling, Algorithm R, in the scan's id order)."""
+        counts: Counter[str] = Counter()
+        size = {lang: math.ceil(target * self.s.oversample) for lang, target in self.targets.items()}
+        reservoirs: dict[str, list[UUID]] = {lang: [] for lang in self.targets}
+        async for chunk_id, language in self.source.scan(self.s.scan_batch):
+            counts[language] += 1
+            reservoir = reservoirs.get(language)
+            if reservoir is None:
+                continue
+            if len(reservoir) < size[language]:
+                reservoir.append(chunk_id)
+            else:
+                j = self.rnd.randrange(counts[language])
+                if j < size[language]:
+                    reservoir[j] = chunk_id
+        return counts, reservoirs
 
-    async def _windows(self, language: str, wanted: int, available: int) -> int:
-        reachable = min(available, MAX_WINDOW)
-        size = min(self.s.window, max(reachable, 1))
-        used = 0
-        while used < self.s.max_windows and len(self.candidates[language]) < wanted:
-            offset = self.rnd.randrange(0, max(reachable - size, 0) + 1)
-            used += 1
-            new = [self._consider(chunk) for chunk in await self.source.window(language, offset, size)]
-            if reachable <= size and not any(new):
-                break
-        return used
+    async def _read(self, ids: Sequence[UUID]) -> list[SourceChunk]:
+        slices = [list(ids[i:i + READ_SLICE]) for i in range(0, len(ids), READ_SLICE)]
+        return [chunk for found in await gather(slices, READ_CONCURRENCY, self.source.read) for chunk in found]
 
     def _select(self, language: str, target: int) -> list[SourceChunk]:
         pool = sorted(self.candidates[language].values(), key=lambda c: c.id)
@@ -173,35 +154,18 @@ class Sampler:
         return added, skipped
 
     async def run(self, extra_ids: Iterable[UUID] = ()) -> tuple[list[CorpusChunk], dict[str, Any]]:
-        inventory = await self.source.languages()
+        counts, reservoirs = await self._scan()
+        inventory = dict(counts)
         excluded_languages = {lang: n for lang, n in sorted(inventory.items()) if lang not in self.targets}
-        wanted = {lang: min(math.ceil(target * self.s.oversample), inventory.get(lang, 0))
-                  for lang, target in self.targets.items()}
-        draws = await self._draw(wanted)
-        methods: dict[str, str] = {}
-        windows: dict[str, int] = {}
-        for language, n in wanted.items():
-            methods[language] = "random"
-            if len(self.candidates[language]) < n:
-                windows[language] = await self._windows(language, n, inventory.get(language, 0))
-                if windows[language]:
-                    methods[language] = "random+window"
+        sampled = sorted((i for ids in reservoirs.values() for i in ids), key=str)
+        read = await self._read(sampled)
+        if len(read) < len(sampled):
+            self.exclusions["gone_since_the_scan"] += len(sampled) - len(read)
+        for chunk in read:
+            self._consider(chunk)
         selected: dict[str, list[SourceChunk]] = {lang: self._select(lang, target)
                                                   for lang, target in self.targets.items()}
-        rounds = 0
-        while rounds < EXTRA_ROUNDS and draws < self.s.max_draws:
-            more = {lang: len(self.candidates[lang]) + math.ceil(self.s.oversample * (target - len(selected[lang])))
-                    for lang, target in self.targets.items()
-                    if len(selected[lang]) < target and len(self.candidates[lang]) < inventory.get(lang, 0)}
-            if not more:
-                break
-            before = sum(len(self.candidates[lang]) for lang in more)
-            draws = await self._draw(more, draws)
-            if sum(len(self.candidates[lang]) for lang in more) == before:
-                break  # nothing new is reachable by drawing
-            rounds += 1
-            for lang in more:
-                selected[lang] = self._select(lang, self.targets[lang])
+        methods = {lang: "random" for lang in self.targets}
         records: dict[UUID, CorpusChunk] = {}
         for language, chunks in selected.items():
             for chunk in chunks:
@@ -227,9 +191,10 @@ class Sampler:
             "inventory": dict(sorted(inventory.items(), key=lambda item: -item[1])),
             "excluded_languages": excluded_languages,
             "targets": self.targets,
-            "draws": draws, "extra_rounds": rounds, "windows": windows, "methods": methods,
+            "scanned": sum(counts.values()), "method": "scan + reservoir sample",
+            "sampled_ids": {lang: len(ids) for lang, ids in reservoirs.items()},
             "candidates": {lang: len(c) for lang, c in self.candidates.items()},
-            "drawn_exclusions": dict(sorted(self.exclusions.items())),
+            "read_exclusions": dict(sorted(self.exclusions.items())),
             "selected": {lang: len(c) for lang, c in selected.items()},
             "short": {lang: {"target": t, "selected": len(selected[lang])}
                       for lang, t in self.targets.items() if len(selected[lang]) < t},

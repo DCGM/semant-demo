@@ -348,7 +348,7 @@ class Generator:
             limitations.append("The store pooled in has the test schema's shape, not production's exact schema "
                                "(tokenization and indexes affect BM25).")
         checks = {
-            "sampling": {k: sample.get(k) for k in ("excluded_languages", "drawn_exclusions", "methods", "short",
+            "sampling": {k: sample.get(k) for k in ("method", "scanned", "excluded_languages", "read_exclusions", "short",
                                                      "context_added", "near_duplicates", "imported_sources_missing")},
             "intents": {k: intents.get(k) for k in ("requested", "generated", "short", "failed_attempts",
                                                      "near_copy_replies", "regenerated_after_near_copy", "imports")},

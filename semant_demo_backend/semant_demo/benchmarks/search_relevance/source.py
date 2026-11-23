@@ -1,13 +1,13 @@
 """Read-only access to the semANT store the corpus is sampled from (#726).
 
 ``SourceReader`` is what sampling needs; ``WeaviateSource`` implements it over the application's
-``Chunks`` and ``Documents`` collections with reads only (fetches and one aggregate), so a
-production store can be sampled without being changed. Properties a store lacks (an older
-schema) are simply not read.
+``Chunks`` and ``Documents`` collections with reads only (a scan of ids and languages, fetches by
+id and one aggregate), so a production store can be sampled without being changed. Properties a
+store lacks (an older schema) are simply not read.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
@@ -19,8 +19,6 @@ from weaviate.classes.query import Filter, QueryReference
 from semant_demo.adapters.weaviate.names import CollectionNames
 
 MIXED, UNKNOWN = "(mixed)", "(unknown)"
-MAX_WINDOW = 10_000
-"""Weaviate's default QUERY_MAXIMUM_RESULTS: a filtered read reaches no further."""
 READ_BATCH = 100
 
 
@@ -43,12 +41,9 @@ class SourceReader(Protocol):
         """Chunk count by stored language value."""
         ...
 
-    async def after(self, cursor: UUID | None, limit: int) -> list[SourceChunk]:
-        """Up to ``limit`` chunks with ids after ``cursor`` (from the first when None), in id order."""
-        ...
-
-    async def window(self, language: str, offset: int, limit: int) -> list[SourceChunk]:
-        """Chunks of a stored language value, ``offset`` into the filtered list."""
+    def scan(self, page: int) -> AsyncIterator[tuple[UUID, str]]:
+        """Every chunk's id and language key, in id order (a stable order for a given store),
+        read ``page`` at a time; nothing else is read."""
         ...
 
     async def neighbours(self, document_id: UUID, orders: Sequence[int]) -> list[SourceChunk]:
@@ -132,11 +127,11 @@ class WeaviateSource:
             found[UNKNOWN] = total - sum(found.values())
         return found
 
-    async def after(self, cursor: UUID | None, limit: int) -> list[SourceChunk]:
-        return await self._fetch(limit=limit, after=cursor) if cursor else await self._fetch(limit=limit)
-
-    async def window(self, language: str, offset: int, limit: int) -> list[SourceChunk]:
-        return await self._fetch(filters=Filter.by_property("language").equal(language), offset=offset, limit=limit)
+    async def scan(self, page: int) -> AsyncIterator[tuple[UUID, str]]:
+        # The cursor iterator walks the whole collection by id; a filter could not (Weaviate
+        # refuses a cursor with a filter, and filtered reads stop at QUERY_MAXIMUM_RESULTS).
+        async for obj in self.chunks.iterator(return_properties=["language"], cache_size=page):
+            yield obj.uuid, language_key(obj.properties.get("language"))
 
     async def neighbours(self, document_id: UUID, orders: Sequence[int]) -> list[SourceChunk]:
         if not orders:
