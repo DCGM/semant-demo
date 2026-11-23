@@ -312,6 +312,10 @@ def examples(dataset: Dataset, rows: Sequence[Row], config: str, count: int) -> 
     return lines, found
 
 
+SUMMARY_TOP = 5
+"""Configurations the summary shows; the full ranking is in the Overall section."""
+
+
 def report_summary(dataset: Dataset, configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]],
                    inconsistent: int, excluded: bool) -> list[str]:
     overall = {c.label: find(aggregates, c.label, "overall", "all") for c in configs}
@@ -320,23 +324,33 @@ def report_summary(dataset: Dataset, configs: Sequence[Configuration], aggregate
              f"Primary metric: nDCG@10, standard variant (unjudged = not relevant); 95% CIs resample intents."]
     ranked = sorted((c.label for c in configs if overall[c.label]["metrics"][PRIMARY]["mean"] is not None),
                     key=lambda c: -overall[c]["metrics"][PRIMARY]["mean"])
+
+    def language_match(label: str, group: str) -> float | None:
+        found = find(aggregates, label, "language match", group)
+        return found["metrics"][PRIMARY]["mean"] if found else None
     if ranked:
         best = overall[ranked[0]]["metrics"][PRIMARY]
-        lines.append(f"- Highest nDCG@10: `{ranked[0]}` {with_ci(best)}.")
+        rows = []
+        for rank, label in enumerate(ranked[:SUMMARY_TOP], 1):
+            same, cross = language_match(label, SAME), language_match(label, CROSS)
+            gap = same - cross if same is not None and cross is not None else None
+            rows.append([str(rank), f"`{label}`", with_ci(overall[label]["metrics"][PRIMARY]), number(same),
+                         number(cross), signed(gap) if gap is not None else "–"])
+        lines += ["", f"The {len(rows)} configurations with the highest nDCG@10 (of {len(ranked)}; the full ranking "
+                  "and every configuration's same/cross-language scores are in the sections below):", "",
+                  *table(["#", "configuration", "nDCG@10 [95% CI]", "same language", "cross language", "gap"], rows),
+                  ""]
+        if len(ranked) > SUMMARY_TOP:
+            worst = ranked[-1]
+            lines.append(f"- Lowest nDCG@10: `{worst}` {with_ci(overall[worst]['metrics'][PRIMARY])}.")
         if best["low"] is not None:
             overlapping = [c for c in ranked[1:] if overall[c]["metrics"][PRIMARY]["high"] is not None
                            and overall[c]["metrics"][PRIMARY]["high"] >= best["low"]]
             if overlapping:
-                lines.append(f"- Its CI overlaps those of {', '.join(f'`{c}`' for c in overlapping)}: use `compare` "
-                             "for a paired test before calling it better.")
-        lines.append("- Order by nDCG@10: " + " > ".join(
-            f"`{c}` {number(overall[c]['metrics'][PRIMARY]['mean'])}" for c in ranked) + ".")
-    for c in configs:
-        same, cross = find(aggregates, c.label, "language match", SAME), find(aggregates, c.label, "language match", CROSS)
-        if same and cross and same["metrics"][PRIMARY]["mean"] is not None and cross["metrics"][PRIMARY]["mean"] is not None:
-            gap = same["metrics"][PRIMARY]["mean"] - cross["metrics"][PRIMARY]["mean"]
-            lines.append(f"- `{c.label}`: nDCG@10 same language {number(same['metrics'][PRIMARY]['mean'])}, cross "
-                         f"language {number(cross['metrics'][PRIMARY]['mean'])} (difference {signed(gap)}).")
+                named = ", ".join(f"`{c}`" for c in overlapping[:SUMMARY_TOP])
+                more = f" and {len(overlapping) - SUMMARY_TOP} more" if len(overlapping) > SUMMARY_TOP else ""
+                lines.append(f"- The best's CI overlaps those of {len(overlapping)} configuration(s) ({named}{more}): "
+                             "use `compare` for a paired test before calling it better.")
     rates = [overall[c.label]["metrics"][COVERAGE_METRIC]["mean"] for c in configs]
     rates = [r for r in rates if r is not None]
     if rates:
