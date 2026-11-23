@@ -500,7 +500,6 @@
         :refresh="statisticsRefresh"
         :tags="tags"
         :documents="store.documents"
-        data-testid="statistics-panel"
         @drill="change => store.setFilters(change)"
         @open="showDimension"
       />
