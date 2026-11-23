@@ -44,22 +44,31 @@ hundreds of needs, but the same records.
  reports: rankings against the qrels ─► nDCG@10, P@10, Hit@10, … per language pair
 ```
 
-**1. Sample (corpus).** The generator samples chunks of the corpus, balanced across the corpus
-languages. Four of the fixture's nine chunks:
+**1. Sample (corpus).** The generator draws chunks **at random** from the source store, balanced
+across the corpus languages (and spread over documents, periods and types). Sampling looks for
+nothing: it does not search for related chunks. The fixture's whole corpus, nine chunks:
 
 | chunk | language | text |
 |---|---|---|
 | 1 | ces | Dne 12. března vyhořela v obci Lhota stodola sedláka Nováka. |
-| 4 | eng | A fire destroyed the barn of farmer Novak in the village of Lhota on 12 March. |
-| 7 | deu | Am 12. März brannte in Lhota die Scheune des Bauern Novak nieder. |
 | 2 | ces | Na trhu v Brně se prodávalo obilí za vyšší ceny než loni. |
+| 3 | ces | Obecní rada rozhodla o stavbě nové školy u kostela. |
+| 4 | eng | A fire destroyed the barn of farmer Novak in the village of Lhota on 12 March. |
+| 5 | eng | Grain prices at the Brno market rose above last year's level. |
+| 6 | eng | The railway between Prague and Vienna was opened to passengers. |
+| 7 | deu | Am 12. März brannte in Lhota die Scheune des Bauern Novak nieder. |
+| 8 | deu | Die Eisenbahn zwischen Prag und Wien wurde für Reisende eröffnet. |
+| 9 | deu | Der Gemeinderat beschloss den Bau einer neuen Schule bei der Kirche. |
 
-Chunks 1, 4 and 7 are **three separate chunks of the corpus**, from three documents that report the
-same event in different languages (as a Czech chronicle and a German newspaper may). They are not
-translations: the benchmark never translates chunks, only queries (step 3). The fixture contains
-them so that the example can show relevant chunks in other languages than the query's.
+The chunks are not translations of each other: the benchmark never translates chunks, only
+queries (step 3). This small fixture is written so that some topics recur across languages
+(chunks 1, 4 and 7 report the same fire, as a Czech chronicle and a German newspaper may), so
+the example can show relevant chunks in other languages than the query's. In a random sample
+of a real corpus such matches are rarer: in `v1-preview`, 76% of the 210 needs had no chunk
+graded relevant (2) besides their source, though 63% had at least one other chunk graded partly
+relevant (1).
 
-**2. Intent.** A model is shown one sampled chunk, the **source chunk** (here chunk 1), and
+**2. Intent.** A model is shown one sampled chunk, picked at random: the **source chunk** (here chunk 1). It
 writes an **information need**: what a user wants to find, in one English sentence, plus a query
 in the source chunk's language in a requested **style** (`keywords`, `question`, `entity`, …):
 
