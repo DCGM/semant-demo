@@ -54,6 +54,11 @@ languages. Four of the fixture's nine chunks:
 | 7 | deu | Am 12. März brannte in Lhota die Scheune des Bauern Novak nieder. |
 | 2 | ces | Na trhu v Brně se prodávalo obilí za vyšší ceny než loni. |
 
+Chunks 1, 4 and 7 are **three separate chunks of the corpus**, from three documents that report the
+same event in different languages (as a Czech chronicle and a German newspaper may). They are not
+translations: the benchmark never translates chunks, only queries (step 3). The fixture contains
+them so that the example can show relevant chunks in other languages than the query's.
+
 **2. Intent.** A model is shown one sampled chunk, the **source chunk** (here chunk 1), and
 writes an **information need**: what a user wants to find, in one English sentence, plus a query
 in the source chunk's language in a requested **style** (`keywords`, `question`, `entity`, …):
