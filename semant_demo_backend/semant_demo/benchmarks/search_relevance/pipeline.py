@@ -343,7 +343,14 @@ class Generator:
             limitations.append(f"{incomplete} per-language qrels lack some languages' grades (their judgement "
                                "failed): language_grades, grade and consistent cover the judged languages only.")
         if sample.get("short"):
-            limitations.append(f"Languages below their sample target: {sample['short']}.")
+            short = "; ".join(f"{lang} {v['selected']} of {v['target']}" if isinstance(v, dict) else f"{lang} {v}"
+                              for lang, v in sample["short"].items())
+            limitations.append(
+                f"Languages below their sample target: {short}. Sampling draws {c.sample.oversample:g} × the target "
+                f"of random chunk ids per language, then keeps at most {c.sample.max_per_document} chunks per "
+                "document (and only chunks of at least the minimum length); a language whose chunks sit in few "
+                "documents runs out of draws before its target. A larger `oversample` or `max_per_document` "
+                "closes the gap at the cost of more chunks from the same documents.")
         if pool.get("store_schema") is not None:
             limitations.append("The store pooled in has the test schema's shape, not production's exact schema "
                                "(tokenization and indexes affect BM25).")

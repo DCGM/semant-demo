@@ -390,7 +390,8 @@ dependency, `requirements-dev.txt`).
 ```sh
 cd semant_demo_backend
 python -m semant_demo.benchmarks.search_relevance.report report \
-    --dataset DATASET --run RUN [--run RUN2 ...] --out OUT [--exclude-inconsistent] [--examples 2]
+    --dataset DATASET --run RUN [--run RUN2 ...] --out OUT [--exclude-inconsistent] [--examples 2] \
+        [--conclusions CONCLUSIONS.md]
 python -m semant_demo.benchmarks.search_relevance.report compare \
     --dataset DATASET --run RUN [--run RUN2] --a CONFIG --b CONFIG --out OUT
 ```
@@ -400,13 +401,14 @@ refused. A configuration is named by its id, or `run_id/configuration_id` when s
 share an id. `--bootstrap N` (default 2000, 0: no CIs) and `--seed` (default 728) set the
 bootstrap; the same inputs and seed give the same numbers.
 
-- `report` writes `report.md` (summary, a conclusions placeholder for the reviewer,
+- `report` writes `report.md` (summary, the reviewer's conclusions from `--conclusions`, or a placeholder,
   provenance, configurations, metric definitions, overall table with CIs, the query language ×
   source language matrices, same/cross language, query style, source chunk properties such as
   `ocr_quality` or a chunk title, latency, limitations; configurations are shown by readable
   names such as "Hybrid bge-m3, α=0.75, relativeScore fusion", with their ids in the
   Configurations table), `examples.md` (the best and worst intents per configuration, with
-  their top chunks and grades), `plots/*.png|svg` (nDCG@10 by configuration, language matrices, latency), `report.json`
+  their top chunks and grades; the overall section also shows how unjudged chunks move each
+  configuration: its standard and condensed rank), `plots/*.png|svg` (nDCG@10 by configuration, language matrices, latency), `report.json`
   (everything), `summary.csv` (every slice and metric), `queries.csv` (every query's status and
   metrics) and `latency.csv`.
 - `compare` writes `comparison.md`, `comparison.json`, `comparison.csv` and plots: A and B side

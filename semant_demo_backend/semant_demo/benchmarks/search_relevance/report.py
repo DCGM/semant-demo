@@ -233,7 +233,7 @@ def limitations(dataset: Dataset, configs: Sequence[Configuration], unjudged: di
         "configuration unlike the pooling methods retrieves more unjudged chunks and is penalised more; read its "
         "standard score with its unjudged rate and its condensed score.",
         f"- How much this matters: the share of unjudged chunks in the top 10 is {unjudged_range(configs, unjudged)} "
-        "(column unjudged@10 of the Overall table).",
+        "(the report's \"Effect of unjudged results\" shows how it moves each configuration).",
         "- **The LLM grades are not verified by people**; the judge can be wrong or biased (e.g. towards one "
         "language).",
         "- Latency is measured on the benchmark's isolated, smaller store; it does not predict production-scale "
@@ -307,7 +307,38 @@ def overall_tables(configs: Sequence[Configuration], aggregates: Sequence[dict[s
             "**Standard scores** (primary): an unjudged chunk counts as not relevant. Mean with its 95% CI.", "",
             *table(head, standard), "",
             "**Condensed scores**: unjudged chunks are removed from each ranking before scoring.", "",
-            *table(["configuration", *(label(m) for m in RELEVANCE_METRICS)], condensed_rows)]
+            *table(["configuration", *(label(m) for m in RELEVANCE_METRICS)], condensed_rows), "",
+            "### Effect of unjudged results", "", *unjudged_effect(configs, aggregates, names)]
+
+
+def unjudged_effect(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]],
+                    names: dict[str, str]) -> list[str]:
+    """How the unjudged chunks move each configuration: its unjudged share, its standard and condensed
+    nDCG@10 and its rank by each, with the rank correlation of the two orders."""
+    overall = {c.label: find(aggregates, c.label, "overall", "all")["metrics"] for c in configs}
+    scored = [c.label for c in configs if overall[c.label][PRIMARY]["mean"] is not None
+              and overall[c.label][f"{PRIMARY}_condensed"]["mean"] is not None]
+    if len(scored) < 2:
+        return []
+    standard = sorted(scored, key=lambda c: (-overall[c][PRIMARY]["mean"], c))
+    condensed = sorted(scored, key=lambda c: (-overall[c][f"{PRIMARY}_condensed"]["mean"], c))
+    rank_s = {c: n for n, c in enumerate(standard, 1)}
+    rank_c = {c: n for n, c in enumerate(condensed, 1)}
+    n = len(scored)
+    rho = 1 - 6 * sum((rank_s[c] - rank_c[c]) ** 2 for c in scored) / (n * (n * n - 1))
+    shift = max(abs(rank_s[c] - rank_c[c]) for c in scored)
+    rows = [[names[c], number(overall[c][COVERAGE_METRIC]["mean"]), number(overall[c][PRIMARY]["mean"]), rank_s[c],
+             number(overall[c][f"{PRIMARY}_condensed"]["mean"]), rank_c[c],
+             signed(overall[c][f"{PRIMARY}_condensed"]["mean"] - overall[c][PRIMARY]["mean"])] for c in standard]
+    return ["A chunk in a top 10 that no pooling search proposed has no grade. The standard score counts it as not "
+            "relevant (a lower bound); the condensed score drops it (closer to an upper bound). A configuration "
+            "unlike the pooling searches returns more unjudged chunks, so its standard score is pulled down more. "
+            "Where the two orders of the configurations agree, the conclusions about which is better do not depend "
+            "on the missing grades; the absolute scores do.", "",
+            f"- Rank correlation (Spearman) of the standard and the condensed order: {rho:.2f}; the largest move "
+            f"is {shift} place{'s' if shift != 1 else ''}.", "",
+            *table(["configuration", "unjudged@10", "nDCG@10 standard", "rank", "nDCG@10 condensed", "rank",
+                    "condensed − standard"], rows)]
 
 
 def slice_table(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]], slice_: str,
@@ -478,7 +509,10 @@ CONCLUSIONS = ("_To be written by the reviewer from the numbers above: which con
 
 
 def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_inconsistent: bool = False,
-                 samples: int = BOOTSTRAP_SAMPLES, seed: int = SEED, example_count: int = 2) -> dict[str, Any]:
+                 samples: int = BOOTSTRAP_SAMPLES, seed: int = SEED, example_count: int = 2,
+                 conclusions: str | None = None) -> dict[str, Any]:
+    """Writes the report; ``conclusions`` is the reviewer's Markdown for the Conclusions section
+    (a placeholder without it)."""
     out.mkdir(parents=True, exist_ok=True)
     configs, rows = score(dataset, runs, exclude_inconsistent)
     aggregates = aggregate(configs, rows, seed=seed, samples=samples)
@@ -506,7 +540,7 @@ def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_in
 
     md = ["# Search relevance report", "", "## Summary", "",
           *report_summary(dataset, configs, aggregates, inconsistent, exclude_inconsistent, names), "",
-          "## Conclusions", "", CONCLUSIONS, "",
+          "## Conclusions", "", conclusions.strip() if conclusions and conclusions.strip() else CONCLUSIONS, "",
           "## Dataset and runs", "", *provenance(dataset, runs), "",
           "## Configurations", "", *configuration_table(configs, names), "",
           "## Metrics and unjudged results", "", *METRIC_TEXT, "",
@@ -807,6 +841,8 @@ def parser() -> argparse.ArgumentParser:
     report = commands.add_parser("report", help="a report of every configuration of the runs")
     common(report)
     report.add_argument("--examples", type=int, default=2, help="best and worst intents shown per configuration")
+    report.add_argument("--conclusions", type=Path,
+                        help="a Markdown file with the reviewer's conclusions, shown in the Conclusions section")
     compare = commands.add_parser("compare", help="two configurations side by side")
     common(compare)
     compare.add_argument("--a", required=True, help="configuration A (the baseline)")
@@ -819,8 +855,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         dataset, runs = load(args.dataset, args.run)
         if args.command == "report":
+            conclusions = args.conclusions.read_text(encoding="utf-8") if args.conclusions else None
             build_report(dataset, runs, args.out, exclude_inconsistent=args.exclude_inconsistent,
-                         samples=args.bootstrap, seed=args.seed, example_count=args.examples)
+                         samples=args.bootstrap, seed=args.seed, example_count=args.examples,
+                         conclusions=conclusions)
             print(f"Wrote {args.out / 'report.md'}")
         else:
             build_compare(dataset, runs, args.a, args.b, args.out, exclude_inconsistent=args.exclude_inconsistent,
