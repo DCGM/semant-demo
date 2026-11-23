@@ -403,8 +403,10 @@ bootstrap; the same inputs and seed give the same numbers.
 - `report` writes `report.md` (summary, a conclusions placeholder for the reviewer,
   provenance, configurations, metric definitions, overall table with CIs, the query language ×
   source language matrices, same/cross language, query style, source chunk properties such as
-  `ocr_quality` or a chunk title, latency, best and worst examples, limitations),
-  `plots/*.png|svg` (nDCG@10 by configuration, language matrices, latency), `report.json`
+  `ocr_quality` or a chunk title, latency, limitations; configurations are shown by readable
+  names such as "Hybrid bge-m3, α=0.75, relativeScore fusion", with their ids in the
+  Configurations table), `examples.md` (the best and worst intents per configuration, with
+  their top chunks and grades), `plots/*.png|svg` (nDCG@10 by configuration, language matrices, latency), `report.json`
   (everything), `summary.csv` (every slice and metric), `queries.csv` (every query's status and
   metrics) and `latency.csv`.
 - `compare` writes `comparison.md`, `comparison.json`, `comparison.csv` and plots: A and B side

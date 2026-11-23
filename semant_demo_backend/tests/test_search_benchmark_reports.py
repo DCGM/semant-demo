@@ -191,8 +191,15 @@ def test_report_writes_markdown_tables_and_plots(tmp_path, dataset, run):
     for section in REPORT_SECTIONS:
         assert f"\n## {section}\n" in text
     assert "unjudged" in text and "ConnectError" not in text
-    assert "Relevant chunks it missed" in text and str(fixture.chunk_id(1)) in text
-    assert "Dne 12. března vyhořela" in text  # a corpus snippet in the examples
+    examples = (out / "examples.md").read_text(encoding="utf-8")
+    assert "Relevant chunks it missed" in examples and str(fixture.chunk_id(1)) in examples
+    assert "Dne 12. března vyhořela" in examples  # a corpus snippet in the examples
+    assert "Relevant chunks it missed" not in text and "`examples.md`" in text
+    # configurations by readable name (BM25 is the application's `text` mode), ids in the Configurations table
+    assert "| BM25 | `bm25` |" in text
+    # the vector configuration's failed search is explained, not a bare "failed"/"missing" column
+    assert "| configuration | queries | search errors | not searched |" in text
+    assert "| missing |" not in text and "| failed |" not in text
     doc = json.loads((out / "report.json").read_text(encoding="utf-8"))
     assert doc["settings"]["primary"] == "ndcg@10" and doc["inconsistent_intents"] == 1
     assert len(doc["queries"]) == 18

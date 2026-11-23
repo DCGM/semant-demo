@@ -16,6 +16,7 @@ import argparse
 import csv
 import json
 import sys
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,44 @@ def label(metric: str) -> str:
     if metric.endswith("_condensed"):
         return f"{LABELS[metric.removesuffix('_condensed')]} condensed"
     return LABELS[metric]
+
+
+MODE_NAMES = {"text": "BM25", "vector": "Vector", "hybrid": "Hybrid"}
+"""Readable search modes; ``text`` is the application's name of BM25 keyword search."""
+
+
+def display_name(config: Any) -> str:
+    """A configuration's readable name, e.g. ``Hybrid bge-m3, α=0.75, relativeScore fusion``."""
+    vector = config.vector
+    head = MODE_NAMES.get(config.mode, config.mode)
+    parts = [f"{head} {vector.model.rsplit('/', 1)[-1]}" if vector else head]
+    if config.alpha is not None:
+        parts.append(f"α={config.alpha:g}")
+    if config.fusion:
+        parts.append(f"{config.fusion} fusion")
+    if vector and vector.query_prefix:
+        parts.append("query prefix")
+    if config.properties is not None and config.mode != "vector":
+        parts.append("fields " + " ".join(f"{k}×{v:g}" for k, v in config.properties.items()))
+    return ", ".join(parts)
+
+
+def display_names(configs: Sequence[Configuration]) -> dict[str, str]:
+    """Configuration label -> readable name, the label added where two names coincide."""
+    names = {c.label: display_name(c.config) for c in configs}
+    counts = Counter(names.values())
+    return {k: v if counts[v] == 1 else f"{v} ({k})" for k, v in names.items()}
+
+
+CONFIGURATION_TEXT = (
+    "**BM25** is keyword search (the application's `text` mode). **Vector** ranks by the similarity of the query's "
+    "and the chunks' embeddings from the named model. **Hybrid** combines both in Weaviate: **α** is the weight of "
+    "the vector part (0 = BM25 only, 1 = vector only; the application uses 0.5) and the **fusion** combines the two "
+    "result lists either by normalised scores (`relativeScore`) or by rank (`ranked`). **Query prefix**: an "
+    "instruction put before the query when it is embedded (listed below the table). **Fields**: the fields BM25 "
+    "searches, with their weights (`title×2` counts a title match twice); without it, the application's default "
+    "fields. The **id** names "
+    "the configuration in `compare`, `report.json` and the CSV files.")
 
 
 # ---- loading ------------------------------------------------------------------------------
@@ -138,28 +177,49 @@ def provenance(dataset: Dataset, runs: Sequence[Run]) -> list[str]:
     if m.description:
         lines.append(f"- Description: {m.description}")
     for judge in m.judges:
-        lines.append(f"- Judge `{judge.id}`: `{json.dumps(judge.provenance, sort_keys=True, default=str)}`")
-    for method in m.pooling:
-        lines.append(f"- Pooling method `{method.id}`: {method.description or '(no description)'}")
+        p = judge.provenance
+        details = ", ".join(f"{k} `{p[k]}`" for k in ("model", "prompt_version", "max_input_tokens") if p.get(k))
+        lines.append(f"- Judge `{judge.id}` (the model that graded the qrels): {details or 'no details recorded'}.")
+    if m.pooling:
+        lines.append("- Searches that proposed the chunks to grade (pooling): "
+                     + "; ".join(f"`{p.id}` ({p.description or 'no description'})" for p in m.pooling) + ".")
     for run in runs:
         r = run.manifest
-        lines.append(f"- Run `{r.run_id}`, created {r.created.isoformat()}: {len(run.results)} results, "
-                     f"environment `{json.dumps(r.environment, sort_keys=True, default=str)}`")
+        env = r.environment if isinstance(r.environment, dict) else {}
+        store = env.get("store") if isinstance(env.get("store"), dict) else {}
+        git = env.get("git") if isinstance(env.get("git"), dict) else {}
+        facts = [f"{len(run.results)} searches", f"started {env.get('started') or r.created.isoformat()}"]
+        if env.get("finished"):
+            facts.append(f"finished {env['finished']}")
+        if git.get("revision"):
+            facts.append(f"code `{str(git['revision'])[:12]}`" + (" (with uncommitted changes)" if git.get("dirty") else ""))
+        if store.get("weaviate_version"):
+            facts.append(f"Weaviate {store['weaviate_version']}")
+        lines.append(f"- Run `{r.run_id}`: {', '.join(facts)}.")
+    lines.append("- Every setting (store schema, endpoints, budgets) is in `report.json` under `dataset` and `runs`.")
     return lines
 
 
-def configuration_table(configs: Sequence[Configuration]) -> list[str]:
+def configuration_table(configs: Sequence[Configuration], names: dict[str, str] | None = None) -> list[str]:
+    names = names or display_names(configs)
+    prefixes = list(dict.fromkeys(c.config.vector.query_prefix for c in configs
+                                  if c.config.vector and c.config.vector.query_prefix))
+    marks = {p: "yes" if len(prefixes) == 1 else f"P{n}" for n, p in enumerate(prefixes, 1)}
     rows = []
     for c in configs:
         x = c.config
         vector = x.vector
-        props = "default" if x.properties is None else ", ".join(f"{k}^{v:g}" for k, v in x.properties.items())
-        rows.append([c.label, c.run_id, x.mode, vector.model if vector else "–", vector.target_vector if vector else "–",
-                     repr(vector.query_prefix) if vector and vector.query_prefix else "–",
+        props = "default" if x.properties is None else " ".join(f"{k}×{v:g}" for k, v in x.properties.items())
+        rows.append([names[c.label], f"`{c.label}`", vector.model if vector else "–",
+                     marks[vector.query_prefix] if vector and vector.query_prefix else "–",
                      "–" if x.alpha is None else f"{x.alpha:g}", x.fusion or "–",
-                     props if x.mode != "vector" else "–", x.depth])
-    return table(["configuration", "run", "mode", "embedding model", "named vector", "query prefix", "alpha",
-                  "fusion", "BM25 properties", "depth"], rows)
+                     props if x.mode != "vector" else "–"])
+    runs = sorted({c.run_id for c in configs})
+    return [CONFIGURATION_TEXT, "",
+            *table(["name", "id", "embedding model", "query prefix", "α", "fusion", "fields"], rows), "",
+            *(f"- Query prefix{'' if len(prefixes) == 1 else ' ' + marks[p]}: `{repr(p)}`" for p in prefixes),
+            "", f"Run{'s' if len(runs) > 1 else ''}: {', '.join(f'`{r}`' for r in runs)}; each search keeps the top "
+            f"{', '.join(sorted({str(c.config.depth) for c in configs}))} chunks."]
 
 
 def limitations(dataset: Dataset, configs: Sequence[Configuration], unjudged: dict[str, dict[str, Any]],
@@ -172,16 +232,17 @@ def limitations(dataset: Dataset, configs: Sequence[Configuration], unjudged: di
         "as not relevant, so they are **lower bounds**, and recall is recall of the *judged* relevant chunks. A "
         "configuration unlike the pooling methods retrieves more unjudged chunks and is penalised more; read its "
         "standard score with its unjudged rate and its condensed score.",
+        f"- How much this matters: the share of unjudged chunks in the top 10 is {unjudged_range(configs, unjudged)} "
+        "(column unjudged@10 of the Overall table).",
         "- **The LLM grades are not verified by people**; the judge can be wrong or biased (e.g. towards one "
         "language).",
-        "", *table(["configuration", "unjudged@10 (mean, 95% CI)", "scored queries"],
-                   [[c.label, with_ci(unjudged[c.label]), unjudged[c.label]["n"]] for c in configs]), "",
         "- Latency is measured on the benchmark's isolated, smaller store; it does not predict production-scale "
         "latency or memory (#374, #394).",
         f"- Intents with qrels whose per-language grades disagree (`consistent: false`): {inconsistent}; a query "
         f"is scored with its own language's grade where one was judged, otherwise with the intent's `grade`. "
         f"Left out of this report: {excluded}.",
-        "- Failed and missing searches are left out of the means and counted in the tables.",
+        "- Searches that ended in an error, and queries a run did not search, are left out of the means (see "
+        "\"Queries\" under Overall).",
     ]
     shallow = [c.label for c in configs if c.config.depth < 50]
     if shallow:
@@ -200,32 +261,69 @@ def find(aggregates: Sequence[dict[str, Any]], config: str, slice_: str, group: 
     return None
 
 
-def overall_tables(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]]) -> list[str]:
-    head = ["configuration", "scored queries", "intents", "failed", "missing", "no relevant qrel",
-            *(label(m) for m in RELEVANCE_METRICS), label(COVERAGE_METRIC)]
+def unjudged_range(configs: Sequence[Configuration], unjudged: dict[str, dict[str, Any]]) -> str:
+    rates = [unjudged[c.label]["mean"] for c in configs if unjudged[c.label]["mean"] is not None]
+    if not rates:
+        return "not known (no scored query)"
+    return number(rates[0]) if len(rates) == 1 else f"{number(min(rates))} to {number(max(rates))}"
+
+
+def query_counts(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]],
+                 names: dict[str, str]) -> list[str]:
+    """How many queries each configuration searched and scored, in words when they are all alike."""
+    overall = {c.label: find(aggregates, c.label, "overall", "all") for c in configs}
+    first = next(iter(overall.values()))
+    lines = []
+    unscored = {k: e for k, e in overall.items() if e["failed"] or e["missing"]}
+    if not unscored:
+        lines.append(f"- Every configuration searched all {first['queries']} queries ({first['intents']} intents) "
+                     "without an error.")
+    else:
+        lines += ["- Some searches have no result. A **search error** is a search that failed in the run (for "
+                  "example a timeout of the embedding model); **not searched** is a query of the dataset that the "
+                  "run has no result for (an interrupted run, or one limited to some queries). Both are left out "
+                  "of the means:", "",
+                  *table(["configuration", "queries", "search errors", "not searched"],
+                         [[names[k], e["queries"], e["failed"], e["missing"]] for k, e in unscored.items()]), ""]
+    no_relevant = max(e["no_relevant"] for e in overall.values())
+    if no_relevant:
+        lines.append(f"- {no_relevant} queries belong to intents with no chunk judged relevant (grade ≥ 1), so "
+                     "they have no nDCG@10, P@10 or recall; they are left out of those means (Hit@10 and "
+                     "unjudged@10 still count them).")
+    return lines
+
+
+def overall_tables(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]],
+                   names: dict[str, str] | None = None) -> list[str]:
+    names = names or display_names(configs)
+    head = ["configuration", *(label(m) for m in RELEVANCE_METRICS), label(COVERAGE_METRIC)]
     standard, condensed_rows = [], []
     for c in configs:
         e = find(aggregates, c.label, "overall", "all")
-        counts = [e["scored"], e["intents"], e["failed"], e["missing"], e["no_relevant"]]
-        standard.append([c.label, *counts, *(with_ci(e["metrics"][m]) for m in RELEVANCE_METRICS),
+        standard.append([names[c.label], *(with_ci(e["metrics"][m]) for m in RELEVANCE_METRICS),
                          with_ci(e["metrics"][COVERAGE_METRIC])])
-        condensed_rows.append([c.label, *(with_ci(e["metrics"][f"{m}_condensed"]) for m in RELEVANCE_METRICS)])
-    return ["Standard (primary; unjudged = not relevant). Mean with 95% CI.", "", *table(head, standard), "",
-            "Condensed (unjudged hits removed before scoring).", "",
+        condensed_rows.append([names[c.label], *(with_ci(e["metrics"][f"{m}_condensed"]) for m in RELEVANCE_METRICS)])
+    return ["**Queries.**", "", *query_counts(configs, aggregates, names), "",
+            "**Standard scores** (primary): an unjudged chunk counts as not relevant. Mean with its 95% CI.", "",
+            *table(head, standard), "",
+            "**Condensed scores**: unjudged chunks are removed from each ranking before scoring.", "",
             *table(["configuration", *(label(m) for m in RELEVANCE_METRICS)], condensed_rows)]
 
 
-def slice_table(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]], slice_: str) -> list[str]:
+def slice_table(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]], slice_: str,
+                names: dict[str, str] | None = None) -> list[str]:
+    names = names or display_names(configs)
+    entries = [e for c in configs for e in aggregates if e["configuration"] == c.label and e["slice"] == slice_]
+    errors = any(e["failed"] for e in entries)
     rows = []
-    for c in configs:
-        for e in aggregates:
-            if e["configuration"] == c.label and e["slice"] == slice_:
-                m = e["metrics"]
-                rows.append([c.label, e["group"], e["scored"], e["intents"], e["failed"], with_ci(m[PRIMARY]),
-                             with_ci(m[f"{PRIMARY}_condensed"]), number(m["p@10"]["mean"]),
-                             number(m["hit@10"]["mean"]), number(m[COVERAGE_METRIC]["mean"])])
-    return table(["configuration", slice_, "scored queries", "intents", "failed", "nDCG@10 [95% CI]",
-                  "nDCG@10 condensed", "P@10", "Hit@10", "unjudged@10"], rows)
+    for e in entries:
+        m = e["metrics"]
+        rows.append([names[e["configuration"]], e["group"], e["scored"], e["intents"],
+                     *([e["failed"]] if errors else []), with_ci(m[PRIMARY]),
+                     with_ci(m[f"{PRIMARY}_condensed"]), number(m["p@10"]["mean"]),
+                     number(m["hit@10"]["mean"]), number(m[COVERAGE_METRIC]["mean"])])
+    return table(["configuration", slice_, "queries", "intents", *(["search errors"] if errors else []),
+                  "nDCG@10 [95% CI]", "nDCG@10 condensed", "P@10", "Hit@10", "unjudged@10"], rows)
 
 
 def language_grid(dataset: Dataset, aggregates: Sequence[dict[str, Any]], config: str,
@@ -256,7 +354,8 @@ def chunk_line(dataset: Dataset, chunk_id: UUID, grades: dict[UUID, int], source
             "unjudged" if grade is None else grade, snippet(chunk.text) if chunk else "–"]
 
 
-def examples(dataset: Dataset, rows: Sequence[Row], config: str, count: int) -> tuple[list[str], list[dict[str, Any]]]:
+def examples(dataset: Dataset, rows: Sequence[Row], config: str, count: int,
+             name: str | None = None) -> tuple[list[str], list[dict[str, Any]]]:
     """The ``count`` best and worst intents of a configuration by mean nDCG@10, each with its
     best (or worst) query: top hits with grades and the relevant chunks it missed. ``rows`` may be
     the configuration's own (``rows_by_configuration``) or all."""
@@ -284,7 +383,8 @@ def examples(dataset: Dataset, rows: Sequence[Row], config: str, count: int) -> 
             others = ", ".join(f"{r.query_language} {number(r.metrics[PRIMARY], 2)}" for r in
                                sorted(queries, key=lambda r: r.query_language))
             failed = [r.query_language for r in mine if r.intent_id == intent_id and r.status != SCORED]
-            lines += [f"#### {config}: {kind.lower()} {n}, intent `{intent_id}` (mean nDCG@10 {number(means[intent_id])})",
+            lines += [f"#### {name or config}: {kind.lower()} {n}, intent `{intent_id}` "
+                      f"(mean nDCG@10 {number(means[intent_id])})",
                       "",
                       f"- Need: {cell(intent.need)}",
                       f"- Style `{intent.style}`, source language `{intent.source_language or UNKNOWN}`, "
@@ -317,7 +417,8 @@ SUMMARY_TOP = 5
 
 
 def report_summary(dataset: Dataset, configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]],
-                   inconsistent: int, excluded: bool) -> list[str]:
+                   inconsistent: int, excluded: bool, names: dict[str, str] | None = None) -> list[str]:
+    names = names or display_names(configs)
     overall = {c.label: find(aggregates, c.label, "overall", "all") for c in configs}
     lines = [f"- {len(configs)} configuration(s) on dataset `{dataset.manifest.dataset_id}` "
              f"`{dataset.manifest.version}` ({len(dataset.intents)} intents, {len(dataset.queries)} queries). "
@@ -334,23 +435,26 @@ def report_summary(dataset: Dataset, configs: Sequence[Configuration], aggregate
         for rank, label in enumerate(ranked[:SUMMARY_TOP], 1):
             same, cross = language_match(label, SAME), language_match(label, CROSS)
             gap = same - cross if same is not None and cross is not None else None
-            rows.append([str(rank), f"`{label}`", with_ci(overall[label]["metrics"][PRIMARY]), number(same),
+            rows.append([str(rank), names[label], with_ci(overall[label]["metrics"][PRIMARY]), number(same),
                          number(cross), signed(gap) if gap is not None else "–"])
         lines += ["", f"The {len(rows)} configurations with the highest nDCG@10 (of {len(ranked)}; the full ranking "
-                  "and every configuration's same/cross-language scores are in the sections below):", "",
+                  "and every configuration's same/cross-language scores are in the sections below). Same language: "
+                  "the query is in the language of the chunk it was written from; cross language: it is not; "
+                  "gap = same − cross.", "",
                   *table(["#", "configuration", "nDCG@10 [95% CI]", "same language", "cross language", "gap"], rows),
                   ""]
         if len(ranked) > SUMMARY_TOP:
             worst = ranked[-1]
-            lines.append(f"- Lowest nDCG@10: `{worst}` {with_ci(overall[worst]['metrics'][PRIMARY])}.")
+            lines.append(f"- Lowest nDCG@10: {names[worst]} — {with_ci(overall[worst]['metrics'][PRIMARY])}.")
         if best["low"] is not None:
             overlapping = [c for c in ranked[1:] if overall[c]["metrics"][PRIMARY]["high"] is not None
                            and overall[c]["metrics"][PRIMARY]["high"] >= best["low"]]
             if overlapping:
-                named = ", ".join(f"`{c}`" for c in overlapping[:SUMMARY_TOP])
+                named = "; ".join(names[c] for c in overlapping[:SUMMARY_TOP])
                 more = f" and {len(overlapping) - SUMMARY_TOP} more" if len(overlapping) > SUMMARY_TOP else ""
                 lines.append(f"- The best's CI overlaps those of {len(overlapping)} configuration(s) ({named}{more}): "
-                             "use `compare` for a paired test before calling it better.")
+                             "use `compare` (with the ids of the Configurations section) for a paired test before "
+                             "calling it better.")
     rates = [overall[c.label]["metrics"][COVERAGE_METRIC]["mean"] for c in configs]
     rates = [r for r in rates if r is not None]
     if rates:
@@ -358,11 +462,11 @@ def report_summary(dataset: Dataset, configs: Sequence[Configuration], aggregate
                      "configurations; the standard scores count these as not relevant (see Limitations).")
     failed = {c.label: overall[c.label]["failed"] + overall[c.label]["missing"] for c in configs}
     if any(failed.values()):
-        lines.append("- Failed or missing searches (left out of the means): "
-                     + ", ".join(f"`{c}` {n}" for c, n in failed.items() if n) + ".")
+        lines.append("- Queries without a result (a search error or not searched; left out of the means): "
+                     + ", ".join(f"{names[c]} {n}" for c, n in failed.items() if n) + ".")
     no_relevant = max(overall[c.label]["no_relevant"] for c in configs)
     if no_relevant:
-        lines.append(f"- Queries whose intent has no relevant qrel (no nDCG, P or recall): {no_relevant}.")
+        lines.append(f"- Queries whose intent has no chunk judged relevant (no nDCG, P or recall): {no_relevant}.")
     lines.append(f"- Intents with inconsistent per-language grades: {inconsistent} "
                  f"({'left out' if excluded else 'included'}).")
     return lines
@@ -382,48 +486,52 @@ def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_in
     inconsistent = len(inconsistent_intents(dataset))
     excluded = inconsistent if exclude_inconsistent else 0
     labels = [c.label for c in configs]
+    names = display_names(configs)
+    shown = [names[c] for c in labels]
     overall = {c: find(aggregates, c, "overall", "all") for c in labels}
     plot_dir = out / "plots"
-    images = {"ndcg": plots.metric_bars(labels, [overall[c]["metrics"][PRIMARY] for c in labels],
+    images = {"ndcg": plots.metric_bars(shown, [overall[c]["metrics"][PRIMARY] for c in labels],
                                         [overall[c]["metrics"][f"{PRIMARY}_condensed"] for c in labels],
                                         "nDCG@10", plot_dir, "ndcg_by_configuration")}
     grids = [language_grid(dataset, aggregates, c) for c in labels]
     query_langs, source_langs = languages(dataset)
-    images["matrix"] = plots.matrices(labels, [[[None if v is None else v["mean"] for v in line] for line in g[0]]
+    images["matrix"] = plots.matrices(shown, [[[None if v is None else v["mean"] for v in line] for line in g[0]]
                                                for g in grids], query_langs, source_langs, plot_dir,
                                       "language_matrix", label="nDCG@10")
-    images["latency"] = plots.latency(labels, times, plot_dir, "latency")
+    images["latency"] = plots.latency(shown, [{**t, "configuration": names.get(t["configuration"], t["configuration"])}
+                                              for t in times], plot_dir, "latency")
 
     def rel(path: Path) -> str:
         return path.relative_to(out).as_posix()
 
     md = ["# Search relevance report", "", "## Summary", "",
-          *report_summary(dataset, configs, aggregates, inconsistent, exclude_inconsistent), "",
+          *report_summary(dataset, configs, aggregates, inconsistent, exclude_inconsistent, names), "",
           "## Conclusions", "", CONCLUSIONS, "",
           "## Dataset and runs", "", *provenance(dataset, runs), "",
-          "## Configurations", "", *configuration_table(configs), "",
+          "## Configurations", "", *configuration_table(configs, names), "",
           "## Metrics and unjudged results", "", *METRIC_TEXT, "",
-          "## Overall", "", *overall_tables(configs, aggregates), "",
+          "## Overall", "", *overall_tables(configs, aggregates, names), "",
           f"![nDCG@10 by configuration]({rel(images['ndcg'][0])})", "",
           "## Query language × source language", "",
           "nDCG@10 by the query's language (rows) and the language of the intent's source chunk (columns), with "
           "its 95% CI and the number of scored queries. The diagonal is same-language search.", ""]
     for c, (grid, qrows, scols) in zip(labels, grids):
-        md += [f"### {c}", "", *grid_markdown(grid, qrows, scols, lambda v: f"{with_ci(v, 2)} (n={v['scored']}"
-                                                + (f", {v['unscored']} failed or missing)" if v["unscored"] else ")")), ""]
+        md += [f"### {names[c]}", "", *grid_markdown(grid, qrows, scols, lambda v: f"{with_ci(v, 2)} (n={v['scored']}"
+                                                + (f", {v['unscored']} without a result)" if v["unscored"] else ")")), ""]
     md += [f"![nDCG@10 by language pair]({rel(images['matrix'][0])})", "",
            "Marginals by query language and by source language:", "",
-           *slice_table(configs, aggregates, "query language"), "", *slice_table(configs, aggregates, "source language"),
+           *slice_table(configs, aggregates, "query language", names), "",
+           *slice_table(configs, aggregates, "source language", names),
            ""]
     for slice_, title in SLICE_SECTIONS.items():
-        md += [f"## {title}", "", *slice_table(configs, aggregates, slice_), ""]
+        md += [f"## {title}", "", *slice_table(configs, aggregates, slice_, names), ""]
     md += ["## Source chunk properties", "",
            "Slices by properties of the intent's source chunk(s) (attributes with at most a dozen values; "
            "\"mixed\" when an intent's source chunks differ).", ""]
     extra = [s for s in dict.fromkeys(e["slice"] for e in aggregates)
              if s not in ("overall", *SLICE_SECTIONS, *LANGUAGE_SLICES)]
     for slice_ in extra:
-        md += [f"### {slice_}", "", *slice_table(configs, aggregates, slice_), ""]
+        md += [f"### {slice_}", "", *slice_table(configs, aggregates, slice_, names), ""]
     if not extra:
         md += ["No source chunk property varies across the intents.", ""]
     md += ["## Latency", "",
@@ -431,28 +539,36 @@ def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_in
            "(`search_ms`) and their sum per query.", "",
            *table(["configuration", "searches", "embed p50", "embed p95", "search p50", "search p95", "total p50",
                    "total p95"],
-                  [[t["configuration"], t["searches"], *(number(t[f"{p}_{q}"], 1) for p in ("embed_ms", "search_ms",
+                  [[names.get(t["configuration"], t["configuration"]), t["searches"], *(number(t[f"{p}_{q}"], 1) for p in ("embed_ms", "search_ms",
                                                                                               "total_ms")
                                                          for q in ("p50", "p95"))] for t in times]), "",
            f"![Latency]({rel(images['latency'][0])})", "",
            "## Examples", "",
-           f"Per configuration, the {example_count} best and worst intents by mean nDCG@10, each with its best or "
-           "worst query. Grades: 2 relevant, 1 partly, 0 not relevant, \"unjudged\" without a qrel.", ""]
+           f"`examples.md`: per configuration, the {example_count} best and worst intents by mean nDCG@10, each "
+           "with its best or worst query, its top 10 chunks with their grades and the relevant chunks it missed.", ""]
+    example_md = ["# Search relevance examples", "",
+                  f"Dataset `{dataset.manifest.dataset_id}` `{dataset.manifest.version}`. Per configuration, the "
+                  f"{example_count} best and worst intents by mean nDCG@10, each with its best or worst query. "
+                  "Grades: 2 relevant, 1 partly, 0 not relevant, \"unjudged\" without a qrel (never graded). "
+                  "The terms and configurations are explained in `report.md`.", ""]
     example_docs = []
     by_configuration = rows_by_configuration(rows)
     for c in labels:
-        lines, found = examples(dataset, by_configuration.get(c, []), c, example_count)
-        md += [f"### {c}", "", *(lines or ["No scored query with a relevant qrel."]), ""]
+        lines, found = examples(dataset, by_configuration.get(c, []), c, example_count, names[c])
+        example_md += [f"## {names[c]}", "", f"Id `{c}`.", "",
+                       *(lines or ["No scored query with a relevant qrel."]), ""]
         example_docs += found
     unjudged = {c: overall[c]["metrics"][COVERAGE_METRIC] for c in labels}
     md += ["## Limitations", "", *limitations(dataset, configs, unjudged, excluded, inconsistent), "",
            "## Files", "",
+           "- `examples.md`: the examples above.",
            "- `report.json`: everything in this report, machine-readable.",
            "- `summary.csv`: every slice and metric (mean, CI, counts) per configuration.",
            "- `queries.csv`: every query's status and metrics per configuration.",
            "- `latency.csv`: latency percentiles per configuration.",
            f"- `plots/`: {', '.join(sorted(p.name for ps in images.values() for p in ps))}.", ""]
     (out / "report.md").write_text("\n".join(md), encoding="utf-8")
+    (out / "examples.md").write_text("\n".join(example_md), encoding="utf-8")
 
     settings = {"exclude_inconsistent": exclude_inconsistent, "bootstrap_samples": samples, "seed": seed,
                 "primary": PRIMARY, "primary_variant": "standard", "ci": "95% percentile bootstrap over intents"}
@@ -493,6 +609,12 @@ def write_summary_csv(path: Path, aggregates: Sequence[dict[str, Any]]) -> None:
 
 
 METRIC_TEXT = [
+    "**Terms.** An **intent** is an information need written by a model from a source chunk; its **queries** "
+    "are the same need phrased in each query language. A **qrel** (query relevance judgement) is the answer "
+    "key for one (intent, chunk) pair: the grade a model judge gave that chunk for the need. Only the chunks "
+    "the generator pooled for an intent were graded; a returned chunk with no qrel for the intent is "
+    "**unjudged** (its relevance is unknown). See `docs/SEARCH_BENCHMARK.md` for how they are made.",
+    "",
     "Every query is scored against the graded qrels of its **intent** (its translations share them; where a "
     "qrel was judged per query language, a query uses its own language's grade). "
     "Grades: 2 relevant, 1 partly relevant, 0 not relevant.",
@@ -510,8 +632,10 @@ METRIC_TEXT = [
     "- **Unjudged results.** The **standard** variant (primary) treats an unjudged chunk as not relevant: a lower "
     "bound when pooling missed relevant chunks. The **condensed** variant removes unjudged chunks from the "
     "ranking before scoring; it ignores them instead and tends to overestimate. Both are reported.",
-    "- **Failed searches** (an error in the run) and queries missing from a run are counted and left out of the "
-    "means.",
+    "- **Queries without a result**: a search that ended in an error in the run (a *search error*) or a query "
+    "the run did not search (*not searched*) is left out of the means; the Overall section counts them.",
+    "- **queries, intents** (slice tables): how many scored queries, and of how many intents, a group's mean "
+    "is over.",
     "- **Means and CIs.** A mean is over the scored queries; its 95% CI is a percentile bootstrap that resamples "
     "**intents** with replacement (all formulations of an intent together, since its translations are not "
     "independent), with a fixed seed.",
@@ -576,7 +700,8 @@ def build_compare(dataset: Dataset, runs: Sequence[Run], a_name: str, b_name: st
 
     by_metric = {e["metric"]: e for e in overall}
     primary = by_metric[PRIMARY]
-    summary = [f"- A = `{a.label}`, B = `{b.label}`; Δ = B − A over the queries both scored "
+    names = display_names(pair)
+    summary = [f"- A = {names[a.label]} (`{a.label}`), B = {names[b.label]} (`{b.label}`); Δ = B − A over the queries both scored "
                f"({primary['n']} queries, {primary['clusters']} intents); 95% CI from a paired bootstrap over intents."]
     for metric in (PRIMARY, f"{PRIMARY}_condensed", "p@10", "hit@10", "recall@50"):
         e = by_metric[metric]
@@ -606,7 +731,7 @@ def build_compare(dataset: Dataset, runs: Sequence[Run], a_name: str, b_name: st
           "## Conclusions", "", CONCLUSIONS, "",
           "## Dataset and runs", "", *provenance(dataset, list({r.manifest.run_id: r for r in runs
                                                                  if r.manifest.run_id in (a.run_id, b.run_id)}.values())),
-          "", "## Configurations", "", *configuration_table(pair), "",
+          "", "## Configurations", "", *configuration_table(pair, names), "",
           "## Overall", "",
           "Means over the queries scored by both configurations with a value of the metric (paired); "
           "standard variant unless named condensed. See the report's metric definitions.", "",
