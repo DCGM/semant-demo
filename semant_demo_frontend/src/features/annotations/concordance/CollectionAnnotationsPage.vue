@@ -489,6 +489,21 @@
         </template>
       </ChunkContextPanel>
     </RightSidebarPanel>
+
+    <!-- Always registered (#680): the counts of the list beside it; read only while shown. -->
+    <RightSidebarPanel :id="STATISTICS_PANEL_ID" label="Statistics" icon="bar_chart" :order="2" v-slot="{ visible }">
+      <AnnotationStatisticsSidebar
+        :collection-id="collectionId"
+        :filters="store.filters"
+        :active="visible"
+        :refresh="statisticsRefresh"
+        :tags="tags"
+        :documents="store.documents"
+        data-testid="statistics-panel"
+        @drill="change => store.setFilters(change)"
+        @open="showDimension"
+      />
+    </RightSidebarPanel>
   </q-page>
 </template>
 
@@ -513,6 +528,7 @@ import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import AnnotationStatisticsPanel from '../statistics/AnnotationStatisticsPanel.vue'
+import AnnotationStatisticsSidebar from '../statistics/AnnotationStatisticsSidebar.vue'
 import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
 import { useAnnotationStatistics } from '../statistics/useAnnotationStatistics'
 import type { ConcordanceFilters } from './concordanceStore'
@@ -544,6 +560,7 @@ import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
 
 const CONTEXT_PANEL_ID = 'annotation-context'
+const STATISTICS_PANEL_ID = 'annotation-statistics'
 
 const route = useRoute()
 const $q = useQuasar()
@@ -581,10 +598,13 @@ const { statistics, loading: statisticsLoading, error: statisticsError, load: lo
 const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
 /** The statuses counted, named on the summary line with the denominator. */
 const statisticsStatuses = computed(() => STATUS_ORDER.filter(t => store.filters.types.includes(t)).map(t => STATUS_LABELS[t].toLowerCase()).join(', '))
+/** Bumped when annotations changed: the sidebar's statistics (#680) read again when shown. */
+const statisticsRefresh = ref(0)
 /** Annotations changed here (a review, undo, boundary edit or attribute assignment): the menus'
  * counts and, when shown, the statistics are read again. */
 function countsChanged () {
   void store.loadFacets()
+  statisticsRefresh.value++
   if (statisticsView.value) void loadStatistics()
 }
 function showView (view: 'list' | 'statistics') {
