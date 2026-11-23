@@ -187,3 +187,42 @@ test('while the collection is checked, Explore shows no counts of its earlier fi
     user_collection_id: chronicles.id
   })])
 })
+
+// The included passages (#807): "Kroniky a dopisy" includes four passages, all `ces`; one holds
+// subject_domain values, one `formal` and one `informal` style.
+const isPassageCounts = (r: Request) => new URL(r.url()).pathname.endsWith('/api/analytics/collection/passages') && r.method() === 'POST'
+
+for (const viewport of ['wide', 'phone'] as const) {
+  test(`the Overview tab charts the collection's passages, one classification at a time (${viewport})`, async ({ page }) => {
+    await useViewport(page, viewport)
+    await ensureLoggedIn(page, 'owner')
+    const asked = bodies(page, isPassageCounts)
+    await page.goto(`/#/collections/${chronicles.id}/overview`)
+
+    const charts = page.getByTestId('collection-passage-charts')
+    await expect(charts.getByTestId('passage-charts-scope')).toContainText('4 passages included in collection Kroniky a dopisy.')
+    await expect(page.locator('.stat-card').filter({ hasText: 'Chunks in Collection' }).locator('.stat-value')).toHaveText('4')
+    await expect(charts.getByTestId('passage-languages')).toContainText('Every passage has a detected language.')
+    await charts.getByTestId('passage-languages-table').click()
+    await expect(charts.getByTestId('passage-languages-table').locator('tbody tr').first()).toContainText('Czech (ces)')
+    // The first classification: subject_domain, held by one passage.
+    await expect(charts.getByTestId('passage-classification-occurring')).toContainText('2 of')
+    await charts.getByTestId('passage-classification-table').click()
+    await expect(charts.getByTestId('passage-classification-table').locator('code')).toHaveText(
+      ['ddc_900_history_geography', 'news_and_current_affairs'], { useInnerText: true })
+    await expect(charts.getByTestId('passage-classification-table').locator('tbody tr').last()).toContainText('Without a value')
+    await expect(charts.getByTestId('passage-classification-table').locator('tbody tr').last()).toContainText('3')
+    expect(asked).toEqual([
+      { user_collection_id: chronicles.id, dimension: null },
+      { user_collection_id: chronicles.id, dimension: 'subject_domain' }
+    ])
+
+    // Another classification: asked for alone.
+    await charts.getByTestId('passage-dimension').click()
+    await page.getByRole('option', { name: /style/i }).click()
+    await expect(charts.getByTestId('passage-classification-table').locator('code')).toHaveText(['formal', 'informal'], { useInnerText: true })
+    await expect(charts.getByTestId('passage-classification-table').locator('tbody tr').last()).toContainText('2')
+    expect(asked.slice(2)).toEqual([{ user_collection_id: chronicles.id, dimension: 'style' }])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  })
+}

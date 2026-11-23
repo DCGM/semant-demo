@@ -369,6 +369,14 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await openWorkspace(page)
   await rows(page).first().click()
   await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
+  // The sidebar slides in and narrows the page, which can wrap the toolbar: measure the rows
+  // only once it is fully in and the page ends where it starts.
+  await expect.poll(() => page.evaluate(() => {
+    const drawer = document.querySelector('.q-drawer--right')?.getBoundingClientRect()
+    const workspace = document.querySelector('[data-testid=collection-annotations]')?.getBoundingClientRect()
+    if (!drawer || !workspace) return false
+    return Math.round(drawer.right) <= window.innerWidth && Math.round(workspace.right) <= Math.round(drawer.left)
+  })).toBe(true)
   // Shorten the window so that the first two rows fit, with room for the rows' scroll margin,
   // and the later ones do not.
   const second = await rows(page).nth(1).boundingBox()
@@ -1504,8 +1512,7 @@ test('the selection, outside the filters too, and the filter matches download as
   await expect(dialog).toHaveCount(0)
 })
 
-test('the collection header settles once the sidebar is open, at every wide width (#838)', async ({ page, request }) => {
-  test.setTimeout(90_000)
+test('the collection header settles once the sidebar is open (#838)', async ({ page, request }) => {
   const longName = 'Kroniky a dopisy z Moravy a Čech'
   // A name long enough to be truncated beside the open sidebar, as in the report.
   await renameChronicles(request, longName)
@@ -1516,9 +1523,9 @@ test('the collection header settles once the sidebar is open, at every wide widt
   const title = page.locator('.collection-page-title')
   await expect(title).toHaveText(longName)
   // The title and the tabs once resized each other for ever at a width where both only just
-  // fit; which width that is depends on the name, so sweep the widths the sidebar leaves.
-  // With this name the old layout oscillated at about 2060-2090 px (sidebar open).
-  for (let width = 1600; width <= 2400; width += 10) {
+  // fit. With this name the old layout oscillated (period about 200 ms) at about 2060-2090 px;
+  // each width is sampled for longer than one period.
+  for (const width of [2060, 2070, 2080]) {
     await page.setViewportSize({ width, height: viewports.wide.height })
     const widths = new Set<number>()
     for (let sample = 0; sample < 8; sample++) {
@@ -1530,4 +1537,60 @@ test('the collection header settles once the sidebar is open, at every wide widt
   // The tabs still fit the page beside the sidebar (their arrows take over when they do not, #489).
   await page.setViewportSize({ width: 1000, height: viewports.wide.height })
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+})
+
+test.describe('saved filters (#824)', () => {
+  const NAME = 'E2E saved filter'
+
+  /** Removes the saved filters this test created (by name), so the store stays as seeded. */
+  async function deleteSaved (request: APIRequestContext) {
+    const headers = { Authorization: `Bearer ${await apiToken(request, 'owner')}` }
+    const path = `/api/user_collections/${chronicles.id}/saved-selections`
+    const list = await (await request.get(path, { headers })).json() as { id: string, name: string }[]
+    for (const s of list.filter(s => s.name.startsWith(NAME))) {
+      expect((await request.delete(`${path}/${s.id}`, { headers })).ok()).toBe(true)
+    }
+  }
+
+  test.beforeEach(async ({ request }) => { await deleteSaved(request) })
+  test.afterEach(async ({ request }) => { await deleteSaved(request) })
+
+  test('save, reload, reopen, change, discard and close a saved filter', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await openWorkspace(page)
+    const header = page.getByTestId('saved-filter-header')
+    await expect(header).toHaveCount(0)
+
+    await page.getByLabel('Contains words', { exact: true }).fill('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await page.getByTestId('saved-filters-menu').click()
+    await page.getByTestId('saved-filters-save').click()
+    await page.locator('.q-dialog input').fill(NAME)
+    await page.locator('.q-dialog').getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByTestId('saved-filter-name')).toHaveText(NAME)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // Saved on the server: after a reload the workspace starts afresh, and the filter opens again.
+    await page.reload()
+    await expect(page.getByTestId('concordance-range')).toContainText('matching annotations')
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('')
+    await page.getByTestId('saved-filters-menu').click()
+    await page.getByTestId('saved-filters-item').filter({ hasText: NAME }).click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // A change is marked; Discard goes back to the filters as saved.
+    await page.getByLabel('Contains words', { exact: true }).fill('hejtman')
+    await expect(page.getByTestId('saved-filter-status')).toHaveText('Unsaved changes')
+    await page.getByTestId('saved-filter-discard').click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('nová')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(page.getByTestId('saved-filter-status')).toContainText('Filters saved')
+
+    // Closing it returns to the default filters.
+    await page.getByTestId('saved-filter-close').click()
+    await expect(page.getByLabel('Contains words', { exact: true })).toHaveValue('')
+    await expect(page.getByTestId('saved-filter-name')).toBeHidden()
+  })
 })

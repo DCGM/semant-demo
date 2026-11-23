@@ -1056,3 +1056,32 @@ test('collection overview document charts and Explore this collection (#795)', a
   await expect(page.getByTestId('document-result-open')).toHaveCount(2)
   await save(page, testInfo, 'collection-explore-handoff')
 })
+
+test('collection overview passage charts (#807)', async ({ page }, testInfo) => {
+  const collection = fixture.collection('chronicles')
+  await ensureLoggedIn(page, 'owner')
+  await page.goto(`/#/collections/${collection.id}/overview`)
+  const charts = page.getByTestId('collection-passage-charts')
+  await expect(charts.getByTestId('passage-charts-total')).toHaveText('4')
+  await expect(charts.getByTestId('passage-classification-occurring')).toBeVisible()
+  await charts.scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'collection-overview-passage-charts')
+
+  await charts.getByTestId('passage-dimension').click()
+  await page.getByRole('option', { name: /style/i }).click()
+  await expect(charts.getByTestId('passage-classification-table').locator('code')).toHaveCount(2)
+  await charts.getByTestId('passage-classification').scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'collection-overview-passage-charts-style')
+
+  // An empty collection, answered here (the fixture collections all include passages).
+  await page.route('**/api/analytics/collection/passages', async (route) => {
+    const response = await route.fetch()
+    const body = await response.json() as Record<string, unknown>
+    await route.fulfill({ response, json: { ...body, total_passages: 0 } })
+  })
+  await page.reload()
+  await expect(charts.getByTestId('passage-charts-empty')).toBeVisible()
+  await charts.scrollIntoViewIfNeeded()
+  await save(page, testInfo, 'collection-overview-passage-charts-empty')
+  await page.unroute('**/api/analytics/collection/passages')
+})

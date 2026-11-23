@@ -81,7 +81,7 @@ MEMBERSHIP_WRITES = [
 ]
 OWNER_WRITES = [
     lambda c, u: service.update_collection(c, u, COLLECTION, PatchCollection(name="x")),
-    lambda c, u: service.delete_collection(c, u, COLLECTION, FakeAttributes()),
+    lambda c, u: service.delete_collection(c, u, COLLECTION, FakeAttributes(), FakeAttributes()),
     lambda c, u: service.share_collection(c, FakeUsers(OTHER), u, COLLECTION, OTHER.id),
     lambda c, u: service.unshare_collection(c, u, COLLECTION, SHARED.id),
 ]
