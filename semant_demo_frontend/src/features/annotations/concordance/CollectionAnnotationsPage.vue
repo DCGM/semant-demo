@@ -495,7 +495,7 @@
       <AnnotationStatisticsSidebar
         :collection-id="collectionId"
         :filters="store.filters"
-        :active="visible"
+        :active="visible && !sidebarSettling"
         :refresh="statisticsRefresh"
         :tags="tags"
         :documents="store.documents"
@@ -509,7 +509,7 @@
 
 <script setup lang="ts">
 import { plural } from 'src/shared/plural'
-import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { QBtn, QBtnToggle, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -808,6 +808,21 @@ function closeSidebarOnEscape (event: KeyboardEvent) {
   rightSidebar.open = false
 }
 onMounted(() => window.addEventListener('keydown', closeSidebarOnEscape))
+
+/** The Statistics panel (#680) is registered from the start, which would make the sidebar open
+ * beside the list on every visit (the shell opens it when a page brings its first panel). The list
+ * is the page's task, so the sidebar starts closed, as it did before a row was opened; opening a
+ * row or the sidebar button opens it. */
+async function startSidebarClosed () {
+  sidebarSettling.value = true
+  await nextTick() // after the shell's own open-on-first-panel
+  if (!selection.focused) rightSidebar.open = false
+  sidebarSettling.value = false
+}
+/** The sidebar is still being closed: its panels are not counted as shown (nothing is read). */
+const sidebarSettling = ref(false)
+onMounted(startSidebarClosed)
+onActivated(startSidebarClosed)
 onBeforeUnmount(() => window.removeEventListener('keydown', closeSidebarOnEscape))
 
 // On a narrow screen the sidebar covers the list: closing it returns to the open row

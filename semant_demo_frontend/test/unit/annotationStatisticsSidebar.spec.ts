@@ -82,6 +82,16 @@ describe('the statistics panel of the annotations sidebar', () => {
   const reads = () => requests.filter(r => r.path.endsWith('/facets') && r.body?.self_exclusion === false)
   const q = (testId: string) => document.body.querySelector<HTMLElement>(`[data-testid="${testId}"]`)
 
+  it('starts with the sidebar closed, though the panel is registered', async () => {
+    const sidebar = useRightSidebarStore()
+    sidebar.open = true // what the shell does when a page brings its first panel
+    const { wrapper } = await mountPage()
+    expect(sidebar.hasPanels).toBe(true)
+    expect(sidebar.open).toBe(false)
+    expect(reads()).toHaveLength(0)
+    wrapper.unmount()
+  })
+
   it('is registered after the annotation panel and reads nothing while the sidebar is closed', async () => {
     const { wrapper, sidebar } = await mountPage()
     expect(sidebar.sortedPanels.map(p => p.label)).toEqual(['Statistics'])
