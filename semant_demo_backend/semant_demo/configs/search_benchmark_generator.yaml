@@ -77,7 +77,7 @@ pooling:
       mode: text
       depth: 30
     - id: e5-small
-      description: multilingual-e5-small top 30 (a pooling model, not one #727 compares)
+      description: "multilingual-e5-small top 30 (a pooling model, not one #727 compares)"
       mode: vector
       depth: 30
       vector: {id: e5-small, model: intfloat/multilingual-e5-small, target_vector: e5_small,
