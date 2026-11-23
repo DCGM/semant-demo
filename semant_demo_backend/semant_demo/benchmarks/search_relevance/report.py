@@ -294,7 +294,8 @@ def query_counts(configs: Sequence[Configuration], aggregates: Sequence[dict[str
 
 
 def overall_tables(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]],
-                   names: dict[str, str] | None = None) -> list[str]:
+                   names: dict[str, str] | None = None, dataset: Dataset | None = None,
+                   rows: Sequence[Row] = ()) -> list[str]:
     names = names or display_names(configs)
     head = ["configuration", *(label(m) for m in RELEVANCE_METRICS), label(COVERAGE_METRIC)]
     standard, condensed_rows = [], []
@@ -308,11 +309,36 @@ def overall_tables(configs: Sequence[Configuration], aggregates: Sequence[dict[s
             *table(head, standard), "",
             "**Condensed scores**: unjudged chunks are removed from each ranking before scoring.", "",
             *table(["configuration", *(label(m) for m in RELEVANCE_METRICS)], condensed_rows), "",
-            "### Effect of unjudged results", "", *unjudged_effect(configs, aggregates, names)]
+            "### Effect of unjudged results", "", *unjudged_effect(configs, aggregates, names, dataset, rows)]
+
+
+def unjudged_counts(dataset: Dataset, rows: Sequence[Row]) -> tuple[dict[str, dict[str, int]], int, int]:
+    """Per configuration: its top-10 results, those without a qrel and the distinct (intent, chunk)
+    pairs among them; then the distinct unjudged pairs and all distinct pairs over every configuration."""
+    grades_of = query_grades(dataset)
+    counts: dict[str, dict[str, int]] = {}
+    pairs: dict[str, set[tuple[str, UUID]]] = {}
+    every: set[tuple[str, UUID]] = set()
+    missing: set[tuple[str, UUID]] = set()
+    for r in rows:
+        top = r.ranked[:TOP]
+        grades = grades_of(r.intent_id, r.query_language)
+        c = counts.setdefault(r.configuration, {"results": 0, "unjudged": 0})
+        c["results"] += len(top)
+        for chunk in top:
+            every.add((r.intent_id, chunk))
+            if chunk not in grades:
+                c["unjudged"] += 1
+                pairs.setdefault(r.configuration, set()).add((r.intent_id, chunk))
+                missing.add((r.intent_id, chunk))
+    for k, c in counts.items():
+        c["pairs"] = len(pairs.get(k, ()))
+    return counts, len(missing), len(every)
 
 
 def unjudged_effect(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]],
-                    names: dict[str, str]) -> list[str]:
+                    names: dict[str, str], dataset: Dataset | None = None,
+                    rows: Sequence[Row] = ()) -> list[str]:
     """How the unjudged chunks move each configuration: its unjudged share, its standard and condensed
     nDCG@10 and its rank by each, with the rank correlation of the two orders."""
     overall = {c.label: find(aggregates, c.label, "overall", "all")["metrics"] for c in configs}
@@ -327,18 +353,35 @@ def unjudged_effect(configs: Sequence[Configuration], aggregates: Sequence[dict[
     n = len(scored)
     rho = 1 - 6 * sum((rank_s[c] - rank_c[c]) ** 2 for c in scored) / (n * (n * n - 1))
     shift = max(abs(rank_s[c] - rank_c[c]) for c in scored)
-    rows = [[names[c], number(overall[c][COVERAGE_METRIC]["mean"]), number(overall[c][PRIMARY]["mean"]), rank_s[c],
-             number(overall[c][f"{PRIMARY}_condensed"]["mean"]), rank_c[c],
-             signed(overall[c][f"{PRIMARY}_condensed"]["mean"] - overall[c][PRIMARY]["mean"])] for c in standard]
+    counts, missing, every = unjudged_counts(dataset, rows) if dataset is not None else ({}, 0, 0)
+    empty = {"results": 0, "unjudged": 0, "pairs": 0}
+    table_rows = []
+    for c in standard:
+        k = counts.get(c, empty)
+        share = f" ({k['unjudged'] / k['results']:.0%})" if k["results"] else ""
+        table_rows.append([names[c], k["results"], f"{k['unjudged']}{share}", k["pairs"],
+                           number(overall[c][PRIMARY]["mean"]), rank_s[c],
+                           number(overall[c][f"{PRIMARY}_condensed"]["mean"]), rank_c[c],
+                           signed(overall[c][f"{PRIMARY}_condensed"]["mean"] - overall[c][PRIMARY]["mean"])])
+    results = sum(k["results"] for k in counts.values())
+    unjudged = sum(k["unjudged"] for k in counts.values())
+    totals = []
+    if results:
+        totals = [f"- Over all configurations: {results} top-10 results, {unjudged} of them ({unjudged / results:.0%}) "
+                  f"without a grade. They are {missing} distinct (intent, chunk) pairs, of {every} distinct pairs in "
+                  f"all the top 10s; the dataset has {len(dataset.qrels)} graded pairs. Grading the configurations' "
+                  f"own results would take {missing} more judgements."]
     return ["A chunk in a top 10 that no pooling search proposed has no grade. The standard score counts it as not "
             "relevant (a lower bound); the condensed score drops it (closer to an upper bound). A configuration "
             "unlike the pooling searches returns more unjudged chunks, so its standard score is pulled down more. "
             "Where the two orders of the configurations agree, the conclusions about which is better do not depend "
             "on the missing grades; the absolute scores do.", "",
             f"- Rank correlation (Spearman) of the standard and the condensed order: {rho:.2f}; the largest move "
-            f"is {shift} place{'s' if shift != 1 else ''}.", "",
-            *table(["configuration", "unjudged@10", "nDCG@10 standard", "rank", "nDCG@10 condensed", "rank",
-                    "condensed − standard"], rows)]
+            f"is {shift} place{'s' if shift != 1 else ''}.", *totals, "",
+            "Per configuration: its top-10 results over all queries, how many of them have no grade (and their "
+            "share), how many distinct (intent, chunk) pairs those are, and its nDCG@10 and rank by each score.", "",
+            *table(["configuration", "top-10 results", "without a grade", "distinct ungraded pairs",
+                    "nDCG@10 standard", "rank", "nDCG@10 condensed", "rank", "condensed − standard"], table_rows)]
 
 
 def slice_table(configs: Sequence[Configuration], aggregates: Sequence[dict[str, Any]], slice_: str,
@@ -544,7 +587,7 @@ def build_report(dataset: Dataset, runs: Sequence[Run], out: Path, *, exclude_in
           "## Dataset and runs", "", *provenance(dataset, runs), "",
           "## Configurations", "", *configuration_table(configs, names), "",
           "## Metrics and unjudged results", "", *METRIC_TEXT, "",
-          "## Overall", "", *overall_tables(configs, aggregates, names), "",
+          "## Overall", "", *overall_tables(configs, aggregates, names, dataset, rows), "",
           f"![nDCG@10 by configuration]({rel(images['ndcg'][0])})", "",
           "## Query language × source language", "",
           "nDCG@10 by the query's language (rows) and the language of the intent's source chunk (columns), with "

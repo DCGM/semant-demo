@@ -6,10 +6,11 @@ import math
 import pytest
 
 from semant_demo.benchmarks.search_relevance import metrics as m
-from semant_demo.benchmarks.search_relevance.analysis import FAILED, MISSING, SCORED, aggregate, latency, score
+from semant_demo.benchmarks.search_relevance.analysis import (FAILED, MISSING, SCORED, aggregate, latency, query_grades,
+                                                              score)
 from semant_demo.benchmarks.search_relevance.contracts import ContractError, write_dataset, write_run
 from semant_demo.benchmarks.search_relevance.report import (COMPARE_SECTIONS, REPORT_SECTIONS, build_report, load,
-                                                            main)
+                                                            main, unjudged_counts)
 from tests import search_benchmark_fixture as fixture
 
 L3 = math.log2(3)
@@ -222,7 +223,22 @@ def test_report_explains_unjudged_effect_and_takes_conclusions(tmp_path, dataset
     text = (out / "report.md").read_text(encoding="utf-8")
     assert "## Conclusions\n\nBM25 alone is not enough.\n" in text and "To be written by the reviewer" not in text
     assert "### Effect of unjudged results" in text and "Rank correlation (Spearman)" in text
-    assert "| configuration | unjudged@10 | nDCG@10 standard | rank | nDCG@10 condensed | rank |" in text
+    assert ("| configuration | top-10 results | without a grade | distinct ungraded pairs | nDCG@10 standard | rank "
+            "| nDCG@10 condensed | rank |") in text
+    assert "- Over all configurations: " in text and "graded pairs" in text
+
+
+def test_unjudged_counts_count_results_without_a_qrel(dataset, run):
+    configs, rows = score(dataset, [run], False)
+    counts, missing, every = unjudged_counts(dataset, rows)
+    grades_of = query_grades(dataset)
+    for config in ("bm25", "vector"):
+        mine = [r for r in rows if r.configuration == config]
+        results = sum(len(r.ranked[:10]) for r in mine)
+        ungraded = [(r.intent_id, c) for r in mine for c in r.ranked[:10]
+                    if c not in grades_of(r.intent_id, r.query_language)]
+        assert counts[config] == {"results": results, "unjudged": len(ungraded), "pairs": len(set(ungraded))}
+    assert 0 < missing <= every
 
 
 def test_report_is_deterministic(tmp_path, dataset, run):
