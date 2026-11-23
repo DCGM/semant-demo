@@ -23,8 +23,8 @@ import { useRightSidebarStore } from './rightSidebarStore'
  * the tool its context (search results, document...) through props and handles its
  * events; the sidebar itself only knows the panel's id, label, icon and busy state.
  *
- * `disabled` keeps the panel's icon on the rail but makes it unavailable (not shown, not
- * selectable) until the page has something to show in it.
+ * `disabled` keeps the panel's icon on the rail, greyed and not selectable, and its content
+ * is not shown until the page has something to show in it.
  *
  * `fill` gives the content exactly the height of the sidebar instead of letting the
  * sidebar scroll it, for a tool that scrolls parts of itself.
