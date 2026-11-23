@@ -290,3 +290,15 @@ def test_the_examples_show_the_grades_the_query_was_scored_with(dataset, run, tm
     # Chunk 7 is shown with its Czech grade (2), the one the Czech query was scored with, not the
     # intent's aggregate grade (1).
     assert f"| `{fixture.chunk_id(7)}` | deu | 2 |" in "\n".join(lines)
+
+
+def test_the_summary_shows_the_best_configurations_in_a_table_not_every_one(dataset, run, monkeypatch):
+    from semant_demo.benchmarks.search_relevance import report as report_module
+    from semant_demo.benchmarks.search_relevance.analysis import aggregate as aggregate_rows
+    configs, rows = score(dataset, [run])
+    aggregates = aggregate_rows(configs, rows, samples=50)
+    monkeypatch.setattr(report_module, "SUMMARY_TOP", 1)
+    text = "\n".join(report_module.report_summary(dataset, configs, aggregates, inconsistent=1, excluded=False))
+    assert "| # | configuration | nDCG@10 [95% CI] | same language | cross language | gap |" in text
+    assert text.count("\n| 1 |") == 1 and "\n| 2 |" not in text  # only the top configuration
+    assert "Lowest nDCG@10:" in text and "Order by" not in text
