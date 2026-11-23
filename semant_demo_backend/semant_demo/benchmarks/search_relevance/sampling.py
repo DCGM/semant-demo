@@ -10,6 +10,9 @@
    language are counted as exclusions.
 3. **Selection** per language toward its target: round-robin over (period, document type)
    strata (``balanced``) or as drawn (``proportional``), at most ``max_per_document`` per document.
+   A language still short after selection (the document cap and the strata can leave candidates
+   unused) draws again toward its shortfall, up to ``EXTRA_ROUNDS`` times, while ``max_draws`` lasts
+   and a round still finds new candidates.
 4. **Context**: for a seeded share of the selected chunks, their neighbours in the document
    (``attributes.context_of``), so related passages occur together.
 5. **Near-duplicates** are kept (they are realistic) and marked (``attributes.near_duplicate_of``).
@@ -35,6 +38,8 @@ from semant_demo.benchmarks.search_relevance.llm import gather
 from semant_demo.benchmarks.search_relevance.source import MAX_WINDOW, MIXED, UNKNOWN, SourceChunk, SourceReader
 
 IDLE_DRAWS = 20
+EXTRA_ROUNDS = 8
+"""Further draw rounds for a language the selection left short."""
 """Random-cursor reads in a row that found nothing new: the store is exhausted."""
 READ_CONCURRENCY = 8
 
@@ -78,8 +83,10 @@ class Sampler:
             self.candidates[chunk.language][chunk.id] = chunk
         return True
 
-    async def _draw(self, wanted: dict[str, int]) -> int:
-        draws = idle = 0
+    async def _draw(self, wanted: dict[str, int], draws: int = 0) -> int:
+        """Draw random-cursor batches until every language of ``wanted`` has that many candidates,
+        counting on from ``draws`` toward ``max_draws``; the draws made so far."""
+        idle = 0
         while draws < self.s.max_draws and idle < IDLE_DRAWS and any(
                 len(self.candidates[lang]) < n for lang, n in wanted.items()):
             cursor = UUID(int=self.rnd.getrandbits(128))
@@ -181,6 +188,20 @@ class Sampler:
                     methods[language] = "random+window"
         selected: dict[str, list[SourceChunk]] = {lang: self._select(lang, target)
                                                   for lang, target in self.targets.items()}
+        rounds = 0
+        while rounds < EXTRA_ROUNDS and draws < self.s.max_draws:
+            more = {lang: len(self.candidates[lang]) + math.ceil(self.s.oversample * (target - len(selected[lang])))
+                    for lang, target in self.targets.items()
+                    if len(selected[lang]) < target and len(self.candidates[lang]) < inventory.get(lang, 0)}
+            if not more:
+                break
+            before = sum(len(self.candidates[lang]) for lang in more)
+            draws = await self._draw(more, draws)
+            if sum(len(self.candidates[lang]) for lang in more) == before:
+                break  # nothing new is reachable by drawing
+            rounds += 1
+            for lang in more:
+                selected[lang] = self._select(lang, self.targets[lang])
         records: dict[UUID, CorpusChunk] = {}
         for language, chunks in selected.items():
             for chunk in chunks:
@@ -206,7 +227,7 @@ class Sampler:
             "inventory": dict(sorted(inventory.items(), key=lambda item: -item[1])),
             "excluded_languages": excluded_languages,
             "targets": self.targets,
-            "draws": draws, "windows": windows, "methods": methods,
+            "draws": draws, "extra_rounds": rounds, "windows": windows, "methods": methods,
             "candidates": {lang: len(c) for lang, c in self.candidates.items()},
             "drawn_exclusions": dict(sorted(self.exclusions.items())),
             "selected": {lang: len(c) for lang, c in selected.items()},

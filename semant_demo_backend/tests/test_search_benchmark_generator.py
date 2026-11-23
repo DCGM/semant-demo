@@ -851,3 +851,17 @@ def test_budget_takes_the_same_source_options_as_run(tmp_path, capsys):
     assert main(["budget", str(tmp_path / "config.yaml"), "--source-host", "127.0.0.1", "--source-port", "18080",
                  "--source-grpc-port", "15051"]) == 0
     assert "calls" in json.loads(capsys.readouterr().out)
+
+
+async def test_sampling_draws_again_when_the_document_cap_leaves_a_language_short():
+    # Ids consecutive per document: a cursor batch then holds one or two documents' chunks, so
+    # the first draws give enough candidates but too few documents for max_per_document 1.
+    step = 2 ** 128 // (len(LANGUAGES) * 30 + 1)  # documents spread over the id space
+    chunks = [SourceChunk(UUID(int=(n * 30 + d + 1) * step + o), did(lang, d), o, lang, text(lang, d, o))
+              for n, lang in enumerate(LANGUAGES) for d in range(30) for o in range(10)]
+    cfg = config(sample={"per_language": 6, "max_per_document": 1, "oversample": 1, "cursor_batch": 10,
+                         "context_fraction": 0})
+    corpus, report = await sample_corpus(FakeSource(chunks), cfg)
+    assert Counter(c.language for c in corpus) == {"ces": 6, "eng": 6, "deu": 6}
+    assert max(Counter(c.document_id for c in corpus).values()) == 1
+    assert report["extra_rounds"] > 0 and report.get("short", {}) == {}
