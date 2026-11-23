@@ -13,13 +13,13 @@
       <p v-if="!distribution" class="attribute-distribution__note" data-testid="statistics-attribute-unavailable">
         Not available for this query.
       </p>
-      <p v-else-if="distribution.eligible === 0" class="attribute-distribution__note">
-        No confirmed annotation of a tag this attribute applies to matches the query.
-      </p>
       <template v-else>
         <p v-if="includeRetained" class="attribute-distribution__summary" data-testid="statistics-attribute-summary">
           <strong>{{ formatCount(distribution.stored) }}</strong> stored
           {{ distribution.stored === 1 ? 'value' : 'values' }}, {{ formatCount(distribution.retained) }} of them retained
+        </p>
+        <p v-else-if="distribution.eligible === 0" class="attribute-distribution__note" data-testid="statistics-attribute-empty">
+          No confirmed annotation of a tag this attribute applies to matches the query.
         </p>
         <p v-else class="attribute-distribution__summary" data-testid="statistics-attribute-summary">
           <strong>{{ formatCount(distribution.withValue) }}</strong> of {{ formatCount(distribution.eligible) }}
@@ -27,21 +27,23 @@
             · <strong>{{ formatCount(distribution.assignments) }}</strong>
             {{ distribution.assignments === 1 ? 'assignment' : 'assignments' }}</template>
         </p>
-        <DistributionTable
-          :rows="shown"
-          :title="attribute.name"
-          :caption="`Confirmed annotations per value of ${attribute.name}`"
-          :test-id="`statistics-attribute-${attribute.id}-values`"
-          @drill="change => emit('drill', change)"
-        />
-        <q-btn
-          v-if="hidden > 0 || expanded"
-          flat dense no-caps color="primary" class="attribute-distribution__all"
-          :icon-right="expanded ? 'expand_less' : 'chevron_right'"
-          :label="expanded ? 'Fewer values' : `All ${valueRows} values`"
-          :data-testid="`statistics-attribute-${attribute.id}-all`"
-          @click="expanded = !expanded"
-        />
+        <template v-if="includeRetained || distribution.eligible > 0">
+          <DistributionTable
+            :rows="shown"
+            :title="attribute.name"
+            :caption="`Confirmed annotations per value of ${attribute.name}`"
+            :test-id="`statistics-attribute-${attribute.id}-values`"
+            @drill="change => emit('drill', change)"
+          />
+          <q-btn
+            v-if="hidden > 0 || expanded"
+            flat dense no-caps color="primary" class="attribute-distribution__all"
+            :icon-right="expanded ? 'expand_less' : 'chevron_right'"
+            :label="expanded ? 'Fewer values' : `All ${valueRows} values`"
+            :data-testid="`statistics-attribute-${attribute.id}-all`"
+            @click="expanded = !expanded"
+          />
+        </template>
         <q-checkbox
           v-if="retained > 0"
           v-model="includeRetained"

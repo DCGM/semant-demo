@@ -69,6 +69,9 @@
       <!-- Accepted attribute values (#819): their own population, so apart from the distributions above. -->
       <section v-if="!dimension && attributeCards.length" class="annotation-statistics__attributes" data-testid="statistics-attributes">
         <h3 class="annotation-statistics__detail-title">Accepted attribute values</h3>
+        <p v-if="countedAttributes.length > attributeCards.length" class="annotation-statistics__note" data-testid="statistics-attributes-capped">
+          Showing the first {{ attributeCards.length }} of {{ countedAttributes.length }} attributes.
+        </p>
         <div class="annotation-statistics__grid">
           <AttributeDistributionCard
             v-for="c in attributeCards"
@@ -99,6 +102,7 @@ import { QBtn, QBtnToggle, QSpace } from 'quasar'
 import type { AnnotatedDocument, AnnotationFacets, Attribute, Tag } from 'src/generated/api'
 import type { ConcordanceFilters } from '../concordance/concordanceStore'
 import AttributeDistributionCard from './AttributeDistributionCard.vue'
+import { MAX_FACET_ATTRIBUTES } from '../concordance/concordanceStore'
 import DistributionCard from './DistributionCard.vue'
 import DistributionTable from './DistributionTable.vue'
 import {
@@ -131,7 +135,9 @@ const drillable = computed(() => !topK.value && !props.stale)
 const denominator = computed(() => (props.statistics ? denominatorText(props.statistics, total.value) : ''))
 const labels = computed(() => ({ tags: props.tags, documents: props.documents }))
 
-const attributeCards = computed(() => (props.attributes ?? []).filter(a => !a.retired).map(attribute => ({
+const countedAttributes = computed(() => (props.attributes ?? []).filter(a => !a.retired))
+/** Only the attributes the request asked for (`MAX_FACET_ATTRIBUTES`): the others are not counted, not failed. */
+const attributeCards = computed(() => countedAttributes.value.slice(0, MAX_FACET_ATTRIBUTES).map(attribute => ({
   attribute,
   facet: props.statistics?.facets.find(f => f.facet === attributeFacetName(attribute.id)) ?? null
 })))

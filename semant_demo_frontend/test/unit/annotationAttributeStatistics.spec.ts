@@ -134,6 +134,29 @@ describe('the attribute section of the statistics view', () => {
     expect(wrapper.emitted('drill')![0][0]).toMatchObject({ types: ['pos'], tagIds: ['t1'], attributeValues: ['a1:red'] })
   })
 
+  it('still offers the retained values when no confirmed annotation of an applicable tag matches', async () => {
+    // e.g. filtered to a tag the attribute no longer applies to: every holder of a value is retained
+    const wrapper = mountPanel([facet({ eligible: 0, withValue: 0, assignments: 0, values: [{ value: 'red', count: 2, inapplicable: 2 }] })])
+    const card = wrapper.get('[data-testid="statistics-attribute-a1"]')
+    expect(card.get('[data-testid="statistics-attribute-empty"]').text()).toContain('No confirmed annotation')
+    expect(card.find('[data-testid="statistics-attribute-a1-values-show-red"]').exists()).toBe(false)
+    expect(card.get('[data-testid="statistics-include-retained"]').text()).toContain('Include 2 retained')
+    await card.get('[data-testid="statistics-include-retained"]').trigger('click')
+    expect(card.find('[data-testid="statistics-attribute-empty"]').exists()).toBe(false)
+    expect(card.get('[data-testid="statistics-attribute-summary"]').text()).toContain('2 stored values, 2 of them retained')
+    expect(card.get('[data-testid="statistics-attribute-a1-values-show-red"]').element.closest('tr')!.textContent).toContain('2')
+  })
+
+  it('shows only the attributes the request counted and says how many there are', () => {
+    const many = Array.from({ length: 91 }, (_, i) => attribute({ id: `x${i}`, name: `Attribute ${i}` }))
+    const wrapper = mount(AnnotationStatisticsPanel, {
+      props: { filters: defaultFilters(), statistics: statistics(base), error: null, tags: [], documents: [], attributes: many, dimension: null },
+      global: { plugins: [Quasar] }
+    })
+    expect(wrapper.findAll('[data-testid^="statistics-attribute-x"]').filter(c => /^statistics-attribute-x\d+$/.test(c.attributes('data-testid')!))).toHaveLength(90)
+    expect(wrapper.get('[data-testid="statistics-attributes-capped"]').text()).toBe('Showing the first 90 of 91 attributes.')
+  })
+
   it('says so when the attribute applies to no matching confirmed annotation', () => {
     const wrapper = mountPanel([facet({ eligible: 0, withValue: 0, assignments: 0, values: [] })])
     expect(wrapper.get('[data-testid="statistics-attribute-a1"]').text()).toContain('No confirmed annotation of a tag this attribute applies to')
