@@ -6,7 +6,8 @@ enriched. This command reads only the listed documents and their chunks and repo
 stage, how many are complete, with the ids of those that are not::
 
     python -m semant_demo.maintenance.import_status --report REPORT.json --document-ids CHECKPOINT.documents.txt \\
-        [--vector-name Qwen3_Embedding_0_6B] [--coverage-sample 100] [--coverage-k 10] [--seed 884]
+        [--vector-name Qwen3_Embedding_0_6B] [--coverage-sample 100] [--coverage-k 10] [--seed 884] \\
+        [--titles-included-restricted] [--classifier-skipped-restricted]
 
 ``--document-ids`` is the document list that ``chunk_ingest --write`` writes (one UUID per
 line, ``#`` starts a comment). It writes nothing to the store and needs no
@@ -29,19 +30,34 @@ Stages (``stages`` in the report):
 * ``summaries`` (documents): the chunk-value summaries equal a recomputation from the
   document's chunks, as ``chunk_summaries`` compares them, and have been computed.
 
-Expected gaps are counted apart (``expected_gaps``), not as incomplete: the chunks of a
-document that is not public have no title (``chunk_titles`` defers them, #785) and, with an
-API model, no classification (with a local model the classifier may classify them). Chunks
-without ``classification_provenance`` were stored before the property existed (``chunk_ingest``
-sets ``UNPROCESSED`` on every chunk it inserts), e.g. the earlier chunks of a document the import
-appends to; they are counted as ``no_provenance``.
+Expected gaps are counted apart (``expected_gaps``), not as incomplete. The chunks of a
+document that is not public (``public`` false or absent, #785) follow the stage's defaults:
+
+* untitled ones are a gap (``deferred_restricted_document``): ``chunk_titles`` defers them;
+  ``--titles-included-restricted`` (it ran with ``--include-restricted-documents``) counts
+  them as incomplete;
+* ``UNPROCESSED`` ones are incomplete: the classifier with a local model, as configured in the
+  repository, classifies them; ``--classifier-skipped-restricted`` (an API model without
+  ``include_restricted_documents``) counts them as a gap (``skipped_restricted_document``).
+
+Chunks without ``classification_provenance`` were stored before the property existed
+(``chunk_ingest`` sets ``UNPROCESSED`` on every chunk it inserts), e.g. the earlier chunks of a
+document the import appends to; they are a gap (``stored_before_status``).
 
 Vector index (``index``): for up to ``--coverage-sample`` chunks sampled (``--seed``) among
-those that list the vector, a vector query with the chunk's own stored vector must find it in
-the top ``--coverage-k``, and a query restricted to its id must find it: the checks of
-``db_benchmark inventory --coverage-sample``, on the imported chunks only. A chunk with
-duplicate text shares its vector with others and may miss the top ``K``; the missed ids are
-listed to inspect.
+those that list the vector, the checks of ``db_benchmark inventory --coverage-sample``, on the
+imported chunks only:
+
+* a vector query with the chunk's own stored vector finds it in the top ``--coverage-k``: it
+  is in the graph that search walks. A chunk missing there is queried again with the top
+  ``RETRY_FACTOR`` x ``K`` (``retried``): a chunk with duplicate text shares its vector with
+  other chunks, and the graph search is approximate. Only a miss there too counts;
+* a vector query restricted to the chunk's id finds it. Weaviate answers so selective a filter
+  by a flat (brute-force) search over the matching objects (``flatSearchCutoff``), so this
+  shows only that the vector is stored and readable, not that it is in the graph.
+
+A miss right after the embedder may be a vector still queued for indexing (asynchronous
+indexing): run the report again later.
 
 Exit code 0 when every stage is complete for the listed documents (expected gaps aside) and the
 index finds every sampled chunk; 1 when something is incomplete or missed; 2 when refused: the
@@ -80,6 +96,8 @@ VECTOR_NAME = "Qwen3_Embedding_0_6B"
 COVERAGE_SAMPLE = 100
 COVERAGE_K = 10
 SEED = 884
+RETRY_FACTOR = 10
+"""A chunk missing from the top ``K`` is queried again with the top ``RETRY_FACTOR * K``."""
 ID_LIMIT = 100
 """Incomplete ids listed per stage (and missed ids of the index check); the counts are complete."""
 DOCUMENT_BATCH = 100
@@ -168,8 +186,10 @@ def check_metadata(document: store.ImportedDocument, stage: Stage, without: Coun
 
 
 def check_chunk(chunk: store.ImportedChunk, document: store.ImportedDocument, vector_name: str,
-                stages: dict[str, Stage]) -> None:
-    """Record the chunk in each chunk stage."""
+                stages: dict[str, Stage], *, titles_include_restricted: bool = False,
+                classifier_includes_restricted: bool = True) -> None:
+    """Record the chunk in each chunk stage. The two options say whether ``chunk_titles`` and the
+    classifier processed the chunks of documents that are not public (see the module docstring)."""
     public = document.properties["public"] is True
     try:
         year = canonical_year(document.properties[YEAR])
@@ -191,7 +211,7 @@ def check_chunk(chunk: store.ImportedChunk, document: store.ImportedDocument, ve
     title = chunk.properties[TITLE]
     if isinstance(title, str) and title.strip():
         stages["titles"].done()
-    elif public:
+    elif public or titles_include_restricted:
         stages["titles"].missing(chunk.id, "untitled")
     else:
         stages["titles"].gap("deferred_restricted_document")
@@ -203,11 +223,11 @@ def check_chunk(chunk: store.ImportedChunk, document: store.ImportedDocument, ve
 
     provenance = chunk.properties[PROVENANCE]
     if provenance is None:
-        stages["classification"].gap("no_provenance")
+        stages["classification"].gap("stored_before_status")
     elif provenance != UNPROCESSED:
         stages["classification"].done()
-    elif not public:
-        stages["classification"].gap("deferred_restricted_document")
+    elif not public and not classifier_includes_restricted:
+        stages["classification"].gap("skipped_restricted_document")
     else:
         stages["classification"].missing(chunk.id, "unprocessed")
 
@@ -266,27 +286,37 @@ async def check_index(client: WeaviateAsyncClient, chunks: str, candidates: list
     """Self-retrieval of up to ``sample`` chunks drawn from ``candidates``."""
     chosen = random.Random(seed).sample(sorted(candidates), min(sample, len(candidates)))
     vectors = await store.read_vectors(client, chunks, chosen, vector_name)
-    top_k = by_id = 0
+    retry_k = k * RETRY_FACTOR
+    top_k = in_retry = by_id = 0
+    retried: list[str] = []
     missed: list[dict[str, str]] = []
     for chunk_id in chosen:
         vector = vectors.get(chunk_id)
         if vector is None:
             missed.append({"id": str(chunk_id), "reason": "no_stored_vector"})
             continue
-        in_top_k = await store.self_in_top_k(client, chunks, chunk_id, vector, vector_name, k)
+        found = await store.self_in_top_k(client, chunks, chunk_id, vector, vector_name, k)
+        top_k += found
+        if not found:
+            retried.append(str(chunk_id))
+            found = await store.self_in_top_k(client, chunks, chunk_id, vector, vector_name, retry_k)
+            in_retry += found
         by_filter = await store.found_by_id_filter(client, chunks, chunk_id, vector, vector_name)
-        top_k += in_top_k
         by_id += by_filter
-        if not (in_top_k and by_filter):
-            missed.append({"id": str(chunk_id), "reason": "not_in_top_k" if by_filter else "not_found_by_id_filter"})
+        if not found:
+            missed.append({"id": str(chunk_id), "reason": "not_in_top_k"})
+        elif not by_filter:
+            missed.append({"id": str(chunk_id), "reason": "not_found_by_id_filter"})
     return {"vector_name": vector_name, "candidates": len(candidates), "sampled": len(chosen), "k": k,
-            "seed": seed, "self_in_top_k": top_k, "found_by_id_filter": by_id, "missed": len(missed),
-            "missed_ids": missed[:ID_LIMIT]}
+            "retry_k": retry_k, "seed": seed, "self_in_top_k": top_k, "retried": len(retried),
+            "self_in_retry_k": in_retry, "found_by_id_filter": by_id, "missed": len(missed),
+            "retried_ids": retried[:ID_LIMIT], "missed_ids": missed[:ID_LIMIT]}
 
 
 async def run(client: WeaviateAsyncClient, names: CollectionNames, *, report: Path, document_ids: list[UUID],
               endpoint: str, vector_name: str = VECTOR_NAME, coverage_sample: int = COVERAGE_SAMPLE,
-              coverage_k: int = COVERAGE_K, seed: int = SEED, concurrency: int = CONCURRENCY,
+              coverage_k: int = COVERAGE_K, seed: int = SEED, titles_include_restricted: bool = False,
+              classifier_includes_restricted: bool = True, concurrency: int = CONCURRENCY,
               progress: Callable[[str], None] = _progress) -> dict[str, Any]:
     """The report (see the module docstring), also saved to ``report``. Raises ``Refused``
     before reading any chunk when it cannot be made."""
@@ -317,7 +347,8 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, *, report: Pa
                 stages["chunks"].missing(document_id, "no_chunks")
             check_metadata(document, stages["metadata"], without)
             for chunk in document_chunks:
-                check_chunk(chunk, document, vector_name, stages)
+                check_chunk(chunk, document, vector_name, stages, titles_include_restricted=titles_include_restricted,
+                            classifier_includes_restricted=classifier_includes_restricted)
                 if vector_name in (chunk.properties[HAVE_VECTOR] or ()):
                     with_vector.append(chunk.id)
             check_summaries(document, document_chunks, chunk_dimensions, stages["summaries"])
@@ -328,6 +359,8 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, *, report: Pa
     index = await check_index(client, chunks, with_vector, vector_name, coverage_sample, coverage_k, seed)
     result = {
         "endpoint": endpoint, "chunks": chunks, "documents": documents_collection,
+        "options": {"titles_include_restricted": titles_include_restricted,
+                    "classifier_includes_restricted": classifier_includes_restricted},
         "documents_listed": len(document_ids), "chunks_examined": examined,
         "stages": {name: stage.summary() for name, stage in stages.items()},
         "documents_without": {name: without[name] for name in ("title", YEAR)},
@@ -354,6 +387,12 @@ def _parser() -> argparse.ArgumentParser:
                    help=f"chunks for the index check (default {COVERAGE_SAMPLE}; 0: skip)")
     p.add_argument("--coverage-k", type=int, default=COVERAGE_K, help=f"top K of the index check (default {COVERAGE_K})")
     p.add_argument("--seed", type=int, default=SEED, help=f"seed of the sample (default {SEED})")
+    p.add_argument("--titles-included-restricted", action="store_true",
+                   help="chunk_titles ran with --include-restricted-documents: untitled chunks of documents that "
+                        "are not public are incomplete, not a gap")
+    p.add_argument("--classifier-skipped-restricted", action="store_true",
+                   help="the classifier skipped the chunks of documents that are not public (an API model without "
+                        "include_restricted_documents): their UNPROCESSED chunks are a gap, not incomplete")
     return p
 
 
@@ -374,7 +413,9 @@ async def _main(argv: list[str]) -> int:
     try:
         result = await run(client, config.collectionNames, report=args.report, document_ids=document_ids,
                            endpoint=endpoint, vector_name=args.vector_name, coverage_sample=args.coverage_sample,
-                           coverage_k=args.coverage_k, seed=args.seed)
+                           coverage_k=args.coverage_k, seed=args.seed,
+                           titles_include_restricted=args.titles_included_restricted,
+                           classifier_includes_restricted=not args.classifier_skipped_restricted)
         print(json.dumps(result, indent=2))
         return exit_code(result)
     except Refused as e:

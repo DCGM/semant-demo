@@ -33,10 +33,10 @@ def chunk(**properties) -> ImportedChunk:
     return ImportedChunk(uuid4(), {**stored, **properties})
 
 
-def outcome(chunk_: ImportedChunk, document_: ImportedDocument) -> dict[str, tuple]:
+def outcome(chunk_: ImportedChunk, document_: ImportedDocument, **options) -> dict[str, tuple]:
     """Per chunk stage: (complete, incomplete reasons, expected gap reasons)."""
     stages = {name: import_status.Stage("chunks") for name in import_status.CHUNK_STAGES}
-    import_status.check_chunk(chunk_, document_, "v", stages)
+    import_status.check_chunk(chunk_, document_, "v", stages, **options)
     return {name: (s.complete, dict(s.incomplete), dict(s.expected)) for name, s in stages.items()}
 
 
@@ -55,12 +55,19 @@ def test_a_document_without_a_year_leaves_its_chunks_without_one():
 
 
 @pytest.mark.parametrize("public", [False, None])
-def test_the_chunks_of_a_document_that_is_not_public_are_hidden_and_their_gaps_expected(public):
-    result = outcome(chunk(documentPublic=False, title=None, classification_provenance="UNPROCESSED"),
-                     document(public))
+def test_the_chunks_of_a_document_that_is_not_public_follow_the_stages_defaults(public):
+    """``chunk_titles`` defers them; the repository's local classifier classifies them."""
+    restricted = chunk(documentPublic=False, title=None, classification_provenance="UNPROCESSED")
+    result = outcome(restricted, document(public))
     assert result["visibility"] == (1, {}, {})
-    assert result["titles"] == result["classification"] == (0, {}, {"deferred_restricted_document": 1})
+    assert result["titles"] == (0, {}, {"deferred_restricted_document": 1})
+    assert result["classification"] == (0, {"unprocessed": 1}, {})
     assert outcome(chunk(), document(public))["visibility"] == (0, {"differs": 1}, {})
+
+    result = outcome(restricted, document(public), titles_include_restricted=True,
+                     classifier_includes_restricted=False)
+    assert result["titles"] == (0, {"untitled": 1}, {})
+    assert result["classification"] == (0, {}, {"skipped_restricted_document": 1})
 
 
 def test_a_public_documents_chunk_without_title_vector_or_classification_is_incomplete():
@@ -74,7 +81,7 @@ def test_a_public_documents_chunk_without_title_vector_or_classification_is_inco
 
 def test_a_chunk_stored_before_the_classification_status_is_not_counted_as_incomplete():
     assert outcome(chunk(classification_provenance=None), document(True))["classification"] == (
-        0, {}, {"no_provenance": 1})
+        0, {}, {"stored_before_status": 1})
 
 
 def test_a_document_is_resolved_with_a_public_flag_and_a_library():
@@ -95,3 +102,42 @@ def test_incomplete_ids_are_bounded_but_counted():
     summary = stage.summary()
     assert (summary["incomplete"], len(summary["incomplete_ids"]), summary["incomplete_ids_truncated"]) == (
         import_status.ID_LIMIT + 5, import_status.ID_LIMIT, True)
+
+
+class FakeIndex:
+    """The index reads of ``check_index``: ``top`` maps a chunk to its rank by its own vector
+    (None: not found at any K); ``unfiltered`` lists the chunks the id filter does not find."""
+
+    def __init__(self, vectors: dict[UUID, list[float] | None], top: dict[UUID, int | None],
+                 unfiltered: set[UUID] = frozenset()):
+        self.vectors, self.top, self.unfiltered = vectors, top, unfiltered
+        self.asked_k: list[int] = []
+
+    async def read_vectors(self, client, collection, ids, vector):
+        return {i: self.vectors[i] for i in ids}
+
+    async def self_in_top_k(self, client, collection, chunk_id, vector, vector_name, k):
+        self.asked_k.append(k)
+        rank = self.top[chunk_id]
+        return rank is not None and rank <= k
+
+    async def found_by_id_filter(self, client, collection, chunk_id, vector, vector_name):
+        return chunk_id not in self.unfiltered
+
+
+async def test_a_chunk_missing_from_the_top_k_is_queried_again_with_a_larger_k(monkeypatch):
+    first, duplicate, lost, unstored, unfiltered = (uuid4() for _ in range(5))
+    fake = FakeIndex({first: [1.0], duplicate: [1.0], lost: [1.0], unstored: None, unfiltered: [1.0]},
+                     {first: 1, duplicate: 12, lost: None, unstored: None, unfiltered: 1}, {unfiltered})
+    for name in ("read_vectors", "self_in_top_k", "found_by_id_filter"):
+        monkeypatch.setattr(import_status.store, name, getattr(fake, name))
+
+    index = await import_status.check_index(None, "Chunks", [first, duplicate, lost, unstored, unfiltered], "v",
+                                            sample=10, k=10, seed=1)
+
+    assert (index["sampled"], index["self_in_top_k"], index["retried"], index["self_in_retry_k"],
+            index["found_by_id_filter"], index["missed"], index["retry_k"]) == (5, 2, 2, 1, 3, 3, 100)
+    assert {e["id"]: e["reason"] for e in index["missed_ids"]} == {
+        str(lost): "not_in_top_k", str(unstored): "no_stored_vector", str(unfiltered): "not_found_by_id_filter"}
+    assert set(index["retried_ids"]) == {str(duplicate), str(lost)}
+    assert sorted(set(fake.asked_k)) == [10, 100]

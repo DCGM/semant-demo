@@ -950,7 +950,8 @@ with the ids of the incomplete ones (the first 100 per step; the counts are comp
 
 ```bash
 python -m semant_demo.maintenance.import_status --report status.json --document-ids CHECKPOINT.documents.txt \
-    [--vector-name Qwen3_Embedding_0_6B] [--coverage-sample 100] [--coverage-k 10] [--seed 884]
+    [--vector-name Qwen3_Embedding_0_6B] [--coverage-sample 100] [--coverage-k 10] [--seed 884] \
+    [--titles-included-restricted] [--classifier-skipped-restricted]
 ```
 
 | Stage | Unit | Complete when |
@@ -964,18 +965,32 @@ python -m semant_demo.maintenance.import_status --report status.json --document-
 | `classification` | chunk | `classification_provenance` other than `UNPROCESSED` (the classifier) |
 | `summaries` | document | the summaries equal a recomputation from its chunks and were computed (`chunk_summaries`) |
 
-- **Expected gaps** are counted apart, not as incomplete: the untitled and `UNPROCESSED` chunks
-  of a document that is not public (deferred by `chunk_titles` and an API model, #785; a local
-  model may classify them), and chunks without `classification_provenance`, stored before the
-  property existed (e.g. the earlier chunks of a document the import appends to; the import sets
-  `UNPROCESSED` on every chunk it inserts). Documents without a title or a year are counted in
-  `documents_without`: the source may have none.
+- **Expected gaps** are counted apart, not as incomplete. The chunks of a document that is not
+  public (`public` false or absent, #785) follow each step's defaults; tell the command when a
+  run differed:
+  - untitled ones are a gap (`deferred_restricted_document`), as `chunk_titles` defers them;
+    after a run with `--include-restricted-documents`, give `--titles-included-restricted`;
+  - `UNPROCESSED` ones are incomplete, as the repository's classifier (a local model) classifies
+    them; after an API model without `include_restricted_documents`, give
+    `--classifier-skipped-restricted` (gap `skipped_restricted_document`).
+
+  Chunks without `classification_provenance` were stored before the property existed, e.g. the
+  earlier chunks of a document the import appends to (the import sets `UNPROCESSED` on every
+  chunk it inserts): gap `stored_before_status`. Documents without a title or a year are counted
+  in `documents_without`: the source may have none.
 - **Vector index:** up to `--coverage-sample` chunks are sampled among the imported documents'
-  chunks that list the vector. A query with the chunk's own stored vector must find it in the top
-  `--coverage-k`, and a query restricted to its id must find it, as in
-  [`db_benchmark inventory`](DB_BENCHMARK.md), whose whole-collection sample rarely includes
-  new chunks. Chunks with duplicate text share a vector and may miss the top K; inspect the
-  listed `missed_ids`. `--coverage-sample 0` skips the check.
+  chunks that list the vector, with the checks of [`db_benchmark inventory`](DB_BENCHMARK.md),
+  whose whole-collection sample rarely includes new chunks:
+  - a query with the chunk's own stored vector must find it in the top `--coverage-k`: it is in
+    the graph that search walks. A chunk missing there is queried again with the top 10 × K
+    (`retried`), since chunks with duplicate text share a vector and the graph search is
+    approximate; only a miss there too counts;
+  - a query restricted to its id must find it. Weaviate answers so selective a filter by a flat
+    (brute-force) search ([`flatSearchCutoff`](https://docs.weaviate.io/weaviate/config-refs/indexing/vector-index)),
+    so this shows only that the vector is stored and readable.
+
+  A miss right after the embedder may be a vector still queued for indexing: run the report
+  again later. `--coverage-sample 0` skips the check.
 - **Exit codes:** 0 when no step is incomplete (expected gaps aside) and the index found every
   sampled chunk; 1 otherwise; 2 when refused: an existing report, a missing, empty or invalid
   document list, a listed document that does not exist, a missing collection, a missing chunk
