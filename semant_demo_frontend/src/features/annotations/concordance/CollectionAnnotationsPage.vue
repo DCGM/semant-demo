@@ -128,7 +128,7 @@
         no-caps
         color="primary"
         icon="file_download"
-        label="Export CSV"
+        label="Export"
         data-testid="export-csv"
         @click="exportOpen = true"
       >

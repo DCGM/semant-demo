@@ -81,6 +81,7 @@ export * from './DocumentSummaryResponse';
 export * from './DocumentViewChunk';
 export * from './ErrorModel';
 export * from './ExplainRequest';
+export * from './ExportFormat';
 export * from './Facet';
 export * from './FacetPopulation';
 export * from './FacetValue';

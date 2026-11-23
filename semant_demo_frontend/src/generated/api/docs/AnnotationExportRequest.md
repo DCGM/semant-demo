@@ -1,7 +1,7 @@
 
 # AnnotationExportRequest
 
-A CSV export of a collection\'s annotations (#719): one row per annotation, in no particular order; the annotations are resolved by id when the export starts. The identity, status, text, context, document position and accepted attribute columns are always present; the optional groups add columns only.
+A CSV or JSON export of a collection\'s annotations (#719): one row per annotation, in no particular order; the annotations are resolved by id when the export starts. The identity, status, text, context, document position and accepted attribute columns are always present; the optional groups add columns only.
 
 ## Properties
 
@@ -15,6 +15,9 @@ Name | Type
 `documentMetadata` | boolean
 `provenance` | boolean
 `delimiter` | [CsvDelimiter](CsvDelimiter.md)
+`format` | [ExportFormat](ExportFormat.md)
+`ranking` | [AnnotationRanking](AnnotationRanking.md)
+`audit` | boolean
 
 ## Example
 
@@ -31,6 +34,9 @@ const example = {
   "documentMetadata": null,
   "provenance": null,
   "delimiter": null,
+  "format": null,
+  "ranking": null,
+  "audit": null,
 } satisfies AnnotationExportRequest
 
 console.log(example)

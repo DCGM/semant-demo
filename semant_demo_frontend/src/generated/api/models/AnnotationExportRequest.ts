@@ -20,6 +20,13 @@ import {
     SpanTypeToJSON,
     SpanTypeToJSONTyped,
 } from './SpanType';
+import type { AnnotationRanking } from './AnnotationRanking';
+import {
+    AnnotationRankingFromJSON,
+    AnnotationRankingFromJSONTyped,
+    AnnotationRankingToJSON,
+    AnnotationRankingToJSONTyped,
+} from './AnnotationRanking';
 import type { CsvDelimiter } from './CsvDelimiter';
 import {
     CsvDelimiterFromJSON,
@@ -41,9 +48,16 @@ import {
     AnnotationExportScopeToJSON,
     AnnotationExportScopeToJSONTyped,
 } from './AnnotationExportScope';
+import type { ExportFormat } from './ExportFormat';
+import {
+    ExportFormatFromJSON,
+    ExportFormatFromJSONTyped,
+    ExportFormatToJSON,
+    ExportFormatToJSONTyped,
+} from './ExportFormat';
 
 /**
- * A CSV export of a collection's annotations (#719): one row per annotation, in no particular
+ * A CSV or JSON export of a collection's annotations (#719): one row per annotation, in no particular
  * order; the annotations are resolved by id when the export starts. The identity,
  * status, text, context, document position and accepted attribute columns are always present;
  * the optional groups add columns only.
@@ -99,6 +113,24 @@ export interface AnnotationExportRequest {
      * @memberof AnnotationExportRequest
      */
     delimiter?: CsvDelimiter;
+    /**
+     * 
+     * @type {ExportFormat}
+     * @memberof AnnotationExportRequest
+     */
+    format?: ExportFormat;
+    /**
+     * 
+     * @type {AnnotationRanking}
+     * @memberof AnnotationExportRequest
+     */
+    ranking?: AnnotationRanking | null;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof AnnotationExportRequest
+     */
+    audit?: boolean;
 }
 
 
@@ -129,6 +161,9 @@ export function AnnotationExportRequestFromJSONTyped(json: any, ignoreDiscrimina
         'documentMetadata': json['document_metadata'] == null ? undefined : json['document_metadata'],
         'provenance': json['provenance'] == null ? undefined : json['provenance'],
         'delimiter': json['delimiter'] == null ? undefined : CsvDelimiterFromJSON(json['delimiter']),
+        'format': json['format'] == null ? undefined : ExportFormatFromJSON(json['format']),
+        'ranking': json['ranking'] == null ? undefined : AnnotationRankingFromJSON(json['ranking']),
+        'audit': json['audit'] == null ? undefined : json['audit'],
     };
 }
 
@@ -151,6 +186,9 @@ export function AnnotationExportRequestToJSONTyped(value?: AnnotationExportReque
         'document_metadata': value['documentMetadata'],
         'provenance': value['provenance'],
         'delimiter': CsvDelimiterToJSON(value['delimiter']),
+        'format': ExportFormatToJSON(value['format']),
+        'ranking': AnnotationRankingToJSON(value['ranking']),
+        'audit': value['audit'],
     };
 }
 

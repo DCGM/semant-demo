@@ -460,3 +460,143 @@ async def test_route_streams_the_file_with_its_count_and_scope(tmp_path, store, 
     assert [r["text"] for r in parse(filtered.content)] == ["Lhota"]
     assert (selected.headers["x-export-count"], selected.headers["x-export-missing"]) == ("1", "1")
     assert invalid.status_code == 422 and unknown.status_code == 422
+
+
+# ── JSON with manifest (#826) ─────────────────────────────────────────────
+
+def load(content: bytes) -> dict:
+    import json
+    return json.loads(content.decode("utf-8"))
+
+
+async def test_json_holds_manifest_records_and_a_closing_completion(store):
+    def values(*pairs):
+        return [codec.encode(a, v) for a, v in pairs]
+    text = "Příliš žluťoučký kůň,\n\"úpěl\" =1+1"
+    multi = row(DOC_A, 0, text, tag=OTHER_TAG).model_copy(update={"attributeValues": values(
+        (TOPIC, ECONOMY), (TOPIC, POLITICS), (SPEAKER, WOMAN))})
+    store.spans.rows = [multi, row(DOC_NO_YEAR, 5, "=SUM(A1)"), row(DOC_GONE, 9)]
+    result, content = await run(store, format="json")
+    assert result.format.value == "json" and not content.startswith(b"\xef\xbb\xbf")
+    data = load(content)
+    manifest, records = data["manifest"], {r["annotation_id"]: r for r in data["annotations"]}
+    assert (manifest["schema"], manifest["schema_version"], manifest["record_count"]) == (
+        "semant.annotation-export", 1, 3)
+    assert manifest["result_kind"] == "all_of_statuses" and "Not a snapshot" in manifest["snapshot"]
+    assert {a["name"]: [v["label"] for v in a["values"]] for a in manifest["attributes"]}["topic"] == [
+        "politics", "economy", "Unknown"]
+    assert {t["name"] for t in manifest["tags"]} == {"Osoba", "=Místo"}
+    assert data["completion"]["complete"] is True
+    assert (data["completion"]["expected_count"], data["completion"]["written_count"]) == (3, 3)
+    exported = records[str(multi.id)]
+    assert exported["text"] == text  # exact: no spreadsheet protection, no CSV escaping
+    assert sorted(r["text"] for r in records.values() if r["text"].startswith("=")) == ["=SUM(A1)"]
+    assert exported["status"] == "confirmed" and exported["tag"]["id"] == str(OTHER_TAG)
+    accepted = {a["attribute_id"]: a["value_ids"] for a in exported["attributes"]}
+    assert accepted == {str(TOPIC): [str(ECONOMY), str(POLITICS)], str(SPEAKER): [str(WOMAN)]}
+    assert "retained_attribute_values" not in exported and "provenance" not in exported
+    gone = next(r for r in records.values() if r["document"]["id"] == str(DOC_GONE))
+    assert gone["document"]["available"] is False and gone["document"].get("title") is None
+
+
+async def test_json_retained_values_only_in_audit_mode_and_never_accepted(store):
+    def values(*pairs):
+        return [codec.encode(a, v) for a, v in pairs]
+    retagged = row(DOC_A, 5).model_copy(update={"attributeValues": values((SPEAKER, MAN), (TOPIC, UNKNOWN))})
+    rejected = row(DOC_A, 9, type=SpanType.neg, tag=OTHER_TAG).model_copy(
+        update={"attributeValues": values((SPEAKER, MAN))})
+    store.spans.rows = [retagged, rejected]
+    _, plain = await run(store, format="json")
+    _, audit = await run(store, format="json", audit=True)
+    assert all("retained_attribute_values" not in r for r in load(plain)["annotations"])
+    assert load(plain)["manifest"]["categories"]["audit"] is False
+    records = {r["annotation_id"]: r for r in load(audit)["annotations"]}
+    assert load(audit)["manifest"]["categories"]["audit"] is True
+    assert records[str(retagged.id)]["attributes"] == [{"attribute_id": str(TOPIC), "value_ids": [str(UNKNOWN)]}]
+    assert records[str(retagged.id)]["retained_attribute_values"] == [
+        {"attribute_id": str(SPEAKER), "value_ids": [str(MAN)], "accepted": False, "reason": "inapplicable_to_tag"}]
+    assert records[str(rejected.id)]["attributes"] == []
+    assert records[str(rejected.id)]["retained_attribute_values"] == [
+        {"attribute_id": str(SPEAKER), "value_ids": [str(MAN)], "accepted": False, "reason": "annotation_rejected"}]
+
+
+async def test_json_empty_scope_is_a_valid_complete_empty_dataset(store):
+    result, content = await run(store, format="json")
+    data = load(content)
+    assert (result.count, data["annotations"], data["manifest"]["record_count"]) == (0, [], 0)
+    assert data["completion"] == {**data["completion"], "complete": True, "expected_count": 0, "written_count": 0}
+
+
+async def test_json_selection_manifest_counts_requested_and_missing(store):
+    kept = row(DOC_A, 0)
+    store.spans.rows = [kept, row(DOC_B, 0)]
+    unknown = uuid4()
+    result, content = await run(store, format="json", scope="selection", annotation_ids=[kept.id, unknown],
+                                types=None)
+    data = load(content)
+    assert (result.count, result.missing) == (1, 1)
+    assert data["manifest"]["result_kind"] == "selection"
+    assert data["manifest"]["query"] == {"scope": "selection", "requested_ids": 2, "not_found": 1}
+    assert [r["annotation_id"] for r in data["annotations"]] == [str(kept.id)]
+
+
+async def test_json_optional_groups_and_document_fields(store):
+    chunk = uuid4()
+    mine = row(DOC_A, 0).model_copy(update={"chunkId": chunk, "origin": AnnotationOrigin.manual,
+                                            "createdBy": OWNER.id})
+    store.spans.rows = [mine]
+    store.documents.chunks[chunk] = {"language": "ces", "complexity": "easy"}
+    _, content = await run(store, format="json", chunk_metadata=True, provenance=True)
+    record = load(content)["annotations"][0]
+    assert record["chunk"]["language"] == "ces" and record["chunk"]["complexity"] == "easy"
+    assert record["provenance"]["origin"] == "manual"
+    assert record["provenance"]["created_by"] == {"id": str(OWNER.id), "name": "Owner Name"}
+    assert record["document"]["title"] is not None
+    _, bare = await run(store, format="json", document_metadata=False)
+    assert set(load(bare)["annotations"][0]["document"]) == {"id", "available", "url"}
+
+
+async def test_json_deleted_annotations_are_reported_not_hidden(store, monkeypatch):
+    monkeypatch.setattr(export, "EXPORT_PAGE", 1)
+    store.spans.rows = [row(DOC_A, 0), row(DOC_A, 5)]
+    result = await export.export_annotations(
+        store, FakeDefinitions(), FakeUsers(), VOCABULARY, OWNER, COLLECTION,
+        AnnotationExportRequest(scope="collection", types=["pos"], format="json"))
+    parts = [await anext(result.content), await anext(result.content)]
+    gone = next(r for r in store.spans.rows if str(r.id) not in parts[1].decode())
+    store.spans.rows.remove(gone)
+    parts += [part async for part in result.content]
+    completion = load(b"".join(parts))["completion"]
+    assert completion["complete"] is False and completion["written_count"] == 1
+    assert completion["expected_count"] == 2 and completion["missing_ids"] == [str(gone.id)]
+
+
+async def test_json_interrupted_export_is_not_a_valid_document(store, monkeypatch):
+    monkeypatch.setattr(export, "EXPORT_PAGE", 1)
+    store.spans.rows = [row(DOC_A, 0), row(DOC_A, 5)]
+    store.spans.fail_after = 1
+    result = await export.export_annotations(
+        store, FakeDefinitions(), FakeUsers(), VOCABULARY, OWNER, COLLECTION,
+        AnnotationExportRequest(scope="collection", types=["pos"], format="json"))
+    parts = []
+    with pytest.raises(ExportInterrupted):
+        async for part in result.content:
+            parts.append(part)
+    with pytest.raises(ValueError):
+        load(b"".join(parts))
+    assert b'"completion":' not in b"".join(parts)
+
+
+@pytest.mark.parametrize("fields", [
+    {"scope": "collection", "types": ["pos"], "audit": True},
+    {"scope": "collection", "types": ["pos"], "format": "json", "ranking": {"mode": "semantic"}},
+    {"scope": "filters", "filters": {}, "format": "json", "ranking": {"mode": "lexical"}},
+])
+def test_json_options_are_checked(fields):
+    with pytest.raises(ValidationError):
+        AnnotationExportRequest(**fields)
+
+
+async def test_a_ranked_filter_without_a_ranking_is_still_refused(store):
+    with pytest.raises(InvalidRequestError, match="top k"):
+        await run(store, scope="filters", types=None, filters=AnnotationFilters(ranking_query="x"), format="json")
