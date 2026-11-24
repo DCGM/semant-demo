@@ -60,8 +60,10 @@ def valid_embedding(embedding: object, dimensions: int | None) -> bool:
 class EmbeddingCache:
     """The cached document embeddings of one (model, dimensions, template)."""
 
-    def __init__(self, cache_dir: Path, model: str, template: str, dimensions: int | None):
-        self.identity = {"model": model, "dimensions": dimensions, "document_template": template}
+    def __init__(self, cache_dir: Path, model: str, template: str, dimensions: int | None,
+                 max_input_tokens: int | None = None):
+        self.identity = {"model": model, "dimensions": dimensions, "document_template": template,
+                         **({"max_input_tokens": max_input_tokens} if max_input_tokens is not None else {})}
         self.namespace = hashlib.sha256(json.dumps(self.identity, sort_keys=True).encode()).hexdigest()[:32]
         self.directory = Path(cache_dir).expanduser()
         self.path = self.directory / f"{self.namespace}.jsonl"

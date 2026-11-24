@@ -47,21 +47,21 @@ async def instance(weaviate_client, store_token):
 
 
 class CountingTransport(httpx.AsyncBaseTransport):
-    """The fake providers, counting embedding requests and texts; ``fail`` answers 500 for an
-    input containing it."""
+    """The fake providers, counting embedding requests and texts; ``fail`` answers ``status``
+    (500) for a request with an input containing it."""
 
-    def __init__(self, fail: str | None = None):
+    def __init__(self, fail: str | None = None, status: int = 500):
         self.inner = httpx.ASGITransport(app=create_fake_provider_app(load_corpus()))
         self.requests = 0
         self.texts: list[str] = []
-        self.fail = fail
+        self.fail, self.status = fail, status
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         self.requests += 1
         self.texts.extend(body["input"])
         if self.fail and any(self.fail in text for text in body["input"]):
-            return httpx.Response(500, request=request)
+            return httpx.Response(self.status, request=request)
         return await self.inner.handle_async_request(request)
 
 
@@ -210,6 +210,20 @@ async def test_failed_embeddings_leave_their_chunks_without_a_vector(instance, s
         transport.fail = None
         retried = await store.ensure_vector(VECTOR, replace(ENDPOINT, batch_size=1), tmp_path / "cache")
         assert (retried.embedded, retried.from_cache, retried.written, retried.failed) == (3, 0, 3, {})
+    finally:
+        await store.close()
+
+
+async def test_a_text_refused_by_the_model_does_not_cost_its_batch_their_embeddings(instance, spec, dataset,
+                                                                                    tmp_path):
+    """A server refuses a whole request for one text (e.g. over the model's length, HTTP 400):
+    the batch is resent one text at a time, so only the refused texts stay without a vector."""
+    transport = CountingTransport(fail="Lhota", status=400)
+    store = await _open(spec, transport)
+    try:
+        await store.load(dataset)
+        report = await store.ensure_vector(VECTOR, ENDPOINT, tmp_path / "cache")  # batches of 4
+        assert (report.embedded, report.written, report.failed) == (6, 6, {"HTTP400": 3})
     finally:
         await store.close()
 

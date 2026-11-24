@@ -221,10 +221,17 @@ def _embedding_client(model: str, endpoint: EmbeddingEndpoint, dimensions: int |
 
 
 def _document_client(model: str, endpoint: EmbeddingEndpoint, dimensions: int | None,
-                     transport: httpx.AsyncBaseTransport | None) -> BatchEmbeddings:
+                     transport: httpx.AsyncBaseTransport | None, max_input_tokens: int | None = None
+                     ) -> BatchEmbeddings:
     """The benchmark's batched client for the corpus's document embeddings."""
     return BatchEmbeddings(endpoint.base_url, model, api_key=_api_key(endpoint), dimensions=dimensions,
-                           timeout=endpoint.timeout, transport=transport)
+                           timeout=endpoint.timeout, transport=transport, max_input_tokens=max_input_tokens)
+
+
+def _rejected_input(error: BaseException) -> bool:
+    """A request the server refused for its input (HTTP 400/413/422, e.g. a text over the model's
+    length): in a batch, possibly because of one text only."""
+    return isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (400, 413, 422)
 
 
 def _failure_class(error: BaseException) -> str:
@@ -367,8 +374,9 @@ class WeaviateBenchmarkStore:
         if not pending:
             return report
 
-        cache = EmbeddingCache(cache_dir, spec.model, spec.document_template, spec.dimensions)
-        embedder = _document_client(spec.model, endpoint, spec.dimensions, self.embedding_transport)
+        cache = EmbeddingCache(cache_dir, spec.model, spec.document_template, spec.dimensions, spec.max_input_tokens)
+        embedder = _document_client(spec.model, endpoint, spec.dimensions, self.embedding_transport,
+                                    spec.max_input_tokens)
         dimensions = [spec.dimensions]
         window = max(1, endpoint.batch_size) * max(1, endpoint.concurrency) * 4
         for start in range(0, len(pending), window):
@@ -381,7 +389,8 @@ class WeaviateBenchmarkStore:
     async def _ensure_named_vector(self, spec: VectorSpec) -> None:
         chunks = self._collection(self.names.chunks_collection_name)
         record_id = uuid5(_RECORDS, f"vector:{spec.target_vector}")
-        identity = {"model": spec.model, "document_template": spec.document_template, "dimensions": spec.dimensions}
+        identity = {"model": spec.model, "document_template": spec.document_template, "dimensions": spec.dimensions,
+                    **({"max_input_tokens": spec.max_input_tokens} if spec.max_input_tokens is not None else {})}
         index = {"type": "hnsw", "distance": "cosine", "vectorizer": "none"}
         record = await self._record(record_id)
         config = await chunks.config.get()
@@ -425,9 +434,22 @@ class WeaviateBenchmarkStore:
                 try:
                     embeddings = await self._embed_with_retries(embedder, [missing[k] for k in batch])
                 except Exception as e:  # counted per chunk; the others go on
-                    for key in batch:
-                        failed[key] = _failure_class(e)
-                    return
+                    if len(batch) > 1 and _rejected_input(e):
+                        # One text (e.g. over the model's length) fails the whole request: the
+                        # others must not lose their embeddings, so each is sent on its own.
+                        retried = []
+                        for key in batch:
+                            try:
+                                retried += await self._embed_with_retries(embedder, [missing[key]])
+                            except Exception as one:
+                                failed[key] = _failure_class(one)
+                                retried.append(None)
+                        embeddings, batch = ([x for x in retried if x is not None],
+                                             [k for k, x in zip(batch, retried) if x is not None])
+                    else:
+                        for key in batch:
+                            failed[key] = _failure_class(e)
+                        return
             good = {}
             for key, embedding in zip(batch, embeddings):
                 if dimensions[0] is None and valid_embedding(embedding, None):

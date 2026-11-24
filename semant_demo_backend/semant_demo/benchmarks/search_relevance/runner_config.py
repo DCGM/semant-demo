@@ -82,6 +82,8 @@ class VectorSettings(_Model):
     target_vector: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
     document_template: str = "{text}"
     dimensions: int | None = Field(None, ge=1)
+    max_input_tokens: int | None = Field(None, ge=1)
+    """Documents cut to this many tokens by the server (``VectorSpec.max_input_tokens``)."""
     query_prefixes: dict[Name, str] = Field(default_factory=lambda: {"none": ""}, min_length=1)
 
     @field_validator("document_template")
@@ -99,7 +101,8 @@ class VectorSettings(_Model):
 
     def spec(self, vector_id: str, prefix: str = "") -> VectorSpec:
         return VectorSpec(id=vector_id, model=self.model, target_vector=self.target_vector, query_prefix=prefix,
-                          document_template=self.document_template, dimensions=self.dimensions)
+                          document_template=self.document_template, dimensions=self.dimensions,
+                          max_input_tokens=self.max_input_tokens)
 
 
 class Grid(_Model):

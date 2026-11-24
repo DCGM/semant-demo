@@ -202,6 +202,10 @@ class VectorSpec(_Record):
     query_prefix: str = ""
     document_template: str = "{text}"
     dimensions: int | None = None
+    max_input_tokens: int | None = Field(None, ge=1)
+    """Documents are cut to this many tokens by the embedding server (vLLM's
+    ``truncate_prompt_tokens``) instead of being refused when longer than the model accepts;
+    None: sent whole. Part of the vector's identity when set."""
 
 
 class RunConfiguration(_Record):

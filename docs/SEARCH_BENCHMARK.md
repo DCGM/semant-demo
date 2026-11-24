@@ -265,9 +265,14 @@ schema's shape, not production's exact one (#128); `describe()` records it in th
 - **Vectors.** `ensure_vector` adds the named vector (self-provided, HNSW, cosine) and embeds
   `VectorSpec.document_template` rendered with `{text}` and `{title}` (the chunk's own title,
   empty without one) through the OpenAI-compatible endpoint, in batches with bounded concurrency
-  and retries (transport errors, 429, 5xx). Embeddings are cached in `cache_dir` by (model,
-  dimensions, template) and the SHA-256 of the rendered text; only chunks without the vector are
-  embedded or written, a failed chunk gets none and is counted by failure class.
+  and retries (transport errors, 429, 5xx). A batch the server refuses for its input (400, 413,
+  422, e.g. one text over the model's length) is resent one text at a time, so only the refused
+  texts go without a vector. `VectorSpec.max_input_tokens` lets the server cut longer documents
+  (vLLM's `truncate_prompt_tokens`) instead of refusing them; it is for pooling models such as
+  E5 (512 tokens), not for compared models, whose measurement it would change. Embeddings are
+  cached in `cache_dir` by (model, dimensions, template, `max_input_tokens` when set) and the
+  SHA-256 of the rendered text; only chunks without the vector are embedded or written, a failed
+  chunk gets none and is counted by failure class.
 - **Search.** `searcher` runs `search_passages` anonymously without filters, with the
   configuration's mode, alpha, fusion, BM25 `properties` (`name^boost`), query prefix and depth
   (the retrieval limit), and reads the first 20 passages in full, as the application's first page.

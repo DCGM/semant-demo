@@ -261,6 +261,20 @@ async def test_batch_embeddings_keep_the_input_order_and_send_the_model_settings
     assert await client.embed_documents([]) == [] and len(server.bodies) == 1
 
 
+async def test_documents_are_cut_by_the_server_only_when_the_vector_says_so():
+    server = EmbeddingServer()
+    await BatchEmbeddings("http://e/v1", "m", transport=server, max_input_tokens=512).embed_documents(["a"])
+    await BatchEmbeddings("http://e/v1", "m", transport=server).embed_documents(["a"])
+    assert server.bodies[0]["truncate_prompt_tokens"] == 512 and "truncate_prompt_tokens" not in server.bodies[1]
+
+
+def test_a_cut_is_part_of_the_cached_embeddings_identity(tmp_path):
+    key = input_hash("Body")
+    EmbeddingCache(tmp_path, "m", "{text}", None).put_many({key: [0.5]})
+    assert EmbeddingCache(tmp_path, "m", "{text}", None, 512).get(key) is None
+    assert EmbeddingCache(tmp_path, "m", "{text}", None, None).get(key) == [0.5]  # unchanged without a cut
+
+
 async def test_batch_embeddings_refuse_a_wrong_number_of_embeddings():
     client = BatchEmbeddings("http://e/v1", "m", transport=EmbeddingServer(count_offset=-1))
     with pytest.raises(ValueError, match="expected 2 embeddings, got 1"):

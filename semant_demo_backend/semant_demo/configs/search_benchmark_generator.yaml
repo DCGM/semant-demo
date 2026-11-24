@@ -85,7 +85,8 @@ pooling:
       mode: vector
       depth: 30
       vector: {id: e5-small, model: intfloat/multilingual-e5-small, target_vector: e5_small,
-               query_prefix: "query: ", document_template: "passage: {text}"}
+               query_prefix: "query: ", document_template: "passage: {text}",
+               max_input_tokens: 512}           # E5's limit: longer chunks are cut, not refused
       endpoint: {base_url: "http://localhost:8001/v1"}
     - id: hybrid-e5
       description: BM25 + multilingual-e5-small, alpha 0.5, relativeScore, top 30
@@ -94,7 +95,8 @@ pooling:
       fusion: relativeScore
       depth: 30
       vector: {id: e5-small, model: intfloat/multilingual-e5-small, target_vector: e5_small,
-               query_prefix: "query: ", document_template: "passage: {text}"}
+               query_prefix: "query: ", document_template: "passage: {text}",
+               max_input_tokens: 512}           # E5's limit: longer chunks are cut, not refused
       endpoint: {base_url: "http://localhost:8001/v1"}
 
 judge:
