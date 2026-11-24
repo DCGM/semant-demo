@@ -38,7 +38,11 @@ export function useCollectionStats (collectionId: Ref<string>, enabled: Ref<bool
   })
 }
 
-/** Forgets the statistics (and the document charts, `useCollectionDocumentCharts`) of deleted collections, for every user they were loaded for. */
+/**
+ * Forgets the statistics of deleted collections, for every user they were loaded for, and with them
+ * every query whose key extends theirs: the document charts (`useCollectionDocumentCharts`) and the
+ * passage charts (`useCollectionPassageCharts`).
+ */
 export function forgetCollectionStats (collectionIds: readonly string[], client: QueryClient = queryClient): void {
   const ids = new Set(collectionIds)
   client.removeQueries({
