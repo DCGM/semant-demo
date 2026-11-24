@@ -706,6 +706,15 @@ class Facet(BaseModel):
     """Annotations of the facet's population: the query with this facet's own filter removed."""
     distinct: int | None = None
     """Document facet: how many documents have annotations in the population (``values`` may be fewer)."""
+    eligible: int | None = None
+    """Attribute facet of the statistics (``self_exclusion`` false, #819): approved annotations of the
+    population whose current tag the attribute applies to; the population accepted-value counts are of."""
+    with_value: int | None = None
+    """Statistics: of ``eligible``, the annotations with at least one value of the attribute (an
+    annotation with several values once), so ``eligible - with_value`` have none."""
+    assignments: int | None = None
+    """Statistics: the applicable values assigned to those annotations, one per annotation and value
+    (``with_value`` for a single-valued attribute, more for a multi-valued one)."""
     truncated: bool = False
     """Document facet: ``values`` leaves out documents (at most ``MAX_FACET_VALUES`` are returned)."""
 
