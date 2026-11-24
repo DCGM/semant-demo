@@ -1,29 +1,16 @@
-import { API_CREDENTIALS, apiUrl, authHeaders } from 'src/shared/api'
-import { apiErrorFromResponse } from 'src/shared/api/errors'
+import type { AiSuggestionRunInfo } from 'src/generated/api'
+import { useApi } from 'src/shared/api'
 
-/** Read-only run history; the backend checks collection/document read access. */
-export interface AiSuggestionRunInfo {
-  id: string
-  mode: 'optimized' | 'thorough' | 'selection'
-  config_name: string
-  tag_ids: string[]
-  started_at: string
-  finished_at: string | null
-  outcome: string
-  saved: number
-  unit: 'chunk' | 'call' | 'tag' | 'selection'
-  units_total: number
-  units_completed: number
-  provider_failures: number
-  save_failures: number
-}
+export type { AiSuggestionRunInfo } from 'src/generated/api'
 
 function progress (run: AiSuggestionRunInfo): string | null {
-  if (run.units_total <= 0) return null
+  const total = run.unitsTotal ?? 0
+  if (total <= 0) return null
+  const completed = run.unitsCompleted ?? 0
   const unit = run.unit === 'call' ? 'call' : run.unit === 'selection' ? 'selection'
     : run.unit === 'tag' ? 'tag' : 'chunk'
-  const plural = run.units_total === 1 ? unit : `${unit}s`
-  return `${run.units_completed}/${run.units_total} ${plural}`
+  const plural = total === 1 ? unit : `${unit}s`
+  return `${completed}/${total} ${plural}`
 }
 
 /** Short status in the run picker; full explanation is shown below the picker. */
@@ -36,7 +23,8 @@ export function runOutcomeLabel (run: AiSuggestionRunInfo): string {
     interrupted: 'Interrupted',
     running: 'Running'
   }
-  const label = name[run.outcome] ?? run.outcome
+  const outcome = run.outcome ?? 'running'
+  const label = name[outcome] ?? outcome
   const count = progress(run)
   return count ? `${label} · ${count}` : label
 }
@@ -44,10 +32,10 @@ export function runOutcomeLabel (run: AiSuggestionRunInfo): string {
 export function runOutcomeDescription (run: AiSuggestionRunInfo): string {
   const count = progress(run)
   const progressText = count ? `${count} completed. ` : ''
-  const savedText = `${run.saved} suggestion(s) saved.`
+  const savedText = `${run.saved ?? 0} suggestion(s) saved.`
   const failures = [
-    run.provider_failures ? `${run.provider_failures} AI operation(s) failed.` : '',
-    run.save_failures ? `${run.save_failures} suggestion(s) could not be saved.` : ''
+    run.providerFailures ? `${run.providerFailures} AI operation(s) failed.` : '',
+    run.saveFailures ? `${run.saveFailures} suggestion(s) could not be saved.` : ''
   ].filter(Boolean).join(' ')
   if (run.outcome === 'failed') {
     return `Failed: no AI call completed successfully and no suggestions were saved. ${progressText}${failures}`.trim()
@@ -65,13 +53,7 @@ export function runOutcomeDescription (run: AiSuggestionRunInfo): string {
 }
 
 export async function loadAiRunHistory (collectionId: string, documentId: string): Promise<AiSuggestionRunInfo[]> {
-  const params = new URLSearchParams({ collection_id: collectionId, document_id: documentId })
-  const headers = authHeaders()
-  const response = await fetch(apiUrl(`/ai/suggestion_runs?${params.toString()}`), {
-    headers, credentials: API_CREDENTIALS
-  })
-  if (!response.ok) throw await apiErrorFromResponse(response)
-  return await response.json() as AiSuggestionRunInfo[]
+  return await useApi().default.listSuggestionRunsApiAiSuggestionRunsGet({ collectionId, documentId })
 }
 
 /** Unknown includes spans saved before #801 and provenance-less collections. */

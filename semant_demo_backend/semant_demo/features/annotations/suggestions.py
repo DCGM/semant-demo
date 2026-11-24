@@ -190,6 +190,9 @@ class SuggestionRun:
         """The final summary once the run ended (also when cancelled; then not sent)."""
         self.run_id = str(tally.actor.ai_run_id) if tally.actor and tally.actor.ai_run_id else None
         self.config_name: str | None = None
+        # Resolved by the access checks, never the raw request's UUID spelling.
+        self.collection_id: UUID | None = None
+        self.document_id: UUID | None = None
 
     @property
     def completed_units(self) -> int:
@@ -446,7 +449,7 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
 
 
 def _run_actor(user: Principal | None) -> service.Actor | None:
-    """The provenance of a run's spans: its user and a new run id (no run table, #460)."""
+    """The user and run id attached to spans and their persistent run record (#801)."""
     return service.Actor(user.id, uuid4()) if user is not None else None
 
 
@@ -617,6 +620,8 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
     run = SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
                         hold=lambda: store.activity.in_use(collection_id), release=release)
     run.config_name = config
+    run.collection_id = collection_id
+    run.document_id = document_id
     return run
 
 
@@ -762,4 +767,6 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
     run = SuggestionRun(produce, f"selection, collection {collection_id}, document {document_id}", tally,
                         hold=lambda: store.activity.in_use(collection_id), release=release)
     run.config_name = config
+    run.collection_id = collection_id
+    run.document_id = document_id
     return run

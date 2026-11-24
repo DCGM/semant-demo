@@ -716,16 +716,24 @@ async function focusSuggestionById(id: string, fromTagNavigation = false) {
   pendingSuggestionsOpen.value = true
   await nextTick()
   if (request !== suggestionFocusRequest ||
-    collectionId !== props.collectionId || documentId !== props.documentId ||
-    visibleSuggestions.value[index]?.span.id !== id) return
+    collectionId !== props.collectionId || documentId !== props.documentId) return
+  index = visibleSuggestions.value.findIndex((entry) => entry.span.id === id)
+  if (index < 0) return
   suggestionVirtualScroll.value?.scrollTo(index, 'center')
   // With variable-height cards QVirtualScroll may refine the destination over
   // several frames. Focus is not enough: verify both scroll viewports too.
   await nextTick()
   for (let frame = 0; frame < 24; frame++) {
     if (request !== suggestionFocusRequest || collectionId !== props.collectionId ||
-        documentId !== props.documentId || aiAssist.highlightedAutoSpanId.value !== id ||
-        visibleSuggestions.value[index]?.span.id !== id) return
+        documentId !== props.documentId || aiAssist.highlightedAutoSpanId.value !== id) return
+    // Distance ordering can change when the reader scrolls to the highlighted
+    // span: keep seeking its ID rather than aborting on the old virtual index.
+    const currentIndex = visibleSuggestions.value.findIndex((entry) => entry.span.id === id)
+    if (currentIndex < 0) return
+    if (index !== currentIndex) {
+      index = currentIndex
+      suggestionVirtualScroll.value?.scrollTo(index, 'center')
+    }
     const viewport = suggestionVirtualScroll.value?.$el
     const card = Array.from(viewport?.querySelectorAll<HTMLElement>('.auto-span-card') ?? [])
       .find((el) => el.dataset.suggestionId === id)
@@ -847,7 +855,7 @@ async function onRunAi() {
   if (!confirmed || req.collectionId !== props.collectionId || req.documentId !== props.documentId) return
   await aiAssist.run(req)
   if (req.collectionId === props.collectionId && req.documentId === props.documentId) {
-    await refreshRunHistory()
+    await refreshRunHistoryAfterRun()
   }
 }
 
@@ -897,19 +905,43 @@ async function refreshRunHistory () {
   }
 }
 
+let historyRetryTimer: ReturnType<typeof setTimeout> | null = null
+function clearHistoryRetry () {
+  if (historyRetryTimer !== null) clearTimeout(historyRetryTimer)
+  historyRetryTimer = null
+}
+
+async function refreshRunHistoryAfterRun (retries = 10): Promise<void> {
+  clearHistoryRetry()
+  const { collectionId, documentId } = props
+  await refreshRunHistory()
+  if (collectionId !== props.collectionId || documentId !== props.documentId ||
+    runHistoryError.value || retries <= 0 || !aiRuns.value.some((run) => run.outcome === 'running')) return
+  // The client sees Cancel before the server has committed its final outcome.
+  historyRetryTimer = setTimeout(() => { void refreshRunHistoryAfterRun(retries - 1) }, 1500)
+}
+
+// Selection runs originate in the text reader, not in this panel's Run AI button.
+watch(() => aiAssist.isSelectionRunning.value, (running, previous) => {
+  if (previous && !running) void refreshRunHistoryAfterRun()
+})
+
 onMounted(() => { void refreshRunHistory() })
-onBeforeUnmount(() => { runHistoryRequest++ })
+onBeforeUnmount(() => {
+  clearHistoryRetry()
+  runHistoryRequest++
+})
 const knownRunIds = computed(() => new Set(aiRuns.value.map((run) => run.id)))
 const legacyCount = computed(() => pendingAutoSpans.value.filter((entry) =>
   matchesAiRun(entry.span.aiRunId, 'legacy', knownRunIds.value)).length)
 function suggestionRunName (runId: string | null | undefined): string {
   const run = aiRuns.value.find((item) => item.id === runId)
-  return run ? `${run.config_name} · ${run.mode}` : 'Unknown / legacy'
+  return run ? `${run.configName} · ${run.mode}` : 'Unknown / legacy'
 }
 function runLabel (run: AiSuggestionRunInfo): string {
-  const date = new Date(run.started_at)
+  const date = run.startedAt
   const when = Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Date unavailable'
-  return `${when} · ${run.config_name} · ${run.mode} (${runOutcomeLabel(run)})`
+  return `${when} · ${run.configName} · ${run.mode} (${runOutcomeLabel(run)})`
 }
 const runOptions = computed(() => [
   { label: 'All runs', value: null },
@@ -1104,14 +1136,20 @@ const visibleSuggestions = computed<AutoSpanEntry[]>(() => {
     },
     proposalSort.value === 'distance' && readerTextPosition.value === null
       ? (documentOrderAvailable.value ? 'document' : 'confidence') : proposalSort.value,
-    proposalDescending.value, chunkOrder.value, readerTextPosition.value, chunkLengths.value)
+    proposalSort.value === 'distance' && readerTextPosition.value === null && !documentOrderAvailable.value
+      ? true : proposalDescending.value,
+    chunkOrder.value, readerTextPosition.value, chunkLengths.value)
 })
 
-// The AI-run tag selection and the per-tag navigation are independent. Navigation
-// follows the filtered, presented suggestions; the gutter still uses its own order.
+// Tag prev/next is a traversal, not a re-ranking. Distance changes as we scroll
+// the reader, so use stable document order for its arrows (#801 review).
 const autoSpansByTag = computed<Record<string, TagSpan[]>>(() => {
   const out: Record<string, TagSpan[]> = {}
-  for (const entry of visibleSuggestions.value) {
+  const ordered = proposalSort.value === 'distance'
+    ? filterAndSortSuggestions(visibleSuggestions.value,
+      { tagId: null, reason: '', minimumConfidence: null },
+      'document', false, chunkOrder.value) : visibleSuggestions.value
+  for (const entry of ordered) {
     const list = out[entry.span.tagId] ?? (out[entry.span.tagId] = [])
     list.push(entry.span)
   }
@@ -1270,6 +1308,12 @@ async function bulkResolveSelected(type: 'pos' | 'neg' | 'delete') {
           if (!isCurrent()) return null
           const deletedIds = new Set(result.succeeded ?? [])
           if (deletedIds.size) tagSpans.removeSpansLocally((s) => !!s.id && deletedIds.has(s.id))
+          // Another user may have reviewed/edited/deleted a requested span.
+          // Reload failed IDs so stale pending cards and edit versions disappear.
+          const failedIds = new Set((result.failed ?? []).map((failure) => failure.itemId))
+          const changedChunks = [...new Set(selected.filter((entry) =>
+            !!entry.span.id && failedIds.has(entry.span.id)).map((entry) => entry.span.chunkId))]
+          if (changedChunks.length) await tagSpans.loadSpansForChunksInCollection(changedChunks, collectionId)
           return result
         } finally {
           if (isCurrent()) for (const id of ids) busyAutoSpanIds.value.delete(id)
@@ -1287,7 +1331,9 @@ async function bulkResolveSelected(type: 'pos' | 'neg' | 'delete') {
   }
   if (!isCurrent() || !summary || summary.abandoned) return
   const unresolved = new Set(summary.unresolved)
-  selectedSuggestionIds.value = new Set([...selectedSuggestionIds.value].filter((id) => unresolved.has(id)))
+  const stillPending = new Set(pendingAutoSpans.value.map((entry) => entry.span.id))
+  selectedSuggestionIds.value = new Set([...selectedSuggestionIds.value].filter((id) =>
+    unresolved.has(id) && stillPending.has(id)))
   if (summary.saved) aiAssist.highlightedAutoSpanId.value = nextHighlight
   if (summary.error) console.error('Bulk resolve failed', summary.error)
   const verb = type === 'delete' ? 'Deleted' : type === SpanType.pos ? 'Confirmed' : 'Rejected'
@@ -1317,9 +1363,13 @@ async function onBulkDelete() {
     if (!isCurrent()) return
     lastDeletedCount.value = result.deleted
     lastStatusKind.value = 'deleted'
-    // Drop exactly the spans the backend deleted; failed ones stay visible.
+    // Drop exactly the spans the backend deleted; reconcile failed ones from the server.
     const deletedIds = new Set(result.succeeded ?? [])
     tagSpans.removeSpansLocally((s) => !!s.id && deletedIds.has(s.id))
+    const failedIds = new Set((result.failed ?? []).map((failure) => failure.itemId))
+    const changedChunks = [...new Set(pendingAutoSpans.value.filter((entry) =>
+      !!entry.span.id && failedIds.has(entry.span.id)).map((entry) => entry.span.chunkId))]
+    if (changedChunks.length) await tagSpans.loadSpansForChunksInCollection(changedChunks, request.collectionId)
     if (result.outcome !== WriteOutcome.complete) {
       $q.notify({ type: 'negative', message: describeIncomplete(result, 'Removing suggestions') })
     }
@@ -1345,6 +1395,7 @@ watch(
   () => [props.collectionId, props.documentId],
   () => {
     resolveRequests.enter()
+    clearHistoryRetry()
     suggestionFocusRequest++
     selectedSuggestionIds.value = new Set()
     isBulkDeleting.value = false

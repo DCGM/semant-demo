@@ -455,6 +455,31 @@ docker compose -p <project> -f <compose file> run --rm --no-deps -T -l traefik.e
 sudo sqlite3 -readonly "$SQL_DB_PATH/tasks.db" "PRAGMA table_info(annotation_attribute);"  # lists all_tags
 ```
 
+**AI suggestion run progress (#801).**
+`python -m semant_demo.maintenance.ai_run_progress_schema` adds missing `unit`,
+`units_total`, `units_completed`, `provider_failures` and `save_failures` columns
+to an existing `ai_suggestion_run` table created by an earlier draft of #801.
+It preserves the recorded run outcomes and saved counts; historical progress cannot
+be recovered, so the new counters default to zero. The `unit` is derived from the
+recorded mode (`call` for optimized, `selection` for selection, `chunk` otherwise).
+The command is repeatable: it does nothing when the columns already exist or when
+the table/database is absent (new installations get the complete table at startup).
+
+Stop the old app and run the step with the new image against the instance's mounted
+SQLite file **before** starting the new app. Without it, startup raises
+`OutdatedSchemaError` for an existing table lacking these columns. To run the step
+manually from `deploy/` (using that instance's Compose project and file):
+
+```sh
+docker compose -p <project> -f <compose file> run --rm --no-deps -T -l traefik.enable=false \
+  --entrypoint python app -m semant_demo.maintenance.ai_run_progress_schema
+sudo sqlite3 -readonly "$SQL_DB_PATH/tasks.db" "PRAGMA table_info(ai_suggestion_run);"
+```
+
+The command also accepts `--db PATH` when run directly outside Compose; by default
+it reads the database path from `SQL_DB_URL`. This documents the required schema
+step; adding it to a deployment workflow is a separate change.
+
 ### SQLite backup (#399)
 
 The production `tasks.db` (`$SQL_DB_PATH/tasks.db` = `/mnt/ssd2/semant_demo_app_data/tasks.db`)

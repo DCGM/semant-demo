@@ -1,11 +1,14 @@
 """SQL-backed run history is independent of remaining auto spans (#801)."""
 import sqlite3
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from semant_demo.adapters.sql.ai_runs import AiRunRepository, AiSuggestionRunRow
+from semant_demo.features.annotations.suggestion_routes import _registered_response, _run_response
 from semant_demo.maintenance.ai_run_progress_schema import update
 
 
@@ -63,3 +66,29 @@ def test_run_progress_schema_migrates_an_existing_sqlite_database(tmp_path):
         row = conn.execute('SELECT id, mode, unit, units_total, units_completed, '
                            'provider_failures, save_failures FROM ai_suggestion_run').fetchone()
     assert row == ('run-1', 'optimized', 'call', 0, 0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_history_registration_uses_authorized_canonical_ids():
+    collection, document, owner = uuid4(), uuid4(), uuid4()
+    run = SimpleNamespace(run_id=str(uuid4()), config_name='fake-local',
+                          collection_id=collection, document_id=document, summary=None,
+                          completed_units=0, release=AsyncMock())
+    history = SimpleNamespace(start=AsyncMock(), finish=AsyncMock())
+    # Raw request strings are deliberately not in canonical UUID form.
+    request = SimpleNamespace(collection_id=collection.hex.upper(), document_id=document.hex.upper(),
+                              tag_ids=['tag'])
+    await _registered_response(run, request, SimpleNamespace(id=owner), history, 'selection')
+    history.start.assert_awaited_once_with(run.run_id, str(collection), str(document),
+                                           owner, 'selection', 'fake-local', ['tag'])
+
+
+@pytest.mark.asyncio
+async def test_disconnect_before_first_stream_chunk_finishes_history():
+    run = SimpleNamespace(run_id=str(uuid4()), summary=None, completed_units=0, release=AsyncMock())
+    history = SimpleNamespace(finish=AsyncMock())
+    response = _run_response(run, history)
+    # The async generator has never been started (aclose does not enter finally).
+    await response._work.release()
+    history.finish.assert_awaited_once_with(run.run_id, 'cancelled', 0, units_completed=0)
+    run.release.assert_awaited_once()

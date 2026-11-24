@@ -28,17 +28,17 @@ describe('AI run outcome explanations', () => {
   const run: AiSuggestionRunInfo = {
     id: 'run-a',
     mode: 'optimized',
-    config_name: 'fake-local',
-    tag_ids: ['tag'],
-    started_at: '2026-11-24T10:00:00Z',
-    finished_at: '2026-11-24T10:01:00Z',
+    configName: 'fake-local',
+    tagIds: ['tag'],
+    startedAt: new Date('2026-11-24T10:00:00Z'),
+    finishedAt: new Date('2026-11-24T10:01:00Z'),
     outcome: 'cancelled',
     saved: 2,
     unit: 'call',
-    units_total: 5,
-    units_completed: 2,
-    provider_failures: 0,
-    save_failures: 0
+    unitsTotal: 5,
+    unitsCompleted: 2,
+    providerFailures: 0,
+    saveFailures: 0
   }
 
   it('reports completed operations and retained suggestions on cancellation', () => {
@@ -48,14 +48,14 @@ describe('AI run outcome explanations', () => {
   })
 
   it('explains failed AI operations rather than just showing Failed', () => {
-    const failed = { ...run, outcome: 'failed', saved: 0, provider_failures: 3, units_completed: 3 }
+    const failed = { ...run, outcome: 'failed', saved: 0, providerFailures: 3, unitsCompleted: 3 }
     expect(runOutcomeLabel(failed)).toBe('Failed · 3/5 calls')
     expect(runOutcomeDescription(failed)).toContain('no AI call completed successfully')
     expect(runOutcomeDescription(failed)).toContain('3 AI operation(s) failed')
   })
 
   it('does not invent a total for a run interrupted before work started', () => {
-    const interrupted = { ...run, outcome: 'cancelled', units_total: 0, units_completed: 0 }
+    const interrupted = { ...run, outcome: 'cancelled', unitsTotal: 0, unitsCompleted: 0 }
     expect(runOutcomeLabel(interrupted)).toBe('Cancelled')
     expect(runOutcomeDescription(interrupted)).not.toContain('0/0')
   })

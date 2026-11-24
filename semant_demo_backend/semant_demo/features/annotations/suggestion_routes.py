@@ -83,19 +83,45 @@ async def _recorded_lines(run: suggestions.SuggestionRun, history: AiRunReposito
                 logger.exception("Failed to save AI run completion")
 
 
+class _RecordedRun:
+    """Release the allowance and close an unstarted stream's SQL record.
+
+    Closing an async generator before its first iteration never runs its finally
+    block, so _recorded_lines alone cannot mark these runs cancelled (#801).
+    """
+
+    def __init__(self, run: suggestions.SuggestionRun, history: AiRunRepository):
+        self.run = run
+        self.history = history
+
+    async def release(self) -> None:
+        try:
+            # An iterated stream writes its final record in _recorded_lines.
+            if self.run.summary is None and self.run.run_id:
+                with anyio.CancelScope(shield=True):
+                    try:
+                        await self.history.finish(self.run.run_id, "cancelled", 0,
+                                                  units_completed=self.run.completed_units)
+                    except Exception:
+                        logger.exception("Failed to cancel an unstarted AI run")
+        finally:
+            await self.run.release()
+
+
 def _run_response(run: suggestions.SuggestionRun, history: AiRunRepository | None = None) -> OperationStreamingResponse:
     """NDJSON stream; close the run on disconnect and retain its metadata."""
     lines = _recorded_lines(run, history) if history and run.run_id else _lines(run.events())
-    return OperationStreamingResponse(lines, run, _NDJSON_MEDIA_TYPE)
+    work = _RecordedRun(run, history) if history and run.run_id else run
+    return OperationStreamingResponse(lines, work, _NDJSON_MEDIA_TYPE)
 
 
 async def _registered_response(run: suggestions.SuggestionRun, body: SuggestSpansRequest | SuggestSpansSelectionRequest,
                                user: User, history: AiRunRepository, mode: str) -> OperationStreamingResponse:
-    if not run.run_id or not run.config_name:
+    if not run.run_id or not run.config_name or run.collection_id is None or run.document_id is None:
         await run.release()
         raise RuntimeError("AI run provenance unavailable")
     try:
-        await history.start(run.run_id, body.collection_id, body.document_id, user.id,
+        await history.start(run.run_id, str(run.collection_id), str(run.document_id), user.id,
                             mode, run.config_name, body.tag_ids)
     except Exception:
         await run.release()  # Return the already reserved allowance if recording failed.

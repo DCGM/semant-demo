@@ -81,9 +81,10 @@ class AiRunRepository:
         history = []
         for r in rows:
             started = datetime.fromisoformat(r.started_at)
-            # Unfinished runs older than an hour cannot still be trusted to be live.
+            # Allow long thorough runs; an old running row is only a best-effort
+            # interrupted heuristic until the service records a heartbeat.
             outcome = ("interrupted" if r.outcome == "running" and
-                       (now - started).total_seconds() > 3600 else r.outcome)
+                       (now - started).total_seconds() > 24 * 3600 else r.outcome)
             history.append(AiSuggestionRunInfo(
                 id=r.id, mode=r.mode, config_name=r.config_name, tag_ids=r.tag_ids,
                 started_at=started,
