@@ -138,6 +138,40 @@ async function panesSettled (page: Page) {
 }
 
 test.describe('the public document view', () => {
+  test('a chunk-only citation highlights the whole chunk, and a later link clears it', async ({ page }) => {
+    await open(page, chronicle.id, `?chunk=${fixture.chunk('chronicle_2').id}`)
+    await expect(chunk(page, 'chronicle_2')).toHaveClass(/is-cited-chunk/)
+    await expect(chunk(page, 'chronicle_1')).not.toHaveClass(/is-cited-chunk/)
+    await page.goto(`/#/documents/${chronicle.id}?page=${PAGE_2}`)
+    await expect(chunk(page, 'chronicle_2')).not.toHaveClass(/is-cited-chunk/)
+    // Text-only documents have the same whole-chunk treatment without a scan.
+    await open(page, letters.id, `?chunk=${fixture.chunk('letters_1').id}`)
+    await expect(chunk(page, 'letters_1')).toHaveClass(/is-cited-chunk/)
+  })
+
+  test('a public citation keeps its scan outline during interaction; a point link does not cite the chunk', async ({ page }) => {
+    await useViewport(page, 'wide')
+    const passage = fixture.chunk('gazette_1')
+    await open(page, gazette.id, `?chunk=${passage.id}`)
+    await expect(chunk(page, 'gazette_1')).toHaveClass(/is-cited-chunk/)
+    await expect(overlay(page)).toHaveAttribute('data-layout-page-id', GAZETTE_PAGE)
+    const citations = page.locator('polygon.scan-citation-outline')
+    await expect(citations).toHaveCount(1)
+    await expect(citations).toHaveAttribute('data-citation-line-id', 'r002-l001')
+    await expect(citations).toHaveCSS('stroke-dasharray', 'none')
+
+    // Focusing another line affects the transient blue layer, not the cited orange one.
+    await clickLine(page, 'r003-l001')
+    await expect(chunk(page, 'gazette_1')).toHaveClass(/is-cited-chunk/)
+    await expect(citations).toHaveAttribute('data-citation-line-id', 'r002-l001')
+    await expect(page.locator('polygon.scan-line--active')).toHaveAttribute('data-line-id', 'r003-l001')
+
+    // An explicit point in a chunk is not a citation to its whole text.
+    await open(page, gazette.id, `?chunk=${passage.id}&start=0&end=0`)
+    await expect(chunk(page, 'gazette_1')).not.toHaveClass(/is-cited-chunk/)
+    await expect(citations).toHaveCount(0)
+  })
+
   test('a deep-linked passage opens its page and exact words; a scan line selects its exact text', async ({ page }) => {
     await useViewport(page, 'wide')
     const passage = fixture.chunk('gazette_1')
@@ -149,11 +183,11 @@ test.describe('the public document view', () => {
     await expect(overlay(page)).toHaveAttribute('data-layout-page-id', GAZETTE_PAGE)
     await expect(highlights(page)).toHaveCount(1)
     await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l001')
-    await expect(highlights(page)).not.toHaveClass(/approximate/)
+    await expect(highlights(page)).toHaveCSS('stroke-dasharray', 'none')
     await expect(chunk(page, 'gazette_1').locator('.is-active-passage')).toHaveText('hostila')
     await expect(notice(page)).toHaveCount(0)
 
-    // Clicking the other chunk's line on the scan selects its text, exactly.
+    // Clicking the other chunk's line on the scan selects its text.
     await clickLine(page, 'r003-l001')
     await expect(chunk(page, 'gazette_2').locator('.is-active-passage')).toHaveText(fixture.chunk('gazette_2').text)
     await expect(page.locator('.has-approximate-passage')).toHaveCount(0)
@@ -162,7 +196,7 @@ test.describe('the public document view', () => {
     await expect(chunk(page, 'gazette_1').locator('.page-break')).toHaveCount(0)
   })
 
-  test('a page opens with its text alone; approximate lines are whole lines, marked as such', async ({ page }) => {
+  test('a page opens with its text alone; approximate mapping still selects whole lines without warnings', async ({ page }) => {
     await useViewport(page, 'wide')
     const layouts: string[] = []
     const pageReads: string[] = []
@@ -176,22 +210,22 @@ test.describe('the public document view', () => {
     await expect(chunk(page, 'chronicle_3')).toBeVisible()
     await expect(chunk(page, 'chronicle_2')).toBeVisible()
     await expect(chunk(page, 'chronicle_1')).toHaveCount(0)
-    // Where page 2 begins inside the continuing chunk, approximately.
-    await expect(chunk(page, 'chronicle_2').locator('.page-break')).toHaveAttribute('aria-label', 'Page 2 (approximate position)')
+    // The page start is still marked, without exposing internal OCR precision.
+    await expect(chunk(page, 'chronicle_2').locator('.page-break')).toHaveAttribute('aria-label', 'Page 2')
 
-    // A click on a page 2 line of the continuing chunk: its text, approximate.
+    // An approximate mapping still selects the matching text.
     await clickLine(page, 'r001-l001')
     await expect(chunk(page, 'chronicle_2').locator('.is-active-passage')).not.toHaveCount(0)
-    await expect(page.locator('.has-approximate-passage')).toHaveCount(1)
-    await expect(notice(page)).toContainText('its place in the text is approximate')
+    await expect(page.locator('.has-approximate-passage')).toHaveCount(0)
+    await expect(notice(page)).toHaveCount(0)
 
-    // A click in the text: the scan highlights the whole line, dashed, and says so.
+    // The scan keeps whole-line mapping internally, but the outline is solid.
     const text = fixture.chunk('chronicle_3').text
     await clickText(page, 'chronicle_3', text.indexOf('polovinu') + 2)
     await expect(highlights(page)).toHaveCount(1)
     await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l002')
-    await expect(highlights(page)).toHaveClass(/scan-highlight--approximate/)
-    await expect(notice(page)).toContainText('whole lines are shown')
+    await expect(highlights(page)).toHaveCSS('stroke-dasharray', 'none')
+    await expect(notice(page)).toHaveCount(0)
 
     // Only the layouts and page reads needed: pages 1 and 2, never the whole document.
     expect(new Set(layouts.map(u => u.split('/pages/')[1].split('/')[0]))).toEqual(new Set([PAGE_1, PAGE_2]))
@@ -460,13 +494,22 @@ test.describe('the layout of the document views (#600)', () => {
   })
 
   test('the collection reader\'s controls stay above the text while it scrolls (#588)', async ({ page }) => {
-    await ensureLoggedIn(page, 'owner')
+    // Set the phone viewport before loading the app, so Quasar doesn't have to
+    // animate its desktop drawer into the mobile layout during the assertion.
     await page.setViewportSize({ width: 390, height: 400 })
+    await ensureLoggedIn(page, 'owner')
     await page.goto(`/#/collections/${chronicles.id}/documents/${chronicle.id}/v1?view=text`)
     await expect(chunkText(page, 'chronicle_1')).toBeVisible()
     const text = page.getByTestId('workspace-text')
     await expect.poll(() => text.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
     const controls = page.getByTestId('workspace-controls')
+    // Measure only once the controls fill the phone screen and the responsive
+    // drawer/layout transition has settled, rather than snapshotting mid-slide.
+    await expect.poll(async () => {
+      const box = await controls.boundingBox()
+      return box ? { x: Math.round(box.x), width: Math.round(box.width) } : null
+    }).toEqual({ x: 0, width: 390 })
+    await settled(controls)
     const before = (await controls.boundingBox())!
     await text.hover()
     await page.mouse.wheel(0, 300)

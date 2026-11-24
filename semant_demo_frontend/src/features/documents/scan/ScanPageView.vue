@@ -37,6 +37,19 @@
         data-testid="scan-overlay"
         :data-layout-page-id="layout.pageId"
       >
+        <!-- Outlines are independent from normal line interactions. The white halo makes
+             the citation legible over both dark photographs and pale archival paper. -->
+        <template v-for="h in citationBands" :key="h.key">
+          <polygon
+            class="scan-citation-halo"
+            :points="h.points"
+          />
+          <polygon
+            class="scan-citation-outline"
+            :points="h.points"
+            :data-citation-line-id="h.lineId"
+          />
+        </template>
         <polygon
           v-for="line in layout.lines"
           :key="line.id"
@@ -52,7 +65,6 @@
           v-for="h in highlightBands"
           :key="h.key"
           class="scan-highlight"
-          :class="{ 'scan-highlight--approximate': h.approximate }"
           :points="h.points"
           :data-highlight-line-id="h.lineId"
         />
@@ -99,10 +111,10 @@ import {
 
 export interface LineHighlight {
   lineId: string
-  /** UTF-16 offsets in the line's text; widened to whole (approximate) words. */
+  /** UTF-16 offsets in the line's text; widened to whole words when needed. */
   start?: number
   end?: number
-  /** Placed approximately (the OCR text differs from the document text): drawn dashed. */
+  /** Internal mapping precision; not exposed as a visual distinction. */
   approximate?: boolean
 }
 
@@ -115,8 +127,9 @@ const props = withDefaults(defineProps<{
   layout?: PageLayout | null
   activeLineId?: string | null
   highlights?: LineHighlight[]
+  citationHighlights?: LineHighlight[]
   imageAlt?: string
-}>(), { size: null, layout: null, activeLineId: null, highlights: () => [], imageAlt: 'Page scan' })
+}>(), { size: null, layout: null, activeLineId: null, highlights: () => [], citationHighlights: () => [], imageAlt: 'Page scan' })
 
 const emit = defineEmits<{
   /** A click on an OCR line; `offset` is the approximate start of the word clicked, if known. */
@@ -159,7 +172,14 @@ const highlightBands = computed(() => props.highlights.flatMap((h, i) => {
   const line = linesById.value.get(h.lineId)
   if (!line) return []
   const [from, to] = rangeDistances(line, h.start, h.end)
-  return [{ key: `${i}-${h.lineId}`, lineId: h.lineId, approximate: !!h.approximate, points: svgPoints(lineBand(line, from, to)) }]
+  return [{ key: `${i}-${h.lineId}`, lineId: h.lineId, points: svgPoints(lineBand(line, from, to)) }]
+}))
+
+const citationBands = computed(() => props.citationHighlights.flatMap((h, i) => {
+  const line = linesById.value.get(h.lineId)
+  if (!line) return []
+  const [from, to] = rangeDistances(line, h.start, h.end)
+  return [{ key: `citation-${i}-${h.lineId}`, lineId: h.lineId, points: svgPoints(lineBand(line, from, to)) }]
 }))
 
 const limits = () => stageSize.value ? scaleLimits(stageSize.value, viewerSize.value) : { min: 0.01, max: 4 }
@@ -472,28 +492,35 @@ defineExpose({
 }
 
 .scan-line--hover {
-  fill: rgba(25, 118, 210, 0.08);
-  stroke: rgba(25, 118, 210, 0.55);
+  fill: none;
+  stroke: rgba(37, 99, 235, 0.85);
   stroke-width: 1px;
 }
 
 .scan-line--active {
-  fill: rgba(25, 118, 210, 0.14);
-  stroke: rgb(25, 118, 210);
+  fill: none;
+  stroke: #2563eb;
   stroke-width: 2px;
 }
 
-.scan-highlight {
-  fill: rgba(255, 193, 7, 0.35);
-  stroke: rgba(230, 160, 0, 0.9);
-  stroke-width: 1px;
+/* Evidence outline: no tint or semi-transparent polygon over the original scan. */
+.scan-citation-halo, .scan-citation-outline {
+  fill: none;
   vector-effect: non-scaling-stroke;
 }
-
-.scan-highlight--approximate {
-  fill: rgba(255, 193, 7, 0.2);
-  stroke-width: 1.5px;
-  stroke-dasharray: 6 4;
+.scan-citation-halo {
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 6px;
+}
+.scan-citation-outline {
+  stroke: #a16207;
+  stroke-width: 3px;
+}
+.scan-highlight {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
 }
 
 .scan-view__state {

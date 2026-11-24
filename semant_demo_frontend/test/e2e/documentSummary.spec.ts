@@ -77,7 +77,7 @@ test('a citation to a chunk outside the displayed window loads it on demand and 
     contentType: 'application/json',
     body: JSON.stringify({
       document_id: fixture.document('chronicle').id,
-      summary: 'Later [doc2].',
+      summary: 'First [doc1]. Later [doc2].',
       citations: [
         { chunk_id: fixture.chunk('chronicle_1').id, order: 0, from_page: 1, to_page: 1 },
         { chunk_id: fixture.chunk('chronicle_3').id, order: 2, from_page: 2, to_page: 2 }
@@ -90,11 +90,15 @@ test('a citation to a chunk outside the displayed window loads it on demand and 
   }))
 
   await summarize(page).click()
-  await answers(page).getByRole('link', { name: '[S1]' }).click()
+  await answers(page).getByRole('link', { name: '[S2]' }).click()
 
   await expect(chunkText(page, 'chronicle_1')).toBeVisible()
   await expect(chunkText(page, 'chronicle_2')).toBeVisible()
   await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
+  await expect(chunkText(page, 'chronicle_3')).toHaveClass(/is-cited-chunk/)
+  await answers(page).getByRole('link', { name: '[S1]' }).click()
+  await expect(chunkText(page, 'chronicle_1')).toHaveClass(/is-cited-chunk/)
+  await expect(chunkText(page, 'chronicle_3')).not.toHaveClass(/is-cited-chunk/)
 })
 
 test('the suggested questions are offered while nothing was asked', async ({ page }) => {
