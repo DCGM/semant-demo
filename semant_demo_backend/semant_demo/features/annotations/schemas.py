@@ -877,6 +877,11 @@ class AiSuggestionRunInfo(BaseModel):
     finished_at: datetime | None = None
     outcome: str = "running"
     saved: int = 0
+    unit: Literal["chunk", "call", "tag", "selection"] = "chunk"
+    units_total: int = 0
+    units_completed: int = 0
+    provider_failures: int = 0
+    save_failures: int = 0
 
 
 class SuggestSpansRequest(BaseModel):

@@ -212,12 +212,24 @@
       <div v-else-if="runHistoryError" class="text-caption text-negative" role="status">
         Run history unavailable; all suggestions remain visible.
       </div>
+      <div v-if="selectedRun" class="text-caption text-grey-7 q-mt-xs" data-testid="ai-run-outcome-details">
+        {{ runOutcomeDescription(selectedRun) }}
+      </div>
     </div>
 
     <div class="ai-section-label">
       Pending suggestions
       <span class="text-caption text-grey-6 q-ml-xs">({{ pendingAutoSpans.length }})</span>
       <q-space />
+      <q-btn
+        v-if="pendingSuggestionsOpen && pendingAutoSpans.length"
+        flat dense no-caps size="sm"
+        :icon="allSuggestionDetailsCollapsed ? 'unfold_more' : 'unfold_less'"
+        :label="allSuggestionDetailsCollapsed ? 'Expand all' : 'Collapse all'"
+        :aria-label="allSuggestionDetailsCollapsed ? 'Expand all suggestion details' : 'Collapse all suggestion details'"
+        data-testid="suggestion-collapse-all"
+        @click="toggleAllSuggestionDetails"
+      />
       <q-btn
         flat dense round size="sm"
         :icon="pendingSuggestionsOpen ? 'expand_less' : 'expand_more'"
@@ -475,6 +487,16 @@
             <q-space />
             <q-btn
               flat dense round size="xs"
+              :icon="isSuggestionDetailsCollapsed(entry.span) ? 'expand_more' : 'expand_less'"
+              :aria-label="`${isSuggestionDetailsCollapsed(entry.span) ? 'Expand' : 'Collapse'} details for ${entry.tag?.name || 'unknown tag'}`"
+              :aria-expanded="!isSuggestionDetailsCollapsed(entry.span)"
+              data-testid="suggestion-details-toggle"
+              @click.stop="toggleSuggestionDetails(entry.span)"
+            >
+              <q-tooltip>{{ isSuggestionDetailsCollapsed(entry.span) ? 'Show details' : 'Hide details' }}</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat dense round size="xs"
               icon="settings"
               :disable="!entry.tag || busyAutoSpanIds.has(entry.span.id || '')"
               @click.stop="onEditEntryTag(entry)"
@@ -500,27 +522,29 @@
               <q-tooltip>Reject (keeps a negative annotation)</q-tooltip>
             </q-btn>
           </div>
-          <div class="auto-span-created" data-testid="ai-suggestion-created">
-            <span><strong>Created:</strong> {{ formatSuggestionCreatedAt(entry.span) }}</span>
-          </div>
-          <div class="auto-span-created" data-testid="ai-suggestion-run">
-            <span><strong>Run:</strong> {{ suggestionRunName(entry.span.aiRunId) }}</span>
-          </div>
-          <div v-if="entry.span.reason" class="auto-span-explanation">
-            <div class="auto-span-explanation-label" data-testid="ai-suggestion-explanation-label">Explanation</div>
-            <div class="auto-span-reason">
-              {{ entry.span.reason }}
-              <q-tooltip
-                anchor="top middle"
-                self="bottom middle"
-                :delay="150"
-                max-width="320px"
-                class="auto-span-reason-tooltip"
-              >
-                {{ entry.span.reason }}
-              </q-tooltip>
+          <template v-if="!isSuggestionDetailsCollapsed(entry.span)">
+            <div class="auto-span-created" data-testid="ai-suggestion-created">
+              <span><strong>Created:</strong> {{ formatSuggestionCreatedAt(entry.span) }}</span>
             </div>
-          </div>
+            <div class="auto-span-created" data-testid="ai-suggestion-run">
+              <span><strong>Run:</strong> {{ suggestionRunName(entry.span.aiRunId) }}</span>
+            </div>
+            <div v-if="entry.span.reason" class="auto-span-explanation">
+              <strong class="auto-span-explanation-label" data-testid="ai-suggestion-explanation-label">Explanation:</strong>
+              <span class="auto-span-reason">
+                {{ entry.span.reason }}
+                <q-tooltip
+                  anchor="top middle"
+                  self="bottom middle"
+                  :delay="150"
+                  max-width="320px"
+                  class="auto-span-reason-tooltip"
+                >
+                  {{ entry.span.reason }}
+                </q-tooltip>
+              </span>
+            </div>
+          </template>
         </div>
       </q-virtual-scroll>
     </template>
@@ -536,7 +560,9 @@ import { apiErrorMessage, createContextGuard, isAbortError, useApi } from 'src/s
 import { errorNotification } from 'src/shared/notification'
 import { describeIncomplete } from 'src/shared/writeOutcome'
 import { useChunksStore } from 'src/features/documents/chunksStore'
-import { loadAiRunHistory, matchesAiRun, type AiSuggestionRunInfo } from './aiRunHistory'
+import {
+  loadAiRunHistory, matchesAiRun, runOutcomeDescription, runOutcomeLabel, type AiSuggestionRunInfo
+} from './aiRunHistory'
 import {
   filterAndSortSuggestions, formatSuggestionCreatedAt, toggleVisibleSuggestions,
   type ProposalSort, type ProposalTextPosition
@@ -637,7 +663,11 @@ function onSuggestionClick(span: TagSpan) {
 
 // QVirtualScroll mounts only the cards in its viewport. Its scrollTo(index)
 // can reach a suggestion which has never been mounted as a DOM element.
-const suggestionVirtualScroll = ref<{ $el: HTMLElement; scrollTo:(index: number, edge?: 'start' | 'center' | 'end') => void } | null>(null)
+const suggestionVirtualScroll = ref<{
+  $el: HTMLElement
+  scrollTo:(index: number, edge?: 'start' | 'center' | 'end') => void
+  refresh?: (index?: number) => void
+    } | null>(null)
 const revealedSuggestion = ref(false)
 let suggestionFocusRequest = 0
 // Navigation from the tag arrows must keep focus on the arrows rather than the card.
@@ -879,19 +909,44 @@ function suggestionRunName (runId: string | null | undefined): string {
 function runLabel (run: AiSuggestionRunInfo): string {
   const date = new Date(run.started_at)
   const when = Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Date unavailable'
-  return `${when} · ${run.config_name} · ${run.mode} (${run.outcome})`
+  return `${when} · ${run.config_name} · ${run.mode} (${runOutcomeLabel(run)})`
 }
 const runOptions = computed(() => [
   { label: 'All runs', value: null },
   ...aiRuns.value.map((run) => ({ label: runLabel(run), value: run.id })),
   ...(legacyCount.value ? [{ label: `Unknown / legacy (${legacyCount.value})`, value: 'legacy' }] : [])
 ])
+const selectedRun = computed(() => aiRuns.value.find((run) => run.id === selectedRunId.value))
 const runFilteredSuggestions = computed(() => pendingAutoSpans.value.filter((entry) =>
   matchesAiRun(entry.span.aiRunId, selectedRunId.value, knownRunIds.value)))
 
 // UI-only sections; collapsing must not change filters or the selected IDs.
 const pendingSuggestionsOpen = ref(true)
 const proposalFiltersOpen = ref(false)
+// A bulk default plus per-ID exceptions also applies to virtualized/off-screen cards.
+const detailsCollapsedByDefault = ref(false)
+const detailExceptions = ref<Set<string>>(new Set())
+function isSuggestionDetailsCollapsed (span: TagSpan): boolean {
+  return detailsCollapsedByDefault.value !== (!!span.id && detailExceptions.value.has(span.id))
+}
+const allSuggestionDetailsCollapsed = computed(() => pendingAutoSpans.value.length > 0 &&
+  pendingAutoSpans.value.every((entry) => isSuggestionDetailsCollapsed(entry.span)))
+function refreshSuggestionRows () {
+  void nextTick(() => suggestionVirtualScroll.value?.refresh?.())
+}
+function toggleSuggestionDetails (span: TagSpan) {
+  if (!span.id) return
+  const next = new Set(detailExceptions.value)
+  if (next.has(span.id)) next.delete(span.id)
+  else next.add(span.id)
+  detailExceptions.value = next
+  refreshSuggestionRows()
+}
+function toggleAllSuggestionDetails () {
+  detailsCollapsedByDefault.value = !allSuggestionDetailsCollapsed.value
+  detailExceptions.value = new Set()
+  refreshSuggestionRows()
+}
 
 const proposalSort = ref<ProposalSort>('confidence')
 const proposalDescending = ref(true)
@@ -1305,6 +1360,8 @@ watch(
     resetProposalFilters()
     pendingSuggestionsOpen.value = true
     proposalFiltersOpen.value = false
+    detailsCollapsedByDefault.value = false
+    detailExceptions.value = new Set()
     revealedSuggestion.value = false
     lastDeletedCount.value = null
     lastStatusKind.value = null
@@ -1636,9 +1693,17 @@ watch(chosenAiTagIds, (ids) => {
 .auto-span-header {
   display: flex;
   align-items: center;
+  gap: 2px;
+}
+.auto-span-header > .q-btn {
+  flex: 0 0 auto;
 }
 
 .auto-span-tag-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.9rem;
   font-weight: 500;
   color: rgba(15, 23, 42, 0.9);
@@ -1654,23 +1719,24 @@ watch(chosenAiTagIds, (ids) => {
 }
 .auto-span-explanation {
   margin: 4px 0 0 22px;
-}
-.auto-span-explanation-label {
-  margin-bottom: 2px;
-  color: #64748b;
-  font-size: 0.68rem;
-  font-weight: 600;
-}
-.auto-span-reason {
   font-size: 0.82rem;
-  font-style: italic;
-  color: rgba(71, 85, 105, 0.85);
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.auto-span-explanation-label {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 600;
+}
+.auto-span-reason {
+  font-size: 0.82rem;
+  font-style: italic;
+  color: rgba(71, 85, 105, 0.85);
 }
 
 .auto-span-confidence {

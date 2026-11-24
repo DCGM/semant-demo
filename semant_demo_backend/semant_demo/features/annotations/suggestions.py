@@ -107,6 +107,9 @@ class _Tally:
     unit: Unit = "chunk"
     units_total: int = 0
     units_processed: int = 0
+    units_completed: int = 0
+    """Calls whose responses and proposal saves finished, including failed calls.
+    Unlike units_processed (admitted/sent), excludes in-flight calls aborted on cancellation."""
     quota_exhausted: QuotaExhausted | None = None
     """The refusal that stopped the run before all its units."""
     max_chunks_per_tag: int | None = None
@@ -187,6 +190,10 @@ class SuggestionRun:
         """The final summary once the run ended (also when cancelled; then not sent)."""
         self.run_id = str(tally.actor.ai_run_id) if tally.actor and tally.actor.ai_run_id else None
         self.config_name: str | None = None
+
+    @property
+    def completed_units(self) -> int:
+        return self._tally.units_completed
 
     async def events(self) -> AsyncGenerator[SuggestionEvent, None]:
         try:
@@ -556,6 +563,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                         continue
                     await _save(store, collection_id, document_id, event, str(chunk.id), proposal,
                                 utf16_offset(text, proposal.start), utf16_offset(text, proposal.end))
+                tally.units_completed += 1
                 if event.error is None and not event.save_failed:
                     tally.completed_calls += 1
                 yield event.result()
@@ -717,6 +725,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
             no_work = e.no_work
             event = _ChunkEvent(tally, anchor_id)
             event.provider_failed(f"topicer: {e}")
+            tally.units_completed += 1
             yield event.result()
             return
         finally:
@@ -746,6 +755,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
             save_failed = save_failed or event.save_failed
             # One event per proposal: the saved span, or an unsaved count with the reason.
             yield event.result()
+        tally.units_completed += 1
         if not save_failed:
             tally.completed_calls += 1
 

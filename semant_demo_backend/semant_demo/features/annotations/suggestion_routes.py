@@ -70,8 +70,15 @@ async def _recorded_lines(run: suggestions.SuggestionRun, history: AiRunReposito
         with anyio.CancelScope(shield=True):
             summary = run.summary
             try:
-                await history.finish(run.run_id, summary.outcome.value if summary else "cancelled",
-                                     summary.saved if summary else 0)
+                await history.finish(
+                    run.run_id, summary.outcome.value if summary else "cancelled",
+                    summary.saved if summary else 0,
+                    unit=summary.unit if summary else None,
+                    units_total=summary.units_total if summary else 0,
+                    units_completed=run.completed_units,
+                    provider_failures=summary.provider_failures if summary else 0,
+                    save_failures=summary.save_failures if summary else 0,
+                )
             except Exception:
                 logger.exception("Failed to save AI run completion")
 

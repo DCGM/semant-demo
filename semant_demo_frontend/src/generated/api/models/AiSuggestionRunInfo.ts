@@ -67,6 +67,36 @@ export interface AiSuggestionRunInfo {
      * @memberof AiSuggestionRunInfo
      */
     saved?: number;
+    /**
+     *
+     * @type {AiSuggestionRunInfoUnitEnum}
+     * @memberof AiSuggestionRunInfo
+     */
+    unit?: AiSuggestionRunInfoUnitEnum;
+    /**
+     *
+     * @type {number}
+     * @memberof AiSuggestionRunInfo
+     */
+    unitsTotal?: number;
+    /**
+     *
+     * @type {number}
+     * @memberof AiSuggestionRunInfo
+     */
+    unitsCompleted?: number;
+    /**
+     *
+     * @type {number}
+     * @memberof AiSuggestionRunInfo
+     */
+    providerFailures?: number;
+    /**
+     *
+     * @type {number}
+     * @memberof AiSuggestionRunInfo
+     */
+    saveFailures?: number;
 }
 
 
@@ -79,6 +109,17 @@ export const AiSuggestionRunInfoModeEnum = {
     selection: 'selection'
 } as const;
 export type AiSuggestionRunInfoModeEnum = typeof AiSuggestionRunInfoModeEnum[keyof typeof AiSuggestionRunInfoModeEnum];
+
+/**
+ * @export
+ */
+export const AiSuggestionRunInfoUnitEnum = {
+    chunk: 'chunk',
+    call: 'call',
+    tag: 'tag',
+    selection: 'selection'
+} as const;
+export type AiSuggestionRunInfoUnitEnum = typeof AiSuggestionRunInfoUnitEnum[keyof typeof AiSuggestionRunInfoUnitEnum];
 
 
 /**
@@ -111,6 +152,11 @@ export function AiSuggestionRunInfoFromJSONTyped(json: any, ignoreDiscriminator:
         'finishedAt': json['finished_at'] == null ? undefined : (new Date(json['finished_at'])),
         'outcome': json['outcome'] == null ? undefined : json['outcome'],
         'saved': json['saved'] == null ? undefined : json['saved'],
+        'unit': json['unit'] == null ? undefined : json['unit'],
+        'unitsTotal': json['units_total'] == null ? undefined : json['units_total'],
+        'unitsCompleted': json['units_completed'] == null ? undefined : json['units_completed'],
+        'providerFailures': json['provider_failures'] == null ? undefined : json['provider_failures'],
+        'saveFailures': json['save_failures'] == null ? undefined : json['save_failures'],
     };
 }
 
@@ -133,6 +179,11 @@ export function AiSuggestionRunInfoToJSONTyped(value?: AiSuggestionRunInfo | nul
         'finished_at': value['finishedAt'] == null ? value['finishedAt'] : value['finishedAt'].toISOString(),
         'outcome': value['outcome'],
         'saved': value['saved'],
+        'unit': value['unit'],
+        'units_total': value['unitsTotal'],
+        'units_completed': value['unitsCompleted'],
+        'provider_failures': value['providerFailures'],
+        'save_failures': value['saveFailures'],
     };
 }
 

@@ -58,8 +58,40 @@ test('suggestions label their explanation, show creation time, and distinguish R
   await expect(panel.getByTestId('auto-span-action-note')).toContainText('Reject')
   await expect(panel.getByTestId('auto-span-action-note')).toContainText('Delete')
   await expect(card.getByTestId('ai-suggestion-created')).toContainText('Created:')
-  await expect(card.getByTestId('ai-suggestion-explanation-label')).toHaveText('Explanation')
+  await expect(card.getByTestId('ai-suggestion-explanation-label')).toHaveText('Explanation:')
   await page.getByRole('button', { name: 'Cancel' }).click()
+})
+
+test('suggestion details collapse individually and in bulk without losing selection', async ({ page }) => {
+  await ensureLoggedIn(page, 'owner')
+  await openDocument(page, 'chronicles', 'chronicle')
+  await startPersonRun(page)
+  const panel = page.locator('.ai-assist-panel')
+  const card = suggestionCards(page).first()
+  await expect(card.getByTestId('ai-suggestion-created')).toBeVisible()
+  await expect(card.getByTestId('ai-suggestion-explanation-label')).toHaveText('Explanation:')
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  const cardCount = await panel.locator('.auto-span-card').count()
+  expect(cardCount).toBeGreaterThan(1)
+
+  await card.locator('.q-checkbox').click()
+  await expect(panel.getByTestId('proposal-selection-count')).toHaveText('1 selected')
+  await card.getByTestId('suggestion-details-toggle').click()
+  await expect(card.getByTestId('ai-suggestion-created')).toHaveCount(0)
+  await expect(card.getByTestId('proposal-highlight')).toBeVisible()
+  await expect(card.locator('.auto-span-confidence')).toBeVisible()
+
+  await panel.getByTestId('suggestion-collapse-all').click()
+  await expect(panel.getByTestId('suggestion-collapse-all')).toContainText('Expand all')
+  await expect(panel.getByTestId('ai-suggestion-created')).toHaveCount(0)
+  await card.getByTestId('suggestion-details-toggle').click()
+  await expect(card.getByTestId('ai-suggestion-created')).toBeVisible()
+  await expect(panel.getByTestId('ai-suggestion-created')).toHaveCount(1)
+  await panel.getByTestId('suggestion-collapse-all').click()
+  await expect(panel.getByTestId('ai-suggestion-created')).toHaveCount(0)
+  await panel.getByTestId('suggestion-collapse-all').click()
+  await expect(panel.getByTestId('ai-suggestion-created')).toHaveCount(cardCount)
+  await expect(panel.getByTestId('proposal-selection-count')).toHaveText('1 selected')
 })
 
 test('distance sorting keeps AI annotations visible in the reader', async ({ page }) => {
@@ -139,7 +171,7 @@ test('a run that may evaluate more than 50 chunks asks first, and Cancel starts 
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
-  await page.locator('.ai-assist-panel').getByRole('button', { name: 'All' }).click()
+  await page.getByTestId('ai-run-options').getByRole('button', { name: 'All', exact: true }).click()
 
   // Optimized: 2 tags × the backend's default limit of 40 chunks per tag.
   await page.getByRole('button', { name: 'Run AI' }).click()

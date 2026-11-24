@@ -15,6 +15,11 @@ Name | Type
 `finishedAt` | Date
 `outcome` | string
 `saved` | number
+`unit` | string
+`unitsTotal` | number
+`unitsCompleted` | number
+`providerFailures` | number
+`saveFailures` | number
 
 ## Example
 
@@ -31,6 +36,11 @@ const example = {
   "finishedAt": null,
   "outcome": null,
   "saved": null,
+  "unit": null,
+  "unitsTotal": null,
+  "unitsCompleted": null,
+  "providerFailures": null,
+  "saveFailures": null,
 } satisfies AiSuggestionRunInfo
 
 console.log(example)
