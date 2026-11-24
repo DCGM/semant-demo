@@ -38,8 +38,8 @@ An arrow means that a step uses the result of the previous one (the order of
   `HOST:PORT` is the configured `WEAVIATE_HOST:WEAVIATE_REST_PORT`, which the commands print.
 - **One name per import.** `CHECKPOINT` below is a new file name for this import (e.g.
   `ingest-2026-12-01.json`), next to which `chunk_ingest` writes `CHECKPOINT.documents.txt`, the
-  list that steps 3–9 read. Never reuse a checkpoint name: a reused name would append the new
-  import to the old list (#641).
+  list that steps 3–9 read. Never reuse a checkpoint name: `chunk_ingest` refuses a new
+  checkpoint next to an earlier run's `CHECKPOINT.documents.txt` or manifest (#641).
 - **Record as you go.** Keep every report, checkpoint and manifest, and fill in the
   [run record](#run-record) step by step.
 
