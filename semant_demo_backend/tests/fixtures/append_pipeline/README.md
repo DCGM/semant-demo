@@ -1,6 +1,7 @@
 # Appended-data fixture (#798)
 
-`chunks.jsonl` is the input of `tests/integration/test_append_pipeline.py`: chunk lines in the
+`chunks.jsonl` is the input of the tests over appended data (`tests/append_pipeline.py`, used by
+`tests/integration/test_append_pipeline.py` and `test_import_status.py`): chunk lines in the
 format of `chunk_ingest`, appended to the seeded fixture corpus.
 
 | Document | Lines | Taken from |
