@@ -32,7 +32,7 @@ from semant_demo.benchmarks.search_relevance.llm import InvalidReply, Refused, U
 from semant_demo.benchmarks.search_relevance.pipeline import Generator, Resources
 from semant_demo.benchmarks.search_relevance.pooling import Candidate, cap_pools, pool_candidates
 from semant_demo.benchmarks.search_relevance.sampling import mark_near_duplicates, sample_corpus
-from semant_demo.benchmarks.search_relevance.source import MIXED, UNKNOWN, SourceChunk
+from semant_demo.benchmarks.search_relevance.source import MIXED, UNKNOWN, SourceChunk, SourceError, WeaviateSource
 from semant_demo.benchmarks.search_relevance.store_api import LoadReport, SearchOutcome, VectorReport
 from tests.corpus import load_corpus
 from tests.fake_providers import create_fake_provider_app
@@ -870,3 +870,77 @@ async def test_oversampling_lets_the_document_cap_reach_the_target():
     corpus, report = await sample_corpus(FakeSource(chunks), cfg)
     assert len(corpus) == 6 and max(Counter(c.document_id for c in corpus).values()) == 1
     assert report["short"] == {}
+
+
+# ---- visibility and languages (#883 review) ---------------------------------------------------
+
+def test_restricted_documents_need_an_explicit_list_of_approved_models():
+    with pytest.raises(ValueError, match="needs restricted_documents_models"):
+        config(source={"include_restricted_documents": True})
+    with pytest.raises(ValueError, match="include_restricted_documents is false"):
+        config(source={"restricted_documents_models": ["fake-benchmark"]})
+    assert config().source.include_restricted_documents is False  # public only by default
+
+
+async def test_restricted_documents_are_refused_before_any_step_unless_every_model_is_approved(
+        tmp_path, gateway, usage):
+    cfg = config(**PIPELINE, source={"include_restricted_documents": True,
+                                     "restricted_documents_models": ["fake-benchmark"]})  # not the pooling model
+    source, store = FakeSource(source_chunks()), FakeStore()
+    with pytest.raises(Refused, match="fake-small is not in source.restricted_documents_models"):
+        await generator(tmp_path, gateway, usage, cfg, source, store).run()
+    assert source.reads == Counter() and store.loaded == []  # nothing was read or sent
+    cfg = config(**PIPELINE, source={"include_restricted_documents": True,
+                                     "restricted_documents_models": ["fake-benchmark", "fake-small"]})
+    gen = generator(tmp_path, gateway, usage, cfg, FakeSource(source_chunks()), FakeStore())
+    await gen.run()
+    assert any("restricted (non-public) documents" in text for text in load_dataset(gen.out).manifest.limitations)
+
+
+async def test_neighbours_and_imports_in_other_languages_are_left_out_unless_allowed():
+    chunks = source_chunks()
+    other = [SourceChunk(id=uuid.uuid4(), document_id=c.document_id, order=c.order + 100, language="slk",
+                         text="y" * 50) for c in chunks if c.order == 0]
+    # neighbours at order ±1 of an anchor: put an other-language chunk at order 1 of every document
+    neighbours = [SourceChunk(id=uuid.uuid4(), document_id=c.document_id, order=1, language="slk", text="z" * 50)
+                  for c in chunks if c.order == 0]
+    source = FakeSource([c for c in chunks if c.order != 1] + neighbours + other)
+    cfg = config(sample={"context_fraction": 1.0, "context_neighbours": 1})
+    corpus, report = await sample_corpus(source, cfg, [other[0].id])
+    assert {c.language for c in corpus} <= set(LANGUAGES)
+    assert report["context_skipped"].get("other_language", 0) > 0
+    assert report["imported_sources_missing"] == [str(other[0].id)]
+    allowed = config(sample={"context_fraction": 1.0, "context_neighbours": 1, "other_languages": True})
+    corpus, report = await sample_corpus(FakeSource([c for c in chunks if c.order != 1] + neighbours + other),
+                                         allowed, [other[0].id])
+    assert "slk" in {c.language for c in corpus} and report["imported_sources_missing"] == []
+
+
+class _Config:
+    def __init__(self, *names):
+        self.properties = [type("P", (), {"name": n})() for n in names]
+
+    async def get(self):
+        return self
+
+
+class _Collection:
+    def __init__(self, *names):
+        self.config = _Config(*names)
+
+
+class _Client:
+    """Just enough of a Weaviate client for ``WeaviateSource`` to read the declared properties."""
+
+    def __init__(self, chunk_properties):
+        self.collections = type("Collections", (), {"get": staticmethod(
+            lambda name: _Collection(*chunk_properties) if name == "Chunks" else _Collection("title"))})()
+
+
+async def test_a_store_without_document_visibility_is_refused_unless_restricted_ones_are_included():
+    names = type("Names", (), {"chunks_collection_name": "Chunks", "document_collection_name": "Documents"})()
+    source = WeaviateSource(_Client(("text", "language")), names, {})
+    with pytest.raises(SourceError, match="does not declare documentPublic"):
+        [item async for item in source.scan(10)]
+    everything = WeaviateSource(_Client(("text", "language")), names, {}, include_restricted=True)
+    assert await everything._declared() == (["text", "language"], ["title"])

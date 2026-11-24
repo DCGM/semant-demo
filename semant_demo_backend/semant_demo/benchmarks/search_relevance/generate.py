@@ -29,6 +29,7 @@ from pydantic import ValidationError
 from semant_demo.benchmarks.search_relevance.contracts import ContractError, load_dataset
 from semant_demo.benchmarks.search_relevance.llm import Refused, UsageTotals
 from semant_demo.benchmarks.search_relevance.pipeline import STEPS, Generator, Resources
+from semant_demo.benchmarks.search_relevance.source import SourceError
 from semant_demo.benchmarks.search_relevance.summary import summarize
 
 
@@ -82,7 +83,8 @@ def _resources(config, args, opened: list) -> Resources:
         client = await connect_weaviate(source_config, query_timeout=config.source.query_timeout)
         opened.append(client)
         # The manifest describes the source without naming its host (datasets may be shared).
-        return WeaviateSource(client, source_config.collectionNames, {"description": config.source.description})
+        return WeaviateSource(client, source_config.collectionNames, {"description": config.source.description},
+                              include_restricted=config.source.include_restricted_documents)
 
     async def open_store(spec):
         from semant_demo.benchmarks.search_relevance.store import open_store as real_open_store
@@ -130,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(estimate(config, args.work, llm), indent=1))
             return 0
         return asyncio.run(_run(args))
-    except (Refused, ContractError, ValidationError, FileNotFoundError) as e:
+    except (Refused, SourceError, ContractError, ValidationError, FileNotFoundError) as e:
         print(f"Refused: {e}", file=sys.stderr)
         return 2
 

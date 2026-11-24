@@ -40,6 +40,10 @@ source:
   # Read only. Without host, WEAVIATE_HOST / WEAVIATE_REST_PORT / WEAVIATE_GRPC_PORT (or the
   # --source-* options). Never a credential here.
   description: semANT production corpus (read-only snapshot)
+  # Only chunks of public documents (Chunks.documentPublic true) are sampled. To include
+  # restricted ones, set include_restricted_documents: true and list every model that receives
+  # chunk text (intents, translation, judge, pooling embeddings) in restricted_documents_models.
+  include_restricted_documents: false
 
 sample:
   per_language: 10000

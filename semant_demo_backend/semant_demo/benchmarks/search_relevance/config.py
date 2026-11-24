@@ -44,6 +44,24 @@ class SourceSection(_Section):
     description: str = ""
     """A human description for the manifest (never a credential)."""
     query_timeout: float = 120.0
+    include_restricted_documents: bool = False
+    """Off (the default): only chunks of public documents (``Chunks.documentPublic`` true) are
+    sampled, read as neighbours or imported; others never leave the source. On: restricted texts
+    may be sampled and sent to the models; then ``restricted_documents_models`` must name every
+    model that receives chunk text, and the dataset says it contains restricted documents."""
+    restricted_documents_models: list[str] = Field(default_factory=list)
+    """With ``include_restricted_documents``: the models approved to receive restricted texts
+    (the intent, translation and judge models and the pooling embedding models); the generator
+    refuses to start when one it would use is not named."""
+
+    @model_validator(mode="after")
+    def _restricted_needs_models(self) -> "SourceSection":
+        if self.include_restricted_documents and not self.restricted_documents_models:
+            raise ValueError("include_restricted_documents needs restricted_documents_models: the models "
+                             "approved to receive restricted texts")
+        if self.restricted_documents_models and not self.include_restricted_documents:
+            raise ValueError("restricted_documents_models is set but include_restricted_documents is false")
+        return self
 
 
 class SampleSection(_Section):
@@ -66,6 +84,9 @@ class SampleSection(_Section):
     context_neighbours: int = Field(1, ge=0)
     include_import_sources: bool = True
     """Add the source chunks of imported intents (``intents.import``) to the corpus."""
+    other_languages: bool = False
+    """Keep neighbouring (context) and imported chunks whose language is not one of ``languages``;
+    off by default, so a dataset stays within its configured languages."""
 
 
 class ImportSection(_Section):

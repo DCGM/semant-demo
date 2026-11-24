@@ -4,9 +4,18 @@
 ``Chunks`` and ``Documents`` collections with reads only (a scan of ids and languages, fetches by
 id and one aggregate), so a production store can be sampled without being changed. Properties a
 store lacks (an older schema) are simply not read.
+
+**Visibility** (#883 review). By default only chunks of public documents are read: a chunk is used
+only when its ``documentPublic`` (#793, the application's eligibility index of a document's
+visibility) is ``true``; false or missing withholds it (fail closed), and a store that does not
+declare ``documentPublic`` is refused. The scan reads the flag with the language and drops other
+chunks before any text is read; ``read`` and ``neighbours`` filter on it in Weaviate, so imported
+and neighbouring chunks follow the same rule. ``include_restricted=True`` (an explicit opt-in of
+the config) reads every chunk.
 """
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -20,6 +29,12 @@ from semant_demo.adapters.weaviate.names import CollectionNames
 
 MIXED, UNKNOWN = "(mixed)", "(unknown)"
 READ_BATCH = 100
+VISIBILITY = "documentPublic"
+"""The chunk's copy of its document's visibility (``semant_demo.adapters.weaviate.chunk_visibility``)."""
+
+
+class SourceError(Exception):
+    """The source store cannot be sampled under the configured visibility policy."""
 
 
 @dataclass(frozen=True)
@@ -79,10 +94,14 @@ class WeaviateSource:
     CHUNK_PROPERTIES = ("text", "title", "language", "order", "yearIssued")
     DOCUMENT_PROPERTIES = ("title", "yearIssued", "documentType")
 
-    def __init__(self, client: WeaviateAsyncClient, names: CollectionNames, description: dict[str, Any]):
+    def __init__(self, client: WeaviateAsyncClient, names: CollectionNames, description: dict[str, Any],
+                 include_restricted: bool = False):
         self.client, self.names, self.description = client, names, description
+        self.include_restricted = include_restricted
         self.chunks = client.collections.get(names.chunks_collection_name)
         self._properties: tuple[list[str], list[str]] | None = None
+        self.withheld: Counter[str] = Counter()
+        """Chunks the scan skipped by visibility: ``restricted`` (false) and ``unknown`` (no value)."""
 
     async def _declared(self) -> tuple[list[str], list[str]]:
         if self._properties is None:
@@ -90,12 +109,21 @@ class WeaviateSource:
             document = await self.client.collections.get(self.names.document_collection_name).config.get()
             have_chunk = {p.name for p in chunk.properties}
             have_document = {p.name for p in document.properties}
+            if not self.include_restricted and VISIBILITY not in have_chunk:
+                raise SourceError(f"the source's {self.names.chunks_collection_name} does not declare {VISIBILITY} "
+                                  "(#793), so public documents cannot be told apart; sample it only with "
+                                  "source.include_restricted_documents: true")
             self._properties = ([p for p in self.CHUNK_PROPERTIES if p in have_chunk],
                                 [p for p in self.DOCUMENT_PROPERTIES if p in have_document])
         return self._properties
 
+    def _visible(self, filters: Any) -> Any:
+        """``filters`` narrowed to chunks of public documents, unless restricted ones are included."""
+        return filters if self.include_restricted else filters & Filter.by_property(VISIBILITY).equal(True)
+
     async def _fetch(self, **query: Any) -> list[SourceChunk]:
         chunk_properties, document_properties = await self._declared()
+        query["filters"] = self._visible(query["filters"])
         result = await self.chunks.query.fetch_objects(
             return_properties=chunk_properties,
             return_references=[QueryReference(link_on="document", return_properties=document_properties)], **query)
@@ -130,7 +158,16 @@ class WeaviateSource:
     async def scan(self, page: int) -> AsyncIterator[tuple[UUID, str]]:
         # The cursor iterator walks the whole collection by id; a filter could not (Weaviate
         # refuses a cursor with a filter, and filtered reads stop at QUERY_MAXIMUM_RESULTS).
-        async for obj in self.chunks.iterator(return_properties=["language"], cache_size=page):
+        # The visibility flag is read with the language, and other chunks are dropped here, before
+        # any of their text is read.
+        await self._declared()
+        properties = ["language"] if self.include_restricted else ["language", VISIBILITY]
+        async for obj in self.chunks.iterator(return_properties=properties, cache_size=page):
+            if not self.include_restricted:
+                public = obj.properties.get(VISIBILITY)
+                if public is not True:
+                    self.withheld["restricted" if public is False else "unknown"] += 1
+                    continue
             yield obj.uuid, language_key(obj.properties.get("language"))
 
     async def neighbours(self, document_id: UUID, orders: Sequence[int]) -> list[SourceChunk]:
@@ -149,4 +186,6 @@ class WeaviateSource:
 
     def describe(self) -> dict[str, Any]:
         return {**self.description, "chunks_collection": self.names.chunks_collection_name,
-                "documents_collection": self.names.document_collection_name}
+                "documents_collection": self.names.document_collection_name,
+                "documents": "all, including restricted" if self.include_restricted else "public only",
+                **({} if self.include_restricted else {"withheld_by_visibility": dict(sorted(self.withheld.items()))})}

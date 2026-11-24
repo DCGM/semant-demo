@@ -178,6 +178,7 @@ class Generator:
     async def run(self, start: str | None = None, until: str | None = None, force: bool = False) -> list[str]:
         """Run the steps up to ``until`` (all by default); ``start`` and every later step run even
         when fresh, ``force`` reruns all. Returns the steps that ran."""
+        self.check_restricted_models()
         last = STEPS.index(until) if until else len(STEPS) - 1
         first_forced = 0 if force else STEPS.index(start) if start else len(STEPS)
         for index, step in enumerate(STEPS[:last + 1]):
@@ -193,6 +194,20 @@ class Generator:
             self._finish(step, inputs, outputs, report, before)
             self.ran.append(step)
         return self.ran
+
+    def check_restricted_models(self) -> None:
+        """With restricted documents included, refuses (before any step) unless every model that
+        receives chunk text is one the config approves for restricted texts."""
+        source = self.config.source
+        if not source.include_restricted_documents:
+            return
+        used = {model_provenance(self.resources.llm, f)["model"]
+                for f in (INTENTS_FEATURE, TRANSLATION_FEATURE, JUDGE_FEATURE)}
+        used |= {m.vector.model for m in self.config.pooling.methods if m.vector is not None}
+        unapproved = sorted(used - set(source.restricted_documents_models))
+        if unapproved:
+            raise Refused(f"restricted documents are included, but {', '.join(unapproved)} "
+                          "is not in source.restricted_documents_models")
 
     # ---- steps ----------------------------------------------------------------------------
 
@@ -336,6 +351,11 @@ class Generator:
             "unjudged hits rather than treating them as not relevant.",
             "Grades are one LLM judge's, without human review.",
         ]
+        if c.source.include_restricted_documents:
+            limitations.append("Contains texts of restricted (non-public) documents: sampled with "
+                               "include_restricted_documents and sent only to the approved models "
+                               f"({', '.join(c.source.restricted_documents_models)}). Do not publish or share it "
+                               "beyond those allowed to read the documents.")
         if unjudged:
             limitations.append(f"{unjudged} pooled pairs could not be judged and are not in the qrels.")
         incomplete = (judge.get("per_language") or {}).get("incomplete")

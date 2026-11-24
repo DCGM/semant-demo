@@ -55,6 +55,7 @@ class Sampler:
         self.source, self.config, self.s = source, config, config.sample
         self.rnd = random.Random(config.seeds.sample)
         self.targets = {language: config.target(language) for language in config.languages}
+        self.languages = set(config.languages)
         self.candidates: dict[str, dict[UUID, SourceChunk]] = {language: {} for language in self.targets}
         self.seen: set[UUID] = set()
         self.exclusions: Counter[str] = Counter()
@@ -146,6 +147,9 @@ class Sampler:
                 if not re.fullmatch(LANGUAGE_PATTERN, chunk.language):
                     skipped["no_single_language"] += 1
                     continue
+                if not self.s.other_languages and chunk.language not in self.languages:
+                    skipped["other_language"] += 1
+                    continue
                 if not chunk.text:
                     skipped["empty"] += 1
                     continue
@@ -181,7 +185,8 @@ class Sampler:
             for chunk_id in extra:
                 chunk = found.get(chunk_id)
                 if (chunk is None or not chunk.text or chunk.document_id is None
-                        or not re.fullmatch(LANGUAGE_PATTERN, chunk.language)):
+                        or not re.fullmatch(LANGUAGE_PATTERN, chunk.language)
+                        or (not self.s.other_languages and chunk.language not in self.languages)):
                     imported_missing.append(str(chunk_id))
                 else:
                     records[chunk_id] = self._record(chunk, "imported")
