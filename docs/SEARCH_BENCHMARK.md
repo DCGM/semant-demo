@@ -189,7 +189,7 @@ takes no `vector` or `endpoint`, and methods sharing a vector `id` must give the
 
 | Step | Does | Output (`WORK/<step>/`) |
 |---|---|---|
-| `sample` | Reads the source store **read only**: one scan over every chunk's id and language (exact language counts; about 6 minutes for 8.3 M chunks), keeping per corpus language a uniform random sample of `oversample` × its target ids (reservoir sampling with the seed), so a rare language is sampled from all its chunks; the sampled ids are read in full; per language toward its target, round-robin over (period, document type) strata, at most `max_per_document` per document (raise `oversample` if the cap leaves a language short); neighbours of a share of the chunks as context (`attributes.context_of`); near-duplicates kept and marked; mixed/unknown/other languages, short and documentless chunks excluded and counted | `corpus.jsonl` |
+| `sample` | Reads the source store **read only** and, by default, **only chunks of public documents**: a chunk counts only when its `documentPublic` (#793) is `true` (false or missing withholds it, and a store without the property is refused); the scan drops other chunks before any text is read, and neighbours and imported chunks follow the same rule. `source.include_restricted_documents: true` includes restricted documents, but only with `source.restricted_documents_models` naming every model that receives chunk text (the generator refuses otherwise), and the dataset then says it contains restricted texts. One scan over every chunk's id and language (exact language counts; about 6 minutes for 8.3 M chunks), keeping per corpus language a uniform random sample of `oversample` × its target ids (reservoir sampling with the seed), so a rare language is sampled from all its chunks; the sampled ids are read in full; per language toward its target, round-robin over (period, document type) strata, at most `max_per_document` per document (raise `oversample` if the cap leaves a language short); neighbours of a share of the chunks as context (`attributes.context_of`); near-duplicates kept and marked; mixed/unknown/other languages, short and documentless chunks excluded and counted (neighbours and imported chunks outside `languages` too, unless `sample.other_languages`) | `corpus.jsonl` |
 | `intents` | Spreads `count` intents evenly over the corpus languages and by style shares; the model writes the `need` (one English sentence) and a query in the source language; a query repeating more than `max_copied_words` consecutive passage words is regenerated once, then the intent moves to a spare chunk. Optional `import` of JSONL intents (`question`/`query`, `language`, optional `corpus_id`, `need`, `style`; e.g. #41), whose source chunks the sample adds (the selected ids are part of the `sample` step's inputs, so a changed file, `limit`, intents seed or query languages resamples; a source chunk without text, document or a usable language is reported in `imported_sources_missing`) | `intents.jsonl`, `queries.jsonl` |
 | `translate` | Each query into the other query languages; flags a translation equal to its source, a doubtful language (stopword/diacritic heuristic) and, for `back_translate_fraction`, a low back-translation word overlap; drops an intent missing a language (`require_all_languages`) | `intents.jsonl`, `queries.jsonl` |
 | `pool` | Loads the corpus into the benchmark store (`store_api`), ensures the methods' vectors, searches every query with every method; per intent the union with its source chunks, capped (sources kept, then by best rank and number of methods) and fitted to `max_judgments` (refused when the source chunks alone exceed it) | `pools.jsonl` |
@@ -438,9 +438,13 @@ language, otherwise with the intent's `grade`; the examples show the same grades
 says how many such intents there are and how many were left out.
 
 **Unjudged results.** Pooled, LLM-judged qrels are incomplete. The **standard** variant
-(primary) counts an unjudged chunk as not relevant, a lower bound; the **condensed** variant
-removes unjudged chunks from the ranking before scoring (and tends to overestimate). Both are
-reported with the unjudged rate, which shows how much a score may be understated.
+(primary) counts an unjudged chunk as not relevant; the **condensed** variant removes unjudged
+chunks from the ranking before scoring. Both are scores based on incomplete pooled judgements,
+not bounds: grading a relevant chunk that was missed raises the ideal ranking (the nDCG
+denominator) and the recall denominator, so the complete-judgement nDCG or recall can be lower
+or higher than either. Only P@10's standard value is a lower bound (an unjudged chunk is a miss
+against a fixed 10). Both are reported with the unjudged share, which shows how incomplete the
+judgements of a configuration's results are.
 
 **Uncertainty.** A mean is over the scored queries. Its 95% CI is a percentile bootstrap that
 resamples **intents** with replacement, keeping all formulations of an intent together, since

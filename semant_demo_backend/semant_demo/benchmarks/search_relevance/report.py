@@ -228,10 +228,12 @@ def limitations(dataset: Dataset, configs: Sequence[Configuration], unjudged: di
     pools = ", ".join(f"`{p.id}`" for p in dataset.manifest.pooling) or "(none declared)"
     lines = [
         f"- **The qrels are judged by an LLM ({judges}) and pooled** (from the source chunks and {pools}). They are "
-        "not exhaustive: a relevant chunk that no pooling method proposed is unjudged. The standard metrics count it "
-        "as not relevant, so they are **lower bounds**, and recall is recall of the *judged* relevant chunks. A "
-        "configuration unlike the pooling methods retrieves more unjudged chunks and is penalised more; read its "
-        "standard score with its unjudged rate and its condensed score.",
+        "not exhaustive: a relevant chunk that no pooling method proposed is unjudged. The scores are therefore "
+        "**based on incomplete pooled judgements**, not bounds: grading more chunks can move nDCG and recall either "
+        "way (a relevant chunk found later raises the ideal ranking, the nDCG denominator, and the recall "
+        "denominator); only P@10 is a lower bound. Recall is recall of the *judged* relevant chunks. A "
+        "configuration unlike the pooling methods retrieves more unjudged chunks; read its standard score with "
+        "its unjudged rate and its condensed score.",
         f"- How much this matters: the share of unjudged chunks in the top 10 is {unjudged_range(configs, unjudged)} "
         "(the report's \"Effect of unjudged results\" shows how it moves each configuration).",
         "- **The LLM grades are not verified by people**; the judge can be wrong or biased (e.g. towards one "
@@ -372,8 +374,9 @@ def unjudged_effect(configs: Sequence[Configuration], aggregates: Sequence[dict[
                   f"all the top 10s; the dataset has {len(dataset.qrels)} graded pairs. Grading the configurations' "
                   f"own results would take {missing} more judgements."]
     return ["A chunk in a top 10 that no pooling search proposed has no grade. The standard score counts it as not "
-            "relevant (a lower bound); the condensed score drops it (closer to an upper bound). A configuration "
-            "unlike the pooling searches returns more unjudged chunks, so its standard score is pulled down more. "
+            "relevant; the condensed score drops it. Neither is a bound of the score complete grading would give (see "
+            "Limitations). A configuration unlike the pooling searches returns more unjudged chunks, so its two "
+            "scores differ more. "
             "Where the two orders of the configurations agree, the conclusions about which is better do not depend "
             "on the missing grades; the absolute scores do.", "",
             f"- Rank correlation (Spearman) of the standard and the condensed order: {rho:.2f}; the largest move "
@@ -703,9 +706,11 @@ METRIC_TEXT = [
     "- **unjudged@10**: share of the returned top-10 chunks without a qrel for the intent.",
     "- Queries whose intent has no relevant qrel have no nDCG, P or recall; intents without a source chunk have "
     "no Hit@10. Means leave them out, and the tables count them.",
-    "- **Unjudged results.** The **standard** variant (primary) treats an unjudged chunk as not relevant: a lower "
-    "bound when pooling missed relevant chunks. The **condensed** variant removes unjudged chunks from the "
-    "ranking before scoring; it ignores them instead and tends to overestimate. Both are reported.",
+    "- **Unjudged results.** The **standard** variant (primary) treats an unjudged chunk as not relevant; the "
+    "**condensed** variant removes unjudged chunks from the ranking before scoring. Both are scores based on "
+    "incomplete pooled judgements, not bounds: a relevant chunk found by more grading raises the ideal ranking "
+    "(the nDCG denominator), so the complete-judgement nDCG or recall can be lower or higher than either; only "
+    "P@10's standard value is a lower bound. Both are reported, with the unjudged share.",
     "- **Queries without a result**: a search that ended in an error in the run (a *search error*) or a query "
     "the run did not search (*not searched*) is left out of the means; the Overall section counts them.",
     "- **queries, intents** (slice tables): how many scored queries, and of how many intents, a group's mean "

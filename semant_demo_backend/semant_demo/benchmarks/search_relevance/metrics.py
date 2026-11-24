@@ -3,10 +3,14 @@
 Pure functions over chunk ids and the graded qrels of one intent (``grades``: chunk id -> 0, 1, 2).
 A chunk without a qrel is **unjudged**. Two variants handle it:
 
-* ``standard`` (primary): an unjudged chunk counts as not relevant, so a score is a lower bound
-  when pooling missed relevant chunks;
+* ``standard`` (primary): an unjudged chunk counts as not relevant;
 * ``condensed``: unjudged chunks are removed from the ranking before scoring (the chunks below
-  move up), which ignores them instead of penalising them.
+  move up), which ignores them instead.
+
+Both are **scores based on incomplete pooled judgements**, not bounds of the score complete
+judgements would give: a relevant chunk found later raises the ideal DCG (the nDCG denominator)
+and the recall denominator, so the true nDCG or recall can be lower or higher. Only P@k counts
+an unjudged chunk as a miss against a fixed denominator, so its standard value is a lower bound.
 
 A metric is None when it is undefined for the intent (no relevant qrel, no source chunk, nothing
 returned); means leave such values out and say how many values they average.
