@@ -55,10 +55,8 @@ export interface TextScanSyncOptions<T extends SyncChunk> {
 }
 
 export const NOTICES = {
-  approximateText: 'The OCR text differs from the document text here: whole lines are shown, not exact words.',
-  approximateLine: 'The OCR line differs from the document text: its place in the text is approximate.',
   partial: 'Only part of this text was found on the page scans.',
-  noScanPlace: 'No place on the page scans is known for this text.',
+  noScanPlace: 'Corresponding text could not be located in the scan.',
   lineNotInText: 'This line was not found in the document text.',
   lineLookupIncomplete: 'This line was not found in the passages read for this page; the page has more than could be searched.',
   pageWithoutText: 'No document text is known on this page.',
@@ -71,11 +69,16 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   /** The first line id of each page whose layout was read, for page breaks. */
   const firstLines = new Map<string, string | undefined>()
   const scanHighlights = shallowRef<ScanHighlight[]>([])
+  /** Evidence cited by AI, independent of the temporary text/scan navigation overlay. */
+  const citationScanHighlights = shallowRef<ScanHighlight[]>([])
   const textFocus = shallowRef<TextFocus | null>(null)
   const notice = ref('')
   const currentPageId = ref<string | null>(null)
 
   let interaction: AbortController | null = null
+  let citationRead: AbortController | null = null
+  /** Only dismissing the citation may clear a notice produced by that citation. */
+  let citationOwnsNotice = false
   let marking: AbortController | null = null
   /** The page a focus request of ours opens: the scan viewer's change to it is not followed. */
   let ownPage: string | null = null
@@ -86,6 +89,7 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
 
   watch(o.pages, () => {
     cancel()
+    clearCitationScan()
     marking?.abort()
     maps.value = new Map()
     firstLines.clear()
@@ -105,6 +109,15 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   function cancel () {
     interaction?.abort()
     interaction = null
+  }
+
+  /** A citation is dismissed only on a new citation, document change or explicit close. */
+  function clearCitationScan () {
+    citationRead?.abort()
+    citationRead = null
+    citationScanHighlights.value = []
+    if (citationOwnsNotice) notice.value = ''
+    citationOwnsNotice = false
   }
 
   const layoutOf = (signal: AbortSignal) => async (pageId: string) => {
@@ -148,9 +161,9 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   async function showTextOnScan (range: ChunkRange, { markLine = false } = {}): Promise<void> {
     if (!available.value) return
     const signal = begin()
+    citationOwnsNotice = false
     try {
       const lines: (LineTarget & { approximate: boolean })[] = []
-      let approximate = false
       let missing = false
       let firstMap: ChunkLayoutMap | null = null
       for (const part of parts(range)) {
@@ -163,7 +176,6 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
         firstMap ??= map
         const found = linesForRange(map, part.start, part.end)
         if (!found.length || part.end > map.covered) missing = true
-        if (found.length && map.precision !== 'exact') approximate = true
         lines.push(...found.map(l => ({ ...l, approximate: map.precision !== 'exact' })))
       }
       if (!lines.length || !firstMap) {
@@ -180,7 +192,7 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
       } else {
         textFocus.value = null
       }
-      notice.value = approximate ? NOTICES.approximateText : missing ? NOTICES.partial : ''
+      notice.value = missing ? NOTICES.partial : ''
       ownPage = first.pageId
       try {
         await o.focusScan({
@@ -194,6 +206,62 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
       }
     } catch (e) {
       failed(signal, e)
+    }
+  }
+
+  /**
+   * Maps the complete cited range independently of user interactions. Keeping every pageId
+   * lets the same outlines appear again after scan page navigation, even when a chunk crosses
+   * page boundaries. Internal mapping precision still determines line and sub-line coverage.
+   */
+  async function showCitationOnScan (range: ChunkRange): Promise<void> {
+    clearCitationScan()
+    if (!available.value) return
+    citationOwnsNotice = true
+    notice.value = ''
+    const controller = new AbortController()
+    citationRead = controller
+    const signal = controller.signal
+    try {
+      const lines: ScanHighlight[] = []
+      let incomplete = false
+      for (const part of parts(range)) {
+        const map = await mapOf(part.chunk, signal)
+        if (signal.aborted) return
+        if (typeof map === 'string') {
+          incomplete = true
+          continue
+        }
+        const found = linesForRange(map, part.start, part.end)
+        if (!found.length || part.end > map.covered) incomplete = true
+        lines.push(...found.map(line => ({
+          ...line, approximate: map.precision !== 'exact'
+        })))
+      }
+      if (signal.aborted) return
+      citationScanHighlights.value = lines
+      if (!lines.length) {
+        notice.value = NOTICES.noScanPlace
+        return
+      }
+      notice.value = incomplete ? NOTICES.partial : ''
+      const first = lines[0]
+      ownPage = first.pageId
+      try {
+        if (!signal.aborted) await o.focusScan({
+          pageId: first.pageId,
+          lineIds: lines.filter(line => line.pageId === first.pageId).map(line => line.lineId),
+          start: first.start,
+          end: lines.length === 1 ? first.end : undefined
+        })
+      } finally {
+        ownPage = null
+      }
+    } catch (e) {
+      if (!signal.aborted && !isAbortError(e)) {
+        citationScanHighlights.value = []
+        notice.value = NOTICES.layoutFailed
+      }
     }
   }
 
@@ -222,10 +290,11 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     const signal = begin()
     const index = pageIndex.value.get(target.pageId)
     if (index === undefined) return
+    citationOwnsNotice = false
     const show = async (hit: TextHit) => {
       textFocus.value = { range: { chunkId: hit.chunkId, start: hit.start, end: hit.end }, approximate: hit.precision !== 'exact' }
       scanHighlights.value = []
-      notice.value = hit.precision === 'exact' ? '' : NOTICES.approximateLine
+      notice.value = ''
       await nextTick()
       if (!signal.aborted) o.revealText({ chunkId: hit.chunkId, start: hit.point })
     }
@@ -270,6 +339,7 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     void prepareMarks(index)
     if (!follow || ownPage === page.pageId) return
     const signal = begin()
+    citationOwnsNotice = false
     try {
       const read = await o.pageChunks(index)
       if (signal.aborted) return
@@ -351,6 +421,9 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     maps,
     pageMarks,
     scanHighlights,
+    citationScanHighlights,
+    clearCitationScan,
+    showCitationOnScan,
     textFocus,
     notice,
     currentPageId,

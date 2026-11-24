@@ -829,6 +829,9 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   `CHECKPOINT.inputs.jsonl`, so the checkpoint stays small for any number of files. A finished
   checkpoint, or one for other input, is refused; the refusal names the files that differ from the
   listing.
+- A new checkpoint is refused next to a leftover `CHECKPOINT.manifest.jsonl` or, for `--write`,
+  `CHECKPOINT.documents.txt` of an earlier run with the same name, which the new run would append
+  to (#641). Nothing is written or deleted; give a new checkpoint file name or move the files.
 - Backups:
   - `--backup-id` must be a successful `backup-filesystem` backup holding the chunks and documents
     collections; this is checked.

@@ -80,7 +80,46 @@ describe('useTextScanSync', () => {
     expect(reads).toEqual(['p0', 'p1'])
   })
 
-  it('highlights a range across chunks, approximate parts as whole lines, and says so', async () => {
+  it('keeps cited lines across scan/text interactions and page navigation, but clears on dismiss', async () => {
+    const { sync, focusScan } = setup()
+    await sync.showCitationOnScan({ chunkId: 'c0', start: 0, end: CHUNKS[0].text.length })
+    expect(sync.citationScanHighlights.value.map(h => `${h.pageId}/${h.lineId}`))
+      .toEqual(['p0/r0-l0', 'p0/r1-l0', 'p0/r1-l1', 'p1/r0-l0'])
+    expect(focusScan).toHaveBeenCalledTimes(1)
+    await sync.showTextOnScan({ chunkId: 'c1', start: 0, end: CHUNKS[1].text.length })
+    expect(sync.scanHighlights.value).toHaveLength(1)
+    expect(sync.citationScanHighlights.value).toHaveLength(4)
+    await sync.showLineInText({ pageId: 'p1', lineId: 'r1-l0' })
+    expect(sync.textFocus.value?.range.chunkId).toBe('c1')
+    expect(sync.citationScanHighlights.value).toHaveLength(4)
+    await sync.onScanPage(PAGES[1], 1)
+    expect(sync.citationScanHighlights.value.some(h => h.pageId === 'p1')).toBe(true)
+    sync.clearCitationScan()
+    expect(sync.citationScanHighlights.value).toEqual([])
+  })
+
+  it('moves from approximate to exact citations without precision notices, and reports missing correspondence', async () => {
+    const { sync, pages } = setup()
+    await sync.showCitationOnScan({ chunkId: 'c1', start: 0, end: CHUNKS[1].text.length })
+    expect(sync.citationScanHighlights.value).toEqual([
+      { pageId: 'p1', lineId: 'r1-l0', start: undefined, end: undefined, approximate: true }
+    ])
+    expect(sync.notice.value).toBe('')
+    await sync.showCitationOnScan({ chunkId: 'c0', start: 0, end: CHUNKS[0].text.length })
+    expect(sync.citationScanHighlights.value).toHaveLength(4)
+    expect(sync.notice.value).toBe('')
+    await sync.showCitationOnScan({ chunkId: 'c2', start: 0, end: CHUNKS[2].text.length })
+    expect(sync.citationScanHighlights.value).toEqual([])
+    expect(sync.notice.value).toBe(NOTICES.noScanPlace)
+    sync.clearCitationScan()
+    expect(sync.notice.value).toBe('')
+    pages.value = []
+    await nextTick()
+    await sync.showCitationOnScan({ chunkId: 'c2', start: 0, end: CHUNKS[2].text.length })
+    expect(sync.notice.value).toBe('')
+  })
+
+  it('highlights exact sub-lines and approximate whole lines without exposing precision', async () => {
     const { sync } = setup()
     const len = CHUNKS[0].text.length
     await sync.showTextOnScan({ chunkId: 'c0', start: len - 3, end: len + 4 })
@@ -88,7 +127,9 @@ describe('useTextScanSync', () => {
       { pageId: 'p1', lineId: 'r0-l0', start: 8, end: 11, approximate: false },
       { pageId: 'p1', lineId: 'r1-l0', start: undefined, end: undefined, approximate: true }
     ])
-    expect(sync.notice.value).toBe(NOTICES.approximateText)
+    expect(sync.notice.value).toBe('')
+    await sync.showTextOnScan({ chunkId: 'c0', start: 0, end: 4 })
+    expect(sync.notice.value).toBe('')
   })
 
   it('marks the clicked line in the text, and degrades to text only without an anchor', async () => {
@@ -108,11 +149,13 @@ describe('useTextScanSync', () => {
     expect(sync.textFocus.value).toEqual({ range: { chunkId: 'c0', start: 20, end: 31 }, approximate: false })
     expect(revealText).toHaveBeenCalledWith({ chunkId: 'c0', start: 26 })
     expect(pageChunks).not.toHaveBeenCalled()
-    // An approximate line: its start, flagged.
+    // An approximate line still maps internally to the whole text range, without a warning.
     await sync.showLineInText({ pageId: 'p1', lineId: 'r1-l0', offset: 3 })
     expect(sync.textFocus.value).toEqual({ range: { chunkId: 'c1', start: 0, end: 12 }, approximate: true })
     expect(revealText).toHaveBeenLastCalledWith({ chunkId: 'c1', start: 0 })
-    expect(sync.notice.value).toBe(NOTICES.approximateLine)
+    expect(sync.notice.value).toBe('')
+    await sync.showLineInText({ pageId: 'p0', lineId: 'r1-l1', offset: 6 })
+    expect(sync.notice.value).toBe('')
   })
 
   it('reads the page chunks when the line is not in the text shown, and says when no chunk has it', async () => {
@@ -257,7 +300,7 @@ describe('revealDelta (smart focus in the text)', () => {
 describe('DocumentTextPane page marks', () => {
   afterEach(() => { document.body.innerHTML = '' })
 
-  it('shows page starts outside the text, tints the current page and marks approximate places', async () => {
+  it('shows page starts and text focus without displaying OCR precision labels', async () => {
     const wrapper = mount(DocumentTextPane, {
       props: {
         chunks: [{ id: 'c', order: 0, text: 'Konec strany.\n\nNová strana.' }],
@@ -268,13 +311,14 @@ describe('DocumentTextPane page marks', () => {
       attachTo: document.body
     })
     const breaks = wrapper.findAll('.page-break')
-    expect(breaks.map(b => b.attributes('aria-label'))).toEqual(['Page 1 (approximate position)', 'Page 2'])
+    expect(breaks.map(b => b.attributes('aria-label'))).toEqual(['Page 1', 'Page 2'])
     expect(breaks.map(b => b.attributes('role'))).toEqual(['separator', 'separator'])
     // The labels are not text: the chunk's text content is unchanged.
     expect(wrapper.find('[data-chunk-id="c"]').text()).toBe('Konec strany.\n\nNová strana.')
     expect(wrapper.find('.page-break + .text-segment').attributes('data-start')).toBe('0')
     expect(wrapper.findAll('.is-current-page').map(s => s.text())).toEqual(['Nová strana.'])
-    expect(wrapper.find('.has-approximate-passage .is-active-passage').text()).toBe('Konec')
+    expect(wrapper.find('.is-active-passage').text()).toBe('Konec')
+    expect(wrapper.find('.has-approximate-passage').exists()).toBe(false)
     wrapper.unmount()
   })
 })

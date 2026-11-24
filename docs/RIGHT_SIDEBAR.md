@@ -263,10 +263,11 @@ sidebar store.
 
 `DocumentViewLayout` (the page, not the panel) owns `useScopedChat()` and wires the
 panel's `summarize`/`ask`/`cite` events to it, following the usual page→tool props /
-tool→page events convention; `cite` calls `citeInReader(chunkId, order)` of
+tool→page events convention; `cite` calls `citeInReader(chunkId, order, documentId, collectionId)` of
 `features/documents/readerCitation.ts`, which sets its
-module-scope `requestedCitation` ref (`{ chunkId, order, token }`, the counter so clicking the same
-citation twice still re-triggers; `order` is the cited chunk's position in the document, from
+module-scope `requestedCitation` ref (`{ documentId, collectionId, chunkId, order, token }`,
+scoped so an earlier citation cannot target another document or collection; the counter lets
+clicking the same citation twice re-trigger navigation; `order` is the cited chunk's position, from
 the answer's source). `DocumentReaderPage.vue`, a sibling route with no
 prop/event path to the panel, watches that same singleton ref (the same cross-component
 pattern `useAiAssistance().highlightedAutoSpanId` uses for span highlighting).
@@ -277,12 +278,28 @@ citation can point anywhere in the whole document), the watcher calls
 `chunkWindow.loadUntil(order)` first (#358 review) — it loads only the chunks between the
 window and the target (extending the window at whichever edge is closer, or filling a
 partial-membership gap via the existing `loadGapAll` when the target falls inside the
-displayed range), never the rest of the document. Only then does it call its own
-`scrollToChunk(chunkId)` — a whole-chunk sibling of `scrollToSpan` that only scrolls, never
-touches `annotations`/`tagEditing` state, so in-progress tag editing is left
-exactly as it was. If the chunk still can't be found afterwards (a malformed citation, or
-`order` missing), `scrollToChunk` is a silent, documented no-op — a narrow fallback, not the
-primary behavior.
+displayed range), never the rest of the document. Only after the chunk is available does
+it set the local `citedChunkId` and call `scrollToChunk(chunkId)`. `DocumentTextPane`
+adds a distinct `.is-cited-chunk` treatment to that exact chunk, underneath existing
+annotation and selection styling and separate from scan text focus. Clicking another source
+moves the treatment; repeated clicks refocus it. An obsolete asynchronous load cannot
+restore the previous highlight. The highlight is dismissed with Escape (after annotation
+selection/tag focus) or *New conversation*, and disappears on document/collection changes.
+The reader still never touches `annotations`/`tagEditing` state. If the chunk cannot be
+read (including unauthorized or malformed sources), nothing stale remains highlighted.
+The public reader uses the same `DocumentTextPane` treatment for whole-chunk `?chunk=`
+links; exact `?start=&end=` passage links keep their existing range focus. A citation
+also maps its whole chunk to the scan's OCR lines across pages when layout data exists.
+The persistent citation outline is separate from temporary line/selection focus: a scan
+click, hover or page navigation never erases it. Scan overlays are outlines only (no tint
+covering the original), with an orange outline plus contrasting white halo for citations
+and a narrower blue outline for the currently focused line. Both use solid outlines:
+internal exact/approximate OCR alignment does not change the visible treatment. Text and
+scan highlights remain visible together, so the user can compare them directly. Mapping
+still uses exact sub-line offsets when available and whole lines otherwise, without
+precision warnings. When scans exist but no corresponding text can be located, the reader
+reports that fact; text-only documents do not display a missing-scan notice. Dismissing a
+citation or changing documents removes the scan outline along with the text highlight.
 
 Interacting with the right sidebar at all — switching to the AI Chat panel, clicking
 *Summarize document*, or clicking a citation — must not discard an open annotation popover

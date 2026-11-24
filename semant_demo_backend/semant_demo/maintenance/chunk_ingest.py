@@ -91,7 +91,9 @@ their listing, the cursor, the counts and the blocked documents, which a rerun r
 The listing (each file's resolved path, size and SHA-256) is written once, before the
 checkpoint, to ``CHECKPOINT.inputs.jsonl``, so that the checkpoint stays small however many
 files there are. A finished checkpoint is refused, as is one for other input (naming the
-files that differ from the listing): a new run needs a new file name. Every
+files that differ from the listing): a new run needs a new file name. So is a new checkpoint
+next to a leftover ``CHECKPOINT.manifest.jsonl`` or, for a write, ``CHECKPOINT.documents.txt``
+of an earlier run, which the new run would append to (#641); nothing is deleted. Every
 write run records its backup, its page and whether it used ``--bulk`` (with its batch) in the
 checkpoint (``runs``) before writing; a resumed run may use another page. A
 ``--backup-id`` is checked (a successful ``backup-filesystem`` backup holding the chunks and
@@ -687,6 +689,13 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, inputs: list[
         raise LookupError("A write needs a backup (--backup-id or --offline-backup, docs/DATA_MAINTENANCE.md)")
     if not write_ and (backup or bulk):
         raise LookupError("A check writes nothing and takes no backup or --bulk")
+    if not checkpoint.exists():
+        leftover = [str(p) for p in (manifest_path(checkpoint), *([documents_path(checkpoint)] if write_ else []))
+                    if p.exists()]
+        if leftover:
+            raise LookupError(f"The checkpoint {checkpoint} does not exist, but {' and '.join(leftover)} of an "
+                              "earlier run would be appended to; give a new checkpoint file name or move them. "
+                              "Nothing was written")
     if batch is not None and not bulk:
         raise LookupError("--batch belongs to --bulk")
     if (page is not None and page < 1) or (batch is not None and batch < 1):
