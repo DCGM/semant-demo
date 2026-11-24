@@ -19,6 +19,7 @@ All URIs are relative to *http://localhost*
 | [**countCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsCountsGet**](DefaultApi.md#countcollectionannotationsapiusercollectionscollectionidannotationscountsget) | **GET** /api/user_collections/{collection_id}/annotations/counts | Count Collection Annotations |
 | [**countDocumentChunksApiDocumentsDocumentIdChunksCountGet**](DefaultApi.md#countdocumentchunksapidocumentsdocumentidchunkscountget) | **GET** /api/documents/{document_id}/chunks/count | Count Document Chunks |
 | [**createAttributeApiUserCollectionsCollectionIdAttributesPost**](DefaultApi.md#createattributeapiusercollectionscollectionidattributespost) | **POST** /api/user_collections/{collection_id}/attributes | Create Attribute |
+| [**createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost**](DefaultApi.md#createsavedselectionapiusercollectionscollectionidsavedselectionspost) | **POST** /api/user_collections/{collection_id}/saved-selections | Create Saved Selection |
 | [**createTagApiTagsPost**](DefaultApi.md#createtagapitagspost) | **POST** /api/tags | Create Tag |
 | [**createTagSpanApiTagSpansPost**](DefaultApi.md#createtagspanapitagspanspost) | **POST** /api/tag_spans | Create Tag Span |
 | [**createUserCollectionApiUserCollectionsPost**](DefaultApi.md#createusercollectionapiusercollectionspost) | **POST** /api/user_collections | Create User Collection |
@@ -26,6 +27,7 @@ All URIs are relative to *http://localhost*
 | [**deleteAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdDelete**](DefaultApi.md#deleteattributevalueapiusercollectionscollectionidattributesattributeidvaluesvalueiddelete) | **DELETE** /api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id} | Delete Attribute Value |
 | [**deleteAutoSpansApiAiAutoSpansDeletePost**](DefaultApi.md#deleteautospansapiaiautospansdeletepost) | **POST** /api/ai/auto_spans/delete | Delete Auto Spans |
 | [**deleteCollectionApiUserCollectionsCollectionIdDelete**](DefaultApi.md#deletecollectionapiusercollectionscollectioniddelete) | **DELETE** /api/user_collections/{collection_id} | Delete Collection |
+| [**deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete**](DefaultApi.md#deletesavedselectionapiusercollectionscollectionidsavedselectionsselectioniddelete) | **DELETE** /api/user_collections/{collection_id}/saved-selections/{selection_id} | Delete Saved Selection |
 | [**deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost**](DefaultApi.md#deletespansfortagsindocumentapitagspansindocumentdeletepost) | **POST** /api/tag_spans/in_document/delete | Delete Spans For Tags In Document |
 | [**deleteTagApiTagsTagUuidDelete**](DefaultApi.md#deletetagapitagstaguuiddelete) | **DELETE** /api/tags/{tag_uuid} | Delete Tag |
 | [**deleteTagSpanApiTagSpansSpanIdDelete**](DefaultApi.md#deletetagspanapitagspansspaniddelete) | **DELETE** /api/tag_spans/{span_id} | Delete Tag Span |
@@ -95,6 +97,7 @@ All URIs are relative to *http://localhost*
 | [**updateAttributeValueApiUserCollectionsCollectionIdAttributesAttributeIdValuesValueIdPatch**](DefaultApi.md#updateattributevalueapiusercollectionscollectionidattributesattributeidvaluesvalueidpatch) | **PATCH** /api/user_collections/{collection_id}/attributes/{attribute_id}/values/{value_id} | Update Attribute Value |
 | [**updateCollectionApiUserCollectionsCollectionIdPatch**](DefaultApi.md#updatecollectionapiusercollectionscollectionidpatch) | **PATCH** /api/user_collections/{collection_id} | Update Collection |
 | [**updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch**](DefaultApi.md#updatecollectionownerapiusercollectionscollectionidownerpatch) | **PATCH** /api/user_collections/{collection_id}/owner | Update Collection Owner |
+| [**updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch**](DefaultApi.md#updatesavedselectionapiusercollectionscollectionidsavedselectionsselectionidpatch) | **PATCH** /api/user_collections/{collection_id}/saved-selections/{selection_id} | Update Saved Selection |
 | [**updateTagApiTagsTagUuidPatch**](DefaultApi.md#updatetagapitagstaguuidpatch) | **PATCH** /api/tags/{tag_uuid} | Update Tag |
 | [**updateTagSpanApiTagSpansSpanIdPatch**](DefaultApi.md#updatetagspanapitagspansspanidpatch) | **PATCH** /api/tag_spans/{span_id} | Update Tag Span |
 | [**uploadTextDocumentsApiUserCollectionsCollectionIdTextDocumentsPost**](DefaultApi.md#uploadtextdocumentsapiusercollectionscollectionidtextdocumentspost) | **POST** /api/user_collections/{collection_id}/text_documents | Upload Text Documents |
@@ -1249,6 +1252,81 @@ example().catch(console.error);
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
 
 
+## createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost
+
+> SavedSelection createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost(collectionId, postSavedSelection)
+
+Create Saved Selection
+
+Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // PostSavedSelection
+    postSavedSelection: ...,
+  } satisfies CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest;
+
+  try {
+    const data = await api.createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **postSavedSelection** | [PostSavedSelection](PostSavedSelection.md) |  | |
+
+### Return type
+
+[**SavedSelection**](SavedSelection.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **201** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
 ## createTagApiTagsPost
 
 > Tag createTagApiTagsPost(collectionId, postTag)
@@ -1699,7 +1777,7 @@ example().catch(console.error);
 
 Delete Collection
 
-Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
 
 ### Example
 
@@ -1741,6 +1819,81 @@ example().catch(console.error);
 | Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+`void` (Empty response body)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **204** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete
+
+> deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete(collectionId, selectionId)
+
+Delete Saved Selection
+
+Deletes a saved selection. Its creator and the collection owner.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    selectionId: selectionId_example,
+  } satisfies DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest;
+
+  try {
+    const data = await api.deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **selectionId** | `string` |  | [Defaults to `undefined`] |
 
 ### Return type
 
@@ -6912,6 +7065,84 @@ example().catch(console.error);
 ### Return type
 
 [**Collection**](Collection.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch
+
+> SavedSelection updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch(collectionId, selectionId, patchSavedSelection)
+
+Update Saved Selection
+
+Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+    // string
+    selectionId: selectionId_example,
+    // PatchSavedSelection
+    patchSavedSelection: ...,
+  } satisfies UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest;
+
+  try {
+    const data = await api.updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+| **selectionId** | `string` |  | [Defaults to `undefined`] |
+| **patchSavedSelection** | [PatchSavedSelection](PatchSavedSelection.md) |  | |
+
+### Return type
+
+[**SavedSelection**](SavedSelection.md)
 
 ### Authorization
 

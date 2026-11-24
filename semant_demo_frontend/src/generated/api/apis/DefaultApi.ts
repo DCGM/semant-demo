@@ -81,11 +81,13 @@ import type {
   PatchAttributeValue,
   PatchCollection,
   PatchCollectionOwner,
+  PatchSavedSelection,
   PatchSpan,
   PatchTag,
   PostAttribute,
   PostAttributeValue,
   PostCollection,
+  PostSavedSelection,
   PostSpan,
   PostTag,
   QuestionRequest,
@@ -97,6 +99,7 @@ import type {
   RankedResultsDistributions,
   RankedResultsDistributionsRequest,
   RetrievalMode,
+  SavedSelection,
   SearchChatRequest,
   SearchFiltersResponse,
   SearchRequest,
@@ -252,6 +255,8 @@ import {
     PatchCollectionToJSON,
     PatchCollectionOwnerFromJSON,
     PatchCollectionOwnerToJSON,
+    PatchSavedSelectionFromJSON,
+    PatchSavedSelectionToJSON,
     PatchSpanFromJSON,
     PatchSpanToJSON,
     PatchTagFromJSON,
@@ -262,6 +267,8 @@ import {
     PostAttributeValueToJSON,
     PostCollectionFromJSON,
     PostCollectionToJSON,
+    PostSavedSelectionFromJSON,
+    PostSavedSelectionToJSON,
     PostSpanFromJSON,
     PostSpanToJSON,
     PostTagFromJSON,
@@ -284,6 +291,8 @@ import {
     RankedResultsDistributionsRequestToJSON,
     RetrievalModeFromJSON,
     RetrievalModeToJSON,
+    SavedSelectionFromJSON,
+    SavedSelectionToJSON,
     SearchChatRequestFromJSON,
     SearchChatRequestToJSON,
     SearchFiltersResponseFromJSON,
@@ -409,6 +418,11 @@ export interface CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequ
     postAttribute: PostAttribute;
 }
 
+export interface CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest {
+    collectionId: string;
+    postSavedSelection: PostSavedSelection;
+}
+
 export interface CreateTagApiTagsPostRequest {
     collectionId: string;
     postTag: PostTag;
@@ -439,6 +453,11 @@ export interface DeleteAutoSpansApiAiAutoSpansDeletePostRequest {
 
 export interface DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest {
     collectionId: string;
+}
+
+export interface DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest {
+    collectionId: string;
+    selectionId: string;
 }
 
 export interface DeleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePostRequest {
@@ -785,6 +804,12 @@ export interface UpdateCollectionApiUserCollectionsCollectionIdPatchRequest {
 export interface UpdateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRequest {
     collectionId: string;
     patchCollectionOwner: PatchCollectionOwner;
+}
+
+export interface UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest {
+    collectionId: string;
+    selectionId: string;
+    patchSavedSelection: PatchSavedSelection;
 }
 
 export interface UpdateTagApiTagsTagUuidPatchRequest {
@@ -1221,6 +1246,32 @@ export interface DefaultApiInterface {
     createAttributeApiUserCollectionsCollectionIdAttributesPost(requestParameters: CreateAttributeApiUserCollectionsCollectionIdAttributesPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Attribute>;
 
     /**
+     * Creates request options for createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost without sending the request
+     * @param {string} collectionId 
+     * @param {PostSavedSelection} postSavedSelection 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequestOpts(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * @summary Create Saved Selection
+     * @param {string} collectionId 
+     * @param {PostSavedSelection} postSavedSelection 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRaw(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>>;
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * Create Saved Selection
+     */
+    createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection>;
+
+    /**
      * Creates request options for createTagApiTagsPost without sending the request
      * @param {string} collectionId 
      * @param {PostTag} postTag 
@@ -1381,7 +1432,7 @@ export interface DefaultApiInterface {
     deleteCollectionApiUserCollectionsCollectionIdDeleteRequestOpts(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest): Promise<runtime.RequestOpts>;
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * @summary Delete Collection
      * @param {string} collectionId 
      * @param {*} [options] Override http request option.
@@ -1391,10 +1442,36 @@ export interface DefaultApiInterface {
     deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     deleteCollectionApiUserCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
+
+    /**
+     * Creates request options for deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete without sending the request
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequestOpts(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * @summary Delete Saved Selection
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRaw(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>>;
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * Delete Saved Selection
+     */
+    deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void>;
 
     /**
      * Creates request options for deleteSpansForTagsInDocumentApiTagSpansInDocumentDeletePost without sending the request
@@ -3232,6 +3309,34 @@ export interface DefaultApiInterface {
     updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch(requestParameters: UpdateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection>;
 
     /**
+     * Creates request options for updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch without sending the request
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @param {PatchSavedSelection} patchSavedSelection 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequestOpts(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * @summary Update Saved Selection
+     * @param {string} collectionId 
+     * @param {string} selectionId 
+     * @param {PatchSavedSelection} patchSavedSelection 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRaw(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>>;
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * Update Saved Selection
+     */
+    updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection>;
+
+    /**
      * Creates request options for updateTagApiTagsTagUuidPatch without sending the request
      * @param {string} tagUuid 
      * @param {PatchTag} patchTag 
@@ -4238,6 +4343,68 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
+     * Creates request options for createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost without sending the request
+     */
+    async createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequestOpts(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost().'
+            );
+        }
+
+        if (requestParameters['postSavedSelection'] == null) {
+            throw new runtime.RequiredError(
+                'postSavedSelection',
+                'Required parameter "postSavedSelection" was null or undefined when calling createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PostSavedSelectionToJSON(requestParameters['postSavedSelection']),
+        };
+    }
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * Create Saved Selection
+     */
+    async createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRaw(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>> {
+        const requestOptions = await this.createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SavedSelectionFromJSON(jsonValue));
+    }
+
+    /**
+     * Saves a live filter: the annotation query and how it is listed, evaluated again on every open.
+     * Create Saved Selection
+     */
+    async createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPost(requestParameters: CreateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection> {
+        const response = await this.createSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsPostRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Creates request options for createTagApiTagsPost without sending the request
      */
     async createTagApiTagsPostRequestOpts(requestParameters: CreateTagApiTagsPostRequest): Promise<runtime.RequestOpts> {
@@ -4624,7 +4791,7 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
@@ -4635,11 +4802,70 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
     }
 
     /**
-     * Deletes a collection with its tags, annotations and attribute definitions. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
+     * Deletes a collection with its tags, annotations, attribute definitions and saved selections. Owner only. If a step fails, the request fails (500) with the completed steps in the body; completed deletions are kept and deleting again continues.
      * Delete Collection
      */
     async deleteCollectionApiUserCollectionsCollectionIdDelete(requestParameters: DeleteCollectionApiUserCollectionsCollectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.deleteCollectionApiUserCollectionsCollectionIdDeleteRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * Creates request options for deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete without sending the request
+     */
+    async deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequestOpts(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete().'
+            );
+        }
+
+        if (requestParameters['selectionId'] == null) {
+            throw new runtime.RequiredError(
+                'selectionId',
+                'Required parameter "selectionId" was null or undefined when calling deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections/{selection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"selection_id"}}`, encodeURIComponent(String(requestParameters['selectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * Delete Saved Selection
+     */
+    async deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRaw(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        const requestOptions = await this.deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Deletes a saved selection. Its creator and the collection owner.
+     * Delete Saved Selection
+     */
+    async deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDelete(requestParameters: DeleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.deleteSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdDeleteRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -8752,6 +8978,76 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatch(requestParameters: UpdateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Collection> {
         const response = await this.updateCollectionOwnerApiUserCollectionsCollectionIdOwnerPatchRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch without sending the request
+     */
+    async updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequestOpts(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch().'
+            );
+        }
+
+        if (requestParameters['selectionId'] == null) {
+            throw new runtime.RequiredError(
+                'selectionId',
+                'Required parameter "selectionId" was null or undefined when calling updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch().'
+            );
+        }
+
+        if (requestParameters['patchSavedSelection'] == null) {
+            throw new runtime.RequiredError(
+                'patchSavedSelection',
+                'Required parameter "patchSavedSelection" was null or undefined when calling updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections/{selection_id}`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+        urlPath = urlPath.replace(`{${"selection_id"}}`, encodeURIComponent(String(requestParameters['selectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchSavedSelectionToJSON(requestParameters['patchSavedSelection']),
+        };
+    }
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * Update Saved Selection
+     */
+    async updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRaw(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<SavedSelection>> {
+        const requestOptions = await this.updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => SavedSelectionFromJSON(jsonValue));
+    }
+
+    /**
+     * Renames a saved selection and/or replaces its query. Its creator and the collection owner.
+     * Update Saved Selection
+     */
+    async updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatch(requestParameters: UpdateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<SavedSelection> {
+        const response = await this.updateSavedSelectionApiUserCollectionsCollectionIdSavedSelectionsSelectionIdPatchRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -2,7 +2,7 @@
 
 ``create_tables`` only creates tables that do not exist yet; it never drops or alters
 existing tables or rows (user accounts, feedback, the LLM quota ledger, the annotation
-tenant activity and the collection attributes of #331 are kept). A column added to an
+tenant activity, the collection attributes of #331 and the saved selections of #824 are kept). A column added to an
 existing table therefore needs an explicit step before the backend starts: startup refuses a
 database that lacks one (``annotation_attribute.all_tags``, #522) instead of failing on
 every attribute request.
@@ -15,11 +15,14 @@ from semant_demo.adapters.sql.ai_runs import AiSuggestionRunRow
 from semant_demo.adapters.sql.attributes import AttributeChangeRow, AttributeRow, AttributeValueRow
 from semant_demo.adapters.sql.feedback import RagUserFeedback
 from semant_demo.adapters.sql.quota import QuotaCall, QuotaDay, QuotaOperation
+from semant_demo.adapters.sql.saved_selections import SavedSelectionRow
 from semant_demo.adapters.sql.tenant_activity import AnnotationTenantActivity
 from semant_demo.users.models import User
 
-__all__ = ["AiSuggestionRunRow", "AnnotationTenantActivity", "AttributeChangeRow", "AttributeRow", "AttributeValueRow", "Base",
-           "QuotaCall", "QuotaDay", "QuotaOperation", "RagUserFeedback", "User", "create_tables"]
+
+__all__ = ["AiSuggestionRunRow", "AnnotationTenantActivity", "AttributeChangeRow", "AttributeRow",
+           "AttributeValueRow", "Base", "QuotaCall", "QuotaDay", "QuotaOperation",
+           "RagUserFeedback", "SavedSelectionRow", "User", "create_tables"]
 
 
 class OutdatedSchemaError(RuntimeError):

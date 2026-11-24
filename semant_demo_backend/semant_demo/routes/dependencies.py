@@ -4,6 +4,7 @@ from starlette.requests import HTTPConnection
 from semant_demo.adapters.filesystem.page_assets import PageAssetStore
 from semant_demo.adapters.sql.attributes import AttributeRepository
 from semant_demo.adapters.sql.ai_runs import AiRunRepository
+from semant_demo.adapters.sql.saved_selections import SavedSelectionRepository
 from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.users import UserLookup
 from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway
@@ -19,6 +20,7 @@ from semant_demo.features.analytics.service import OverviewCache
 from semant_demo.features.annotations.service import AnnotationStore
 from semant_demo.features.documents.asset_access import AssetSigner
 from semant_demo.features.attributes.service import AttributeStore
+from semant_demo.features.saved_selections.service import SavedSelectionStore
 from semant_demo.features.quota.service import QuotaPolicy
 from semant_demo.features.search.service import SearchBackends
 from semant_demo.features.search.vectors import SearchVectors
@@ -101,6 +103,13 @@ def get_attribute_definitions(connection: HTTPConnection) -> AttributeRepository
 async def get_attribute_store(connection: HTTPConnection) -> AttributeStore:
     return AttributeStore(definitions=get_resources(connection).attributes,
                           annotations=await get_annotation_store(connection))
+
+def get_saved_selections(connection: HTTPConnection) -> SavedSelectionRepository:
+    return get_resources(connection).saved_selections
+
+async def get_saved_selection_store(connection: HTTPConnection) -> SavedSelectionStore:
+    return SavedSelectionStore(collections=_weaviate(connection).user_collections,
+                               selections=get_resources(connection).saved_selections)
 
 async def get_search_backends(connection: HTTPConnection) -> SearchBackends:
     weaviate = _weaviate(connection)
