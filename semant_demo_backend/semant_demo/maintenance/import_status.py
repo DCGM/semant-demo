@@ -48,10 +48,12 @@ Vector index (``index``): for up to ``--coverage-sample`` chunks sampled (``--se
 those that list the vector, the checks of ``db_benchmark inventory --coverage-sample``, on the
 imported chunks only:
 
-* a vector query with the chunk's own stored vector finds it in the top ``--coverage-k``: it
-  is in the graph that search walks. A chunk missing there is queried again with the top
-  ``RETRY_FACTOR`` x ``K`` (``retried``): a chunk with duplicate text shares its vector with
-  other chunks, and the graph search is approximate. Only a miss there too counts;
+* a vector query with the chunk's own stored vector finds it in the top ``--coverage-k``. A
+  chunk missing there is queried again with the top ``RETRY_FACTOR`` x ``K`` (``retried``): a
+  chunk with duplicate text shares its vector with other chunks, and the graph search is
+  approximate. Only a miss there too counts, as a self-retrieval miss (``not_in_top_k``): a
+  sign, not proof, that the chunk is missing from the graph that search walks, since a correctly
+  indexed chunk among many identical vectors can miss too;
 * a vector query restricted to the chunk's id finds it. Weaviate answers so selective a filter
   by a flat (brute-force) search over the matching objects (``flatSearchCutoff``), so this
   shows only that the vector is stored and readable, not that it is in the graph.
@@ -62,7 +64,8 @@ indexing): run the report again later.
 Exit code 0 when every stage is complete for the listed documents (expected gaps aside) and the
 index finds every sampled chunk; 1 when something is incomplete or missed; 2 when refused: the
 report exists, the document list is missing, empty or not UUIDs, a listed document does not
-exist, a collection, a property the stages write or the named vector is missing. Run it while
+exist, a collection, a property the stages write or the named vector is missing, or
+``--coverage-sample`` is below 0 or ``--coverage-k`` below 1. Run it while
 nothing writes the imported documents.
 
 The Weaviate endpoint comes from ``WEAVIATE_HOST`` / ``WEAVIATE_REST_PORT`` /
@@ -320,6 +323,9 @@ async def run(client: WeaviateAsyncClient, names: CollectionNames, *, report: Pa
               progress: Callable[[str], None] = _progress) -> dict[str, Any]:
     """The report (see the module docstring), also saved to ``report``. Raises ``Refused``
     before reading any chunk when it cannot be made."""
+    if coverage_sample < 0 or coverage_k < 1:
+        raise Refused(f"--coverage-sample must be 0 or more and --coverage-k 1 or more "
+                      f"(given {coverage_sample} and {coverage_k})")
     if report.exists():
         raise Refused(f"The report {report} exists; give a new report file name")
     chunks, documents_collection, chunk_dimensions = await _resolve(client, names, vector_name)
