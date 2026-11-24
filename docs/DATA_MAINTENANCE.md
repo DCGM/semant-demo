@@ -912,6 +912,9 @@ flowchart LR
    above reached the imported documents and that the index finds their vectors
    ([Import status](#import-status-import_status-884)).
 
+The [ingestion runbook](INGESTION_RUNBOOK.md) puts these steps, from the preflight to the run's
+record, in one checklist with the expected exit codes.
+
 `semant_demo_backend/tests/integration/test_append_pipeline.py` (#798) runs this order on the
 disposable test store with fake models, as a smoke test of the hand-offs: a new document, one
 missing from the Kramerius mirror and chunks appended to an existing document go through the
