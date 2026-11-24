@@ -627,6 +627,10 @@ export interface ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotati
     includeSource?: boolean;
 }
 
+export interface ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest {
+    collectionId: string;
+}
+
 export interface ListSuggestionRunsApiAiSuggestionRunsGetRequest {
     collectionId: string;
     documentId: string;
@@ -2355,6 +2359,30 @@ export interface DefaultApiInterface {
      * List Collection Annotations
      */
     listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage>;
+
+    /**
+     * Creates request options for listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet without sending the request
+     * @param {string} collectionId 
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequestOpts(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest): Promise<runtime.RequestOpts>;
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * @summary List Saved Selections
+     * @param {string} collectionId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DefaultApiInterface
+     */
+    listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRaw(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SavedSelection>>>;
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * List Saved Selections
+     */
+    listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SavedSelection>>;
 
     /**
      * Creates request options for listSuggestionRunsApiAiSuggestionRunsGet without sending the request
@@ -6783,6 +6811,58 @@ export class DefaultApi extends runtime.BaseAPI implements DefaultApiInterface {
      */
     async listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet(requestParameters: ListCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AnnotationPage> {
         const response = await this.listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGetRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Creates request options for listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet without sending the request
+     */
+    async listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequestOpts(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest): Promise<runtime.RequestOpts> {
+        if (requestParameters['collectionId'] == null) {
+            throw new runtime.RequiredError(
+                'collectionId',
+                'Required parameter "collectionId" was null or undefined when calling listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.accessToken) {
+            // oauth required
+            headerParameters["Authorization"] = await this.configuration.accessToken("OAuth2PasswordBearer", []);
+        }
+
+
+        let urlPath = `/api/user_collections/{collection_id}/saved-selections`;
+        urlPath = urlPath.replace(`{${"collection_id"}}`, encodeURIComponent(String(requestParameters['collectionId'])));
+
+        return {
+            path: urlPath,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        };
+    }
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * List Saved Selections
+     */
+    async listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRaw(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<SavedSelection>>> {
+        const requestOptions = await this.listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequestOpts(requestParameters);
+        const response = await this.request(requestOptions, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(SavedSelectionFromJSON));
+    }
+
+    /**
+     * The collection\'s saved selections, by name. Owner and shared users.
+     * List Saved Selections
+     */
+    async listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet(requestParameters: ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<SavedSelection>> {
+        const response = await this.listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

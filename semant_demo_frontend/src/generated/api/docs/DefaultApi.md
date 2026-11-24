@@ -60,6 +60,7 @@ All URIs are relative to *http://localhost*
 | [**listAttributeChangesApiUserCollectionsCollectionIdAnnotationsAnnotationIdAttributeChangesGet**](DefaultApi.md#listattributechangesapiusercollectionscollectionidannotationsannotationidattributechangesget) | **GET** /api/user_collections/{collection_id}/annotations/{annotation_id}/attribute-changes | List Attribute Changes |
 | [**listAttributesApiUserCollectionsCollectionIdAttributesGet**](DefaultApi.md#listattributesapiusercollectionscollectionidattributesget) | **GET** /api/user_collections/{collection_id}/attributes | List Attributes |
 | [**listCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsGet**](DefaultApi.md#listcollectionannotationsapiusercollectionscollectionidannotationsget) | **GET** /api/user_collections/{collection_id}/annotations | List Collection Annotations |
+| [**listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet**](DefaultApi.md#listsavedselectionsapiusercollectionscollectionidsavedselectionsget) | **GET** /api/user_collections/{collection_id}/saved-selections | List Saved Selections |
 | [**listSuggestionRunsApiAiSuggestionRunsGet**](DefaultApi.md#listsuggestionrunsapiaisuggestionrunsget) | **GET** /api/ai/suggestion_runs | List Suggestion Runs |
 | [**questionApiQuestionPost**](DefaultApi.md#questionapiquestionpost) | **POST** /api/question | Question |
 | [**ragApiRagPost**](DefaultApi.md#ragapiragpost) | **POST** /api/rag | Rag |
@@ -4316,6 +4317,78 @@ example().catch(console.error);
 ### Return type
 
 [**AnnotationPage**](AnnotationPage.md)
+
+### Authorization
+
+[OAuth2PasswordBearer password](../README.md#OAuth2PasswordBearer-password)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: `application/json`
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+| **200** | Successful Response |  -  |
+| **422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)
+
+
+## listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet
+
+> Array&lt;SavedSelection&gt; listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet(collectionId)
+
+List Saved Selections
+
+The collection\&#39;s saved selections, by name. Owner and shared users.
+
+### Example
+
+```ts
+import {
+  Configuration,
+  DefaultApi,
+} from '';
+import type { ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest } from '';
+
+async function example() {
+  console.log("🚀 Testing  SDK...");
+  const config = new Configuration({ 
+    // To configure OAuth2 access token for authorization: OAuth2PasswordBearer password
+    accessToken: "YOUR ACCESS TOKEN",
+  });
+  const api = new DefaultApi(config);
+
+  const body = {
+    // string
+    collectionId: collectionId_example,
+  } satisfies ListSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGetRequest;
+
+  try {
+    const data = await api.listSavedSelectionsApiUserCollectionsCollectionIdSavedSelectionsGet(body);
+    console.log(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Run the test
+example().catch(console.error);
+```
+
+### Parameters
+
+
+| Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **collectionId** | `string` |  | [Defaults to `undefined`] |
+
+### Return type
+
+[**Array&lt;SavedSelection&gt;**](SavedSelection.md)
 
 ### Authorization
 

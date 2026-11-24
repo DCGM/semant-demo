@@ -68,31 +68,31 @@ export interface AiSuggestionRunInfo {
      */
     saved?: number;
     /**
-     *
+     * 
      * @type {AiSuggestionRunInfoUnitEnum}
      * @memberof AiSuggestionRunInfo
      */
     unit?: AiSuggestionRunInfoUnitEnum;
     /**
-     *
+     * 
      * @type {number}
      * @memberof AiSuggestionRunInfo
      */
     unitsTotal?: number;
     /**
-     *
+     * 
      * @type {number}
      * @memberof AiSuggestionRunInfo
      */
     unitsCompleted?: number;
     /**
-     *
+     * 
      * @type {number}
      * @memberof AiSuggestionRunInfo
      */
     providerFailures?: number;
     /**
-     *
+     * 
      * @type {number}
      * @memberof AiSuggestionRunInfo
      */

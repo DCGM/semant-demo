@@ -249,7 +249,7 @@ class AppResources:
                    quota_ledger=QuotaLedger(session_maker), quota_policy=quota_policy,
                    tenant_activity=TenantActivity(session_maker, config.ANNOTATION_TENANT_TOUCH_SECONDS),
                    attributes=AttributeRepository(session_maker),
-                   ai_runs=AiRunRepository(session_maker))
+                   ai_runs=AiRunRepository(session_maker),
                    saved_selections=SavedSelectionRepository(session_maker))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:
