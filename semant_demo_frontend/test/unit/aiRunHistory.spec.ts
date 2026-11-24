@@ -26,10 +26,19 @@ describe('AI run filter (#801)', () => {
 
 describe('AI run outcome explanations', () => {
   const run: AiSuggestionRunInfo = {
-    id: 'run-a', mode: 'optimized', config_name: 'fake-local', tag_ids: ['tag'],
-    started_at: '2026-11-24T10:00:00Z', finished_at: '2026-11-24T10:01:00Z',
-    outcome: 'cancelled', saved: 2, unit: 'call', units_total: 5, units_completed: 2,
-    provider_failures: 0, save_failures: 0
+    id: 'run-a',
+    mode: 'optimized',
+    config_name: 'fake-local',
+    tag_ids: ['tag'],
+    started_at: '2026-11-24T10:00:00Z',
+    finished_at: '2026-11-24T10:01:00Z',
+    outcome: 'cancelled',
+    saved: 2,
+    unit: 'call',
+    units_total: 5,
+    units_completed: 2,
+    provider_failures: 0,
+    save_failures: 0
   }
 
   it('reports completed operations and retained suggestions on cancellation', () => {
