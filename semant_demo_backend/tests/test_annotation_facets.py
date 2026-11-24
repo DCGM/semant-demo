@@ -322,3 +322,72 @@ def test_at_most_a_hundred_facets_are_accepted():
     assert len(AnnotationFacetsRequest(facets=attributes).facets) == 100
     with pytest.raises(ValidationError):
         AnnotationFacetsRequest(facets=[*attributes, "tag"])
+
+
+async def stats(store, attributes, **filters):
+    found = await facet_counts(store, f"attribute:{ATTRIBUTE}", attributes=attributes, self_exclusion=False, **filters)
+    return found[f"attribute:{ATTRIBUTE}"]
+
+
+async def test_attribute_statistics_separate_annotations_assignments_and_missing(populated):
+    """#819: one population (approved annotations of an applicable tag), then values, annotations and assignments."""
+    rows = populated.spans.rows
+    # rows[0] red+green, rows[1] red on OTHER_TAG (inapplicable), rows[3] green, rows[4] rejected with a value
+    held(rows[:2], [RED, GREEN], [RED])
+    held(rows[3:4], [GREEN])
+    held(rows[4:5], [RED], type=SpanType.neg)
+    facet = await stats(populated, Attributes(), types=list(SpanType))
+    values = {v.value: v for v in facet.values}
+    assert (values[str(RED)].count, values[str(RED)].inapplicable) == (2, 1)  # stored holders: rows 0 and 1
+    assert values[str(GREEN)].count - values[str(GREEN)].inapplicable == 2
+    # approved annotations of TAG: rows 0, 3, 5 (rows 1 and 6 are OTHER_TAG, 2 is a proposal, 4 rejected)
+    assert facet.eligible == 3  # the approved TAG annotations: rows 0, 3, 5
+    assert facet.with_value == 2  # rows 0 and 3
+    assert facet.assignments == 3  # red once, green twice: more than the annotations with a value
+    assert facet.assignments > facet.with_value
+    assert facet.eligible - facet.with_value == 1  # row 5 has no value: the Missing bucket
+
+
+async def test_attribute_statistics_follow_the_query_and_are_absent_for_the_menus(populated):
+    held(populated.spans.rows[:1], [RED])
+    narrowed = await stats(populated, Attributes(), document_ids=[DOC_B])
+    assert (narrowed.eligible, narrowed.with_value, narrowed.assignments) == (1, 0, 0)
+    off_tag = await stats(populated, Attributes(), tag_ids=[OTHER_TAG])
+    assert (off_tag.eligible, off_tag.with_value, off_tag.assignments) == (0, 0, 0)  # the attribute applies to no such tag
+    menu = (await facet_counts(populated, f"attribute:{ATTRIBUTE}", attributes=Attributes()))[f"attribute:{ATTRIBUTE}"]
+    assert (menu.eligible, menu.with_value, menu.assignments) == (None, None, None)
+
+
+async def test_attribute_statistics_of_all_tags_count_every_approved_annotation(populated):
+    held(populated.spans.rows[:2], [RED], [GREEN])
+    facet = await stats(populated, Attributes(all_tags=True))
+    assert (facet.eligible, facet.with_value, facet.assignments) == (5, 2, 2)  # five approved annotations
+    assert all(v.inapplicable == 0 for v in facet.values)
+    unapproved = await stats(populated, Attributes(all_tags=True), types=[SpanType.auto])
+    assert (unapproved.eligible, unapproved.with_value) == (0, 0)  # no approved annotation in the query
+
+
+async def test_applicable_drilldown_reproduces_the_counted_annotations(populated):
+    """The drill-down of a value: its approved status and the attribute's tags (within the query's own)."""
+    held(populated.spans.rows[:2], [RED], [RED])  # rows[1] keeps red on a tag the attribute no longer applies to
+    facet = await stats(populated, Attributes())
+    red = {v.value: v for v in facet.values}[str(RED)]
+    applicable = red.count - red.inapplicable
+    page = await service.query_annotations(populated, OWNER, COLLECTION, AnnotationFilters(
+        attribute_values=[codec.encode(ATTRIBUTE, RED)], types=[SpanType.pos], tag_ids=[TAG]))
+    assert page.total == applicable == 1  # the stored-value filter alone would list both
+    stored = await service.query_annotations(populated, OWNER, COLLECTION, AnnotationFilters(
+        attribute_values=[codec.encode(ATTRIBUTE, RED)], types=[SpanType.pos]))
+    assert stored.total == red.count == 2
+    missing = await service.query_annotations(populated, OWNER, COLLECTION, AnnotationFilters(
+        attribute_unassigned=[ATTRIBUTE], types=[SpanType.pos], tag_ids=[TAG]))
+    assert missing.total == facet.eligible - facet.with_value
+
+
+async def test_attribute_statistics_keep_the_query_own_filter_on_the_attribute(populated):
+    held(populated.spans.rows[:1], [RED, GREEN])
+    held(populated.spans.rows[3:4], [GREEN])
+    facet = await stats(populated, Attributes(), attribute_values=[codec.encode(ATTRIBUTE, RED)])
+    # the query is "holds red": GREEN is counted among those annotations only, and none is without a value
+    assert (facet.eligible, facet.with_value, facet.assignments) == (1, 1, 2)
+    assert counts(facet)[str(GREEN)] == 1

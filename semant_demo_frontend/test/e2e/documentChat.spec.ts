@@ -9,6 +9,7 @@ import { apiToken, chunkText, ensureLoggedIn, fixture, logOut, openDocument, sid
 
 const CHAT_URL = /\/documents\/[^/]+\/chat$/
 const answers = (page: Page) => page.getByTestId('chat-answer')
+const cited = (page: Page) => page.locator('.chunk-annotator.is-cited-chunk')
 
 async function ask (page: Page, question: string) {
   await page.getByLabel('Ask about this document').fill(question)
@@ -22,6 +23,9 @@ test('an answer cites only the chunks in the collection, and a citation scrolls 
   await page.locator('.gutter-item').first().click()
   const popover = page.locator('.annotation-popover')
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
+  const selected = page.locator('.chunk-annotator .is-selected')
+  await expect(selected.first()).toBeVisible()
+  const selectedText = await selected.allTextContents()
 
   await sidebarPanelButton(page, 'AI Chat').click()
   await ask(page, 'Co se stalo v obci?')
@@ -32,7 +36,10 @@ test('an answer cites only the chunks in the collection, and a citation scrolls 
   await answers(page).getByRole('link', { name: '[S1]' }).click()
 
   await expect(chunkText(page, 'chronicle_3')).toBeInViewport()
+  await expect(cited(page)).toHaveCount(1)
+  await expect(chunkText(page, 'chronicle_3')).toHaveClass(/is-cited-chunk/)
   await expect(popover.getByRole('button', { name: 'Change tag' })).toBeVisible()
+  expect(await selected.allTextContents()).toEqual(selectedText)
 })
 
 test('a follow-up sends the earlier turns with their cited chunk ids, never source text, and keeps the S labels', async ({ page }) => {
@@ -59,9 +66,13 @@ test('a follow-up sends the earlier turns with their cited chunk ids, never sour
 
   await answers(page).nth(1).getByRole('link', { name: '[S1]' }).click()
   await expect(chunkText(page, 'chronicle_2')).toBeInViewport()
+  await expect(chunkText(page, 'chronicle_2')).toHaveClass(/is-cited-chunk/)
+  await answers(page).nth(1).getByRole('link', { name: '[S1]' }).click()
+  await expect(cited(page)).toHaveCount(1)
 
   await page.getByTestId('chat-new-conversation').click()
   await expect(answers(page)).toHaveCount(0)
+  await expect(cited(page)).toHaveCount(0)
 })
 
 test('switching documents starts an empty conversation and clears the typed question', async ({ page }) => {

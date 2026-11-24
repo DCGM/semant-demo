@@ -24,7 +24,7 @@
             :active-approximate="activeApproximate && !!activeByChunk[chunk.id]"
             :page-range="pageMarks?.[chunk.id]?.range ?? null"
             :page-breaks="pageMarks?.[chunk.id]?.breaks ?? NO_BREAKS"
-            :class="chunkClass?.(chunk)"
+            :class="[chunkClass?.(chunk), { 'is-cited-chunk': citedChunkId === chunk.id }]"
             @boundary-drag="emit('boundaryDrag', $event)"
           />
         </template>
@@ -60,6 +60,8 @@ const props = withDefaults(defineProps<{
   chunks: T[]
   preserveWhitespace?: boolean
   annotation?: TextPaneAnnotation | null
+  /** Read-only citation highlight: the entire cited chunk, independently of selections and scan focus. */
+  citedChunkId?: string | null
   /** A passage focused from outside the text, highlighted; may continue into later chunks. */
   activeRange?: ChunkRange | null
   /** The active passage is placed approximately; it is marked so. */
@@ -73,6 +75,7 @@ const props = withDefaults(defineProps<{
   revealInset: 0,
   preserveWhitespace: true,
   annotation: null,
+  citedChunkId: null,
   activeRange: null,
   activeApproximate: false,
   pageMarks: null,
@@ -213,4 +216,21 @@ defineExpose({ root, scrollToChunk, scrollToRange, revealRange })
     line-height: 1.9;
   }
 }
+/* Whole-chunk evidence, behind any coloured tags/selection handles and distinct from the
+   active scan passage. This is decoration only: no selection or annotation is created. */
+.document-text :deep(.chunk-annotator.is-cited-chunk) {
+  background: rgba(245, 158, 11, 0.19);
+  box-shadow: inset 3px 0 0 #a16207;
+  /* Keep the citation bar separate from the first letter of every line. */
+  padding-inline-start: 12px;
+  border-radius: 3px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+:global(.body--dark) .document-text :deep(.chunk-annotator.is-cited-chunk) {
+  background: rgba(251, 191, 36, 0.27);
+  box-shadow: inset 3px 0 0 #fbbf24;
+}
+
 </style>
