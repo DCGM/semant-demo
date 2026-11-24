@@ -20,6 +20,7 @@
         :page-id="pageId"
         :document-title="documentTitle"
         :highlights="highlights"
+        :citation-highlights="citationHighlights"
         :layout-cache="layoutCache"
         :collection-id="collectionId"
         @page-change="(page, index) => emit('pageChange', page, index)"
@@ -89,10 +90,11 @@ withDefaults(defineProps<{
   pageId?: string | null
   documentTitle?: string
   highlights?: ScanHighlight[]
+  citationHighlights?: ScanHighlight[]
   layoutCache?: LayoutCache | null
   /** The collection the document is read through (#279). */
   collectionId?: string | null
-}>(), { pageId: null, documentTitle: '', highlights: () => [], layoutCache: null, collectionId: null })
+}>(), { pageId: null, documentTitle: '', highlights: () => [], citationHighlights: () => [], layoutCache: null, collectionId: null })
 
 const emit = defineEmits<{
   'update:narrow': [narrow: boolean]

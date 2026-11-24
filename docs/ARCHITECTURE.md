@@ -140,7 +140,8 @@ semant_demo_backend/semant_demo/
                           chunk_year, chunk_titles (generated chunk titles through the LLM gateway, #575),
                           chunk_summary_schema and chunk_summaries (documents' chunk-value
                           summaries, #529), classification_provenance_schema (chunks' classification
-                          status, #590), db_benchmark (read-only Weaviate inventory and query benchmark, #374),
+                          status, #590), import_status (read-only per-stage coverage of an import's documents, #884),
+                          db_benchmark (read-only Weaviate inventory and query benchmark, #374),
                           page_order (read-only export of documents' ordered page lists from the Kramerius mirror, #571),
                           page_layout (offline PAGE XML -> page layout files and chunk-start anchors, #540;
                           [PAGE_LAYOUT.md](PAGE_LAYOUT.md)),
