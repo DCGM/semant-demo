@@ -42,12 +42,10 @@
         <template v-for="h in citationBands" :key="h.key">
           <polygon
             class="scan-citation-halo"
-            :class="{ 'scan-citation--approximate': h.approximate }"
             :points="h.points"
           />
           <polygon
             class="scan-citation-outline"
-            :class="{ 'scan-citation--approximate': h.approximate }"
             :points="h.points"
             :data-citation-line-id="h.lineId"
           />
@@ -67,7 +65,6 @@
           v-for="h in highlightBands"
           :key="h.key"
           class="scan-highlight"
-          :class="{ 'scan-highlight--approximate': h.approximate }"
           :points="h.points"
           :data-highlight-line-id="h.lineId"
         />
@@ -114,10 +111,10 @@ import {
 
 export interface LineHighlight {
   lineId: string
-  /** UTF-16 offsets in the line's text; widened to whole (approximate) words. */
+  /** UTF-16 offsets in the line's text; widened to whole words when needed. */
   start?: number
   end?: number
-  /** Placed approximately (the OCR text differs from the document text): drawn dashed. */
+  /** Internal mapping precision; not exposed as a visual distinction. */
   approximate?: boolean
 }
 
@@ -175,14 +172,14 @@ const highlightBands = computed(() => props.highlights.flatMap((h, i) => {
   const line = linesById.value.get(h.lineId)
   if (!line) return []
   const [from, to] = rangeDistances(line, h.start, h.end)
-  return [{ key: `${i}-${h.lineId}`, lineId: h.lineId, approximate: !!h.approximate, points: svgPoints(lineBand(line, from, to)) }]
+  return [{ key: `${i}-${h.lineId}`, lineId: h.lineId, points: svgPoints(lineBand(line, from, to)) }]
 }))
 
 const citationBands = computed(() => props.citationHighlights.flatMap((h, i) => {
   const line = linesById.value.get(h.lineId)
   if (!line) return []
   const [from, to] = rangeDistances(line, h.start, h.end)
-  return [{ key: `citation-${i}-${h.lineId}`, lineId: h.lineId, approximate: !!h.approximate, points: svgPoints(lineBand(line, from, to)) }]
+  return [{ key: `citation-${i}-${h.lineId}`, lineId: h.lineId, points: svgPoints(lineBand(line, from, to)) }]
 }))
 
 const limits = () => stageSize.value ? scaleLimits(stageSize.value, viewerSize.value) : { min: 0.01, max: 4 }
@@ -519,18 +516,11 @@ defineExpose({
   stroke: #a16207;
   stroke-width: 3px;
 }
-/* Dashed means approximate OCR alignment for either layer, never "AI citation". */
-.scan-citation--approximate {
-  stroke-dasharray: 6 4;
-}
 .scan-highlight {
   fill: none;
   stroke: #2563eb;
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
-}
-.scan-highlight--approximate {
-  stroke-dasharray: 6 4;
 }
 
 .scan-view__state {

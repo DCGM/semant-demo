@@ -293,9 +293,13 @@ also maps its whole chunk to the scan's OCR lines across pages when layout data 
 The persistent citation outline is separate from temporary line/selection focus: a scan
 click, hover or page navigation never erases it. Scan overlays are outlines only (no tint
 covering the original), with an orange outline plus contrasting white halo for citations
-and a narrower blue outline for the currently focused line. Dashed outlines in either
-colour mean approximate OCR alignment, never character-precise text. Dismissing a citation
-or changing documents removes the scan outline along with the text highlight.
+and a narrower blue outline for the currently focused line. Both use solid outlines:
+internal exact/approximate OCR alignment does not change the visible treatment. Text and
+scan highlights remain visible together, so the user can compare them directly. Mapping
+still uses exact sub-line offsets when available and whole lines otherwise, without
+precision warnings. When scans exist but no corresponding text can be located, the reader
+reports that fact; text-only documents do not display a missing-scan notice. Dismissing a
+citation or changing documents removes the scan outline along with the text highlight.
 
 Interacting with the right sidebar at all — switching to the AI Chat panel, clicking
 *Summarize document*, or clicking a citation — must not discard an open annotation popover

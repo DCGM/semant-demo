@@ -158,7 +158,7 @@ test.describe('the public document view', () => {
     const citations = page.locator('polygon.scan-citation-outline')
     await expect(citations).toHaveCount(1)
     await expect(citations).toHaveAttribute('data-citation-line-id', 'r002-l001')
-    await expect(citations).not.toHaveClass(/scan-citation--approximate/)
+    await expect(citations).toHaveCSS('stroke-dasharray', 'none')
 
     // Focusing another line affects the transient blue layer, not the cited orange one.
     await clickLine(page, 'r003-l001')
@@ -183,11 +183,11 @@ test.describe('the public document view', () => {
     await expect(overlay(page)).toHaveAttribute('data-layout-page-id', GAZETTE_PAGE)
     await expect(highlights(page)).toHaveCount(1)
     await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l001')
-    await expect(highlights(page)).not.toHaveClass(/approximate/)
+    await expect(highlights(page)).toHaveCSS('stroke-dasharray', 'none')
     await expect(chunk(page, 'gazette_1').locator('.is-active-passage')).toHaveText('hostila')
     await expect(notice(page)).toHaveCount(0)
 
-    // Clicking the other chunk's line on the scan selects its text, exactly.
+    // Clicking the other chunk's line on the scan selects its text.
     await clickLine(page, 'r003-l001')
     await expect(chunk(page, 'gazette_2').locator('.is-active-passage')).toHaveText(fixture.chunk('gazette_2').text)
     await expect(page.locator('.has-approximate-passage')).toHaveCount(0)
@@ -196,7 +196,7 @@ test.describe('the public document view', () => {
     await expect(chunk(page, 'gazette_1').locator('.page-break')).toHaveCount(0)
   })
 
-  test('a page opens with its text alone; approximate lines are whole lines, marked as such', async ({ page }) => {
+  test('a page opens with its text alone; approximate mapping still selects whole lines without warnings', async ({ page }) => {
     await useViewport(page, 'wide')
     const layouts: string[] = []
     const pageReads: string[] = []
@@ -210,22 +210,22 @@ test.describe('the public document view', () => {
     await expect(chunk(page, 'chronicle_3')).toBeVisible()
     await expect(chunk(page, 'chronicle_2')).toBeVisible()
     await expect(chunk(page, 'chronicle_1')).toHaveCount(0)
-    // Where page 2 begins inside the continuing chunk, approximately.
-    await expect(chunk(page, 'chronicle_2').locator('.page-break')).toHaveAttribute('aria-label', 'Page 2 (approximate position)')
+    // The page start is still marked, without exposing internal OCR precision.
+    await expect(chunk(page, 'chronicle_2').locator('.page-break')).toHaveAttribute('aria-label', 'Page 2')
 
-    // A click on a page 2 line of the continuing chunk: its text, approximate.
+    // An approximate mapping still selects the matching text.
     await clickLine(page, 'r001-l001')
     await expect(chunk(page, 'chronicle_2').locator('.is-active-passage')).not.toHaveCount(0)
-    await expect(page.locator('.has-approximate-passage')).toHaveCount(1)
-    await expect(notice(page)).toContainText('its place in the text is approximate')
+    await expect(page.locator('.has-approximate-passage')).toHaveCount(0)
+    await expect(notice(page)).toHaveCount(0)
 
-    // A click in the text: the scan highlights the whole line, dashed, and says so.
+    // The scan keeps whole-line mapping internally, but the outline is solid.
     const text = fixture.chunk('chronicle_3').text
     await clickText(page, 'chronicle_3', text.indexOf('polovinu') + 2)
     await expect(highlights(page)).toHaveCount(1)
     await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l002')
-    await expect(highlights(page)).toHaveClass(/scan-highlight--approximate/)
-    await expect(notice(page)).toContainText('whole lines are shown')
+    await expect(highlights(page)).toHaveCSS('stroke-dasharray', 'none')
+    await expect(notice(page)).toHaveCount(0)
 
     // Only the layouts and page reads needed: pages 1 and 2, never the whole document.
     expect(new Set(layouts.map(u => u.split('/pages/')[1].split('/')[0]))).toEqual(new Set([PAGE_1, PAGE_2]))

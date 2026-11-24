@@ -164,14 +164,15 @@ describe('DocumentImagePane', () => {
   it('draws a citation outline separately from the temporary focus, on its own page only', async () => {
     const w = await open({
       pageId: 'p1',
-      highlights: [{ pageId: 'p1', lineId: 'p1-l1' }],
+      highlights: [{ pageId: 'p1', lineId: 'p1-l1', approximate: true }],
       citationHighlights: [{ pageId: 'p1', lineId: 'p1-l2', approximate: true }, { pageId: 'p2', lineId: 'p2-l1' }]
     })
     await answerLayout('p1')
     loadImage(w)
     await flushPromises()
     expect(w.findAll('.scan-citation-outline')).toHaveLength(1)
-    expect(w.find('.scan-citation-outline').classes()).toContain('scan-citation--approximate')
+    expect(w.find('.scan-citation-outline').classes()).toEqual(['scan-citation-outline'])
+    expect(w.find('.scan-highlight').classes()).toEqual(['scan-highlight'])
     expect(w.findAll('.scan-highlight')).toHaveLength(1)
     await w.setProps({ highlights: [] })
     expect(w.findAll('.scan-citation-outline')).toHaveLength(1)

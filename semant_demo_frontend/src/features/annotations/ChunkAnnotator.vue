@@ -2,17 +2,15 @@
   <div
     class="chunk-annotator"
     :data-chunk-id="chunkId"
-    :class="{ 'is-dragging': draggingHandle, 'has-approximate-passage': activeApproximate }"
+    :class="{ 'is-dragging': draggingHandle }"
   >
     <template v-for="segment in renderedSegments" :key="`${segment.start}-${segment.end}`">
       <!-- Where text from another page begins: a label outside the text (not selected or copied). -->
       <span
         v-if="segment.pageBreak"
         class="page-break"
-        :class="{ 'page-break--approximate': segment.pageBreak.approximate }"
         role="separator"
-        :aria-label="segment.pageBreak.approximate ? `${segment.pageBreak.label} (approximate position)` : segment.pageBreak.label"
-        :title="segment.pageBreak.approximate ? 'Approximate position of the page start' : undefined"
+        :aria-label="segment.pageBreak.label"
         :data-label="segment.pageBreak.label"
         :data-page-break="segment.pageBreak.pageId"
       /><span
@@ -101,7 +99,7 @@ const props = defineProps<{
   focusTagId?: string | null
   /** The part of this chunk in the passage focused from outside the text, e.g. a citation. */
   activeRange?: { start: number, end: number } | null
-  /** The active passage is placed approximately (e.g. from an OCR line that differs). */
+  /** Kept internally for correspondence; no UI distinction between mapping precision levels. */
   activeApproximate?: boolean
   /** The part of this chunk on the page shown in the scan viewer. */
   pageRange?: { start: number, end: number } | null
@@ -449,13 +447,6 @@ const hexToRgba = (hex: string, alpha: number): string => {
   background-color: rgba(250, 204, 21, 0.3);
 }
 
-/* An approximate place: the same tint, marked as uncertain by a dashed underline. */
-.chunk-annotator.has-approximate-passage .text-segment.is-active-passage {
-  background-color: rgba(250, 204, 21, 0.18);
-  text-decoration: underline dashed rgba(161, 98, 7, 0.7);
-  text-underline-offset: 4px;
-}
-
 /* The page shown in the scan viewer: a faint tint under the other marks. */
 .text-segment.is-current-page {
   box-shadow: inset 0 -1.2em 0 rgba(59, 130, 246, 0.07);
@@ -477,14 +468,6 @@ const hexToRgba = (hex: string, alpha: number): string => {
 
 .page-break::before {
   content: attr(data-label);
-}
-
-.page-break--approximate {
-  border-style: dashed;
-}
-
-.page-break--approximate::before {
-  content: '≈ ' attr(data-label);
 }
 
 .text-segment.is-highlighted {
