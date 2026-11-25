@@ -260,7 +260,8 @@ Post it on the issue of the import (not in these docs), with the reports attache
 
 ## After an interruption
 
-Every step can be run again; none needs cleaning up first.
+Every step can be run again without deleting or repairing anything first. Some take a new
+file name, as the table says; `chunk_ingest` takes the same `CHECKPOINT`.
 
 | Step | Running it again |
 | --- | --- |
