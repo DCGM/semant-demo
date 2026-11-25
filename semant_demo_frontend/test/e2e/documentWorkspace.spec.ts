@@ -46,10 +46,27 @@ async function settled (locator: Locator) {
   }))).toBe(true)
 }
 
-/** Clicks the middle of a scan line (the overlay is hit-tested from the layout, not the DOM). */
+/**
+ * Clicks the middle of a scan line (the overlay is hit-tested from the layout, not the DOM), at
+ * rest and reachable: the scan is fitted again while the document view still takes its size, and
+ * a click at the line's earlier place misses it (#790).
+ */
 async function clickLine (page: Page, lineId: string) {
-  const b = (await page.locator(`polygon.scan-line[data-line-id="${lineId}"]`).boundingBox())!
-  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+  const line = page.locator(`polygon.scan-line[data-line-id="${lineId}"]`)
+  let point = { x: 0, y: 0 }
+  await expect.poll(async () => {
+    await settled(line)
+    const at = await line.evaluate(el => {
+      const b = el.getBoundingClientRect()
+      const x = b.left + b.width / 2
+      const y = b.top + b.height / 2
+      const hit = document.elementFromPoint(x, y)
+      return { x, y, coveredBy: hit?.closest('[data-testid="scan-view"]') ? null : hit?.outerHTML.slice(0, 120) ?? 'nothing' }
+    })
+    point = at
+    return at.coveredBy
+  }, `the scan line ${lineId} is covered`).toBeNull()
+  await page.mouse.click(point.x, point.y)
 }
 
 async function open (page: Page, documentId: string, query = '') {
@@ -627,9 +644,19 @@ test.describe('the collection document view', () => {
     await ensureLoggedIn(page, 'owner')
     // The overlay fades out for 300 ms once the text is loaded; slowed down here past the test's
     // timeout, so that the click surely falls into the fade. (The reader opens in the same
-    // document: a hash change.)
+    // document: a hash change.) The text arrives only once the overlay has faded in: the browser
+    // shortens a fade-out that reverses an unfinished fade-in, down to nothing.
     await page.addStyleTag({ content: '.q-inner-loading.q-transition--fade-leave-active { transition-duration: 300s !important }' })
+    let release: () => void = () => undefined
+    const released = new Promise<void>(resolve => { release = resolve })
+    await page.route(new RegExp(`/api/user_collections/${chronicles.id}/documents/${chronicle.id}/chunks(\\?|$)`), async (route) => {
+      await released
+      await route.continue()
+    })
     await page.goto(collectionUrl(`?page=${PAGE_2}`))
+    await expect(page.locator('.q-inner-loading')).toHaveCSS('opacity', '1')
+    await expect(page.locator('.q-inner-loading')).not.toHaveClass(/q-transition--fade-enter/)
+    release()
     await expect(chunkText(page, 'chronicle_1')).toBeVisible()
     await expect(page.locator('.q-inner-loading')).toHaveClass(/q-transition--fade-leave-active/)
 
