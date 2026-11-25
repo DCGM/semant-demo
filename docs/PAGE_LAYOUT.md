@@ -252,6 +252,9 @@ no per-line text ranges, no matching service.
   viewer as in #543. A focus request's own page change is not followed back. A newer
   interaction, or scrolling the text, cancels a pending one, so a late layout or page read
   never moves a pane afterwards.
+  In the collection reader a click made while the document is still loading counts as the newer
+  one: a linked page (`?page=`), followed once the text is loaded, gives way to it, and a click
+  made before the scan's pages are known is shown once they are (#790).
 - **Bounded text** (`useDocumentText`): the chunks around a deep-linked chunk (`/window`), of an
   opened page (`/by_page`), extended with `/adjacent` on request; never all earlier pages or the
   whole document.
