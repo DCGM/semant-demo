@@ -78,9 +78,10 @@ python -m semant_demo.maintenance.chunk_ingest --check CHECKPOINT-after.json INP
 - **Check:** read the counts (`new`, `append`, `replayed`, `rejected`) and
   `CHECKPOINT-check.json.manifest.jsonl`. Exit 1 means rejected or invalid documents: fix the
   input, or accept that they stay out, before writing.
-- **Write:** exit 0, or 1 with `blocked` documents; run the same command again to retry them.
-  An interrupted run resumes the same way. The summary gives `CHECKPOINT.documents.txt` and
-  its count.
+- **Write:** exit 0, or 1 when documents are `blocked` (run the same command again to retry
+  them) or, as in the check, rejected or invalid. An interrupted run resumes the same way; a
+  finished run with nothing blocked is refused if repeated (exit 2). The summary gives
+  `CHECKPOINT.documents.txt` and its count.
 - **Check again** with another new name: expect only `replayed` (rejected documents aside).
 
 ## 3. Document metadata (`metadata_sync`)
@@ -146,6 +147,8 @@ python run.py config.qwen.yaml --check                                  # expect
 
 It selects the chunks whose `haveVector` lacks the vector's name, whichever import added them.
 Until it runs, the new chunks are missing from vector and hybrid search.
+Chunks with empty text get no vector: every run skips them and reports them as empty inputs,
+and the check does not count them, so it exits 0. Step 9 reports them in `vectors`.
 
 ## 7. Classification (`data_tools/meta_data_enrichment`)
 
@@ -197,7 +200,8 @@ Give the options that match how steps 5 and 7 ran; the command cannot tell:
 - **Exit 1, a stage incomplete:** `stages.STAGE.incomplete_ids` names the documents or chunks
   and the reasons. Run that stage's step again, then the steps after it (e.g. new titles change
   nothing downstream, a new classification needs step 8 again), then this report with a new
-  file name.
+  file name. Chunks with empty text stay incomplete in `vectors` (step 6): record their ids
+  instead of running the embedder again.
 - **Exit 1, index misses** (`index.missed_ids`): `no_stored_vector` means the embedder listed a
   vector it did not store (run step 6 again). `not_in_top_k` is a *self-retrieval miss*, not
   proof of a missing index entry: right after step 6 the vector may still be queued for
