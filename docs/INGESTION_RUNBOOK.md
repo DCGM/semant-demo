@@ -69,6 +69,12 @@ python -m semant_demo.maintenance.chunk_ingest --write CHECKPOINT --confirm-endp
 python -m semant_demo.maintenance.chunk_ingest --check CHECKPOINT-after.json INPUT...
 ```
 
+- **Input:** only the new data, the source files minus what the store already holds. A chunk
+  already stored is never written again: a fully stored document is `replayed`, and one whose
+  stored chunks differ from the input is rejected (`conflict`). But every input document is read
+  from the store, and a write lists `replayed` documents in `CHECKPOINT.documents.txt` too, so
+  steps 3–9 would treat them as part of this import. Record the input's source and version in
+  the [run record](#run-record).
 - **Check:** read the counts (`new`, `append`, `replayed`, `rejected`) and
   `CHECKPOINT-check.json.manifest.jsonl`. Exit 1 means rejected or invalid documents: fix the
   input, or accept that they stay out, before writing.
