@@ -57,6 +57,23 @@ afterEach(() => {
 })
 
 describe('DocumentTextPane, read-only', () => {
+  it('moves a read-only whole-chunk citation highlight without altering text or active scan focus', async () => {
+    const wrapper = mountPane({
+      citedChunkId: 'a', activeRange: { chunkId: 'b', start: 1, end: 3 }
+    })
+    expect(chunkEl('a').classList.contains('is-cited-chunk')).toBe(true)
+    expect(chunkEl('b').classList.contains('is-cited-chunk')).toBe(false)
+    expect(chunkEl('b').querySelector('.is-active-passage')?.textContent).toBe('😀')
+    await wrapper.setProps({ citedChunkId: 'd' })
+    expect(chunkEl('a').classList.contains('is-cited-chunk')).toBe(false)
+    expect(chunkEl('d').classList.contains('is-cited-chunk')).toBe(true)
+    expect(chunkEl('b').querySelector('.is-active-passage')?.textContent).toBe('😀')
+    await wrapper.setProps({ citedChunkId: null })
+    expect(document.querySelectorAll('.is-cited-chunk')).toHaveLength(0)
+    expect(chunkEl('a').textContent).toBe(a.text)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it('renders the stored text unchanged, in paragraphs, without a store or a request', () => {
     // No Pinia, no Quasar, no router: a store or a collection request would fail here.
     const wrapper = mountPane()

@@ -31,6 +31,7 @@ from tests.app_support import make_test_config
 from tests.auth_support import auth_headers
 from tests.corpus import load_corpus
 from tests import fixture_profile
+from tests.append_pipeline import CHRONICLE, KARLIN, make_stages, mirror_connection, row
 from tests.fixture_profile import phase
 from tests.fake_providers import FAKE_TOPICER_CONFIGS, create_fake_provider_app
 from tests.seed import annotation_tenants, insert_documents, seed_users, seed_weaviate
@@ -339,3 +340,19 @@ def store(seeded_store, collection_names):
             obj = await seeded_store.collections.get(names.user_collection_name).query.fetch_object_by_id(collection_id)
             return obj.properties if obj else None
     return Store()
+
+
+@pytest.fixture
+def append_mirror():
+    """The Kramerius mirror of the appended data (``tests/append_pipeline.py``): rows of the new
+    *Karlínské listy* and of the chronicle; none of the *Freudenthaler Zeitung*."""
+    with mirror_connection([row(KARLIN, "mzk", title="Karlínské listy", date="1904"),
+                            row(CHRONICLE, "nkp", title="Kronika obce Lhota")]) as connection:
+        yield connection
+
+
+@pytest.fixture
+def append_stages(seeded_store, collection_names, corpus, store_endpoint, tmp_path, append_mirror):
+    """Each stage of an import of the appended data, as the operator runs it (``make_stages``)."""
+    return make_stages(seeded_store, collection_names, corpus, store_endpoint, tmp_path, append_mirror)
+

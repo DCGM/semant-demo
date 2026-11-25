@@ -161,6 +161,29 @@ describe('DocumentImagePane', () => {
     expect(ids).toEqual(['p2-l1', 'p2-l2'])
   })
 
+  it('draws a citation outline separately from the temporary focus, on its own page only', async () => {
+    const w = await open({
+      pageId: 'p1',
+      highlights: [{ pageId: 'p1', lineId: 'p1-l1', approximate: true }],
+      citationHighlights: [{ pageId: 'p1', lineId: 'p1-l2', approximate: true }, { pageId: 'p2', lineId: 'p2-l1' }]
+    })
+    await answerLayout('p1')
+    loadImage(w)
+    await flushPromises()
+    expect(w.findAll('.scan-citation-outline')).toHaveLength(1)
+    expect(w.find('.scan-citation-outline').classes()).toEqual(['scan-citation-outline'])
+    expect(w.find('.scan-highlight').classes()).toEqual(['scan-highlight'])
+    expect(w.findAll('.scan-highlight')).toHaveLength(1)
+    await w.setProps({ highlights: [] })
+    expect(w.findAll('.scan-citation-outline')).toHaveLength(1)
+    await w.find('[aria-label="Next page"]').trigger('click')
+    await answerLayout('p2')
+    loadImage(w)
+    await flushPromises()
+    expect(w.findAll('.scan-citation-outline')).toHaveLength(1)
+    expect(w.find('.scan-citation-outline').attributes('data-citation-line-id')).toBe('p2-l1')
+  })
+
   it('keeps the page keys: Up/Down lines, PageUp/PageDown pages, +/- and 0 zoom', async () => {
     const w = await open({ pageId: 'p1' })
     await answerLayout('p1')

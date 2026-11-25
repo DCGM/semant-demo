@@ -22,7 +22,7 @@
           ><span class="distribution-table__text">{{ row.label }}</span></button>
           <span
             v-else class="distribution-table__text"
-            :title="row.kind === 'missing' ? 'The annotation list has no filter for a missing value' : row.label"
+            :title="row.kind === 'missing' ? 'The annotation list cannot show this category for the current query' : row.label"
           >{{ row.label }}</span>
         </th>
         <td class="distribution-table__bar-cell" aria-hidden="true">
@@ -31,7 +31,7 @@
           </span>
         </td>
         <td class="distribution-table__count">{{ formatCount(row.count) }}</td>
-        <td class="distribution-table__share">{{ formatShare(row.share) }}</td>
+        <td class="distribution-table__share">{{ row.share == null ? '–' : formatShare(row.share) }}</td>
       </tr>
     </tbody>
   </table>
@@ -141,6 +141,10 @@ const barWidth = (row: DistributionRow) => (row.count / largest.value) * 100
 
 .distribution-table__missing .distribution-table__label {
   font-style: italic;
+}
+
+.distribution-table__missing .distribution-table__text {
+  padding-right: 3px; /* the italic's overhang is not clipped */
 }
 
 .distribution-table__missing .distribution-table__fill {

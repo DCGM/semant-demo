@@ -80,6 +80,7 @@
           :layout="layout"
           :active-line-id="activeLineId"
           :highlights="pageHighlights"
+          :citation-highlights="pageCitationHighlights"
           :image-alt="`Scan of ${pageName(currentPage, currentIndex).toLowerCase()}`"
           @line-click="onLineClick"
           @zoom="zoomPercent = $event"
@@ -150,6 +151,7 @@ const props = withDefaults(defineProps<{
   /** The page shown (v-model:pageId); the first page when null or unknown. */
   pageId?: string | null
   highlights?: ScanHighlight[]
+  citationHighlights?: ScanHighlight[]
   showThumbnails?: boolean
   documentTitle?: string
   /** The layouts' cache, shared with the text/scan correspondence (#544) so that a layout is
@@ -157,7 +159,7 @@ const props = withDefaults(defineProps<{
   layoutCache?: LayoutCache | null
   /** The collection the document is read through (#279); needed for one that is not public. */
   collectionId?: string | null
-}>(), { pageId: null, highlights: () => [], showThumbnails: true, documentTitle: '', layoutCache: null, collectionId: null })
+}>(), { pageId: null, highlights: () => [], citationHighlights: () => [], showThumbnails: true, documentTitle: '', layoutCache: null, collectionId: null })
 
 const emit = defineEmits<{
   'update:pageId': [pageId: string]
@@ -201,6 +203,7 @@ const currentPage = computed<DocumentPage | null>(() => pages.value[currentIndex
 const currentLabel = computed(() => currentPage.value?.label ?? String(currentIndex.value + 1))
 const canZoom = computed(() => !!currentPage.value?.imageUrl && imageState.value === 'loaded')
 const pageHighlights = computed(() => props.highlights.filter(h => h.pageId === currentPage.value?.pageId))
+const pageCitationHighlights = computed(() => props.citationHighlights.filter(h => h.pageId === currentPage.value?.pageId))
 
 const layoutNotice = computed(() => {
   const page = currentPage.value
