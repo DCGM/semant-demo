@@ -568,11 +568,9 @@ underlying model when that configuration routes requests dynamically.
 
 The link from Weaviate `Annotation.aiRunId` to the SQL row is logical, not a SQL foreign
 key. Suggestions saved before run history, or without a matching run record, retain
-unknown/legacy provenance; their model is not inferred from timestamps. A SQLite
-installation with an earlier draft of #801 needs the explicit
-`python -m semant_demo.maintenance.ai_run_progress_schema` step before startup
-([deploy/README.md](../deploy/README.md#sqlite-schema-steps-522)); new databases
-already have the columns.
+unknown/legacy provenance; their model is not inferred from timestamps.
+New installations create the complete `ai_suggestion_run` table at startup;
+databases from before #801 have no run history to migrate.
 
 ### `annotation_tenant_activity` — last use of each annotation tenant (#327)
 

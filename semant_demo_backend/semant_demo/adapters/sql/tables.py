@@ -35,12 +35,6 @@ def _check_columns(conn) -> None:
         raise OutdatedSchemaError(
             "annotation_attribute has no all_tags column; stop the backend and run "
             "`python -m semant_demo.maintenance.attribute_scope_schema` against this database (#522)")
-    run_columns = {c["name"] for c in inspect(conn).get_columns(AiSuggestionRunRow.__tablename__)}
-    needed = {"unit", "units_total", "units_completed", "provider_failures", "save_failures"}
-    if not needed.issubset(run_columns):
-        raise OutdatedSchemaError(
-            "ai_suggestion_run lacks progress columns; stop the backend and run "
-            "`python -m semant_demo.maintenance.ai_run_progress_schema` against this SQLite database (#801)")
 
 
 async def create_tables(engine: AsyncEngine) -> None:
