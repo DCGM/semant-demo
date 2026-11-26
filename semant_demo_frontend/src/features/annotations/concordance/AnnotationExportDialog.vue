@@ -1,11 +1,11 @@
 <template>
-  <!-- CSV export of the workspace's annotations (#719): what to export, which column groups, the
-       separator; the file is saved only once it arrived whole, and the dialog then says what it
+  <!-- CSV or JSON export of the workspace's annotations (#719, #826): what to export, the format, which
+       column groups, the separator; the file is saved only once it arrived whole, and the dialog then says what it
        holds. It stays open (and cannot be dismissed) while the file is being written. -->
   <q-dialog :model-value="modelValue" :persistent="running" @update:model-value="close">
     <q-card class="annotation-export" data-testid="export-dialog">
       <q-card-section class="annotation-export__head">
-        <div class="text-h6">Export annotations as CSV</div>
+        <div class="text-h6">Export annotations</div>
         <q-space />
         <q-btn flat round dense icon="close" aria-label="Close" :disable="running" @click="close(false)" />
       </q-card-section>
@@ -40,13 +40,14 @@
               v-model="options.scope"
               :val="AnnotationExportScope.filters"
               :disable="!filtersExportable || running"
-              :label="ranked ? 'Current filter matches' : `Current filter matches (${total})`"
+              :label="ranked ? `Top ${total} of the ranked result` : `Current filter matches (${total})`"
               data-testid="export-scope-filters"
             />
             <div class="annotation-export__caption text-caption text-grey-8">
               <template v-if="ranked">
-                A ranked result is a bounded top list, not every match; clear <em>Similarity</em> (or Find
-                similar) to export every match.
+                Exactly the ranked top list shown, not every match; the file says so. Clear <em>Similarity</em>
+                (or Find similar) to export every match.
+                <span data-testid="export-filter-summary">{{ filterSummary }}</span>
               </template>
               <template v-else>
                 Every match on all pages, not only the rows shown.
@@ -87,7 +88,23 @@
         </fieldset>
 
         <fieldset class="annotation-export__group" :disabled="running">
-          <legend class="text-subtitle2">Columns</legend>
+          <legend class="text-subtitle2">Format</legend>
+          <q-option-group
+            v-model="options.format"
+            inline
+            dense
+            :options="FORMATS"
+            :disable="running"
+            data-testid="export-format"
+          />
+          <div v-if="isJson" class="text-caption text-grey-8">
+            One JSON file: a manifest (scope, counts, tag and attribute definitions), the annotations with exact
+            text, and a closing completion record. A file without it is incomplete.
+          </div>
+        </fieldset>
+
+        <fieldset class="annotation-export__group" :disabled="running">
+          <legend class="text-subtitle2">{{ isJson ? 'Content' : 'Columns' }}</legend>
           <div class="text-caption text-grey-8 q-mb-xs">
             Always included: annotation and tag ids, tag, status, annotated text with left and right context,
             document id with the start and end in the document's text, and attribute values.
@@ -110,9 +127,16 @@
             label="Provenance (who created and reviewed it, when, AI run and confidence)"
             data-testid="export-provenance"
           />
+          <q-toggle
+            v-if="isJson"
+            v-model="options.audit"
+            dense
+            label="Audit: also list attribute values kept on proposed, rejected or inapplicable annotations (never accepted)"
+            data-testid="export-audit"
+          />
         </fieldset>
 
-        <fieldset class="annotation-export__group" :disabled="running">
+        <fieldset v-if="!isJson" class="annotation-export__group" :disabled="running">
           <legend class="text-subtitle2">Separator</legend>
           <q-option-group
             v-model="options.delimiter"
@@ -144,7 +168,7 @@
           no-caps
           color="primary"
           icon="download"
-          label="Download CSV"
+          :label="isJson ? 'Download JSON' : 'Download CSV'"
           :loading="running"
           :disable="!canExport"
           data-testid="export-download"
@@ -160,7 +184,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   QBtn, QCard, QCardActions, QCardSection, QCheckbox, QDialog, QIcon, QOptionGroup, QRadio, QSpace, QSpinner, QToggle
 } from 'quasar'
-import { AnnotationExportScope, CsvDelimiter, SpanType, type AnnotationCounts } from 'src/generated/api'
+import { AnnotationExportScope, CsvDelimiter, ExportFormat, SpanType, type AnnotationCounts } from 'src/generated/api'
 import { countAnnotations } from 'src/features/annotations/annotationCounts'
 import { plural } from 'src/shared/plural'
 import type { ConcordanceFilters } from './concordanceStore'
@@ -180,13 +204,17 @@ const props = defineProps<{
   hiddenSelected: number | null
   /** Matches of the current filters. */
   total: number
-  /** The results are a ranked top k (#664): not exportable as filter matches yet. */
+  /** The results are a ranked top k (#664): the filter scope then exports exactly that top k (#826). */
   ranked: boolean
   /** A ranked mode waits for its text. */
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 
+const FORMATS = [
+  { value: ExportFormat.csv, label: 'CSV (spreadsheet)' },
+  { value: ExportFormat.json, label: 'JSON with manifest (reproducible dataset)' }
+]
 const TYPES = [SpanType.pos, SpanType.auto, SpanType.neg]
 const DELIMITERS = [
   { value: CsvDelimiter.comma, label: 'Comma (,)' },
@@ -201,7 +229,8 @@ const result = ref<ExportResult | null>(null)
 let controller: AbortController | null = null
 
 const selectedCount = computed(() => props.selectedIds.size)
-const filtersExportable = computed(() => !props.ranked)
+const filtersExportable = computed(() => !props.ranked || props.total > 0)
+const isJson = computed(() => options.value.format === ExportFormat.json)
 
 function statusLabel (type: SpanType): string {
   const n = counts.value && { [SpanType.pos]: counts.value.approved, [SpanType.auto]: counts.value.suggestions, [SpanType.neg]: counts.value.rejected }[type]
@@ -223,7 +252,7 @@ const targetText = computed(() => {
     case AnnotationExportScope.selection:
       return `Exports ${plural(selectedCount.value, 'selected annotation')}.`
     case AnnotationExportScope.filters:
-      return filtersExportable.value ? `Exports ${plural(props.total, 'matching annotation')}.` : ''
+      return filtersExportable.value ? `Exports ${plural(props.total, props.ranked ? 'top-ranked annotation' : 'matching annotation')}.` : ''
     default: {
       const c = counts.value
       if (!c) return 'Exports every annotation of the chosen statuses.'

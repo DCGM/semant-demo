@@ -85,6 +85,7 @@ docs/DocumentSummaryResponse.md
 docs/DocumentViewChunk.md
 docs/ErrorModel.md
 docs/ExplainRequest.md
+docs/ExportFormat.md
 docs/Facet.md
 docs/FacetPopulation.md
 docs/FacetValue.md
@@ -274,6 +275,7 @@ models/DocumentSummaryResponse.ts
 models/DocumentViewChunk.ts
 models/ErrorModel.ts
 models/ExplainRequest.ts
+models/ExportFormat.ts
 models/Facet.ts
 models/FacetPopulation.ts
 models/FacetValue.ts

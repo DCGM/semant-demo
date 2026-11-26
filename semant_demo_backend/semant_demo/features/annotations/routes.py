@@ -11,7 +11,7 @@ from semant_demo.features.annotations import export, facets, service
 from semant_demo.features.annotations.schemas import (
     MAX_NEAR_DISTANCE, DistanceUnit, NearDirection, NearRelation,
     MAX_QUERY_TEXT_LENGTH, AnnotatedDocument, AnnotationCounts, AnnotationFacets, AnnotationFacetsRequest, AnnotationFilters, AnnotationIds, AnnotationIdsRequest,
-    AnnotationExportRequest, AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
+    AnnotationExportRequest, ExportFormat, AnnotationPage, AnnotationRanking, AnnotationRestoreRequest, RetrievalMode, TextScope, MAX_TOP_K, DEFAULT_TOP_K,
     AnnotationReviewRequest, AnnotationReviewResult, AnnotationSort, SpanType,
     BulkUpdateSpansRequest, BulkUpdateSpansResponse, DeleteSpansForTagsRequest, DeleteSpansForTagsResponse,
     PatchSpan, PatchTag, PostSpan, PostTag, Tag, TagSpanBatchRequest, TagSpanWriteResult,
@@ -466,8 +466,10 @@ EXPORT_HEADERS = [EXPORT_COUNT_HEADER, EXPORT_MISSING_HEADER, EXPORT_SCOPE_HEADE
 @span_router.post(
     "/api/user_collections/{collection_id}/annotations/export",
     response_class=StreamingResponse,
-    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}},
-                     "description": "UTF-8 CSV with a byte order mark, one row per annotation"}},
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}},
+                                 "application/json": {"schema": {"type": "string"}}},
+                     "description": "UTF-8 CSV with a byte order mark, one row per annotation, or (format json) "
+                                    "one JSON document: manifest, annotations, completion"}},
 )
 async def export_collection_annotations(
     collection_id: str,
@@ -493,8 +495,10 @@ async def export_collection_annotations(
                                                  collection_id, body)
     except UnavailableFilter as e:
         raise _unavailable(e) from e
-    filename = f"annotations-{result.scope.value}-{date.today().isoformat()}.csv"
-    return StreamingResponse(result.content, media_type="text/csv; charset=utf-8", headers={
+    json_format = result.format == ExportFormat.json
+    filename = f"annotations-{result.scope.value}-{date.today().isoformat()}.{'json' if json_format else 'csv'}"
+    return StreamingResponse(result.content, media_type="application/json" if json_format
+                             else "text/csv; charset=utf-8", headers={
         "Content-Disposition": f'attachment; filename="{filename}"',
         EXPORT_COUNT_HEADER: str(result.count),
         EXPORT_MISSING_HEADER: str(result.missing),

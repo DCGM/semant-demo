@@ -1079,8 +1079,14 @@ class CsvDelimiter(str, Enum):
     """For spreadsheets whose regional settings use a decimal comma (e.g. Czech Excel)."""
 
 
+class ExportFormat(str, Enum):
+    csv = "csv"
+    json = "json"
+    """One JSON document: ``manifest``, the ``annotations`` and a closing ``completion`` (#826)."""
+
+
 class AnnotationExportRequest(BaseModel):
-    """A CSV export of a collection's annotations (#719): one row per annotation, in no particular
+    """A CSV or JSON export of a collection's annotations (#719): one row per annotation, in no particular
     order; the annotations are resolved by id when the export starts. The identity,
     status, text, context, document position and accepted attribute columns are always present;
     the optional groups add columns only."""
@@ -1100,9 +1106,20 @@ class AnnotationExportRequest(BaseModel):
     provenance: bool = False
     """Add who created, reviewed and last changed each annotation, when, its revision and AI metadata."""
     delimiter: CsvDelimiter = CsvDelimiter.comma
+    format: ExportFormat = ExportFormat.csv
+    ranking: AnnotationRanking | None = None
+    """Scope ``filters``: a ranked mode exports exactly its top ``k``, labeled as such in the manifest
+    (#826); ``ranking_query`` of ``filters`` is the ranked text. Without it a ranked filter is refused."""
+    audit: bool = False
+    """JSON only: also list attribute values retained on rejected, proposed or inapplicable annotations,
+    apart and labeled as not accepted (``retained_attribute_values``)."""
 
     @model_validator(mode="after")
     def _scope_fields(self) -> "AnnotationExportRequest":
+        if self.audit and self.format != ExportFormat.json:
+            raise ValueError("audit needs format json")
+        if self.ranking is not None and (self.scope != AnnotationExportScope.filters or not self.ranking.ranked):
+            raise ValueError("ranking needs scope filters and a ranked mode")
         given = {"annotation_ids": self.annotation_ids is not None, "filters": self.filters is not None,
                  "types": self.types is not None}
         needed = {AnnotationExportScope.selection: "annotation_ids", AnnotationExportScope.filters: "filters",

@@ -46,10 +46,11 @@ stored text is not modified, only its exported cell.
 import asyncio
 import csv
 import io
+import json
 import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -60,8 +61,8 @@ from semant_demo.features.annotations import attribute_codec as codec
 from semant_demo.features.annotations import service
 from semant_demo.features.annotations.enrichment import text_current
 from semant_demo.features.annotations.schemas import (
-    AnnotationExportRequest, AnnotationExportScope, AnnotationFilters, AnnotationRow, AnnotationSort,
-    CsvDelimiter, SpanType, TagSpan,
+    AnnotationExportRequest, AnnotationExportScope, AnnotationFilters, AnnotationIdsRequest, AnnotationResultSet,
+    AnnotationRow, AnnotationSort, CsvDelimiter, ExportFormat, SpanType, TagSpan,
 )
 from semant_demo.features.annotations.service import AnnotationStore, Id
 from semant_demo.features.attributes import service as attributes_service
@@ -222,6 +223,7 @@ class AnnotationExport:
     """Scope ``selection``: requested ids that are no annotation of the collection (any more)."""
     columns: list[str]
     content: AsyncIterator[bytes]
+    format: ExportFormat = ExportFormat.csv
 
 
 def _query(request: AnnotationExportRequest):
@@ -231,9 +233,9 @@ def _query(request: AnnotationExportRequest):
         return service._filters_query(AnnotationFilters(types=ALL_TYPES), ids), AnnotationFilters(), ids
     if request.scope == AnnotationExportScope.filters:
         assert request.filters is not None
-        if request.filters.ranking_query:
+        if request.filters.ranking_query and request.ranking is None:
             raise InvalidRequestError("A ranked result is a bounded top-k, not the complete matching set; "
-                                      "export a selection of it instead.")
+                                      "choose a ranked mode to export its top k, or export a selection of it.")
         return service._filters_query(request.filters), request.filters, None
     return service._filters_query(AnnotationFilters(types=request.types)), AnnotationFilters(), None
 
@@ -307,7 +309,14 @@ async def export_annotations(store: AnnotationStore, definitions: AttributeRepos
     query, filters, ids = _query(request)
     service._require_attribute_properties(store, query)
     cid = await service.use_tenant(store, grant)
-    resolved = await _resolve(store, cid, query, filters, ids) if ids != [] else []
+    result_set = AnnotationResultSet()
+    if request.ranking is not None:  # exactly its top k, in relevance order (#826)
+        assert request.filters is not None
+        found = await service.resolve_annotation_ids(
+            store, user, collection_id, AnnotationIdsRequest(**request.filters.model_dump(), ranking=request.ranking))
+        resolved, result_set = list(found.ids), found.result
+    else:
+        resolved = await _resolve(store, cid, query, filters, ids) if ids != [] else []
 
     attributes_store = attributes_service.AttributeStore(definitions=definitions, annotations=store)
     tags, attributes, people = await asyncio.gather(
@@ -319,9 +328,14 @@ async def export_annotations(store: AnnotationStore, definitions: AttributeRepos
     context = _Context(request=request, tags={t.id: t.name for t in tags}, attributes=list(attributes),
                        classifications=list(vocabulary.classifications),
                        people={p.id: p.name or p.username or "" for p in people})
+    missing = len(ids) - len(resolved) if ids is not None else 0
+    if request.format == ExportFormat.json:
+        manifest = _manifest(request, grant.collection_id, context, len(resolved), missing, result_set, store)
+        return AnnotationExport(scope=request.scope, count=len(resolved), missing=missing,
+                                columns=list(manifest["fields"]), format=ExportFormat.json,
+                                content=_json_content(store, cid, resolved, context, manifest))
     columns = _columns(context)
-    return AnnotationExport(scope=request.scope, count=len(resolved),
-                            missing=len(ids) - len(resolved) if ids is not None else 0,
+    return AnnotationExport(scope=request.scope, count=len(resolved), missing=missing,
                             columns=columns, content=_content(store, cid, resolved, context, columns))
 
 
@@ -364,3 +378,199 @@ async def _content(store: AnnotationStore, cid: UUID, resolved: list[UUID], cont
 
 async def _empty() -> dict:
     return {}
+
+
+###############################
+# JSON export with manifest   #
+###############################
+
+SCHEMA = "semant.annotation-export"
+SCHEMA_VERSION = 1
+JSON_FIELDS = ["annotation_id", "revision", "edit_version", "tag", "status", "text_status", "text",
+               "left_context", "right_context", "position", "document", "attributes"]
+"""The always present members of a record; ``retained_attribute_values`` (audit), ``chunk`` and
+``provenance`` are added by the request."""
+SNAPSHOT = ("Not a snapshot. The annotations are resolved when the export starts (one created later is not in the "
+            "file); each record holds the values read when its page was written. Annotations edited meanwhile may "
+            "differ between records; annotations deleted meanwhile are listed in completion.missing_ids.")
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+
+def _dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, default=_json_default, separators=(",", ":"))
+
+
+def _definition(attribute: Attribute) -> dict[str, Any]:
+    return {"id": attribute.id, "name": attribute.name, "description": attribute.description,
+            "cardinality": attribute.cardinality.value, "all_tags": attribute.all_tags,
+            "tag_ids": attribute.tag_ids, "retired": attribute.retired, "revision": attribute.revision,
+            "values": [{"id": v.id, "label": v.label, "description": v.description, "kind": v.kind.value,
+                        "retired": v.retired} for v in attribute.values]}
+
+
+def _embedding(store: AnnotationStore) -> dict[str, Any] | None:
+    vector = store.enrichment.vector
+    if vector is None:
+        return None
+    settings, embedding = vector.settings, vector.settings.embedding
+    return {"config_id": settings.id, "target_vector": settings.target_vector, "template": settings.template,
+            "max_input_chars": settings.max_input_chars, "provider": embedding.provider, "model": embedding.model,
+            "query_prefix": embedding.query_prefix, "document_prefix": embedding.document_prefix,
+            "dimensions": embedding.dimensions}
+
+
+def _manifest(request: AnnotationExportRequest, collection_id: UUID, context: _Context, count: int, missing: int,
+              result: AnnotationResultSet, store: AnnotationStore) -> dict[str, Any]:
+    """What interprets the records without display names: the scope and how it was resolved, the
+    counts, the fields, the tag and attribute definitions the ids refer to and the word and
+    embedding configuration."""
+    ranked = request.ranking is not None
+    kind = "top_k" if ranked else {AnnotationExportScope.selection: "selection",
+                                   AnnotationExportScope.filters: "complete_filter_matches",
+                                   AnnotationExportScope.collection: "all_of_statuses"}[request.scope]
+    fields = list(JSON_FIELDS)
+    if request.audit and context.attributes:
+        fields.append("retained_attribute_values")
+    if request.chunk_metadata:
+        fields.append("chunk")
+    if request.provenance:
+        fields.append("provenance")
+    query: dict[str, Any] = {"scope": request.scope.value}
+    if request.scope == AnnotationExportScope.selection:
+        query.update(requested_ids=len(dict.fromkeys(request.annotation_ids or [])), not_found=missing)
+    elif request.scope == AnnotationExportScope.filters and request.filters is not None:
+        query["filters"] = request.filters.model_dump(mode="json", exclude_defaults=True)
+    else:
+        query["statuses"] = [STATUS_LABELS[t] for t in request.types or []]
+    if ranked:
+        assert request.ranking is not None
+        query["ranking"] = {"mode": request.ranking.mode.value, "k": request.ranking.k,
+                            "similar_to": request.ranking.similar_to, "ranked_text": (request.filters.ranking_query
+                                                                                     if request.filters else None),
+                            "truncated": result.truncated,
+                            "coverage": result.coverage.model_dump() if result.coverage else None}
+    return {
+        "schema": SCHEMA, "schema_version": SCHEMA_VERSION, "exported_at": datetime.now(UTC),
+        "collection_id": collection_id, "result_kind": kind,
+        "result_kind_note": ("The top k of a ranked query, not every match." if ranked else
+                             "Every annotation of the scope at export start." if kind != "selection" else
+                             "The selected annotations that exist."),
+        "snapshot": SNAPSHOT, "query": query, "record_count": count,
+        "categories": {"statuses": {"confirmed": "accepted evidence", "proposal": "pending, not accepted",
+                                    "rejected": "rejected, not accepted"},
+                       "document_metadata": request.document_metadata, "chunk_metadata": request.chunk_metadata,
+                       "provenance": request.provenance, "audit": request.audit},
+        "fields": fields,
+        "positions": {"unit": "UTF-16 code units", "document_offsets": "half-open [start, end) in the whole "
+                      "document's text, only when text_status is ready", "chunk_offsets": "half-open, in the "
+                      "annotation's first chunk"},
+        "attribute_semantics": (
+            "attributes lists accepted values only (confirmed annotation, attribute applicable to its tag); an "
+            "attribute with no entry has no value; Unknown and Not applicable are values with their own ids."
+            + (" retained_attribute_values lists values kept on proposals, rejected or inapplicable annotations: "
+               "never accepted evidence." if request.audit else " Retained values are not exported (audit off).")),
+        "source_links": "document.library and document.url as stored; no link is built or guessed.",
+        "tags": [{"id": i, "name": n} for i, n in context.tags.items()],
+        "attributes": [_definition(a) for a in context.attributes],
+        "classifications": context.classifications,
+        "embedding": _embedding(store) if ranked else None,
+    }
+
+
+def _json_record(row: AnnotationRow, rank: int, context: _Context, document: Document | None,
+                 chunk: dict[str, Any] | None, span: TagSpan | None) -> dict[str, Any]:
+    request = context.request
+    ready = text_current(row)
+    held = codec.group(row.attributeValues) if row.attributeValues else {}
+    accepted, retained = [], []
+    for attribute in context.attributes:
+        values = held.get(attribute.id, [])
+        if not values:
+            continue
+        applies = row.tagId is not None and attributes_service.applies(attribute, row.tagId)
+        if row.type == SpanType.pos and applies:
+            accepted.append({"attribute_id": attribute.id, "value_ids": values})
+        else:
+            retained.append({"attribute_id": attribute.id, "value_ids": values, "accepted": False,
+                             "reason": "inapplicable_to_tag" if row.type == SpanType.pos
+                             else f"annotation_{STATUS_LABELS.get(row.type, 'unknown') if row.type else 'unknown'}"})
+    record: dict[str, Any] = {
+        "annotation_id": row.id, "rank": rank if request.ranking else None,
+        "revision": row.revision or 0, "edit_version": row.editVersion or 0,
+        "tag": {"id": row.tagId, "name": context.tags.get(row.tagId) if row.tagId else None},
+        "status": STATUS_LABELS.get(row.type) if row.type else None, "text_status": service._text_status(row).value,
+        "text": row.text if ready else None, "left_context": row.leftContext if ready else None,
+        "right_context": row.rightContext if ready else None,
+        "position": {"chunk_id": row.chunkId, "chunk_start": row.start, "chunk_end": row.end,
+                     "document_start_char": row.documentStartChar if ready else None,
+                     "document_end_char": row.documentEndChar if ready else None},
+        "document": {"id": row.documentId, "available": document is not None, "url": document.url if document else None,
+                     **({name.removeprefix("document_"): read(document) if document else None
+                         for name, read in _DOCUMENT_FIELDS} if request.document_metadata else {})},
+        "attributes": accepted,
+    }
+    if not request.ranking:
+        del record["rank"]
+    if request.audit and context.attributes:
+        record["retained_attribute_values"] = retained
+    if request.chunk_metadata:
+        chunk = chunk or {}
+        record["chunk"] = {"language": chunk.get(LANGUAGE_PROPERTY),
+                           **{name: chunk.get(name) for name in context.classifications}}
+    if request.provenance:
+        def person(user_id: UUID | None) -> dict[str, Any]:
+            return {"id": user_id, "name": context.people.get(user_id) if user_id else None}
+        record["provenance"] = {
+            "origin": row.origin.value if row.origin else "unknown", "created_by": person(row.createdBy),
+            "created_at": row.createdAt, "reviewed_by": person(row.reviewedBy), "reviewed_at": row.reviewedAt,
+            "last_edited_by": person(row.lastEditedBy), "last_edited_at": row.lastEditedAt,
+            "ai_run_id": row.aiRunId, "ai_confidence": span.confidence if span else None,
+            "ai_reason": span.reason if span else None}
+    return record
+
+
+async def _json_content(store: AnnotationStore, cid: UUID, resolved: list[UUID], context: _Context,
+                        manifest: dict[str, Any]) -> AsyncIterator[bytes]:
+    """``{"manifest": …, "annotations": [ … ], "completion": …}`` written as it is read. The closing
+    ``completion`` (``complete``, counts, annotations deleted meanwhile) is the last thing written:
+    a file without it (cancelled, interrupted, aborted by a failed read) is not valid JSON."""
+    request = context.request
+    yield f'{{"manifest":{_dumps(manifest)},"annotations":['.encode()
+    written, missing_ids, first = 0, [], True
+    try:
+        for offset in range(0, len(resolved), EXPORT_PAGE):
+            page = resolved[offset:offset + EXPORT_PAGE]
+            found = await store.spans.read_rows_by_id(cid, page)
+            present = [i for i in page if i in found]
+            missing_ids += [i for i in page if i not in found]
+            rows = [found[i] for i in present]
+            documents, chunks, spans = await asyncio.gather(
+                store.documents.read_many(list({r.documentId for r in rows if r.documentId is not None}))
+                if request.document_metadata else _empty(),
+                store.documents.read_chunk_metadata(
+                    list({r.chunkId for r in rows if r.chunkId is not None}),
+                    [LANGUAGE_PROPERTY, *context.classifications]) if request.chunk_metadata else _empty(),
+                store.spans.read_many(cid, present) if request.provenance else _empty())
+            out = []
+            for row in rows:
+                document = documents.get(row.documentId) if row.documentId else None
+                out.append(_dumps(_json_record(row, offset + page.index(row.id) + 1, context, document,
+                                               chunks.get(row.chunkId) if row.chunkId else None, spans.get(row.id))))
+            written += len(out)
+            if out:
+                yield (("" if first else ",") + ",".join(out)).encode()
+                first = False
+    except Exception as exc:
+        logger.warning("Annotation JSON export aborted after %d of %d records: %s", written, len(resolved),
+                       type(exc).__name__)
+        raise ExportInterrupted("Reading the annotations failed during the export") from exc
+    completion = {"complete": not missing_ids, "expected_count": len(resolved), "written_count": written,
+                  "missing_ids": missing_ids, "finished_at": datetime.now(UTC)}
+    yield f'],"completion":{_dumps(completion)}}}'.encode()

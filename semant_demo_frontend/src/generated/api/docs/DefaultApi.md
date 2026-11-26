@@ -2421,7 +2421,7 @@ example().catch(console.error);
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
-| **200** | UTF-8 CSV with a byte order mark, one row per annotation |  -  |
+| **200** | UTF-8 CSV with a byte order mark, one row per annotation, or (format json) one JSON document: manifest, annotations, completion |  -  |
 | **422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#api-endpoints) [[Back to Model list]](../README.md#models) [[Back to README]](../README.md)

@@ -4,10 +4,10 @@ import { Quasar } from 'quasar'
 
 import AnnotationExportDialog from 'src/features/annotations/concordance/AnnotationExportDialog.vue'
 import {
-  defaultExportOptions, downloadExport, exportFailure, exportFilterSummary, exportRequest, InterruptedDownload, resultText
+  defaultExportOptions, downloadExport, jsonCompletion, exportFailure, exportFilterSummary, exportRequest, InterruptedDownload, resultText
 } from 'src/features/annotations/concordance/annotationExport'
 import { defaultFilters, type ConcordanceFilters } from 'src/features/annotations/concordance/concordanceStore'
-import { AnnotationExportScope, CsvDelimiter, RetrievalMode, SpanType } from 'src/generated/api'
+import { AnnotationExportScope, CsvDelimiter, ExportFormat, RetrievalMode, SpanType } from 'src/generated/api'
 
 // CSV export of the workspace (#719): the request names exactly the selection, the current
 // filters or the chosen statuses; the file is saved only once it arrived whole; the dialog states
@@ -41,7 +41,8 @@ describe('export requests', () => {
       documentMetadata: true,
       chunkMetadata: false,
       provenance: true,
-      delimiter: 'semicolon'
+      delimiter: 'semicolon',
+      format: 'csv'
     })
     const filtered = exportRequest({ ...options, scope: AnnotationExportScope.filters },
       filters({ tagIds: ['t'], text: ' Brno ', types: [SpanType.neg], documentFilters: { yearMin: 1900 } }), [])
@@ -50,6 +51,20 @@ describe('export requests', () => {
     const all = exportRequest({ ...options, scope: AnnotationExportScope.collection, types: [SpanType.neg] }, filters({ tagIds: ['t'] }), ['a'])
     expect(all).toMatchObject({ scope: 'collection', types: ['neg'] })
     expect(all.filters).toBeUndefined()
+  })
+
+  it('asks for JSON with audit and, for a ranked result, its top k', () => {
+    const options = { ...defaultExportOptions(AnnotationExportScope.filters), format: ExportFormat.json, audit: true }
+    const ranked = exportRequest(options, filters({ mode: RetrievalMode.semantic, k: 50, text: 'x' }), [])
+    expect(ranked).toMatchObject({ scope: 'filters', format: 'json', audit: true, ranking: { mode: 'semantic', k: 50 } })
+    expect(exportRequest(options, filters(), []).ranking).toBeUndefined()
+    expect(exportRequest({ ...options, format: ExportFormat.csv }, filters(), []).audit).toBeUndefined()
+  })
+
+  it('reads the closing completion of a JSON file and rejects a file without it', async () => {
+    const whole = new Blob(['{"manifest":{},"annotations":[{"a":1}],"completion":{"complete":false,"missing_ids":["x","y"]}}'])
+    expect(await jsonCompletion(whole)).toEqual({ complete: false, missingIds: ['x', 'y'] })
+    await expect(jsonCompletion(new Blob(['{"manifest":{},"annotations":[{"a":1}']))).rejects.toBeInstanceOf(InterruptedDownload)
   })
 
   it('names the statuses of the filter scope even when they are the default', () => {
@@ -61,9 +76,9 @@ describe('export requests', () => {
   })
 
   it('describes what was saved, including missing selected annotations', () => {
-    expect(resultText({ scope: AnnotationExportScope.selection, count: 2, missing: 1, filename: 'a.csv' }))
+    expect(resultText({ scope: AnnotationExportScope.selection, count: 2, missing: 1, deleted: 0, filename: 'a.csv' }))
       .toBe('Saved a.csv: 2 annotations (selected annotations). 1 selected annotation no longer exists and was not exported.')
-    expect(resultText({ scope: AnnotationExportScope.collection, count: 0, missing: 0, filename: 'b.csv' }))
+    expect(resultText({ scope: AnnotationExportScope.collection, count: 0, missing: 0, deleted: 0, filename: 'b.csv' }))
       .toBe('Saved b.csv: 0 annotations (all annotations in the collection).')
   })
 })
@@ -77,7 +92,7 @@ describe('downloading an export', () => {
     globalThis.fetch = fetchMock as typeof fetch
     const save = vi.fn()
     const result = await downloadExport('col-1', { scope: AnnotationExportScope.selection, annotationIds: ['a', 'b', 'gone'] }, undefined, save)
-    expect(result).toEqual({ scope: 'selection', count: 2, missing: 1, filename: 'annotations-selection-2026-11-16.csv' })
+    expect(result).toEqual({ scope: 'selection', count: 2, missing: 1, deleted: 0, filename: 'annotations-selection-2026-11-16.csv' })
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toMatch(/\/api\/user_collections\/col-1\/annotations\/export$/)
     expect(JSON.parse(String(init.body))).toMatchObject({ scope: 'selection', annotation_ids: ['a', 'b', 'gone'] })
@@ -157,10 +172,11 @@ describe('AnnotationExportDialog', () => {
     wrapper.unmount()
   })
 
-  it('offers no filter export of ranked results and opens on the filter matches otherwise', async () => {
+  it('exports a ranked result as its top k and opens on the filter matches', async () => {
     const ranked = await open({ ranked: true, filters: filters({ mode: RetrievalMode.semantic, text: 'x' }) })
-    expect(byTestId('export-scope-filters')?.getAttribute('aria-disabled')).toBe('true')
-    expect(checked('export-scope-collection')).toBe(true)
+    expect(byTestId('export-scope-filters')?.getAttribute('aria-disabled')).not.toBe('true')
+    expect(byTestId('export-scope-filters')?.textContent).toContain('Top 42 of the ranked result')
+    expect(checked('export-scope-filters')).toBe(true)
     ranked.unmount()
     const lexical = await open()
     expect(checked('export-scope-filters')).toBe(true)
@@ -170,7 +186,7 @@ describe('AnnotationExportDialog', () => {
   })
 
   it('exports the chosen statuses of the whole collection and says what was saved', async () => {
-    const wrapper = await open({ ranked: true })
+    const wrapper = await open({ ranked: true, total: 0 })
     expect(byTestId('export-status-neg')?.textContent).toContain('Rejected (3)')
     expect(byTestId('export-target')?.textContent).toContain('Exports 10 annotations.')
     byTestId('export-status-auto')?.click()
@@ -179,7 +195,7 @@ describe('AnnotationExportDialog', () => {
     byTestId('export-provenance')?.click()
     byTestId('export-download')?.click()
     await flushPromises()
-    expect(bodies).toEqual([{ scope: 'collection', types: ['pos', 'neg'], document_metadata: true, chunk_metadata: false, provenance: true, delimiter: 'comma' }])
+    expect(bodies).toEqual([{ scope: 'collection', types: ['pos', 'neg'], document_metadata: true, chunk_metadata: false, provenance: true, delimiter: 'comma', format: 'csv' }])
     expect(clicks).toHaveBeenCalledWith('annotations-collection.csv')
     expect(byTestId('export-result')?.textContent).toContain('Saved annotations-collection.csv: 7 annotations (all annotations in the collection).')
     wrapper.unmount()
