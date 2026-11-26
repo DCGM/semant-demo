@@ -380,3 +380,56 @@ async def test_statistics_count_every_facet_over_the_query_itself(store, owner, 
             for value in facet.values:
                 page = await query(store, owner, ids, AnnotationFilters(**{**filters, **narrowed[facet.facet](filters, value.value)}))
                 assert page.total == value.count, (base, facet.facet, value.value)
+
+
+async def test_attribute_statistics_count_applicable_accepted_values_and_the_drilldown_lists_them(
+        store, owner, ids, created):
+    """#819 against real Weaviate: ``eligible``, ``with_value`` and ``assignments`` of a multi-valued
+    attribute that applies to one tag, with a holder retagged away from it (a retained, inapplicable value)
+    and annotations without a value; the drill-down of a value and of Not assigned (confirmed, the attribute's
+    tags, the value or ``unassigned``) lists exactly the annotations counted."""
+    from semant_demo.features.annotations import attribute_codec as codec
+    from semant_demo.features.annotations import facets
+    from semant_demo.features.annotations.schemas import AnnotationFacetsRequest
+
+    collection, person = UUID(ids.col["chronicles"]), UUID(ids.tag["person"])
+    attribute, v1, v2 = (UUID(f"cccccccc-cccc-4ccc-8ccc-cccccccccc0{i}") for i in range(3))
+    store.spans.attributes = True
+    novak_a, novak_b = created.novak
+    retagged = UUID(ids.span["brno_manual"])  # a confirmed place: the attribute does not apply to its tag
+    for span, values in ((novak_a, [v1, v2]), (novak_b, [v1]), (created.zdenka, [v2]), (retagged, [v1])):
+        await store.spans.write_attributes(collection, span, [codec.encode(attribute, v) for v in values], 1)
+
+    class Definitions:
+        async def read(self, collection_id, attribute_id):
+            values = [SimpleNamespace(id=v1, retired=False), SimpleNamespace(id=v2, retired=False)]
+            return SimpleNamespace(id=attribute, values=values, all_tags=False, tag_ids=[person])
+
+    name = f"attribute:{attribute}"
+    result = await facets.annotation_facets(
+        store, owner, collection, AnnotationFacetsRequest(facets=[name], self_exclusion=False, types=[SpanType.pos]),
+        Definitions())
+    facet = result.facets[0]
+    by_value = {v.value: v for v in facet.values}
+    assert (by_value[str(v1)].count, by_value[str(v1)].inapplicable) == (3, 1)  # novak a and b, and the retained one
+    assert (by_value[str(v2)].count, by_value[str(v2)].inapplicable) == (2, 0)
+    confirmed_people = await query(store, owner, ids, AnnotationFilters(tag_ids=[person], types=[SpanType.pos]))
+    assert facet.eligible == confirmed_people.total
+    assert facet.with_value == 3  # novak a (two values, once), novak b, zdenka
+    assert facet.assignments == 4  # the retained value is no assignment
+    assert facet.eligible - facet.with_value >= 1  # e.g. karel
+
+    def listed(page):
+        return {r.id for r in page.rows}
+
+    base = {"types": [SpanType.pos], "tag_ids": [person]}
+    drilled = await query(store, owner, ids, AnnotationFilters(**base, attribute_values=[codec.encode(attribute, v1)]))
+    assert listed(drilled) == {novak_a, novak_b}  # not the retagged holder the stored filter alone would add
+    stored = await query(store, owner, ids, AnnotationFilters(types=[SpanType.pos],
+                                                              attribute_values=[codec.encode(attribute, v1)]))
+    assert listed(stored) == {novak_a, novak_b, retagged}
+    drilled = await query(store, owner, ids, AnnotationFilters(**base, attribute_values=[codec.encode(attribute, v2)]))
+    assert listed(drilled) == {novak_a, created.zdenka} and drilled.total == by_value[str(v2)].count
+    missing = await query(store, owner, ids, AnnotationFilters(**base, attribute_unassigned=[attribute]))
+    assert missing.total == facet.eligible - facet.with_value
+    assert not listed(missing) & {novak_a, novak_b, created.zdenka}

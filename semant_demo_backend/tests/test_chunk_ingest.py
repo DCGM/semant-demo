@@ -7,6 +7,7 @@ rejected.
 """
 import hashlib
 import json
+import re
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -185,6 +186,36 @@ async def test_the_command_refuses_a_directory_without_jsonl_files(tmp_path, cap
     assert await chunk_ingest._main(["--check", str(tmp_path / "c.json"), str(tmp_path)]) == 2
     assert "No *.jsonl files" in capsys.readouterr().err
     assert not (tmp_path / "c.json").exists()
+
+
+@pytest.mark.parametrize("write, leftover", [
+    (True, "documents.txt"), (True, "manifest.jsonl"), (False, "manifest.jsonl")])
+async def test_a_new_checkpoint_next_to_an_earlier_runs_files_is_refused_before_anything(tmp_path, write, leftover):
+    """A new run would append to them (#641); the store is not read, and nothing is written or deleted."""
+    checkpoint = tmp_path / "run.json"
+    earlier = tmp_path / f"run.json.{leftover}"
+    earlier.write_text(f"{UUID(int=7)}\n", encoding="utf-8")
+    inputs = write_jsonl(tmp_path / "in.jsonl", [line(0)])
+
+    with pytest.raises(LookupError, match=f"{re.escape(str(earlier))}.*new checkpoint file name"):
+        await chunk_ingest.run(None, None, inputs, checkpoint=checkpoint, endpoint="test", write_=write,
+                               backup={"offline_backup": "copy"} if write else None)
+
+    assert earlier.read_text(encoding="utf-8") == f"{UUID(int=7)}\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(["in.jsonl", earlier.name])
+
+
+async def test_a_check_is_not_refused_for_a_leftover_document_list_it_does_not_write(tmp_path, monkeypatch):
+    class Preflight(Exception):
+        pass
+
+    async def preflight(client, names):
+        raise Preflight
+    monkeypatch.setattr(chunk_ingest, "preflight", preflight)
+    (tmp_path / "run.json.documents.txt").write_text("", encoding="utf-8")
+    with pytest.raises(Preflight):   # past the refusal, to the first read of the store
+        await chunk_ingest.run(None, None, write_jsonl(tmp_path / "in.jsonl", [line(0)]),
+                               checkpoint=tmp_path / "run.json", endpoint="test", write_=False)
 
 
 # ── Plan ─────────────────────────────────────────────────────────────────

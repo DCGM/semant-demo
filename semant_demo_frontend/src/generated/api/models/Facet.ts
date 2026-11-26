@@ -59,6 +59,24 @@ export interface Facet {
     distinct?: number | null;
     /**
      * 
+     * @type {number}
+     * @memberof Facet
+     */
+    eligible?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof Facet
+     */
+    withValue?: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof Facet
+     */
+    assignments?: number | null;
+    /**
+     * 
      * @type {boolean}
      * @memberof Facet
      */
@@ -91,6 +109,9 @@ export function FacetFromJSONTyped(json: any, ignoreDiscriminator: boolean): Fac
         'missing': json['missing'],
         'total': json['total'],
         'distinct': json['distinct'] == null ? undefined : json['distinct'],
+        'eligible': json['eligible'] == null ? undefined : json['eligible'],
+        'withValue': json['with_value'] == null ? undefined : json['with_value'],
+        'assignments': json['assignments'] == null ? undefined : json['assignments'],
         'truncated': json['truncated'] == null ? undefined : json['truncated'],
     };
 }
@@ -111,6 +132,9 @@ export function FacetToJSONTyped(value?: Facet | null, ignoreDiscriminator: bool
         'missing': value['missing'],
         'total': value['total'],
         'distinct': value['distinct'],
+        'eligible': value['eligible'],
+        'with_value': value['withValue'],
+        'assignments': value['assignments'],
         'truncated': value['truncated'],
     };
 }
