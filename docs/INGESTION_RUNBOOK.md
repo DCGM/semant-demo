@@ -33,15 +33,26 @@ An arrow means that a step uses the result of the previous one (the order of
   application's paid tiers). Practise the whole runbook on
   [a copy of the development snapshot](DATA_MAINTENANCE.md#practising-on-a-copy-of-the-development-snapshot)
   first. The [safety rules](DATA_MAINTENANCE.md#safety-rules-all-commands) apply to every step.
-- **Working directory.** The backend commands run from `semant_demo_backend/` with the
-  repository's `.venv`; the embedder and the classifier from their `data_tools/` directories.
-  `HOST:PORT` is the configured `WEAVIATE_HOST:WEAVIATE_REST_PORT`, which the commands print.
-- **One name per import.** `CHECKPOINT` below is a new file name for this import (e.g.
-  `ingest-2026-12-01.json`), next to which `chunk_ingest` writes `CHECKPOINT.documents.txt`, the
-  list that steps 3–9 read. Never reuse a checkpoint name: `chunk_ingest` refuses a new
-  checkpoint next to an earlier run's `CHECKPOINT.documents.txt` or manifest (#641).
+- **Working directory.** Start from the repository root, with the repository's `.venv`
+  active. Backend commands run from `semant_demo_backend/`; steps 6 and 7 change directories
+  in subshells, so the backend working directory is restored afterwards. `HOST:PORT` is the
+  configured Weaviate endpoint, which the commands print.
+- **One directory per import.** Keep the reports, checkpoints and their sidecars together in a
+  new directory outside the repository. Use absolute paths for the input files. The variables
+  below are used throughout the runbook; substitute the actual run directory (its parent must
+  exist). On resumption, set them to the original directory and checkpoint, not a new one.
+  Never reuse a checkpoint name for a different import (#641).
 - **Record as you go.** Keep every report, checkpoint and manifest, and fill in the
   [run record](#run-record) step by step.
+
+```bash
+# From the repository root, in the same shell throughout:
+REPO_ROOT="$(pwd -P)"
+RUN_DIR=/absolute/path/to/ingest-2026-12-01
+mkdir "$RUN_DIR"                         # must be new for a new import; skip on resumption
+CHECKPOINT="$RUN_DIR/ingest.json"
+cd "$REPO_ROOT/semant_demo_backend"
+```
 
 Exit codes: 0 done, 1 something is left or was reported (read the summary), 2 refused (nothing
 written).
@@ -52,21 +63,31 @@ written).
 | --- | --- | --- |
 | The target | the endpoint each command prints; the aliases and collections of `Chunks` and `Documents` | the store you are authorized to write |
 | Classification status declared | `python -m semant_demo.maintenance.classification_provenance_schema` | exit 0 ([status](DATA_MAINTENANCE.md#chunk-classification-status-classification_provenance_schema-590); production: #832) |
-| Stored vectors listed | `python -m semant_demo.maintenance.chunk_have_vector --check have_vector.json` (a full scan) | exit 0 ([`haveVector`](DATA_MAINTENANCE.md#stored-named-vectors-on-chunks-chunk_have_vector-805)) |
+| Stored vectors listed | verify the `haveVector` declaration and target named vector in the collection schema; review the last successful audit of this store and vector | expected schema and a successful audit ([`haveVector`](DATA_MAINTENANCE.md#stored-named-vectors-on-chunks-chunk_have_vector-805)) |
 | Summary properties declared | `python -m semant_demo.maintenance.chunk_summary_schema` | exit 0 ([summaries](DATA_MAINTENANCE.md#document-chunk-value-summaries-chunk_summary_schema-chunk_summaries-529)) |
 | Model configurations | `data_tools/embedder/config.qwen.yaml`, a `chunk_titles` catalog (`configs/chunk_titles_vllm.yaml` or `_ollama.yaml`), `data_tools/meta_data_enrichment/config.yaml` | each config's endpoint and `collection` name the target; the models are the authorized ones |
 | Backup | a `backup-filesystem` backup id, or an offline copy | taken now, before the import (rules: #602) |
 | No other writers | ingestion, metadata edits, embedder or classifier runs, uploads | none running until step 9 |
+
+Run a fresh `haveVector` audit only if there is no recent successful audit for the same store
+and vector, or an inconsistency is suspected (e.g. after a restore or manual change):
+
+```bash
+python -m semant_demo.maintenance.chunk_have_vector --check "$RUN_DIR/have_vector.json"  # expect exit 0
+```
+
+This is a full-corpus scan of stored vectors, not a routine prerequisite for each incremental
+import. Record the audit used in the run record.
 
 ## 2. Import (`chunk_ingest`)
 
 [Chunk import](DATA_MAINTENANCE.md#chunk-import-chunk_ingest-313).
 
 ```bash
-python -m semant_demo.maintenance.chunk_ingest --check CHECKPOINT-check.json INPUT...
-python -m semant_demo.maintenance.chunk_ingest --write CHECKPOINT --confirm-endpoint HOST:PORT \
+python -m semant_demo.maintenance.chunk_ingest --check "$RUN_DIR/ingest-check.json" INPUT...
+python -m semant_demo.maintenance.chunk_ingest --write "$CHECKPOINT" --confirm-endpoint HOST:PORT \
     --backup-id BACKUP INPUT...                                                    # or --offline-backup NOTE
-python -m semant_demo.maintenance.chunk_ingest --check CHECKPOINT-after.json INPUT...
+python -m semant_demo.maintenance.chunk_ingest --check "$RUN_DIR/ingest-after.json" INPUT...
 ```
 
 - **Input:** only the new data, the source files minus what the store already holds. A chunk
@@ -76,7 +97,7 @@ python -m semant_demo.maintenance.chunk_ingest --check CHECKPOINT-after.json INP
   steps 3–9 would treat them as part of this import. Record the input's source and version in
   the [run record](#run-record).
 - **Check:** read the counts (`new`, `append`, `replayed`, `rejected`) and
-  `CHECKPOINT-check.json.manifest.jsonl`. Exit 1 means rejected or invalid documents: fix the
+  `$RUN_DIR/ingest-check.json.manifest.jsonl`. Exit 1 means rejected or invalid documents: fix the
   input, or accept that they stay out, before writing.
 - **Write:** exit 0, or 1 when documents are `blocked` (run the same command again to retry
   them) or, as in the check, rejected or invalid. An interrupted run resumes the same way; a
@@ -89,9 +110,9 @@ python -m semant_demo.maintenance.chunk_ingest --check CHECKPOINT-after.json INP
 [Kramerius metadata sync](DATA_MAINTENANCE.md#kramerius-metadata-sync-metadata_sync-257).
 
 ```bash
-python -m semant_demo.maintenance.metadata_sync --report metadata.json --document-ids CHECKPOINT.documents.txt \
-    --infer-library-from-pages --inferred inferred.json                            # read-only
-python -m semant_demo.maintenance.metadata_sync --apply metadata.json --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.metadata_sync --report "$RUN_DIR/metadata.json" --document-ids "$CHECKPOINT.documents.txt" \
+    --infer-library-from-pages --inferred "$RUN_DIR/inferred.json"                 # read-only
+python -m semant_demo.maintenance.metadata_sync --apply "$RUN_DIR/metadata.json" --confirm-endpoint HOST:PORT
 ```
 
 - Before `--apply`: check the `unresolved` documents and sample the inferred libraries
@@ -107,13 +128,14 @@ python -m semant_demo.maintenance.metadata_sync --apply metadata.json --confirm-
 [`chunk_document_public`](DATA_MAINTENANCE.md#document-visibility-on-chunks-chunk_document_public-793).
 
 ```bash
-python -m semant_demo.maintenance.chunk_year --write year.json --confirm-endpoint HOST:PORT        # full scan
-python -m semant_demo.maintenance.chunk_document_public --write public.json --confirm-endpoint HOST:PORT \
-    --document-ids CHECKPOINT.documents.txt
+python -m semant_demo.maintenance.chunk_year --write "$RUN_DIR/year.json" --confirm-endpoint HOST:PORT  # full scan
+python -m semant_demo.maintenance.chunk_document_public --write "$RUN_DIR/public.json" --confirm-endpoint HOST:PORT \
+    --document-ids "$CHECKPOINT.documents.txt"
+python -m semant_demo.maintenance.chunk_year --check "$RUN_DIR/year_after.json"  # expect exit 0
 ```
 
 Both after step 3. Until `chunk_document_public` runs, the new chunks are not public and not
-searchable. `chunk_year --check year_after.json` must then exit 0.
+searchable. The final `chunk_year --check` must exit 0.
 
 ## 5. Chunk titles (`chunk_titles`)
 
@@ -121,10 +143,10 @@ searchable. `chunk_year --check year_after.json` must then exit 0.
 
 ```bash
 python -m semant_demo.maintenance.chunk_titles --check --models-config semant_demo/configs/chunk_titles_vllm.yaml \
-    --documents-from CHECKPOINT.documents.txt
+    --documents-from "$CHECKPOINT.documents.txt"
 python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:PORT \
-    --models-config semant_demo/configs/chunk_titles_vllm.yaml --documents-from CHECKPOINT.documents.txt \
-    --report titles.json
+    --models-config semant_demo/configs/chunk_titles_vllm.yaml --documents-from "$CHECKPOINT.documents.txt" \
+    --report "$RUN_DIR/titles.json"
 ```
 
 - After step 3 (it uses the document titles). Without `--documents-from` it selects every
@@ -139,10 +161,12 @@ python -m semant_demo.maintenance.chunk_titles --write --confirm-endpoint HOST:P
 [README](../data_tools/embedder/README.md).
 
 ```bash
-cd data_tools/embedder
-python run.py config.qwen.yaml --check                                  # exit 1: vectors to compute
-python run.py config.qwen.yaml --confirm-endpoint HOST:PORT
-python run.py config.qwen.yaml --check                                  # expect exit 0
+(
+  cd "$REPO_ROOT/data_tools/embedder" || exit 1
+  python run.py config.qwen.yaml --check                                # exit 1: vectors to compute
+  python run.py config.qwen.yaml --confirm-endpoint HOST:PORT
+  python run.py config.qwen.yaml --check                                # expect exit 0
+)
 ```
 
 It selects the chunks whose `haveVector` lacks the vector's name, whichever import added them.
@@ -155,10 +179,12 @@ and the check does not count them, so it exits 0. Step 9 reports them in `vector
 [Chunk classification](DATA_MAINTENANCE.md#chunk-classification-data_toolsmeta_data_enrichment-590).
 
 ```bash
-cd data_tools/meta_data_enrichment
-python run.py config.yaml --check                                       # chunks still UNPROCESSED
-python run.py config.yaml --confirm-endpoint HOST:PORT
-python run.py config.yaml --check                                       # expect none selected
+(
+  cd "$REPO_ROOT/data_tools/meta_data_enrichment" || exit 1
+  python run.py config.yaml --check                                     # chunks still UNPROCESSED
+  python run.py config.yaml --confirm-endpoint HOST:PORT
+  python run.py config.yaml --check                                     # expect none selected
+)
 ```
 
 - After step 4: an API model without `include_restricted_documents` selects only public
@@ -172,8 +198,8 @@ python run.py config.yaml --check                                       # expect
 [Summaries](DATA_MAINTENANCE.md#document-chunk-value-summaries-chunk_summary_schema-chunk_summaries-529).
 
 ```bash
-python -m semant_demo.maintenance.chunk_summaries --write summaries.json --confirm-endpoint HOST:PORT
-python -m semant_demo.maintenance.chunk_summaries --dry-run summaries_after.json      # expect exit 0
+python -m semant_demo.maintenance.chunk_summaries --write "$RUN_DIR/summaries.json" --confirm-endpoint HOST:PORT
+python -m semant_demo.maintenance.chunk_summaries --dry-run "$RUN_DIR/summaries_after.json"  # expect exit 0
 ```
 
 The final write, after step 7: it summarizes the chunks' classifications. A full-corpus pass.
@@ -183,7 +209,7 @@ The final write, after step 7: it summarizes the chunks' classifications. A full
 [Import status](DATA_MAINTENANCE.md#import-status-import_status-884).
 
 ```bash
-python -m semant_demo.maintenance.import_status --report status.json --document-ids CHECKPOINT.documents.txt \
+python -m semant_demo.maintenance.import_status --report "$RUN_DIR/status.json" --document-ids "$CHECKPOINT.documents.txt" \
     [--titles-included-restricted] [--classifier-skipped-restricted]
 ```
 
@@ -202,8 +228,11 @@ Give the options that match how steps 5 and 7 ran; the command cannot tell:
   nothing downstream, a new classification needs step 8 again), then this report with a new
   file name. Chunks with empty text stay incomplete in `vectors` (step 6): record their ids
   instead of running the embedder again.
-- **Exit 1, index misses** (`index.missed_ids`): `no_stored_vector` means the embedder listed a
-  vector it did not store (run step 6 again). `not_in_top_k` is a *self-retrieval miss*, not
+- **Exit 1, index misses** (`index.missed_ids`): `no_stored_vector` means Weaviate did not
+  return the named vector (or the chunk itself) despite the name being listed in `haveVector`.
+  This is an unexpected inconsistency: investigate before proceeding. The normal embedder
+  writes the vector and its name together; rerunning it skips chunks already listing the name.
+  `not_in_top_k` is a *self-retrieval miss*, not
   proof of a missing index entry: right after step 6 the vector may still be queued for
   indexing, and many chunks with an identical vector can crowd a correctly indexed chunk out of
   the top K. Run the report again later; if the same chunks still miss, record them and
@@ -244,6 +273,7 @@ Post it on the issue of the import (not in these docs), with the reports attache
 
 - Authorization: link
 - Backup: id or offline copy note
+- `haveVector` audit: date, target, vector, report link (new or previous)
 - Models: embedder (config, model), chunk_titles (catalog, model, prompt hash), classifier (config, provenance, fingerprint)
 
 | Step | Command (mode) | Exit | Counts | Notes |
