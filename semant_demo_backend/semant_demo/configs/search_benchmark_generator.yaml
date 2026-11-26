@@ -1,0 +1,108 @@
+# Search benchmark dataset generator (#726) — the shape of dataset v1 (#730):
+#   python -m semant_demo.benchmarks.search_relevance.generate budget semant_demo/configs/search_benchmark_generator.yaml
+#   python -m semant_demo.benchmarks.search_relevance.generate run semant_demo/configs/search_benchmark_generator.yaml \
+#       --work ~/search-benchmark/work-v1 --out ~/search-benchmark/v1
+# Copy this file to change models, endpoints or sizes; the manifest records the file and its SHA-256.
+# Unknown keys are refused. Fields: semant_demo/benchmarks/search_relevance/config.py.
+
+dataset_id: semant-search
+version: v1
+description: semANT passage retrieval benchmark (Czech, English, German).
+languages: [ces, eng, deu]          # corpus (source-document) languages
+query_languages: [ces, eng, deu]    # every intent gets a query in each
+seeds: {sample: 712, intents: 726, judge: 730}
+concurrency: 8                      # model calls at once
+
+# The models, in the backend's model catalog format (adapters/llm/models.py). Providers and keys
+# come from the environment (OPENAI_API_URL, OPENAI_API_KEY, OLLAMA_URLS); a tier may set base_url.
+# These features exist only in this file, not in the application's llm_models.yaml.
+models:
+  tiers:
+    small:
+      provider: openai
+      model: anthropic/claude-haiku-5.5
+      reasoning: {enabled: false}
+      supports_temperature: false
+      input_price: 0.10
+      output_price: 0.50
+  features:
+    search_benchmark_intents:
+      default: small
+      limits: {max_output_tokens: 400, max_input_tokens: 4000}
+    search_benchmark_translation:
+      default: small
+      limits: {max_output_tokens: 200, max_input_tokens: 2000}
+    search_benchmark_judge:
+      default: small
+      limits: {max_output_tokens: 16, max_input_tokens: 4000}
+
+source:
+  # Read only. Without host, WEAVIATE_HOST / WEAVIATE_REST_PORT / WEAVIATE_GRPC_PORT (or the
+  # --source-* options). Never a credential here.
+  description: semANT production corpus (read-only snapshot)
+  # Only chunks of public documents (Chunks.documentPublic true) are sampled. To include
+  # restricted ones, set include_restricted_documents: true and list every model that receives
+  # chunk text (intents, translation, judge, pooling embeddings) in restricted_documents_models.
+  include_restricted_documents: false
+
+sample:
+  per_language: 10000
+  min_chars: 200
+  max_per_document: 20
+  oversample: 2                     # ids sampled per wanted chunk (reservoir of the scan)
+  scan_batch: 5000                  # one read-only scan over every chunk's id and language
+  strata: balanced                  # round-robin over (25-year period, document type)
+  period_years: 25
+  context_fraction: 0.05            # neighbours of 5 % of the sampled chunks
+  context_neighbours: 1
+
+intents:
+  count: 210                        # 70 per corpus language
+  styles: {keywords: 0.25, question: 0.25, entity: 0.15, long_question: 0.15, paraphrase: 0.1, ocr: 0.1}
+  max_copied_words: 5
+  spare: 0.5
+  # import:                         # e.g. the #41 questions: question, corpus_id, language per line
+  #   path: ~/search-benchmark/issue41-questions.jsonl
+  #   limit: 60
+
+translation:
+  back_translate_fraction: 0.2
+  min_back_overlap: 0.3
+  require_all_languages: true
+
+pooling:
+  max_candidates_per_intent: 40
+  max_judgments: 12000
+  concurrency: 8
+  store: {name: semant-search-benchmark}
+  methods:
+    - id: bm25
+      description: BM25 top 30 over the application's default properties
+      mode: text
+      depth: 30
+    - id: e5-small
+      description: "multilingual-e5-small top 30 (a pooling model, not one #727 compares)"
+      mode: vector
+      depth: 30
+      vector: {id: e5-small, model: intfloat/multilingual-e5-small, target_vector: e5_small,
+               query_prefix: "query: ", document_template: "passage: {text}",
+               max_input_tokens: 512}           # E5's limit: longer chunks are cut, not refused
+      endpoint: {base_url: "http://localhost:8001/v1"}
+    - id: hybrid-e5
+      description: BM25 + multilingual-e5-small, alpha 0.5, relativeScore, top 30
+      mode: hybrid
+      alpha: 0.5
+      fusion: relativeScore
+      depth: 30
+      vector: {id: e5-small, model: intfloat/multilingual-e5-small, target_vector: e5_small,
+               query_prefix: "query: ", document_template: "passage: {text}",
+               max_input_tokens: 512}           # E5's limit: longer chunks are cut, not refused
+      endpoint: {base_url: "http://localhost:8001/v1"}
+
+judge:
+  max_chars: 2500
+  per_language_fraction: 0.2        # judged once per query language: language_grades, consistent
+  aggregation: median
+
+limitations:
+  - Sampled from one snapshot of the production corpus; later imports are not represented.

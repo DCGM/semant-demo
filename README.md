@@ -144,6 +144,7 @@ New to the repository? [Start here](docs/START_HERE.md) explains how the parts f
 | [docs/DATA_MAINTENANCE.md](docs/DATA_MAINTENANCE.md) | Reviewed data audits and repairs |
 | [docs/INGESTION_RUNBOOK.md](docs/INGESTION_RUNBOOK.md) | Checklist for appending new data, from the preflight to the run's record |
 | [docs/DB_BENCHMARK.md](docs/DB_BENCHMARK.md) | Read-only Weaviate inventory and query benchmark; [2026-10 production audit](docs/WEAVIATE_AUDIT_2026-10.md) |
+| [docs/SEARCH_BENCHMARK.md](docs/SEARCH_BENCHMARK.md) | Search relevance benchmark: dataset and run contract, stages (#712) |
 | [deploy/README.md](deploy/README.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker deployment and CI/CD; configuration reference |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Logs, traces, metrics, dashboards, adding signals safely |
 | [docs/TODO.md](docs/TODO.md) | Open risks, linked to GitHub issues |

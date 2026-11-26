@@ -18,6 +18,7 @@ class PipelineStats:
     selected: int = 0  # records read whose haveVector lacks the vector's name
     scanned: int = 0  # records whose id and haveVector were read by the cursor (0 unless it fell back to it)
     already_stored: int = 0  # selected records that store the vector: a run only adds its name to haveVector
+    stale: int = 0  # records the filter selected again although they already list the name (left alone)
     empty: int = 0  # selected records whose rendered input text is empty (not embedded, stay selected)
     embedded: int = 0  # records whose vector (and name in haveVector) was written in this run
     missing: int = 0  # check only: selected records a run would embed
@@ -219,7 +220,9 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                 pbar.close()
                 print(f"Pipeline finished. Embedded {stats.embedded} records in this run "
                       f"({stats.already_stored} already stored the vector and got only its name in {HAVE_VECTOR}, "
-                      f"{stats.empty} with empty input).")
+                      f"{stats.empty} with empty input"
+                      + (f", {stats.stale} selected again just after their write and left alone" if stats.stale else "")
+                      + ").")
                 return stats
         finally:
             if pbar is not None:
@@ -417,6 +420,14 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
                     break
 
                 listed = obj.properties.get(HAVE_VECTOR)
+                if self.vector_name in (listed or []):
+                    # Written moments ago: the filter can still match a record whose write it has not
+                    # indexed yet, while the record read already lists the name. It is done; kept out
+                    # of the next pages, so it is neither embedded nor its name added again.
+                    stats.selected -= 1
+                    stats.stale += 1
+                    excluded.add(obj.uuid)
+                    continue
                 stored_before = stats.already_stored
                 text = self._input_of(obj, stats)
                 if text is None:
@@ -497,7 +508,9 @@ class EmbeddingPipeline(ConfigurableMixin, CreatableMixin):
 
         ``listed`` is the list as read: ``None`` (absent or null) counts as ``[]``, which Weaviate reads
         back as ``[]`` but treats alike in the selection."""
-        names = [*(listed or []), self.vector_name]
+        names = [*(listed or [])]
+        if self.vector_name not in names:  # never listed twice, whatever was read
+            names.append(self.vector_name)
         vector = None if embedding is None else {self.vector_name: embedding}
         async with write_semaphore:
             await self._with_retries(
