@@ -85,7 +85,7 @@
                 flat dense no-caps color="primary" icon-right="chevron_right" class="statistics-sidebar__all"
                 :label="`All ${block.values} values`"
                 :data-testid="`statistics-sidebar-attribute-${block.attribute.id}-all`"
-                @click="emit('open', null)"
+                @click="emit('openAttribute', block.attribute.id)"
               />
             </template>
           </div>
@@ -101,7 +101,7 @@
  * and rows as the Statistics view (#818), each distribution cut to its `SIDEBAR_ROWS` most frequent
  * values and the Missing row, and the accepted values of the collection's attributes (#819) cut the
  * same way, without the view's retained-value toggle. A value's label narrows the filter (`drill`) without leaving the list;
- * `open` shows the full view, of one distribution or of all. Read only while `active` (the panel is
+ * `open` shows the full view, of one distribution or of all; `openAttribute` the full view at one attribute. Read only while `active` (the panel is
  * shown and the sidebar open), again on every return and on each `refresh`.
  */
 import { computed, watch } from 'vue'
@@ -130,7 +130,12 @@ const props = defineProps<{
   /** The collection's attributes, whose accepted values are counted as in the view (#819). */
   attributes: Attribute[]
 }>()
-const emit = defineEmits<{ drill: [change: Partial<ConcordanceFilters>], open: [dimension: Dimension | null] }>()
+const emit = defineEmits<{
+  drill: [change: Partial<ConcordanceFilters>]
+  open: [dimension: Dimension | null]
+  /** The full view, scrolled to this attribute's card (its values are not a `dimension`). */
+  openAttribute: [attributeId: string]
+}>()
 
 const { statistics, loading, error, load } = useAnnotationStatistics(
   computed(() => (props.active && props.collectionId) || null), computed(() => props.filters),

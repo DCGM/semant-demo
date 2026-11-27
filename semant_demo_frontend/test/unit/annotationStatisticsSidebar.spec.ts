@@ -207,9 +207,15 @@ describe('the statistics panel of the annotations sidebar', () => {
     await router.push({ query: {} }) // back to the list: All values opens the full view
     await flushPromises()
     expect(q('statistics-sidebar-attribute-a1-all')?.textContent).toContain('All 7 values')
+    const scrolled: Element[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
     q('statistics-sidebar-attribute-a1-all')!.click()
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ view: 'statistics' })
+    // ...scrolled to that attribute's card, which would otherwise be below the distributions.
+    expect(scrolled.map(e => e.getAttribute('data-testid'))).toEqual(['statistics-attribute-a1'])
+    Element.prototype.scrollIntoView = original
     wrapper.unmount()
   })
 

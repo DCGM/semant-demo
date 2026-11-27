@@ -504,6 +504,7 @@
         :attributes="attributesStore.attributes"
         @drill="drillFromSidebar"
         @open="openFromSidebar"
+        @open-attribute="openAttributeFromSidebar"
       />
     </RightSidebarPanel>
   </q-page>
@@ -529,6 +530,8 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
+import { scrollRowIntoView } from './rowScroll'
+import { prefersReducedMotion } from 'src/features/documents/contextScroll'
 import AnnotationStatisticsPanel from '../statistics/AnnotationStatisticsPanel.vue'
 import AnnotationStatisticsSidebar from '../statistics/AnnotationStatisticsSidebar.vue'
 import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, countedAttributeIds, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
@@ -630,6 +633,20 @@ function openFromSidebar (dimension: Dimension | null) {
   showDimension(dimension)
   closeCoveringSidebar()
 }
+/** The attribute whose card the full view scrolls to once it shows the statistics (#680 review). */
+const revealAttributeId = ref<string | null>(null)
+function openAttributeFromSidebar (attributeId: string) {
+  revealAttributeId.value = attributeId
+  openFromSidebar(null)
+}
+watch([revealAttributeId, statistics, statisticsLoading, statisticsView], async () => {
+  const id = revealAttributeId.value
+  if (!id || !statisticsView.value || statisticsLoading.value || !statistics.value) return
+  revealAttributeId.value = null
+  await nextTick()
+  const card = document.querySelector<HTMLElement>(`[data-testid="annotation-statistics"] [data-testid="statistics-attribute-${id}"]`)
+  if (card) scrollRowIntoView(card, prefersReducedMotion() ? 'auto' : 'smooth')
+})
 /** Lists exactly a category's annotations: the query narrowed to it, then the list. */
 function drillFromStatistics (change: Partial<ConcordanceFilters>) {
   void store.setFilters(change)
