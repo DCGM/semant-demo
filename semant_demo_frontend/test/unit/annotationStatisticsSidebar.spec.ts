@@ -34,12 +34,14 @@ describe('the statistics panel of the annotations sidebar', () => {
   let requests: { path: string, body: Record<string, unknown> | undefined }[]
   let failStatistics = false
   let payload: unknown = statistics
+  let attributes: unknown[] = []
 
   beforeEach(() => {
     setActivePinia(createPinia())
     requests = []
     failStatistics = false
     payload = statistics
+    attributes = []
     globalThis.fetch = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const path = new URL(String(input)).pathname
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
@@ -49,6 +51,7 @@ describe('the statistics panel of the annotations sidebar', () => {
         if (body?.self_exclusion === false) return failStatistics ? json({ detail: 'x' }, 500) : json(payload)
         return json({ population: 'filtered', self_exclusion: true, facets: [] })
       }
+      if (path.endsWith('/attributes')) return json(attributes)
       if (path.endsWith('/annotations/review')) return json({ succeeded: ['a1'], failed: [], versions: { a1: 2 }, previous: {} })
       if (path.endsWith('/annotations/ids')) return json({ ids: [], versions: {} })
       if (path.endsWith('/annotations/documents')) return json([{ id: 'd1', title: 'Listy', available: true, count: 40 }])
@@ -141,6 +144,7 @@ describe('the statistics panel of the annotations sidebar', () => {
     await flushPromises()
     expect(store.filters).toMatchObject({ tagIds: ['t2'], text: 'Karel' })
     expect(router.currentRoute.value.query).toEqual({ view: 'statistics' })
+    expect(sidebar.open).toBe(true) // beside the list on a wide screen (a phone closes it: browser test)
     wrapper.unmount()
   })
 
@@ -154,6 +158,58 @@ describe('the statistics panel of the annotations sidebar', () => {
     q('statistics-sidebar-tag-all')?.click()
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ view: 'statistics', dimension: 'tag' })
+    wrapper.unmount()
+  })
+
+  it('counts the accepted attribute values as the view does: five values, Not assigned, the rest in the view', async () => {
+    attributes = [{
+      id: 'a1',
+      name: 'Role',
+      cardinality: 'multi',
+      all_tags: true,
+      tag_ids: [],
+      retired: false,
+      values: Array.from({ length: 7 }, (_, i) => ({ id: `v${i + 1}`, label: `Value ${i + 1}` }))
+    }, { id: 'a2', name: 'Old', cardinality: 'single', all_tags: true, tag_ids: [], retired: true, values: [] }]
+    payload = {
+      ...statistics,
+      facets: [...statistics.facets, {
+        facet: 'attribute:a1',
+        missing: 10,
+        total: 40,
+        eligible: 30,
+        with_value: 20,
+        assignments: 25,
+        values: Array.from({ length: 7 }, (_, i) => ({ value: `v${i + 1}`, count: 7 - i, inapplicable: i === 0 ? 1 : 0 }))
+      }]
+    }
+    const store = useConcordanceStore()
+    const { wrapper, router, sidebar } = await mountPage('?view=statistics')
+    sidebar.open = true
+    await flushPromises()
+    // The view's request and the panel's are the same, both with the current attribute only.
+    const bodies = reads().map(r => r.body)
+    expect(bodies.length).toBeGreaterThanOrEqual(2)
+    expect(bodies.at(-1)).toEqual(bodies.at(-2))
+    expect(bodies.at(-1)?.facets).toContain('attribute:a1')
+    expect(bodies.at(-1)?.facets).not.toContain('attribute:a2')
+
+    expect(q('statistics-sidebar-attribute-a1-summary')?.textContent).toContain('20 of 30')
+    const rows = Array.from(document.body.querySelectorAll('[data-testid="statistics-sidebar-attribute-a1-values"] tbody tr'))
+    expect(rows).toHaveLength(6) // the five most frequent values and Not assigned
+    expect(rows[0].textContent).toContain('6') // retained (inapplicable) values are not counted
+    expect(rows.at(-1)?.textContent).toContain('Not assigned')
+    expect(q('statistics-sidebar-attribute-a2')).toBeNull()
+
+    q('statistics-sidebar-attribute-a1-values-show-v2')!.click()
+    await flushPromises()
+    expect(store.filters).toMatchObject({ attributeValues: ['a1:v2'], types: ['pos'] })
+    await router.push({ query: {} }) // back to the list: All values opens the full view
+    await flushPromises()
+    expect(q('statistics-sidebar-attribute-a1-all')?.textContent).toContain('All 7 values')
+    q('statistics-sidebar-attribute-a1-all')!.click()
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ view: 'statistics' })
     wrapper.unmount()
   })
 

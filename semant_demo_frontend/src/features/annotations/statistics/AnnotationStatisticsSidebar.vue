@@ -53,6 +53,43 @@
             />
           </template>
         </div>
+
+        <!-- Accepted attribute values (#819): confirmed annotations of the tags each attribute applies to. -->
+        <div v-if="attributeBlocks.length" class="statistics-sidebar__attributes" data-testid="statistics-sidebar-attributes">
+          <h3 class="statistics-sidebar__group">Accepted attribute values</h3>
+          <div
+            v-for="block in attributeBlocks" :key="block.attribute.id"
+            class="statistics-sidebar__block" :data-testid="`statistics-sidebar-attribute-${block.attribute.id}`"
+          >
+            <h4 class="statistics-sidebar__title">{{ block.attribute.name }}</h4>
+            <p v-if="!block.distribution" class="statistics-sidebar__note" :data-testid="`statistics-sidebar-attribute-${block.attribute.id}-unavailable`">
+              Not available for this query.
+            </p>
+            <p v-else-if="block.distribution.eligible === 0" class="statistics-sidebar__note">
+              No confirmed annotation of a tag this attribute applies to.
+            </p>
+            <template v-else>
+              <p class="statistics-sidebar__note" :data-testid="`statistics-sidebar-attribute-${block.attribute.id}-summary`">
+                {{ formatCount(block.distribution.withValue) }} of {{ formatCount(block.distribution.eligible) }}
+                confirmed {{ block.distribution.eligible === 1 ? 'annotation' : 'annotations' }} with a value
+              </p>
+              <DistributionTable
+                :rows="block.shown"
+                :title="block.attribute.name"
+                :caption="`Confirmed annotations per value of ${block.attribute.name}`"
+                :test-id="`statistics-sidebar-attribute-${block.attribute.id}-values`"
+                @drill="change => emit('drill', change)"
+              />
+              <q-btn
+                v-if="block.hidden > 0"
+                flat dense no-caps color="primary" icon-right="chevron_right" class="statistics-sidebar__all"
+                :label="`All ${block.values} values`"
+                :data-testid="`statistics-sidebar-attribute-${block.attribute.id}-all`"
+                @click="emit('open', null)"
+              />
+            </template>
+          </div>
+        </div>
       </template>
     </template>
   </section>
@@ -62,19 +99,20 @@
 /**
  * The compact statistics of the annotation workspace's sidebar (#680): the same request, counting
  * and rows as the Statistics view (#818), each distribution cut to its `SIDEBAR_ROWS` most frequent
- * values and the Missing row. A value's label narrows the filter (`drill`) without leaving the list;
+ * values and the Missing row, and the accepted values of the collection's attributes (#819) cut the
+ * same way, without the view's retained-value toggle. A value's label narrows the filter (`drill`) without leaving the list;
  * `open` shows the full view, of one distribution or of all. Read only while `active` (the panel is
  * shown and the sidebar open), again on every return and on each `refresh`.
  */
 import { computed, watch } from 'vue'
 import { QBtn, QSpinner } from 'quasar'
-import type { AnnotatedDocument, Tag } from 'src/generated/api'
-import type { ConcordanceFilters } from '../concordance/concordanceStore'
+import type { AnnotatedDocument, Attribute, Tag } from 'src/generated/api'
+import { MAX_FACET_ATTRIBUTES, type ConcordanceFilters } from '../concordance/concordanceStore'
 import DistributionTable from './DistributionTable.vue'
 import { useAnnotationStatistics } from './useAnnotationStatistics'
 import {
-  DIMENSIONS, DIMENSION_LABELS, STATUS_LABELS, STATUS_ORDER, defaultOrder, distributionRows, facetOf, formatCount, isTopK,
-  orderedRows, summaryOf, type Dimension
+  DIMENSIONS, DIMENSION_LABELS, STATUS_LABELS, STATUS_ORDER, attributeDistribution, attributeFacetName, countedAttributeIds,
+  defaultOrder, distributionRows, facetOf, formatCount, isTopK, orderedRows, summaryOf, type Dimension, type DistributionRow
 } from './statistics'
 
 /** Rows of values a distribution shows here (its Missing row comes on top of them). */
@@ -89,11 +127,14 @@ const props = defineProps<{
   refresh: number
   tags: Tag[]
   documents: AnnotatedDocument[]
+  /** The collection's attributes, whose accepted values are counted as in the view (#819). */
+  attributes: Attribute[]
 }>()
 const emit = defineEmits<{ drill: [change: Partial<ConcordanceFilters>], open: [dimension: Dimension | null] }>()
 
 const { statistics, loading, error, load } = useAnnotationStatistics(
-  computed(() => (props.active && props.collectionId) || null), computed(() => props.filters))
+  computed(() => (props.active && props.collectionId) || null), computed(() => props.filters),
+  computed(() => countedAttributeIds(props.attributes)))
 watch(() => props.refresh, () => { if (props.active) void load() })
 
 const summary = computed(() => summaryOf(statistics.value!))
@@ -107,12 +148,26 @@ const blocks = computed(() => DIMENSIONS.map((dimension: Dimension) => {
   const rows = facet
     ? orderedRows(distributionRows(facet, dimension, labels.value, props.filters, drillable.value), dimension, defaultOrder(dimension))
     : []
-  const values = rows.filter(r => r.kind === 'value')
-  // The most frequent values, whatever the distribution's display order.
-  const top = new Set([...values].sort((a, b) => b.count - a.count).slice(0, SIDEBAR_ROWS).map(r => r.key))
-  const shown = rows.filter(r => r.kind === 'missing' || top.has(r.key))
+  const shown = topRows(rows)
   return { dimension, title: DIMENSION_LABELS[dimension], facet, rows, shown, hidden: rows.length - shown.length }
 }))
+
+/** The attributes the request counted (as the view: the first `MAX_FACET_ATTRIBUTES`), each cut the same way. */
+const attributeBlocks = computed(() => props.attributes.filter(a => !a.retired).slice(0, MAX_FACET_ATTRIBUTES).map(attribute => {
+  const facet = statistics.value?.facets.find(f => f.facet === attributeFacetName(attribute.id)) ?? null
+  const distribution = attributeDistribution(facet, attribute, props.filters, drillable.value, false)
+  const rows = distribution?.rows ?? []
+  const shown = topRows(rows)
+  const values = rows.filter(r => r.kind === 'value').length
+  return { attribute, distribution, shown, values, hidden: rows.length - shown.length }
+}))
+
+/** The `SIDEBAR_ROWS` most frequent values, in the distribution's display order, and its Missing row. */
+function topRows (rows: DistributionRow[]): DistributionRow[] {
+  const values = rows.filter(r => r.kind === 'value')
+  const top = new Set([...values].sort((a, b) => b.count - a.count).slice(0, SIDEBAR_ROWS).map(r => r.key))
+  return rows.filter(r => r.kind === 'missing' || top.has(r.key))
+}
 </script>
 
 <style scoped>
@@ -162,6 +217,17 @@ const blocks = computed(() => DIMENSIONS.map((dimension: Dimension) => {
   color: #4a5568;
   font-size: 0.8rem;
   margin: 0;
+}
+
+.statistics-sidebar__attributes {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.statistics-sidebar__group {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 8px;
 }
 
 .statistics-sidebar__all {

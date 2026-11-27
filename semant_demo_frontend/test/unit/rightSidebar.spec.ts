@@ -47,6 +47,16 @@ describe('rightSidebarStore', () => {
     expect(sidebar.activePanelId).toBe('second')
   })
 
+  it('shows no panel while every registered panel is disabled', async () => {
+    const sidebar = useRightSidebarStore()
+    const only = reactive({ ...panel('only', 0), disabled: true })
+    sidebar.register(only)
+    expect([sidebar.activePanelId, sidebar.activePanel]).toEqual([null, null])
+    only.disabled = false
+    await nextTick()
+    expect(sidebar.activePanelId).toBe('only')
+  })
+
   it('keeps a chosen panel when a lower-ordered one registers later', () => {
     const sidebar = useRightSidebarStore()
     sidebar.register(panel('a', 0))

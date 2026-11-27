@@ -501,8 +501,9 @@
         :refresh="statisticsRefresh"
         :tags="tags"
         :documents="store.documents"
-        @drill="change => store.setFilters(change)"
-        @open="showDimension"
+        :attributes="attributesStore.attributes"
+        @drill="drillFromSidebar"
+        @open="openFromSidebar"
       />
     </RightSidebarPanel>
   </q-page>
@@ -530,7 +531,7 @@ import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotat
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
 import AnnotationStatisticsPanel from '../statistics/AnnotationStatisticsPanel.vue'
 import AnnotationStatisticsSidebar from '../statistics/AnnotationStatisticsSidebar.vue'
-import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
+import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, countedAttributeIds, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
 import { useAnnotationStatistics } from '../statistics/useAnnotationStatistics'
 import type { ConcordanceFilters } from './concordanceStore'
 import SimilarSourceBar from './SimilarSourceBar.vue'
@@ -596,7 +597,7 @@ const statisticsDimension = computed<Dimension | null>(() => {
 // Read only while the view is shown (and again on every return to it).
 const { statistics, loading: statisticsLoading, error: statisticsError, load: loadStatistics } = useAnnotationStatistics(
   computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters),
-  computed(() => attributesStore.attributes.filter(a => !a.retired).map(a => a.id)))
+  computed(() => countedAttributeIds(attributesStore.attributes)))
 const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
 /** The statuses counted, named on the summary line with the denominator. */
 const statisticsStatuses = computed(() => STATUS_ORDER.filter(t => store.filters.types.includes(t)).map(t => STATUS_LABELS[t].toLowerCase()).join(', '))
@@ -614,6 +615,20 @@ function showView (view: 'list' | 'statistics') {
 }
 function showDimension (dimension: Dimension | null) {
   void router.push({ query: dimension ? { view: 'statistics', dimension } : { view: 'statistics' } })
+}
+/** On a narrow screen the sidebar covers the page: an action of its statistics (#680) closes it, so
+ * its result (the narrowed list, the full view) is seen. Beside the page it stays open. */
+function closeCoveringSidebar () {
+  if ($q.screen.lt.md) rightSidebar.open = false
+}
+/** A value of the sidebar's statistics narrows the list beside it; the main view stays. */
+function drillFromSidebar (change: Partial<ConcordanceFilters>) {
+  void store.setFilters(change)
+  closeCoveringSidebar()
+}
+function openFromSidebar (dimension: Dimension | null) {
+  showDimension(dimension)
+  closeCoveringSidebar()
 }
 /** Lists exactly a category's annotations: the query narrowed to it, then the list. */
 function drillFromStatistics (change: Partial<ConcordanceFilters>) {

@@ -53,6 +53,9 @@ export function statisticsRequest (f: ConcordanceFilters, attributeIds: string[]
 }
 
 export const attributeFacetName = (attributeId: string) => `attribute:${attributeId}`
+/** The attributes whose accepted values the statistics count (#819): the collection's current ones.
+ * The view and the sidebar (#680) both ask for these, so their requests are the same. */
+export const countedAttributeIds = (attributes: Attribute[]) => attributes.filter(a => !a.retired).map(a => a.id)
 
 /** One row of a distribution: a value, or the annotations without one (`missing`). */
 export interface DistributionRow {

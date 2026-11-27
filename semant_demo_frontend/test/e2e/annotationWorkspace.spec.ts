@@ -1150,6 +1150,32 @@ test('the Statistics panel fits the phone overlay and closing it returns to the 
   await expect(row(page, 'Jan Novák')).toBeInViewport()
 })
 
+test('on a phone the Statistics panel closes to show what its actions lead to (#680 review)', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const statistics = page.getByTestId('statistics-sidebar')
+  const toggle = page.getByRole('button', { name: 'Toggle sidebar' })
+
+  // A value narrows the list, which the closed overlay then shows.
+  await toggle.click()
+  await expect(page.getByTestId('statistics-sidebar-total')).toBeVisible()
+  const place = fixture.tag('place')
+  await page.getByTestId(`statistics-sidebar-table-tag-show-${place.id}`).click()
+  await expect(statistics).toBeHidden()
+  await expect(rows(page).first()).toBeInViewport()
+  await expect(rows(page)).not.toHaveCount(0)
+  await expect(rows(page).locator('.kwic__tag').filter({ hasNotText: place.name })).toHaveCount(0)
+
+  // Open statistics shows the full view of the same query.
+  await toggle.click()
+  await expect(page.getByTestId('statistics-sidebar-total')).toBeVisible()
+  const total = await page.getByTestId('statistics-sidebar-total').textContent()
+  await page.getByTestId('statistics-sidebar-open').click()
+  await expect(statistics).toBeHidden()
+  await expect(page.getByTestId('annotation-statistics')).toBeInViewport()
+  await expect(page.getByTestId('statistics-total')).toHaveText(total!)
+})
+
 test('a shared user reads the same workspace', async ({ page }) => {
   await useViewport(page, 'phone')
   await openWorkspace(page, 'annotator')

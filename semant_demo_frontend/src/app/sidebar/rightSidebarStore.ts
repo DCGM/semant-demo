@@ -44,7 +44,8 @@ export const useRightSidebarStore = defineStore('rightSidebar', () => {
       .sort((a, b) => a.order - b.order)
   )
   // the panel shown when none is chosen, or when the chosen one cannot be shown
-  const fallbackId = () => (sortedPanels.value.find(p => !p.disabled) ?? sortedPanels.value[0])?.id ?? null
+  // (none when every panel is disabled: a disabled panel is never active)
+  const fallbackId = () => sortedPanels.value.find(p => !p.disabled)?.id ?? null
   const hasPanels = computed(() => panels.value.length > 0)
   const activePanel = computed(() => sortedPanels.value.find(p => p.id === activePanelId.value) ?? null)
 
