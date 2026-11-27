@@ -104,6 +104,14 @@ def test_incomplete_ids_are_bounded_but_counted():
         import_status.ID_LIMIT + 5, import_status.ID_LIMIT, True)
 
 
+@pytest.mark.parametrize("sample, k", [(-1, 10), (100, 0)])
+async def test_an_invalid_index_check_size_is_refused_before_reading_the_store(tmp_path, sample, k):
+    with pytest.raises(import_status.Refused, match="--coverage-sample must be 0 or more"):
+        await import_status.run(None, None, report=tmp_path / "status.json", document_ids=[DOCUMENT],
+                                endpoint="test", coverage_sample=sample, coverage_k=k)
+    assert not (tmp_path / "status.json").exists()
+
+
 class FakeIndex:
     """The index reads of ``check_index``: ``top`` maps a chunk to its rank by its own vector
     (None: not found at any K); ``unfiltered`` lists the chunks the id filter does not find."""
