@@ -218,9 +218,10 @@
     </div>
     </template>
 
-    <!-- Registered once a row is opened. -->
-    <RightSidebarPanel v-if="selection.focused" :id="CONTEXT_PANEL_ID" label="Annotation" icon="format_quote" :order="1" fill v-slot="{ visible }">
+    <!-- On the rail from the start, available once a row is open. -->
+    <RightSidebarPanel :id="CONTEXT_PANEL_ID" label="Annotation" icon="format_quote" :order="1" :disabled="!selection.focused" fill v-slot="{ visible }">
       <ChunkContextPanel
+        v-if="selection.focused"
         :visible="visible"
         ref="panel"
         :target-chunk-id="chunkContext.target?.chunkId ?? null"
@@ -490,12 +491,28 @@
         </template>
       </ChunkContextPanel>
     </RightSidebarPanel>
+
+    <!-- Always registered (#680): the counts of the list beside it; read only while shown. -->
+    <RightSidebarPanel :id="STATISTICS_PANEL_ID" label="Statistics" icon="bar_chart" :order="2" v-slot="{ visible }">
+      <AnnotationStatisticsSidebar
+        :collection-id="collectionId"
+        :filters="store.filters"
+        :active="visible && !sidebarSettling"
+        :refresh="statisticsRefresh"
+        :tags="tags"
+        :documents="store.documents"
+        :attributes="attributesStore.attributes"
+        @drill="drillFromSidebar"
+        @open="openFromSidebar"
+        @open-attribute="openAttributeFromSidebar"
+      />
+    </RightSidebarPanel>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { plural } from 'src/shared/plural'
-import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { QBtn, QBtnToggle, QPage, QSpace, QSpinner, QTooltip, useQuasar } from 'quasar'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -513,8 +530,11 @@ import { useChunkContext } from 'src/features/documents/useChunkContext'
 import { useTagsStore } from 'src/features/annotations/tagsStore'
 import { MAX_SELECTION, useAnnotationSelectionStore } from 'src/features/annotations/annotationSelectionStore'
 import ConcordanceFilterChips from './ConcordanceFilterChips.vue'
+import { scrollRowIntoView } from './rowScroll'
+import { prefersReducedMotion } from 'src/features/documents/contextScroll'
 import AnnotationStatisticsPanel from '../statistics/AnnotationStatisticsPanel.vue'
-import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
+import AnnotationStatisticsSidebar from '../statistics/AnnotationStatisticsSidebar.vue'
+import { DIMENSIONS, STATUS_LABELS, STATUS_ORDER, countedAttributeIds, formatCount, summaryOf, type Dimension } from '../statistics/statistics'
 import { useAnnotationStatistics } from '../statistics/useAnnotationStatistics'
 import type { ConcordanceFilters } from './concordanceStore'
 import SimilarSourceBar from './SimilarSourceBar.vue'
@@ -545,6 +565,7 @@ import { useUserStore } from 'src/features/auth/userStore'
 import type { SelectionEntry } from 'src/features/annotations/annotationSelectionStore'
 
 const CONTEXT_PANEL_ID = 'annotation-context'
+const STATISTICS_PANEL_ID = 'annotation-statistics'
 
 const route = useRoute()
 const $q = useQuasar()
@@ -579,14 +600,17 @@ const statisticsDimension = computed<Dimension | null>(() => {
 // Read only while the view is shown (and again on every return to it).
 const { statistics, loading: statisticsLoading, error: statisticsError, load: loadStatistics } = useAnnotationStatistics(
   computed(() => (statisticsView.value && collectionId.value) || null), computed(() => store.filters),
-  computed(() => attributesStore.attributes.filter(a => !a.retired).map(a => a.id)))
+  computed(() => countedAttributeIds(attributesStore.attributes)))
 const statisticsSummary = computed(() => (statistics.value ? summaryOf(statistics.value) : null))
 /** The statuses counted, named on the summary line with the denominator. */
 const statisticsStatuses = computed(() => STATUS_ORDER.filter(t => store.filters.types.includes(t)).map(t => STATUS_LABELS[t].toLowerCase()).join(', '))
+/** Bumped when annotations changed: the sidebar's statistics (#680) read again when shown. */
+const statisticsRefresh = ref(0)
 /** Annotations changed here (a review, undo, boundary edit or attribute assignment): the menus'
  * counts and, when shown, the statistics are read again. */
 function countsChanged () {
   void store.loadFacets()
+  statisticsRefresh.value++
   if (statisticsView.value) void loadStatistics()
 }
 function showView (view: 'list' | 'statistics') {
@@ -595,6 +619,34 @@ function showView (view: 'list' | 'statistics') {
 function showDimension (dimension: Dimension | null) {
   void router.push({ query: dimension ? { view: 'statistics', dimension } : { view: 'statistics' } })
 }
+/** On a narrow screen the sidebar covers the page: an action of its statistics (#680) closes it, so
+ * its result (the narrowed list, the full view) is seen. Beside the page it stays open. */
+function closeCoveringSidebar () {
+  if ($q.screen.lt.md) rightSidebar.open = false
+}
+/** A value of the sidebar's statistics narrows the list beside it; the main view stays. */
+function drillFromSidebar (change: Partial<ConcordanceFilters>) {
+  void store.setFilters(change)
+  closeCoveringSidebar()
+}
+function openFromSidebar (dimension: Dimension | null) {
+  showDimension(dimension)
+  closeCoveringSidebar()
+}
+/** The attribute whose card the full view scrolls to once it shows the statistics (#680 review). */
+const revealAttributeId = ref<string | null>(null)
+function openAttributeFromSidebar (attributeId: string) {
+  revealAttributeId.value = attributeId
+  openFromSidebar(null)
+}
+watch([revealAttributeId, statistics, statisticsLoading, statisticsView], async () => {
+  const id = revealAttributeId.value
+  if (!id || !statisticsView.value || statisticsLoading.value || !statistics.value) return
+  revealAttributeId.value = null
+  await nextTick()
+  const card = document.querySelector<HTMLElement>(`[data-testid="annotation-statistics"] [data-testid="statistics-attribute-${id}"]`)
+  if (card) scrollRowIntoView(card, prefersReducedMotion() ? 'auto' : 'smooth')
+})
 /** Lists exactly a category's annotations: the query narrowed to it, then the list. */
 function drillFromStatistics (change: Partial<ConcordanceFilters>) {
   void store.setFilters(change)
@@ -790,6 +842,21 @@ function closeSidebarOnEscape (event: KeyboardEvent) {
   rightSidebar.open = false
 }
 onMounted(() => window.addEventListener('keydown', closeSidebarOnEscape))
+
+/** The panels are registered from the start (Annotation disabled until a row is open), so the shell
+ * opens the sidebar on every visit. The list is the page's task, so the sidebar starts as the rail
+ * of icons only (where it opens at all: not as the overlay of a narrow screen); choosing a panel or
+ * opening a row expands it. */
+async function startSidebarClosed () {
+  sidebarSettling.value = true
+  await nextTick() // after the shell's own open-on-first-panel
+  if (!selection.focused && rightSidebar.open) rightSidebar.miniState = true
+  sidebarSettling.value = false
+}
+/** The sidebar is still being reduced to its rail: its panels are not counted as shown (nothing is read). */
+const sidebarSettling = ref(false)
+onMounted(startSidebarClosed)
+onActivated(startSidebarClosed)
 onBeforeUnmount(() => window.removeEventListener('keydown', closeSidebarOnEscape))
 
 // On a narrow screen the sidebar covers the list: closing it returns to the open row

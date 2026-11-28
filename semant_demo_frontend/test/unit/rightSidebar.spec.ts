@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Quasar } from 'quasar'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue'
+import { defineComponent, h, KeepAlive, nextTick, reactive, ref } from 'vue'
 
 import { useRightSidebarStore } from 'src/app/sidebar/rightSidebarStore'
 import RightSidebarPanel from 'src/app/sidebar/RightSidebarPanel.vue'
@@ -26,6 +26,35 @@ describe('rightSidebarStore', () => {
     expect(sidebar.activePanelId).toBe('chat')
     removeChat()
     expect([sidebar.hasPanels, sidebar.activePanelId]).toEqual([false, null])
+  })
+
+  it('keeps a disabled panel on the rail but never shows or selects it', async () => {
+    const sidebar = useRightSidebarStore()
+    const first = reactive({ ...panel('first', 0), disabled: true })
+    sidebar.register(first)
+    sidebar.register(panel('second', 1))
+    expect(sidebar.sortedPanels.map((p) => [p.id, p.disabled])).toEqual([['first', true], ['second', false]])
+    expect(sidebar.activePanelId).toBe('second')
+    sidebar.activate('first')
+    expect([sidebar.activePanelId, sidebar.open]).toEqual(['second', false])
+
+    first.disabled = false
+    await nextTick()
+    sidebar.activate('first')
+    expect(sidebar.activePanelId).toBe('first')
+    first.disabled = true // e.g. the open row was closed: the panel gives way
+    await nextTick()
+    expect(sidebar.activePanelId).toBe('second')
+  })
+
+  it('shows no panel while every registered panel is disabled', async () => {
+    const sidebar = useRightSidebarStore()
+    const only = reactive({ ...panel('only', 0), disabled: true })
+    sidebar.register(only)
+    expect([sidebar.activePanelId, sidebar.activePanel]).toEqual([null, null])
+    only.disabled = false
+    await nextTick()
+    expect(sidebar.activePanelId).toBe('only')
   })
 
   it('keeps a chosen panel when a lower-ordered one registers later', () => {

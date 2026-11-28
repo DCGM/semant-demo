@@ -23,6 +23,9 @@ import { useRightSidebarStore } from './rightSidebarStore'
  * the tool its context (search results, document...) through props and handles its
  * events; the sidebar itself only knows the panel's id, label, icon and busy state.
  *
+ * `disabled` keeps the panel's icon on the rail, greyed and not selectable, and its content
+ * is not shown until the page has something to show in it.
+ *
  * `fill` gives the content exactly the height of the sidebar instead of letting the
  * sidebar scroll it, for a tool that scrolls parts of itself.
  *
@@ -41,7 +44,8 @@ const props = withDefaults(defineProps<{
   order?: number
   busy?: boolean
   fill?: boolean
-}>(), { order: 0, busy: false, fill: false })
+  disabled?: boolean
+}>(), { order: 0, busy: false, fill: false, disabled: false })
 
 const sidebar = useRightSidebarStore()
 let unregister: (() => void) | null = null
@@ -59,7 +63,8 @@ function add () {
     label: toRef(props, 'label'),
     icon: toRef(props, 'icon'),
     order: toRef(props, 'order'),
-    busy: toRef(props, 'busy')
+    busy: toRef(props, 'busy'),
+    disabled: toRef(props, 'disabled')
   }))
 }
 

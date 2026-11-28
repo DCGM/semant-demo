@@ -19,7 +19,8 @@
           class="rail-item"
           :class="{ 'rail-item--active': panel.id === sidebar.activePanelId }"
           clickable
-          v-ripple
+          :disable="panel.disabled"
+          v-ripple="!panel.disabled"
           :aria-label="panel.label"
           :aria-current="panel.id === sidebar.activePanelId ? 'true' : undefined"
           :aria-busy="panel.busy ? 'true' : undefined"

@@ -100,7 +100,7 @@ test('opening, checking and keyboard use are distinct; the source shows the exac
   // Checking a row does not open its source.
   await row(page, 'Prahy').getByRole('checkbox').click()
   await expect(page.getByTestId('concordance-selected')).toHaveText('1 selected')
-  await expect(sidebarPanelButton(page, 'Annotation')).toHaveCount(0)
+  await expect(sidebarPanelButton(page, 'Annotation')).toHaveAttribute('aria-disabled', 'true') // on the rail, not selectable yet
 
   // Clicking a row opens it in the shared sidebar without checking it.
   await row(page, 'Jan Novák').click()
@@ -371,6 +371,15 @@ test('Next brings the open row into view and keeps focus on the sidebar (#704)',
   await expect(rows(page).first()).toHaveAttribute('aria-current', 'true')
   // The sidebar slides in and narrows the page, which can wrap the toolbar: measure the rows
   // only once it is fully in and the page ends where it starts.
+  // The sidebar starts as the rail of icons and expands when the row opens: wait until its width settles.
+  await expect(page.locator('.q-drawer--right:not(.q-drawer--mini)')).toBeVisible()
+  let lastWidth = -1
+  await expect.poll(async () => {
+    const width = await page.evaluate(() => document.querySelector('.q-drawer--right')?.getBoundingClientRect().width ?? 0)
+    const settled = width === lastWidth
+    lastWidth = width
+    return settled
+  }).toBe(true)
   await expect.poll(() => page.evaluate(() => {
     const drawer = document.querySelector('.q-drawer--right')?.getBoundingClientRect()
     const workspace = document.querySelector('[data-testid=collection-annotations]')?.getBoundingClientRect()
@@ -1076,6 +1085,95 @@ test('a long document title takes two lines above the passage, the whole title i
   }))
   expect(lines).toBe(2)
   expect(clipped, 'the title is longer than two lines here').toBe(true)
+})
+
+/** Whether the element's content fits its width (nothing cut off or scrolled sideways). */
+const fitsWidth = (locator: Locator) => locator.evaluate(e => e.scrollWidth <= e.clientWidth)
+
+test('the Statistics panel fits its 420 px sidebar beside a usable list on a 1440 px screen (#680)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openWorkspace(page)
+  const drawer = page.locator('.q-drawer--right')
+  const statistics = page.getByTestId('statistics-sidebar')
+  // Starts as the rail of icons: Annotation unavailable, nothing shown yet.
+  await expect(page.locator('.q-drawer--right.q-drawer--mini')).toBeVisible()
+  await expect(sidebarPanelButton(page, 'Annotation')).toHaveAttribute('aria-disabled', 'true')
+  await expect(statistics).toBeHidden()
+
+  await sidebarPanelButton(page, 'Statistics').click()
+  await expect(page.locator('.q-drawer--right:not(.q-drawer--mini)')).toBeVisible()
+  await expect(page.getByTestId('statistics-sidebar-total')).toBeVisible()
+  await expect.poll(() => drawer.evaluate(e => Math.round(e.getBoundingClientRect().width))).toBe(420)
+  expect(await fitsWidth(statistics), 'panel content fits the sidebar').toBe(true)
+  const [panelBox, tagTable] = await Promise.all([statistics.boundingBox(), page.getByTestId('statistics-sidebar-table-tag').boundingBox()])
+  expect(tagTable!.x + tagTable!.width, 'tag rows within the panel').toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+
+  // The list beside it keeps its columns and does not scroll sideways.
+  const novak = row(page, 'Jan Novák')
+  await expect(novak.locator('.kwic__tag')).toBeVisible()
+  await expect(novak.locator('.kwic__review')).toBeVisible()
+  expect(await fitsWidth(page.getByTestId('kwic')), 'list fits beside the panel').toBe(true)
+
+  // A value narrows the list beside the panel, which stays open.
+  const place = fixture.tag('place')
+  await page.getByTestId(`statistics-sidebar-table-tag-show-${place.id}`).click()
+  await expect(rows(page).locator('.kwic__tag').filter({ hasNotText: place.name })).toHaveCount(0)
+  await expect(rows(page)).not.toHaveCount(0)
+  await expect(statistics).toBeVisible()
+
+  // Opening a row brings the Annotation panel.
+  await rows(page).first().click()
+  await expect(panel(page).getByTestId('annotation-context')).toBeVisible()
+  await expect(statistics).toBeHidden()
+})
+
+test('the Statistics panel fits the phone overlay and closing it returns to the list (#680)', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const drawer = page.locator('.q-drawer--right')
+  const statistics = page.getByTestId('statistics-sidebar')
+  // Closed on a phone: the list has the screen.
+  await expect(statistics).toBeHidden()
+  await expect(row(page, 'Jan Novák')).toBeInViewport()
+
+  await page.getByRole('button', { name: 'Toggle sidebar' }).click()
+  await expect(page.getByTestId('statistics-sidebar-total')).toBeVisible()
+  await expect.poll(() => drawer.evaluate(e => {
+    const box = e.getBoundingClientRect()
+    return box.left >= 0 && box.right <= window.innerWidth
+  }), 'the overlay within the screen').toBe(true)
+  expect(await fitsWidth(statistics), 'panel content fits the overlay').toBe(true)
+  await expect(page.getByTestId('statistics-sidebar-open')).toBeInViewport()
+
+  await page.getByRole('button', { name: 'Close sidebar' }).click()
+  await expect(statistics).toBeHidden()
+  await expect(row(page, 'Jan Novák')).toBeInViewport()
+})
+
+test('on a phone the Statistics panel closes to show what its actions lead to (#680 review)', async ({ page }) => {
+  await useViewport(page, 'phone')
+  await openWorkspace(page)
+  const statistics = page.getByTestId('statistics-sidebar')
+  const toggle = page.getByRole('button', { name: 'Toggle sidebar' })
+
+  // A value narrows the list, which the closed overlay then shows.
+  await toggle.click()
+  await expect(page.getByTestId('statistics-sidebar-total')).toBeVisible()
+  const place = fixture.tag('place')
+  await page.getByTestId(`statistics-sidebar-table-tag-show-${place.id}`).click()
+  await expect(statistics).toBeHidden()
+  await expect(rows(page).first()).toBeInViewport()
+  await expect(rows(page)).not.toHaveCount(0)
+  await expect(rows(page).locator('.kwic__tag').filter({ hasNotText: place.name })).toHaveCount(0)
+
+  // Open statistics shows the full view of the same query.
+  await toggle.click()
+  await expect(page.getByTestId('statistics-sidebar-total')).toBeVisible()
+  const total = await page.getByTestId('statistics-sidebar-total').textContent()
+  await page.getByTestId('statistics-sidebar-open').click()
+  await expect(statistics).toBeHidden()
+  await expect(page.getByTestId('annotation-statistics')).toBeInViewport()
+  await expect(page.getByTestId('statistics-total')).toHaveText(total!)
 })
 
 test('a shared user reads the same workspace', async ({ page }) => {
