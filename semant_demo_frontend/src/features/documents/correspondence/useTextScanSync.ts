@@ -76,6 +76,8 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   const currentPageId = ref<string | null>(null)
 
   let interaction: AbortController | null = null
+  /** How many interactions began (`interactionCount`). */
+  let interactions = 0
   let citationRead: AbortController | null = null
   /** Only dismissing the citation may clear a notice produced by that citation. */
   let citationOwnsNotice = false
@@ -102,6 +104,7 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   function begin (): AbortSignal {
     interaction?.abort()
     interaction = new AbortController()
+    interactions++
     return interaction.signal
   }
 
@@ -373,6 +376,12 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
   /** The scan viewer's change to this page comes from a focus request of ours (not the reader). */
   const isOwnPageChange = (pageId: string) => ownPage === pageId
 
+  /**
+   * How many interactions began so far: an owner that waits before it follows a page or a link
+   * compares it, so that what the reader did meanwhile is not overridden (#790).
+   */
+  const interactionCount = () => interactions
+
   /** Builds the maps of the shown chunks near page `index`, for its marks in the text. */
   async function prepareMarks (index: number): Promise<void> {
     marking?.abort()
@@ -431,6 +440,7 @@ export function useTextScanSync<T extends SyncChunk> (o: TextScanSyncOptions<T>)
     showLineInText,
     onScanPage,
     isOwnPageChange,
+    interactionCount,
     cancel
   }
 }

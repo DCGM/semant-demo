@@ -245,7 +245,7 @@ import ChunkSelectionBar from './ChunkSelectionBar.vue'
 import { DOCUMENT_SIDEBAR_PANELS } from './documentSidebar'
 import DocumentTextPane from './DocumentTextPane.vue'
 import type { DocumentTextPaneApi, TextPaneAnnotation, TextSelection } from './documentTextPane'
-import type { TextPoint } from './readerOffsets'
+import type { ChunkRange, TextPoint } from './readerOffsets'
 import ReaderToolbar from './ReaderToolbar.vue'
 import { getLastUsedTagId, setLastUsedTagId } from 'src/features/annotations/lastUsedTag'
 import {
@@ -585,15 +585,24 @@ function onScanLoaded (info: { available: boolean, pages: DocumentPage[] }) {
 /**
  * A page shown in the scan: the text goes to it when the reader opened it there, once the text
  * is loaded. The first page shown is followed only when the link named it; a page replaced
- * while the text was still loading is not followed at all.
+ * while the text was still loading is not followed at all. Neither is a page opened for a click
+ * in the text, nor one the reader clicked away from while the text was loading: a follow that
+ * late would cancel the click (#790).
  */
 async function onScanPage (page: DocumentPage, index: number) {
   const generation = ++scanPageGeneration
   const first = firstScanPage
   firstScanPage = false
+  const opened = (!first || linkedPageId === page.pageId) && !scanSync.sync.isOwnPageChange(page.pageId)
+  const interactions = scanSync.sync.interactionCount()
   await textLoaded
   if (generation !== scanPageGeneration) return
-  void scanSync.sync.onScanPage(page, index, { follow: !first || linkedPageId === page.pageId })
+  void scanSync.sync.onScanPage(page, index, { follow: opened && interactions === scanSync.sync.interactionCount() })
+}
+
+/** A text click or selection on the scan; one made before the scan's pages are known waits for them (#790). */
+function showInteractionOnScan (range: ChunkRange) {
+  void scanLoaded.then(() => scanSync.sync.showTextOnScan(range))
 }
 
 /** An annotation runs into this gap: its chunks are not known (a distant page shown, a large gap). */
@@ -636,6 +645,7 @@ watch(() => targetKey(route.query, LINK_TARGETS), async (key, before) => {
   if (key === before || key === ownTarget) return
   ownTarget = null
   clearReaderCitation()
+  const interactions = scanSync.sync.interactionCount()
   await textLoaded
   linkedAnnotationShown = null
   linkedChunkShown = null
@@ -649,7 +659,8 @@ watch(() => targetKey(route.query, LINK_TARGETS), async (key, before) => {
   // The scan shows the linked page already: its text is shown as for a page change.
   const shown = workspacePane.value?.currentPage()
   const index = shown ? scanSync.pages.value.findIndex(p => p.pageId === shown.pageId) : -1
-  if (shown && index >= 0 && shown.pageId === scanPageId.value) void scanSync.sync.onScanPage(shown, index)
+  const untouched = interactions === scanSync.sync.interactionCount()
+  if (untouched && shown && index >= 0 && shown.pageId === scanPageId.value) void scanSync.sync.onScanPage(shown, index)
 })
 watch(() => route.query.view, (view) => {
   if (route.name !== 'documentDetailV1') return
@@ -828,7 +839,7 @@ function onTextClick(point: TextPoint | null, e: MouseEvent) {
   openSpanAtClick(e)
   pointerDown = null
   // The line clicked, on the scan (#545).
-  if (point) void scanSync.sync.showTextOnScan({ chunkId: point.chunkId, start: point.charOffset, end: point.charOffset })
+  if (point) showInteractionOnScan({ chunkId: point.chunkId, start: point.charOffset, end: point.charOffset })
 }
 
 // A text selection becomes the annotation selection; the browser's own selection is cleared.
@@ -836,7 +847,7 @@ const onTextSelect = ({ start: startPoint, end: endPoint }: TextSelection, e: Mo
   pointerDown = null
   // The selected lines, on the scan (#545).
   const scanRange = selectionRange(startPoint, endPoint, displayChunks.value)
-  if (scanRange) void scanSync.sync.showTextOnScan(scanRange)
+  if (scanRange) showInteractionOnScan(scanRange)
 
   const previousSelection = annotations.selection.value
   let shortened = false

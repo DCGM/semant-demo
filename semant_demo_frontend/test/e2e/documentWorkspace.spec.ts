@@ -46,10 +46,27 @@ async function settled (locator: Locator) {
   }))).toBe(true)
 }
 
-/** Clicks the middle of a scan line (the overlay is hit-tested from the layout, not the DOM). */
+/**
+ * Clicks the middle of a scan line (the overlay is hit-tested from the layout, not the DOM), at
+ * rest and reachable: the scan is fitted again while the document view still takes its size, and
+ * a click at the line's earlier place misses it (#790).
+ */
 async function clickLine (page: Page, lineId: string) {
-  const b = (await page.locator(`polygon.scan-line[data-line-id="${lineId}"]`).boundingBox())!
-  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
+  const line = page.locator(`polygon.scan-line[data-line-id="${lineId}"]`)
+  let point = { x: 0, y: 0 }
+  await expect.poll(async () => {
+    await settled(line)
+    const at = await line.evaluate(el => {
+      const b = el.getBoundingClientRect()
+      const x = b.left + b.width / 2
+      const y = b.top + b.height / 2
+      const hit = document.elementFromPoint(x, y)
+      return { x, y, coveredBy: hit?.closest('[data-testid="scan-view"]') ? null : hit?.outerHTML.slice(0, 120) ?? 'nothing' }
+    })
+    point = at
+    return at.coveredBy
+  }, `the scan line ${lineId} is covered`).toBeNull()
+  await page.mouse.click(point.x, point.y)
 }
 
 async function open (page: Page, documentId: string, query = '') {
@@ -59,11 +76,25 @@ async function open (page: Page, documentId: string, query = '') {
 
 /**
  * Clicks the text of a chunk at a UTF-16 offset, as a reader placing the caret there. The point
- * must reach the text: a click there taken by something covering it (e.g. a loading overlay,
- * #790) fails here, not later as a pane that did not follow.
+ * must reach the text, at rest: while the document view opens, its drawers and panes still
+ * take their sizes (the text pane has no height at first), so the click waits for that. One
+ * taken by something that stays over the text (e.g. a loading overlay, #790) fails here, not
+ * later as a pane that did not follow.
  */
 async function clickText (page: Page, key: string, offset: number) {
-  const point = await chunk(page, key).evaluate((el, at) => {
+  let point = { x: 0, y: 0 }
+  await expect.poll(async () => {
+    await settled(chunk(page, key))
+    const at = await textPoint(page, key, offset)
+    point = at
+    return at.coveredBy
+  }, `the text at ${offset} is covered`).toBeNull()
+  await page.mouse.click(point.x, point.y)
+}
+
+/** The middle of the character at a UTF-16 offset of a chunk, and what covers it there, if anything. */
+function textPoint (page: Page, key: string, offset: number) {
+  return chunk(page, key).evaluate((el, at) => {
     for (const seg of Array.from(el.querySelectorAll<HTMLElement>('.text-segment'))) {
       const start = Number(seg.dataset.start)
       if (Number(seg.dataset.end) <= at) continue
@@ -75,12 +106,10 @@ async function clickText (page: Page, key: string, offset: number) {
       const x = r.left + r.width / 2
       const y = r.top + r.height / 2
       const hit = document.elementFromPoint(x, y)
-      if (!hit || !seg.contains(hit)) throw new Error(`the text at ${at} is covered by ${hit?.outerHTML.slice(0, 120) ?? 'nothing'}`)
-      return { x, y }
+      return { x, y, coveredBy: hit && seg.contains(hit) ? null : hit?.outerHTML.slice(0, 120) ?? 'nothing' }
     }
     throw new Error('offset not in the chunk')
   }, offset)
-  await page.mouse.click(point.x, point.y)
 }
 
 /** Selects the text between two chunk offsets and releases the button, as a drag would. */
@@ -613,10 +642,21 @@ test.describe('the collection document view', () => {
   test('the text takes a click while its loading overlay still fades out (#790)', async ({ page }) => {
     await useViewport(page, 'wide')
     await ensureLoggedIn(page, 'owner')
-    // The overlay fades out for 300 ms once the text is loaded; slowed down here, so that the
-    // click surely falls into the fade. (The reader opens in the same document: a hash change.)
-    await page.addStyleTag({ content: '.q-inner-loading.q-transition--fade-leave-active { transition-duration: 5s !important }' })
+    // The overlay fades out for 300 ms once the text is loaded; slowed down here past the test's
+    // timeout, so that the click surely falls into the fade. (The reader opens in the same
+    // document: a hash change.) The text arrives only once the overlay has faded in: the browser
+    // shortens a fade-out that reverses an unfinished fade-in, down to nothing.
+    await page.addStyleTag({ content: '.q-inner-loading.q-transition--fade-leave-active { transition-duration: 300s !important }' })
+    let release: () => void = () => undefined
+    const released = new Promise<void>(resolve => { release = resolve })
+    await page.route(new RegExp(`/api/user_collections/${chronicles.id}/documents/${chronicle.id}/chunks(\\?|$)`), async (route) => {
+      await released
+      await route.continue()
+    })
     await page.goto(collectionUrl(`?page=${PAGE_2}`))
+    await expect(page.locator('.q-inner-loading')).toHaveCSS('opacity', '1')
+    await expect(page.locator('.q-inner-loading')).not.toHaveClass(/q-transition--fade-enter/)
+    release()
     await expect(chunkText(page, 'chronicle_1')).toBeVisible()
     await expect(page.locator('.q-inner-loading')).toHaveClass(/q-transition--fade-leave-active/)
 
@@ -624,6 +664,56 @@ test.describe('the collection document view', () => {
     await expect(overlay(page)).toHaveAttribute('data-layout-page-id', PAGE_1)
     await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l001')
     await expect(page.locator('.q-inner-loading')).toHaveClass(/q-transition--fade-leave-active/)
+  })
+
+  test('a text click made before the linked page is followed is not undone by it (#790)', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await ensureLoggedIn(page, 'owner')
+    // The text is shown, but not loaded yet (the reader follows the linked page then), and the
+    // lines of the click's page are still being read.
+    let releaseText: () => void = () => undefined
+    const textReleased = new Promise<void>(resolve => { releaseText = resolve })
+    await page.route(/\/chunks\/neighbour\?/, async (route) => {
+      await textReleased
+      await route.continue()
+    })
+    let releaseLayout: () => void = () => undefined
+    const layoutReleased = new Promise<void>(resolve => { releaseLayout = resolve })
+    await page.route(new RegExp(`/pages/${PAGE_1}/layout`), async (route) => {
+      await layoutReleased
+      await route.continue()
+    })
+    const layoutRequest = page.waitForRequest(new RegExp(`/pages/${PAGE_1}/layout`))
+    await page.goto(collectionUrl(`?page=${PAGE_2}`))
+    await expect(overlay(page)).toHaveAttribute('data-layout-page-id', PAGE_2)
+    await clickText(page, 'chronicle_1', 3)
+    await layoutRequest
+
+    const neighbours = ['next', 'prev'].map(direction => page.waitForResponse(new RegExp(`/chunks/neighbour\\?direction=${direction}`)))
+    releaseText()
+    for (const response of await Promise.all(neighbours)) await response.finished()
+    await panesSettled(page)
+    releaseLayout()
+    await expect(overlay(page)).toHaveAttribute('data-layout-page-id', PAGE_1)
+    await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l001')
+  })
+
+  test('a text click made before the scan\'s pages are known is shown once they are (#790)', async ({ page }) => {
+    await useViewport(page, 'wide')
+    await ensureLoggedIn(page, 'owner')
+    let release: () => void = () => undefined
+    const released = new Promise<void>(resolve => { release = resolve })
+    await page.route(new RegExp(`/api/documents/${chronicle.id}/pages(\\?|$)`), async (route) => {
+      await released
+      await route.continue()
+    })
+    await page.goto(collectionUrl(`?page=${PAGE_2}`))
+    await expect(chunkText(page, 'chronicle_1')).toBeVisible()
+    await clickText(page, 'chronicle_1', 3)
+    await expect(overlay(page)).toHaveCount(0)
+    release()
+    await expect(overlay(page)).toHaveAttribute('data-layout-page-id', PAGE_1)
+    await expect(highlights(page)).toHaveAttribute('data-highlight-line-id', 'r002-l001')
   })
 
   test('the reader\'s page change replaces the linked annotation in the URL; a reload opens that page', async ({ page }) => {
