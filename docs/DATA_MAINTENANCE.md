@@ -915,6 +915,9 @@ flowchart LR
    above reached the imported documents and that the index finds their vectors
    ([Import status](#import-status-import_status-884)).
 
+The [ingestion runbook](INGESTION_RUNBOOK.md) puts these steps, from the preflight to the run's
+record, in one checklist with the expected exit codes.
+
 `semant_demo_backend/tests/integration/test_append_pipeline.py` (#798) runs this order on the
 disposable test store with fake models, as a smoke test of the hand-offs: a new document, one
 missing from the Kramerius mirror and chunks appended to an existing document go through the
@@ -984,10 +987,13 @@ python -m semant_demo.maintenance.import_status --report status.json --document-
 - **Vector index:** up to `--coverage-sample` chunks are sampled among the imported documents'
   chunks that list the vector, with the checks of [`db_benchmark inventory`](DB_BENCHMARK.md),
   whose whole-collection sample rarely includes new chunks:
-  - a query with the chunk's own stored vector must find it in the top `--coverage-k`: it is in
-    the graph that search walks. A chunk missing there is queried again with the top 10 × K
-    (`retried`), since chunks with duplicate text share a vector and the graph search is
-    approximate; only a miss there too counts;
+  - a query with the chunk's own stored vector must find it in the top `--coverage-k`. A chunk
+    missing there is queried again with the top 10 × K (`retried`), since chunks with duplicate
+    text share a vector and the graph search is approximate. Only a miss there too counts, as a
+    *self-retrieval miss* (`not_in_top_k`): a sign, not proof, that the chunk is missing from the
+    graph that search walks, since a correctly indexed chunk among many identical vectors can
+    miss too. Investigate such misses ([runbook](INGESTION_RUNBOOK.md#9-final-check-import_status))
+    rather than treat them as missing index entries;
   - a query restricted to its id must find it. Weaviate answers so selective a filter by a flat
     (brute-force) search ([`flatSearchCutoff`](https://docs.weaviate.io/weaviate/config-refs/indexing/vector-index)),
     so this shows only that the vector is stored and readable.
@@ -998,7 +1004,8 @@ python -m semant_demo.maintenance.import_status --report status.json --document-
   sampled chunk; 1 otherwise; 2 when refused: an existing report, a missing, empty or invalid
   document list, a listed document that does not exist, a missing collection, a missing chunk
   property of a step (`yearIssued`, `documentPublic`, `title`, `haveVector`,
-  `classification_provenance`), missing summary properties or a missing named vector.
+  `classification_provenance`), missing summary properties, a missing named vector, or
+  `--coverage-sample` below 0 or `--coverage-k` below 1.
 - It reads the listed documents in batches of 100 and the chunks of each document through the
   `document` reference (ids and the properties above, never text; vectors only of the sampled
   chunks). A document with more chunks than `QUERY_MAXIMUM_RESULTS` fails instead of being
