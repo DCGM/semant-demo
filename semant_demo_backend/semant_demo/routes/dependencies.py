@@ -3,6 +3,7 @@ from starlette.requests import HTTPConnection
 
 from semant_demo.adapters.filesystem.page_assets import PageAssetStore
 from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.adapters.sql.ai_runs import AiRunRepository
 from semant_demo.adapters.sql.saved_selections import SavedSelectionRepository
 from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.users import UserLookup
@@ -91,6 +92,10 @@ async def get_annotation_store(connection: HTTPConnection) -> AnnotationStore:
     return AnnotationStore(collections=weaviate.user_collections, tags=weaviate.tags, spans=weaviate.spans,
                            documents=weaviate.documents,
                            activity=resources.tenant_activity, enrichment=resources.annotation_enrichment)
+
+def get_ai_run_history(connection: HTTPConnection) -> AiRunRepository:
+    return get_resources(connection).ai_runs
+
 
 def get_attribute_definitions(connection: HTTPConnection) -> AttributeRepository:
     return get_resources(connection).attributes

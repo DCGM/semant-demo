@@ -18,6 +18,7 @@ from semant_demo.adapters.llm.gateway import FeatureChat, LlmGateway, ProviderSe
 from semant_demo.adapters.llm.models import ModelCatalog
 from semant_demo.adapters.llm.usage import LlmMetrics
 from semant_demo.adapters.sql.attributes import AttributeRepository
+from semant_demo.adapters.sql.ai_runs import AiRunRepository
 from semant_demo.adapters.sql.saved_selections import SavedSelectionRepository
 from semant_demo.adapters.sql.quota import QuotaLedger
 from semant_demo.adapters.sql.tenant_activity import TenantActivity
@@ -211,6 +212,7 @@ class AppResources:
     quota_policy: QuotaPolicy
     tenant_activity: TenantActivity
     attributes: AttributeRepository
+    ai_runs: AiRunRepository
     saved_selections: SavedSelectionRepository
     annotation_vector: AnnotationVector | None = None
     """The configured contextual annotation vector; used only when the store holds it."""
@@ -247,6 +249,7 @@ class AppResources:
                    quota_ledger=QuotaLedger(session_maker), quota_policy=quota_policy,
                    tenant_activity=TenantActivity(session_maker, config.ANNOTATION_TENANT_TOUCH_SECONDS),
                    attributes=AttributeRepository(session_maker),
+                   ai_runs=AiRunRepository(session_maker),
                    saved_selections=SavedSelectionRepository(session_maker))
 
     async def connect_weaviate(self, connector: WeaviateConnector = connect_weaviate) -> None:

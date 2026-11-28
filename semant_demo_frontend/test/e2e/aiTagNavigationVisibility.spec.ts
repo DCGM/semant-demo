@@ -46,7 +46,7 @@ test('tag arrows scroll suggestions without scrolling the sidebar', async ({ pag
   await ensureLoggedIn(page, 'owner')
   await openDocument(page, 'chronicles', 'chronicle')
   await sidebarPanelButton(page, 'AI Tagging').click()
-  await expect(page.getByTestId('proposal-match-count')).toContainText('121 of 121 matching')
+  await expect(page.getByTestId('proposal-match-count')).toContainText('121 matches')
 
   // Reproduce the problematic layout: Run options and filters are expanded.
   const options = page.getByTestId('ai-run-options')
@@ -54,7 +54,7 @@ test('tag arrows scroll suggestions without scrolling the sidebar', async ({ pag
   await page.getByTestId('proposal-filters-toggle').click()
   await page.getByTestId('proposal-tag-filter').click()
   await page.getByRole('option', { name: fixture.tag('person').name, exact: true }).click()
-  await expect(page.getByTestId('proposal-match-count')).toContainText('120 of 121 matching')
+  await expect(page.getByTestId('proposal-match-count')).toContainText('120 matches')
   const nav = page.locator('.ai-run-options .ai-tag-list-row')
     .filter({ hasText: fixture.tag('person').name }).locator('.ai-tag-nav')
   const sidebar = page.locator('.q-drawer .scroll.q-px-md.q-pb-md')
@@ -69,7 +69,7 @@ test('tag arrows scroll suggestions without scrolling the sidebar', async ({ pag
   await expectNavigationWithoutSidebarScroll(nav, sidebar)
   await expect.poll(() => page.getByTestId('ai-suggestion-list').evaluate((el) => el.scrollTop))
     .toBeGreaterThan(0)
-  await expect(page.getByTestId('proposal-match-count')).toContainText('120 of 121 matching')
+  await expect(page.getByTestId('proposal-match-count')).toContainText('120 matches')
 
   await nav.locator('button').last().click()
   await expectNavigationWithoutSidebarScroll(nav, sidebar)

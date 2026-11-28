@@ -77,6 +77,8 @@ class TagSpan(BaseModel):
     confidence: float | None = None
     # Actual #460 provenance only; None for legacy annotations/collections without it.
     createdAt: datetime | None = None
+    aiRunId: str | None = None
+    """AI run provenance; None when this annotation predates the provenance schema."""
     editVersion: int = 0
     """Span writes (type, tag, offsets) since creation (#460); 0 for spans never written
     since. Sent back as ``expected_version`` so a collaborator's intervening write is
@@ -874,6 +876,23 @@ class TagSpanBatchRequest(BaseModel):
 # AI suggestions #
 ##################
 
+class AiSuggestionRunInfo(BaseModel):
+    """Persisted run metadata; also exists for runs with no surviving suggestions."""
+    id: str
+    mode: Literal["optimized", "thorough", "selection"]
+    config_name: str
+    tag_ids: list[str]
+    started_at: datetime
+    finished_at: datetime | None = None
+    outcome: str = "running"
+    saved: int = 0
+    unit: Literal["chunk", "call", "tag", "selection"] = "chunk"
+    units_total: int = 0
+    units_completed: int = 0
+    provider_failures: int = 0
+    save_failures: int = 0
+
+
 class SuggestSpansRequest(BaseModel):
     """Request body for AI span suggestion endpoints."""
     collection_id: str
@@ -1017,13 +1036,18 @@ class SuggestSpansRunEnd(BaseModel):
 
 
 class DeleteAutoSpansRequest(BaseModel):
-    """
-    Request body for bulk deletion of unresolved AI proposals
-    (``type == auto``) within a single (collection, document) scope.
-    """
+    """Delete unresolved suggestions by tag (Clear unresolved) or by selected span ids."""
     collection_id: str
     document_id: str
-    tag_ids: list[str]
+    tag_ids: list[str] | None = None
+    span_ids: list[str] | None = None
+    expected_versions: dict[str, int] | None = None
+
+    @model_validator(mode="after")
+    def one_selection_mode(self) -> "DeleteAutoSpansRequest":
+        if (self.tag_ids is None) == (self.span_ids is None):
+            raise ValueError("Provide either tag_ids or span_ids, not both")
+        return self
 
 
 class DeleteAutoSpansResponse(WriteResult):

@@ -392,8 +392,9 @@ time, version 0, and nothing is invented for them:
 - `reviewedBy` (`UUID`), `reviewedAt` (`DATE`) — the last approve or reject (a type change to
   `pos` / `neg`)
 - `lastEditedBy` (`UUID`), `lastEditedAt` (`DATE`) — the last span write (type, tag, offsets)
-- `aiRunId` (`UUID`) — the suggestion run that proposed it (a UUID per run; there is no run
-  table); kept through approval, like `reason` and `confidence`
+- `aiRunId` (`UUID`) — the suggestion run that proposed it; links to the SQL
+  `ai_suggestion_run.id` where available (#801). Kept through approval, like `reason`
+  and `confidence`; older annotations can have no recorded run.
 - `editVersion` (`INT`) — span writes since creation (0 at creation). A write or delete that
   names the version it expects is refused when it differs (HTTP 409, per item `edit_conflict`
   in batches). `revision` keeps counting offset changes only
@@ -526,6 +527,50 @@ CREATE TABLE llm_quota_call (
     recorded_at     DATETIME
 );
 ```
+
+### `ai_suggestion_run` — persistent AI suggestion run history (#801)
+
+`adapters/sql/ai_runs.py`. One row is recorded for each AI suggestion run, including
+runs that save no suggestions. The metadata is kept when its suggestions are approved,
+rejected or deleted; it is separate from the annotations in Weaviate. History reads
+are scoped to a document in an accessible collection (`GET /api/ai/suggestion_runs`).
+
+```sql
+CREATE TABLE ai_suggestion_run (
+    id                VARCHAR(36)  PRIMARY KEY,  -- run UUID; Annotation.aiRunId
+    collection_id     VARCHAR(36)  NOT NULL,     -- user collection UUID (indexed)
+    document_id       VARCHAR(36)  NOT NULL,     -- document UUID (indexed)
+    created_by        VARCHAR(36)  NOT NULL,     -- user who started the run
+    mode              VARCHAR(16)  NOT NULL,     -- thorough | optimized | selection
+    config_name       VARCHAR(200) NOT NULL,     -- selected Topicer configuration
+    tag_ids           JSON         NOT NULL,     -- requested tag IDs
+    started_at        VARCHAR(40)  NOT NULL,     -- UTC ISO 8601
+    finished_at       VARCHAR(40),               -- NULL while unfinished
+    outcome           VARCHAR(16)  NOT NULL,     -- running | complete | partial | failed | cancelled
+    saved             INTEGER      NOT NULL DEFAULT 0,  -- saved suggestions
+    unit              VARCHAR(16)  NOT NULL DEFAULT 'chunk',  -- chunk | call | selection
+    units_total       INTEGER      NOT NULL DEFAULT 0,
+    units_completed   INTEGER      NOT NULL DEFAULT 0,
+    provider_failures INTEGER      NOT NULL DEFAULT 0,
+    save_failures     INTEGER      NOT NULL DEFAULT 0
+);
+CREATE INDEX ix_ai_suggestion_run_document
+    ON ai_suggestion_run (collection_id, document_id, started_at);
+```
+
+The backend creates the row before streaming and records the outcome, saved count,
+completed units and failures when the run finishes (also on cancellation). `units_total`
+and `units_completed` count chunks in thorough mode, Topicer calls in optimized mode,
+and the selection in selection mode. A stale `running` row can be displayed as
+`interrupted` by the history API; this display status does not rewrite the row.
+The Topicer `config_name` identifies the requested configuration, not necessarily the
+underlying model when that configuration routes requests dynamically.
+
+The link from Weaviate `Annotation.aiRunId` to the SQL row is logical, not a SQL foreign
+key. Suggestions saved before run history, or without a matching run record, retain
+unknown/legacy provenance; their model is not inferred from timestamps.
+New installations create the complete `ai_suggestion_run` table at startup;
+databases from before #801 have no run history to migrate.
 
 ### `annotation_tenant_activity` — last use of each annotation tenant (#327)
 

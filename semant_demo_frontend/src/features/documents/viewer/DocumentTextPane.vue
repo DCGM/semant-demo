@@ -47,7 +47,7 @@ import type { ProjectedSpan } from 'src/features/annotations/useAnnotations'
 import type { ChunkClass, ChunkPageMarks, TextChunk, TextPaneAnnotation, TextSelection } from './documentTextPane'
 import type { PageBreakMark } from 'src/features/annotations/ChunkAnnotator.vue'
 import { groupParagraphs, rangeByChunk, resolveSelectionEndpoint, type ChunkRange, type TextPoint } from './readerOffsets'
-import { revealDelta, scrollContainer } from './textReveal'
+import { navigationScrollBehavior, revealDelta, scrollContainer } from './textReveal'
 
 // The continuous canonical text of a document's chunks, in the given order: chunks
 // grouped into paragraphs, their stored text unchanged, with the original whitespace
@@ -129,7 +129,7 @@ function scrollToChunk (chunkId: string) {
   chunkElement(chunkId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
-function scrollToRange ({ chunkId, start, end }: ChunkRange) {
+function scrollToRange ({ chunkId, start, end }: ChunkRange, { adaptive = false } = {}) {
   const chunkEl = chunkElement(chunkId)
   if (!chunkEl) return
   for (const seg of Array.from(chunkEl.querySelectorAll<HTMLElement>('.text-segment'))) {
@@ -137,7 +137,14 @@ function scrollToRange ({ chunkId, start, end }: ChunkRange) {
     const segEnd = Number(seg.dataset.end)
     // The first segment the range reaches into.
     if (segEnd > start && segStart < Math.max(end, start + 1)) {
-      seg.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      let behavior: ScrollBehavior = 'smooth'
+      if (adaptive && root.value) {
+        const scroller = scrollContainer(root.value)
+        const page = scroller === document.scrollingElement
+        const view = page ? { top: 0, bottom: window.innerHeight } : scroller?.getBoundingClientRect()
+        if (view) behavior = navigationScrollBehavior(seg.getBoundingClientRect(), view)
+      }
+      seg.scrollIntoView({ behavior, block: 'center' })
       return
     }
   }

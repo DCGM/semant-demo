@@ -1,6 +1,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export * from './AdjacentChunks';
+export * from './AiSuggestionRunInfo';
 export * from './AnnotatedDocument';
 export * from './AnnotationCounts';
 export * from './AnnotationExportRequest';

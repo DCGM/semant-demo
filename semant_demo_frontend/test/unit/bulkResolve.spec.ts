@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { describeBulkResolve, runBulkResolve } from 'src/features/annotations/bulkResolve'
+import { confirmBulkDeletion, describeBulkResolve, runBulkResolve } from 'src/features/annotations/bulkResolve'
 import { type BulkUpdateSpansResponse, WriteOutcome } from 'src/generated/api'
 
 // Approving or rejecting a large AI selection (#464) runs in bounded, sequential batches.
@@ -90,6 +90,25 @@ describe('bulk resolving suggestions (#464)', () => {
     expect(send).toHaveBeenCalledTimes(2)
     expect(summary.abandoned).toBe(true)
     expect(summary.saved).toBe(100)
+  })
+})
+
+describe('bulk deletion of selected suggestions (#801)', () => {
+  it('asks for confirmation for all or large selections', () => {
+    expect(confirmBulkDeletion(1, 20)).toBe(false)
+    expect(confirmBulkDeletion(1, 1)).toBe(true)
+    expect(confirmBulkDeletion(19, 100)).toBe(false)
+    expect(confirmBulkDeletion(20, 100)).toBe(true)
+  })
+
+  it('reuses the batched progress and keeps only unsuccessful IDs for retry', async () => {
+    const result = await runBulkResolve(['one', 'two', 'three'], async () => ({
+      succeeded: ['one', 'three'],
+      failed: [{ itemId: 'two', step: 'check_type', message: 'already reviewed' }]
+    }))
+    expect(result.saved).toBe(2)
+    expect(result.unresolved).toEqual(['two'])
+    expect(describeBulkResolve(result, 'Deleted')).toContain('1 not deleted and still selected')
   })
 })
 

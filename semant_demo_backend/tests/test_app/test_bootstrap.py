@@ -209,7 +209,10 @@ def test_sql_tables_are_users_rag_feedback_the_llm_quota_ledger_tenant_activity_
 
     assert set(Base.metadata.tables) == {"user", "rag_user_feedback", "llm_quota_day", "llm_quota_operation",
                                          "llm_quota_call", "annotation_tenant_activity", "annotation_attribute",
-                                         "annotation_attribute_value", "annotation_attribute_change", "saved_selection"}
+                                         "annotation_attribute_value", "annotation_attribute_change",
+                                         "ai_suggestion_run", "saved_selection",
+    }
+
 
 
 async def test_startup_adds_the_quota_ledger_to_an_existing_database(tmp_path, no_external_connections):

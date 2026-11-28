@@ -107,6 +107,9 @@ class _Tally:
     unit: Unit = "chunk"
     units_total: int = 0
     units_processed: int = 0
+    units_completed: int = 0
+    """Calls whose responses and proposal saves finished, including failed calls.
+    Unlike units_processed (admitted/sent), excludes in-flight calls aborted on cancellation."""
     quota_exhausted: QuotaExhausted | None = None
     """The refusal that stopped the run before all its units."""
     max_chunks_per_tag: int | None = None
@@ -185,6 +188,15 @@ class SuggestionRun:
         self._release = release
         self.summary: SuggestSpansRunEnd | None = None
         """The final summary once the run ended (also when cancelled; then not sent)."""
+        self.run_id = str(tally.actor.ai_run_id) if tally.actor and tally.actor.ai_run_id else None
+        self.config_name: str | None = None
+        # Resolved by the access checks, never the raw request's UUID spelling.
+        self.collection_id: UUID | None = None
+        self.document_id: UUID | None = None
+
+    @property
+    def completed_units(self) -> int:
+        return self._tally.units_completed
 
     async def events(self) -> AsyncGenerator[SuggestionEvent, None]:
         try:
@@ -437,7 +449,7 @@ async def _save(store: AnnotationStore, collection_id: UUID, document_id: UUID, 
 
 
 def _run_actor(user: Principal | None) -> service.Actor | None:
-    """The provenance of a run's spans: its user and a new run id (no run table, #460)."""
+    """The user and run id attached to spans and their persistent run record (#801)."""
     return service.Actor(user.id, uuid4()) if user is not None else None
 
 
@@ -554,6 +566,7 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                         continue
                     await _save(store, collection_id, document_id, event, str(chunk.id), proposal,
                                 utf16_offset(text, proposal.start), utf16_offset(text, proposal.end))
+                tally.units_completed += 1
                 if event.error is None and not event.save_failed:
                     tally.completed_calls += 1
                 yield event.result()
@@ -604,8 +617,12 @@ async def prepare_document_run(store: AnnotationStore, provider: TopicerClient, 
                     tag_id=tag.id, tag_name=tag.name, max_chunks=provider.max_chunks_per_tag,
                     processed_chunks=len(ids), candidates_truncated=candidates.truncated))
 
-    return SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
-                         hold=lambda: store.activity.in_use(collection_id), release=release)
+    run = SuggestionRun(thorough if mode == "thorough" else optimized, description, tally,
+                        hold=lambda: store.activity.in_use(collection_id), release=release)
+    run.config_name = config
+    run.collection_id = collection_id
+    run.document_id = document_id
+    return run
 
 
 # ── Selection ──────────────────────────────────────────────────────────────
@@ -713,6 +730,7 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
             no_work = e.no_work
             event = _ChunkEvent(tally, anchor_id)
             event.provider_failed(f"topicer: {e}")
+            tally.units_completed += 1
             yield event.result()
             return
         finally:
@@ -742,8 +760,13 @@ async def prepare_selection_run(store: AnnotationStore, provider: TopicerClient,
             save_failed = save_failed or event.save_failed
             # One event per proposal: the saved span, or an unsaved count with the reason.
             yield event.result()
+        tally.units_completed += 1
         if not save_failed:
             tally.completed_calls += 1
 
-    return SuggestionRun(produce, f"selection, collection {collection_id}, document {document_id}", tally,
-                         hold=lambda: store.activity.in_use(collection_id), release=release)
+    run = SuggestionRun(produce, f"selection, collection {collection_id}, document {document_id}", tally,
+                        hold=lambda: store.activity.in_use(collection_id), release=release)
+    run.config_name = config
+    run.collection_id = collection_id
+    run.document_id = document_id
+    return run

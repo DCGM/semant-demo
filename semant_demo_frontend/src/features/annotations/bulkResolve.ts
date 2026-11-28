@@ -1,7 +1,7 @@
 import type { BulkUpdateSpansResponse } from 'src/generated/api'
 
 /**
- * Approving or rejecting a large selection of AI suggestions (#464): the ids are sent in
+ * Resolving or deleting a large selection of AI suggestions: the ids are sent in
  * bounded batches, one request at a time, so neither the backend nor the browser handles
  * the whole selection at once, and progress is reported after every batch.
  */
@@ -28,8 +28,16 @@ export interface BulkResolveSummary extends BulkResolveProgress {
   error: unknown
 }
 
+/** Common result contract for bulk updates and id-scoped deletions. */
+type BulkBatchResult = Pick<BulkUpdateSpansResponse, 'succeeded' | 'failed'>
+
 /** Sends one batch; resolves to null when its result no longer applies (scope changed). */
-export type BulkBatch = (ids: string[]) => Promise<BulkUpdateSpansResponse | null>
+export type BulkBatch = (ids: string[]) => Promise<BulkBatchResult | null>
+
+/** Large and all-selected deletes ask for confirmation; small selections are immediate. */
+export function confirmBulkDeletion (selected: number, total: number): boolean {
+  return selected >= 20 || (selected > 0 && selected === total)
+}
 
 export async function runBulkResolve (
   ids: string[],
@@ -54,7 +62,7 @@ export async function runBulkResolve (
   let next = 0
   while (next < todo.length) {
     const batch = todo.slice(next, next + batchSize)
-    let result: BulkUpdateSpansResponse | null
+    let result: BulkBatchResult | null
     try {
       result = await sendBatch(batch)
     } catch (err) {
@@ -85,14 +93,17 @@ export async function runBulkResolve (
   return summary
 }
 
-/** The message for a run that did not save every selected suggestion, or null. */
-export function describeBulkResolve (summary: BulkResolveSummary, verb: 'Confirmed' | 'Rejected'): string | null {
+/** The message for a batch that did not process every selected suggestion, or null. */
+export function describeBulkResolve (summary: BulkResolveSummary, verb: 'Confirmed' | 'Rejected' | 'Deleted'): string | null {
   const notSaved = summary.total - summary.saved
   if (!notSaved) return null
   const parts = [`${verb} ${summary.saved} of ${summary.total} suggestions`]
   if (notSaved) {
-    parts.push(`${notSaved} not saved and still selected` +
-      (summary.uncertain ? ` (${summary.uncertain} may have been saved; retrying is safe)` : ''))
+    const status = verb === 'Deleted' ? 'not deleted' : 'not saved'
+    parts.push(`${notSaved} ${status} and still selected` +
+      (summary.uncertain ? (verb === 'Deleted'
+        ? ` (${summary.uncertain} may have been deleted; check before retrying)`
+        : ` (${summary.uncertain} may have been saved; retrying is safe)`) : ''))
   }
   if (summary.error) parts.push('the remaining requests were stopped after an error')
   return `${parts.join('; ')}.` + (notSaved ? ' Retry to process the remaining ones.' : '')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SpanType, type TagSpan } from 'src/generated/api'
-import { filterAndSortSuggestions, getCreatedTime, toggleVisibleSuggestions, type ProposalFilters } from
+import { filterAndSortSuggestions, formatSuggestionCreatedAt, getCreatedTime, toggleVisibleSuggestions, type ProposalFilters } from
   'src/features/annotations/aiSuggestionPresentation'
 
 const defaults: ProposalFilters = { tagId: null, minimumConfidence: null, reason: '' }
@@ -58,6 +58,37 @@ describe('AI suggestion panel presentation', () => {
       .toEqual(['new', 'old', 'unknown'])
     expect(ids(filterAndSortSuggestions(list, defaults, 'created', false, order)))
       .toEqual(['old', 'new', 'unknown'])
+  })
+
+  it('formats real creation timestamps and explicitly marks missing provenance', () => {
+    const withDate = span('recorded', 'a', 1, { createdAt: new Date('2026-11-20T15:08:00Z') })
+    const withoutDate = span('legacy', 'a', 1, { createdAt: null })
+    const invalid = span('invalid', 'a', 1, { createdAt: new Date(NaN) })
+    expect(formatSuggestionCreatedAt(withDate)).toBe(new Intl.DateTimeFormat(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    }).format(withDate.createdAt!))
+    expect(formatSuggestionCreatedAt(withoutDate)).toBe('Date unavailable')
+    expect(formatSuggestionCreatedAt(invalid)).toBe('Date unavailable')
+  })
+
+  it('sorts by distance from the viewport, preserving filters and the reverse option', () => {
+    const lengths = new Map([['a', 100], ['b', 100], ['z', 100]])
+    const list = [entry(span('far', 'z', 0)), entry(span('right', 'a', 80)),
+      entry(span('other', 'b', 0)), entry(span('left', 'a', 55))]
+    const centre = { chunkId: 'a', charOffset: 60 }
+    expect(ids(filterAndSortSuggestions(list, defaults, 'distance', false, order, centre, lengths)))
+      .toEqual(['left', 'right', 'other', 'far'])
+    expect(ids(filterAndSortSuggestions(list, defaults, 'distance', true, order, centre, lengths)))
+      .toEqual(['far', 'other', 'right', 'left'])
+    expect(ids(filterAndSortSuggestions(list, { ...defaults, tagId: 'absent' },
+      'distance', false, order, centre, lengths))).toEqual([])
+  })
+
+  it('keeps suggestions from unknown chunks last in the distance sort', () => {
+    const list = [entry(span('unknown', 'missing', 0)), entry(span('known', 'a', 60))]
+    expect(ids(filterAndSortSuggestions(list, defaults, 'distance', false, order,
+      { chunkId: 'a', charOffset: 50 }, new Map([['a', 100]]))))
+      .toEqual(['known', 'unknown'])
   })
 
   it('select-all changes only matching IDs and retains previously hidden IDs', () => {

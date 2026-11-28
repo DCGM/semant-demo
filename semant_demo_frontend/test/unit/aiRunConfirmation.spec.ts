@@ -76,7 +76,17 @@ describe('confirmation before a large AI run', () => {
     statsFail = false
     const end = JSON.stringify({ event: 'end', outcome: 'complete', saved: 0, rejected: 0, save_failures: 0, provider_failures: 0 })
     globalThis.fetch = vi.fn((url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      requested.push(String(url))
+      const requestUrl = String(url)
+
+      // Run history is loaded independently of starting an AI run.
+      if (requestUrl.includes('/ai/suggestion_runs?')) {
+        return Promise.resolve(new Response('[]', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }))
+      }
+
+      requested.push(requestUrl)
       bodies.push(JSON.parse(String(init?.body)))
       return Promise.resolve(new Response(end + '\n'))
     })

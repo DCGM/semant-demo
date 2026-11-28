@@ -11,6 +11,7 @@ from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from semant_demo.adapters.sql.base import Base
+from semant_demo.adapters.sql.ai_runs import AiSuggestionRunRow
 from semant_demo.adapters.sql.attributes import AttributeChangeRow, AttributeRow, AttributeValueRow
 from semant_demo.adapters.sql.feedback import RagUserFeedback
 from semant_demo.adapters.sql.quota import QuotaCall, QuotaDay, QuotaOperation
@@ -18,9 +19,10 @@ from semant_demo.adapters.sql.saved_selections import SavedSelectionRow
 from semant_demo.adapters.sql.tenant_activity import AnnotationTenantActivity
 from semant_demo.users.models import User
 
-__all__ = ["AnnotationTenantActivity", "AttributeChangeRow", "AttributeRow", "AttributeValueRow", "Base",
-           "QuotaCall", "QuotaDay", "QuotaOperation", "RagUserFeedback", "SavedSelectionRow", "User",
-           "create_tables"]
+
+__all__ = ["AiSuggestionRunRow", "AnnotationTenantActivity", "AttributeChangeRow", "AttributeRow",
+           "AttributeValueRow", "Base", "QuotaCall", "QuotaDay", "QuotaOperation",
+           "RagUserFeedback", "SavedSelectionRow", "User", "create_tables"]
 
 
 class OutdatedSchemaError(RuntimeError):
