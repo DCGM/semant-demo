@@ -11,6 +11,9 @@ Name | Type
 `missing` | number
 `total` | number
 `distinct` | number
+`eligible` | number
+`withValue` | number
+`assignments` | number
 `truncated` | boolean
 
 ## Example
@@ -25,6 +28,9 @@ const example = {
   "missing": null,
   "total": null,
   "distinct": null,
+  "eligible": null,
+  "withValue": null,
+  "assignments": null,
   "truncated": null,
 } satisfies Facet
 

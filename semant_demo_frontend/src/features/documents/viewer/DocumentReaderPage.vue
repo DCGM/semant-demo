@@ -32,6 +32,7 @@
       :mode="workspace.shown.value"
       :page-id="scanPageId"
       :highlights="scanSync.sync.scanHighlights.value"
+      :citation-highlights="scanSync.sync.citationScanHighlights.value"
       :layout-cache="scanSync.layouts.value"
       @navigate="onScanNavigate"
       @page-change="onScanPage"
@@ -95,6 +96,7 @@
             :preserve-whitespace="preserveWhitespace"
             :annotation="textAnnotation"
             :chunk-class="chunkClass"
+            :cited-chunk-id="citedChunkId"
             :active-range="scanSync.sync.textFocus.value?.range ?? null"
             :active-approximate="!!scanSync.sync.textFocus.value?.approximate"
             :page-marks="scanSync.sync.pageMarks.value"
@@ -236,7 +238,7 @@ import { useTagNavigation } from 'src/features/annotations/useTagNavigation'
 import useTagSpans from 'src/features/annotations/useTagSpans'
 import { useUserCollectionsStore } from 'src/features/user_collections/userCollectionsStore'
 import { collectionRights } from 'src/features/user_collections/permissions'
-import { requestedCitation } from 'src/features/documents/readerCitation'
+import { clearReaderCitation, requestedCitation } from 'src/features/documents/readerCitation'
 import useChunks from '../useChunks'
 import ChunkMembershipGutter from './ChunkMembershipGutter.vue'
 import ChunkSelectionBar from './ChunkSelectionBar.vue'
@@ -415,6 +417,14 @@ const chunkClass = (chunk: CollectionChunk) => ({
   'chunk-preview--active': !chunk.inCollection && hoveredPreviewChunkId.value === chunk.id,
   'chunk-gutter-hovered': gutterHoveredChunkId.value === chunk.id
 })
+// Citation highlighting is not an annotation or a text selection.
+const citedChunkId = ref<string | null>(null)
+let citationGeneration = 0
+watch(() => [props.collectionId, props.documentId], () => {
+  citationGeneration++
+  citedChunkId.value = null
+  scanSync.sync.clearCitationScan()
+})
 
 // ── Scrolling the text to a span ──
 function scrollToSpan(chunkId: string, start: number, end: number, adaptive = false) {
@@ -457,24 +467,31 @@ watch(highlightedAutoSpanId, (spanId) => {
   }
 })
 
-// A clicked citation in the AI Chat panel (a summary or an answer; a sibling of this route
-// inside DocumentViewLayout) scrolls the reader to the cited chunk, loading it into the
-// displayed window first (chunkWindow.loadUntil, #249 review) if it isn't shown yet — the
-// reader only displays a bounded window by default. This
-// is otherwise an orthogonal, read-only navigation action: it must not touch
-// annotations/tagEditing state (no selection clearing, no popover changes, no span
-// highlight changes) or navigate, only scroll/load — so tag-editing state in progress is left
-// exactly as it was.
+// A cited chunk may lie outside the bounded reader window. Load first, then highlight and
+// focus it; obsolete requests must not win a race with a later citation or a route change.
+// All of this is read-only; the annotation popover, selection and tag state are untouched.
 watch(requestedCitation, async (citation) => {
-  if (!citation) return
-  if (!chunkWindow.findChunk(citation.chunkId) && citation.order != null) {
-    // A citation always refers to a chunk that exists (it came from the document's own
-    // chunks); if its order can't be resolved into the window either, there is nothing more
-    // to try and scrollToChunk below silently finds nothing (a narrow, documented fallback).
-    await chunkWindow.loadUntil(citation.order)
+  const generation = ++citationGeneration
+  citedChunkId.value = null
+  scanSync.sync.clearCitationScan()
+  if (!citation || citation.documentId !== props.documentId || citation.collectionId !== props.collectionId) return
+  await textLoaded
+  if (generation !== citationGeneration) return
+  try {
+    if (!chunkWindow.findChunk(citation.chunkId) && citation.order != null) {
+      await chunkWindow.loadUntil(citation.order)
+    }
+  } catch {
+    // Unavailable or unauthorized chunks have no evidence to highlight.
+    return
   }
+  if (generation !== citationGeneration || !chunkWindow.findChunk(citation.chunkId)) return
+  await nextTick()
+  if (generation !== citationGeneration) return
+  citedChunkId.value = citation.chunkId
   scrollToChunk(citation.chunkId)
-  if (chunkWindow.findChunk(citation.chunkId)) showOnScan(citation.chunkId, 0, 0)
+  const chunk = chunkWindow.findChunk(citation.chunkId)
+  if (chunk) showOnScan(citation.chunkId, 0, chunk.text.length)
 })
 
 // A link from the annotation workspace (#329): `?annotation=&chunk=&order=` brings that
@@ -552,7 +569,7 @@ function chooseMode (mode: WorkspaceMode) {
   void router.replace({ query: withMode(route.query, mode) })
 }
 
-/** The reader moved to another page in the scan: the URL opens it again, not the link's annotation or chunk. */
+/** Browsing other scan pages must not dismiss the cited evidence: it may span pages. */
 function onScanNavigate (page: DocumentPage) {
   const query = withScanPage(route.query, page.pageId, TEXT_TARGETS)
   ownTarget = targetKey(query, LINK_TARGETS)
@@ -587,9 +604,20 @@ function annotationCutAt (group: { gapAfter: number | null, gapBefore: number | 
   return false
 }
 
-/** Text to scan once the manifest is known: the lines of a range (a linked annotation, a citation). */
+/** Annotation links still use transient scan focus. An active AI citation owns its own,
+ * persistent scan outline; later text/scan interactions may not overwrite it. */
 function showOnScan (chunkId: string, start: number, end: number) {
-  void scanLoaded.then(() => scanSync.sync.showTextOnScan({ chunkId, start, end }))
+  const citation = citedChunkId.value === chunkId
+  const generation = citationGeneration
+  void scanLoaded.then(() => {
+    if (citation) {
+      if (generation !== citationGeneration || citedChunkId.value !== chunkId) return
+      const chunk = chunkWindow.findChunk(chunkId)
+      if (chunk) void scanSync.sync.showCitationOnScan({ chunkId, start: 0, end: chunk.text.length })
+    } else {
+      void scanSync.sync.showTextOnScan({ chunkId, start, end })
+    }
+  })
 }
 
 // The text shown again after the scan alone: the passage focused from the scan comes into view.
@@ -607,6 +635,7 @@ watch(() => targetKey(route.query, LINK_TARGETS), async (key, before) => {
   if (route.name !== 'documentDetailV1' || route.params.documentId !== props.documentId) return
   if (key === before || key === ownTarget) return
   ownTarget = null
+  clearReaderCitation()
   await textLoaded
   linkedAnnotationShown = null
   linkedChunkShown = null
@@ -1070,6 +1099,8 @@ const onEscape = (e: KeyboardEvent) => {
     annotations.clearSelection()
   } else if (tagNav.focusedTagId.value && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')) {
     tagNav.setFocusedTagId(null)
+  } else if (citedChunkId.value && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')) {
+    clearReaderCitation()
   }
 }
 
@@ -1094,8 +1125,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  citationGeneration++
   spanRequests.enter()
   scanSync.sync.cancel()
+  scanSync.sync.clearCitationScan()
   resizeObserver?.disconnect()
   if (pendingClick) clearTimeout(pendingClick.timer)
   document.removeEventListener('mousedown', onClickOutside)

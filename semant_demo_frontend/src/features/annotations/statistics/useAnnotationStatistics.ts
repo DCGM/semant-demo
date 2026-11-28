@@ -5,11 +5,12 @@ import type { ConcordanceFilters } from '../concordance/concordanceStore'
 import { statisticsRequest } from './statistics'
 
 /**
- * Reads the statistics of the workspace query (#818) whenever the collection or the query changes
+ * Reads the statistics of the workspace query (#818) whenever the collection, the query or the collection's attributes (#819) change
  * (not the sort order). A newer query, another collection or a sign-out drops a late answer; a
  * failed read is an error, never empty or zero counts.
  */
-export function useAnnotationStatistics (collectionId: Ref<string | null>, filters: Ref<ConcordanceFilters>) {
+export function useAnnotationStatistics (collectionId: Ref<string | null>, filters: Ref<ConcordanceFilters>,
+  attributeIds: Ref<string[]> = ref([])) {
   const api = useApi().default
   const requests = createContextGuard()
   let abort: AbortController | null = null
@@ -32,7 +33,7 @@ export function useAnnotationStatistics (collectionId: Ref<string | null>, filte
     error.value = null
     try {
       const result = await api.facetCollectionAnnotationsApiUserCollectionsCollectionIdAnnotationsFacetsPost({
-        collectionId: id, annotationFacetsRequest: statisticsRequest(filters.value)
+        collectionId: id, annotationFacetsRequest: statisticsRequest(filters.value, attributeIds.value)
       }, { signal: controller.signal })
       if (applies()) statistics.value = result
     } catch (e) {
@@ -57,7 +58,7 @@ export function useAnnotationStatistics (collectionId: Ref<string | null>, filte
   const queryKey = () => {
     const { sort, sortAttribute, descending, ...query } = filters.value
     void sort; void sortAttribute; void descending
-    return JSON.stringify([collectionId.value, query])
+    return JSON.stringify([collectionId.value, query, attributeIds.value])
   }
   watch(queryKey, () => { void load() }, { immediate: true })
 

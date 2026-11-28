@@ -829,6 +829,9 @@ python -m semant_demo.maintenance.chunk_ingest --write write.json --confirm-endp
   `CHECKPOINT.inputs.jsonl`, so the checkpoint stays small for any number of files. A finished
   checkpoint, or one for other input, is refused; the refusal names the files that differ from the
   listing.
+- A new checkpoint is refused next to a leftover `CHECKPOINT.manifest.jsonl` or, for `--write`,
+  `CHECKPOINT.documents.txt` of an earlier run with the same name, which the new run would append
+  to (#641). Nothing is written or deleted; give a new checkpoint file name or move the files.
 - Backups:
   - `--backup-id` must be a successful `backup-filesystem` backup holding the chunks and documents
     collections; this is checked.
@@ -908,6 +911,12 @@ flowchart LR
    the chunks' classifications. Until it runs, the new documents have no summaries and match no
    chunk filter. A run before the classification (e.g. for the language filter) is only interim:
    the import is not complete while the classification is pending. It is a full-corpus pass.
+7. `import_status --document-ids CHECKPOINT.documents.txt` checks, read-only, that every step
+   above reached the imported documents and that the index finds their vectors
+   ([Import status](#import-status-import_status-884)).
+
+The [ingestion runbook](INGESTION_RUNBOOK.md) puts these steps, from the preflight to the run's
+record, in one checklist with the expected exit codes.
 
 `semant_demo_backend/tests/integration/test_append_pipeline.py` (#798) runs this order on the
 disposable test store with fake models, as a smoke test of the hand-offs: a new document, one
@@ -937,6 +946,74 @@ Procedure on a shared store (authorized per task):
 7. Run the follow-up commands.
 
 Record the counts and the backup id on the issue.
+
+## Import status (`import_status`, #884)
+
+An exit code 0 of each step after an import does not prove that every imported document and
+chunk was enriched. `import_status` reads only the documents of the import's list and their
+chunks, writes nothing (no `--confirm-endpoint`) and reports per step how many are complete,
+with the ids of the incomplete ones (the first 100 per step; the counts are complete).
+
+```bash
+python -m semant_demo.maintenance.import_status --report status.json --document-ids CHECKPOINT.documents.txt \
+    [--vector-name Qwen3_Embedding_0_6B] [--coverage-sample 100] [--coverage-k 10] [--seed 884] \
+    [--titles-included-restricted] [--classifier-skipped-restricted]
+```
+
+| Stage | Unit | Complete when |
+| --- | --- | --- |
+| `chunks` | document | it has chunks |
+| `metadata` | document | `public` is a bool (else `unresolved`) and `library` is set (`metadata_sync`) |
+| `year` | chunk | `yearIssued` equals the document's year, absent when it has none (`chunk_year`) |
+| `visibility` | chunk | `documentPublic` is `true` exactly when the document's `public` is (`chunk_document_public`) |
+| `titles` | chunk | a non-empty `title` (`chunk_titles`) |
+| `vectors` | chunk | `haveVector` lists `--vector-name` (the embedder) |
+| `classification` | chunk | `classification_provenance` other than `UNPROCESSED` (the classifier) |
+| `summaries` | document | the summaries equal a recomputation from its chunks and were computed (`chunk_summaries`) |
+
+- **Expected gaps** are counted apart, not as incomplete. The chunks of a document that is not
+  public (`public` false or absent, #785) follow each step's defaults; tell the command when a
+  run differed:
+  - untitled ones are a gap (`deferred_restricted_document`), as `chunk_titles` defers them;
+    after a run with `--include-restricted-documents`, give `--titles-included-restricted`;
+  - `UNPROCESSED` ones are incomplete, as the repository's classifier (a local model) classifies
+    them; after an API model without `include_restricted_documents`, give
+    `--classifier-skipped-restricted` (gap `skipped_restricted_document`).
+
+  Chunks without `classification_provenance` were stored before the property existed, e.g. the
+  earlier chunks of a document the import appends to (the import sets `UNPROCESSED` on every
+  chunk it inserts): gap `stored_before_status`. Documents without a title or a year are counted
+  in `documents_without`: the source may have none.
+- **Vector index:** up to `--coverage-sample` chunks are sampled among the imported documents'
+  chunks that list the vector, with the checks of [`db_benchmark inventory`](DB_BENCHMARK.md),
+  whose whole-collection sample rarely includes new chunks:
+  - a query with the chunk's own stored vector must find it in the top `--coverage-k`. A chunk
+    missing there is queried again with the top 10 × K (`retried`), since chunks with duplicate
+    text share a vector and the graph search is approximate. Only a miss there too counts, as a
+    *self-retrieval miss* (`not_in_top_k`): a sign, not proof, that the chunk is missing from the
+    graph that search walks, since a correctly indexed chunk among many identical vectors can
+    miss too. Investigate such misses ([runbook](INGESTION_RUNBOOK.md#9-final-check-import_status))
+    rather than treat them as missing index entries;
+  - a query restricted to its id must find it. Weaviate answers so selective a filter by a flat
+    (brute-force) search ([`flatSearchCutoff`](https://docs.weaviate.io/weaviate/config-refs/indexing/vector-index)),
+    so this shows only that the vector is stored and readable.
+
+  A miss right after the embedder may be a vector still queued for indexing: run the report
+  again later. `--coverage-sample 0` skips the check.
+- **Exit codes:** 0 when no step is incomplete (expected gaps aside) and the index found every
+  sampled chunk; 1 otherwise; 2 when refused: an existing report, a missing, empty or invalid
+  document list, a listed document that does not exist, a missing collection, a missing chunk
+  property of a step (`yearIssued`, `documentPublic`, `title`, `haveVector`,
+  `classification_provenance`), missing summary properties, a missing named vector, or
+  `--coverage-sample` below 0 or `--coverage-k` below 1.
+- It reads the listed documents in batches of 100 and the chunks of each document through the
+  `document` reference (ids and the properties above, never text; vectors only of the sampled
+  chunks). A document with more chunks than `QUERY_MAXIMUM_RESULTS` fails instead of being
+  truncated. Run it while nothing writes the imported documents.
+
+`semant_demo_backend/tests/integration/test_import_status.py` runs it after the order of
+*Afterwards* on the [append test's](#chunk-import-chunk_ingest-313) data and after leaving out
+each step.
 
 ## Annotation derived data (`annotation_enrichment`, #328)
 
